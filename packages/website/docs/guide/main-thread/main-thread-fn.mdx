@@ -1,0 +1,47 @@
+# `mainThreadFn`
+
+Defines a function that will be registered and executed on the main thread. Call it at module scope — the ID is assigned deterministically so both thread bundles agree on which function is which.
+
+:::danger Escape Hatch — Not Standard Angular
+Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::
+
+## Setup
+
+```typescript title="src/app/my.ts"
+import { Component } from '@angular/core';
+import {
+  mainThreadFn, // [!code highlight]
+  LynxMainThreadEvent, // [!code highlight]
+  LYNX_ELEMENTS,
+} from '@blotch/angular-lynx';
+import type { MainThread } from '@blotch/angular-lynx';
+
+const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
+  // [!code highlight]
+  const el = event.currentTarget;
+  el.setStyleProperty('background-color', '#ff5722');
+});
+
+@Component({
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent], // [!code highlight]
+  template: `
+    <view [mainThreadBindtap]="handleTap">
+      <text>Tap me</text>
+    </view>
+  `,
+})
+export class Example {
+  readonly handleTap = handleTap;
+}
+```
+
+## Rules
+
+1. **Module-level only** — `mainThreadFn` must be called at module scope (not inside a class or function). Both the main thread and background thread bundles evaluate the same modules in the same order, generating matching IDs.
+2. **No closures over component state** — the function runs on the main thread, which has no access to Angular signals, services, or component instances.
+3. **Native element access** — the `event.currentTarget` is a `MainThread.Element` with methods like `setStyleProperty()`, `getBoundingClientRect()`, and `invoke()`.
+
+## Return Type
+
+`mainThreadFn` returns a `MainThreadFnHandle` — a serializable token containing the worklet ID. Pass it to the `LynxMainThreadEvent` directive or to `LynxMainThread.runOnMainThread()`.

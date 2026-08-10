@@ -1,0 +1,60 @@
+@import './styles/default.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Custom fonts registered via @font-face — surfaced by the Custom Fonts demo.
+ * Each family shows off a different category (sans, serif, script, mono,
+ * condensed display, retro pixel) so the demo can prove Lynx loads and renders
+ * arbitrary .ttf files, not just the system font. The @font-face family name is
+ * what `font-[Name]` / `font-family` reference in templates.
+ */
+@font-face {
+  font-family: 'Roboto';
+  src: url('./assets/fonts/Roboto-Light.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'PlayfairDisplay';
+  src: url('./assets/fonts/PlayfairDisplay-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'DancingScript';
+  src: url('./assets/fonts/DancingScript-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'BebasNeue';
+  src: url('./assets/fonts/BebasNeue-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Pacifico';
+  src: url('./assets/fonts/Pacifico-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'SpaceMono';
+  src: url('./assets/fonts/SpaceMono-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'PressStart2P';
+  src: url('./assets/fonts/PressStart2P-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Lobster';
+  src: url('./assets/fonts/Lobster-Regular.ttf') format('truetype');
+}
+
+/* Validation-only: test CSS variables with hex values */
+page {
+  --test-hex: #18181b;
+  --test-rgb-r: 24;
+  --test-rgb-g: 24;
+  --test-rgb-b: 27;
+}

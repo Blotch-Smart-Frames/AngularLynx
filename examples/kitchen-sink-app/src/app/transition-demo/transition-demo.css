@@ -1,0 +1,153 @@
+/*
+ * Keyframe presets for the single-element panel and the list group.
+ *
+ * These MUST live in CSS (Tailwind can't express @keyframes) and are the only
+ * thing this file owns — every layout/color choice is done with Tailwind + dolan
+ * components in the template. Each `.{name}-enter` / `.{name}-leave` pair is
+ * toggled on the element by LynxTransition / LynxTransitionGroup, and the
+ * animation duration here must match the `[duration]` bound in the component
+ * (the background thread has no animationend bridge to sync them automatically).
+ *
+ * `animation-fill-mode: both` holds the final frame so the enter class can stay
+ * applied as the resting state until the element leaves.
+ */
+
+/* ── fade: opacity with a subtle vertical drift ── */
+@keyframes fade-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.fade-enter {
+  animation: fade-enter 360ms ease-out both;
+}
+.fade-leave {
+  animation: fade-leave 360ms ease-in both;
+}
+
+/* ── scale: pop in and out from the center ── */
+@keyframes scale-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes scale-leave {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+.scale-enter {
+  animation: scale-enter 360ms ease-out both;
+}
+.scale-leave {
+  animation: scale-leave 360ms ease-in both;
+}
+
+/* ── slide: enter from the right, leave to the left ── */
+@keyframes slide-enter {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes slide-leave {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+.slide-enter {
+  animation: slide-enter 360ms ease-out both;
+}
+.slide-leave {
+  animation: slide-leave 360ms ease-in both;
+}
+
+/* ── rise: enter from below, leave downward ── */
+@keyframes rise-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes rise-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+.rise-enter {
+  animation: rise-enter 360ms ease-out both;
+}
+.rise-leave {
+  animation: rise-leave 360ms ease-in both;
+}
+
+/* ── list: per-row enter/leave for the transition group ── */
+@keyframes list-enter {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes list-leave {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+.list-enter {
+  animation: list-enter 300ms ease-out both;
+}
+.list-leave {
+  animation: list-leave 300ms ease-in both;
+}

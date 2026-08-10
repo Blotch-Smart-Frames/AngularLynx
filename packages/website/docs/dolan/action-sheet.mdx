@@ -1,0 +1,98 @@
+# Action Sheet
+
+A bottom sheet that presents a set of actions. Slides up from the bottom with a list of tappable items and an optional cancel button. Dismisses when tapping the backdrop or the cancel button.
+
+<Go example="ui-action-sheet" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add action-sheet
+```
+
+```typescript
+import {
+  UiActionSheet,
+  UiActionSheetTitle,
+  UiActionSheetItem,
+  UiActionSheetCancel,
+} from '@/components/ui/action-sheet';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import {
+  UiActionSheet,
+  UiActionSheetTitle,
+  UiActionSheetItem,
+  UiActionSheetCancel,
+} from '@/components/ui/action-sheet';
+import { UiButton } from '@/components/ui/button';
+
+@Component({
+  imports: [
+    UiActionSheet,
+    UiActionSheetTitle,
+    UiActionSheetItem,
+    UiActionSheetCancel,
+    UiButton,
+  ],
+  template: `
+    <ui-button (pressed)="open.set(true)">Share</ui-button>
+
+    <ui-action-sheet [(open)]="open">
+      <ui-action-sheet-title>Share this document</ui-action-sheet-title>
+      <ui-action-sheet-item (pressed)="onCopy()">
+        Copy Link
+      </ui-action-sheet-item>
+      <ui-action-sheet-item (pressed)="onEmail()">
+        Send via Email
+      </ui-action-sheet-item>
+      <ui-action-sheet-item variant="destructive" (pressed)="onDelete()">
+        Delete
+      </ui-action-sheet-item>
+      <ui-action-sheet-cancel />
+    </ui-action-sheet>
+  `,
+})
+export class Example {
+  open = signal(false);
+
+  onCopy(): void {}
+  onEmail(): void {}
+  onDelete(): void {}
+}
+```
+
+## API
+
+### UiActionSheet
+
+| Input / Output | Type             | Default | Description                                    |
+| -------------- | ---------------- | ------- | ---------------------------------------------- |
+| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility       |
+| `class`        | `string`         | `''`    | Additional CSS classes for the sheet container |
+| `closed`       | `output<void>`   | --      | Emitted after the close animation completes    |
+
+### UiActionSheetTitle
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiActionSheetItem
+
+| Input / Output | Type                         | Default     | Description                     |
+| -------------- | ---------------------------- | ----------- | ------------------------------- |
+| `variant`      | `'default' \| 'destructive'` | `'default'` | Visual style of the item        |
+| `class`        | `string`                     | `''`        | Additional CSS classes          |
+| `pressed`      | `output<void>`               | --          | Emitted when the item is tapped |
+
+### UiActionSheetCancel
+
+| Input   | Type     | Default    | Description                         |
+| ------- | -------- | ---------- | ----------------------------------- |
+| `label` | `string` | `'Cancel'` | Text displayed on the cancel button |
+| `class` | `string` | `''`       | Additional CSS classes              |

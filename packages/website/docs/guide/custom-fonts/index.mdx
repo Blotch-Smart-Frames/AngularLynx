@@ -1,0 +1,78 @@
+# Custom Fonts
+
+AngularLynx supports custom fonts via CSS `@font-face` — the same approach Angular developers use on the web. The build system automatically bundles font files as static assets with content-hashed filenames. For fonts loaded dynamically at runtime, `LynxFont` wraps the native `lynx.addFont()` API.
+
+<Go example="custom-fonts" defaultFile="src/app/app.ts" />
+
+## CSS @font-face (Recommended)
+
+Place your font file in `src/assets/fonts/` and declare it in your global stylesheet:
+
+```css title="src/styles.css"
+@font-face {
+  font-family: 'CustomFont';
+  src: url('./assets/fonts/CustomFont.ttf') format('truetype');
+}
+```
+
+Then apply it in component styles:
+
+```typescript title="src/app/heading.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <text class="heading">Hello in a custom font</text>
+    <text class="body">Default system font for comparison</text>
+  `,
+  styles: [
+    `
+      .heading {
+        font-family: CustomFont; /* [!code highlight] */
+        font-size: 24px;
+      }
+      .body {
+        font-size: 24px;
+      }
+    `,
+  ],
+})
+export class Heading {}
+```
+
+At build time, Rsbuild processes the font file, hashes the filename (e.g., `CustomFont.a1b2c3d4.ttf`), and emits it to `dist/static/font/`.
+
+## Platform Support
+
+| Platform | Supported Formats     |
+| -------- | --------------------- |
+| Android  | TTF, OTF, TTC         |
+| iOS      | TTF, OTF, WOFF, WOFF2 |
+
+:::warning
+Lynx only supports `font-family` and `src` descriptors in `@font-face`. The `font-weight`, `font-style`, `font-variant`, `font-display`, and `unicode-range` descriptors are **not supported**.
+
+To use multiple weights or styles, declare each variant with a different `font-family` name, or use a variable font.
+:::
+
+```css title="src/styles.css"
+/* Each weight needs its own font-family name */
+@font-face {
+  font-family: 'CustomFont-Regular';
+  src: url('./assets/fonts/CustomFont-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'CustomFont-Bold';
+  src: url('./assets/fonts/CustomFont-Bold.ttf') format('truetype');
+}
+```
+
+## Choosing an Approach
+
+| Approach         | Best for                                                           |
+| ---------------- | ------------------------------------------------------------------ |
+| CSS `@font-face` | Fonts known at build time (bundled, hashed, zero runtime cost)     |
+| `LynxFont`       | Fonts loaded from remote URLs or determined dynamically at runtime |

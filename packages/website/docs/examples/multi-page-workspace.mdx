@@ -1,0 +1,13 @@
+# Multi Page Workspace
+
+Define multiple pages as separate Angular projects in `angular.json` and build them with `pages: 'all'`.
+
+<Go example="multi-page-workspace" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`pages: 'all'`** — tells `pluginAngularLynx()` to discover all projects with `projectType: "application"` in `angular.json` and create a separate entry for each
+- **`pages: ['home', 'settings']`** — alternatively, specify an explicit list of project names to include as pages
+- **Angular workspace integration** — each page is a full Angular project in `angular.json`, sharing the same workspace `tsconfig` and dependencies
+- **Workspace-driven discovery** — the plugin reads `angular.json` to find entry points automatically, so adding a new page only requires adding a new project definition
+- **Separate bundles** — each project compiles to its own `.lynx.bundle`, allowing independent loading and navigation by the native host

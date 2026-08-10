@@ -1,0 +1,66 @@
+# Gesture Composition
+
+When multiple gestures are attached to the same element, use composition helpers to control how they interact.
+
+## Gesture.Exclusive
+
+Gestures are tried in priority order. Each gesture waits for all predecessors to fail before it can activate. Use this when gestures overlap (e.g., pan vs tap on the same element):
+
+```typescript
+import { Gesture, PanGesture, TapGesture } from '@blotch/angular-lynx';
+
+// Pan takes priority — tap only fires if the user didn't drag
+readonly pan = new PanGesture().minDistance(10).onUpdate((e) => { ... });
+readonly tap = new TapGesture().onEnd(() => { ... });
+readonly gesture = Gesture.Exclusive(this.pan, this.tap); // [!code highlight]
+```
+
+```angular-html
+<view [lynxGesture]="gesture">
+  <text>Pan or tap</text>
+</view>
+```
+
+## Gesture.Simultaneous
+
+All gestures can recognize at the same time — none blocks the others:
+
+```typescript
+readonly pinch = new PinchGesture().onUpdate((e) => { ... });
+readonly rotation = new RotationGesture().onUpdate((e) => { ... });
+readonly gesture = Gesture.Simultaneous(this.pinch, this.rotation); // [!code highlight]
+```
+
+## Gesture.Race
+
+First gesture to recognize wins — no explicit dependency relations:
+
+```typescript
+readonly swipeLeft = new FlingGesture().direction(FlingDirection.LEFT).onEnd(() => { ... });
+readonly swipeRight = new FlingGesture().direction(FlingDirection.RIGHT).onEnd(() => { ... });
+readonly gesture = Gesture.Race(this.swipeLeft, this.swipeRight); // [!code highlight]
+```
+
+## Multiple Gestures
+
+You can also pass an array of gestures without composition — each operates independently:
+
+```angular-html
+<view [lynxGesture]="[tapGesture, doubleTapGesture]">
+  <text>Tap or double-tap</text>
+</view>
+```
+
+## Manual Relationships
+
+For fine-grained control without composition helpers, use `waitFor`, `simultaneousWith`, and `continueWith` directly:
+
+```typescript
+readonly tap = new TapGesture().onEnd(() => { ... });
+readonly doubleTap = new TapGesture()
+  .numberOfTaps(2)
+  .onEnd(() => { ... });
+
+// Single tap waits for double-tap to fail before firing
+readonly singleTap = this.tap.waitFor(this.doubleTap); // [!code highlight]
+```

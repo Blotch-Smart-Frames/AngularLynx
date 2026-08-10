@@ -1,0 +1,20 @@
+# @blotch/angular-lynx
+
+The core runtime package. Import `bootstrapApplication`, `provideRenderer`, `provideRouter`, and `LYNX_ELEMENTS` from here.
+
+```typescript
+import {
+  bootstrapApplication,
+  provideRenderer,
+  provideRouter,
+  LYNX_ELEMENTS,
+} from '@blotch/angular-lynx';
+```
+
+| Section                  | Description                                               |
+| ------------------------ | --------------------------------------------------------- |
+| [Bootstrap](./bootstrap) | App startup: `bootstrapApplication`, `provideRenderer`    |
+| [Routing](./routing)     | `provideRouter`, location strategy, route reuse           |
+| [Elements](./elements)   | All Lynx element directives (`LYNX_ELEMENTS`, etc.)       |
+| [Animation](./animation) | `LynxAnimation`, `LynxAnimationOptions`                   |
+| [Services](./services)   | Data, session storage, exposure, fonts, logging, and more |

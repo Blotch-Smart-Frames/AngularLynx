@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "components": {
+    "button-group": {
+      "index.ts": {
+        "hash": "d10fec0b660b9cdd"
+      },
+      "button-group.ts": {
+        "hash": "81bc291682b9e594"
+      },
+      "button-group.test.ts": {
+        "hash": "5a7e1d36aa5283b6"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "6010e930f4314a61"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0c4c52d9d2c90630"
+    },
+    "dark.css": {
+      "hash": "73345d8f2179fd64"
+    }
+  }
+}

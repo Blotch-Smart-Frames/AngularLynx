@@ -1,0 +1,78 @@
+# Complete Example
+
+A full component combining tap, long-press, and pan gestures with `Gesture.Exclusive()` composition. Tap increments a counter, long-press resets it, and pan tracks finger position.
+
+```typescript title="src/app/gesture-demo.ts"
+import { Component, signal } from '@angular/core';
+import {
+  Gesture,
+  LynxGestureDetector,
+  LongPressGesture,
+  PanGesture,
+  TapGesture,
+  LYNX_ELEMENTS,
+} from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS, LynxGestureDetector],
+  template: `
+    <view>
+      <!-- Pan: drag and see translation -->
+      <view
+        [lynxGesture]="panGesture"
+        style="width: 100px; height: 100px; background-color: #6200ee;"
+      >
+        <text style="color: white;">Drag me</text>
+        <text style="color: white;">X: {{ panX() }} Y: {{ panY() }}</text>
+      </view>
+
+      <!-- Tap counter -->
+      <view
+        [lynxGesture]="tapGesture"
+        style="padding: 16px; background-color: #03dac6; margin-top: 16px;"
+      >
+        <text>Taps: {{ tapCount() }}</text>
+      </view>
+
+      <!-- Exclusive: pan takes priority over tap -->
+      <view
+        [lynxGesture]="exclusive"
+        style="padding: 16px; background-color: #ff9800; margin-top: 16px;"
+      >
+        <text>{{ action() }}</text>
+      </view>
+    </view>
+  `,
+})
+export class GestureDemo {
+  readonly panX = signal(0);
+  readonly panY = signal(0);
+  readonly tapCount = signal(0);
+  readonly action = signal('pan or tap');
+
+  readonly panGesture = new PanGesture()
+    .minDistance(5)
+    .onUpdate((e) => {
+      this.panX.set(Math.round(e.translationX));
+      this.panY.set(Math.round(e.translationY));
+    })
+    .onEnd(() => {
+      this.panX.set(0);
+      this.panY.set(0);
+    });
+
+  readonly tapGesture = new TapGesture().onEnd(() =>
+    this.tapCount.update((v) => v + 1),
+  );
+
+  // Exclusive composition: pan wins over tap
+  readonly exclusivePan = new PanGesture()
+    .minDistance(10)
+    .onUpdate((e) => this.action.set(`pan x:${Math.round(e.translationX)}`))
+    .onEnd(() => this.action.set('pan ended'));
+  readonly exclusiveTap = new TapGesture().onEnd(() =>
+    this.action.set('tap detected'),
+  );
+  readonly exclusive = Gesture.Exclusive(this.exclusivePan, this.exclusiveTap);
+}
+```

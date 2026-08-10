@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "SchematicsAngularLynxAddI18n",
+  "title": "AngularLynx add-i18n schematic",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Adds Angular i18n support with @angular/localize and provideLocale() to an existing project.",
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "The name of the project to add i18n support to.",
+      "$default": {
+        "$source": "projectName"
+      }
+    }
+  },
+  "required": []
+}

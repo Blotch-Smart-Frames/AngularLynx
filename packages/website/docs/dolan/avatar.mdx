@@ -1,0 +1,48 @@
+# Avatar
+
+A circular avatar component that displays a user image or fallback initials.
+
+<Go example="ui-avatar" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add avatar
+```
+
+```typescript
+import { UiAvatar } from '@/components/ui/avatar';
+```
+
+## Usage
+
+### With Image
+
+```angular-html
+<ui-avatar src="https://i.pravatar.cc/150?img=1" />
+```
+
+### With Fallback Initials
+
+When no `src` is provided, the avatar displays the `fallback` text:
+
+```angular-html
+<ui-avatar fallback="JD" />
+```
+
+### Sizes
+
+```angular-html
+<ui-avatar src="https://example.com/avatar.jpg" size="sm" />
+<ui-avatar src="https://example.com/avatar.jpg" size="default" />
+<ui-avatar src="https://example.com/avatar.jpg" size="lg" />
+```
+
+## API
+
+| Input      | Type                        | Default     | Description                                   |
+| ---------- | --------------------------- | ----------- | --------------------------------------------- |
+| `src`      | `string`                    | `''`        | URL of the avatar image                       |
+| `fallback` | `string`                    | `''`        | Initials to display when no image is provided |
+| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size of the avatar                            |
+| `class`    | `string`                    | `''`        | Additional CSS classes                        |

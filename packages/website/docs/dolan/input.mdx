@@ -1,0 +1,68 @@
+# Input
+
+A text input field with support for labels, placeholder text, helper text, error states, and disabled styling.
+
+<Go example="ui-input" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add input
+```
+
+```typescript
+import { UiInput } from '@/components/ui/input';
+```
+
+## Usage
+
+```angular-html
+<ui-input label="Email" placeholder="you@example.com" [(value)]="email" />
+```
+
+### With helper text
+
+```angular-html
+<ui-input
+  label="Username"
+  placeholder="Enter username"
+  helperText="Must be at least 3 characters"
+  [(value)]="username"
+/>
+```
+
+### With error state
+
+```angular-html
+<ui-input
+  label="Password"
+  type="password"
+  error="Password must be at least 8 characters"
+  [(value)]="password"
+/>
+```
+
+### Disabled
+
+```angular-html
+<ui-input label="Account ID" [disabled]="true" value="ACC-12345" />
+```
+
+## API
+
+| Input         | Type            | Default  | Description                                   |
+| ------------- | --------------- | -------- | --------------------------------------------- |
+| `value`       | `model<string>` | `''`     | The current input value (two-way bindable)    |
+| `label`       | `string`        | `''`     | Label text displayed above the input          |
+| `placeholder` | `string`        | `''`     | Placeholder text shown when empty             |
+| `type`        | `string`        | `'text'` | Input type (text, password, email, etc.)      |
+| `helperText`  | `string`        | `''`     | Helper text displayed below the input         |
+| `error`       | `string`        | `''`     | Error message (replaces helper text when set) |
+| `disabled`    | `boolean`       | `false`  | Whether the input is disabled                 |
+| `class`       | `string`        | `''`     | Additional CSS classes for the container      |
+
+| Output    | Type     | Description                                 |
+| --------- | -------- | ------------------------------------------- |
+| `changed` | `string` | Emits the new value when input text changes |
+| `focused` | `void`   | Emits when the input receives focus         |
+| `blurred` | `void`   | Emits when the input loses focus            |

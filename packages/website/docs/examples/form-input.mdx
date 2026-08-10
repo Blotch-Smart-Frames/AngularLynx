@@ -1,0 +1,13 @@
+# Form Input
+
+Handling `<input>` and `<textarea>` with Lynx events — focus, blur, input, and confirm.
+
+<Go example="form-input" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`(bindinput)`** — Fires on every keystroke; the new value is at `$event.detail.value`
+- **`(bindfocus)` / `(bindblur)`** — Track which field is focused for styling
+- **`confirm-type`** — Controls the keyboard return key label (`next`, `done`, `go`, `search`, `send`)
+- **`input-type`** — Sets the keyboard type (`text`, `email`, `number`, `password`)
+- **`<textarea>`** — Multiline input; works identically to `<input>` for events

@@ -1,0 +1,90 @@
+# Animations
+
+Animate your UI with CSS transitions, CSS `@keyframes`, or the programmatic `element.animate()` API.
+
+<Go example="animations" defaultFile="src/app/app.ts" />
+
+:::warning
+Angular's `@angular/animations` package is **not supported**. Lynx does not have the Web Animations API that Angular's animation DSL targets. Use the approaches below instead.
+:::
+
+## Choosing an Approach
+
+| Approach            | Best for                                                  | Guide                                    |
+| ------------------- | --------------------------------------------------------- | ---------------------------------------- |
+| CSS transitions     | Simple property changes (color, size, opacity)            | [CSS Transitions](./css-transitions)     |
+| CSS @keyframes      | Continuous/looping animations (spinners, pulses)          | [CSS @keyframes](./css-keyframes)        |
+| `element.animate()` | One-shot sequences, imperative control, dynamic keyframes | [Programmatic API](./programmatic)       |
+| `LynxTransition`    | Enter/leave animations (show/hide content with animation) | [Enter/Leave Transitions](./enter-leave) |
+
+## Quick Examples
+
+### CSS Transition
+
+Toggle a class to animate a property change:
+
+```css
+.box {
+  transition: opacity 0.3s ease;
+}
+.hidden {
+  opacity: 0;
+}
+```
+
+```angular-html
+<view class="box" [class.hidden]="isHidden()">
+  <text>Fading content</text>
+</view>
+```
+
+### CSS @keyframes
+
+Define a keyframe animation and apply it via a class:
+
+```css
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinning {
+  animation: spin 1s linear infinite;
+}
+```
+
+```angular-html
+<view [class.spinning]="loading()">
+  <text>Loading...</text>
+</view>
+```
+
+### Programmatic
+
+Call `animate()` on a native element reference for dynamic, one-shot animations:
+
+```typescript
+const el = this.boxRef()!.nativeElement;
+setTimeout(() => {
+  el.animate(
+    [
+      { transform: 'scale(1)' },
+      { transform: 'scale(1.2)' },
+      { transform: 'scale(1)' },
+    ],
+    { duration: 300, easing: 'ease-out' },
+  );
+}, 0);
+```
+
+### Enter/Leave
+
+Use `LynxTransition` to animate content appearing and disappearing:
+
+```angular-html
+<lynx-transition [show]="visible()" name="fade" [duration]="300">
+  <view class="panel">
+    <text>I animate in and out</text>
+  </view>
+</lynx-transition>
+```

@@ -1,0 +1,12 @@
+# User Profile
+
+A profile screen showing avatar, status badge, stats, bio card, and an edit flow using a bottom sheet with form fields.
+
+<Go example="user-profile" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Avatar and Badge** — `UiAvatar` displays the user's photo or initials; `UiBadge` shows status like "Pro" membership
+- **Card for grouped content** — The "About" section uses `UiCard` to visually group related profile information
+- **Sheet for inline editing** — Tapping "Edit Profile" opens a `UiSheet` with form inputs, avoiding a full page navigation
+- **Form inputs** — `UiInput` handles single-line text and `UiTextarea` handles the bio, both with labels for accessibility

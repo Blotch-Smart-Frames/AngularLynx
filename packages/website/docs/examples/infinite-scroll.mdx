@@ -1,0 +1,151 @@
+# Infinite Scroll
+
+A virtualized list using `<list>` and `<list-item>` that loads more content as you scroll.
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+interface Contact {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string;
+}
+
+@Component({
+  selector: 'app-infinite-scroll',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="container">
+      <text class="title">Contacts</text>
+      <text class="count">{{ contacts().length }} loaded</text>
+
+      <list
+        class="contact-list"
+        list-type="single"
+        [span-count]="1"
+        scroll-orientation="vertical"
+        (bindscrolltolower)="loadMore()"
+        lower-threshold="200"
+      >
+        @for (contact of contacts(); track contact.id) {
+          <list-item class="contact-item" [item-key]="contact.id.toString()">
+            <view class="avatar">
+              <text class="avatar-text">{{ contact.avatar }}</text>
+            </view>
+            <view class="info">
+              <text class="name">{{ contact.name }}</text>
+              <text class="role">{{ contact.role }}</text>
+            </view>
+          </list-item>
+        }
+
+        @if (loading()) {
+          <list-item class="loading-item" item-key="loading">
+            <text class="loading-text">Loading more...</text>
+          </list-item>
+        }
+      </list>
+    </view>
+  `,
+  styles: `
+    .container {
+      height: 100vh;
+      background-color: #f7fafc;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      padding: 24px 16px 0;
+    }
+    .count {
+      font-size: 13px;
+      color: #a0aec0;
+      padding: 4px 16px 12px;
+    }
+    .contact-list {
+      flex: 1;
+    }
+    .contact-item {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      padding: 12px 16px;
+      background-color: white;
+      border-bottom: 1px solid #edf2f7;
+    }
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 22px;
+      background-color: #e2e8f0;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+    }
+    .avatar-text {
+      font-size: 20px;
+    }
+    .info {
+      flex: 1;
+    }
+    .name {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2d3748;
+    }
+    .role {
+      font-size: 13px;
+      color: #718096;
+      margin-top: 2px;
+    }
+    .loading-item {
+      padding: 20px;
+      align-items: center;
+    }
+    .loading-text {
+      font-size: 14px;
+      color: #a0aec0;
+    }
+  `,
+})
+export class InfiniteScroll {
+  readonly contacts = signal<Contact[]>(this.generateContacts(0, 20));
+  readonly loading = signal(false);
+
+  loadMore(): void {
+    if (this.loading()) return;
+    this.loading.set(true);
+
+    setTimeout(() => {
+      const offset = this.contacts().length;
+      const more = this.generateContacts(offset, 20);
+      this.contacts.update((list) => [...list, ...more]);
+      this.loading.set(false);
+    }, 800);
+  }
+
+  private generateContacts(offset: number, count: number): Contact[] {
+    const roles = ['Engineer', 'Designer', 'PM', 'QA', 'DevOps'];
+    const emojis = ['👤', '👩', '👨', '🧑', '👱'];
+
+    return Array.from({ length: count }, (_, i) => ({
+      id: offset + i,
+      name: `Contact ${offset + i + 1}`,
+      role: roles[(offset + i) % roles.length],
+      avatar: emojis[(offset + i) % emojis.length],
+    }));
+  }
+}
+```
+
+## Key concepts
+
+- **`<list>`** — A virtualized list that only renders visible items, critical for performance with large datasets
+- **`<list-item>`** — Each item needs a unique `item-key` for efficient recycling
+- **`(bindscrolltolower)`** — Fires when the user scrolls near the bottom; use it to trigger loading more data
+- **`lower-threshold`** — Pixel distance from the bottom that triggers `scrolltolower`
+- **`list-type="single"`** — Single-column layout; use `span-count` for grid layouts

@@ -1,0 +1,85 @@
+# CSS Modules
+
+[CSS Modules](https://github.com/css-modules/css-modules) let you import class names as JavaScript objects, where each class is locally scoped with a unique hash. They work out of the box with the AngularLynx build plugin — no extra configuration needed.
+
+<Go example="css-modules" defaultFile="src/app/app.ts" />
+
+## Setup
+
+Add a type declaration so TypeScript understands `.module.css` imports:
+
+```typescript title="src/css-modules.d.ts"
+declare module '*.module.css' {
+  const classes: Record<string, string>;
+  export default classes;
+}
+```
+
+## Usage
+
+Create a `.module.css` file with your styles:
+
+```css title="src/app/card/card.module.css"
+.card {
+  background-color: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.badge {
+  background-color: #6200ee;
+  border-radius: 16px;
+  padding: 4px 10px;
+}
+```
+
+Import and apply in your component:
+
+```typescript title="src/app/card/card.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import styles from './card.module.css'; // [!code highlight]
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [class]="styles['card']">
+      <text [class]="styles['title']">Card Title</text>
+      <view [class]="styles['badge']">
+        <text style="color: white; font-size: 12px">New</text>
+      </view>
+    </view>
+  `,
+})
+export class Card {
+  readonly styles = styles; // [!code highlight]
+}
+```
+
+At build time, class names are hashed (e.g., `card` becomes `card-abc123`), preventing collisions across components.
+
+:::info
+Use bracket notation (`styles['card']`) instead of dot access (`styles.card`). TypeScript's strict mode enforces bracket access on index-signature types like `Record<string, string>`.
+:::
+
+## When to Use CSS Modules
+
+Angular already scopes component styles via `ViewEncapsulation`. CSS Modules serve a different purpose:
+
+| Feature                 | Angular ViewEncapsulation                      | CSS Modules                           |
+| ----------------------- | ---------------------------------------------- | ------------------------------------- |
+| Scoping                 | Automatic per-component                        | Per-file, explicit import             |
+| Class names             | Original names, scoped via attribute selectors | Hashed names                          |
+| Composition             | Limited to component boundaries                | Compose across components via imports |
+| Dynamic class selection | Template-only                                  | Programmatic in TypeScript            |
+
+Use CSS Modules when you need to programmatically select class names, share styles across multiple components, or work with a design system that exports `.module.css` files.
+
+For most components, Angular's default `styleUrl` is simpler and works well.

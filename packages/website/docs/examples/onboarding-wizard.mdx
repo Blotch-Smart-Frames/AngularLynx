@@ -1,0 +1,12 @@
+# Onboarding Wizard
+
+A multi-step onboarding flow with progress tracking, role selection, interest checkboxes, and a completion summary.
+
+<Go example="onboarding-wizard" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Step-based wizard pattern** — A `step()` signal and `@if` blocks control which panel is visible; a `computed()` derives progress percentage
+- **Radio Group for single choice** — Role selection uses `UiRadioGroup` where exactly one option can be selected
+- **Checkbox cards for multi-select** — Interest selection combines `UiCheckbox` with `UiCard` to create tappable option cards with descriptions
+- **Summary Card on completion** — The final step uses `UiCard` to display what the user chose, confirming their selections before they proceed

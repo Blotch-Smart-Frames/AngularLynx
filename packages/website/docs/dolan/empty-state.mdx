@@ -1,0 +1,64 @@
+# Empty State
+
+A centered placeholder for empty views, with an optional icon, description, and action slot.
+
+<Go example="ui-empty-state" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add empty-state
+```
+
+```typescript
+import { UiEmptyState } from '@/components/ui/empty-state';
+```
+
+:::tip
+The `empty-state` component depends on `icon`. Both are added automatically.
+:::
+
+## Usage
+
+### Basic
+
+```angular-html
+<ui-empty-state title="No items" />
+```
+
+### With Icon and Description
+
+```angular-html
+<ui-empty-state
+  icon="search"
+  title="No results found"
+  description="Try adjusting your search or filters."
+/>
+```
+
+### With Action
+
+Use content projection to add action buttons:
+
+```angular-html
+<ui-empty-state
+  icon="plus"
+  title="No items"
+  description="Get started by creating your first item."
+>
+  <ui-button class="mt-4" (pressed)="onCreate()">Create Item</ui-button>
+</ui-empty-state>
+```
+
+## API
+
+| Input         | Type                    | Default      | Description                     |
+| ------------- | ----------------------- | ------------ | ------------------------------- |
+| `icon`        | `IconName \| undefined` | `undefined`  | Icon to display above the title |
+| `title`       | `string`                | **required** | Heading text                    |
+| `description` | `string`                | `''`         | Supporting text below the title |
+| `class`       | `string`                | `''`         | Additional CSS classes          |
+
+:::tip
+The `icon` input accepts any name from the built-in icon set (e.g. `'search'`, `'plus'`, `'heart'`, `'star'`). See the [Icon](/dolan/icon) component for the full list.
+:::

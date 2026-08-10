@@ -1,0 +1,206 @@
+# Bar Chart
+
+Plot values as vertical bars — drawn entirely from Lynx views, no SVG or canvas. Each bar is one rectangle from a baseline to its value. Built on the same **cartesian chart base** as the [Line Chart](/dolan/line-chart), [Area Chart](/dolan/area-chart), and [Candlestick Chart](/dolan/candlestick-chart).
+
+<Go example="ui-bar-chart" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add bar-chart
+```
+
+:::tip
+The base **`cartesian-chart`** (axes, gridlines, scales) is a dependency and installs automatically.
+:::
+
+```typescript
+import { UiBarChart } from '@/components/ui/bar-chart';
+```
+
+## Usage
+
+Pass an array of `{ x, y }` points — the same shape the line and area charts use. The wrapper picks rounded axis ranges for you and insets the edge bars so they aren't clipped.
+
+```angular-html
+<ui-bar-chart [data]="revenue" [width]="280" [height]="200" />
+```
+
+```typescript
+revenue = [
+  { x: 1, y: 42 },
+  { x: 2, y: 58 },
+  { x: 3, y: 71 },
+  { x: 4, y: 49 },
+];
+```
+
+`x` is a plain number (a category index), not a `Date` — see the note below.
+
+### Color the bars
+
+`color` fills every bar (default `var(--primary)`). Pass `colors` to give each bar its own hue — the palette cycles if it's shorter than the data.
+
+```angular-html
+<ui-bar-chart [data]="revenue" [colors]="palette" />
+```
+
+```typescript
+palette = [
+  'rgba(59, 130, 246, 1)',
+  'rgba(16, 185, 129, 1)',
+  'rgba(245, 158, 11, 1)',
+];
+```
+
+### Round the corners and set bar width
+
+`radius` rounds each bar's corners in px. `barWidthRatio` sets bar width as a fraction of the spacing between bars (default `0.7`).
+
+```angular-html
+<ui-bar-chart [data]="revenue" [radius]="4" [barWidthRatio]="0.5" />
+```
+
+### Show negative values
+
+Bars grow from `baseline` (default `0`). Values below it grow **downward**, so a mix of gains and losses reads as a diverging chart. Color by sign for the classic profit-and-loss look.
+
+```angular-html
+<ui-bar-chart [data]="profit" [colors]="signColors()" />
+```
+
+```typescript
+profit = [
+  { x: 1, y: 18 },
+  { x: 2, y: -12 },
+  { x: 3, y: 25 },
+];
+
+// Green for gains, red for losses.
+signColors = computed(() =>
+  this.profit.map((p) =>
+    p.y >= 0 ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)',
+  ),
+);
+```
+
+### Label the axes
+
+Set `xAxisLabel` / `yAxisLabel` for axis titles. `showXGrid` adds vertical gridlines.
+
+```angular-html
+<ui-bar-chart
+  [data]="revenue"
+  xAxisLabel="Month"
+  yAxisLabel="Revenue ($k)"
+  [showXGrid]="true"
+/>
+```
+
+### Fix the axis range
+
+Pass `yMin` / `yMax` (or `xMin` / `xMax`) to pin an axis bound instead of fitting the data — useful to compare two charts on one scale.
+
+```angular-html
+<ui-bar-chart [data]="revenue" [yMin]="0" [yMax]="100" />
+```
+
+### Handle taps
+
+`barTap` emits the tapped `{ x, y }` point.
+
+```angular-html
+<ui-bar-chart [data]="revenue" (barTap)="onBarTap($event)" />
+```
+
+### Add a trend line
+
+For an overlay, drop to the base `<ui-cartesian-chart>` and layer a [`<ui-line-series>`](/dolan/line-chart#uilineseries) over a `<ui-bar-series>`. Both read the shared axes, so they line up.
+
+```angular-html
+<ui-cartesian-chart
+  [xDomain]="[0, 7]"
+  [yDomain]="[0, 100]"
+  [xTicks]="[1, 2, 3, 4, 5, 6]"
+  [yTicks]="[0, 25, 50, 75, 100]"
+  [width]="280"
+  [height]="200"
+  [padding]="{ left: 0.09, right: 0.09 }"
+>
+  <ui-bar-series [data]="revenue" [radius]="2" />
+  <ui-line-series [data]="trend" [showDots]="false" [smooth]="true" />
+</ui-cartesian-chart>
+```
+
+:::info Why numbers, not dates
+Lynx has no `Intl`, so the whole chart system keeps `x` **numeric** rather than a `Date` — format tick labels with `xTickFormat` if you need them. Bars are vertical and single-series; for a trend or comparison, overlay a line as shown above.
+:::
+
+### Pan and zoom
+
+Set `zoomable` for pinch-to-zoom and drag-to-pan, with on-screen `+` / `−` / `1:1` controls. Zooming in **stretches the bars apart** while the axes and gridlines update live. Off by default.
+
+```angular-html
+<ui-bar-chart [data]="revenue" [zoomable]="true" />
+```
+
+See [Pan and zoom](/dolan/line-chart#pan-and-zoom) for the shared options (`zoomAxes`, `minZoom`, `maxZoom`) and the `zoomIn()` / `zoomOut()` / `resetZoom()` methods.
+
+## API
+
+### UiBarChart
+
+The single-series convenience wrapper. Auto-computes the axes from `data` (folding in the `baseline`) and insets the edge bars.
+
+| Input              | Type                        | Default            | Description                                       |
+| ------------------ | --------------------------- | ------------------ | ------------------------------------------------- |
+| `data`             | `ChartPoint[]`              | _required_         | Points, each `{ x, y }`                           |
+| `color`            | `string`                    | `'var(--primary)'` | Fill for every bar (overridden by `colors`)       |
+| `colors`           | `string[]`                  | `[]`               | Per-bar fills; cycles when shorter than the data  |
+| `width`            | `number`                    | `320`              | Chart width in px                                 |
+| `height`           | `number`                    | `200`              | Chart height in px                                |
+| `tickCount`        | `number`                    | `5`                | Target number of axis ticks                       |
+| `barWidthRatio`    | `number`                    | `0.7`              | Bar width as a fraction of bar spacing            |
+| `baseline`         | `number`                    | `0`                | Value the bars grow from; below it they grow down |
+| `radius`           | `number`                    | `0`                | Corner radius of each bar in px                   |
+| `showXGrid`        | `boolean`                   | `false`            | Draw vertical gridlines at x ticks                |
+| `xAxisLabel`       | `string`                    | `''`               | X-axis title                                      |
+| `yAxisLabel`       | `string`                    | `''`               | Y-axis title                                      |
+| `padding`          | `ChartPadding`              | _auto_             | Inner inset (merged over auto edge-inset)         |
+| `xMin`             | `number`                    | _auto_             | Force x-axis lower bound                          |
+| `xMax`             | `number`                    | _auto_             | Force x-axis upper bound                          |
+| `yMin`             | `number`                    | _auto_             | Force y-axis lower bound                          |
+| `yMax`             | `number`                    | _auto_             | Force y-axis upper bound                          |
+| `xTickFormat`      | `(value: number) => string` | rounds to 2 dp     | Formats x-axis labels                             |
+| `yTickFormat`      | `(value: number) => string` | rounds to 2 dp     | Formats y-axis labels                             |
+| `zoomable`         | `boolean`                   | `false`            | Enable pinch/drag zoom + controls                 |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`             | Which axes zoom/pan affect                        |
+| `showZoomControls` | `boolean`                   | `true`             | Show the +/−/1:1 controls when zoomable           |
+| `minZoom`          | `number`                    | `1`                | Lower zoom bound (1 = fit all data)               |
+| `maxZoom`          | `number`                    | `8`                | Upper zoom bound                                  |
+| `zoomStep`         | `number`                    | `1.4`              | Zoom factor per +/− control press                 |
+| `class`            | `string`                    | `''`               | Additional CSS classes                            |
+
+| Output   | Type         | Description                          |
+| -------- | ------------ | ------------------------------------ |
+| `barTap` | `ChartPoint` | Emits the point when a bar is tapped |
+
+### UiBarSeries
+
+One bar series inside a `<ui-cartesian-chart>`. Reads the shared axes from the chart.
+
+| Input           | Type           | Default            | Description                                       |
+| --------------- | -------------- | ------------------ | ------------------------------------------------- |
+| `data`          | `ChartPoint[]` | _required_         | Points, each `{ x, y }`                           |
+| `color`         | `string`       | `'var(--primary)'` | Fill for every bar (overridden by `colors`)       |
+| `colors`        | `string[]`     | `[]`               | Per-bar fills; cycles when shorter than the data  |
+| `barWidthRatio` | `number`       | `0.7`              | Bar width as a fraction of bar spacing            |
+| `baseline`      | `number`       | `0`                | Value the bars grow from; below it they grow down |
+| `radius`        | `number`       | `0`                | Corner radius of each bar in px                   |
+| `class`         | `string`       | `''`               | Additional CSS classes                            |
+
+| Output   | Type         | Description                          |
+| -------- | ------------ | ------------------------------------ |
+| `barTap` | `ChartPoint` | Emits the point when a bar is tapped |
+
+The x/y axes come from the surrounding [`UiCartesianChart`](/dolan/line-chart#uicartesianchart) — see the Line Chart page for its inputs.

@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "jsPlugins": ["./packages/oxlint-plugin/src/index.mjs"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "@blotch/oxlint-plugin/consistent-package-versions": "error",
+    "@blotch/oxlint-plugin/no-function-declaration": "error",
+    "@blotch/oxlint-plugin/comment-decorator-order": "error",
+    "@blotch/oxlint-plugin/multiline-comment-style": "error",
+    "@blotch/oxlint-plugin/no-legacy-decorators": "error",
+    "@blotch/oxlint-plugin/no-private-keyword": "error",
+    "typescript/no-non-null-assertion": "off",
+    "eslint/no-param-reassign": "off",
+    "typescript/consistent-type-imports": "error",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "unicorn/no-array-for-each": "off",
+    "typescript/no-explicit-any": "off",
+    "typescript/no-invalid-void-type": "off",
+    "eslint/func-style": ["error", "expression"],
+    "eslint/no-duplicate-imports": "error"
+  }
+}

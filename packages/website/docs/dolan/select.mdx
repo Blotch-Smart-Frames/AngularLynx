@@ -1,0 +1,69 @@
+# Select
+
+A dropdown menu for selecting a single value from a list of options. Opens a bottom sheet panel with animated transitions.
+
+<Go example="ui-select" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add select
+```
+
+```typescript
+import { UiSelect, UiSelectItem } from '@/components/ui/select';
+```
+
+## Usage
+
+```angular-html
+<ui-select placeholder="Pick a framework" [(value)]="framework">
+  <ui-select-item value="angular" label="Angular" />
+  <ui-select-item value="react" label="React" />
+  <ui-select-item value="vue" label="Vue" />
+  <ui-select-item value="svelte" label="Svelte" />
+</ui-select>
+```
+
+### With a label
+
+```angular-html
+<ui-label>Country</ui-label>
+<ui-select [(value)]="country">
+  <ui-select-item value="us" label="United States" />
+  <ui-select-item value="uk" label="United Kingdom" />
+  <ui-select-item value="de" label="Germany" />
+</ui-select>
+```
+
+### Disabled
+
+```angular-html
+<ui-select value="admin" [disabled]="true">
+  <ui-select-item value="admin" label="Administrator" />
+  <ui-select-item value="editor" label="Editor" />
+</ui-select>
+```
+
+## API
+
+### UiSelect
+
+| Input         | Type            | Default       | Description                                     |
+| ------------- | --------------- | ------------- | ----------------------------------------------- |
+| `value`       | `model<string>` | `''`          | The currently selected value (two-way bindable) |
+| `placeholder` | `string`        | `'Select...'` | Placeholder text when no value is selected      |
+| `disabled`    | `boolean`       | `false`       | Whether the select is disabled                  |
+| `class`       | `string`        | `''`          | Additional CSS classes for the trigger          |
+
+| Output    | Type     | Description                              |
+| --------- | -------- | ---------------------------------------- |
+| `changed` | `string` | Emits the selected value when it changes |
+
+### UiSelectItem
+
+| Input   | Type     | Default    | Description                         |
+| ------- | -------- | ---------- | ----------------------------------- |
+| `value` | `string` | _required_ | The value this item represents      |
+| `label` | `string` | _required_ | The display text for this item      |
+| `class` | `string` | `''`       | Additional CSS classes for the item |

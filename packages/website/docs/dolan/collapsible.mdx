@@ -1,0 +1,88 @@
+# Collapsible
+
+An interactive component that expands and collapses a section of content.
+
+<Go example="ui-collapsible" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add collapsible
+```
+
+```typescript
+import {
+  UiCollapsible,
+  UiCollapsibleTrigger,
+  UiCollapsibleContent,
+} from '@/components/ui/collapsible';
+```
+
+## Usage
+
+### Basic
+
+Wrap a trigger and content section inside `ui-collapsible`. Tapping the trigger toggles the content:
+
+```angular-html
+<ui-collapsible>
+  <ui-collapsible-trigger>
+    <text>Toggle content</text>
+  </ui-collapsible-trigger>
+  <ui-collapsible-content>
+    <text>This content can be shown or hidden.</text>
+  </ui-collapsible-content>
+</ui-collapsible>
+```
+
+### Controlled
+
+Use two-way binding with the `open` model to control the collapsible state programmatically:
+
+```angular-html
+<ui-collapsible [(open)]="isOpen">
+  <ui-collapsible-trigger>
+    <text>{{ isOpen ? 'Collapse' : 'Expand' }}</text>
+  </ui-collapsible-trigger>
+  <ui-collapsible-content>
+    <text>Controlled content.</text>
+  </ui-collapsible-content>
+</ui-collapsible>
+```
+
+### Disabled
+
+Set `disabled` to prevent the collapsible from being toggled:
+
+```angular-html
+<ui-collapsible [disabled]="true">
+  <ui-collapsible-trigger>
+    <text>Cannot toggle</text>
+  </ui-collapsible-trigger>
+  <ui-collapsible-content>
+    <text>This content is locked.</text>
+  </ui-collapsible-content>
+</ui-collapsible>
+```
+
+## API
+
+### UiCollapsible
+
+| Input/Output | Type             | Default | Description                                      |
+| ------------ | ---------------- | ------- | ------------------------------------------------ |
+| `open`       | `model<boolean>` | `false` | Two-way binding for the open/closed state        |
+| `disabled`   | `boolean`        | `false` | Whether the collapsible is disabled              |
+| `class`      | `string`         | `''`    | Additional CSS classes to apply to the container |
+
+### UiCollapsibleTrigger
+
+| Input   | Type     | Default | Description                                    |
+| ------- | -------- | ------- | ---------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the trigger |
+
+### UiCollapsibleContent
+
+| Input   | Type     | Default | Description                                              |
+| ------- | -------- | ------- | -------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |

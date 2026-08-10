@@ -1,0 +1,13 @@
+# Session Storage
+
+Persist and retrieve data across component lifecycles using Lynx's session storage API.
+
+<Go example="session-storage" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`LynxSessionStorage`** — injectable service wrapping Lynx's native session storage for key-value persistence
+- **`.watch<T>(key)`** — returns a signal that automatically updates whenever the stored value changes, enabling reactive UI bindings
+- **`.setItem(key, value)`** — writes a typed value to session storage, triggering any active watchers
+- **`.getItem<T>(key)`** — performs a one-shot async read, useful when you don't need continuous reactivity
+- **Typed storage** — generic type parameters (`<number>`) provide type safety for stored values without manual parsing

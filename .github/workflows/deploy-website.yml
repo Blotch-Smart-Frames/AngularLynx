@@ -1,0 +1,48 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Restore example builds
+        id: cache-examples
+        uses: actions/cache@v4
+        with:
+          path: examples/*/dist
+          key: examples-${{ hashFiles('examples/**/src/**', 'examples/**/package.json', 'packages/runtime/src/**', 'packages/rsbuild-plugin-angular-lynx/src/**') }}
+          restore-keys: examples-
+
+      - name: Build runtime and plugin
+        if: steps.cache-examples.outputs.cache-hit != 'true'
+        run: npx turbo run build --filter=./packages/runtime --filter=./packages/rsbuild-plugin-angular-lynx
+
+      - name: Build examples
+        if: steps.cache-examples.outputs.cache-hit != 'true'
+        # Bound parallelism to avoid OOM: turbo defaults to 10 concurrent
+        # example builds, each running rspack (lynx + web) with 2 Angular
+        # workers. On a memory-limited CI runner that spikes past available
+        # RAM and a build gets killed with a bare "exited (1)". Cap concurrency
+        # and worker count to keep peak memory bounded.
+        run: NG_BUILD_MAX_WORKERS=2 npx turbo run build --filter='@angular-lynx-example/*' --concurrency=4
+
+      - name: Build and deploy
+        run: |
+          npx vercel build --cwd packages/website --prod
+          npx vercel deploy --prebuilt --cwd packages/website --prod

@@ -1,0 +1,40 @@
+# Elements
+
+Import `LYNX_ELEMENTS` to get IDE autocompletion and type checking for all Lynx elements in your templates:
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="card">
+      <text>Hello from Lynx</text>
+    </view>
+  `,
+})
+export class MyComponent {}
+```
+
+## All Element Directives
+
+| Export           | Kind      | Description                                                    |
+| ---------------- | --------- | -------------------------------------------------------------- |
+| `LYNX_ELEMENTS`  | Const     | Array of all directives below. Add to your component `imports` |
+| `LynxView`       | Directive | `<view>` — container element (like `<div>`)                    |
+| `LynxText`       | Directive | `<text>` — text display (all text must be inside `<text>`)     |
+| `LynxImage`      | Directive | `<image>` — image display with `src` attribute                 |
+| `LynxScrollView` | Directive | `<scroll-view>` — scrollable container                         |
+| `LynxList`       | Directive | `<list>` — virtualized list for large datasets                 |
+| `LynxListItem`   | Directive | `<list-item>` — child of `<list>`                              |
+| `LynxInput`      | Directive | `<input>` — single-line text input                             |
+| `LynxTextarea`   | Directive | `<textarea>` — multi-line text input                           |
+| `LynxOverlay`    | Directive | `<overlay>` — modal/popup overlay                              |
+| `LynxFrame`      | Directive | `<frame>` — embeds another Lynx bundle                         |
+| `LynxBlock`      | Directive | `<block>` — invisible grouping (like `<ng-container>`)         |
+| `LynxSvg`        | Directive | `<svg>` — vector graphics via `content` attribute              |
+| `LynxIf`         | Directive | `<if>` — Lynx-native conditional rendering                     |
+| `LynxFor`        | Directive | `<for>` — Lynx-native list rendering                           |
+
+See the [Lynx Elements guide](/guide/elements/) for detailed docs on each element.

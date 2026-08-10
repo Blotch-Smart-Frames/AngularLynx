@@ -1,0 +1,56 @@
+/*
+ * @blotch/ui default theme — light mode
+ *
+ * CSS custom properties hold COMPLETE rgba() color values (e.g.
+ * `--primary: rgba(24, 24, 27, 1)`), referenced directly via `var(--x)` by the
+ * tailwind plugin. This is the pattern used by the official React Lynx Tailwind
+ * example.
+ *
+ * Why not the shadcn/ui approach (raw HSL channels wrapped in
+ * `hsl(var(--x) / <alpha-value>)`): Lynx's native CSS engine only parses
+ * comma-separated hsl(), but Tailwind emits the modern space-separated form
+ * `hsl(var(--x) / 1)`, which Lynx silently drops (transparent). Storing complete
+ * rgba() values and referencing them directly sidesteps color-function parsing
+ * entirely and renders correctly on Lynx.
+ *
+ * Tradeoff: Tailwind opacity modifiers on semantic colors (e.g. bg-primary/50)
+ * do NOT work, because the color is an opaque value with no separable channels.
+ * Where a translucent semantic color is genuinely needed, add a dedicated
+ * rgba() variable (see --destructive-subtle) or use a solid token.
+ *
+ * Apply to `page` (Lynx root element) or import globally.
+ */
+
+page {
+  --background: rgba(255, 255, 255, 1);
+  --foreground: rgba(9, 9, 11, 1);
+
+  --card: rgba(255, 255, 255, 1);
+  --card-foreground: rgba(9, 9, 11, 1);
+
+  --primary: rgba(24, 24, 27, 1);
+  --primary-foreground: rgba(250, 250, 250, 1);
+
+  --secondary: rgba(244, 244, 245, 1);
+  --secondary-foreground: rgba(24, 24, 27, 1);
+
+  --muted: rgba(244, 244, 245, 1);
+  --muted-foreground: rgba(113, 113, 122, 1);
+
+  --accent: rgba(244, 244, 245, 1);
+  --accent-foreground: rgba(24, 24, 27, 1);
+
+  --destructive: rgba(239, 68, 68, 1);
+  --destructive-foreground: rgba(250, 250, 250, 1);
+  --destructive-subtle: rgba(239, 68, 68, 0.1);
+
+  --border: rgba(228, 228, 231, 1);
+  --input: rgba(228, 228, 231, 1);
+  --ring: rgba(24, 24, 27, 1);
+  /* Translucent variant of --ring for a softer focus outline. A separate
+     pre-composed value is needed because Tailwind opacity modifiers can't
+     apply to the opaque --ring, and Lynx can't inject alpha into it either. */
+  --ring-subtle: rgba(24, 24, 27, 0.4);
+
+  --radius: 8px;
+}

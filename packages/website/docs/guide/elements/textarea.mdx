@@ -1,0 +1,36 @@
+# &lt;textarea&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Multi-line text input field.
+
+<Go example="element-textarea" defaultFile="src/app/app.ts" />
+
+```angular-html
+<textarea
+  placeholder="Enter description"
+  (bindinput)="onInput($event)"
+></textarea>
+```
+
+## Key Attributes
+
+| Attribute     | Type      | Description                                  |
+| ------------- | --------- | -------------------------------------------- |
+| `placeholder` | `string`  | Placeholder text shown when empty            |
+| `maxlength`   | `number`  | Maximum character length                     |
+| `auto-focus`  | `boolean` | Automatically focus when the element appears |
+| `auto-height` | `boolean` | Automatically grow height to fit content     |
+| `value`       | `string`  | Current input value                          |
+
+## Events
+
+| Event       | Description                                                              |
+| ----------- | ------------------------------------------------------------------------ |
+| `bindinput` | Fires on every keystroke. `event.detail.value` contains the current text |
+| `bindfocus` | Fires when the textarea gains focus                                      |
+| `bindblur`  | Fires when the textarea loses focus                                      |
+
+For form patterns with validation, see the [Forms](/guide/forms) guide.

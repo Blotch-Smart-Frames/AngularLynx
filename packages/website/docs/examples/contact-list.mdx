@@ -1,0 +1,12 @@
+# Contact List
+
+A scrollable contact list with search, alphabet grouping, avatar thumbnails, an "Add Contact" dialog, and delete confirmation.
+
+<Go example="contact-list" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Search filtering with computed** — `filteredContacts()` derives a filtered list from the search query signal, updating the view reactively
+- **Alphabet section headers** — Contacts are grouped by first letter using `computed()` signals, with `UiSeparator` between groups
+- **Dialog for CRUD** — `UiDialog` holds the "Add Contact" form; `UiAlertDialog` confirms destructive delete operations
+- **Avatar with initials** — `UiAvatar` with a `fallback` derived from the contact's name provides consistent visual identification

@@ -1,0 +1,1 @@
+export { LynxTheme } from './theme';

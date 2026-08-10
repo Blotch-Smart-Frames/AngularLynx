@@ -1,0 +1,1 @@
+export { LynxAccessibility } from './accessibility';

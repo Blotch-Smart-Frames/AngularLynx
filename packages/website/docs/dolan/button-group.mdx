@@ -1,0 +1,130 @@
+# Button Group
+
+A row (or column) of related actions rendered as a single, connected control — like a toolbar. Each item is an independent action.
+
+<Go example="ui-button-group" defaultFile="src/app/app.ts" />
+
+:::tip
+Need **selection** state (one or many items stay "on")? Use [Toggle](/dolan/toggle)'s `UiToggleGroup` instead. A button group is for **actions**, so nothing stays selected.
+:::
+
+## Installation
+
+```bash
+npx @blotch/dolan add button-group
+```
+
+```typescript
+import { UiButtonGroup, UiButtonGroupItem } from '@/components/ui/button-group';
+```
+
+## Usage
+
+Wrap `<ui-button-group-item>` actions in a `<ui-button-group>`. Each item emits `pressed` when tapped.
+
+```angular-html
+<ui-button-group>
+  <ui-button-group-item (pressed)="copy()">Copy</ui-button-group-item>
+  <ui-button-group-item (pressed)="cut()">Cut</ui-button-group-item>
+  <ui-button-group-item (pressed)="paste()">Paste</ui-button-group-item>
+</ui-button-group>
+```
+
+## Variants
+
+Set `variant` on the group to style every item at once.
+
+```angular-html
+<ui-button-group variant="default">
+  <ui-button-group-item>Left</ui-button-group-item>
+  <ui-button-group-item>Center</ui-button-group-item>
+  <ui-button-group-item>Right</ui-button-group-item>
+</ui-button-group>
+
+<ui-button-group variant="outline">
+  <ui-button-group-item>Left</ui-button-group-item>
+  <ui-button-group-item>Center</ui-button-group-item>
+  <ui-button-group-item>Right</ui-button-group-item>
+</ui-button-group>
+```
+
+## Sizes
+
+Set `size` on the group to size every item.
+
+```angular-html
+<ui-button-group size="sm">…</ui-button-group>
+<ui-button-group size="default">…</ui-button-group>
+<ui-button-group size="lg">…</ui-button-group>
+```
+
+## Orientation
+
+Set `orientation="vertical"` to stack items into a column.
+
+```angular-html
+<ui-button-group orientation="vertical">
+  <ui-button-group-item (pressed)="profile()">Profile</ui-button-group-item>
+  <ui-button-group-item (pressed)="settings()">Settings</ui-button-group-item>
+  <ui-button-group-item (pressed)="signOut()">Sign out</ui-button-group-item>
+</ui-button-group>
+```
+
+## Disabled
+
+Disable the whole group, or a single item.
+
+```angular-html
+<!-- Whole group -->
+<ui-button-group [disabled]="true">
+  <ui-button-group-item>A</ui-button-group-item>
+  <ui-button-group-item>B</ui-button-group-item>
+</ui-button-group>
+
+<!-- One item -->
+<ui-button-group>
+  <ui-button-group-item (pressed)="undo()">Undo</ui-button-group-item>
+  <ui-button-group-item [disabled]="true">Redo</ui-button-group-item>
+</ui-button-group>
+```
+
+## Full width
+
+The bar hugs its buttons by default. Add `class="w-full"` to stretch it, and `class="flex-1"` on each item to share the width evenly.
+
+```angular-html
+<ui-button-group class="w-full">
+  <ui-button-group-item class="flex-1" (pressed)="day()"
+    >Day</ui-button-group-item
+  >
+  <ui-button-group-item class="flex-1" (pressed)="week()"
+    >Week</ui-button-group-item
+  >
+  <ui-button-group-item class="flex-1" (pressed)="month()"
+    >Month</ui-button-group-item
+  >
+</ui-button-group>
+```
+
+## API
+
+### UiButtonGroup
+
+| Input         | Type                         | Default        | Description                                   |
+| ------------- | ---------------------------- | -------------- | --------------------------------------------- |
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Lay items out in a row or a column            |
+| `variant`     | `'default' \| 'outline'`     | `'default'`    | Visual style applied to all items             |
+| `size`        | `'default' \| 'sm' \| 'lg'`  | `'default'`    | Size applied to all items                     |
+| `disabled`    | `boolean`                    | `false`        | Disables every item in the group              |
+| `class`       | `string`                     | `''`           | Additional Tailwind classes for the group bar |
+
+### UiButtonGroupItem
+
+| Input      | Type      | Default | Description                              |
+| ---------- | --------- | ------- | ---------------------------------------- |
+| `disabled` | `boolean` | `false` | Disables just this item                  |
+| `class`    | `string`  | `''`    | Additional Tailwind classes for the item |
+
+| Output    | Type   | Description                                                 |
+| --------- | ------ | ----------------------------------------------------------- |
+| `pressed` | `void` | Emitted when the item is tapped (not emitted when disabled) |

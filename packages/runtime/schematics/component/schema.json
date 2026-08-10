@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "SchematicsAngularLynxComponent",
+  "title": "AngularLynx component schematic",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Generates a standalone Angular component with Lynx element template.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The name of the component.",
+      "$default": {
+        "$source": "argv",
+        "index": 0
+      },
+      "x-prompt": "What name would you like to use for the component?"
+    },
+    "path": {
+      "type": "string",
+      "format": "path",
+      "description": "The path at which to create the component, relative to the source root.",
+      "visible": false
+    },
+    "project": {
+      "type": "string",
+      "description": "The name of the project.",
+      "$default": {
+        "$source": "projectName"
+      }
+    },
+    "prefix": {
+      "type": "string",
+      "description": "The selector prefix to use. Defaults to the project prefix from angular.json."
+    },
+    "inlineStyle": {
+      "type": "boolean",
+      "description": "Include styles inline in the component.ts file.",
+      "default": true,
+      "alias": "s"
+    },
+    "inlineTemplate": {
+      "type": "boolean",
+      "description": "Include template inline in the component.ts file.",
+      "default": true,
+      "alias": "t"
+    },
+    "skipTests": {
+      "type": "boolean",
+      "description": "Do not generate a spec file.",
+      "default": false
+    },
+    "flat": {
+      "type": "boolean",
+      "description": "Create the component files at the top level of the path, without a subdirectory.",
+      "default": false
+    }
+  },
+  "required": ["name"]
+}

@@ -1,0 +1,74 @@
+/* Positioned host so the absolute backdrop resolves against the screen area. */
+.home {
+  position: relative;
+}
+
+/*
+ * Fixed Angular-brand backdrop.
+ *
+ * Placement: rendered as a sibling *before* the scroll-view, not a child.
+ * An absolutely-positioned layer inside a scroll-view sits above it in z-order
+ * and intercepts the platform scroll gesture (see kitchen-sink CLAUDE.md);
+ * declared first as a sibling it paints underneath, and because it lives
+ * outside the scrolling container it stays put while the content scrolls.
+ *
+ * Color: soft pink -> lavender, a pastel echo of Angular's signature
+ * pink->purple gradient. Kept light so the hero uses dark type (legible in
+ * both light and dark mode) and the vibrant logos still read against it.
+ * Stops use percentages, not lengths — Lynx gradients reject <length>
+ * color-stop positions.
+ */
+.home__bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(
+    160deg,
+    rgba(255, 221, 236, 1) 0%,
+    rgba(233, 226, 255, 1) 100%
+  );
+}
+
+.logo {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo--angular {
+  width: 100px;
+  height: 100px;
+  animation: logo--spin infinite 20s linear;
+}
+
+.logo--lynx {
+  width: 100px;
+  height: 100px;
+  animation: logo--shake infinite 0.5s ease;
+}
+
+@keyframes logo--spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logo--shake {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(0.9);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}

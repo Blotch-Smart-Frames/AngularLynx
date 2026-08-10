@@ -1,0 +1,84 @@
+# Signals
+
+Signals are the primary reactivity model in AngularLynx. Since the Lynx runtime does not support Zone.js, signals provide the explicit reactivity that Angular needs to know when to re-render components.
+
+Angular's full signals API — `signal()`, `computed()`, `effect()`, `input()`, `output()`, `toSignal()`, and `toObservable()` — all work in AngularLynx exactly as documented on [angular.dev](https://angular.dev/guide/signals).
+
+This page covers the Lynx-specific differences you need to know.
+
+## Why Signals Are Required
+
+In web Angular with Zone.js, change detection runs automatically after every async operation. In AngularLynx, **there is no Zone.js**, so Angular needs explicit signals to know when state has changed.
+
+- **Fine-grained updates** — Only components that read a changed signal are re-checked
+- **Works with zoneless CD** — Signal changes automatically schedule change detection
+- **Batched rendering** — All signal changes within a macrotask are committed together via `__FlushElementTree()`
+
+See the [Change Detection](/guide/change-detection) page for the full lifecycle of how signal changes flow from your component to native UI.
+
+## Lynx-Specific Considerations
+
+### All updates are batched
+
+Because Lynx flushes element changes atomically via `__FlushElementTree()`, multiple signal updates within the same synchronous context are always applied together:
+
+```typescript
+onSubmit(): void {
+  this.loading.set(true);
+  this.error.set('');
+  this.data.set(newData);
+  // All three changes appear on screen simultaneously after the next flush
+}
+```
+
+### Signal inputs must be public
+
+Angular's signal-based APIs — `input()`, `output()`, `viewChild()`, `model()` — must be declared as `public readonly`. ES private fields (`#`) and TypeScript `private`/`protected` are not supported on these declarations:
+
+```typescript
+@Component({
+  /* ... */
+})
+export class MyComponent {
+  // Signal APIs — must be public readonly
+  readonly name = input<string>();
+  readonly clicked = output<void>();
+  readonly child = viewChild('ref');
+
+  // Regular signals — can use ES private fields
+  #count = signal(0);
+  #doubled = computed(() => this.#count() * 2);
+}
+```
+
+## Common Pattern
+
+A typical AngularLynx component uses `signal()` for local state, `computed()` for derived values, and `input()` for data from parent components:
+
+```typescript
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>Count: {{ count() }}</text>
+      <text>Double: {{ doubled() }}</text>
+      <view (bindtap)="increment()">
+        <text>+1</text>
+      </view>
+    </view>
+  `,
+})
+export class Counter {
+  #count = signal(0);
+  readonly count = this.#count.asReadonly();
+  readonly doubled = computed(() => this.#count() * 2);
+
+  increment(): void {
+    this.#count.update((n) => n + 1);
+  }
+}
+```
+
+## Advanced Signal APIs
+
+`linkedSignal()` and `resource()` also work in AngularLynx. These are newer Angular APIs — see the [Angular docs](https://angular.dev/guide/signals) for usage details. No Lynx-specific considerations apply.

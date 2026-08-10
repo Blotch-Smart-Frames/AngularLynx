@@ -1,0 +1,49 @@
+# &lt;text&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Displays text content. All visible text in Lynx must be wrapped in a `<text>` element.
+
+<Go example="element-text" defaultFile="src/app/app.ts" />
+
+```angular-html
+<text class="title">Hello World</text>
+
+<!-- Nested <text> for inline styling -->
+<text>
+  Regular text with
+  <text style="font-weight: bold;"> bold </text>
+  and
+  <text style="color: #dd0031;"> colored </text>
+  content
+</text>
+```
+
+:::warning
+All text content must be wrapped in `<text>`. Unlike HTML, raw text nodes inside `<view>` will not render. This is the most common mistake when migrating from web Angular.
+:::
+
+## Text Truncation
+
+Use `text-overflow` and `text-maxline` to control how long text is clipped:
+
+```css
+.truncated {
+  text-overflow: ellipsis;
+  text-maxline: 2; /* Lynx-specific — limits to N visible lines */
+}
+```
+
+## Key Attributes
+
+| Attribute      | Type     | Description                                                                                 |
+| -------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `text-maxline` | `number` | Maximum number of visible lines before truncation (Lynx-specific, no CSS equivalent in web) |
+
+## Nesting Rules
+
+- **Nested `<text>`** inherits `color` and `font-family` from the parent `<text>`, even without CSS inheritance enabled
+- **Nested `<image>`** can appear inside `<text>` for inline text-and-image layouts
+- **Nested `<view>`** inside `<text>` participates in inline layout (like an inline-block)

@@ -1,0 +1,381 @@
+@use 'sass:color';
+
+// ======== Angular Lynx brand colors =========
+$angular-red: #dd0031;
+$angular-dark-red: #c3002f;
+$angular-blue: #1976d2;
+$angular-light-blue: #42a5f5;
+
+// ======== Theme variables =========
+:root {
+  // Brand
+  --rp-c-brand: #{$angular-red};
+  --rp-c-brand-dark: #{$angular-dark-red};
+  --rp-c-brand-darker: #{color.adjust($angular-red, $lightness: -15%)};
+  --rp-c-brand-light: #{color.adjust($angular-red, $lightness: 10%)};
+  --rp-c-brand-lighter: #{color.adjust($angular-red, $lightness: 20%)};
+  --rp-c-brand-tint: #{color.adjust($angular-red, $alpha: -0.85)};
+  --rp-c-link: var(--rp-c-brand);
+
+  // Home hero
+  --rp-home-hero-name-background: rgba(0, 0, 0, 0);
+  --rp-home-mask-background-image: conic-gradient(
+    from 180deg at 50% 50%,
+    var(--rp-c-brand-light) 0deg,
+    180deg,
+    #{$angular-blue} 0deg
+  );
+  --rp-home-background-bg: none;
+
+  // Hero text
+  --hero-normal-text-color: #000;
+  --major-brand-color: #{$angular-red};
+  --second-brand-color: #{$angular-blue};
+  --gradient-brand-color: #{$angular-dark-red};
+
+  // Features & showcase
+  --home-title-color: #111113;
+  --home-desc-color: #111113;
+  --home-features-item-bg:
+    radial-gradient(
+      94.38% 84.84% at 0% 2.15%,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    rgba(255, 255, 255, 0.5);
+  --home-features-item-bg-border: 1px solid rgba(17, 17, 19, 0.08);
+  --home-features-item-desc-color: rgba(17, 17, 19, 0.65);
+  --home-features-item-action-btn-bg: #fff;
+  --home-blog-btn-border: 1px solid rgba(17, 17, 19, 0.12);
+  --home-blog-btn-bg: rgba(255, 255, 255, 0.08);
+  --home-blog-btn-color: rgba(0, 0, 0, 0.85);
+
+  // Banner
+  --home-banner-title-color: #060606;
+}
+
+:root.dark {
+  --hero-normal-text-color: #fff;
+  --major-brand-color: #{color.adjust($angular-red, $lightness: 15%)};
+  --second-brand-color: #{$angular-light-blue};
+  --gradient-brand-color: #{$angular-dark-red};
+
+  --home-title-color: #fff;
+  --home-desc-color: rgba(255, 255, 255, 0.65);
+  --home-features-item-bg: rgba(255, 255, 255, 0.03);
+  --home-features-item-bg-border: 1px solid rgba(255, 255, 255, 0.06);
+  --home-features-item-desc-color: rgba(255, 255, 255, 0.65);
+  --home-features-item-action-btn-bg: rgba(255, 255, 255, 0.16);
+  --home-blog-btn-border: 1px solid rgba(255, 255, 255, 0.12);
+  --home-blog-btn-bg: rgba(255, 255, 255, 0.08);
+  --home-blog-btn-color: rgba(255, 255, 255, 0.85);
+
+  --home-banner-title-color: #fff;
+}
+
+// ======== Hero text styling =========
+.hero-title {
+  animation: fade-in 0.8s ease-out;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  max-width: 100%;
+
+  .dynamic-text,
+  .normal {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: var(--hero-normal-text-color);
+    background-color: var(--hero-normal-text-color);
+  }
+
+  .dynamic-text {
+    border-right: 4px solid transparent;
+    margin-right: -4px;
+    animation:
+      blink-caret 1s cubic-bezier(1, 0, 0, 1) infinite,
+      fade-in 0.8s ease-out;
+
+    @media (max-width: 640px) {
+      border-right-width: 2px;
+      margin-right: -2px;
+    }
+  }
+
+  .brand {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(
+      270deg,
+      var(--major-brand-color),
+      var(--gradient-brand-color),
+      var(--second-brand-color),
+      var(--gradient-brand-color),
+      var(--major-brand-color)
+    );
+    background-size: 200% 100%;
+    animation:
+      fade-in 0.8s ease-out,
+      gradientMove 6s linear infinite;
+  }
+}
+
+@keyframes blink-caret {
+  from,
+  49% {
+    border-image: linear-gradient(
+        to bottom,
+        var(--major-brand-color),
+        var(--gradient-brand-color),
+        var(--second-brand-color)
+      )
+      1;
+  }
+  50%,
+  to {
+    border-image: linear-gradient(to bottom, transparent, transparent) 1;
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes gradientMove {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gradientMoveBtn {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 0%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
+
+// ======== Home layout =========
+.home-layout-container {
+  position: relative;
+  overflow: hidden;
+
+  .rp-home-hero__container {
+    position: relative;
+
+    &::before {
+      content: '';
+      background-image: var(--rp-home-mask-background-image);
+      filter: blur(80px);
+      opacity: 0.05;
+      z-index: 1000;
+      border-radius: 100%;
+      width: 100%;
+      max-width: 500px;
+      height: 500px;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      user-select: none;
+      pointer-events: none;
+    }
+  }
+
+  .rp-home-hero__badge {
+    font-size: 14px;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 37px;
+    border: var(--home-blog-btn-border);
+    background: var(--home-blog-btn-bg);
+    backdrop-filter: blur(24px);
+    color: var(--home-blog-btn-color);
+    font-weight: 500;
+    line-height: 32px;
+    padding: 0 20px;
+    transition:
+      background 0.3s ease,
+      color 0.3s ease,
+      border 0.3s ease;
+    cursor: pointer;
+    user-select: none;
+    animation: fadeIn 0.8s ease-in;
+
+    &:hover {
+      background: linear-gradient(
+        to right,
+        var(--major-brand-color),
+        var(--second-brand-color)
+      );
+      color: #fff;
+      -webkit-text-fill-color: #fff;
+    }
+
+    a {
+      color: inherit;
+      -webkit-text-fill-color: inherit;
+      text-decoration: none;
+    }
+  }
+
+  .rp-home-hero__title-brand {
+    background: none;
+  }
+
+  @media (max-width: 1000px) {
+    .rp-home-hero {
+      margin-top: 54px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .rp-home-hero__badge {
+      font-size: 12px;
+      height: 28px;
+      padding: 0 16px;
+    }
+
+    .rp-home-hero .rp-home-hero__title {
+      font-size: 2rem;
+    }
+  }
+}
+
+// ======== Hero Command Box =========
+.hero-command-box {
+  display: flex;
+  align-items: stretch;
+  background: rgb(from var(--rp-code-block-bg) r g b / 50%);
+  border-radius: var(--rp-radius, 1rem);
+  padding: 4px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  border: 1px solid rgba(17, 17, 19, 0.08);
+  box-shadow: 0 4px 24px -8px rgba(0, 0, 0, 0.05);
+
+  :root.dark & {
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px -8px rgba(0, 0, 0, 0.5);
+  }
+
+  @media (max-width: 640px) {
+    padding: 6px;
+    border-radius: 16px;
+    max-width: 360px;
+  }
+
+  &__cmd {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    font-family: var(--rp-font-family-mono);
+    font-size: var(--rp-code-font-size, 0.875rem);
+    color: var(--home-title-color);
+    transition: all 0.2s ease;
+    text-align: left;
+    min-width: 0;
+
+    &:hover {
+      background: rgba(17, 17, 19, 0.04);
+
+      :root.dark & {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .icon {
+        opacity: 1;
+      }
+    }
+
+    .prompt {
+      color: var(--major-brand-color);
+      margin-right: 12px;
+      font-weight: 600;
+      user-select: none;
+      opacity: 0.8;
+    }
+
+    .text {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      color: var(--home-features-item-desc-color);
+      margin-left: 8px;
+
+      :root.dark & {
+        color: rgba(255, 255, 255, 0.65);
+      }
+    }
+
+    &.copied .icon {
+      opacity: 1;
+      color: var(--major-brand-color);
+    }
+
+    @media (max-width: 640px) {
+      font-size: 0.75rem;
+
+      .icon {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.rspress-home-hero-tagline,
+.rp-home-hero__tagline {
+  color: var(--home-features-item-desc-color);
+
+  a {
+    color: var(--rp-c-brand);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}

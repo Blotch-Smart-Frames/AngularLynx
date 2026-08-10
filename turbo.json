@@ -1,0 +1,62 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [
+        "dist/**",
+        "fesm2022/**",
+        "esm2022/**",
+        "schematics/**/*.js",
+        "schematics/**/*.json"
+      ]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "lint": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "lint:fix": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "format": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "format:check": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "cspell": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "publish:local": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "cache": false
+    },
+    "dolan:update:force": {
+      "dependsOn": ["^build"],
+      "cache": false
+    }
+  }
+}

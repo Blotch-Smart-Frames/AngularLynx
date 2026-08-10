@@ -1,0 +1,28 @@
+# &lt;block&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+An invisible container that produces no visual output. Useful for grouping elements without adding layout cost — similar to `<ng-container>` in web Angular.
+
+<Go example="element-block" defaultFile="src/app/app.ts" />
+
+## When to Use
+
+Use `<block>` instead of `<view>` when you need a logical grouping container but don't want an extra layout node. It has zero rendering cost — no box model, no background, no events.
+
+```angular-html
+<view>
+  @if (showDetails()) {
+    <block>
+      <text>Name: {{ name() }}</text>
+      <text>Email: {{ email() }}</text>
+    </block>
+  }
+</view>
+```
+
+:::info
+In most cases, Angular's `@if` and `@for` control flow already handle conditional and repeated rendering without needing a wrapper element. Use `<block>` when you need to group siblings for other reasons (e.g., applying a shared directive).
+:::

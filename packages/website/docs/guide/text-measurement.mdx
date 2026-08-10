@@ -1,0 +1,86 @@
+# Text Measurement
+
+`LynxTextMeasure` wraps the native `lynx.getTextInfo()` API, letting you measure text width and perform line-breaking calculations before rendering.
+
+:::warning
+Only built-in platform fonts are supported. Custom fonts loaded via `@font-face` or `LynxFont` will fall back to the default system font and return **inaccurate** measurements.
+:::
+
+## Usage
+
+```typescript title="src/app/layout.ts"
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTextMeasure } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: ` <text>Text width: {{ width() }}px</text> `,
+})
+export class Layout {
+  readonly #textMeasure = inject(LynxTextMeasure); // [!code highlight]
+  readonly width = signal(0);
+
+  ngOnInit(): void {
+    const { width } = this.#textMeasure.measure('Hello, Lynx!', {
+      // [!code highlight]
+      fontSize: '16px', // [!code highlight]
+    }); // [!code highlight]
+    this.width.set(width);
+  }
+}
+```
+
+## Line Breaking
+
+Pass `maxWidth` and `maxLine` to get text split into lines. The returned `content` array contains each line as a string:
+
+```typescript
+const result = this.textMeasure.measure(
+  'The quick brown fox jumps over the lazy dog',
+  {
+    fontSize: '14px',
+    maxWidth: '120px', // [!code highlight]
+    maxLine: 3, // [!code highlight]
+  },
+);
+
+// result.width — total text width in px
+// result.content — ['The quick brown', 'fox jumps over', 'the lazy dog']
+```
+
+:::info
+When `maxLine` is `1`, the `content` field is omitted to reduce overhead — you only get the `width`.
+:::
+
+## API
+
+### `measure(text, options)`
+
+| Parameter | Type       | Description                                 |
+| --------- | ---------- | ------------------------------------------- |
+| `text`    | `string`   | Text to measure                             |
+| `options` | `TextInfo` | Measurement options (from `@lynx-js/types`) |
+
+**Returns:** `TextMetrics` (from `@lynx-js/types`)
+
+### TextInfo
+
+| Property     | Type     | Required | Description                                       |
+| ------------ | -------- | -------- | ------------------------------------------------- |
+| `fontSize`   | `string` | Yes      | Font size with px unit (e.g., `'14px'`)           |
+| `fontFamily` | `string` | No       | Built-in font family name (e.g., `'PingFang SC'`) |
+| `maxWidth`   | `string` | No       | Max width before wrapping, with px unit           |
+| `maxLine`    | `number` | No       | Maximum number of lines                           |
+
+### TextMetrics
+
+| Property  | Type       | Description                                                      |
+| --------- | ---------- | ---------------------------------------------------------------- |
+| `width`   | `number`   | Measured text width in px                                        |
+| `content` | `string[]` | Lines of text (present when `maxLine` > 1 and `maxWidth` is set) |
+
+## Use Cases
+
+- **Truncation logic**: Determine if text will overflow a container and apply ellipsis
+- **Dynamic layouts**: Size containers based on text content before rendering
+- **Text wrapping preview**: Show how text will break across lines given width constraints

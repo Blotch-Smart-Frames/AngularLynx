@@ -1,0 +1,12 @@
+# Counter
+
+A minimal counter demonstrating signals, computed state, and event binding.
+
+<Go example="counter" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`signal()`** creates reactive state that triggers re-renders when updated
+- **`computed()`** derives new values automatically when dependencies change
+- **`(bindtap)`** is Lynx's tap event — equivalent to `(click)` on the web
+- All signal updates within the same synchronous context are batched and flushed together

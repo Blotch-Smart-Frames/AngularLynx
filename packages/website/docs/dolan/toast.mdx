@@ -1,0 +1,108 @@
+# Toast
+
+A non-blocking notification that appears briefly at the bottom of the screen. Toasts are triggered imperatively via the `toast()` function and auto-dismiss after a configurable duration.
+
+<Go example="ui-toast" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add toast
+```
+
+```typescript
+import { UiToaster, toast } from '@/components/ui/toast';
+```
+
+## Setup
+
+Place the `<ui-toaster />` component once in your root template. This component manages rendering and animating all toasts.
+
+```angular-html
+<ui-toaster />
+```
+
+## Usage
+
+Call the `toast()` function from anywhere in your component to show a notification:
+
+```typescript
+import { Component } from '@angular/core';
+import { UiToaster, toast } from '@/components/ui/toast';
+import { UiButton } from '@/components/ui/button';
+
+@Component({
+  imports: [UiToaster, UiButton],
+  template: `
+    <ui-button (pressed)="notify()">Show Toast</ui-button>
+    <ui-toaster />
+  `,
+})
+export class Example {
+  notify(): void {
+    toast({ title: 'Event has been created' });
+  }
+}
+```
+
+### With Description
+
+```typescript
+toast({
+  title: 'Event has been created',
+  description: 'Sunday, December 03, 2023 at 9:00 AM',
+});
+```
+
+### Destructive
+
+```typescript
+toast({
+  title: 'Uh oh! Something went wrong.',
+  description: 'There was a problem with your request.',
+  variant: 'destructive',
+});
+```
+
+### With Action
+
+```typescript
+toast({
+  title: 'Message sent',
+  action: {
+    label: 'Undo',
+    onAction: () => {
+      toast({ title: 'Message unsent' });
+    },
+  },
+});
+```
+
+## API
+
+### UiToaster
+
+The container component that renders active toasts. Place it once in your app template, typically at the root level.
+
+### toast(options)
+
+Shows a new toast notification. Returns the toast ID.
+
+| Option        | Type                         | Default     | Description                                        |
+| ------------- | ---------------------------- | ----------- | -------------------------------------------------- |
+| `title`       | `string`                     | --          | **Required.** The main toast message               |
+| `description` | `string`                     | `undefined` | Additional detail text below the title             |
+| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style of the toast                          |
+| `duration`    | `number`                     | `5000`      | Auto-dismiss delay in milliseconds                 |
+| `action`      | `ToastAction`                | `undefined` | Action button with `label` and `onAction` callback |
+
+### dismissToast(id)
+
+Programmatically dismisses a toast by its ID (returned from `toast()`).
+
+### ToastAction
+
+| Property   | Type         | Description                                       |
+| ---------- | ------------ | ------------------------------------------------- |
+| `label`    | `string`     | Text displayed on the action button               |
+| `onAction` | `() => void` | Callback invoked when the action button is tapped |

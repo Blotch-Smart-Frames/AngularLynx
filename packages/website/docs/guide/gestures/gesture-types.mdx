@@ -1,0 +1,121 @@
+# Gesture Types
+
+## TapGesture
+
+Recognizes discrete tap gestures.
+
+```typescript
+const tap = new TapGesture()
+  .numberOfTaps(2) // require double-tap
+  .maxDuration(300) // max ms for the gesture
+  .maxDistance(10) // max movement in px
+  .onEnd((event) => {
+    /* event.x, event.y */
+  });
+```
+
+| Config            | Type     | Description                                      |
+| ----------------- | -------- | ------------------------------------------------ |
+| `numberOfTaps(n)` | `number` | Number of consecutive taps required (default: 1) |
+| `maxDuration(ms)` | `number` | Maximum duration of the gesture in ms            |
+| `maxDistance(px)` | `number` | Maximum finger movement allowed in px            |
+
+**Event type:** `TapGestureEvent` — `{ x, y, state, absoluteX, absoluteY }`
+
+## PanGesture
+
+Recognizes continuous dragging gestures. Fires `onUpdate` on every frame while active.
+
+```typescript
+const pan = new PanGesture()
+  .minDistance(10)
+  .onUpdate((event) => {
+    // event.translationX, event.translationY
+  })
+  .onEnd(() => {
+    /* drag ended */
+  });
+```
+
+| Config                  | Type                   | Description                             |
+| ----------------------- | ---------------------- | --------------------------------------- |
+| `minDistance(px)`       | `number`               | Minimum drag distance to activate       |
+| `activeOffsetX(offset)` | `number \| [min, max]` | Horizontal offset threshold to activate |
+| `activeOffsetY(offset)` | `number \| [min, max]` | Vertical offset threshold to activate   |
+| `failOffsetX(offset)`   | `number \| [min, max]` | Horizontal offset that causes failure   |
+| `failOffsetY(offset)`   | `number \| [min, max]` | Vertical offset that causes failure     |
+| `minPointers(n)`        | `number`               | Minimum number of fingers required      |
+| `maxPointers(n)`        | `number`               | Maximum number of fingers allowed       |
+
+**Event type:** `PanGestureEvent` — `{ translationX, translationY, velocityX, velocityY, state, absoluteX, absoluteY }`
+
+## FlingGesture
+
+Recognizes quick swipe/fling gestures.
+
+```typescript
+import { FlingGesture, FlingDirection } from '@blotch/angular-lynx';
+
+const fling = new FlingGesture()
+  .direction(FlingDirection.LEFT | FlingDirection.RIGHT)
+  .numberOfPointers(1)
+  .onEnd((event) => {
+    // event.velocityX, event.velocityY
+  });
+```
+
+| Config                | Type             | Description                                                                          |
+| --------------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `direction(dir)`      | `FlingDirection` | Combine directions with `\|` (bitwise OR): `RIGHT(1)`, `LEFT(2)`, `UP(4)`, `DOWN(8)` |
+| `numberOfPointers(n)` | `number`         | Number of fingers required                                                           |
+
+**Event type:** `FlingGestureEvent` — `{ velocityX, velocityY, state, absoluteX, absoluteY }`
+
+## LongPressGesture
+
+Recognizes a press-and-hold gesture.
+
+```typescript
+const longPress = new LongPressGesture()
+  .minDuration(500) // hold for 500ms
+  .maxDistance(10) // max movement during hold
+  .onStart(() => {
+    /* held long enough — activated */
+  })
+  .onEnd(() => {
+    /* finger lifted */
+  });
+```
+
+| Config            | Type     | Description                         |
+| ----------------- | -------- | ----------------------------------- |
+| `minDuration(ms)` | `number` | Minimum hold time to activate       |
+| `maxDistance(px)` | `number` | Maximum finger movement during hold |
+
+**Event type:** `LongPressGestureEvent` — `{ x, y, duration, state, absoluteX, absoluteY }`
+
+## PinchGesture
+
+Recognizes two-finger pinch/zoom gestures.
+
+```typescript
+const pinch = new PinchGesture().onUpdate((event) => {
+  // event.scale (1.0 = no change, >1 = zoom in, <1 = zoom out)
+  // event.velocity
+});
+```
+
+No configuration options. **Event type:** `PinchGestureEvent` — `{ scale, velocity, state, absoluteX, absoluteY }`
+
+## RotationGesture
+
+Recognizes two-finger rotation gestures.
+
+```typescript
+const rotation = new RotationGesture().onUpdate((event) => {
+  // event.rotation (radians)
+  // event.velocity
+});
+```
+
+No configuration options. **Event type:** `RotationGestureEvent` — `{ rotation, velocity, state, absoluteX, absoluteY }`

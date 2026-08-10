@@ -1,0 +1,46 @@
+{
+  "name": "@blotch/dolan",
+  "version": "0.0.1",
+  "description": "CLI for adding @blotch/ui components to your project",
+  "license": "MIT",
+  "bin": {
+    "dolan": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    "./utils/cn": {
+      "types": "./dist/utils/cn.d.ts",
+      "default": "./dist/utils/cn.js"
+    },
+    "./utils/animate": {
+      "types": "./dist/utils/animate.d.ts",
+      "default": "./dist/utils/animate.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell .",
+    "link": "npm run build && npm link"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.0",
+    "cfonts": "^3.3.1",
+    "clsx": "^2.1.0",
+    "commander": "^13.0.0",
+    "diff": "^7.0.0",
+    "picocolors": "^1.1.0",
+    "tailwind-merge": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "^22.0.0"
+  }
+}

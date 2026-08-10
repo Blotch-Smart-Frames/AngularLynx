@@ -1,0 +1,92 @@
+# CSS Colors
+
+Lynx supports a subset of CSS color formats. Some modern CSS syntax that works in browsers is not available.
+
+## Supported Formats
+
+| Format              | Syntax                         | Example                     | Status    |
+| ------------------- | ------------------------------ | --------------------------- | --------- |
+| Hex                 | `#RGB`, `#RRGGBB`, `#RRGGBBAA` | `#18181b`, `#ff000080`      | Supported |
+| Named colors        | keyword                        | `red`, `transparent`        | Supported |
+| RGB (comma)         | `rgb(R, G, B)`                 | `rgb(24, 24, 27)`           | Supported |
+| RGBA (comma)        | `rgba(R, G, B, A)`             | `rgba(24, 24, 27, 0.5)`     | Supported |
+| RGB (space)         | `rgb(R G B)`                   | `rgb(24 24 27)`             | Supported |
+| RGB (space + alpha) | `rgb(R G B / A)`               | `rgb(24 24 27 / 0.5)`       | Supported |
+| HSL (comma)         | `hsl(H, S%, L%)`               | `hsl(240, 5.9%, 10%)`       | Supported |
+| HSLA (comma)        | `hsla(H, S%, L%, A)`           | `hsla(240, 5.9%, 10%, 0.5)` | Supported |
+
+## Unsupported Formats
+
+:::warning HSL Space-Separated Syntax
+The modern CSS Color Level 4 space-separated HSL syntax is **not supported**:
+
+```css
+/* Does NOT work on Lynx */
+background-color: hsl(240 5.9% 10%);
+background-color: hsl(240 5.9% 10% / 0.5);
+```
+
+Use the comma-separated form instead:
+
+```css
+/* Works on Lynx */
+background-color: hsl(240, 5.9%, 10%);
+background-color: hsla(240, 5.9%, 10%, 0.5);
+```
+
+:::
+
+The Lynx CSS parser handles RGB with both comma and space syntax, but HSL only supports the legacy comma-separated form. This is a parser-level limitation in the Lynx runtime.
+
+## Impact on Theming
+
+Libraries like [shadcn/ui](https://ui.shadcn.com/) use a CSS variable composition pattern where HSL channels are stored as raw values and wrapped with `hsl()` at usage sites:
+
+```css
+/* shadcn pattern — does NOT work on Lynx */
+:root {
+  --primary: 240 5.9% 10%;
+}
+
+.button {
+  background-color: hsl(var(--primary));
+  /* Expands to: hsl(240 5.9% 10%) — space-separated — rejected by Lynx */
+}
+```
+
+This pattern fails because `hsl(var(--primary))` expands to the space-separated syntax that Lynx doesn't parse.
+
+### Recommended Approach
+
+Store complete color values in CSS variables and reference them directly:
+
+```css title="theme.css"
+page {
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #e4e4e7;
+}
+```
+
+```css
+.button {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+```
+
+For opacity variants, define separate variables or use `rgba()`:
+
+```css title="theme.css"
+page {
+  --primary: #18181b;
+  --primary-rgb: 24, 24, 27;
+}
+```
+
+```css
+.overlay {
+  background-color: rgba(var(--primary-rgb), 0.5);
+}
+```

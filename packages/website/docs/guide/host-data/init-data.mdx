@@ -1,0 +1,40 @@
+# InitData
+
+`LynxInitData` provides the initialization data that the native host passes when it creates your Lynx card or page. It's available as a reactive signal that updates automatically when the host sends new data.
+
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { LynxInitData, LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>User: {{ initDataService.initData().userId }}</text>
+    </view>
+  `,
+})
+export class App {
+  readonly initDataService = inject(LynxInitData); // [!code highlight]
+}
+```
+
+:::info
+`LynxInitData` is provided at the root level. No extra `providers` entry is required in `app.config.ts`.
+:::
+
+## Typing InitData
+
+By default, `initData` is typed as `Record<string, unknown>`. Use [module augmentation](https://www.typescriptlang.org/docs/handbook/declaration-merging.html#module-augmentation) to add your app's specific fields:
+
+```typescript title="src/types.d.ts"
+declare module '@blotch/angular-lynx' {
+  interface InitData {
+    userId: string;
+    theme: 'light' | 'dark';
+    cardId: number;
+  }
+}
+```
+
+Now `initDataService.initData().userId` is type-safe — no casting needed.

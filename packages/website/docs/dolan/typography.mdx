@@ -1,0 +1,63 @@
+# Typography
+
+Consistent text styles for headings, body text, and utility variants. Built on a single `<text>` element with Tailwind classes managed via [class-variance-authority](https://cva.style/).
+
+<Go example="ui-typography" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add typography
+```
+
+```typescript
+import { UiText } from '@/components/ui/typography';
+```
+
+## Usage
+
+```angular-html
+<ui-text>This is a paragraph.</ui-text>
+```
+
+## Variants
+
+### Headings
+
+```angular-html
+<ui-text variant="h1">Heading 1</ui-text>
+<ui-text variant="h2">Heading 2</ui-text>
+<ui-text variant="h3">Heading 3</ui-text>
+<ui-text variant="h4">Heading 4</ui-text>
+```
+
+### Body text
+
+```angular-html
+<ui-text variant="p">Regular paragraph text (default).</ui-text>
+<ui-text variant="lead">A lead paragraph with larger, lighter styling.</ui-text>
+<ui-text variant="large">Large emphasized text.</ui-text>
+```
+
+### Utility styles
+
+```angular-html
+<ui-text variant="small">Small text for labels or fine print.</ui-text>
+<ui-text variant="muted">Muted text for secondary information.</ui-text>
+```
+
+## Custom classes
+
+Use the `class` input to extend the base styles with Tailwind utilities.
+
+```angular-html
+<ui-text variant="p" class="text-primary">Primary colored text</ui-text>
+<ui-text variant="small" class="font-bold">Bold small text</ui-text>
+```
+
+## API
+
+| Input     | Type                                                                             | Default | Description                     |
+| --------- | -------------------------------------------------------------------------------- | ------- | ------------------------------- |
+| `variant` | `'h1' \| 'h2' \| 'h3' \| 'h4' \| 'p' \| 'lead' \| 'large' \| 'small' \| 'muted'` | `'p'`   | Typography style variant        |
+| `class`   | `string`                                                                         | `''`    | Additional Tailwind CSS classes |

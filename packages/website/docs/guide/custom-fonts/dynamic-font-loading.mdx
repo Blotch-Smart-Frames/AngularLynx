@@ -1,0 +1,55 @@
+# Dynamic Font Loading
+
+For fonts that aren't known at build time — loaded from a CDN or determined by user settings — use `LynxFont`:
+
+```typescript title="src/app/dynamic-font.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxFont } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="loadFont()">
+      <text class="btn">Load Custom Font</text>
+    </view>
+    @if (fontService.isLoaded('DynamicFont')) {
+      <text style="font-family: DynamicFont; font-size: 20px;">
+        Rendered with dynamically loaded font
+      </text>
+    }
+  `,
+  styles: [
+    `
+      .btn {
+        font-size: 16px;
+        padding: 12px;
+      }
+    `,
+  ],
+})
+export class DynamicFont {
+  readonly fontService = inject(LynxFont); // [!code highlight]
+
+  loadFont(): void {
+    setTimeout(async () => {
+      await this.fontService.addFont({
+        // [!code highlight]
+        fontFamily: 'DynamicFont', // [!code highlight]
+        src: 'https://example.com/fonts/dynamic-font.ttf', // [!code highlight]
+      }); // [!code highlight]
+    }, 0);
+  }
+}
+```
+
+## LynxFont API
+
+| Member                  | Type                                            | Description                                                      |
+| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| `addFont(config)`       | `(config: LynxFontFaceConfig) => Promise<void>` | Register a font; resolves when loaded                            |
+| `fonts`                 | `Signal<ReadonlyMap<string, LynxFontEntry>>`    | Reactive map of all font entries                                 |
+| `loadedFamilies`        | `Signal<ReadonlySet<string>>`                   | Set of successfully loaded font families                         |
+| `isLoaded(fontFamily)`  | `(fontFamily: string) => boolean`               | Check if a font is loaded                                        |
+| `getStatus(fontFamily)` | `(fontFamily: string) => LynxFontStatus`        | Get current status: `'idle' \| 'loading' \| 'loaded' \| 'error'` |
+
+The service deduplicates requests — calling `addFont()` with the same `fontFamily` while a load is in-flight returns the same Promise. Already-loaded fonts resolve immediately without contacting the native layer.

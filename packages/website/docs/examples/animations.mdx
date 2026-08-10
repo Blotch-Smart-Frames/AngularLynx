@@ -1,0 +1,13 @@
+# Animations
+
+Demonstrate three animation techniques on Lynx: CSS transitions, CSS keyframes, and the JavaScript `animate()` API.
+
+<Go example="animations" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **CSS transitions** — use the `transition` property and `[class.active]` binding to animate property changes smoothly
+- **CSS `@keyframes`** — define named keyframe animations and toggle them via class bindings
+- **`element.animate()` API** — Lynx supports the Web Animations API for imperative, programmatic animations with full keyframe control
+- **`viewChild()`** — signal-based query to get a reference to a native element for direct manipulation
+- **`LynxAnimation`** — typed return value from `animate()`, supporting `cancel()` and other animation lifecycle controls

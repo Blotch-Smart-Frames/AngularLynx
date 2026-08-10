@@ -1,0 +1,40 @@
+{
+  "name": "@blotch/angular-lynx",
+  "version": "1.0.0",
+  "description": "Monorepo for AngularLynx — Angular renderer for the Lynx cross-platform native UI framework",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:no-cache": "turbo run test --force",
+    "demo": "turbo run start --filter=@angular-lynx-example/kitchen-sink-app",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check",
+    "cspell": "turbo run cspell",
+    "publish:local": "turbo run publish:local",
+    "dolan:update:force": "turbo run dolan:update:force"
+  },
+  "devDependencies": {
+    "cspell": "^9.7.0",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
+    "turbo": "^2.9.16",
+    "vitest": "^4.0.8",
+    "yalc": "^1.0.0-pre.53"
+  },
+  "packageManager": "npm@10.9.2",
+  "overrides": {
+    "@lynx-js/rspeedy": {
+      "typescript": ">=6.0.0"
+    }
+  }
+}

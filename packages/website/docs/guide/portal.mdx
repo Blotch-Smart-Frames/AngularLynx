@@ -1,0 +1,96 @@
+# Portal (Programmatic Overlays)
+
+`LynxPortal` renders Angular components or templates into a native `<overlay>` element from anywhere in the component tree — the Lynx equivalent of Angular CDK's `Overlay` / `DomPortalOutlet`.
+
+For **declarative** overlays (content defined in a template), use `<overlay>` directly. Use `LynxPortal` when you need to **create overlays imperatively from code**: modal dialogs triggered by a service call, toast notifications, or components opened from a route guard.
+
+## Opening a Component
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { LynxPortal } from '@blotch/angular-lynx';
+import { ConfirmDialog } from './confirm-dialog';
+
+@Component({ ... })
+export class Example {
+  readonly #portal = inject(LynxPortal);
+
+  openDialog(): void {
+    const ref = this.#portal.open(ConfirmDialog, {
+      level: 2,
+      inputs: { title: 'Delete item?', message: 'This cannot be undone.' },
+    });
+
+    // Update an input after opening
+    ref.setInput('title', 'Really delete?');
+
+    // Close when done
+    ref.destroy();
+  }
+}
+```
+
+The `ConfirmDialog` participates fully in Angular change detection and dependency injection. It can inject services, use signals, and define lifecycle hooks normally.
+
+## Opening a Template
+
+Use `openTemplate` when you have a `TemplateRef` from `@ViewChild`:
+
+```typescript
+import { Component, inject, viewChild, type TemplateRef } from '@angular/core';
+import { LynxPortal, LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="open()">
+      <text>Show Toast</text>
+    </view>
+
+    <ng-template #toast>
+      <view class="toast">
+        <text>Item saved!</text>
+      </view>
+    </ng-template>
+  `,
+})
+export class Example {
+  readonly #portal = inject(LynxPortal);
+  toastTemplate = viewChild.required<TemplateRef<void>>('toast');
+
+  open(): void {
+    const ref = this.#portal.openTemplate(this.toastTemplate());
+    setTimeout(() => ref.destroy(), 2000);
+  }
+}
+```
+
+## PortalConfig
+
+| Option     | Type                      | Description                                             |
+| ---------- | ------------------------- | ------------------------------------------------------- |
+| `level`    | `number` (1–4)            | Overlay z-level. Higher levels render above lower ones. |
+| `injector` | `EnvironmentInjector`     | Custom DI context for the rendered component.           |
+| `inputs`   | `Record<string, unknown>` | Initial input values set immediately after creation.    |
+
+## PortalRef API
+
+`open()` and `openTemplate()` both return a `PortalRef`:
+
+| Member                  | Description                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `instance`              | The rendered component instance. `null` for template portals.                                              |
+| `setInput(name, value)` | Update a component input. No-op for template portals.                                                      |
+| `destroy()`             | Tear down the overlay: removes the native element, destroys the component, detaches from change detection. |
+
+## Comparison: Declarative vs Imperative
+
+|                    | `<overlay>` in template        | `LynxPortal`                                    |
+| ------------------ | ------------------------------ | ----------------------------------------------- |
+| Content            | Defined in template            | Any component or template                       |
+| Visibility control | `[attr.visible]` binding       | `ref.destroy()`                                 |
+| Best for           | Toggleable UI in one component | Shared dialogs, toasts, service-driven overlays |
+
+:::tip
+Always call `ref.destroy()` when you're done. Portal overlays are not automatically removed when the component that created them is destroyed.
+:::

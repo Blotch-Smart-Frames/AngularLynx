@@ -1,0 +1,65 @@
+{
+  "name": "@blotch/angular-lynx",
+  "version": "22.0.0",
+  "description": "Angular renderer for the Lynx cross-platform native UI framework",
+  "files": [
+    "dist",
+    "schematics",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "exports": {
+    "./package.json": {
+      "default": "./package.json"
+    },
+    ".": {
+      "types": "./dist/types/blotch-angular-lynx.d.ts",
+      "default": "./dist/fesm2022/blotch-angular-lynx.mjs"
+    }
+  },
+  "scripts": {
+    "build:schematics": "tsc -p tsconfig.schematics.json",
+    "build": "npm run build:schematics && ng-packagr -p ng-package.json -c tsconfig.lib.prod.json",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell .",
+    "publish:local": "yalc publish --push"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/core": "^22.0.0",
+    "@angular-devkit/schematics": "^22.0.0",
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "@schematics/angular": "^22.0.0",
+    "@types/node": "^22.0.0",
+    "ng-packagr": "^22.0.0",
+    "typescript": "~6.0.0"
+  },
+  "peerDependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/localize": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/forms": {
+      "optional": true
+    },
+    "@angular/localize": {
+      "optional": true
+    }
+  },
+  "schematics": "./schematics/collection.json"
+}

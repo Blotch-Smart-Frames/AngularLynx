@@ -1,0 +1,52 @@
+{
+  "name": "@blotch/angular-lynx-testing-library",
+  "version": "22.0.0",
+  "description": "Testing utilities for AngularLynx apps",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./setup": {
+      "types": "./dist/setup.d.ts",
+      "import": "./dist/setup.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell .",
+    "publish:local": "yalc publish --push"
+  },
+  "dependencies": {
+    "@lynx-js/testing-environment": "^0.2.0",
+    "@testing-library/dom": "^10.4.1"
+  },
+  "devDependencies": {
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@blotch/angular-lynx": "*",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/node": "^22.0.0",
+    "jsdom": "^25.0.0",
+    "typescript": "~6.0.0"
+  },
+  "peerDependencies": {
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@blotch/angular-lynx": "^22.0.0"
+  }
+}

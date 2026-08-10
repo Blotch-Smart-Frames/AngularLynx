@@ -1,0 +1,44 @@
+# &lt;title-bar-view&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+:::warning Clay Only
+`<title-bar-view>` is only available on **Clay Windows** and **Clay macOS** platforms. It has no effect on Android, iOS, or web.
+:::
+
+Customizes the draggable area of a frameless window, similar to the CSS `app-region` property on the web. Use it to define which parts of a custom title bar allow the user to drag the window.
+
+<Go example="element-title-bar-view" defaultFile="src/app/app.ts" />
+
+```angular-html
+<view style="height: 48px; flex-direction: row; align-items: center;">
+  <title-bar-view moveable="true" style="flex: 1; height: 100%;">
+    <text style="font-size: 14px;">My App</text>
+  </title-bar-view>
+  <view
+    (bindtap)="close()"
+    style="width: 48px; height: 100%; align-items: center; justify-content: center;"
+  >
+    <text>X</text>
+  </view>
+</view>
+```
+
+In this example, the `<title-bar-view>` region is draggable (moves the window), while the close button beside it remains interactive.
+
+## Attributes
+
+- `moveable` — (boolean, default `false`) When `true`, dragging within this element moves the window.
+
+## Platform Support
+
+| Platform     | Supported |
+| ------------ | --------- |
+| Clay Windows | 3.8+      |
+| Clay macOS   | 3.8+      |
+| Android      | No        |
+| iOS          | No        |
+| Harmony      | No        |
+| Web Lynx     | No        |

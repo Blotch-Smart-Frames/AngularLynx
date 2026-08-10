@@ -1,0 +1,49 @@
+# Progress
+
+A horizontal progress bar that indicates completion with an animated fill.
+
+<Go example="ui-progress" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add progress
+```
+
+```typescript
+import { UiProgress } from '@/components/ui/progress';
+```
+
+## Usage
+
+### Basic
+
+```angular-html
+<ui-progress [value]="50" />
+```
+
+### With Signal
+
+```typescript
+readonly progress = signal(0);
+```
+
+```angular-html
+<ui-progress [value]="progress()" />
+```
+
+### Custom Max
+
+Set a custom maximum value instead of the default 100:
+
+```angular-html
+<ui-progress [value]="150" [max]="200" />
+```
+
+## API
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `value` | `number` | `0`     | Current progress value |
+| `max`   | `number` | `100`   | Maximum value          |
+| `class` | `string` | `''`    | Additional CSS classes |

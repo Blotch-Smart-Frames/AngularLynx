@@ -1,0 +1,87 @@
+# Card
+
+A container for grouping related content and actions, with optional header, footer, title, and description sections.
+
+<Go example="ui-card" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add card
+```
+
+```typescript
+import {
+  UiCard,
+  UiCardHeader,
+  UiCardTitle,
+  UiCardDescription,
+  UiCardContent,
+  UiCardFooter,
+} from '@/components/ui/card';
+```
+
+## Usage
+
+```angular-html
+<ui-card>
+  <ui-card-header>
+    <ui-card-title>Title</ui-card-title>
+    <ui-card-description>Description text</ui-card-description>
+  </ui-card-header>
+  <ui-card-content>
+    <text>Card body content goes here.</text>
+  </ui-card-content>
+  <ui-card-footer>
+    <text>Footer content</text>
+  </ui-card-footer>
+</ui-card>
+```
+
+You can omit any sub-component. For a minimal card, use only `ui-card-content`:
+
+```angular-html
+<ui-card>
+  <ui-card-content class="pt-6">
+    <text>A simple card with just content.</text>
+  </ui-card-content>
+</ui-card>
+```
+
+## API
+
+### UiCard
+
+| Input   | Type     | Default | Description                                           |
+| ------- | -------- | ------- | ----------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the card container |
+
+### UiCardHeader
+
+| Input   | Type     | Default | Description                                   |
+| ------- | -------- | ------- | --------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the header |
+
+### UiCardTitle
+
+| Input   | Type     | Default | Description                                       |
+| ------- | -------- | ------- | ------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the title text |
+
+### UiCardDescription
+
+| Input   | Type     | Default | Description                                             |
+| ------- | -------- | ------- | ------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the description text |
+
+### UiCardContent
+
+| Input   | Type     | Default | Description                                              |
+| ------- | -------- | ------- | -------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |
+
+### UiCardFooter
+
+| Input   | Type     | Default | Description                                             |
+| ------- | -------- | ------- | ------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the footer container |

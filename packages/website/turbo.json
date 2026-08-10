@@ -1,0 +1,40 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // The website is NOT a normal turbo consumer of the examples: it never
+      // imports them, it reads their source + built bundles off disk via
+      // scripts/prepare-examples.mjs (from ../../examples). Because that link
+      // lives in a script and not in package.json, turbo's dependency graph
+      // can't see it — so editing an example wouldn't invalidate the website's
+      // cache, and a plain `turbo run build` would replay a stale website while
+      // silently skipping build-examples/prepare-examples entirely.
+      //
+      // Two things fix that here:
+      //  1. dependsOn the runtime + plugin builds. The examples (built inside
+      //     this task by build-examples) need @blotch/angular-lynx and its
+      //     rsbuild plugin on disk first. The website has no npm dep on them,
+      //     so "^build" wouldn't order them — name them explicitly.
+      //  2. inputs add the examples tree to this task's hash. $TURBO_DEFAULT$
+      //     keeps the website's own files; $TURBO_ROOT$/examples/** makes any
+      //     example SOURCE edit invalidate the website cache. node_modules and
+      //     dist are excluded: node_modules would bloat the hash, and dist is a
+      //     build artifact this task regenerates itself (source already covers
+      //     "did the example change").
+      "dependsOn": [
+        "@blotch/angular-lynx#build",
+        "@blotch/rsbuild-plugin-angular-lynx#build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/examples/**",
+        "!$TURBO_ROOT$/examples/**/node_modules/**",
+        "!$TURBO_ROOT$/examples/**/dist/**",
+        "!$TURBO_ROOT$/examples/**/.turbo/**",
+        "!$TURBO_ROOT$/examples/**/.cache/**"
+      ],
+      "outputs": ["doc_build/**"]
+    }
+  }
+}

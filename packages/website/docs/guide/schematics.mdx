@@ -1,0 +1,184 @@
+# Schematics
+
+The `@blotch/angular-lynx` package includes Angular CLI schematics to automate project setup and code generation.
+
+## `ng add` — Project Setup
+
+Transforms an existing Angular project into a Lynx-native application in one command:
+
+```bash
+ng add @blotch/angular-lynx
+```
+
+This rewrites your project's entry point, app config, and root component for Lynx, installs the required build tooling, and optionally adds Tailwind CSS.
+
+**What it does:**
+
+- Replaces `main.ts` with `bootstrapApplication` from `@blotch/angular-lynx`
+- Rewrites `app.config.ts` with `provideRenderer()` and `provideZonelessChangeDetection()`
+- Replaces the root component template with Lynx elements (`<view>`, `<text>`)
+- Removes `.html` template files (Lynx templates are inline TypeScript strings)
+- Creates `lynx.config.ts` for RSpeedy
+- Updates `package.json` scripts to use `rspeedy dev` / `rspeedy build`
+- Installs build tooling (`@lynx-js/rspeedy`, `@blotch/rsbuild-plugin-angular-lynx`)
+- Optionally sets up Tailwind CSS (prompted interactively)
+
+**Options:**
+
+| Option       | Type      | Default         | Description                    |
+| ------------ | --------- | --------------- | ------------------------------ |
+| `--project`  | `string`  | default project | Target project in angular.json |
+| `--tailwind` | `boolean` | `true`          | Whether to add Tailwind CSS    |
+
+## `component` — Generate Components
+
+Generates a standalone Angular component with Lynx element template:
+
+```bash
+ng generate @blotch/angular-lynx:component my-feature
+```
+
+This creates a component with `<view>`/`<text>` elements, `OnPush` change detection, `LYNX_ELEMENTS` import, and a test file using the AngularLynx Testing Library.
+
+**Generated files** (default):
+
+```
+src/app/my-feature/
+  my-feature.ts       # Component with Lynx template
+  my-feature.spec.ts  # Vitest test using render()
+```
+
+**Example output:**
+
+```typescript title="my-feature.ts"
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-my-feature',
+  imports: [LYNX_ELEMENTS],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <view>
+      <text>my-feature works!</text>
+    </view>
+  `,
+  styles: [``],
+})
+export class MyFeature {}
+```
+
+```typescript title="my-feature.spec.ts"
+import { describe, expect, it } from 'vitest';
+import { render } from '@blotch/angular-lynx-testing-library';
+
+import { MyFeature } from './my-feature';
+
+describe('MyFeature', () => {
+  it('should render', async () => {
+    const { getByText } = await render(MyFeature);
+    expect(getByText('my-feature works!')).toBeTruthy();
+  });
+});
+```
+
+**Options:**
+
+| Option                    | Type      | Default           | Description                   |
+| ------------------------- | --------- | ----------------- | ----------------------------- |
+| `--project`               | `string`  | default project   | Target project                |
+| `--prefix`                | `string`  | from angular.json | Selector prefix               |
+| `--inlineTemplate` / `-t` | `boolean` | `true`            | Inline template in `.ts` file |
+| `--inlineStyle` / `-s`    | `boolean` | `true`            | Inline styles in `.ts` file   |
+| `--skipTests`             | `boolean` | `false`           | Skip `.spec.ts` generation    |
+| `--flat`                  | `boolean` | `false`           | Create without subdirectory   |
+
+**Nested paths:**
+
+```bash
+# Creates src/app/pages/dashboard/dashboard.ts
+ng generate @blotch/angular-lynx:component pages/dashboard
+```
+
+**Alias:**
+
+```bash
+ng generate @blotch/angular-lynx:c my-feature
+```
+
+:::tip Why not `ng generate component`?
+Angular's built-in component generator creates HTML templates with `<p>`, `<div>`, and browser-centric boilerplate. AngularLynx components use Lynx native elements (`<view>`, `<text>`, `<image>`) and inline templates (since Angular templates in Lynx are TypeScript string literals, not `.html` files). The AngularLynx generator produces components that work out of the box.
+:::
+
+## `add-tailwind` — Add Tailwind CSS
+
+Adds [Tailwind CSS](/guide/tailwindcss) with the Lynx preset to an existing project:
+
+```bash
+ng generate @blotch/angular-lynx:add-tailwind
+```
+
+**What it does:**
+
+- Creates `tailwind.config.ts` with `@lynx-js/tailwind-preset` and `content: ['./src/**/*.ts']`
+- Updates the global stylesheet (`styles.css` or `styles.scss`) with Tailwind directives
+- Installs `tailwindcss` and `@lynx-js/tailwind-preset` as devDependencies
+
+**Options:**
+
+| Option      | Type     | Default         | Description    |
+| ----------- | -------- | --------------- | -------------- |
+| `--project` | `string` | default project | Target project |
+
+## `add-testing` — Add Testing Library
+
+Adds the [AngularLynx Testing Library](/guide/testing) with Vitest to an existing project:
+
+```bash
+ng generate @blotch/angular-lynx:add-testing
+```
+
+**What it does:**
+
+- Creates `vitest.config.ts` with jsdom environment, globals, and proper esbuild settings for Angular decorators
+- Creates `src/setup.ts` importing `@blotch/angular-lynx-testing-library/setup`
+- Adds `test` and `test:watch` scripts to `package.json`
+- Installs `@blotch/angular-lynx-testing-library`, `vitest`, and `jsdom` as devDependencies
+
+**Options:**
+
+| Option      | Type     | Default         | Description    |
+| ----------- | -------- | --------------- | -------------- |
+| `--project` | `string` | default project | Target project |
+
+## `add-i18n` — Add Internationalization
+
+Adds [i18n support](/guide/i18n) with `@angular/localize` to an existing project:
+
+```bash
+ng generate @blotch/angular-lynx:add-i18n
+```
+
+**What it does:**
+
+- Adds the `i18n` block to `angular.json` (`sourceLocale: 'en-US'`)
+- Appends `@angular/localize/init` to the `polyfills` array in `angular.json`
+- Adds `@angular/localize` to `compilerOptions.types` in `tsconfig.app.json` so `$localize` is typed
+- Registers `provideLocale()` as the first provider in `app.config.ts`
+- Installs `@angular/localize` as a devDependency
+
+**Options:**
+
+| Option      | Type     | Default         | Description    |
+| ----------- | -------- | --------------- | -------------- |
+| `--project` | `string` | default project | Target project |
+
+## Summary
+
+| Schematic      | Command                                  | Purpose                         |
+| -------------- | ---------------------------------------- | ------------------------------- |
+| `ng-add`       | `ng add @blotch/angular-lynx`            | Convert Angular project to Lynx |
+| `component`    | `ng g @blotch/angular-lynx:c <name>`     | Generate Lynx component         |
+| `add-tailwind` | `ng g @blotch/angular-lynx:add-tailwind` | Add Tailwind CSS                |
+| `add-testing`  | `ng g @blotch/angular-lynx:add-testing`  | Add testing infrastructure      |
+| `add-i18n`     | `ng g @blotch/angular-lynx:add-i18n`     | Add i18n support                |

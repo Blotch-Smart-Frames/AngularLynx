@@ -1,0 +1,92 @@
+# Accordion
+
+A vertically stacked set of interactive headings that each reveal a section of content.
+
+<Go example="ui-accordion" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add accordion
+```
+
+```typescript
+import {
+  UiAccordion,
+  UiAccordionItem,
+  UiAccordionTrigger,
+  UiAccordionContent,
+} from '@/components/ui/accordion';
+```
+
+## Usage
+
+### Single Mode
+
+Only one item can be expanded at a time. Opening a new item automatically closes the previous one:
+
+```angular-html
+<ui-accordion type="single">
+  <ui-accordion-item value="item-1">
+    <ui-accordion-trigger>Section One</ui-accordion-trigger>
+    <ui-accordion-content>
+      <text>Content for section one.</text>
+    </ui-accordion-content>
+  </ui-accordion-item>
+  <ui-accordion-item value="item-2">
+    <ui-accordion-trigger>Section Two</ui-accordion-trigger>
+    <ui-accordion-content>
+      <text>Content for section two.</text>
+    </ui-accordion-content>
+  </ui-accordion-item>
+</ui-accordion>
+```
+
+### Multiple Mode
+
+Multiple items can be expanded simultaneously:
+
+```angular-html
+<ui-accordion type="multiple">
+  <ui-accordion-item value="item-1">
+    <ui-accordion-trigger>First</ui-accordion-trigger>
+    <ui-accordion-content>
+      <text>First section content.</text>
+    </ui-accordion-content>
+  </ui-accordion-item>
+  <ui-accordion-item value="item-2">
+    <ui-accordion-trigger>Second</ui-accordion-trigger>
+    <ui-accordion-content>
+      <text>Second section content.</text>
+    </ui-accordion-content>
+  </ui-accordion-item>
+</ui-accordion>
+```
+
+## API
+
+### UiAccordion
+
+| Input   | Type                     | Default    | Description                                                    |
+| ------- | ------------------------ | ---------- | -------------------------------------------------------------- |
+| `type`  | `'single' \| 'multiple'` | `'single'` | Whether one or multiple items can be expanded at the same time |
+| `class` | `string`                 | `''`       | Additional CSS classes to apply to the accordion container     |
+
+### UiAccordionItem
+
+| Input   | Type     | Default    | Description                                           |
+| ------- | -------- | ---------- | ----------------------------------------------------- |
+| `value` | `string` | _required_ | A unique identifier for the accordion item            |
+| `class` | `string` | `''`       | Additional CSS classes to apply to the item container |
+
+### UiAccordionTrigger
+
+| Input   | Type     | Default | Description                                    |
+| ------- | -------- | ------- | ---------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the trigger |
+
+### UiAccordionContent
+
+| Input   | Type     | Default | Description                                              |
+| ------- | -------- | ------- | -------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |

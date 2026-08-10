@@ -1,0 +1,40 @@
+# &lt;scroll-view&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+A scrollable area for content. Set `scroll-orientation` to control the scroll direction.
+
+<Go example="element-scroll-view" defaultFile="src/app/app.ts" />
+
+```angular-html
+<scroll-view scroll-orientation="vertical" style="height: 100vh;">
+  @for (item of items(); track item.id) {
+    <view class="item">
+      <text>{{ item.name }}</text>
+    </view>
+  }
+</scroll-view>
+```
+
+:::warning
+`<scroll-view>` requires an explicit height. Without a height constraint, it expands to fit all content and never scrolls.
+:::
+
+## Key Attributes
+
+| Attribute            | Type      | Description                                       |
+| -------------------- | --------- | ------------------------------------------------- |
+| `scroll-orientation` | `string`  | `"vertical"` (default) or `"horizontal"`          |
+| `bounces`            | `boolean` | Enable/disable bounce effect at scroll boundaries |
+| `scroll-bar-enable`  | `boolean` | Show/hide the scrollbar                           |
+
+## Events
+
+| Event                    | Description                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `bindscroll`             | Fires continuously during scrolling. `event.detail` contains `scrollTop` and `scrollLeft` |
+| `bindscrolltoupper`      | Fires when scrolling reaches the top (or left edge for horizontal)                        |
+| `bindscrolltolower`      | Fires when scrolling reaches the bottom (or right edge). Useful for infinite scroll       |
+| `bindcontentsizechanged` | Fires when the scrollable content size changes                                            |

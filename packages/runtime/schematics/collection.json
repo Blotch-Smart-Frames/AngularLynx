@@ -1,0 +1,30 @@
+{
+  "schematics": {
+    "ng-add": {
+      "description": "Transforms an Angular project into a Lynx-native application",
+      "factory": "./ng-add/index",
+      "schema": "./ng-add/schema.json"
+    },
+    "add-tailwind": {
+      "description": "Adds Tailwind CSS with @lynx-js/tailwind-preset to an existing project",
+      "factory": "./add-tailwind/index",
+      "schema": "./add-tailwind/schema.json"
+    },
+    "add-testing": {
+      "description": "Adds AngularLynx Testing Library with Vitest to an existing project",
+      "factory": "./add-testing/index",
+      "schema": "./add-testing/schema.json"
+    },
+    "add-i18n": {
+      "description": "Adds Angular i18n support with @angular/localize and provideLocale() to an existing project",
+      "factory": "./add-i18n/index",
+      "schema": "./add-i18n/schema.json"
+    },
+    "component": {
+      "description": "Generates a standalone Angular component with Lynx element template",
+      "factory": "./component/index",
+      "schema": "./component/schema.json",
+      "aliases": ["c"]
+    }
+  }
+}

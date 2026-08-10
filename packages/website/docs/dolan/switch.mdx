@@ -1,0 +1,62 @@
+# Switch
+
+A toggle switch for turning options on or off, with an animated thumb that slides between states.
+
+<Go example="ui-switch" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add switch
+```
+
+```typescript
+import { UiSwitch } from '@/components/ui/switch';
+```
+
+## Usage
+
+```angular-html
+<ui-switch [(checked)]="enabled" />
+```
+
+### With a label
+
+```angular-html
+<view class="flex flex-row items-center justify-between">
+  <ui-label>Dark Mode</ui-label>
+  <ui-switch [(checked)]="darkMode" />
+</view>
+```
+
+### With label and description
+
+```angular-html
+<view class="flex flex-row items-center justify-between">
+  <view class="flex flex-col gap-1">
+    <ui-label>Notifications</ui-label>
+    <text class="text-xs text-muted-foreground"
+      >Receive push notifications</text
+    >
+  </view>
+  <ui-switch [(checked)]="notifications" />
+</view>
+```
+
+### Disabled
+
+```angular-html
+<ui-switch [disabled]="true" /> <ui-switch [disabled]="true" [checked]="true" />
+```
+
+## API
+
+| Input      | Type             | Default | Description                                 |
+| ---------- | ---------------- | ------- | ------------------------------------------- |
+| `checked`  | `model<boolean>` | `false` | Whether the switch is on (two-way bindable) |
+| `disabled` | `boolean`        | `false` | Whether the switch is disabled              |
+| `class`    | `string`         | `''`    | Additional CSS classes for the track        |
+
+| Output    | Type      | Description                              |
+| --------- | --------- | ---------------------------------------- |
+| `changed` | `boolean` | Emits the new checked state when toggled |

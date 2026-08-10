@@ -1,0 +1,53 @@
+# &lt;image&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Displays images from local imports or remote URLs.
+
+<Go example="element-image" defaultFile="src/app/app.ts" />
+
+```typescript
+import logo from '../assets/logo.png';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: ` <image [src]="logo" style="width: 80px; height: 80px;" /> `,
+})
+export class Logo {
+  logo = logo;
+}
+```
+
+Supported formats: PNG, JPG, WebP, GIF (animated), base64 data URIs.
+
+## Remote Images
+
+```angular-html
+<image
+  src="https://example.com/photo.jpg"
+  style="width: 200px; height: 150px;"
+  (bindload)="onLoaded()"
+  (binderror)="onError()"
+/>
+```
+
+:::info
+You must set an explicit **width** and **height** (or use `auto-size`) for the image to display. Unlike HTML `<img>`, Lynx `<image>` has no intrinsic size.
+:::
+
+## Key Attributes
+
+| Attribute   | Type      | Description                                                          |
+| ----------- | --------- | -------------------------------------------------------------------- |
+| `src`       | `string`  | Image source — local import or remote URL (required)                 |
+| `mode`      | `string`  | Cropping/scaling mode: `"cover"` (default), `"contain"`, `"stretch"` |
+| `auto-size` | `boolean` | Automatically adjusts element size to match the image's aspect ratio |
+
+## Events
+
+| Event       | Description                             |
+| ----------- | --------------------------------------- |
+| `bindload`  | Fires when the image loads successfully |
+| `binderror` | Fires when the image fails to load      |

@@ -1,0 +1,43 @@
+# &lt;overlay&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Renders content above the normal document flow, like a modal or popup. Toggle visibility with the `visible` attribute.
+
+<Go example="element-overlay" defaultFile="src/app/app.ts" />
+
+```angular-html
+<overlay [attr.visible]="showModal()">
+  <view class="backdrop" (bindtap)="closeModal()">
+    <view class="modal" (catchtap)="($event)">
+      <text class="modal-title">Confirm</text>
+      <text>Are you sure?</text>
+      <view class="modal-button" (bindtap)="closeModal()">
+        <text style="color: white;">Close</text>
+      </view>
+    </view>
+  </view>
+</overlay>
+```
+
+:::tip
+Use `(catchtap)` on the modal content to prevent taps from bubbling to the backdrop's `(bindtap)` handler.
+:::
+
+## Key Attributes
+
+| Attribute | Type      | Description                                     |
+| --------- | --------- | ----------------------------------------------- |
+| `visible` | `boolean` | Controls whether the overlay is shown or hidden |
+
+## Events
+
+| Event     | Description                                                                     |
+| --------- | ------------------------------------------------------------------------------- |
+| `bindtap` | Fires when the overlay background is tapped (useful for "tap outside to close") |
+
+:::info
+For programmatic overlays that can be triggered from any component, see the [Portal](/guide/portal) API.
+:::

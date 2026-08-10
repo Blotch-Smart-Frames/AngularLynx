@@ -1,0 +1,42 @@
+# `LynxMainThreadEvent` Directive
+
+Binds main thread functions to native events on an element. Supports both `bind` (propagating) and `catch` (non-propagating) event types.
+
+:::danger Escape Hatch — Not Standard Angular
+Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::
+
+## Supported Events
+
+| Input                          | Event          | Propagation |
+| ------------------------------ | -------------- | ----------- |
+| `mainThreadBindtap`            | tap            | Propagates  |
+| `mainThreadCatchtap`           | tap            | Stops       |
+| `mainThreadBindtouchstart`     | touchstart     | Propagates  |
+| `mainThreadCatchtouchstart`    | touchstart     | Stops       |
+| `mainThreadBindtouchmove`      | touchmove      | Propagates  |
+| `mainThreadCatchtouchmove`     | touchmove      | Stops       |
+| `mainThreadBindtouchend`       | touchend       | Propagates  |
+| `mainThreadCatchtouchend`      | touchend       | Stops       |
+| `mainThreadBindlongpress`      | longpress      | Propagates  |
+| `mainThreadCatchlongpress`     | longpress      | Stops       |
+| `mainThreadBindscroll`         | scroll         | Propagates  |
+| `mainThreadCatchscroll`        | scroll         | Stops       |
+| `mainThreadBindanimationstart` | animationstart | Propagates  |
+| `mainThreadBindanimationend`   | animationend   | Propagates  |
+| `mainThreadBindtransitionend`  | transitionend  | Propagates  |
+| `mainThreadBindlayoutchange`   | layoutchange   | Propagates  |
+
+## Usage
+
+```angular-html
+<view
+  [mainThreadBindtap]="handleTap"
+  [mainThreadBindtouchmove]="handleMove"
+  [mainThreadCatchtouchend]="handleEnd"
+>
+  <text>Interactive area</text>
+</view>
+```
+
+The directive registers the worklet with the native element via `__AddEvent`. When the native event fires, the function executes immediately on the main thread — no message passing involved.

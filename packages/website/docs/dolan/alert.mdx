@@ -1,0 +1,55 @@
+# Alert
+
+Displays a callout message to draw attention to important information, warnings, or errors.
+
+<Go example="ui-alert" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add alert
+```
+
+```typescript
+import { UiAlert } from '@/components/ui/alert';
+```
+
+## Usage
+
+```angular-html
+<ui-alert
+  title="Heads up!"
+  description="You can add components to your app using the CLI."
+/>
+```
+
+### Destructive
+
+```angular-html
+<ui-alert
+  variant="destructive"
+  title="Error"
+  description="Your session has expired. Please log in again."
+/>
+```
+
+### With Content Projection
+
+```angular-html
+<ui-alert title="Update available">
+  <text class="text-sm text-muted-foreground mt-2">
+    A new version of the app is ready. Restart to apply changes.
+  </text>
+</ui-alert>
+```
+
+## API
+
+### UiAlert
+
+| Input         | Type                         | Default     | Description                                  |
+| ------------- | ---------------------------- | ----------- | -------------------------------------------- |
+| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style of the alert                    |
+| `title`       | `string`                     | `''`        | Title text displayed at the top of the alert |
+| `description` | `string`                     | `''`        | Description text displayed below the title   |
+| `class`       | `string`                     | `''`        | Additional CSS classes to apply              |

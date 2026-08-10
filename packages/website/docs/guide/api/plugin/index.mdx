@@ -1,0 +1,48 @@
+# @blotch/rsbuild-plugin-angular-lynx
+
+Rsbuild plugin that compiles Angular for the Lynx runtime.
+
+```typescript title="lynx.config.ts"
+import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
+import { defineConfig } from '@lynx-js/rspeedy';
+
+export default defineConfig({
+  source: { entry: './src/main.ts' },
+  plugins: [
+    pluginAngularLynx({
+      enableSSR: true, // Enable snapshot SSR
+      enableNewGesture: true, // Enable new gesture system
+    }),
+  ],
+});
+```
+
+## Plugin
+
+| Export              | Kind     | Description                                                                                                      |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `pluginAngularLynx` | Function | Creates the Rsbuild plugin for building AngularLynx apps. Accepts an optional `PluginAngularLynxOptions` object. |
+
+## PluginAngularLynxOptions
+
+All options are optional. Default values are shown below.
+
+| Property                        | Type       | Default      | Description                                                                                   |
+| ------------------------------- | ---------- | ------------ | --------------------------------------------------------------------------------------------- |
+| `enableCSSSelector`             | `boolean`  | `true`       | Enable CSS selector support in the Lynx engine.                                               |
+| `enableA11y`                    | `boolean`  | `true`       | Enable accessibility features.                                                                |
+| `enableParallelElement`         | `boolean`  | `true`       | Enable parallel element processing.                                                           |
+| `defaultDisplayLinear`          | `boolean`  | `true`       | Use linear layout as the default display mode.                                                |
+| `defaultOverflowVisible`        | `boolean`  | `true`       | Set default overflow to visible.                                                              |
+| `debugInfoOutside`              | `boolean`  | `true`       | Output debug info outside the bundle.                                                         |
+| `enableCSSInheritance`          | `boolean`  | `false`      | Enable CSS property inheritance.                                                              |
+| `enableCSSInvalidation`         | `boolean`  | `false`      | Enable CSS invalidation tracking.                                                             |
+| `enableAccessibilityElement`    | `boolean`  | `false`      | Enable accessibility element support.                                                         |
+| `enableICU`                     | `boolean`  | `false`      | Enable ICU (International Components for Unicode) support.                                    |
+| `enableNewGesture`              | `boolean`  | `false`      | Enable the new gesture recognition system.                                                    |
+| `enableRemoveCSSScope`          | `boolean`  | `false`      | Remove CSS scoping.                                                                           |
+| `removeDescendantSelectorScope` | `boolean`  | `false`      | Remove descendant selector scoping.                                                           |
+| `targetSdkVersion`              | `string`   | `"3.2"`      | Target Lynx SDK version.                                                                      |
+| `pipelineSchedulerConfig`       | `number`   | `0x00010000` | Pipeline scheduler configuration flags.                                                       |
+| `customCSSInheritanceList`      | `string[]` | `undefined`  | Custom list of CSS properties to inherit. Only applies when `enableCSSInheritance` is `true`. |
+| `experimental_isLazyBundle`     | `boolean`  | `false`      | Mark this bundle as a lazy-loaded bundle.                                                     |

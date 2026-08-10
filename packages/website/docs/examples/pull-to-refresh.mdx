@@ -1,0 +1,133 @@
+# Pull to Refresh
+
+A scrollable feed with pull-to-refresh using the `<refresh>` and `<refresh-header>` elements.
+
+<Go example="element-refresh" defaultFile="src/app/app.ts" />
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+interface FeedItem {
+  id: number;
+  title: string;
+  time: string;
+}
+
+@Component({
+  selector: 'app-pull-to-refresh',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="container">
+      <text class="title">Feed</text>
+
+      <refresh
+        class="feed"
+        enable-refresh="true"
+        (bindrefreshstatechange)="onRefreshState($event)"
+      >
+        <refresh-header class="refresh-header">
+          <text class="refresh-text">{{ refreshLabel() }}</text>
+        </refresh-header>
+
+        <scroll-view scroll-orientation="vertical" class="scroll">
+          @for (item of items(); track item.id) {
+            <view class="card">
+              <text class="card-title">{{ item.title }}</text>
+              <text class="card-time">{{ item.time }}</text>
+            </view>
+          }
+        </scroll-view>
+      </refresh>
+    </view>
+  `,
+  styles: `
+    .container {
+      height: 100vh;
+      background-color: #f7fafc;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      padding: 24px 16px 12px;
+    }
+    .feed {
+      flex: 1;
+    }
+    .refresh-header {
+      height: 60px;
+      align-items: center;
+      justify-content: center;
+    }
+    .refresh-text {
+      font-size: 14px;
+      color: #718096;
+    }
+    .scroll {
+      flex: 1;
+      padding: 0 16px;
+    }
+    .card {
+      background-color: white;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2d3748;
+    }
+    .card-time {
+      font-size: 13px;
+      color: #a0aec0;
+      margin-top: 4px;
+    }
+  `,
+})
+export class PullToRefresh {
+  readonly refreshLabel = signal('Pull to refresh');
+  readonly items = signal<FeedItem[]>(this.generateItems(1));
+
+  private nextBatch = 2;
+
+  onRefreshState(event: Event): void {
+    const state = (event as any).detail?.state;
+
+    if (state === 'pulling') {
+      this.refreshLabel.set('Pull to refresh');
+    } else if (state === 'will-refresh') {
+      this.refreshLabel.set('Release to refresh');
+    } else if (state === 'refreshing') {
+      this.refreshLabel.set('Loading...');
+      this.loadMore();
+    }
+  }
+
+  private loadMore(): void {
+    setTimeout(() => {
+      const newItems = this.generateItems(this.nextBatch++);
+      this.items.update((current) => [...newItems, ...current]);
+      this.refreshLabel.set('Pull to refresh');
+    }, 1500);
+  }
+
+  private generateItems(batch: number): FeedItem[] {
+    return Array.from({ length: 5 }, (_, i) => ({
+      id: batch * 100 + i,
+      title: `Post ${batch}-${i + 1}`,
+      time: `${batch * 2} hours ago`,
+    }));
+  }
+}
+```
+
+## Key concepts
+
+- **`<refresh>`** — Wraps scrollable content and enables the pull-to-refresh gesture
+- **`<refresh-header>`** — Shown while pulling; update its content based on refresh state
+- **`enable-refresh="true"`** — Activates the pull gesture
+- **`(bindrefreshstatechange)`** — Fires with state transitions: `pulling` → `will-refresh` → `refreshing` → `idle`
+- Call `finishRefresh()` via SelectorQuery when using the native API, or simply update state and the component re-renders

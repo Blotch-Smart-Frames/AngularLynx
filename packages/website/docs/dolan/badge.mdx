@@ -1,0 +1,39 @@
+# Badge
+
+A small status descriptor for UI elements, useful for labels, counts, and categories.
+
+<Go example="ui-badge" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add badge
+```
+
+```typescript
+import { UiBadge } from '@/components/ui/badge';
+```
+
+## Usage
+
+### Default
+
+```angular-html
+<ui-badge>New</ui-badge>
+```
+
+### Variants
+
+```angular-html
+<ui-badge variant="default">Default</ui-badge>
+<ui-badge variant="secondary">Secondary</ui-badge>
+<ui-badge variant="destructive">Destructive</ui-badge>
+<ui-badge variant="outline">Outline</ui-badge>
+```
+
+## API
+
+| Input     | Type                                                     | Default     | Description            |
+| --------- | -------------------------------------------------------- | ----------- | ---------------------- |
+| `variant` | `'default' \| 'secondary' \| 'destructive' \| 'outline'` | `'default'` | Visual style variant   |
+| `class`   | `string`                                                 | `''`        | Additional CSS classes |

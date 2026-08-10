@@ -1,0 +1,40 @@
+# Label
+
+A text label for form fields, rendered as a Lynx `<text>` element with support for disabled state styling and content projection.
+
+<Go example="ui-label" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add label
+```
+
+```typescript
+import { UiLabel } from '@/components/ui/label';
+```
+
+## Usage
+
+```angular-html
+<ui-label>Email Address</ui-label>
+```
+
+### Disabled
+
+```angular-html
+<ui-label [disabled]="true">Account ID (read-only)</ui-label>
+```
+
+### With custom class
+
+```angular-html
+<ui-label class="text-base">Full Name</ui-label>
+```
+
+## API
+
+| Input      | Type      | Default | Description                          |
+| ---------- | --------- | ------- | ------------------------------------ |
+| `disabled` | `boolean` | `false` | Applies reduced opacity styling      |
+| `class`    | `string`  | `''`    | Additional CSS classes for the label |

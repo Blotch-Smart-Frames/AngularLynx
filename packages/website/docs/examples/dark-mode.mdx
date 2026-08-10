@@ -1,0 +1,146 @@
+# Dark Mode
+
+Reactive theme switching using `LynxTheme` with CSS variable theming.
+
+```typescript
+import { Component, computed, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-dark-mode',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      class="container"
+      [style.background-color]="isDark() ? '#1a202c' : '#f7fafc'"
+    >
+      <text class="title" [style.color]="isDark() ? '#f7fafc' : '#1a202c'">
+        {{ isDark() ? '🌙 Dark Mode' : '☀️ Light Mode' }}
+      </text>
+
+      <text class="subtitle" [style.color]="isDark() ? '#a0aec0' : '#718096'">
+        Current theme: {{ theme() }}
+      </text>
+
+      <!-- Theme-aware cards -->
+      @for (card of cards; track card.title) {
+        <view
+          class="card"
+          [style.background-color]="isDark() ? '#2d3748' : 'white'"
+        >
+          <text
+            class="card-title"
+            [style.color]="isDark() ? '#e2e8f0' : '#2d3748'"
+          >
+            {{ card.title }}
+          </text>
+          <text
+            class="card-body"
+            [style.color]="isDark() ? '#a0aec0' : '#718096'"
+          >
+            {{ card.body }}
+          </text>
+        </view>
+      }
+
+      <!-- Status bar -->
+      <view
+        class="status-bar"
+        [style.background-color]="isDark() ? '#2d3748' : '#edf2f7'"
+      >
+        <view class="status-dot" [class.status-dot-dark]="isDark()" />
+        <text
+          class="status-text"
+          [style.color]="isDark() ? '#a0aec0' : '#718096'"
+        >
+          Theme updates automatically when the system theme changes
+        </text>
+      </view>
+    </view>
+  `,
+  styles: `
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 24px 16px;
+      transition: background-color 0.3s ease;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: background-color 0.3s ease;
+    }
+    .card-title {
+      font-size: 17px;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .card-body {
+      font-size: 14px;
+      line-height: 20px;
+    }
+    .status-bar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: auto;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 4px;
+      background-color: #38a169;
+      margin-right: 8px;
+    }
+    .status-dot-dark {
+      background-color: #68d391;
+    }
+    .status-text {
+      font-size: 13px;
+      flex: 1;
+    }
+  `,
+})
+export class DarkMode {
+  private readonly themeService = inject(LynxTheme);
+
+  readonly theme = this.themeService.theme;
+  readonly isDark = this.themeService.isDarkMode;
+
+  readonly cards = [
+    {
+      title: 'Reactive Theming',
+      body: 'LynxTheme exposes a signal that updates when the system theme changes.',
+    },
+    {
+      title: 'No Manual Polling',
+      body: 'The service listens to lynx.__globalProps.theme — changes propagate automatically.',
+    },
+    {
+      title: 'CSS Variables',
+      body: 'For large apps, define CSS custom properties per theme and swap them with a class.',
+    },
+  ];
+}
+```
+
+## Key concepts
+
+- **`LynxTheme`** — Injectable service that provides reactive `theme()` (`'Dark'` | `'Light'`) and `isDarkMode()` signals
+- **Automatic updates** — The service reads from `lynx.__globalProps.theme` and updates when the system theme changes
+- **Inline style binding** — Use `[style.property]` with ternary expressions for per-element theming
+- **CSS variable approach** — For larger apps, define `--bg`, `--text`, etc. as custom properties and swap a root class instead

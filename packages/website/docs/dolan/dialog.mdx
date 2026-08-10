@@ -1,0 +1,101 @@
+# Dialog
+
+A modal overlay that appears centered on screen with a backdrop. Tapping the backdrop dismisses the dialog. For dialogs that require explicit user action, use [Alert Dialog](/dolan/alert-dialog) instead.
+
+<Go example="ui-dialog" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add dialog
+```
+
+```typescript
+import {
+  UiDialog,
+  UiDialogHeader,
+  UiDialogTitle,
+  UiDialogDescription,
+  UiDialogFooter,
+} from '@/components/ui/dialog';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import {
+  UiDialog,
+  UiDialogHeader,
+  UiDialogTitle,
+  UiDialogDescription,
+  UiDialogFooter,
+} from '@/components/ui/dialog';
+import { UiButton } from '@/components/ui/button';
+
+@Component({
+  imports: [
+    UiDialog,
+    UiDialogHeader,
+    UiDialogTitle,
+    UiDialogDescription,
+    UiDialogFooter,
+    UiButton,
+  ],
+  template: `
+    <ui-button (pressed)="open.set(true)">Edit Profile</ui-button>
+
+    <ui-dialog [(open)]="open">
+      <ui-dialog-header>
+        <ui-dialog-title>Edit Profile</ui-dialog-title>
+        <ui-dialog-description>
+          Make changes to your profile here.
+        </ui-dialog-description>
+      </ui-dialog-header>
+      <ui-dialog-footer>
+        <ui-button variant="outline" (pressed)="open.set(false)">
+          Cancel
+        </ui-button>
+        <ui-button (pressed)="open.set(false)">Save</ui-button>
+      </ui-dialog-footer>
+    </ui-dialog>
+  `,
+})
+export class Example {
+  open = signal(false);
+}
+```
+
+## API
+
+### UiDialog
+
+| Input / Output | Type             | Default | Description                                 |
+| -------------- | ---------------- | ------- | ------------------------------------------- |
+| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility    |
+| `class`        | `string`         | `''`    | Additional CSS classes for the dialog panel |
+| `closed`       | `output<void>`   | --      | Emitted after the close animation completes |
+
+### UiDialogHeader
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiDialogTitle
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiDialogDescription
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiDialogFooter
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |

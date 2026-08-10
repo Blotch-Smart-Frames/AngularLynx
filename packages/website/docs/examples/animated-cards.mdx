@@ -1,0 +1,225 @@
+# Animated Cards
+
+Three animation techniques — CSS transitions, `@keyframes`, and the JS `animate()` API.
+
+```typescript
+import { Component, signal, viewChild, type ElementRef } from '@angular/core';
+import { LYNX_ELEMENTS, type LynxAnimation } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-animated-cards',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view class="container" scroll-orientation="vertical">
+      <text class="title">Animations</text>
+
+      <!-- CSS Transition -->
+      <text class="section">CSS Transition</text>
+      <view
+        class="card"
+        [class.card-expanded]="expanded()"
+        (bindtap)="expanded.update((v) => !v)"
+      >
+        <text class="card-text">
+          {{ expanded() ? 'Tap to shrink' : 'Tap to expand' }}
+        </text>
+      </view>
+
+      <!-- CSS Keyframes -->
+      <text class="section">CSS @keyframes</text>
+      <view class="row">
+        <view
+          class="dot"
+          [class.dot-bounce]="bouncing()"
+          (bindtap)="bouncing.update((v) => !v)"
+        />
+        <view
+          class="dot dot-blue"
+          [class.dot-spin]="spinning()"
+          (bindtap)="spinning.update((v) => !v)"
+        />
+        <view
+          class="dot dot-green"
+          [class.dot-pulse]="pulsing()"
+          (bindtap)="pulsing.update((v) => !v)"
+        />
+      </view>
+      <text class="hint">Tap each dot to toggle its animation</text>
+
+      <!-- JS Animate API -->
+      <text class="section">JS animate() API</text>
+      <view #animBox class="card card-blue" (bindtap)="runShake()">
+        <text class="card-text-light">Tap to shake</text>
+      </view>
+
+      <view class="card card-green" (bindtap)="runFadeSequence()">
+        <text class="card-text-light">
+          {{ animating() ? 'Animating...' : 'Tap for fade sequence' }}
+        </text>
+      </view>
+    </scroll-view>
+  `,
+  styles: `
+    .container {
+      height: 100vh;
+      padding: 24px 16px;
+      background-color: #f7fafc;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      margin-bottom: 8px;
+    }
+    .section {
+      font-size: 18px;
+      font-weight: bold;
+      color: #2d3748;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    .hint {
+      font-size: 13px;
+      color: #a0aec0;
+      margin-top: 8px;
+    }
+
+    /* CSS Transition card */
+    .card {
+      background-color: #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      align-items: center;
+      transition:
+        background-color 0.4s ease,
+        padding 0.4s ease;
+      margin-bottom: 8px;
+    }
+    .card-expanded {
+      background-color: #4299e1;
+      padding: 48px 24px;
+    }
+    .card-text {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2d3748;
+    }
+
+    /* Keyframe dots */
+    .row {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      gap: 24px;
+      padding: 16px;
+    }
+    .dot {
+      width: 50px;
+      height: 50px;
+      border-radius: 25px;
+      background-color: #e53e3e;
+    }
+    .dot-blue {
+      background-color: #4299e1;
+    }
+    .dot-green {
+      background-color: #38a169;
+    }
+
+    .dot-bounce {
+      animation: bounce 0.6s ease infinite alternate;
+    }
+    .dot-spin {
+      animation: spin 1s linear infinite;
+    }
+    .dot-pulse {
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      from {
+        transform: translateY(0);
+      }
+      to {
+        transform: translateY(-30px);
+      }
+    }
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    @keyframes pulse {
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(0.6);
+        opacity: 0.4;
+      }
+    }
+
+    /* JS animate cards */
+    .card-blue {
+      background-color: #4299e1;
+    }
+    .card-green {
+      background-color: #38a169;
+    }
+    .card-text-light {
+      font-size: 16px;
+      font-weight: bold;
+      color: white;
+    }
+  `,
+})
+export class AnimatedCards {
+  readonly expanded = signal(false);
+  readonly bouncing = signal(false);
+  readonly spinning = signal(false);
+  readonly pulsing = signal(false);
+  readonly animating = signal(false);
+
+  readonly animBoxRef = viewChild<ElementRef>('animBox');
+
+  private currentAnim: LynxAnimation | null = null;
+
+  runShake(): void {
+    const el = this.animBoxRef();
+    if (!el) return;
+
+    this.currentAnim?.cancel();
+    this.currentAnim = el.nativeElement.animate(
+      [
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-10px)' },
+        { transform: 'translateX(10px)' },
+        { transform: 'translateX(-10px)' },
+        { transform: 'translateX(0)' },
+      ],
+      { duration: 400, easing: 'ease-in-out' },
+    );
+  }
+
+  runFadeSequence(): void {
+    if (this.animating()) return;
+    this.animating.set(true);
+
+    setTimeout(() => this.animating.set(false), 1200);
+  }
+}
+```
+
+## Key concepts
+
+- **CSS transitions** — Add `transition` to a class and toggle another class to animate between states
+- **CSS `@keyframes`** — Define named animations and apply them with the `animation` property
+- **`element.animate()`** — Programmatic keyframe animations via the JS API; returns a `LynxAnimation` handle for `pause()` / `cancel()`
+- **`viewChild()`** — Access the native element ref to call `animate()` on it
+- Always cancel previous animations before starting new ones to prevent stacking

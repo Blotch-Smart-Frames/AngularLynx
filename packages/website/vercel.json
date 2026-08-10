@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm run build:ci",
+  "outputDirectory": "doc_build",
+  "cleanUrls": true
+}

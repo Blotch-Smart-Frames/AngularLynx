@@ -1,0 +1,12 @@
+# FAQ / Help Center
+
+A searchable FAQ page with accordion sections grouped by category, collapsible headers, and a "Contact Support" dialog.
+
+<Go example="faq-help-center" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Accordion for Q&A pairs** — Each FAQ item uses `UiAccordion` in single mode so only one answer is expanded at a time
+- **Collapsible for category groups** — `UiCollapsible` wraps each category section, letting users collapse entire groups they don't need
+- **Search filtering** — The input filters FAQ items in real-time by matching against both questions and answers
+- **Dialog for contact form** — The "Contact Support" button opens a `UiDialog` with subject and message fields for submitting a help request

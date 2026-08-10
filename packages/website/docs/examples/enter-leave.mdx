@@ -1,0 +1,231 @@
+# Enter/Leave Transitions
+
+Animate elements as they mount and unmount using the `LynxTransition` component.
+
+```typescript
+import { Component, signal } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxTransition,
+  LynxTransitionGroup,
+} from '@blotch/angular-lynx';
+
+interface Notification {
+  id: number;
+  text: string;
+  type: 'success' | 'error' | 'info';
+}
+
+@Component({
+  selector: 'app-enter-leave',
+  standalone: true,
+  imports: [LYNX_ELEMENTS, LynxTransition, LynxTransitionGroup],
+  template: `
+    <view class="container">
+      <text class="title">Notifications</text>
+
+      <!-- Single element transition -->
+      <view class="button-row">
+        <view class="button" (bindtap)="toggleBanner()">
+          <text class="button-text">
+            {{ showBanner() ? 'Hide' : 'Show' }} Banner
+          </text>
+        </view>
+        <view class="button button-add" (bindtap)="addNotification()">
+          <text class="button-text">Add Toast</text>
+        </view>
+      </view>
+
+      <!-- Single transition -->
+      <lynx-transition
+        enter-class="banner-enter"
+        enter-active-class="banner-enter-active"
+        leave-class="banner-leave-active"
+        leave-active-class="banner-leave-active"
+        [duration]="300"
+      >
+        @if (showBanner()) {
+          <view class="banner">
+            <text class="banner-text"> Welcome to AngularLynx! </text>
+          </view>
+        }
+      </lynx-transition>
+
+      <!-- Transition group (list of notifications) -->
+      <lynx-transition-group
+        enter-class="toast-enter"
+        enter-active-class="toast-enter-active"
+        leave-class="toast-leave-active"
+        leave-active-class="toast-leave-active"
+        [duration]="400"
+      >
+        @for (n of notifications(); track n.id) {
+          <view
+            class="toast"
+            [class.toast-success]="n.type === 'success'"
+            [class.toast-error]="n.type === 'error'"
+            [class.toast-info]="n.type === 'info'"
+            (bindtap)="dismiss(n.id)"
+          >
+            <text class="toast-text">{{ n.text }}</text>
+            <text class="toast-dismiss">✕</text>
+          </view>
+        }
+      </lynx-transition-group>
+    </view>
+  `,
+  styles: `
+    .container {
+      height: 100vh;
+      padding: 24px 16px;
+      background-color: #f7fafc;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      margin-bottom: 16px;
+    }
+    .button-row {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .button {
+      background-color: #4299e1;
+      border-radius: 8px;
+      padding: 12px 20px;
+    }
+    .button-add {
+      background-color: #38a169;
+    }
+    .button-text {
+      color: white;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    /* Banner */
+    .banner {
+      background-color: #ebf8ff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .banner-text {
+      font-size: 16px;
+      color: #2b6cb0;
+      font-weight: bold;
+    }
+    .banner-enter {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    .banner-enter-active {
+      transition:
+        opacity 0.3s ease,
+        transform 0.3s ease;
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .banner-leave-active {
+      transition:
+        opacity 0.3s ease,
+        transform 0.3s ease;
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+
+    /* Toast notifications */
+    .toast {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      background-color: #edf2f7;
+    }
+    .toast-success {
+      background-color: #c6f6d5;
+    }
+    .toast-error {
+      background-color: #fed7d7;
+    }
+    .toast-info {
+      background-color: #bee3f8;
+    }
+    .toast-text {
+      flex: 1;
+      font-size: 15px;
+      color: #2d3748;
+    }
+    .toast-dismiss {
+      font-size: 16px;
+      color: #718096;
+      margin-left: 12px;
+    }
+    .toast-enter {
+      opacity: 0;
+      transform: translateX(50px);
+    }
+    .toast-enter-active {
+      transition:
+        opacity 0.4s ease,
+        transform 0.4s ease;
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .toast-leave-active {
+      transition:
+        opacity 0.4s ease,
+        transform 0.4s ease;
+      opacity: 0;
+      transform: translateX(-50px);
+    }
+  `,
+})
+export class EnterLeave {
+  readonly showBanner = signal(true);
+  readonly notifications = signal<Notification[]>([]);
+  private nextId = 1;
+
+  toggleBanner(): void {
+    this.showBanner.update((v) => !v);
+  }
+
+  addNotification(): void {
+    const types: Notification['type'][] = ['success', 'error', 'info'];
+    const messages = [
+      'File saved successfully',
+      'Network error occurred',
+      'New update available',
+      'Task completed',
+      'Permission denied',
+    ];
+    const id = this.nextId++;
+    this.notifications.update((list) => [
+      ...list,
+      {
+        id,
+        text: messages[id % messages.length],
+        type: types[id % types.length],
+      },
+    ]);
+  }
+
+  dismiss(id: number): void {
+    this.notifications.update((list) => list.filter((n) => n.id !== id));
+  }
+}
+```
+
+## Key concepts
+
+- **`<lynx-transition>`** — Animates a single element's enter/leave lifecycle via CSS classes
+- **`<lynx-transition-group>`** — Animates a list of elements; each item gets enter/leave classes independently
+- **`enter-class`** — Applied on the first frame when the element mounts (set the "from" state)
+- **`enter-active-class`** — Applied on the next frame (set the "to" state + CSS `transition`)
+- **`leave-active-class`** — Applied when the element unmounts (set the exit state + CSS `transition`)
+- **`[duration]`** — How long to keep the leaving element in the DOM before removal (match your CSS transition duration)

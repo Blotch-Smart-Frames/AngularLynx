@@ -1,0 +1,29 @@
+# Routing
+
+| Export                   | Kind     | Description                                                                                                 |
+| ------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `provideRouter`          | Function | Provides Angular Router configured for Lynx — in-memory routing, route reuse, and crash-safe navigation.    |
+| `LynxLocationStrategy`   | Class    | In-memory `LocationStrategy`. Lynx has no URL bar or History API, so URL state is tracked in memory.        |
+| `LynxPlatformLocation`   | Class    | In-memory `PlatformLocation`. Replaces Angular's `BrowserPlatformLocation` (requires `window.location`).    |
+| `LynxRouteReuseStrategy` | Class    | Detaches route components instead of destroying them. Prevents element pool exhaustion (~256 native slots). |
+
+## Usage
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideRouter(routes),
+  ],
+};
+```
+
+See the [Routing guide](/guide/routing) for full usage, lazy loading, and navigation patterns.

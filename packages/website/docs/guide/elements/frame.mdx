@@ -1,0 +1,32 @@
+# &lt;frame&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Embeds another Lynx page via a bundle URL. Similar to `<iframe>` in HTML — the embedded page runs in its own isolated context.
+
+```angular-html
+<frame
+  src="https://example.com/page.lynx.bundle"
+  style="width: 100%; height: 200px;"
+  (bindload)="onFrameLoad($event)"
+></frame>
+```
+
+## Key Attributes
+
+| Attribute | Type     | Description                                |
+| --------- | -------- | ------------------------------------------ |
+| `src`     | `string` | URL of the Lynx bundle to embed (required) |
+
+## Events
+
+| Event       | Description                                     |
+| ----------- | ----------------------------------------------- |
+| `bindload`  | Fires when the embedded bundle finishes loading |
+| `binderror` | Fires when the bundle fails to load             |
+
+:::info
+The embedded page has its own Angular application and element pool, completely isolated from the host. Communication between host and frame uses Lynx's native messaging APIs.
+:::

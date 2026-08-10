@@ -1,0 +1,120 @@
+/*
+ * This file owns only what Tailwind + dolan components can't express: the CSS
+ * `transition` declaration for the switch and the looping `@keyframes` presets.
+ * Every layout and color choice lives in the template via Tailwind classes.
+ *
+ * Colors reference the theme's CSS custom properties directly (e.g.
+ * `var(--primary)`). The @blotch/ui theme stores each token as a complete
+ * `rgba()` value, so these stay dark-mode aware without any per-mode CSS here.
+ */
+
+/* ── CSS Transition: an iOS-style toggle switch ──────────────────────────────
+   The track eases its background-color and the knob eases its translateX; both
+   animate purely because the class flip changes properties that carry a
+   `transition`. Native colors would swap instantly without these declarations. */
+.motion-track {
+  width: 84px;
+  height: 44px;
+  padding: 4px;
+  border-radius: 9999px;
+  background-color: var(--muted);
+  transition: background-color 0.35s ease;
+}
+.motion-track.is-on {
+  background-color: var(--primary);
+}
+
+.motion-knob {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  /* `--background` is white in light mode and near-black in dark mode — the
+     inverse of `--primary`, so the knob always contrasts the on-state track. */
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  /* Spring easing gives the knob a subtle overshoot as it slides across. */
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.motion-knob.is-on {
+  transform: translateX(40px);
+}
+
+/* ── Keyframe presets ────────────────────────────────────────────────────────
+   Names are prefixed `mo-` to avoid colliding with keyframes defined in other
+   demos' global stylesheets. Each `.anim-<name>` matches a tile's `name`. */
+
+@keyframes mo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.anim-spin {
+  animation: mo-spin 1.6s linear infinite;
+}
+
+@keyframes mo-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.6;
+  }
+}
+.anim-pulse {
+  animation: mo-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mo-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.anim-bounce {
+  animation: mo-bounce 0.9s ease-in-out infinite;
+}
+
+@keyframes mo-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+.anim-shake {
+  animation: mo-shake 0.6s ease-in-out infinite;
+}
+
+/* ── Overlay initial state ────────────────────────────────────────────────────
+   The backdrop and dialog start hidden so they don't flash on-screen in the
+   frame between the overlay mounting and #animateOverlayIn() running. The JS
+   animate() call then interpolates from these values to their visible state
+   (fill: 'forwards' holds the end state). Everything else — colors, layout,
+   radius — lives in the template as theme-aware Tailwind classes. */
+.overlay-backdrop {
+  opacity: 0;
+}
+.overlay-dialog {
+  opacity: 0;
+  transform: scale(0.85) translateY(20px);
+}

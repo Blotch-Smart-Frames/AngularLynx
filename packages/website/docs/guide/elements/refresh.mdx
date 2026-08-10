@@ -1,0 +1,47 @@
+# &lt;refresh&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+A pull-to-refresh container that reveals a customizable header during a downward swipe gesture. It accepts up to two direct children: a `<refresh-header>` and a `<view>` with vertically scrollable content.
+
+<Go example="element-refresh" defaultFile="src/app/app.ts" />
+
+```angular-html
+<refresh (bindstartrefresh)="onRefresh($event)">
+  <refresh-header>
+    <view style="height: 60px; align-items: center; justify-content: center;">
+      <text>{{ refreshing() ? 'Refreshing...' : 'Pull to refresh' }}</text>
+    </view>
+  </refresh-header>
+  <scroll-view scroll-orientation="vertical" style="height: 100vh;">
+    @for (item of items(); track item.id) {
+      <view style="padding: 16px; border-bottom: 1px solid #eee;">
+        <text>{{ item.name }}</text>
+      </view>
+    }
+  </scroll-view>
+</refresh>
+```
+
+## Attributes
+
+- `enable-refresh` — (boolean, default `true`) Whether dragging down or calling `autoStartRefresh` can trigger the `bindstartrefresh` event.
+
+## Events
+
+- `(bindheaderoffset)` — Fired during pull-down movement. Detail: `{ isDragging: boolean, offsetPercent: number }`
+- `(bindrefreshstatechange)` — Fired when `<refresh-header>` state changes. Detail: `{ state: RefreshState }`
+- `(bindstartrefresh)` — Fired when refresh is triggered. Detail: `{ isManual: boolean }`
+
+## Methods
+
+These are invoked via the [SelectorQuery](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html) API, not through Angular:
+
+- `autoStartRefresh()` — Programmatically trigger a refresh, exposing the full header
+- `finishRefresh()` — End the refresh state and retract the header
+
+## Children
+
+**`<refresh-header>`** — The header view revealed during the pull gesture. Must be a direct child of `<refresh>`. Its height determines the pull distance threshold.

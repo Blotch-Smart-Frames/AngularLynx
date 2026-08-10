@@ -1,0 +1,170 @@
+# Testing Patterns
+
+Common patterns for testing AngularLynx components with `@blotch/angular-lynx-testing-library`.
+
+## Reactive Updates with Signals
+
+After changing a signal outside an event handler, call `waitForUpdate()` to flush change detection:
+
+```ts
+import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+
+it('reflects signal changes in the DOM', async () => {
+  const label = signal('initial');
+
+  @Component({
+    selector: 'test-label',
+    template: `<text>{{ label() }}</text>`,
+    changeDetection: ChangeDetectionStrategy.OnPush,
+  })
+  class Label {
+    label = label;
+  }
+
+  const { container } = await render(Label);
+  expect(container.querySelector('text')!.textContent).toBe('initial');
+
+  label.set('updated');
+  await waitForUpdate();
+
+  expect(container.querySelector('text')!.textContent).toBe('updated');
+});
+```
+
+:::tip
+`waitForUpdate()` is only needed when you change signals directly in test code. Events fired through `fireEvent` trigger change detection automatically.
+:::
+
+## Firing Events
+
+Use `fireEvent` to simulate Lynx user interactions:
+
+```ts
+import {
+  render,
+  fireEvent,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+it('increments count on tap', async () => {
+  @Component({
+    selector: 'test-counter',
+    template: `<view (bindtap)="increment()"
+      ><text>{{ count() }}</text></view
+    >`,
+    changeDetection: ChangeDetectionStrategy.OnPush,
+  })
+  class Counter {
+    count = signal(0);
+    increment() {
+      this.count.update((n) => n + 1);
+    }
+  }
+
+  const { container } = await render(Counter);
+  fireEvent.tap(container.querySelector('view')!);
+  await waitForUpdate();
+  expect(container.querySelector('text')!.textContent).toBe('1');
+});
+```
+
+Pass custom properties in the second argument:
+
+```ts
+fireEvent.input(element, { value: 'hello' });
+// handler receives event.value === 'hello'
+```
+
+See [Event Reference](./event-reference) for all supported events.
+
+## Snapshot Testing
+
+`asFragment()` captures the Lynx element tree as a `DocumentFragment`:
+
+```ts
+const { asFragment } = await render(Example);
+expect(asFragment()).toMatchSnapshot();
+```
+
+Capture before and after states:
+
+```ts
+label.set('before');
+expect(asFragment().querySelector('text')!.textContent).toBe('before');
+
+label.set('after');
+await waitForUpdate();
+expect(asFragment().querySelector('text')!.textContent).toBe('after');
+```
+
+## Accessing the Component
+
+`componentRef` gives direct access to the Angular `ComponentRef`:
+
+```ts
+// Read an injected service
+const service = componentRef.injector.get(MyService);
+
+// Mutate signal state
+(componentRef.instance as Example).label.set('updated');
+await waitForUpdate();
+```
+
+:::note
+`componentRef.setInput()` does not work in the Vitest JIT environment. Use writable `signal()` fields on the component instance instead.
+:::
+
+## Control Flow
+
+`@if` and `@for` work exactly as in a real app:
+
+```ts
+it('conditionally renders content', async () => {
+  const show = signal(true);
+
+  @Component({
+    selector: 'test-cond',
+    template: `@if (show()) {
+      <text>Visible</text>
+    }`,
+    changeDetection: ChangeDetectionStrategy.OnPush,
+  })
+  class ConditionalView {
+    show = show;
+  }
+
+  const { container } = await render(ConditionalView);
+  expect(container.querySelector('text')).toBeTruthy();
+
+  show.set(false);
+  await waitForUpdate();
+  expect(container.querySelector('text')).toBeNull();
+});
+```
+
+## Custom Queries
+
+Pass a `queries` map to add query helpers alongside the standard `@testing-library/dom` queries:
+
+```ts
+const queryByLynxTag = (container: HTMLElement, tag: string) =>
+  container.querySelector(tag);
+
+const result = await render(Example, {
+  queries: { queryByLynxTag },
+});
+expect(result.queryByLynxTag('view')).not.toBeNull();
+// Standard queries still work:
+expect(result.getByText('Hello')).not.toBeNull();
+```
+
+## Cleanup
+
+The library auto-calls `cleanup()` after each test. To opt out, set `ATL_SKIP_AUTO_CLEANUP=true` and call `cleanup()` manually.
+
+You can also use `unmount()`:
+
+```ts
+const { unmount } = await render(Example);
+unmount();
+```

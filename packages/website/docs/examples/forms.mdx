@@ -1,0 +1,13 @@
+# Forms
+
+Build a reactive contact form with validation using Angular's `ReactiveFormsModule` on Lynx.
+
+<Go example="forms" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`ReactiveFormsModule`** — Angular's reactive forms work on Lynx with native `<input>` and `<textarea>` elements
+- **`FormGroup` / `FormControl`** — typed form controls with `nonNullable: true` for stricter null safety
+- **`Validators`** — built-in validators (`required`, `email`) drive conditional error messages via `@if` control flow
+- **`markAllAsTouched()`** — triggers validation display on submit without requiring the user to blur each field first
+- **Signal-driven submit state** — `signal(false)` tracks submission status, auto-resetting after a timeout

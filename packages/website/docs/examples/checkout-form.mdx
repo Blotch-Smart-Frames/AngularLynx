@@ -1,0 +1,12 @@
+# Checkout Form
+
+A multi-step checkout flow with shipping address, payment method selection, order summary, and a progress indicator.
+
+<Go example="checkout-form" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Multi-step wizard** — A `step()` signal controls which section is visible; `UiProgress` shows overall completion
+- **Form controls** — `UiInput` for text fields, `UiSelect` for dropdowns (country), `UiRadioGroup` for payment method, and `UiCheckbox` for terms agreement
+- **Conditional rendering** — `@if` blocks show/hide payment fields based on the selected method (card fields only appear when "Credit Card" is chosen)
+- **Order summary with Card** — The final step uses `UiCard` to present itemized totals with a separator before the grand total

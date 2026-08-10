@@ -20,6 +20,16 @@ export default defineConfig({
     __DEV__: JSON.stringify(true),
     // AngularLynx runs on the main thread in tests: LynxDocument uses PAPI.
     __MAIN_THREAD__: JSON.stringify(true),
+    // These specs alias @blotch/angular-lynx to the runtime SOURCE (see the
+    // alias below), so they load runtime.ts directly — which references the same
+    // compile-time defines the rsbuild plugin injects at build time. The bundler
+    // normally replaces them; here Vitest must, or module load throws
+    // "ReferenceError: __WEB__ is not defined". Keep this set in sync with the
+    // runtime package's own vitest.config.ts. We emulate the native main thread,
+    // so all three are false (not web, no profiling, no SSR).
+    __WEB__: JSON.stringify(false),
+    __PROFILE__: JSON.stringify(false),
+    __ENABLE_SSR__: JSON.stringify(false),
   },
   test: {
     // jsdom provides the DOM APIs Angular platform-browser expects.

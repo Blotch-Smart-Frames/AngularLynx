@@ -5,6 +5,15 @@ export default defineConfig({
   define: {
     __DEV__: JSON.stringify(true),
     __MAIN_THREAD__: JSON.stringify(true),
+    // Specs alias @blotch/angular-lynx to the runtime SOURCE (see alias below),
+    // so they load runtime.ts, which references the compile-time defines the
+    // rsbuild plugin normally injects. Vitest must define them here too or module
+    // load throws "ReferenceError: __WEB__ is not defined". Keep in sync with
+    // packages/runtime/vitest.config.ts. Tests emulate the native main thread:
+    // not web, no profiling, no SSR.
+    __WEB__: JSON.stringify(false),
+    __PROFILE__: JSON.stringify(false),
+    __ENABLE_SSR__: JSON.stringify(false),
   },
   // Vite 8 switched from esbuild to OXC as the TypeScript transformer. Angular's
   // @Component / @Directive / @Injectable decorators need the legacy decorator

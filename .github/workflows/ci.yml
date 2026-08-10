@@ -49,7 +49,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # Constrain build parallelism on the resource-limited CI runner. Every
+      # example build spins up its own Angular AOT compilation backed by a piscina
+      # worker pool; at turbo's default concurrency (10) that oversubscribes the
+      # runner's CPUs and can kill a worker mid-`initialize()`. The plugin now
+      # surfaces that failure clearly (see rsbuild-plugin-angular-lynx/src/angular.ts),
+      # but the real fix is to not starve the workers: cap turbo's concurrency and
+      # the per-build worker count. Raise these if CI machines get bigger.
+      - run: npm run build -- --concurrency=4
+        env:
+          NG_BUILD_MAX_WORKERS: 2
 
   test:
     runs-on: ubuntu-latest

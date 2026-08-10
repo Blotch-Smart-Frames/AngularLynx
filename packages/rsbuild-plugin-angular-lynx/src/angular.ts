@@ -328,7 +328,28 @@ export const applyAngularRules = async (
         //   !!initializationResult.compilerOptions.inlineSourceMap;
         // referencedFiles = initializationResult.referencedFiles;
         // externalStylesheets = initializationResult.externalStylesheets;
-      } catch {}
+      } catch (error) {
+        // Do NOT swallow initialization failures. `compilation.initialize()`
+        // drives Angular's worker pool (piscina), which can reject if a worker
+        // dies under CPU/memory pressure — a real risk in CI where many example
+        // builds run concurrently. When it was swallowed, `#state` was never set
+        // on the AotCompilation, so the later `diagnoseFiles()` call asserted
+        // "Angular compilation must be initialized prior to collecting
+        // diagnostics" — a cryptic message that hid the true cause. Re-throw with
+        // actionable context so the real failure surfaces and the misleading
+        // downstream assertion never runs (the code below depends on a
+        // successful init and is unreachable once we throw here).
+        throw new Error(
+          `Angular compilation failed to initialize for "${tsconfig}". ` +
+            `This often means a compiler worker crashed under resource pressure — ` +
+            `lower NG_BUILD_MAX_WORKERS or reduce parallel build concurrency. ` +
+            `Original error: ${
+              error instanceof Error
+                ? (error.stack ?? error.message)
+                : String(error)
+            }`,
+        );
+      }
       try {
         for (const {
           filename,
@@ -341,7 +362,20 @@ export const applyAngularRules = async (
           // dev-mode rebuilds fast.
           typeScriptFileCache.set(path.normalize(filename), contents);
         }
-      } catch {}
+      } catch (error) {
+        // Same rationale as initialize(): emitAffectedFiles also runs on the
+        // worker pool. Swallowing a failure here left typeScriptFileCache empty,
+        // so every api.transform() below threw "No compiled output found" —
+        // again hiding the real cause. Surface it instead.
+        throw new Error(
+          `Angular failed to emit compiled output for "${tsconfig}". ` +
+            `Original error: ${
+              error instanceof Error
+                ? (error.stack ?? error.message)
+                : String(error)
+            }`,
+        );
+      }
 
       reportLynxDiagnostics([
         ...scanCompiledOutputForHtmlElements(typeScriptFileCache),

@@ -185,7 +185,7 @@ The reusable base: draws gridlines and axis labels, and shares its scales with a
 | `tickCount`        | `number`                    | `5`                  | Target number of ticks when auto-generating |
 | `showGrid`         | `boolean`                   | `true`               | Draw horizontal gridlines at y ticks        |
 | `showXGrid`        | `boolean`                   | `false`              | Draw vertical gridlines at x ticks          |
-| `xAxisLabel`       | `string`                    | `''`                 | X-axis title (centered below tick labels)    |
+| `xAxisLabel`       | `string`                    | `''`                 | X-axis title (centered below tick labels)   |
 | `yAxisLabel`       | `string`                    | `''`                 | Y-axis title (rotated in the left gutter)   |
 | `padding`          | `ChartPadding`              | `{}`                 | Inner inset, each side a `0`–`1` fraction   |
 | `xTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats x-axis labels                       |
@@ -200,8 +200,8 @@ The reusable base: draws gridlines and axis labels, and shares its scales with a
 
 | Method        | Description                         |
 | ------------- | ----------------------------------- |
-| `zoomIn()`    | Zoom in one `zoomStep`, centered     |
-| `zoomOut()`   | Zoom out one `zoomStep`, centered    |
+| `zoomIn()`    | Zoom in one `zoomStep`, centered    |
+| `zoomOut()`   | Zoom out one `zoomStep`, centered   |
 | `resetZoom()` | Return to the fully zoomed-out view |
 
 `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot size; omitted sides default to `0`.

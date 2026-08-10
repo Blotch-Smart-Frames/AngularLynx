@@ -1,9 +1,17 @@
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { normalizeCacheOptions } from './normalize-cache';
 
 describe('normalizeCacheOptions', () => {
   const originalCI = process.env.CI;
+
+  // Start every test from a known state. The default cache environment is
+  // 'local', which disables the cache whenever CI is set. Without this reset,
+  // tests that assert the default enabled=true pass locally but fail in CI
+  // (GitHub Actions sets CI=true). Tests that need CI set it explicitly below.
+  beforeEach(() => {
+    delete process.env.CI;
+  });
 
   afterEach(() => {
     if (originalCI === undefined) {

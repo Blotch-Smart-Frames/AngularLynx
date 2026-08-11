@@ -43,6 +43,11 @@ jobs:
         run: NG_BUILD_MAX_WORKERS=2 npx turbo run build --filter='@angular-lynx-example/*' --concurrency=4
 
       - name: Build and deploy
+        # `vercel build` reads project settings from a local .vercel/ dir, which
+        # only exists after `vercel pull`. Pull first so ORG_ID/PROJECT_ID/TOKEN
+        # (from env) link the project non-interactively and write project.json;
+        # otherwise build fails with "No Project Settings found locally".
         run: |
-          npx vercel build --cwd packages/website --prod
-          npx vercel deploy --prebuilt --cwd packages/website --prod
+          npx vercel pull --yes --environment=production --cwd packages/website
+          npx vercel build --prod --cwd packages/website
+          npx vercel deploy --prebuilt --prod --cwd packages/website

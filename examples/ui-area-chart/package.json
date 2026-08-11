@@ -1,0 +1,34 @@
+{
+  "name": "@angular-lynx-example/ui-area-chart",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "rspeedy dev",
+    "build": "rspeedy build --environment lynx && rspeedy build --environment web",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint:fix": "oxlint --fix .",
+    "dolan:update:force": "dolan update --force"
+  },
+  "dependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@blotch/angular-lynx": "*",
+    "@blotch/dolan": "*"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^22.0.0",
+    "@angular/cli": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "@blotch/rsbuild-plugin-angular-lynx": "*",
+    "@lynx-js/rspeedy": "^0.14.3",
+    "@lynx-js/tailwind-preset": "^0.4.0",
+    "@lynx-js/types": "^3.8.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~6.0.0"
+  }
+}

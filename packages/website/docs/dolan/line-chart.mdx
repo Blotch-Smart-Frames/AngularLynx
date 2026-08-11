@@ -1,0 +1,225 @@
+# Line Chart
+
+Plot a series of points as a connected line — drawn entirely from Lynx views, with no SVG or canvas. Built on a reusable **cartesian chart base**, so bar and area charts can share the same axes.
+
+<Go example="ui-line-chart" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add line-chart
+```
+
+:::tip
+The base **`cartesian-chart`** (axes, gridlines, scales) is a dependency and installs automatically.
+:::
+
+```typescript
+import { UiLineChart } from '@/components/ui/line-chart';
+```
+
+## Usage
+
+Pass an array of `{ x, y }` points. The wrapper picks rounded axis ranges for you.
+
+```angular-html
+<ui-line-chart [data]="revenue" [width]="280" [height]="180" />
+```
+
+```typescript
+revenue = [
+  { x: 1, y: 12 },
+  { x: 2, y: 19 },
+  { x: 3, y: 15 },
+  { x: 4, y: 25 },
+];
+```
+
+### Color and thickness
+
+`color` accepts any CSS color. It sets both the line and the dots.
+
+```angular-html
+<ui-line-chart
+  [data]="downloads"
+  [color]="'rgba(59, 130, 246, 1)'"
+  [strokeWidth]="3"
+  [dotRadius]="4"
+/>
+```
+
+### Smooth curve
+
+Set `smooth` to draw a curved line through the points instead of straight segments. Dots still sit on the raw data.
+
+```angular-html
+<ui-line-chart [data]="revenue" [smooth]="true" />
+```
+
+The curve is a **monotone cubic** (like D3's `curveMonotoneX`): it never overshoots the data, so the line stays inside the plotted values.
+
+### Label the axes
+
+Set `xAxisLabel` / `yAxisLabel` for axis titles. `showXGrid` adds vertical gridlines (horizontal ones are on by default).
+
+```angular-html
+<ui-line-chart
+  [data]="revenue"
+  xAxisLabel="Month"
+  yAxisLabel="Revenue ($k)"
+  [showXGrid]="true"
+/>
+```
+
+### Fix the axis range
+
+By default the axes fit the data. Pass `yMin` / `yMax` (or `xMin` / `xMax`) to pin a bound — most often `yMin={0}` to anchor the baseline at zero.
+
+```angular-html
+<ui-line-chart [data]="revenue" [yMin]="0" />
+```
+
+### Pad the plot edges
+
+`padding` insets the plotted area, each side a fraction (`0`–`1`) of the plot size. Use it to keep the first and last dots off the axes.
+
+```angular-html
+<ui-line-chart [data]="revenue" [padding]="{ left: 0.05, right: 0.05 }" />
+```
+
+### Handle taps
+
+`pointTap` emits the tapped `{ x, y }` point.
+
+```angular-html
+<ui-line-chart [data]="revenue" (pointTap)="onPointTap($event)" />
+```
+
+### Pan and zoom
+
+Set `zoomable` to let users **pinch to zoom** and **drag to pan**, with on-screen `+` / `−` / `1:1` controls. The axes, gridlines, and mark widths update live as you zoom. It's off by default, so charts stay static inside scroll views.
+
+```angular-html
+<ui-line-chart [data]="revenue" [zoomable]="true" />
+```
+
+Lock one axis with `zoomAxes` (`'x'`, `'y'`, or `'xy'`), and bound the range with `minZoom` / `maxZoom`. Every chart forwards these to the base [`UiCartesianChart`](#uicartesianchart), so they work the same on bar, candlestick, area, and scatter charts. On bar and candlestick charts, zooming in stretches the bars and candles apart.
+
+To drive zoom from your own buttons, call `zoomIn()`, `zoomOut()`, or `resetZoom()` on a `UiCartesianChart` reference.
+
+### Multiple series
+
+For more than one line, use the base `<ui-cartesian-chart>` with one `<ui-line-series>` per line. The series read the shared axes from the chart, so they line up automatically.
+
+```angular-html
+<ui-cartesian-chart
+  [xDomain]="[1, 6]"
+  [yDomain]="[0, 40]"
+  [xTicks]="[1, 2, 3, 4, 5, 6]"
+  [yTicks]="[0, 10, 20, 30, 40]"
+  [width]="280"
+  [height]="180"
+>
+  <ui-line-series [data]="thisYear" [color]="'rgba(59, 130, 246, 1)'" />
+  <ui-line-series [data]="lastYear" [color]="'rgba(34, 197, 94, 1)'" />
+</ui-cartesian-chart>
+```
+
+:::info Why explicit `width` and `height`?
+Lynx has no `<line>`, so each segment is a rotated view. Computing the rotation needs **pixel** sizes — hence the explicit `width`/`height` instead of stretch-to-fit.
+:::
+
+## API
+
+### UiLineChart
+
+The single-series convenience wrapper. Auto-computes the axes from `data`.
+
+| Input              | Type                        | Default              | Description                               |
+| ------------------ | --------------------------- | -------------------- | ----------------------------------------- |
+| `data`             | `ChartPoint[]`              | _required_           | Points to plot, each `{ x, y }`           |
+| `color`            | `string`                    | `'var(--primary)'`   | Line and dot color (any CSS color)        |
+| `width`            | `number`                    | `320`                | Chart width in px                         |
+| `height`           | `number`                    | `200`                | Chart height in px                        |
+| `tickCount`        | `number`                    | `5`                  | Target number of axis ticks               |
+| `strokeWidth`      | `number`                    | `2`                  | Line thickness in px                      |
+| `dotRadius`        | `number`                    | `3`                  | Data point radius in px                   |
+| `showDots`         | `boolean`                   | `true`               | Draw a dot at each point                  |
+| `smooth`           | `boolean`                   | `false`              | Draw a smooth monotone-cubic curve        |
+| `showXGrid`        | `boolean`                   | `false`              | Draw vertical gridlines at x ticks        |
+| `xAxisLabel`       | `string`                    | `''`                 | X-axis title                              |
+| `yAxisLabel`       | `string`                    | `''`                 | Y-axis title                              |
+| `padding`          | `ChartPadding`              | `{}`                 | Inner inset, each side a `0`–`1` fraction |
+| `xMin`             | `number`                    | _auto_               | Force x-axis lower bound                  |
+| `xMax`             | `number`                    | _auto_               | Force x-axis upper bound                  |
+| `yMin`             | `number`                    | _auto_               | Force y-axis lower bound                  |
+| `yMax`             | `number`                    | _auto_               | Force y-axis upper bound                  |
+| `xTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats x-axis labels                     |
+| `yTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats y-axis labels                     |
+| `zoomable`         | `boolean`                   | `false`              | Enable pinch/drag zoom + controls         |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`               | Which axes zoom/pan affect                |
+| `showZoomControls` | `boolean`                   | `true`               | Show the +/−/1:1 controls when zoomable   |
+| `minZoom`          | `number`                    | `1`                  | Lower zoom bound (1 = fit all data)       |
+| `maxZoom`          | `number`                    | `8`                  | Upper zoom bound                          |
+| `zoomStep`         | `number`                    | `1.4`                | Zoom factor per +/− control press         |
+| `class`            | `string`                    | `''`                 | Additional CSS classes                    |
+
+| Output     | Type         | Description                          |
+| ---------- | ------------ | ------------------------------------ |
+| `pointTap` | `ChartPoint` | Emits the point when a dot is tapped |
+
+### UiCartesianChart
+
+The reusable base: draws gridlines and axis labels, and shares its scales with any series inside it.
+
+| Input              | Type                        | Default              | Description                                 |
+| ------------------ | --------------------------- | -------------------- | ------------------------------------------- |
+| `xDomain`          | `[number, number]`          | `[0, 1]`             | X value range                               |
+| `yDomain`          | `[number, number]`          | `[0, 1]`             | Y value range                               |
+| `xTicks`           | `number[]`                  | _auto_               | Explicit x tick values (else evenly spaced) |
+| `yTicks`           | `number[]`                  | _auto_               | Explicit y tick values (else evenly spaced) |
+| `width`            | `number`                    | `320`                | Chart width in px                           |
+| `height`           | `number`                    | `200`                | Chart height in px                          |
+| `yAxisWidth`       | `number`                    | `32`                 | Left gutter width for y labels (px)         |
+| `xAxisHeight`      | `number`                    | `20`                 | Bottom gutter height for x labels (px)      |
+| `tickCount`        | `number`                    | `5`                  | Target number of ticks when auto-generating |
+| `showGrid`         | `boolean`                   | `true`               | Draw horizontal gridlines at y ticks        |
+| `showXGrid`        | `boolean`                   | `false`              | Draw vertical gridlines at x ticks          |
+| `xAxisLabel`       | `string`                    | `''`                 | X-axis title (centered below tick labels)   |
+| `yAxisLabel`       | `string`                    | `''`                 | Y-axis title (rotated in the left gutter)   |
+| `padding`          | `ChartPadding`              | `{}`                 | Inner inset, each side a `0`–`1` fraction   |
+| `xTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats x-axis labels                       |
+| `yTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats y-axis labels                       |
+| `zoomable`         | `boolean`                   | `false`              | Enable pinch/drag zoom + on-screen controls |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`               | Which axes zoom/pan affect                  |
+| `showZoomControls` | `boolean`                   | `true`               | Show the +/−/1:1 controls when zoomable     |
+| `minZoom`          | `number`                    | `1`                  | Lower zoom bound (1 = fit all data)         |
+| `maxZoom`          | `number`                    | `8`                  | Upper zoom bound (max shrink of the view)   |
+| `zoomStep`         | `number`                    | `1.4`                | Zoom factor per +/− control press           |
+| `class`            | `string`                    | `''`                 | Additional CSS classes                      |
+
+| Method        | Description                         |
+| ------------- | ----------------------------------- |
+| `zoomIn()`    | Zoom in one `zoomStep`, centered    |
+| `zoomOut()`   | Zoom out one `zoomStep`, centered   |
+| `resetZoom()` | Return to the fully zoomed-out view |
+
+`ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot size; omitted sides default to `0`.
+
+### UiLineSeries
+
+One line inside a `<ui-cartesian-chart>`.
+
+| Input         | Type           | Default            | Description                        |
+| ------------- | -------------- | ------------------ | ---------------------------------- |
+| `data`        | `ChartPoint[]` | _required_         | Points to plot, each `{ x, y }`    |
+| `color`       | `string`       | `'var(--primary)'` | Line and dot color                 |
+| `strokeWidth` | `number`       | `2`                | Line thickness in px               |
+| `dotRadius`   | `number`       | `3`                | Data point radius in px            |
+| `showDots`    | `boolean`      | `true`             | Draw a dot at each point           |
+| `smooth`      | `boolean`      | `false`            | Draw a smooth monotone-cubic curve |
+| `class`       | `string`       | `''`               | Additional CSS classes             |
+
+| Output     | Type         | Description                          |
+| ---------- | ------------ | ------------------------------------ |
+| `pointTap` | `ChartPoint` | Emits the point when a dot is tapped |

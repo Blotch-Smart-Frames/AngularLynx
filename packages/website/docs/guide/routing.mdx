@@ -1,0 +1,188 @@
+# Routing
+
+Navigate between views using Angular's standard `@angular/router`. AngularLynx handles it in-memory — no URL bar, no History API — so everything works the same, you just import `provideRouter` from `@blotch/angular-lynx` instead.
+
+## Setup
+
+Use `provideRouter()` from `@blotch/angular-lynx` instead of the standard `provideRouter()`:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer, provideRouter } from '@blotch/angular-lynx'; // [!code highlight]
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideRouter(routes), // [!code highlight]
+  ],
+};
+```
+
+```typescript title="src/app/app.routes.ts"
+import type { Routes } from '@angular/router';
+
+export const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
+  { path: 'home', component: Home },
+  { path: 'settings', component: Settings },
+  { path: 'profile/:id', component: Profile },
+];
+```
+
+:::info
+Always define a default route that redirects from `''`. Without one, Angular throws a `NavigationError` on startup, which crashes Lynx's background thread.
+:::
+
+## Using RouterOutlet
+
+`RouterOutlet` works the same as web Angular. The key difference is that navigation must be triggered via `setTimeout`:
+
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { Router, RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [RouterOutlet, LYNX_ELEMENTS],
+  template: `
+    <view class="app">
+      <view class="nav">
+        <view class="nav-item" (bindtap)="navigateTo('home')">
+          <text>Home</text>
+        </view>
+        <view class="nav-item" (bindtap)="navigateTo('settings')">
+          <text>Settings</text>
+        </view>
+      </view>
+      <router-outlet />
+    </view>
+  `,
+})
+export class App {
+  #router = inject(Router);
+
+  navigateTo(path: string): void {
+    setTimeout(() => this.#router.navigateByUrl(path), 0); // [!code highlight]
+  }
+}
+```
+
+:::warning Critical: Defer Navigation
+Always wrap `router.navigateByUrl()` or `router.navigate()` in `setTimeout(() => {...}, 0)`. Navigating synchronously inside a Lynx event handler mutates the element tree during the worklet callback, which causes native crashes. See [Change Detection](/guide/change-detection) for details.
+:::
+
+## How It Works
+
+`provideRouter()` configures three custom strategies that adapt Angular's router for Lynx:
+
+### LynxLocationStrategy
+
+An in-memory `LocationStrategy` that maintains a navigation history stack entirely in JavaScript. This is the Angular equivalent of React Router's `MemoryRouter`. No URL is ever read from or written to the browser — because there is no browser.
+
+### LynxPlatformLocation
+
+An in-memory `PlatformLocation` that provides `pathname`, `search`, and `hash` by parsing URL strings manually (Lynx's PrimJS does not have the `URL` constructor). Without this, Angular falls back to `BrowserPlatformLocation`, which crashes because `window.location` is `undefined`.
+
+### LynxRouteReuseStrategy
+
+This strategy is critical for Lynx stability. It detaches component views on navigation instead of destroying them.
+
+**Why this matters:**
+
+- Lynx allocates elements in a fixed-size native [element pool](/guide/renderer-architecture) (~256 slots)
+- `__RemoveElement` detaches elements from the tree but does **not** free their pool slots
+- Angular's default strategy destroys components on navigation, creating fresh elements each time
+- After ~9 navigations, the pool is exhausted and the app crashes
+- `LynxRouteReuseStrategy` reuses detached views, so pool slots are reclaimed when routes are revisited
+
+:::info
+Because views are reused rather than destroyed, your component instances survive navigation. `ngOnDestroy` is not called when navigating away — only when the component is truly disposed. Use the constructor or `ngOnInit` for initialization that should run only once.
+:::
+
+## Lazy Loading
+
+Lazy-loaded routes work as expected with `loadComponent`:
+
+```typescript title="src/app/app.routes.ts"
+export const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
+  {
+    path: 'home',
+    loadComponent: () => import('./home/home').then((m) => m.Home),
+  },
+  {
+    path: 'settings',
+    loadComponent: () => import('./settings/settings').then((m) => m.Settings),
+  },
+  {
+    path: 'profile/:id',
+    loadComponent: () => import('./profile/profile').then((m) => m.Profile),
+  },
+];
+```
+
+## Router Features
+
+`provideRouter()` accepts additional Angular Router features as arguments:
+
+```typescript
+import { withComponentInputBinding } from '@angular/router';
+
+provideRouter(
+  routes,
+  withComponentInputBinding(), // Bind route params to component inputs
+);
+```
+
+With `withComponentInputBinding`, route parameters are automatically bound to matching component inputs:
+
+```typescript
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Profile: {{ id() }}</text>`,
+})
+export class Profile {
+  id = input.required<string>(); // Bound from :id route param
+}
+```
+
+## Programmatic Navigation
+
+Use Angular's `Router` service for programmatic navigation — always inside `setTimeout`:
+
+```typescript
+export class Nav {
+  #router = inject(Router);
+
+  goToProfile(userId: string): void {
+    setTimeout(() => {
+      this.#router.navigate(['/profile', userId]);
+    }, 0);
+  }
+
+  goBack(): void {
+    setTimeout(() => {
+      // Note: browser back button doesn't exist in Lynx,
+      // so this relies on the in-memory history stack
+      history.back();
+    }, 0);
+  }
+}
+```
+
+## Differences from Web Angular Router
+
+| Feature                | Web Angular                                     | AngularLynx                                               |
+| ---------------------- | ----------------------------------------------- | --------------------------------------------------------- |
+| URL bar                | Updated on navigation                           | No URL bar (in-memory only)                               |
+| Browser back/forward   | Triggers `popstate`                             | Not available (use `router.navigate` or `history.back()`) |
+| Deep linking via URL   | Supported                                       | Not applicable                                            |
+| Route reuse            | Destroyed by default                            | Reused by default (pool management)                       |
+| Navigation timing      | Synchronous OK                                  | Must use `setTimeout`                                     |
+| History mode           | `PathLocationStrategy` / `HashLocationStrategy` | `LynxLocationStrategy` (in-memory)                        |
+| `RouterLink` directive | Works with `<a>`                                | Use `(bindtap)` on `<view>` instead                       |

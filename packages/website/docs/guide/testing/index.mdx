@@ -1,0 +1,131 @@
+# AngularLynx Testing Library
+
+Test AngularLynx components in jsdom via Vitest. `@blotch/angular-lynx-testing-library` bootstraps the full Lynx rendering pipeline and exposes `@testing-library/dom` queries.
+
+## Setup
+
+:::tip Automatic Setup
+Set up testing in one command:
+
+```bash
+ng generate @blotch/angular-lynx:add-testing
+```
+
+This installs dependencies, creates config files, and configures test scripts. Skip the manual steps below.
+:::
+
+Install the package:
+
+```sh
+npm install --save-dev @blotch/angular-lynx-testing-library
+```
+
+Configure Vitest:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+import path from 'node:path';
+
+export default defineConfig({
+  define: {
+    __DEV__: JSON.stringify(true),
+    __MAIN_THREAD__: JSON.stringify(true),
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
+    include: ['src/**/*.test.ts'],
+  },
+});
+```
+
+Create `src/setup.ts`:
+
+```ts
+import '@blotch/angular-lynx-testing-library/setup';
+```
+
+## Rendering a Component
+
+`render()` bootstraps a standalone component through the full Lynx pipeline and returns `@testing-library/dom` queries:
+
+```ts
+import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { render } from '@blotch/angular-lynx-testing-library';
+
+@Component({
+  selector: 'my-greeting',
+  template: `<text>Hello {{ name() }}</text>`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class Greeting {
+  name = signal('World');
+}
+
+it('renders a greeting', async () => {
+  const { getByText } = await render(Greeting);
+  expect(getByText('Hello World')).toBeTruthy();
+});
+```
+
+### RenderOptions
+
+Pass providers to inject dependencies:
+
+```ts
+const { getByText } = await render(Example, {
+  providers: [{ provide: API_URL, useValue: 'https://api.example.com' }],
+});
+```
+
+### RenderResult
+
+| Property                        | Type                                             | Description                                                  |
+| ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| `container`                     | `Element`                                        | JSDOM root `<page>` element                                  |
+| `unmount`                       | `() => void`                                     | Destroys the Angular app                                     |
+| `rerender`                      | `(component, options?) => Promise<RenderResult>` | Swap to a new component without manual cleanup               |
+| `asFragment`                    | `() => DocumentFragment`                         | Snapshot of the container for `toMatchSnapshot()`            |
+| `componentRef`                  | `ComponentRef<unknown>`                          | Angular component reference — use `.injector` or `.instance` |
+| `getByText`, `queryByText`, ... | queries                                          | All `@testing-library/dom` queries bound to `container`      |
+
+## Querying the DOM
+
+Use `getBy*` when the element must exist, `queryBy*` when it may be absent:
+
+```ts
+const { getByText, queryByText } = await render(TextDisplay);
+expect(getByText('Hello Lynx')).toBeTruthy();
+expect(queryByText('Not here')).toBeNull();
+```
+
+Use the `screen` export for global queries, or `within()` to scope queries to a subtree:
+
+```ts
+import { render, screen, within } from '@blotch/angular-lynx-testing-library';
+
+await render(ProductList);
+expect(screen.getByText('Hello Lynx')).toBeTruthy();
+
+const row = within(container.querySelectorAll('view')[1] as HTMLElement);
+expect(row.getByText('Gadget')).toBeTruthy();
+```
+
+## Re-rendering
+
+`rerender()` swaps the component without manual cleanup:
+
+```ts
+const { rerender } = await render(ComponentA);
+const { container } = await rerender(ComponentB, {
+  providers: [{ provide: MY_TOKEN, useValue: 'new-value' }],
+});
+```
+
+## Next
+
+- [Testing Patterns](./patterns) — Signals, events, snapshots, control flow
+- [Event Reference](./event-reference) — All supported events and their template bindings
+- [API Reference](/guide/api/testing-library/) — Full API types and signatures

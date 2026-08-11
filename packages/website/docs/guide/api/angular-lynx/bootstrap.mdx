@@ -1,0 +1,31 @@
+# Bootstrap
+
+| Export                 | Kind     | Description                                                                                                                                                              |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `bootstrapApplication` | Function | Bootstraps an Angular standalone component in the Lynx runtime. Wraps Angular's `bootstrapApplication` with Lynx-specific error handling and polyfills.                  |
+| `provideRenderer`      | Function | Returns `EnvironmentProviders` that register `LynxRendererFactory2`, `LynxDocument`, and the Lynx-compatible `DOCUMENT` token. Required in every AngularLynx app config. |
+
+## Usage
+
+```typescript title="src/main.ts"
+import { bootstrapApplication } from '@blotch/angular-lynx';
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+bootstrapApplication(App, appConfig);
+```
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(), // Required — registers the Lynx renderer
+  ],
+};
+```

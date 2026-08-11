@@ -1,0 +1,12 @@
+# Error Handling
+
+Catch and display runtime errors using Lynx's global error reporting mechanism.
+
+<Go example="error-handling" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`__lynxLastError`** — a global variable on the Lynx runtime used to surface the most recent error for debugging
+- **On-screen debugging** — since Lynx runs on-device without a browser console, errors are rendered directly into `<text>` elements
+- **`try/catch` in event handlers** — errors are caught manually and stored in a signal so the UI updates reactively
+- **`setTimeout` wrapping** — defers the error-throwing code to avoid blocking the synchronous event handler on the main thread

@@ -1,0 +1,45 @@
+# &lt;list&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+A high-performance virtualized list for rendering large datasets. Only visible items are rendered, similar to Android's `RecyclerView` or iOS `UITableView`.
+
+<Go example="element-list" defaultFile="src/app/app.ts" />
+
+```angular-html
+<list list-type="single" scroll-orientation="vertical" style="height: 400px;">
+  @for (item of items(); track item.id) {
+    <list-item [attr.item-key]="item.id">
+      <view class="list-row">
+        <text>{{ item.name }}</text>
+      </view>
+    </list-item>
+  }
+</list>
+```
+
+:::info
+Use `<list>` for large collections (100+ items). For shorter content, `<scroll-view>` is simpler and sufficient.
+:::
+
+## Key Attributes
+
+On `<list>`:
+
+- `list-type` — `"single"` (standard), `"flow"` (multi-column), `"waterfall"` (masonry layout)
+- `span-count` — Number of columns (for `flow` and `waterfall` types)
+- `scroll-orientation` — `"vertical"` or `"horizontal"`
+
+On `<list-item>`:
+
+- `item-key` — Unique identifier for the item (required for recycling)
+
+## Events
+
+| Event               | Description                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `bindscrolltoupper` | Fires when the list scrolls to the top (or left for horizontal). Useful for "load newer"      |
+| `bindscrolltolower` | Fires when the list scrolls to the bottom (or right). Useful for infinite scroll / pagination |
+| `bindscroll`        | Fires continuously during scrolling with scroll position details                              |

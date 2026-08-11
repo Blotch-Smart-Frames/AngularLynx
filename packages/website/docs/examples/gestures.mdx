@@ -1,0 +1,13 @@
+# Gestures
+
+Handle pan, tap, and exclusive gesture recognition using the Lynx gesture system.
+
+<Go example="gestures" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`[lynxGesture]`** — directive that attaches a gesture recognizer to a Lynx element via `LynxGestureDetector`
+- **`PanGesture`** — tracks drag movement with `onUpdate` (continuous position) and `onEnd` callbacks, configurable with `minDistance`
+- **`TapGesture`** — detects discrete tap events with an `onEnd` callback
+- **`Gesture.Exclusive()`** — composes multiple gestures so only one can win recognition at a time (pan takes priority over tap when dragging)
+- **Fluent API** — gesture objects use a chainable builder pattern (`.minDistance(5).onUpdate(...).onEnd(...)`) for readable configuration

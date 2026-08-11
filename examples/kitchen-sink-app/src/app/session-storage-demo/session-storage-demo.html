@@ -1,0 +1,94 @@
+<app-demo-screen
+  heading="Session Storage"
+  category="Forms & Input"
+  description="A key-value store shared across every LynxView for the lifetime of the app session. Values are objects, reads are async, and writes notify subscribers."
+>
+  <!-- Reactive counter — the hero of the demo -->
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <view class="flex-row items-center flex justify-between">
+        <ui-card-title class="text-lg">Live counter</ui-card-title>
+        <ui-badge variant="secondary">watch()</ui-badge>
+      </view>
+      <ui-card-description>
+        A signal seeded from storage that re-emits whenever any LynxView writes
+        this key.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
+      <!-- Big current value, so the counter reads at a glance -->
+      <view class="flex-col items-center gap-2 rounded-xl bg-muted p-4 flex">
+        <ui-text variant="h1" class="text-primary">
+          {{ counter() ?? 0 }}
+        </ui-text>
+        <view class="flex-row items-center gap-2 flex">
+          <ui-text variant="muted">stored under</ui-text>
+          <ui-badge variant="outline">{{ key }}</ui-badge>
+        </view>
+      </view>
+
+      <!-- Controls -->
+      <view class="flex-row gap-3 flex">
+        <ui-button class="flex-1" (pressed)="increment()">Increment</ui-button>
+        <ui-button class="flex-1" variant="outline" (pressed)="reset()">
+          Reset
+        </ui-button>
+      </view>
+
+      <ui-text variant="muted">
+        {{ writeCount() }} write(s) this session
+      </ui-text>
+    </ui-card-content>
+  </ui-card>
+
+  <!-- One-shot async read -->
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <view class="flex-row items-center flex justify-between">
+        <ui-card-title class="text-lg">One-shot read</ui-card-title>
+        <ui-badge variant="secondary">getItem()</ui-badge>
+      </view>
+      <ui-card-description>
+        Resolves the current value once — reads are asynchronous on Lynx.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
+      <view class="rounded-lg bg-muted px-4 py-3 flex">
+        <ui-text variant="small">{{ lastRead() }}</ui-text>
+      </view>
+      <ui-button variant="secondary" class="self-start" (pressed)="readOnce()">
+        Read current value
+      </ui-button>
+    </ui-card-content>
+  </ui-card>
+
+  <!-- Live activity feed, so storage changes are visible -->
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <ui-card-title class="text-lg">Activity</ui-card-title>
+      <ui-card-description>
+        Every read and write, newest first.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="p-4 pt-0 flex">
+      @if (activity().length) {
+      <view class="flex-col flex">
+        @for (item of activity(); track item.id; let last = $last) {
+        <view class="flex-row items-center gap-3 py-2 flex">
+          <ui-badge [variant]="item.kind === 'write' ? 'default' : 'secondary'">
+            {{ item.kind }}
+          </ui-badge>
+          <ui-text variant="small" class="flex-1">{{ item.message }}</ui-text>
+        </view>
+        @if (!last) {
+        <ui-separator />
+        } }
+      </view>
+      } @else {
+      <ui-text variant="muted">
+        No activity yet — increment the counter or read the value.
+      </ui-text>
+      }
+    </ui-card-content>
+  </ui-card>
+</app-demo-screen>

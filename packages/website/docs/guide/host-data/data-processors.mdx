@@ -1,0 +1,66 @@
+# Data Processors
+
+Data processors transform raw native data before it reaches `LynxInitData`. Use them to normalize payloads, add defaults, or reshape data structures.
+
+Call `registerDataProcessors()` **before** `bootstrapApplication()` so the first `onDataChanged` event delivers already-processed data:
+
+```typescript title="src/main.ts"
+import {
+  bootstrapApplication,
+  registerDataProcessors,
+} from '@blotch/angular-lynx'; // [!code highlight]
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+registerDataProcessors({
+  // [!code highlight]
+  defaultDataProcessor: (raw) => ({
+    // [!code highlight]
+    ...raw, // [!code highlight]
+    theme: raw.theme ?? 'light', // [!code highlight]
+    timestamp: Date.now(), // [!code highlight]
+  }), // [!code highlight]
+}); // [!code highlight]
+
+bootstrapApplication(App, appConfig);
+```
+
+:::warning
+`registerDataProcessors` must be called before `bootstrapApplication()`. If called after, the first data event will arrive unprocessed.
+:::
+
+:::info
+If a data processor throws an error, it returns `{}` instead of crashing the app. This matches React Lynx's safety behavior — a bad processor should never take down the entire card.
+:::
+
+## Typing Raw Data
+
+The raw payload from native can have a different shape than your processed `InitData`. Type it separately with `InitDataRaw`:
+
+```typescript title="src/types.d.ts"
+declare module '@blotch/angular-lynx' {
+  interface InitDataRaw {
+    user_id: string;
+    raw_theme?: string;
+  }
+
+  interface InitData {
+    userId: string;
+    theme: 'light' | 'dark';
+  }
+}
+```
+
+## Named Processors
+
+The native host can call specific named processors via `processData(data, processorName)`. Register them alongside the default processor:
+
+```typescript title="src/main.ts"
+registerDataProcessors({
+  defaultDataProcessor: (raw) => ({ ...raw }),
+  dataProcessors: {
+    refreshFeed: (data) => ({ ...data, feedRefreshed: true }),
+    updateBadge: (data) => ({ ...data, badgeCount: data.count }),
+  },
+});
+```

@@ -1,0 +1,12 @@
+# Notification Center
+
+A notification feed with unread badges, swipe actions via action sheet, toast feedback, and an empty state when all notifications are cleared.
+
+<Go example="notification-center" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Badge for unread count** — `UiBadge` in the header shows how many notifications are unread, disappearing when all are read
+- **Action Sheet for contextual actions** — Long-pressing a notification opens `UiActionSheet` with "Mark as Read" and "Delete" options
+- **Toast for feedback** — After an action (delete, clear all), a `toast()` confirms what happened without blocking the UI
+- **Empty State** — When all notifications are cleared, `UiEmptyState` provides a friendly message instead of a blank screen

@@ -1,0 +1,90 @@
+# Tabs
+
+A set of layered sections of content, known as tab panels, displayed one at a time.
+
+<Go example="ui-tabs" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add tabs
+```
+
+```typescript
+import {
+  UiTabs,
+  UiTabsList,
+  UiTabsTrigger,
+  UiTabsContent,
+} from '@/components/ui/tabs';
+```
+
+## Usage
+
+### Basic
+
+Set the `value` on `ui-tabs` to control which tab is active. Each trigger and content panel is linked by a matching `value`:
+
+```angular-html
+<ui-tabs value="tab1">
+  <ui-tabs-list>
+    <ui-tabs-trigger value="tab1">Tab 1</ui-tabs-trigger>
+    <ui-tabs-trigger value="tab2">Tab 2</ui-tabs-trigger>
+  </ui-tabs-list>
+  <ui-tabs-content value="tab1">
+    <text>Content for tab 1.</text>
+  </ui-tabs-content>
+  <ui-tabs-content value="tab2">
+    <text>Content for tab 2.</text>
+  </ui-tabs-content>
+</ui-tabs>
+```
+
+### Controlled
+
+Use two-way binding with the `value` model to track the active tab:
+
+```angular-html
+<ui-tabs [(value)]="activeTab" (changed)="onTabChange($event)">
+  <ui-tabs-list>
+    <ui-tabs-trigger value="overview">Overview</ui-tabs-trigger>
+    <ui-tabs-trigger value="details">Details</ui-tabs-trigger>
+  </ui-tabs-list>
+  <ui-tabs-content value="overview">
+    <text>Overview content.</text>
+  </ui-tabs-content>
+  <ui-tabs-content value="details">
+    <text>Details content.</text>
+  </ui-tabs-content>
+</ui-tabs>
+```
+
+## API
+
+### UiTabs
+
+| Input/Output | Type             | Default | Description                                           |
+| ------------ | ---------------- | ------- | ----------------------------------------------------- |
+| `value`      | `model<string>`  | `''`    | Two-way binding for the currently active tab value    |
+| `class`      | `string`         | `''`    | Additional CSS classes to apply to the tabs container |
+| `changed`    | `output<string>` | —       | Emits the new tab value when the active tab changes   |
+
+### UiTabsList
+
+| Input   | Type     | Default | Description                                               |
+| ------- | -------- | ------- | --------------------------------------------------------- |
+| `class` | `string` | `''`    | Additional CSS classes to apply to the tab list container |
+
+### UiTabsTrigger
+
+| Input   | Type     | Default    | Description                                    |
+| ------- | -------- | ---------- | ---------------------------------------------- |
+| `value` | `string` | _required_ | The value that identifies this tab trigger     |
+| `class` | `string` | `''`       | Additional CSS classes to apply to the trigger |
+
+### UiTabsContent
+
+| Input   | Type     | Default    | Description                                              |
+| ------- | -------- | ---------- | -------------------------------------------------------- |
+| `value` | `string` | _required_ | The value that identifies this tab content panel         |
+| `class` | `string` | `''`       | Additional CSS classes to apply to the content container |

@@ -1,0 +1,117 @@
+# Safe Area
+
+Lynx supports CSS `env()` variables for safe area insets, identical to the web platform. Use these to adapt your layout around display notches, status bars, and home indicators.
+
+## CSS Approach (Recommended)
+
+Use `env(safe-area-inset-*)` directly in your component styles:
+
+```css
+.page {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+```
+
+### Common Patterns
+
+**Full-screen layout with safe padding:**
+
+```css
+.app-container {
+  height: 100vh;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+```
+
+**Bottom navigation bar:**
+
+```css
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  /* 56px nav height + safe area for home indicator */
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+```
+
+## Tailwind Utilities
+
+Using the `@blotch/ui` Tailwind plugin? Reach for its `*-safe` padding utilities instead of hand-writing `env()`.
+
+```html
+<!-- padding equal to the inset alone -->
+<view class="pb-safe">...</view>
+
+<!-- base padding PLUS the inset: calc(1rem + env(safe-area-inset-bottom)) -->
+<view class="pb-safe-4">...</view>
+```
+
+**Bare utilities** set padding equal to the inset:
+
+| Class                                   | Padding               |
+| --------------------------------------- | --------------------- |
+| `pt-safe` `pr-safe` `pb-safe` `pl-safe` | one side              |
+| `px-safe` `py-safe`                     | horizontal / vertical |
+| `p-safe`                                | all four sides        |
+
+**Offset utilities** add the inset on top of a spacing value — for elements that already want padding but must also clear the notch or home indicator:
+
+| Class       | Padding                                    |
+| ----------- | ------------------------------------------ |
+| `pb-safe-4` | `calc(1rem + env(safe-area-inset-bottom))` |
+| `pt-safe-2` | `calc(0.5rem + env(safe-area-inset-top))`  |
+
+The `-<n>` suffix accepts any value from your spacing scale (`pb-safe-8`, `pt-safe-6`, …), matching the normal `p-*` scale.
+
+## LynxSafeArea
+
+For conditional logic in TypeScript, inject `LynxSafeArea` to check whether the device has a display notch:
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { LynxSafeArea, LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [style.padding-top]="safeArea.isNotchScreen() ? '44px' : '20px'">
+      <text>Content</text>
+    </view>
+  `,
+})
+export class App {
+  protected readonly safeArea = inject(LynxSafeArea);
+}
+```
+
+### API
+
+| Property          | Type              | Description                                                                                    |
+| ----------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| `isNotchScreen()` | `Signal<boolean>` | Whether the device has a display notch or cutout. Reactive — updates when global props change. |
+| `platform`        | `PlatformType`    | The current platform (`'iOS'`, `'Android'`, `'Harmony'`, etc.)                                 |
+
+### CSS Constants
+
+For dynamic styles that need `env()` values as strings:
+
+```typescript
+import {
+  SAFE_AREA_INSET_TOP,
+  SAFE_AREA_INSET_BOTTOM,
+} from '@blotch/angular-lynx';
+
+// SAFE_AREA_INSET_TOP === 'env(safe-area-inset-top)'
+// SAFE_AREA_INSET_BOTTOM === 'env(safe-area-inset-bottom)'
+```
+
+:::tip
+Prefer the CSS approach over TypeScript conditional logic. CSS `env()` values are resolved by the native rendering engine and automatically adapt to the device — no JavaScript needed.
+:::

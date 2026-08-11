@@ -1,0 +1,45 @@
+# Lynx Elements
+
+Lynx provides a set of native UI elements instead of HTML. Your Angular templates use `<view>`, `<text>`, `<image>`, and other Lynx-specific elements to build the interface.
+
+## Importing Elements
+
+Import `LYNX_ELEMENTS` in your component's `imports` array for IDE autocomplete and type checking:
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  selector: 'app-card',
+  standalone: true,
+  imports: [LYNX_ELEMENTS], // [!code highlight]
+  template: `
+    <view class="card">
+      <text>Hello World</text>
+    </view>
+  `,
+})
+export class Card {}
+```
+
+:::tip
+`LYNX_ELEMENTS` is optional at build time — the build plugin automatically injects `CUSTOM_ELEMENTS_SCHEMA` so your app compiles regardless. But importing it gives you autocomplete and type safety in your IDE.
+:::
+
+## HTML to Lynx Mapping
+
+| HTML                             | Lynx                               | Notes                       |
+| -------------------------------- | ---------------------------------- | --------------------------- |
+| `<div>`                          | `<view>`                           | Generic container           |
+| `<span>`, `<p>`, `<h1>`...`<h6>` | `<text>`                           | All text content            |
+| `<img>`                          | `<image>`                          | Different attribute names   |
+| `<div style="overflow:auto">`    | `<scroll-view>`                    | Dedicated scrolling element |
+| `<ul>` / virtual scroll          | `<list>` + `<list-item>`           | Native virtualization       |
+| `<input>`                        | `<input>`                          | Events use `bindinput`      |
+| `<textarea>`                     | `<textarea>`                       | Events use `bindinput`      |
+| `<button>`                       | `<view>` + `(bindtap)`             | No native button element    |
+| `<a>`                            | `<view>` + `(bindtap)`             | No native link element      |
+| Modal / Dialog                   | `<overlay>`                        | Native floating layer       |
+| Swipeable page carousel          | `<viewpager>` + `<viewpager-item>` | Native horizontal paging    |
+| `<iframe>`                       | `<frame>`                          | Loads Lynx bundles          |

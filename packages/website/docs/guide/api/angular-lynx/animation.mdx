@@ -1,0 +1,53 @@
+# Animation
+
+## Programmatic API
+
+| Export                 | Kind  | Description                                                          |
+| ---------------------- | ----- | -------------------------------------------------------------------- |
+| `LynxAnimation`        | Class | A running animation. Provides `play()`, `pause()`, and `cancel()`.   |
+| `LynxAnimationOptions` | Type  | Timing options: `duration`, `delay`, `easing`, `iterations`, `fill`. |
+
+```typescript
+import { Component, viewChild, type ElementRef } from '@angular/core';
+import { type LynxAnimation } from '@blotch/angular-lynx';
+
+@Component({
+  template: `
+    <view #box class="box" (bindtap)="animate()">
+      <text>Tap me</text>
+    </view>
+  `,
+})
+export class AnimatedBox {
+  boxRef = viewChild<ElementRef>('box');
+  #animation: LynxAnimation | null = null;
+
+  animate(): void {
+    setTimeout(() => {
+      this.#animation?.cancel();
+      this.#animation = this.boxRef()!.nativeElement.animate(
+        [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }],
+        { duration: 400, easing: 'ease-in-out' },
+      );
+    }, 0);
+  }
+}
+```
+
+## Enter/Leave Transitions
+
+| Export                | Kind      | Description                                                                                              |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| `LynxTransition`      | Component | Animates content entering/leaving with CSS transition classes (same convention as Vue's `<Transition>`). |
+| `LynxTransitionGroup` | Component | Animates list items entering/leaving. Manages views via `ViewContainerRef`.                              |
+
+```angular-html
+<!-- Show/hide with fade animation -->
+<lynx-transition [show]="visible()" name="fade" [duration]="300">
+  <view class="modal">
+    <text>I fade in and out</text>
+  </view>
+</lynx-transition>
+```
+
+See the [Animations guide](/guide/animations/) for CSS transition classes and full examples.

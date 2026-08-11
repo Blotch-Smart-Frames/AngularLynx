@@ -1,0 +1,65 @@
+# @blotch/angular-lynx-testing-library
+
+API reference for AngularLynx Testing Library — a testing utility that bootstraps Angular standalone components through the full Lynx dual-thread pipeline and provides `@testing-library/dom` queries.
+
+## Rendering
+
+| Export          | Kind     | Description                                                                                                                                         |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `render`        | Function | Bootstraps a standalone component through the Lynx pipeline and returns a container with bound queries. Accepts an optional `RenderOptions` object. |
+| `cleanup`       | Function | Destroys the current rendered Angular app. Called automatically after each test via `afterEach` (opt out with `ATL_SKIP_AUTO_CLEANUP=true`).        |
+| `waitForUpdate` | Function | Waits for all pending Angular reactive updates to flush. Call after programmatic signal changes that happen outside event handlers.                 |
+
+### render()
+
+```typescript
+const result = await render(My, {
+  providers: [provideRouter(routes)],
+});
+```
+
+**Returns:** `RenderResult` with the following properties:
+
+| Property       | Type                                             | Description                                                                                                                                                                              |
+| -------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `container`    | `Element`                                        | The JSDOM root element (`<page>`) containing all rendered children.                                                                                                                      |
+| `componentRef` | `ComponentRef<unknown>`                          | The Angular `ComponentRef` for the bootstrapped root component. Use `componentRef.injector.get(Token)` to retrieve services or `componentRef.instance.someSignal.set(v)` to drive state. |
+| `unmount`      | `() => void`                                     | Unmount the current Angular app.                                                                                                                                                         |
+| `rerender`     | `(component, options?) => Promise<RenderResult>` | Re-render a different component into the same position without manual cleanup.                                                                                                           |
+| `asFragment`   | `() => DocumentFragment`                         | Returns a `DocumentFragment` snapshot of the container for snapshot testing.                                                                                                             |
+
+Plus all `@testing-library/dom` query methods (`getByText`, `queryByRole`, etc.) bound to the container.
+
+### RenderOptions
+
+| Property    | Type                                   | Description                                                                     |
+| ----------- | -------------------------------------- | ------------------------------------------------------------------------------- |
+| `providers` | `(Provider \| EnvironmentProviders)[]` | Additional providers for the test app (e.g., `provideRouter(routes)`).          |
+| `queries`   | `Queries`                              | Custom query helpers to merge with the standard `@testing-library/dom` queries. |
+
+## Events
+
+| Export      | Kind     | Description                                                                                                   |
+| ----------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `fireEvent` | Function | Dispatches Lynx events through the pipeline. Call as `fireEvent.tap(element)` or `fireEvent(element, event)`. |
+| `eventMap`  | Object   | Map of all supported Lynx event names and their default init values.                                          |
+
+### Supported Events
+
+| Category               | Events                                                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Touch / gesture        | `tap`, `longtap`, `touchstart`, `touchmove`, `touchcancel`, `touchend`, `longpress`                                                            |
+| Keyboard               | `keydown`, `keyup`                                                                                                                             |
+| Mouse                  | `mousedown`, `mouseup`, `mousemove`, `mouseclick`, `mousedblclick`, `mouselongpress`, `wheel`                                                  |
+| Scroll / viewport      | `scroll`, `scrollend`, `scrolltoupper`, `scrolltolower`, `contentsizechanged`, `scrolltoupperedge`, `scrolltoloweredge`, `scrolltonormalstate` |
+| Form / focus           | `focus`, `blur`, `input`, `confirm`                                                                                                            |
+| Layout / image         | `layoutchange`, `bgload`, `bgerror`                                                                                                            |
+| Transition / animation | `transitionstart`, `transitionend`, `transitioncancel`, `animationend`                                                                         |
+
+## Re-exports from @testing-library/dom
+
+| Export                 | Description                                    |
+| ---------------------- | ---------------------------------------------- |
+| `screen`               | Global queries bound to `document.body`.       |
+| `within`               | Scope queries to a specific container element. |
+| `getQueriesForElement` | Bind query functions to any DOM element.       |

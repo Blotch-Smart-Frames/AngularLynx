@@ -1,0 +1,12 @@
+# Data Flow
+
+Access Lynx platform data (InitData and GlobalData) via injectable services.
+
+<Go example="data-flow" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`LynxInitData`** — injectable service providing the data passed to the Lynx card at initialization time, accessed as a signal via `.initData()`
+- **`LynxGlobalData`** — injectable service providing global data shared across the Lynx runtime, accessed as a signal via `.globalData()`
+- **`inject()`** — Angular's functional injection pattern, used here with ES private fields (`#initData`, `#globalData`) for encapsulation
+- **Signal-based data access** — both services expose their data as signals, so the template automatically re-renders when the underlying data changes

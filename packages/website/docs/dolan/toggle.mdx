@@ -1,0 +1,104 @@
+# Toggle
+
+A two-state button that can be toggled on or off. Use `UiToggleGroup` with `UiToggleGroupItem` for single or multi-select toggle groups.
+
+<Go example="ui-toggle" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add toggle
+```
+
+```typescript
+import {
+  UiToggle,
+  UiToggleGroup,
+  UiToggleGroupItem,
+} from '@/components/ui/toggle';
+```
+
+## Usage
+
+### Single toggle
+
+```angular-html
+<ui-toggle [(pressed)]="bold">
+  <text class="text-sm font-bold text-foreground">B</text>
+</ui-toggle>
+```
+
+### Toggle group (single selection)
+
+```angular-html
+<ui-toggle-group type="single" [(value)]="alignment">
+  <ui-toggle-group-item value="left">
+    <text class="text-sm text-foreground">Left</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="center">
+    <text class="text-sm text-foreground">Center</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="right">
+    <text class="text-sm text-foreground">Right</text>
+  </ui-toggle-group-item>
+</ui-toggle-group>
+```
+
+### Toggle group (multiple selection)
+
+```angular-html
+<ui-toggle-group type="multiple" [(value)]="formatting">
+  <ui-toggle-group-item value="bold">
+    <text class="text-sm font-bold text-foreground">B</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="italic">
+    <text class="text-sm italic text-foreground">I</text>
+  </ui-toggle-group-item>
+</ui-toggle-group>
+```
+
+### Outline variant
+
+```angular-html
+<ui-toggle-group type="single" variant="outline" [(value)]="size">
+  <ui-toggle-group-item value="sm">
+    <text class="text-sm text-foreground">S</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="md">
+    <text class="text-sm text-foreground">M</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="lg">
+    <text class="text-sm text-foreground">L</text>
+  </ui-toggle-group-item>
+</ui-toggle-group>
+```
+
+## API
+
+### UiToggle
+
+| Input      | Type                        | Default     | Description                                      |
+| ---------- | --------------------------- | ----------- | ------------------------------------------------ |
+| `pressed`  | `model<boolean>`            | `false`     | Whether the toggle is pressed (two-way bindable) |
+| `variant`  | `'default' \| 'outline'`    | `'default'` | Visual style variant                             |
+| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Toggle size                                      |
+| `disabled` | `boolean`                   | `false`     | Whether the toggle is disabled                   |
+| `class`    | `string`                    | `''`        | Additional CSS classes                           |
+
+### UiToggleGroup
+
+| Input      | Type                        | Default     | Description                                    |
+| ---------- | --------------------------- | ----------- | ---------------------------------------------- |
+| `value`    | `model<string[]>`           | `[]`        | The selected values (two-way bindable)         |
+| `type`     | `'single' \| 'multiple'`    | `'single'`  | Selection mode                                 |
+| `variant`  | `'default' \| 'outline'`    | `'default'` | Visual style for all items                     |
+| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size for all items                             |
+| `disabled` | `boolean`                   | `false`     | Disables all items in the group                |
+| `class`    | `string`                    | `''`        | Additional CSS classes for the group container |
+
+### UiToggleGroupItem
+
+| Input   | Type     | Default    | Description                         |
+| ------- | -------- | ---------- | ----------------------------------- |
+| `value` | `string` | _required_ | The value this item represents      |
+| `class` | `string` | `''`       | Additional CSS classes for the item |

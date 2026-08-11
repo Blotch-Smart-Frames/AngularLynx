@@ -1,0 +1,15 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shieldGrad" x1="5" y1="2" x2="35" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF3855"/>
+      <stop offset="0.5" stop-color="#C3002F"/>
+      <stop offset="1" stop-color="#0ECECE"/>
+    </linearGradient>
+  </defs>
+  <!-- Angular-style shield -->
+  <path d="M20 2L35 8V22C35 30.8 28.3 37.5 20 39.5C11.7 37.5 5 30.8 5 22V8L20 2Z" fill="url(#shieldGrad)"/>
+  <!-- Angular "A" in white: two triangles with evenodd creates the hollow center -->
+  <path d="M13 29L20 11L27 29Z M15.5 29L20 16.5L24.5 29Z" fill="white" fill-rule="evenodd"/>
+  <!-- Crossbar -->
+  <rect x="16.8" y="23" width="6.4" height="2.4" fill="white"/>
+</svg>

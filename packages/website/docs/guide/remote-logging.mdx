@@ -1,0 +1,67 @@
+# Remote Logging
+
+AngularLynx apps run entirely on-device — there is no browser console. Remote logging lets you stream logs from your app to a file on your development machine over the same connection Lynx Go uses to load your bundle.
+
+## How It Works
+
+When your device connects to the dev server via the Lynx Go QR Code, a persistent channel is established between the device and your machine. `LynxLogger` writes log messages through this channel; the dev server appends them to `.dev-logs` in your project root.
+
+## Setup
+
+`LynxLogger` ships with `@blotch/angular-lynx`. Inject it wherever you need to log:
+
+```ts
+import { Component, inject } from '@angular/core';
+import { LynxLogger } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  selector: 'app-root',
+  template: `<view><text>Hello</text></view>`,
+})
+export class App {
+  private logger = inject(LynxLogger); // [!code highlight]
+}
+```
+
+:::info
+`LynxLogger` is provided at the root level — no extra `providers` entry is required in `app.config.ts`.
+:::
+
+## Writing Logs
+
+```ts
+this.logger.log('User tapped the button');
+this.logger.warn('Config value missing, using default');
+this.logger.error('Failed to load resource', error);
+```
+
+Log calls are no-ops when no Lynx Go connection is active, so it is safe to leave them in production builds.
+
+## Viewing Logs
+
+All messages are appended to `.dev-logs` in your project root.
+
+**Open the file directly** to review a session after the fact:
+
+```sh
+cat your-app/.dev-logs
+```
+
+**Tail for live output** while the app is running on-device:
+
+```sh
+tail -f your-app/.dev-logs
+```
+
+:::tip
+`.dev-logs` accumulates across sessions. Clear it before starting a new run if you want a clean slate:
+
+```sh
+> your-app/.dev-logs
+```
+
+:::
+
+:::info
+Logs are only forwarded while the device is connected via the Lynx Go QR Code. They will not appear in `.dev-logs` during web preview (`npm run dev:web`).
+:::

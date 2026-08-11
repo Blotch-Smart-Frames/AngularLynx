@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "components": {
+    "accordion": {
+      "accordion.ts": {
+        "hash": "e62fea7cd92462a6"
+      },
+      "index.ts": {
+        "hash": "8751913a8ed8016e"
+      }
+    },
+    "collapsible": {
+      "collapsible.ts": {
+        "hash": "d9de60a4ba573b7f"
+      },
+      "index.ts": {
+        "hash": "2ff1aa9a6b200d26"
+      }
+    },
+    "input": {
+      "index.ts": {
+        "hash": "4b675dffd15fdf8c"
+      },
+      "input.ts": {
+        "hash": "47493b4e0e2311b0"
+      }
+    },
+    "dialog": {
+      "dialog.ts": {
+        "hash": "2b464faa1381a1e1"
+      },
+      "index.ts": {
+        "hash": "53b2b4aec4019c08"
+      }
+    },
+    "spinner": {
+      "index.ts": {
+        "hash": "1cac2b09f8e24c3a"
+      },
+      "spinner.ts": {
+        "hash": "176ad6f9f402ead0"
+      }
+    },
+    "button": {
+      "button.test.ts": {
+        "hash": "1fd1e73bbc442151"
+      },
+      "button.ts": {
+        "hash": "1a2f018d321eb09c"
+      },
+      "index.ts": {
+        "hash": "571fcd53d172c512"
+      }
+    },
+    "textarea": {
+      "index.ts": {
+        "hash": "03fc5e55016e71db"
+      },
+      "textarea.ts": {
+        "hash": "35cda8badc838282"
+      }
+    },
+    "label": {
+      "index.ts": {
+        "hash": "85cf48114b14edc8"
+      },
+      "label.ts": {
+        "hash": "c62bec8145e47621"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "6010e930f4314a61"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0c4c52d9d2c90630"
+    },
+    "dark.css": {
+      "hash": "73345d8f2179fd64"
+    }
+  }
+}

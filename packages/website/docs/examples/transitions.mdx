@@ -1,0 +1,13 @@
+# Transitions
+
+Animate elements entering and leaving the DOM using `LynxTransition` and `LynxTransitionGroup`.
+
+<Go example="transitions" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`LynxTransition`** — wraps a single element and animates it on enter/leave using CSS transition classes (`name-enter-from`, `name-enter-active`, `name-leave-to`, `name-leave-active`)
+- **`LynxTransitionGroup`** — animates a dynamic list of items, applying enter/leave transitions as items are added or removed
+- **`[trackBy]`** — identity function for `LynxTransitionGroup` to correctly track which items were added, removed, or moved
+- **CSS class naming convention** — the `name` input (e.g., `"fade"`) generates class pairs like `.fade-enter-from` / `.fade-leave-to` for styling transitions
+- **`setTimeout` wrapping** — Lynx event handlers run synchronously on the main thread, so state updates are deferred to avoid blocking the UI

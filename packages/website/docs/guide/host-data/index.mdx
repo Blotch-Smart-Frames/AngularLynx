@@ -1,0 +1,13 @@
+# Host Data
+
+Access data passed from the native host app to your Lynx components. Use this when the native side needs to configure your Angular app at startup — passing user IDs, feature flags, theme preferences, or any initial payload.
+
+AngularLynx exposes host data through injectable services backed by signals, so your components react automatically when values change.
+
+<Go example="data-flow" defaultFile="src/app/app.ts" />
+
+| Service / API              | Purpose                                                            |
+| -------------------------- | ------------------------------------------------------------------ |
+| `LynxInitData`             | Per-card initialization data passed by the host at creation time   |
+| `LynxGlobalData`           | Host-level data shared across all Lynx cards (theme, locale, etc.) |
+| `registerDataProcessors()` | Transform raw native payloads before they reach `LynxInitData`     |

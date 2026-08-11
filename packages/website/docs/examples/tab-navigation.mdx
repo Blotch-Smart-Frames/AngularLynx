@@ -1,0 +1,172 @@
+# Tab Navigation
+
+Router-based tab navigation with lazy-loaded routes.
+
+## App setup
+
+First, configure the router in your app config:
+
+```typescript title="app.config.ts"
+import { ApplicationConfig } from '@angular/core';
+import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRenderer(),
+    provideRouter([
+      { path: '', redirectTo: 'home', pathMatch: 'full' },
+      {
+        path: 'home',
+        loadComponent: () => import('./tabs/home').then((m) => m.Home),
+      },
+      {
+        path: 'search',
+        loadComponent: () => import('./tabs/search').then((m) => m.Search),
+      },
+      {
+        path: 'profile',
+        loadComponent: () => import('./tabs/profile').then((m) => m.Profile),
+      },
+    ]),
+  ],
+};
+```
+
+## Shell component
+
+The root component renders the tab bar and a `<router-outlet>`:
+
+```typescript title="app.ts"
+import { Component, signal } from '@angular/core';
+import { Router, RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [LYNX_ELEMENTS, RouterOutlet],
+  template: `
+    <view class="shell">
+      <view class="content">
+        <router-outlet />
+      </view>
+
+      <view class="tab-bar">
+        @for (tab of tabs; track tab.path) {
+          <view
+            class="tab"
+            [class.tab-active]="activeTab() === tab.path"
+            (bindtap)="navigate(tab.path)"
+          >
+            <text
+              class="tab-icon"
+              [style.color]="activeTab() === tab.path ? '#4299e1' : '#a0aec0'"
+            >
+              {{ tab.icon }}
+            </text>
+            <text
+              class="tab-label"
+              [style.color]="activeTab() === tab.path ? '#4299e1' : '#a0aec0'"
+            >
+              {{ tab.label }}
+            </text>
+          </view>
+        }
+      </view>
+    </view>
+  `,
+  styles: `
+    .shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .content {
+      flex: 1;
+      overflow: hidden;
+    }
+    .tab-bar {
+      display: flex;
+      flex-direction: row;
+      background-color: white;
+      padding: 8px 0 20px;
+      border-top: 1px solid #edf2f7;
+    }
+    .tab {
+      flex: 1;
+      align-items: center;
+      padding: 6px 0;
+    }
+    .tab-icon {
+      font-size: 22px;
+    }
+    .tab-label {
+      font-size: 11px;
+      margin-top: 2px;
+      font-weight: bold;
+    }
+  `,
+})
+export class App {
+  readonly activeTab = signal('home');
+
+  readonly tabs = [
+    { path: 'home', label: 'Home', icon: '🏠' },
+    { path: 'search', label: 'Search', icon: '🔍' },
+    { path: 'profile', label: 'Profile', icon: '👤' },
+  ];
+
+  constructor(private router: Router) {}
+
+  navigate(path: string): void {
+    this.activeTab.set(path);
+    this.router.navigateByUrl('/' + path);
+  }
+}
+```
+
+## Tab pages
+
+Each tab is a standalone, lazy-loaded component:
+
+```typescript title="tabs/home.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-home',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view class="page" scroll-orientation="vertical">
+      <text class="page-title">Home</text>
+      <text class="page-body">Welcome to the app!</text>
+    </scroll-view>
+  `,
+  styles: `
+    .page {
+      height: 100%;
+      padding: 24px 16px;
+      background-color: #f7fafc;
+    }
+    .page-title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+    }
+    .page-body {
+      font-size: 16px;
+      color: #718096;
+      margin-top: 8px;
+    }
+  `,
+})
+export class Home {}
+```
+
+## Key concepts
+
+- **`provideRouter()`** — AngularLynx's router provider wraps Angular's router with an in-memory location strategy (no browser URL bar)
+- **`loadComponent`** — Lazy-loads route components; each tab is a separate chunk loaded on demand
+- **`<router-outlet>`** — Standard Angular directive; works in Lynx exactly like on the web
+- **`LynxRouteReuseStrategy`** — (optional) Keeps tab components alive in memory instead of destroying/recreating them on every navigation

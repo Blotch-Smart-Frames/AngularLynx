@@ -1,0 +1,46 @@
+{
+  "name": "@angular-lynx-example/kitchen-sink-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "rspeedy dev",
+    "build": "rspeedy build --environment lynx && rspeedy build --environment web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell .",
+    "dolan:update:force": "dolan update --force"
+  },
+  "dependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "@blotch/angular-lynx": "*",
+    "@blotch/dolan": "*"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^22.0.0",
+    "@angular/cli": "^22.0.0",
+    "@angular/compiler-cli": "^22.0.0",
+    "@angular/localize": "^22.0.0",
+    "@blotch/angular-lynx-testing-library": "*",
+    "@blotch/rsbuild-plugin-angular-lynx": "*",
+    "@lynx-js/qrcode-rsbuild-plugin": "^0.4.6",
+    "@lynx-js/rspeedy": "^0.14.3",
+    "@lynx-js/tailwind-preset": "^0.4.0",
+    "@lynx-js/testing-environment": "^0.2.0",
+    "@lynx-js/types": "^3.8.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "jsdom": "^25.0.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~6.0.0",
+    "vitest": "^4.0.0"
+  }
+}

@@ -1,0 +1,191 @@
+# Modal Dialog
+
+A modal dialog using the `<overlay>` element that renders above all other content.
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-modal-dialog',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="container">
+      <text class="title">Modal Dialog</text>
+
+      <view class="button" (bindtap)="showConfirm.set(true)">
+        <text class="button-text">Delete Account</text>
+      </view>
+
+      <view class="button button-secondary" (bindtap)="showInfo.set(true)">
+        <text class="button-text-secondary">Show Info</text>
+      </view>
+
+      <!-- Confirm dialog -->
+      @if (showConfirm()) {
+        <overlay class="overlay">
+          <view class="backdrop" (bindtap)="showConfirm.set(false)" />
+          <view class="dialog">
+            <text class="dialog-title">Delete Account?</text>
+            <text class="dialog-body">
+              This action cannot be undone. All your data will be permanently
+              removed.
+            </text>
+            <view class="dialog-actions">
+              <view class="action-cancel" (bindtap)="showConfirm.set(false)">
+                <text class="action-text-cancel">Cancel</text>
+              </view>
+              <view class="action-confirm" (bindtap)="onDelete()">
+                <text class="action-text-confirm">Delete</text>
+              </view>
+            </view>
+          </view>
+        </overlay>
+      }
+
+      <!-- Info dialog -->
+      @if (showInfo()) {
+        <overlay class="overlay">
+          <view class="backdrop" (bindtap)="showInfo.set(false)" />
+          <view class="dialog">
+            <text class="dialog-title">About</text>
+            <text class="dialog-body">
+              AngularLynx v1.0 — Angular framework for building native Lynx
+              apps.
+            </text>
+            <view class="dialog-actions">
+              <view class="action-confirm" (bindtap)="showInfo.set(false)">
+                <text class="action-text-confirm">OK</text>
+              </view>
+            </view>
+          </view>
+        </overlay>
+      }
+
+      @if (deleted()) {
+        <text class="status">Account deleted.</text>
+      }
+    </view>
+  `,
+  styles: `
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #f7fafc;
+      gap: 12px;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      margin-bottom: 24px;
+    }
+    .button {
+      background-color: #e53e3e;
+      border-radius: 8px;
+      padding: 14px 32px;
+    }
+    .button-secondary {
+      background-color: #4299e1;
+    }
+    .button-text {
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .button-text-secondary {
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      align-items: center;
+      justify-content: center;
+    }
+    .backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    .dialog {
+      background-color: white;
+      border-radius: 16px;
+      padding: 24px;
+      width: 300px;
+      z-index: 1;
+    }
+    .dialog-title {
+      font-size: 20px;
+      font-weight: bold;
+      color: #1a202c;
+      margin-bottom: 12px;
+    }
+    .dialog-body {
+      font-size: 15px;
+      color: #4a5568;
+      line-height: 22px;
+      margin-bottom: 20px;
+    }
+    .dialog-actions {
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+    .action-cancel {
+      padding: 10px 20px;
+      border-radius: 8px;
+      background-color: #edf2f7;
+    }
+    .action-text-cancel {
+      font-size: 15px;
+      color: #4a5568;
+      font-weight: bold;
+    }
+    .action-confirm {
+      padding: 10px 20px;
+      border-radius: 8px;
+      background-color: #e53e3e;
+    }
+    .action-text-confirm {
+      font-size: 15px;
+      color: white;
+      font-weight: bold;
+    }
+    .status {
+      font-size: 16px;
+      color: #38a169;
+      margin-top: 16px;
+    }
+  `,
+})
+export class ModalDialog {
+  readonly showConfirm = signal(false);
+  readonly showInfo = signal(false);
+  readonly deleted = signal(false);
+
+  onDelete(): void {
+    this.showConfirm.set(false);
+    this.deleted.set(true);
+  }
+}
+```
+
+## Key concepts
+
+- **`<overlay>`** — Renders content above all other elements in the Lynx element tree (like a native modal layer)
+- **Backdrop dismiss** — A full-screen `<view>` behind the dialog catches taps to close the modal
+- **`@if`** — Controls whether the overlay is mounted; Angular unmounts the entire subtree when the condition is false
+- Unlike web `z-index` stacking, Lynx `<overlay>` is a dedicated rendering layer that guarantees the content is on top

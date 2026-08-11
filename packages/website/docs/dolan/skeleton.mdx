@@ -1,0 +1,50 @@
+# Skeleton
+
+A placeholder loading element with a pulsing animation, used to indicate content that is loading.
+
+<Go example="ui-skeleton" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add skeleton
+```
+
+```typescript
+import { UiSkeleton } from '@/components/ui/skeleton';
+```
+
+## Usage
+
+### Basic
+
+```angular-html
+<ui-skeleton class="h-4 w-full" />
+```
+
+### Card Layout
+
+Compose multiple skeletons to match the shape of your content:
+
+```angular-html
+<view class="gap-4">
+  <view class="flex-row items-center gap-3">
+    <ui-skeleton class="h-10 w-10 rounded-full" />
+    <view class="gap-2 flex-1">
+      <ui-skeleton class="h-4 w-3/4" />
+      <ui-skeleton class="h-3 w-1/2" />
+    </view>
+  </view>
+  <ui-skeleton class="h-48 w-full rounded-md" />
+  <view class="gap-2">
+    <ui-skeleton class="h-4 w-full" />
+    <ui-skeleton class="h-4 w-5/6" />
+  </view>
+</view>
+```
+
+## API
+
+| Input   | Type     | Default | Description                                           |
+| ------- | -------- | ------- | ----------------------------------------------------- |
+| `class` | `string` | `''`    | CSS classes to control size, shape, and border radius |

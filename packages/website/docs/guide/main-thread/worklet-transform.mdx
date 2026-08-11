@@ -1,0 +1,108 @@
+# Worklet Transform
+
+The worklet transform is a build-time feature that detects a `"main thread"` directive in function bodies and automatically wraps them with `mainThreadFn()`. This matches React Lynx's worklet pattern — write a directive, and the build handles registration.
+
+## Before & After
+
+Without the transform (manual):
+
+```typescript
+import { mainThreadFn } from '@blotch/angular-lynx';
+
+const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
+  event.currentTarget.setStyleProperty('background-color', '#ff5722');
+});
+```
+
+With the transform (directive):
+
+```typescript
+const handleTap = (event: MainThread.TouchEvent) => {
+  'main thread'; // [!code highlight]
+  event.currentTarget.setStyleProperty('background-color', '#ff5722');
+};
+```
+
+The build plugin detects `"main thread"` as the first statement, adds the `mainThreadFn` import, and wraps the function automatically.
+
+## Supported Directives
+
+| Directive       | Effect                      |
+| --------------- | --------------------------- |
+| `"main thread"` | Wraps with `mainThreadFn()` |
+| `"main-thread"` | Same (alternate spelling)   |
+
+## Supported Function Forms
+
+```typescript
+// Arrow function (most common)
+const handleTap = (event: MainThread.TouchEvent) => {
+  'main thread';
+  event.currentTarget.setStyleProperty('opacity', '0.5');
+};
+
+// Function expression
+const handleMove = function (event: MainThread.TouchEvent) {
+  'main thread';
+  const el = event.currentTarget;
+  el.setStyleProperty('transform', `translateX(${event.touches[0].clientX}px)`);
+};
+
+// Class property
+class Example {
+  handleTap = (event: MainThread.TouchEvent) => {
+    'main thread';
+    event.currentTarget.setStyleProperty('color', 'red');
+  };
+}
+```
+
+## Rules
+
+The same rules as `mainThreadFn()` apply:
+
+1. **No closures over component state** — the function runs on the main thread, which has no access to Angular signals, services, or component instances.
+2. **Use `MainThreadRef` for persistent state** — `createMainThreadRef()` values are accessible across threads.
+3. **Module-level preferred** — define worklet functions at module scope so both thread bundles assign matching IDs.
+4. **Directive must be the first statement** — `"main thread"` must be the very first expression in the function body.
+
+## How It Works
+
+The rsbuild plugin scans compiled JavaScript for functions whose first statement is a `"main thread"` string literal. For each match:
+
+1. Wraps the function with `mainThreadFn(...)`
+2. Adds `import { mainThreadFn } from '@blotch/angular-lynx'` to the file
+
+This happens transparently during the build — no configuration needed.
+
+## Using with Events
+
+Bind the worklet-transformed function to a template event via `LynxMainThreadEvent`:
+
+```typescript title="src/app/my.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS, LynxMainThreadEvent } from '@blotch/angular-lynx';
+import type { MainThread } from '@blotch/angular-lynx';
+
+const handleTap = (event: MainThread.TouchEvent) => {
+  'main thread';
+  const el = event.currentTarget;
+  el.setStyleProperty('background-color', '#ff5722');
+};
+
+@Component({
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <view [mainThreadBindtap]="handleTap">
+      <text>Tap me (zero latency)</text>
+    </view>
+  `,
+})
+export class Example {
+  readonly handleTap = handleTap;
+}
+```
+
+:::tip
+The `"main thread"` directive is purely syntactic sugar over `mainThreadFn()`. Both approaches produce identical runtime behavior. Use whichever you prefer — the directive is terser; the explicit wrapper is more visible.
+:::

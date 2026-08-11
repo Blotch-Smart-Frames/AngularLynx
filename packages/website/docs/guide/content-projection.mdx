@@ -1,0 +1,142 @@
+# Content Projection
+
+Angular's content projection (`<ng-content>`) works in AngularLynx, including projection into `<text>` elements. This enables the standard component library pattern where wrapper components accept projected content.
+
+## Basic Projection
+
+Content projection into `<view>` elements works identically to web Angular:
+
+```typescript
+@Component({
+  selector: 'app-card',
+  template: `
+    <view class="card">
+      <ng-content />
+    </view>
+  `,
+})
+export class Card {}
+```
+
+```html
+<app-card>
+  <text>This text is projected into the card.</text>
+</app-card>
+```
+
+## Projection into `<text>` Elements
+
+You can project content directly into `<text>` elements. This is the pattern used by component libraries for styled labels and titles:
+
+```typescript
+@Component({
+  selector: 'ui-card-title',
+  template: `<text class="card-title"><ng-content /></text>`,
+})
+export class UiCardTitle {}
+```
+
+```html
+<ui-card-title>My Card Title</ui-card-title>
+```
+
+### Text-in-text (inline styling)
+
+Lynx supports nested `<text>` elements for inline styling. Projection works with this pattern:
+
+```typescript
+@Component({
+  selector: 'ui-label',
+  template: `<text class="label"><ng-content /></text>`,
+})
+export class UiLabel {}
+```
+
+```html
+<ui-label>
+  <text style="font-weight: bold;">Bold</text>
+  <text style="color: #666;"> and muted</text>
+</ui-label>
+```
+
+## Named Slots
+
+Multi-slot projection with `select` works inside `<text>` elements:
+
+```typescript
+@Component({
+  selector: 'ui-badge',
+  template: `
+    <text class="badge">
+      <ng-content select="[icon]" />
+      <ng-content />
+    </text>
+  `,
+})
+export class UiBadge {}
+```
+
+```html
+<ui-badge>
+  <text icon style="color: gold;">★ </text>
+  <text>Featured</text>
+</ui-badge>
+```
+
+## Conditional Projection
+
+Control flow (`@if`, `@for`) works inside `<text>` elements around projected content:
+
+```typescript
+@Component({
+  selector: 'ui-expandable-label',
+  template: `
+    <text class="label">
+      @if (expanded()) {
+        <ng-content />
+      } @else {
+        <text>...</text>
+      }
+    </text>
+  `,
+})
+export class UiExpandableLabel {
+  readonly expanded = input(true);
+}
+```
+
+## Content Queries
+
+`contentChild()` and `contentChildren()` work with projected content:
+
+```typescript
+@Component({
+  selector: 'app-list',
+  template: `
+    <view>
+      <text>Items: {{ items().length }}</text>
+      <ng-content />
+    </view>
+  `,
+})
+export class AppList {
+  readonly items = contentChildren('item', { read: ElementRef });
+}
+```
+
+```html
+<app-list>
+  <text #item>Item A</text>
+  <text #item>Item B</text>
+</app-list>
+```
+
+## Lynx-Specific Notes
+
+:::tip Raw text nodes
+When you project raw text (not wrapped in a `<text>` element), the renderer creates an implicit text node. For consistent styling, prefer wrapping projected content in explicit `<text>` elements.
+:::
+
+:::warning Element count
+Each projected element counts toward the total element budget. For lists with many projected items, consider using `<list>` with virtualization instead of projecting hundreds of elements.
+:::

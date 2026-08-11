@@ -1,0 +1,177 @@
+# Candlestick Chart
+
+Plot OHLC price data as candles — drawn entirely from Lynx views, no SVG or canvas. Each candle is a thin **wick** (high→low) and a **body** (open↔close), green when the period rose and red when it fell. Built on the same **cartesian chart base** as the [Line Chart](/dolan/line-chart) and [Area Chart](/dolan/area-chart).
+
+<Go example="ui-candlestick-chart" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add candlestick-chart
+```
+
+:::tip
+The base **`cartesian-chart`** (axes, gridlines, scales) is a dependency and installs automatically.
+:::
+
+```typescript
+import { UiCandlestickChart } from '@/components/ui/candlestick-chart';
+```
+
+## Usage
+
+Pass an array of OHLC points. The wrapper picks rounded axis ranges for you and insets the edge candles so they aren't clipped.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" [width]="280" [height]="200" />
+```
+
+```typescript
+prices = [
+  { x: 1, open: 100, high: 108, low: 98, close: 106 },
+  { x: 2, open: 106, high: 110, low: 103, close: 104 },
+  { x: 3, open: 104, high: 105, low: 96, close: 98 },
+  { x: 4, open: 98, high: 102, low: 95, close: 101 },
+];
+```
+
+Each point is `{ x, open, high, low, close }`. `x` is a plain number (a period index), not a `Date` — see the note below.
+
+### Custom colors
+
+`upColor` fills rising candles (close ≥ open); `downColor` fills falling ones.
+
+```angular-html
+<ui-candlestick-chart
+  [data]="prices"
+  [upColor]="'rgba(20, 184, 166, 1)'"
+  [downColor]="'rgba(244, 63, 94, 1)'"
+/>
+```
+
+### Body and wick width
+
+`bodyWidthRatio` sets the body width as a fraction of the spacing between candles (default `0.6`). `wickWidth` is the high–low line thickness in px.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" [bodyWidthRatio]="0.8" [wickWidth]="2" />
+```
+
+### Label the axes
+
+Set `xAxisLabel` / `yAxisLabel` for axis titles. `showXGrid` adds vertical gridlines.
+
+```angular-html
+<ui-candlestick-chart
+  [data]="prices"
+  xAxisLabel="Session"
+  yAxisLabel="Price ($)"
+  [showXGrid]="true"
+/>
+```
+
+### Fix the axis range
+
+Pass `yMin` / `yMax` (or `xMin` / `xMax`) to pin an axis bound instead of fitting the data — useful to compare two charts on one scale.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" [yMin]="90" [yMax]="120" />
+```
+
+### Handle taps
+
+`candleTap` emits the tapped OHLC point.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" (candleTap)="onCandleTap($event)" />
+```
+
+### Add a moving-average line
+
+For an overlay, drop to the base `<ui-cartesian-chart>` and layer a [`<ui-line-series>`](/dolan/line-chart#uilineseries) over a `<ui-candlestick-series>`. Both read the shared axes, so they line up.
+
+```angular-html
+<ui-cartesian-chart
+  [xDomain]="[0, 9]"
+  [yDomain]="[90, 120]"
+  [xTicks]="[1, 3, 5, 7]"
+  [yTicks]="[90, 100, 110, 120]"
+  [width]="280"
+  [height]="200"
+  [padding]="{ left: 0.06, right: 0.06 }"
+>
+  <ui-candlestick-series [data]="prices" />
+  <ui-line-series [data]="movingAverage" [showDots]="false" [smooth]="true" />
+</ui-cartesian-chart>
+```
+
+:::info Why numbers, not dates; why solid colors
+Lynx has no `Intl`, so the whole chart system keeps `x` **numeric** rather than a `Date` — format tick labels with `xTickFormat` if you need them. And Lynx has no SVG fill patterns, so up/down direction is carried by **color** alone (solid fills), not the hatch patterns some e-ink chart libraries use.
+:::
+
+### Pan and zoom
+
+Set `zoomable` for pinch-to-zoom and drag-to-pan, with on-screen `+` / `−` / `1:1` controls. Zooming in **stretches the candles apart** while the axes and gridlines update live. Off by default.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" [zoomable]="true" />
+```
+
+See [Pan and zoom](/dolan/line-chart#pan-and-zoom) for the shared options (`zoomAxes`, `minZoom`, `maxZoom`) and the `zoomIn()` / `zoomOut()` / `resetZoom()` methods.
+
+## API
+
+### UiCandlestickChart
+
+The single-series convenience wrapper. Auto-computes the axes from `data` (lowest low to highest high) and insets the edge candles.
+
+| Input              | Type                        | Default                  | Description                                       |
+| ------------------ | --------------------------- | ------------------------ | ------------------------------------------------- |
+| `data`             | `CandlestickPoint[]`        | _required_               | OHLC points, each `{ x, open, high, low, close }` |
+| `upColor`          | `string`                    | `'rgba(34, 197, 94, 1)'` | Fill for rising candles (close ≥ open)            |
+| `downColor`        | `string`                    | `'rgba(239, 68, 68, 1)'` | Fill for falling candles                          |
+| `width`            | `number`                    | `320`                    | Chart width in px                                 |
+| `height`           | `number`                    | `200`                    | Chart height in px                                |
+| `tickCount`        | `number`                    | `5`                      | Target number of axis ticks                       |
+| `wickWidth`        | `number`                    | `1`                      | High–low wick thickness in px                     |
+| `bodyWidthRatio`   | `number`                    | `0.6`                    | Body width as a fraction of candle spacing        |
+| `showXGrid`        | `boolean`                   | `false`                  | Draw vertical gridlines at x ticks                |
+| `xAxisLabel`       | `string`                    | `''`                     | X-axis title                                      |
+| `yAxisLabel`       | `string`                    | `''`                     | Y-axis title                                      |
+| `padding`          | `ChartPadding`              | _auto_                   | Inner inset (merged over auto edge-inset)         |
+| `xMin`             | `number`                    | _auto_                   | Force x-axis lower bound                          |
+| `xMax`             | `number`                    | _auto_                   | Force x-axis upper bound                          |
+| `yMin`             | `number`                    | _auto_                   | Force y-axis lower bound                          |
+| `yMax`             | `number`                    | _auto_                   | Force y-axis upper bound                          |
+| `xTickFormat`      | `(value: number) => string` | rounds to 2 dp           | Formats x-axis labels                             |
+| `yTickFormat`      | `(value: number) => string` | rounds to 2 dp           | Formats y-axis labels                             |
+| `zoomable`         | `boolean`                   | `false`                  | Enable pinch/drag zoom + controls                 |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`                   | Which axes zoom/pan affect                        |
+| `showZoomControls` | `boolean`                   | `true`                   | Show the +/−/1:1 controls when zoomable           |
+| `minZoom`          | `number`                    | `1`                      | Lower zoom bound (1 = fit all data)               |
+| `maxZoom`          | `number`                    | `8`                      | Upper zoom bound                                  |
+| `zoomStep`         | `number`                    | `1.4`                    | Zoom factor per +/− control press                 |
+| `class`            | `string`                    | `''`                     | Additional CSS classes                            |
+
+| Output      | Type               | Description                                |
+| ----------- | ------------------ | ------------------------------------------ |
+| `candleTap` | `CandlestickPoint` | Emits the OHLC point when a body is tapped |
+
+### UiCandlestickSeries
+
+One candlestick series inside a `<ui-cartesian-chart>`. Reads the shared axes from the chart.
+
+| Input            | Type                 | Default                  | Description                                       |
+| ---------------- | -------------------- | ------------------------ | ------------------------------------------------- |
+| `data`           | `CandlestickPoint[]` | _required_               | OHLC points, each `{ x, open, high, low, close }` |
+| `upColor`        | `string`             | `'rgba(34, 197, 94, 1)'` | Fill for rising candles                           |
+| `downColor`      | `string`             | `'rgba(239, 68, 68, 1)'` | Fill for falling candles                          |
+| `wickWidth`      | `number`             | `1`                      | High–low wick thickness in px                     |
+| `bodyWidthRatio` | `number`             | `0.6`                    | Body width as a fraction of candle spacing        |
+| `class`          | `string`             | `''`                     | Additional CSS classes                            |
+
+| Output      | Type               | Description                                |
+| ----------- | ------------------ | ------------------------------------------ |
+| `candleTap` | `CandlestickPoint` | Emits the OHLC point when a body is tapped |
+
+The x/y axes come from the surrounding [`UiCartesianChart`](/dolan/line-chart#uicartesianchart) — see the Line Chart page for its inputs.

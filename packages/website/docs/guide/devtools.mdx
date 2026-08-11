@@ -1,0 +1,101 @@
+# DevTools
+
+Profile performance and inspect your app on-device. AngularLynx includes built-in instrumentation that integrates with [Perfetto](https://perfetto.dev/), the native trace system.
+
+:::info `__PROFILE__` flag
+All profiling code is gated behind a **compile-time constant** called `__PROFILE__`. It's `true` in dev builds and `false` in production. When false, all profiling branches are dead-code-eliminated — zero overhead in your production bundle.
+:::
+
+## Performance Profiling
+
+`LynxPerformance` wraps the native `lynx.performance` API for trace-based profiling:
+
+```typescript
+import { inject } from '@angular/core';
+import { LynxPerformance } from '@blotch/angular-lynx';
+
+const perf = inject(LynxPerformance);
+
+// Named trace (shows up in Perfetto timeline)
+perf.profileStart('My::loadData', { args: { page: 3 } });
+await fetchData();
+perf.profileEnd();
+
+// Discrete mark
+perf.profileMark('dataLoaded', { args: { count: items.length } });
+
+// Check if recording is active
+if (perf.isRecording()) {
+  perf.profileStart('expensiveComputation');
+  // ...
+  perf.profileEnd();
+}
+
+// Flow IDs for cross-thread correlation
+const flowId = perf.profileFlowId();
+perf.profileStart('backgroundWork', { flowId });
+```
+
+### Automatic Instrumentation
+
+When `__PROFILE__` is enabled, AngularLynx automatically tracks these metrics:
+
+| Metric             | Description                                  |
+| ------------------ | -------------------------------------------- |
+| `cdCycles`         | Number of change detection cycles completed  |
+| `elementCreated`   | Total elements created via the renderer      |
+| `elementRemoved`   | Total elements removed from the tree         |
+| `flushCount`       | Number of `__FlushElementTree()` calls       |
+| `lastCdDurationMs` | Duration of the most recent CD + flush cycle |
+
+## DevTools Service
+
+`LynxDevTools` exposes the stats counters as Angular signals for on-device debug UIs:
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { LynxDevTools, LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-debug-overlay',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="debug-panel">
+      <text>CD cycles: {{ devtools.stats().cdCycles }}</text>
+      <text>
+        Elements: +{{ devtools.stats().elementCreated }} / -{{
+          devtools.stats().elementRemoved
+        }}
+      </text>
+      <text>Flushes: {{ devtools.stats().flushCount }}</text>
+      <view (bindtap)="devtools.reset()">
+        <text>Reset</text>
+      </view>
+      <view (bindtap)="devtools.refresh()">
+        <text>Refresh</text>
+      </view>
+    </view>
+  `,
+})
+export class DebugOverlay {
+  readonly devtools = inject(LynxDevTools);
+}
+```
+
+### API
+
+| Method       | Description                                                                      |
+| ------------ | -------------------------------------------------------------------------------- |
+| `stats()`    | Signal returning a `DevToolsStats` snapshot (updates on `refresh()` / `reset()`) |
+| `snapshot()` | Non-reactive one-shot read of current counters                                   |
+| `refresh()`  | Update the signal with latest counter values                                     |
+| `reset()`    | Zero all counters and update the signal                                          |
+
+## When `__PROFILE__` Is Disabled
+
+In production builds (`__PROFILE__` = false):
+
+- All `if (__PROFILE__)` branches are removed by the build plugin
+- Counters are never incremented
+- `LynxPerformance` methods are still callable but return immediately
+- `LynxDevTools.stats()` returns all zeros

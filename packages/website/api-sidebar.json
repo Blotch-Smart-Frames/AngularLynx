@@ -1,0 +1,22 @@
+[
+  {
+    "text": "angular-lynx",
+    "link": "/guide/api/angular-lynx/",
+    "collapsed": true,
+    "items": [
+      { "text": "Bootstrap", "link": "/guide/api/angular-lynx/bootstrap" },
+      { "text": "Routing", "link": "/guide/api/angular-lynx/routing" },
+      { "text": "Elements", "link": "/guide/api/angular-lynx/elements" },
+      { "text": "Animation", "link": "/guide/api/angular-lynx/animation" },
+      { "text": "Services", "link": "/guide/api/angular-lynx/services" }
+    ]
+  },
+  {
+    "text": "angular-lynx/plugin",
+    "link": "/guide/api/plugin/"
+  },
+  {
+    "text": "angular-lynx/testing-library",
+    "link": "/guide/api/testing-library/"
+  }
+]

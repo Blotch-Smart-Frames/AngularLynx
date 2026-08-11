@@ -1,0 +1,50 @@
+# CSS @keyframes
+
+Define `@keyframes` in your component styles and apply them via a class toggle:
+
+```typescript title="src/app/spin.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      class="spinner"
+      [class.spinning]="spinning()"
+      (bindtap)="toggleSpin()"
+    >
+      <text>Spin</text>
+    </view>
+  `,
+  styles: [
+    `
+      @keyframes rotate {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .spinner {
+        width: 80px;
+        height: 80px;
+        background-color: #03dac6;
+      }
+
+      .spinning {
+        animation: rotate 2s linear infinite; /* [!code highlight] */
+      }
+    `,
+  ],
+})
+export class Spin {
+  readonly spinning = signal(false);
+
+  toggleSpin(): void {
+    this.spinning.update((v) => !v);
+  }
+}
+```

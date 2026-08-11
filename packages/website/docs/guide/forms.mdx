@@ -1,0 +1,200 @@
+# Forms
+
+AngularLynx supports all three of Angular's form APIs — **reactive forms**, **template-driven forms**, and the experimental **Signal Forms** — using `<input>` and `<textarea>` elements backed by Lynx native events.
+
+:::warning Lynx only has `<input>` and `<textarea>`
+Lynx has no native checkbox, radio, or select elements. For those controls, build custom components with `<view>` and tap gestures. See the [Components](/dolan/) library for ready-made alternatives.
+:::
+
+:::info
+Lynx fires `bindinput` instead of the DOM `input` event, with values in `event.detail.value`. `LYNX_ELEMENTS` includes `ControlValueAccessor` implementations that bridge this automatically — no extra work needed.
+:::
+
+<Go example="forms" defaultFile="src/app/app.ts" />
+
+## Setup
+
+Import `LYNX_ELEMENTS` as usual — the form value accessors are already bundled in. You still need to import the Angular form modules you want to use:
+
+| API                         | Required import                                  |
+| --------------------------- | ------------------------------------------------ |
+| Reactive forms              | `ReactiveFormsModule` (or individual directives) |
+| Template-driven (`ngModel`) | `FormsModule`                                    |
+| Signal Forms                | `FormField` from `@angular/forms/signals`        |
+
+## Reactive Forms
+
+Use `[formControl]` or `formControlName` directly on `<input>` and `<textarea>`:
+
+```typescript title="src/app/contact.ts"
+import { Component } from '@angular/core';
+import {
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS, ReactiveFormsModule],
+  template: `
+    <view>
+      <input placeholder="Your name" [formControl]="name" />
+      @if (name.invalid && name.touched) {
+        <text style="color: red">Name is required</text>
+      }
+
+      <textarea placeholder="Message" [formControl]="message" />
+
+      <view (bindtap)="submit()">
+        <text>Submit</text>
+      </view>
+    </view>
+  `,
+})
+export class Contact {
+  name = new FormControl('', Validators.required);
+  message = new FormControl('');
+
+  submit() {
+    if (this.name.valid) {
+      console.log(this.name.value, this.message.value);
+    }
+  }
+}
+```
+
+`FormGroup` and `formControlName` work identically:
+
+```typescript
+form = new FormGroup({
+  name: new FormControl('', Validators.required),
+  email: new FormControl('', [Validators.required, Validators.email]),
+});
+```
+
+```angular-html
+<input placeholder="Name" formControlName="name" />
+<input type="email" placeholder="Email" formControlName="email" />
+```
+
+## Template-Driven Forms
+
+Use `[(ngModel)]` for two-way binding:
+
+```typescript title="src/app/settings.ts"
+import { Component } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS, FormsModule],
+  template: `
+    <view>
+      <input placeholder="Display name" [(ngModel)]="displayName" />
+      <textarea placeholder="Bio" [(ngModel)]="bio" />
+      <text>Preview: {{ displayName }}</text>
+    </view>
+  `,
+})
+export class Settings {
+  displayName = '';
+  bio = '';
+}
+```
+
+## Signal Forms
+
+Signal Forms (`[formField]`) is an experimental Angular API (v21+). It works with `<input>` and `<textarea>` because the `FormField` directive detects the Lynx `ControlValueAccessor`:
+
+```typescript title="src/app/signup.ts"
+import { Component } from '@angular/core';
+import { form, schema, required, FormField } from '@angular/forms/signals';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS, FormField],
+  template: `
+    <view>
+      <input placeholder="Email" [formField]="signup.fields.email" />
+      @if (signup.fields.email.state().errors().length) {
+        <text style="color: red">Email is required</text>
+      }
+
+      <input
+        type="password"
+        placeholder="Password"
+        [formField]="signup.fields.password"
+      />
+
+      <view (bindtap)="submit()">
+        <text>Sign up</text>
+      </view>
+    </view>
+  `,
+})
+export class Signup {
+  signup = form({ email: '', password: '' }, (f) => {
+    required(f.email);
+    required(f.password);
+  });
+
+  submit() {
+    const { email, password } = this.signup.value();
+    console.log(email, password);
+  }
+}
+```
+
+## Validation State
+
+Validation state from all three APIs is reactive:
+
+```angular-html
+@if (ctrl.invalid && ctrl.touched) {
+  <text style="color: red">{{ ctrl.errors | json }}</text>
+}
+```
+
+For Signal Forms, error state is exposed as a signal:
+
+```angular-html
+@if (field.state().errors().length) {
+  <text style="color: red">{{ field.state().errors()[0].message }}</text>
+}
+```
+
+## Disabling Inputs
+
+All three APIs respect `setDisabledState`:
+
+```typescript
+ctrl.disable(); // sets the native 'disabled' attribute
+ctrl.enable(); // removes it
+```
+
+## Caveats
+
+### `type="number"` returns strings
+
+Lynx's `bindinput` event always delivers `event.detail.value` as a **string**, regardless of the `type` attribute. This differs from the browser's `NumberValueAccessor`, which converts to a JavaScript number automatically.
+
+Use `valueChanges` to coerce when needed:
+
+```typescript
+amount = new FormControl(0);
+
+ngOnInit() {
+  this.amount.valueChanges.subscribe(raw => {
+    const n = Number(raw);
+    if (!isNaN(n)) this.amount.setValue(n, { emitEvent: false });
+  });
+}
+```
+
+Or model the control as `FormControl<string>` and convert at submit time.
+
+### No native checkbox, radio, or select
+
+Lynx has no native checkbox, radio, or select elements. See the warning at the top of this page.

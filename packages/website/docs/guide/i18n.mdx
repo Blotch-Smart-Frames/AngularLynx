@@ -1,0 +1,184 @@
+# Internationalization (i18n)
+
+AngularLynx supports Angular's built-in `$localize` system for translating templates and code. Translations are loaded at runtime — one bundle serves all locales.
+
+## Setup
+
+:::tip Automatic Setup
+If you already have an AngularLynx project, add i18n support in one command:
+
+```bash
+ng generate @blotch/angular-lynx:add-i18n
+```
+
+This installs `@angular/localize`, adds the `i18n` block to `angular.json`, types `$localize` in `tsconfig.app.json`, and registers `provideLocale()` in your app config. You can skip the manual steps below.
+:::
+
+### 1. Install `@angular/localize`
+
+```bash
+npm install @angular/localize
+```
+
+### 2. Configure angular.json
+
+Add the `i18n` section to your project definition:
+
+```json
+{
+  "projects": {
+    "my-app": {
+      "i18n": {
+        "sourceLocale": "en-US",
+        "locales": {
+          "fr": "src/locale/messages.fr.xlf",
+          "ja": "src/locale/messages.ja.xlf"
+        }
+      }
+    }
+  }
+}
+```
+
+When the build plugin detects `i18n.sourceLocale`, it automatically includes the `@angular/localize/init` polyfill and sets the `__LYNX_SOURCE_LOCALE__` compile-time constant.
+
+### 3. Type `$localize` in tsconfig
+
+Add `@angular/localize` to `compilerOptions.types` in `tsconfig.app.json` so TypeScript recognizes the global `$localize` function instead of flagging it as undefined:
+
+```json title="tsconfig.app.json"
+{
+  "compilerOptions": {
+    "types": ["@angular/localize"]
+  }
+}
+```
+
+### 4. Add `provideLocale()` to your app config
+
+```typescript
+import { provideRenderer, provideLocale } from '@blotch/angular-lynx';
+
+bootstrapApplication(App, {
+  providers: [provideRenderer(), provideLocale()],
+});
+```
+
+This sets Angular's `LOCALE_ID` token from `lynx.__globalProps.appLocale`, falling back to the `sourceLocale` in angular.json.
+
+## Using $localize in Code
+
+Use the `$localize` tagged template literal in TypeScript and bind the result in your template:
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-greeting',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>{{ greeting }}</text>
+      <text>{{ welcome }}</text>
+    </view>
+  `,
+})
+export class Greeting {
+  readonly greeting = $localize`Hello, world!`;
+  readonly welcome = $localize`:@@welcomeMsg:Welcome, ${this.userName}!`;
+}
+```
+
+## Loading Translations at Runtime
+
+Load translations before bootstrapping the app, using `getLynxAppLocale()` to read the host-provided locale without needing Angular DI:
+
+{/* cspell:ignore Bienvenue */}
+
+```typescript
+import '@angular/localize/init';
+import { loadTranslations } from '@angular/localize';
+import { getLynxAppLocale } from '@blotch/angular-lynx';
+
+if (getLynxAppLocale() === 'fr') {
+  loadTranslations({
+    'greeting': 'Bonjour le monde!',
+    'welcomeMsg': 'Bienvenue, {$PH}!',
+  });
+}
+
+// Then bootstrap
+bootstrapApplication(App, { providers: [...] });
+```
+
+`getLynxAppLocale()` reads `lynx.__globalProps.appLocale` and returns `undefined` outside Lynx or when the host hasn't set a locale. It needs no injector, so it works before `bootstrapApplication()` runs.
+
+## LynxLocale
+
+Once the app is bootstrapped, inject `LynxLocale` instead — it's reactive and updates when the host changes the locale:
+
+```typescript
+import { inject } from '@angular/core';
+import { LynxLocale } from '@blotch/angular-lynx';
+
+const locale = inject(LynxLocale);
+
+// Reactive signal — updates when lynx.__globalProps.appLocale changes
+console.log(locale.locale()); // 'en-US', 'fr', 'ja', etc.
+```
+
+## Extracting Translation Files
+
+Use Angular's extraction tool to generate XLIFF files:
+
+```bash
+ng extract-i18n --output-path src/locale
+```
+
+This produces `messages.xlf` which translators can work with.
+
+## Limitations
+
+### No `Intl` API
+
+Lynx's JavaScript engine does not include `Intl`. Angular pipes like `DatePipe`, `DecimalPipe`, and `CurrencyPipe` will crash without polyfills.
+
+Install the polyfills:
+
+```bash
+npm install @formatjs/intl-numberformat @formatjs/intl-datetimeformat @formatjs/intl-pluralrules
+```
+
+Then add them to `polyfills` in angular.json:
+
+```json
+{
+  "polyfills": [
+    "@formatjs/intl-pluralrules/polyfill",
+    "@formatjs/intl-pluralrules/locale-data/en",
+    "@formatjs/intl-numberformat/polyfill",
+    "@formatjs/intl-numberformat/locale-data/en"
+  ]
+}
+```
+
+### No template `i18n` attribute
+
+Angular's `<text i18n>Hello</text>` syntax does **not work** on Lynx. It creates internal DOM nodes that bypass the Lynx renderer, causing a blank screen.
+
+Use `$localize` in TypeScript instead:
+
+```typescript
+// Instead of: <text i18n>Hello</text>
+get greeting() { return $localize`Hello`; }
+// Template: <text>{{ greeting }}</text>
+```
+
+### Locale changes require re-bootstrap
+
+`$localize` evaluates translations at component creation time. If the host app changes the locale at runtime, you must re-bootstrap the Angular app.
+
+### No build-time inlining
+
+Angular's build-time translation inlining (one bundle per locale) is not yet supported. Use the runtime `loadTranslations()` approach shown above.

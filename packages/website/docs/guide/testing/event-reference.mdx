@@ -1,0 +1,81 @@
+# Event Reference
+
+All events supported by `fireEvent` in `@blotch/angular-lynx-testing-library`. Each event maps to a `(bindEvent)` template binding.
+
+## Touch / Gesture
+
+| Event         | Template binding    |
+| ------------- | ------------------- |
+| `tap`         | `(bindtap)`         |
+| `longtap`     | `(bindlongtap)`     |
+| `touchstart`  | `(bindtouchstart)`  |
+| `touchmove`   | `(bindtouchmove)`   |
+| `touchcancel` | `(bindtouchcancel)` |
+| `touchend`    | `(bindtouchend)`    |
+| `longpress`   | `(bindlongpress)`   |
+
+## Keyboard
+
+| Event     | Template binding |
+| --------- | ---------------- |
+| `keydown` | `(bindkeydown)`  |
+| `keyup`   | `(bindkeyup)`    |
+
+## Mouse
+
+| Event            | Template binding       |
+| ---------------- | ---------------------- |
+| `mousedown`      | `(bindmousedown)`      |
+| `mouseup`        | `(bindmouseup)`        |
+| `mousemove`      | `(bindmousemove)`      |
+| `mouseclick`     | `(bindmouseclick)`     |
+| `mousedblclick`  | `(bindmousedblclick)`  |
+| `mouselongpress` | `(bindmouselongpress)` |
+| `wheel`          | `(bindwheel)`          |
+
+## Scroll / Viewport
+
+| Event                 | Template binding            |
+| --------------------- | --------------------------- |
+| `scroll`              | `(bindscroll)`              |
+| `scrollend`           | `(bindscrollend)`           |
+| `scrolltoupper`       | `(bindscrolltoupper)`       |
+| `scrolltolower`       | `(bindscrolltolower)`       |
+| `contentsizechanged`  | `(bindcontentsizechanged)`  |
+| `scrolltoupperedge`   | `(bindscrolltoupperedge)`   |
+| `scrolltoloweredge`   | `(bindscrolltoloweredge)`   |
+| `scrolltonormalstate` | `(bindscrolltonormalstate)` |
+
+## Form / Focus
+
+| Event     | Template binding |
+| --------- | ---------------- |
+| `focus`   | `(bindfocus)`    |
+| `blur`    | `(bindblur)`     |
+| `input`   | `(bindinput)`    |
+| `confirm` | `(bindconfirm)`  |
+
+## Layout / Image
+
+| Event          | Template binding     |
+| -------------- | -------------------- |
+| `layoutchange` | `(bindlayoutchange)` |
+| `bgload`       | `(bindbgload)`       |
+| `bgerror`      | `(bindbgerror)`      |
+
+## Transition / Animation
+
+| Event              | Template binding         |
+| ------------------ | ------------------------ |
+| `transitionstart`  | `(bindtransitionstart)`  |
+| `transitionend`    | `(bindtransitionend)`    |
+| `transitioncancel` | `(bindtransitioncancel)` |
+| `animationend`     | `(bindanimationend)`     |
+
+## Raw Event Dispatch
+
+For events not in the table, dispatch directly:
+
+```ts
+fireEvent(element, new Event('bindEvent:myCustomEvent'));
+```

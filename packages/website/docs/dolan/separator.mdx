@@ -1,0 +1,48 @@
+# Separator
+
+A visual divider used to separate sections of content, available in horizontal and vertical orientations.
+
+<Go example="ui-separator" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add separator
+```
+
+```typescript
+import { UiSeparator } from '@/components/ui/separator';
+```
+
+## Usage
+
+### Horizontal
+
+A horizontal separator spans the full width of its container:
+
+```angular-html
+<view class="flex flex-col gap-4">
+  <text>Above the separator</text>
+  <ui-separator />
+  <text>Below the separator</text>
+</view>
+```
+
+### Vertical
+
+A vertical separator spans the full height of its container. The parent must have a defined height:
+
+```angular-html
+<view class="flex flex-row items-center gap-4 h-5">
+  <text>Left</text>
+  <ui-separator orientation="vertical" />
+  <text>Right</text>
+</view>
+```
+
+## API
+
+| Input         | Type                         | Default        | Description                                      |
+| ------------- | ---------------------------- | -------------- | ------------------------------------------------ |
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | The orientation of the separator                 |
+| `class`       | `string`                     | `''`           | Additional CSS classes to apply to the separator |

@@ -1,0 +1,125 @@
+# Change Detection
+
+AngularLynx updates the UI automatically when [signal](/guide/change-detection/signals) values change — no Zone.js, no manual `markForCheck()`. Write signals, and the renderer handles the rest.
+
+## Zoneless by Design
+
+Lynx's JavaScript engine (PrimJS) does not provide the browser APIs that Zone.js patches — there is no real `setTimeout`, `Promise`, `XMLHttpRequest`, or `addEventListener` on `globalThis` out of the box. AngularLynx polyfills the ones it needs (like `setTimeout` from `lynx.setTimeout`), but Zone.js cannot function in this environment.
+
+This is actually a good thing. Angular 21 recommends zoneless change detection with signals, and AngularLynx enforces it:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection, // [!code highlight]
+} from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(), // Required — Zone.js doesn't exist in Lynx // [!code highlight]
+    provideRenderer(),
+  ],
+};
+```
+
+:::warning
+Do not attempt to use `provideZoneChangeDetection()` or import `zone.js`. It will not work in the Lynx runtime and will cause errors at startup.
+:::
+
+## Signals Drive the UI
+
+[Signals](/guide/change-detection/signals) are the primary way to trigger UI updates. When a signal value changes, Angular automatically marks the component for check and schedules a change detection cycle.
+
+```typescript
+import { Component, signal, computed } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="increment()">
+      <text>Count: {{ count() }}</text>
+      <text>Double: {{ double() }}</text>
+    </view>
+  `,
+})
+export class Counter {
+  count = signal(0);
+  double = computed(() => this.count() * 2);
+
+  increment(): void {
+    this.count.update((n) => n + 1);
+  }
+}
+```
+
+:::tip
+You do not need to call `ChangeDetectorRef.markForCheck()` or `detectChanges()` when using signals. Signal changes automatically schedule change detection.
+:::
+
+## How Change Detection is Scheduled
+
+Here is the full lifecycle of a UI update in AngularLynx:
+
+1. A Lynx event fires (e.g., `bindtap`) and dispatches to the background thread
+2. Your event handler runs and modifies a signal
+3. Angular's `ChangeDetectionScheduler` calls `setTimeout()` to schedule a CD tick
+4. The `setTimeout` polyfill delegates to `lynx.setTimeout` (bridged to `globalThis` at startup)
+5. On the next macrotask, change detection runs
+6. `LynxRenderer` applies element operations (`__SetAttribute`, `__AppendElement`, etc.)
+7. `LynxRendererFactory2.end()` calls `__FlushElementTree()` to commit all changes atomically
+
+All signal changes within a single macrotask are committed together in one flush — you never see partial UI states.
+
+## Computed Signals and Effects
+
+Computed signals and effects work identically to web Angular:
+
+```typescript
+export class Product {
+  price = signal(10);
+  quantity = signal(2);
+
+  total = computed(() => this.price() * this.quantity());
+
+  constructor() {
+    effect(() => {
+      console.log(`Total updated: ${this.total()}`);
+    });
+  }
+}
+```
+
+## Observables Need Conversion
+
+Since AngularLynx is zoneless, Observables alone **do not trigger change detection** — a bare `subscribe()` callback won't update the UI. You have three options:
+
+- **`toSignal()`** — converts the Observable to a signal (recommended)
+- **`async` pipe** — `{{ obs$ | async }}` in templates; `AsyncPipe` calls `markForCheck()` on each emission
+- **Manual `markForCheck()`** — call `ChangeDetectorRef.markForCheck()` inside `subscribe()` callbacks
+
+```typescript
+import { inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+
+export class Users {
+  #http = inject(HttpClient);
+
+  users = toSignal(this.#http.get<User[]>('/api/users'), { initialValue: [] });
+}
+```
+
+See the [Angular RxJS interop guide](https://angular.dev/guide/change-detection/signals/rxjs-interop) for full details on `toSignal()` and `toObservable()`.
+
+## Web Angular vs AngularLynx
+
+| Pattern                             | Web Angular                | AngularLynx                        |
+| ----------------------------------- | -------------------------- | ---------------------------------- |
+| Change detection trigger            | Zone.js patches or signals | Signals only                       |
+| `async` pipe                        | Works with Zone.js         | Use `toSignal()` instead           |
+| `ChangeDetectorRef.detectChanges()` | Common with OnPush         | Rarely needed                      |
+| `NgZone.run()`                      | Re-enter Angular zone      | Not applicable (no zone)           |
+| `NgZone.runOutsideAngular()`        | Opt out of CD              | Not applicable                     |
+| `markForCheck()`                    | Required with OnPush       | Not needed with signals            |
+| DOM mutation timing                 | Immediate                  | Batched via `__FlushElementTree()` |

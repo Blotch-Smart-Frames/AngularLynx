@@ -1,0 +1,45 @@
+# Spinner
+
+An animated loading spinner with configurable size and color.
+
+<Go example="ui-spinner" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add spinner
+```
+
+```typescript
+import { UiSpinner } from '@/components/ui/spinner';
+```
+
+## Usage
+
+### Basic
+
+```angular-html
+<ui-spinner />
+```
+
+### Sizes
+
+```angular-html
+<ui-spinner size="xs" />
+<ui-spinner size="sm" />
+<ui-spinner size="md" />
+<ui-spinner size="lg" />
+```
+
+### Custom Color
+
+```angular-html
+<ui-spinner color="#3b82f6" />
+```
+
+## API
+
+| Input   | Type                           | Default     | Description                                          |
+| ------- | ------------------------------ | ----------- | ---------------------------------------------------- |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | Size of the spinner                                  |
+| `color` | `string \| undefined`          | `undefined` | Custom stroke color (uses `currentColor` by default) |

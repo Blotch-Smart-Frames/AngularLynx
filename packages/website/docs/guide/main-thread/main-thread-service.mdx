@@ -1,0 +1,57 @@
+# `LynxMainThread`
+
+An injectable service for invoking main thread functions from the background thread. Unlike `LynxMainThreadEvent` (which binds to native events), this lets you programmatically trigger main thread execution — useful for animations, timers, or responding to state changes.
+
+:::danger Escape Hatch — Not Standard Angular
+Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::
+
+## Usage
+
+```typescript title="src/app/my.ts"
+import { Component, inject } from '@angular/core';
+import {
+  mainThreadFn,
+  LynxMainThread, // [!code highlight]
+  LYNX_ELEMENTS,
+} from '@blotch/angular-lynx';
+
+const flashElement = mainThreadFn(() => {
+  const el = lynx.querySelector('#flash-target');
+  if (el) {
+    el.setStyleProperty('background-color', '#ff0000');
+    setTimeout(() => {
+      el.setStyleProperty('background-color', '#ffffff');
+    }, 200);
+  }
+});
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view id="flash-target" (bindtap)="flash()">
+      <text>Tap to flash</text>
+    </view>
+  `,
+})
+export class Example {
+  readonly #mts = inject(LynxMainThread); // [!code highlight]
+
+  flash(): void {
+    this.#mts.runOnMainThread(flashElement); // [!code highlight]
+  }
+}
+```
+
+## API
+
+```typescript
+runOnMainThread<TArgs, TReturn>(
+  handle: MainThreadFnHandle<TArgs, TReturn>,
+  ...args: TArgs
+): Promise<TReturn>
+```
+
+- **Must be called from the background thread** — throws if called on the main thread
+- **Arguments must be JSON-serializable** — they are sent across the thread boundary
+- Returns a `Promise` that resolves when the main thread function completes

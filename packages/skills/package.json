@@ -1,0 +1,12 @@
+{
+  "name": "@blotch/angular-lynx-skills",
+  "version": "0.0.1",
+  "description": "skills.sh skill pack for building Angular apps on the Lynx native runtime",
+  "keywords": [
+    "angular",
+    "claude",
+    "lynx",
+    "skills.sh"
+  ],
+  "license": "MIT"
+}

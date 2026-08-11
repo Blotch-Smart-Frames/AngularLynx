@@ -1,0 +1,52 @@
+# Event Handling
+
+Lynx uses a prefix-based event system that controls propagation behavior:
+
+<Go example="element-event-handling" defaultFile="src/app/app.ts" />
+
+| Prefix          | Behavior                         | Example                        |
+| --------------- | -------------------------------- | ------------------------------ |
+| `bind`          | Bubbles up to parent elements    | `(bindtap)="onTap()"`          |
+| `catch`         | Handles and stops propagation    | `(catchtap)="onTap()"`         |
+| `capture-bind`  | Capture phase, then bubbles      | `(capture-bindtap)="onTap()"`  |
+| `capture-catch` | Capture phase, stops propagation | `(capture-catchtap)="onTap()"` |
+
+## Common Events
+
+```angular-html
+<!-- Tap (like click) -->
+<view (bindtap)="onTap($event)">
+  <text>Tap me</text>
+</view>
+
+<!-- Input change -->
+<input (bindinput)="onInput($event)" />
+
+<!-- Scroll -->
+<scroll-view (bindscroll)="onScroll($event)" scroll-orientation="vertical">
+  ...
+</scroll-view>
+
+<!-- Touch events -->
+<view
+  (bindtouchstart)="onTouchStart($event)"
+  (bindtouchmove)="onTouchMove($event)"
+  (bindtouchend)="onTouchEnd($event)"
+>
+  <text>Touch area</text>
+</view>
+```
+
+:::warning Important
+Event handlers in Lynx run in a worklet context. If your handler triggers DOM mutations (like router navigation or toggling overlays), you must defer them with `setTimeout`:
+
+```typescript
+onTap(): void {
+  setTimeout(() => {
+    this.router.navigateByUrl('/other');
+  }, 0);
+}
+```
+
+See [Change Detection](/guide/change-detection) for why this is necessary.
+:::

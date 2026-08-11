@@ -1,0 +1,98 @@
+# Sheet
+
+A bottom sheet that slides up from the bottom of the screen. Includes a drag handle and dismisses when tapping the backdrop. Ideal for secondary actions and contextual forms on mobile.
+
+<Go example="ui-sheet" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add sheet
+```
+
+```typescript
+import {
+  UiSheet,
+  UiSheetHeader,
+  UiSheetTitle,
+  UiSheetDescription,
+  UiSheetFooter,
+} from '@/components/ui/sheet';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import {
+  UiSheet,
+  UiSheetHeader,
+  UiSheetTitle,
+  UiSheetDescription,
+  UiSheetFooter,
+} from '@/components/ui/sheet';
+import { UiButton } from '@/components/ui/button';
+
+@Component({
+  imports: [
+    UiSheet,
+    UiSheetHeader,
+    UiSheetTitle,
+    UiSheetDescription,
+    UiSheetFooter,
+    UiButton,
+  ],
+  template: `
+    <ui-button (pressed)="open.set(true)">Open Sheet</ui-button>
+
+    <ui-sheet [(open)]="open">
+      <ui-sheet-header>
+        <ui-sheet-title>Settings</ui-sheet-title>
+        <ui-sheet-description>
+          Configure your preferences.
+        </ui-sheet-description>
+      </ui-sheet-header>
+      <ui-sheet-footer>
+        <ui-button (pressed)="open.set(false)">Save</ui-button>
+      </ui-sheet-footer>
+    </ui-sheet>
+  `,
+})
+export class Example {
+  open = signal(false);
+}
+```
+
+## API
+
+### UiSheet
+
+| Input / Output | Type             | Default | Description                                 |
+| -------------- | ---------------- | ------- | ------------------------------------------- |
+| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility    |
+| `class`        | `string`         | `''`    | Additional CSS classes for the sheet panel  |
+| `closed`       | `output<void>`   | --      | Emitted after the close animation completes |
+
+### UiSheetHeader
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiSheetTitle
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiSheetDescription
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |
+
+### UiSheetFooter
+
+| Input   | Type     | Default | Description            |
+| ------- | -------- | ------- | ---------------------- |
+| `class` | `string` | `''`    | Additional CSS classes |

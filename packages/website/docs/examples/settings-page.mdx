@@ -1,0 +1,12 @@
+# Settings Page
+
+A typical app settings screen with grouped preference toggles, a language selector, and a destructive action with confirmation dialog.
+
+<Go example="settings-page" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Grouped settings** — Separators and section headings organize preferences into visual groups (Notifications, Appearance, Danger Zone)
+- **Switch for binary options** — Toggles like push notifications and sound use `UiSwitch` with two-way binding via `[(checked)]`
+- **Select and Radio Group for choices** — Multi-option preferences use `UiSelect` (language) and `UiRadioGroup` (theme) depending on option count
+- **Destructive action with confirmation** — The "Delete Account" button opens an `UiAlertDialog` requiring explicit confirmation before proceeding

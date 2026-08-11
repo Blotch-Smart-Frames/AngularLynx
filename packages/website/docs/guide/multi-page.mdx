@@ -1,0 +1,139 @@
+# Multi-Page Apps
+
+A multi-page Lynx app produces multiple `.lynx.bundle` files from a single workspace — one per page. Each page is a fully independent Angular application with its own `bootstrapApplication()`, root component, and injector tree.
+
+Use multi-page when you have genuinely separate screens (e.g., a main app, a settings panel, an onboarding flow) that don't share navigation state. For screens that share a router and navigation history, use [Angular routing](/guide/routing) within a single page instead.
+
+<Go example="multi-page" defaultFile="lynx.config.ts" />
+
+## Configuration
+
+There are two ways to define pages — choose whichever fits your workflow.
+
+### Option A: `source.entry` in lynx.config.ts
+
+Specify an object where each key is a page name and each value is the entry file path:
+
+```typescript title="lynx.config.ts"
+import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
+import { defineConfig } from '@lynx-js/rspeedy';
+
+export default defineConfig({
+  source: {
+    entry: {
+      main: './src/main.ts',
+      settings: './src/pages/settings/main.ts',
+    },
+  },
+  plugins: [pluginAngularLynx()],
+});
+```
+
+This is the lightweight approach — consistent with how React Lynx handles multi-page and requires no changes to `angular.json`.
+
+### Option B: `pages` in plugin options
+
+Define each page as a separate project in `angular.json`, then tell the plugin which projects to build:
+
+```json title="angular.json"
+{
+  "projects": {
+    "main": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:application",
+          "options": {
+            "browser": "src/main.ts",
+            "tsConfig": "tsconfig.app.json"
+          }
+        }
+      }
+    },
+    "settings": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:application",
+          "options": {
+            "browser": "src/pages/settings/main.ts",
+            "tsConfig": "tsconfig.app.json"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+```typescript title="lynx.config.ts"
+import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
+import { defineConfig } from '@lynx-js/rspeedy';
+
+export default defineConfig({
+  plugins: [
+    pluginAngularLynx({
+      pages: 'all', // build all application-type projects
+      // or: pages: ['main', 'settings']
+    }),
+  ],
+});
+```
+
+This is the Angular-native approach — useful when you want each page to be visible as a distinct project in your workspace, benefiting from IDE project awareness and Angular CLI tooling.
+
+## File Structure
+
+Each page needs its own entry file with `bootstrapApplication()`:
+
+```
+src/
+  main.ts                          # Main page entry
+  app/
+    app.ts
+    app.config.ts
+  pages/
+    settings/
+      main.ts                      # Settings page entry
+      settings.ts
+      settings.config.ts
+```
+
+Each entry file follows the standard bootstrap pattern:
+
+```typescript title="src/pages/settings/main.ts"
+import { bootstrapApplication } from '@blotch/angular-lynx';
+import { Settings } from './settings';
+import { settingsConfig } from './settings.config';
+
+bootstrapApplication(Settings, settingsConfig);
+```
+
+## Build Output
+
+Building produces a separate `.lynx.bundle` for each page:
+
+```
+dist/
+  main.lynx.bundle           # Main page bundle
+  settings.lynx.bundle       # Settings page bundle
+```
+
+## Key Differences from Single-Page
+
+| Aspect        | Single-page                  | Multi-page             |
+| ------------- | ---------------------------- | ---------------------- |
+| Entry points  | One `bootstrapApplication()` | One per page           |
+| Navigation    | Angular Router               | Lynx native navigation |
+| Shared state  | Services via DI              | None (separate apps)   |
+| Bundle output | One `.lynx.bundle`           | One per page           |
+| Use case      | App with unified navigation  | Independent screens    |
+
+## Requirements
+
+- All pages must share the same `tsConfig` — the Angular compiler runs a single compilation pass.
+- `source.entry` and `pages` are mutually exclusive — use one or the other, not both.

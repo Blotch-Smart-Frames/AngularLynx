@@ -1,0 +1,37 @@
+# GlobalData
+
+`LynxGlobalData` provides host-level data shared across all Lynx cards — typically theme, locale, or feature flags. Like InitData, it's a signal that updates reactively when the host changes global data.
+
+```typescript title="src/app/theme.ts"
+import { Component, computed, inject } from '@angular/core';
+import { LynxGlobalData, LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [class]="themeClass()">
+      <text>Current theme: {{ globalDataService.globalData().theme }}</text>
+    </view>
+  `,
+})
+export class Theme {
+  readonly globalDataService = inject(LynxGlobalData); // [!code highlight]
+
+  readonly themeClass = computed(() =>
+    this.globalDataService.globalData().theme === 'dark'
+      ? 'dark-mode'
+      : 'light-mode',
+  );
+}
+```
+
+## Typing GlobalData
+
+```typescript title="src/types.d.ts"
+declare module '@blotch/angular-lynx' {
+  interface GlobalData {
+    theme: 'light' | 'dark';
+    locale: string;
+  }
+}
+```

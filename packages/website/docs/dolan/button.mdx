@@ -1,0 +1,86 @@
+# Button
+
+An interactive button component with multiple visual variants, sizes, and loading/disabled states.
+
+<Go example="ui-button" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add button
+```
+
+```typescript
+import { UiButton } from '@/components/ui/button';
+```
+
+:::tip
+The `button` component depends on `spinner`. Both are added automatically.
+:::
+
+## Usage
+
+```angular-html
+<ui-button (pressed)="onSave()">Save changes</ui-button>
+```
+
+## Variants
+
+Use the `variant` input to change the button's visual style.
+
+```angular-html
+<ui-button variant="default">Default</ui-button>
+<ui-button variant="destructive">Delete</ui-button>
+<ui-button variant="outline">Outline</ui-button>
+<ui-button variant="secondary">Secondary</ui-button>
+<ui-button variant="ghost">Ghost</ui-button>
+```
+
+## Sizes
+
+Use the `size` input to control the button dimensions.
+
+```angular-html
+<ui-button size="sm">Small</ui-button>
+<ui-button size="default">Default</ui-button>
+<ui-button size="lg">Large</ui-button>
+<ui-button size="icon">+</ui-button>
+```
+
+## Disabled
+
+Set `disabled` to prevent interaction. The button becomes visually muted and ignores taps.
+
+```angular-html
+<ui-button [disabled]="true">Disabled</ui-button>
+```
+
+## Loading
+
+Set `loading` to replace the label with a spinner. The button also becomes non-interactive while loading.
+
+```angular-html
+<ui-button [loading]="isSaving()">Save</ui-button>
+```
+
+## Custom classes
+
+Use the `class` input to apply additional Tailwind utility classes.
+
+```angular-html
+<ui-button class="w-full">Full width</ui-button>
+```
+
+## API
+
+| Input      | Type                                                                | Default     | Description                              |
+| ---------- | ------------------------------------------------------------------- | ----------- | ---------------------------------------- |
+| `variant`  | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost'` | `'default'` | Visual style of the button               |
+| `size`     | `'default' \| 'sm' \| 'lg' \| 'icon'`                               | `'default'` | Size of the button                       |
+| `disabled` | `boolean`                                                           | `false`     | Whether the button is disabled           |
+| `loading`  | `boolean`                                                           | `false`     | Shows a spinner and disables interaction |
+| `class`    | `string`                                                            | `''`        | Additional Tailwind CSS classes          |
+
+| Output    | Type   | Description                                                              |
+| --------- | ------ | ------------------------------------------------------------------------ |
+| `pressed` | `void` | Emitted when the button is tapped (not emitted when disabled or loading) |

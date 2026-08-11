@@ -1,0 +1,13 @@
+# Main Thread
+
+Execute event handlers directly on the main thread for zero-latency UI responses.
+
+<Go example="main-thread" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`mainThreadFn()`** — wraps a function to execute directly on Lynx's main (UI) thread, bypassing the background-thread round-trip for instant visual feedback
+- **`[mainThreadBindtap]` / `[mainThreadBindtouchmove]`** — event bindings that route events to main-thread functions instead of the default background-thread handler
+- **`createMainThreadRef()`** — creates a mutable ref that persists state across main-thread function calls (similar to React's `useRef`)
+- **`backgroundFn()` + `runOnBackground()`** — registers a background-thread function that can be called from the main thread to sync state back
+- **Dual-thread architecture** — Lynx separates UI rendering (main thread) from JS execution (background thread); main-thread scripts eliminate the inter-thread latency for performance-critical interactions

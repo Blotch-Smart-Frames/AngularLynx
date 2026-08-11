@@ -1,0 +1,12 @@
+# Multi Page
+
+Configure multiple entry points in a single Lynx project using `source.entry` in `lynx.config.ts`.
+
+<Go example="multi-page" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`source.entry`** — defines multiple entry points in `lynx.config.ts`, where each key (e.g., `main`, `settings`) produces a separate `.lynx.bundle`
+- **Separate bootstrap files** — each page has its own `main.ts` that calls `bootstrapApplication()` with its own root component and config
+- **Independent pages** — each entry is a fully standalone Angular app with its own component tree, not connected via routing
+- **Multi-bundle output** — the Rsbuild build produces one bundle per entry, allowing the native host to load different pages independently

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/out-tsc",
+    "paths": {
+      "@blotch/angular-lynx": ["../../packages/runtime/dist"]
+    }
+  }
+}

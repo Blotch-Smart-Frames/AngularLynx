@@ -1,0 +1,109 @@
+# Quick Start
+
+This guide walks you through creating an AngularLynx app and running it on your device.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) v18.19 or later
+- [Angular CLI](https://angular.dev/tools/cli) v21+
+
+```bash
+npm install -g @angular/cli
+```
+
+## Create a New Project
+
+### Option A: Standalone CLI (recommended)
+
+```bash
+npm create angular-lynx my-lynx-app
+cd my-lynx-app
+npm install
+```
+
+This scaffolds a ready-to-run AngularLynx project with a counter demo app, RSpeedy config, and all dependencies pre-configured.
+
+### Option B: Add to an existing Angular project
+
+```bash
+ng new my-lynx-app
+cd my-lynx-app
+ng add @blotch/angular-lynx
+```
+
+`ng add` transforms your Angular project into a Lynx-native application — rewrites entry point and root component, installs build tooling, and creates the RSpeedy configuration. You'll be prompted whether to add Tailwind CSS.
+
+See the [Schematics](/guide/schematics) page for the full list of what `ng add` does.
+
+:::tip
+After scaffolding, your root component's template uses Lynx native elements (`<view>`, `<text>`) instead of HTML. Open `src/app/app.ts` to see the generated code.
+:::
+
+## Run the Dev Server
+
+```bash
+npx rspeedy dev
+```
+
+The terminal will display several URLs:
+
+- **Web Preview** — Open this in your browser to see the app rendered as a web page
+- **Lynx Bundle** — URL for loading in Lynx Explorer on a native device
+- **QR Code** — Scan with Lynx Explorer to load the app on your phone
+
+## Preview on a Native Device
+
+To see your app running as a true native experience, use [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html#setting-up-the-development-environment):
+
+1. **iOS Simulator** — Download the Lynx Explorer app for your Mac's architecture from the [Lynx releases](https://github.com/nichenqin/nichenqin.github.io/releases)
+2. **Android** — Download the APK from the same releases page and install on your device or emulator
+3. Scan the QR code shown in the terminal, or enter the bundle URL manually
+
+:::tip
+The QR code plugin (`@lynx-js/qrcode-rsbuild-plugin`) can be added to your `lynx.config.ts` to display a scannable QR code in the terminal during development. See the [kitchen-sink-app](https://github.com/nichenqin/angular-lynx/tree/master/packages/kitchen-sink-app) for an example.
+:::
+
+## Generate Components
+
+Use the AngularLynx component schematic to generate components with Lynx templates:
+
+```bash
+ng generate @blotch/angular-lynx:component my-feature
+```
+
+This creates a standalone component with `<view>`/`<text>` elements, `OnPush` change detection, and a test file. See [Schematics](/guide/schematics#component--generate-components) for all options.
+
+## Project Structure
+
+After running `ng add`, your project looks like this:
+
+```
+my-lynx-app/
+  lynx.config.ts              # RSpeedy build configuration
+  tailwind.config.ts           # Tailwind CSS config (if selected)
+  src/
+    main.ts                    # Entry point (bootstrapApplication)
+    app/
+      app.config.ts            # Providers (zoneless CD, renderer, router)
+      app.ts         # Root component with Lynx elements
+      app.routes.ts            # Route definitions
+```
+
+## What's Different from Web Angular?
+
+| Concept          | Web Angular                | AngularLynx                   |
+| ---------------- | -------------------------- | ----------------------------- |
+| Bootstrap        | `bootstrapApplication()`   | `bootstrapApplication()`      |
+| Renderer         | Browser DOM                | Lynx native elements          |
+| Elements         | `<div>`, `<span>`, `<img>` | `<view>`, `<text>`, `<image>` |
+| Events           | `(click)`, `(input)`       | `(bindtap)`, `(bindinput)`    |
+| Change detection | Zone.js or zoneless        | Zoneless only                 |
+| Router           | URL-based                  | In-memory                     |
+| Build tool       | Angular CLI / esbuild      | RSpeedy (Rsbuild)             |
+
+## Next Steps
+
+- [Schematics](/guide/schematics) — Generate components, add Tailwind CSS or testing
+- [Lynx Elements](/guide/elements/) — Learn what native elements (`<view>`, `<text>`, `<image>`, etc.) are available
+- [Change Detection](/guide/change-detection) — Understand zoneless CD and signals
+- [Routing](/guide/routing) — Set up navigation between views

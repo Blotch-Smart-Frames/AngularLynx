@@ -1,0 +1,92 @@
+# @blotch/dolan UI Components
+
+A collection of beautifully crafted UI components for AngularLynx, inspired by [shadcn/ui](https://ui.shadcn.com/). Components are copied into your project — you own the code and can customize freely.
+
+## Getting Started
+
+### 1. Initialize dolan
+
+Run the init command in your project root:
+
+```bash
+npx @blotch/dolan init
+```
+
+This creates:
+
+- `dolan.config.json` — path aliases for components, utils, and theme
+- `src/lib/utils/cn.ts` — class merging utility (clsx + tailwind-merge)
+- `src/styles/default.css` and `src/styles/dark.css` — theme CSS custom properties
+- `src/styles/tailwind-plugin.ts` — Tailwind plugin for dolan theme tokens
+
+### 2. Configure Tailwind
+
+Add the plugin to your Tailwind config:
+
+```typescript title="tailwind.config.ts"
+import type { Config } from 'tailwindcss';
+import preset from '@lynx-js/tailwind-preset';
+import { dolanPlugin } from './src/styles/tailwind-plugin';
+
+const config: Config = {
+  content: ['./src/**/*.ts'],
+  presets: [preset],
+  plugins: [dolanPlugin],
+};
+
+export default config;
+```
+
+Import the theme in your global styles:
+
+```css title="src/styles.css"
+@import './src/styles/default.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+### 3. Add components
+
+```bash
+npx @blotch/dolan add button card
+```
+
+Components are copied to `src/components/ui/` by default. Dependencies are resolved automatically — for example, adding `button` also adds `spinner`.
+
+### 4. Use components
+
+```typescript
+import { Component } from '@angular/core';
+import { UiButton } from '@/components/ui/button';
+import { UiCard, UiCardContent } from '@/components/ui/card';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiButton, UiCard, UiCardContent],
+  template: `
+    <ui-card>
+      <ui-card-content>
+        <ui-button (pressed)="onClick()">Click me</ui-button>
+      </ui-card-content>
+    </ui-card>
+  `,
+})
+export class App {
+  onClick() {
+    console.log('clicked');
+  }
+}
+```
+
+:::tip
+The `@/` prefix in import paths refers to your project's `src/` directory. If your project doesn't use path aliases, replace `@/` with the appropriate relative path.
+:::
+
+## Design Principles
+
+- **Signal-based** — All inputs use Angular's `input()` API, outputs use `output()`, and two-way bindings use `model()`
+- **Tailwind-first** — Styled with Tailwind CSS using CSS custom properties for theming
+- **Variant-driven** — Uses [class-variance-authority](https://cva.style/) for consistent variant APIs
+- **Lynx-native** — Built with Lynx elements (`<view>`, `<text>`, `<overlay>`) for native rendering
+- **Customizable** — Every component accepts a `class` input for additional Tailwind overrides

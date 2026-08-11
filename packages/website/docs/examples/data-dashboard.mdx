@@ -1,0 +1,173 @@
+# Data Dashboard
+
+Receiving data from the host app via `LynxInitData` and `LynxGlobalData`.
+
+```typescript
+import { Component, computed, inject } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxInitData,
+  LynxGlobalData,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-data-dashboard',
+  standalone: true,
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view class="container" scroll-orientation="vertical">
+      <text class="title">Data Dashboard</text>
+
+      <!-- Init Data section -->
+      <text class="section">Init Data (one-time)</text>
+      <text class="description">
+        Passed once when the Lynx page loads. Use for page parameters, deep
+        links, or user context.
+      </text>
+      <view class="data-card">
+        @for (entry of initEntries(); track entry.key) {
+          <view class="data-row">
+            <text class="data-key">{{ entry.key }}</text>
+            <text class="data-value">{{ entry.value }}</text>
+          </view>
+        } @empty {
+          <text class="empty">No init data received</text>
+        }
+      </view>
+
+      <!-- Global Data section -->
+      <text class="section">Global Data (live)</text>
+      <text class="description">
+        Updated at any time by the host app. Use for shared state like auth
+        tokens, user preferences, or live metrics.
+      </text>
+      <view class="data-card">
+        @for (entry of globalEntries(); track entry.key) {
+          <view class="data-row">
+            <text class="data-key">{{ entry.key }}</text>
+            <text class="data-value">{{ entry.value }}</text>
+          </view>
+        } @empty {
+          <text class="empty">No global data received</text>
+        }
+      </view>
+
+      <!-- Status -->
+      <view class="status-card">
+        <view class="status-row">
+          <text class="status-label">Init data keys</text>
+          <text class="status-value">{{ initEntries().length }}</text>
+        </view>
+        <view class="status-row">
+          <text class="status-label">Global data keys</text>
+          <text class="status-value">{{ globalEntries().length }}</text>
+        </view>
+      </view>
+    </scroll-view>
+  `,
+  styles: `
+    .container {
+      height: 100vh;
+      padding: 24px 16px;
+      background-color: #f7fafc;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      color: #1a202c;
+      margin-bottom: 16px;
+    }
+    .section {
+      font-size: 18px;
+      font-weight: bold;
+      color: #2d3748;
+      margin-top: 20px;
+      margin-bottom: 4px;
+    }
+    .description {
+      font-size: 13px;
+      color: #718096;
+      line-height: 18px;
+      margin-bottom: 8px;
+    }
+    .data-card {
+      background-color: white;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .data-row {
+      display: flex;
+      flex-direction: row;
+      padding: 12px 16px;
+      border-bottom: 1px solid #edf2f7;
+    }
+    .data-key {
+      font-size: 14px;
+      font-weight: bold;
+      color: #4a5568;
+      width: 120px;
+    }
+    .data-value {
+      font-size: 14px;
+      color: #2d3748;
+      flex: 1;
+    }
+    .empty {
+      font-size: 14px;
+      color: #a0aec0;
+      padding: 16px;
+      text-align: center;
+    }
+    .status-card {
+      background-color: #ebf8ff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 24px;
+    }
+    .status-row {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    .status-label {
+      font-size: 14px;
+      color: #2b6cb0;
+    }
+    .status-value {
+      font-size: 14px;
+      font-weight: bold;
+      color: #2b6cb0;
+    }
+  `,
+})
+export class DataDashboard {
+  private readonly initDataService = inject(LynxInitData);
+  private readonly globalDataService = inject(LynxGlobalData);
+
+  readonly initEntries = computed(() =>
+    this.toEntries(this.initDataService.initData()),
+  );
+
+  readonly globalEntries = computed(() =>
+    this.toEntries(this.globalDataService.globalData()),
+  );
+
+  private toEntries(
+    data: Record<string, unknown> | null,
+  ): { key: string; value: string }[] {
+    if (!data) return [];
+    return Object.entries(data).map(([key, value]) => ({
+      key,
+      value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+    }));
+  }
+}
+```
+
+## Key concepts
+
+- **`LynxInitData`** — Provides `initData()` signal with data passed once at page load
+- **`LynxGlobalData`** — Provides `globalData()` signal that updates live when the host app pushes new data
+- Both services wrap Lynx's `GlobalEventEmitter` and expose Angular signals for reactive rendering
+- The host app sends data via the Lynx page API — see the [Host Data guide](/guide/host-data/) for details

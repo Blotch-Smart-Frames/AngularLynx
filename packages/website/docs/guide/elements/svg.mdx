@@ -1,0 +1,31 @@
+# &lt;svg&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Displays SVG graphics. Unlike web HTML, Lynx does not support inline SVG markup — pass the SVG as a string via the `content` attribute.
+
+<Go example="element-svg" defaultFile="src/app/app.ts" />
+
+```typescript
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <svg [attr.content]="svgContent" style="width: 80px; height: 80px;" />
+  `,
+})
+export class SvgExample {
+  svgContent = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#dd0031"/></svg>`;
+}
+```
+
+## Key Attributes
+
+| Attribute | Type     | Description                                |
+| --------- | -------- | ------------------------------------------ |
+| `content` | `string` | The SVG markup string to render (required) |
+
+:::warning
+You must set an explicit **width** and **height** on the `<svg>` element. Without dimensions, the SVG will not display.
+:::

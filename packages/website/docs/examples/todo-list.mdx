@@ -1,0 +1,12 @@
+# Todo List
+
+A todo list with add, toggle, and delete — demonstrating `@for` control flow, signals, and event handling.
+
+<Go example="todo-list" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **`@for` / `@empty`** — Angular's built-in control flow for lists with an empty-state fallback
+- **`track todo.id`** — Required by `@for`; enables efficient diffing when items change
+- **`(catchtap)`** — Like `(bindtap)` but stops event propagation, so tapping delete doesn't also toggle the todo
+- **`(bindinput)`** — Lynx's input event fires on every keystroke with `event.detail.value`

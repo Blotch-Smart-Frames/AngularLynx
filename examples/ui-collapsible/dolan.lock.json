@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "components": {
+    "collapsible": {
+      "collapsible.ts": {
+        "hash": "d9de60a4ba573b7f"
+      },
+      "index.ts": {
+        "hash": "2ff1aa9a6b200d26"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "6010e930f4314a61"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0c4c52d9d2c90630"
+    },
+    "dark.css": {
+      "hash": "73345d8f2179fd64"
+    }
+  }
+}

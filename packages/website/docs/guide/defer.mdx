@@ -1,0 +1,87 @@
+# @defer Blocks
+
+Angular's [deferrable views](https://angular.dev/guide/defer) work on Lynx, enabling code splitting to reduce your initial bundle size. Deferred components are split into separate async chunks at build time and loaded on demand.
+
+<Go example="defer" defaultFile="src/app/app.ts" />
+
+## Basic Usage
+
+Use `@defer` with a `when` condition to load a component when a signal becomes true:
+
+```typescript title="src/app/feed.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  templateUrl: './feed.html',
+})
+export class Feed {
+  readonly showComments = signal(false);
+
+  loadComments(): void {
+    this.showComments.set(true);
+  }
+}
+```
+
+```angular-html title="src/app/feed.html"
+<view>
+  <view (bindtap)="loadComments()">
+    <text>Show Comments</text>
+  </view>
+
+  @defer (when showComments()) {
+    <app-comments />
+  } @placeholder {
+    <text>Tap to load comments</text>
+  } @loading {
+    <text>Loading...</text>
+  } @error {
+    <text>Failed to load comments</text>
+  }
+</view>
+```
+
+:::tip
+The deferred component (`app-comments` above) must be in a **separate file** for code splitting to take effect. Components defined in the same file won't produce a separate chunk.
+:::
+
+## Supported Triggers
+
+| Trigger          | Supported | Notes                                                 |
+| ---------------- | :-------: | ----------------------------------------------------- |
+| `when condition` |    Yes    | Signal-based — the most common trigger on Lynx        |
+| `on timer(ms)`   |    Yes    | Loads after a delay                                   |
+| `on idle`        |    Yes    | Loads when the runtime is idle                        |
+| `on viewport`    |    No     | Requires IntersectionObserver (not available in Lynx) |
+| `on interaction` |    No     | Requires DOM focus/input events                       |
+| `on hover`       |    No     | No hover in touch environments                        |
+| `prefetch`       |    No     | Requires `document.visibilityState`                   |
+
+:::warning
+Viewport-based triggers (`on viewport`) do **not** work on Lynx. Use `when` with a signal or `on timer` instead.
+:::
+
+## Blocks
+
+All four `@defer` sub-blocks work as expected:
+
+- **`@placeholder`** — Shown before the trigger condition is met
+- **`@loading`** — Shown while the async chunk is downloading
+- **`@error`** — Shown if the chunk fails to load
+- **`@defer`** — The deferred content itself
+
+## Timer Example
+
+Load a component automatically after 3 seconds:
+
+```angular-html
+@defer (on timer(3000ms)) {
+  <app-recommendations />
+} @placeholder {
+  <text>Recommendations loading in 3s...</text>
+} @loading {
+  <text>Loading...</text>
+}
+```

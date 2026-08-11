@@ -1,0 +1,52 @@
+# &lt;view&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+The basic container element, equivalent to `<div>` in HTML. Use it for layout and grouping.
+
+<Go example="element-view" defaultFile="src/app/app.ts" />
+
+```angular-html
+<view class="card">
+  <view class="card-header">
+    <text>Title</text>
+  </view>
+  <view class="card-body">
+    <text>Content goes here</text>
+  </view>
+</view>
+```
+
+## Layout
+
+Lynx defaults to **flexbox layout** (`display: linear`, equivalent to `display: flex` with `flex-direction: column`). This is different from HTML where `<div>` defaults to `display: block`.
+
+```css
+/* Children stack vertically by default */
+.row {
+  flex-direction: row; /* Switch to horizontal layout */
+}
+```
+
+## Key Attributes
+
+| Attribute | Type      | Description                                                                                                                        |
+| --------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `name`    | `string`  | Identifies the element for native-side lookups via `findViewByName`                                                                |
+| `flatten` | `boolean` | Performance hint — merges the element's draw operations with its parent. Use on pure layout containers that have no visual styling |
+
+## Events
+
+`<view>` supports all standard Lynx events. See [Event Handling](/guide/elements/event-handling) for the full list.
+
+```angular-html
+<view
+  (bindtap)="onTap()"
+  (bindlongpress)="onLongPress()"
+  (bindtouchstart)="onTouchStart($event)"
+>
+  <text>Interactive view</text>
+</view>
+```

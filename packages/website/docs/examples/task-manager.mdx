@@ -1,0 +1,12 @@
+# Task Manager
+
+A task board with checkable items, priority badges, tabs for filtering, a sheet for creating new tasks, and an action sheet for task options.
+
+<Go example="task-manager" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Tabs for filtered views** — `UiTabs` switches between All, Active, and Done views without re-fetching data; `computed()` derives each filtered list
+- **Checkbox for completion** — `UiCheckbox` toggles task state with `(checkedChange)`, applying strike-through styling via conditional classes
+- **Badge for priority levels** — `UiBadge` with variant mapping (high → destructive, medium → default, low → secondary) provides visual priority indicators
+- **Sheet for creation, Action Sheet for options** — `UiSheet` holds the "New Task" form; `UiActionSheet` provides Edit/Delete actions on existing tasks

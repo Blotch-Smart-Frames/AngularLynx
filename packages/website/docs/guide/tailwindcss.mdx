@@ -1,0 +1,198 @@
+# Tailwind CSS
+
+AngularLynx supports [Tailwind CSS](https://tailwindcss.com/) for utility-first styling via `@lynx-js/tailwind-preset`. This preset replaces Tailwind's standard browser-oriented plugins with Lynx-compatible equivalents.
+
+## Setup
+
+:::tip Automatic Setup
+If you already have an AngularLynx project, you can add Tailwind CSS in one command:
+
+```bash
+ng generate @blotch/angular-lynx:add-tailwind
+```
+
+This installs the required dependencies, creates `tailwind.config.ts` with the Lynx preset, and updates your global stylesheet. You can skip the manual steps below.
+:::
+
+### 1. Install dependencies
+
+```bash
+npm install -D tailwindcss@3 @lynx-js/tailwind-preset
+```
+
+:::warning Tailwind v3 Required
+`@lynx-js/tailwind-preset` requires **Tailwind CSS v3**. Tailwind v4 uses a completely different architecture and is not supported. Do not install `@tailwindcss/postcss` or `@tailwindcss/vite` — those are v4-only packages.
+:::
+
+### 2. Create `tailwind.config.ts`
+
+```typescript title="tailwind.config.ts"
+import type { Config } from 'tailwindcss';
+import preset from '@lynx-js/tailwind-preset';
+
+const config: Config = {
+  content: ['./src/**/*.ts'], // [!code highlight]
+  presets: [preset],
+};
+
+export default config;
+```
+
+:::tip
+Angular templates are TypeScript string literals, not `.html` files. Point `content` at `./src/**/*.ts` so Tailwind's JIT scanner finds class names in your component templates.
+:::
+
+### 3. Create a global stylesheet
+
+```css title="src/styles.css"
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+## Usage
+
+Use Tailwind utility classes directly in your Lynx element templates:
+
+```typescript title="src/app/dashboard.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view class="w-full" scroll-orientation="vertical">
+      <view class="p-4 flex flex-col">
+        <text class="text-2xl font-bold mb-4 text-white">Dashboard</text>
+
+        <view class="bg-blue-500 p-4 rounded-lg mb-2">
+          <text class="text-white font-bold">Revenue</text>
+          <text class="text-white text-lg">$12,340</text>
+        </view>
+
+        <view class="bg-emerald-500 p-4 rounded-lg mb-2">
+          <text class="text-white font-bold">Users</text>
+          <text class="text-white text-lg">1,234</text>
+        </view>
+
+        <view class="bg-rose-500 p-4 rounded-lg mb-2">
+          <text class="text-white font-bold">Issues</text>
+          <text class="text-white text-lg">3</text>
+        </view>
+      </view>
+    </scroll-view>
+  `,
+})
+export class Dashboard {}
+```
+
+## What Works
+
+The `@lynx-js/tailwind-preset` maps standard Tailwind utilities to Lynx's CSS engine. Supported categories include:
+
+| Category      | Examples                                                       |
+| ------------- | -------------------------------------------------------------- |
+| Colors        | `bg-blue-500`, `text-white`, `border-slate-300`                |
+| Spacing       | `p-4`, `m-2`, `mb-6`, `gap-2`                                  |
+| Typography    | `text-xs` through `text-4xl`, `font-bold`, `font-semibold`     |
+| Flexbox       | `flex`, `flex-col`, `items-center`, `justify-center`, `flex-1` |
+| Sizing        | `w-full`, `h-screen`, `w-48`, `h-64`                           |
+| Border radius | `rounded`, `rounded-lg`, `rounded-full`                        |
+| Display       | `hidden`                                                       |
+| Opacity       | `opacity-50`, `opacity-75`                                     |
+
+## Limitations
+
+Lynx's CSS engine is not a full browser CSS implementation. Some Tailwind utilities behave differently or are not available:
+
+:::warning Lynx CSS Differences
+
+- **No `display: block/inline`** — Lynx uses `linear` layout by default (similar to flexbox). The `block`, `inline`, and `inline-block` utilities have no effect.
+- **No CSS inheritance** — Setting `text-white` on a parent `<view>` does not cascade to child `<text>` elements. Apply text color directly to each `<text>`.
+- **No `overflow: scroll`** — Use `<scroll-view>` for scrollable content instead of `overflow-auto` or `overflow-scroll` on `<view>`.
+- **`position: fixed`** — Behaves like `position: absolute` relative to the root. For true floating layers, use `<overlay>`.
+- **No pseudo-elements** — `::before`, `::after` are not supported. No `content` property.
+- **No media queries** — Responsive breakpoints (`sm:`, `md:`, `lg:`) are not supported in Lynx.
+  :::
+
+### Working Around CSS Inheritance
+
+Since Lynx does not support CSS inheritance, apply text styles directly:
+
+```angular-html
+<!-- WRONG — text-white on view doesn't cascade to text elements -->
+<view class="text-white">
+  <text>This will NOT be white</text>
+</view>
+
+<!-- CORRECT — apply text-white directly to each text element -->
+<view>
+  <text class="text-white">This will be white</text> // [!code highlight]
+</view>
+```
+
+## Mixing with Component Styles
+
+You can combine Tailwind utilities with Angular's component-scoped styles:
+
+```typescript
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="p-4 bg-slate-800 rounded-lg custom-card">
+      <text class="text-white font-bold">Mixed Styling</text>
+    </view>
+  `,
+  styles: [
+    `
+      .custom-card {
+        border: 2px solid #dd0031;
+      }
+    `,
+  ],
+})
+export class Card {}
+```
+
+Tailwind utility classes come from the global stylesheet, while component styles are scoped as usual.
+
+## Interactive Example
+
+Here is a complete component using Tailwind utilities with signal-based interactivity:
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="flex flex-col items-center p-4">
+      <text class="text-4xl font-bold mb-4 text-white">{{ count() }}</text>
+      <view
+        class="bg-blue-600 p-4 rounded-lg mb-2 w-full items-center"
+        (bindtap)="increment()"
+      >
+        <text class="text-white font-semibold">+ Increment</text>
+      </view>
+      <view
+        class="bg-slate-600 p-4 rounded-lg w-full items-center"
+        (bindtap)="reset()"
+      >
+        <text class="text-white font-semibold">Reset</text>
+      </view>
+    </view>
+  `,
+})
+export class Counter {
+  count = signal(0);
+
+  increment(): void {
+    this.count.update((n) => n + 1);
+  }
+
+  reset(): void {
+    this.count.set(0);
+  }
+}
+```

@@ -1,0 +1,85 @@
+# Error Handling
+
+AngularLynx automatically routes unhandled errors to the native Lynx error reporting system. No manual setup is required — `provideRenderer()` registers `LynxErrorHandler` as Angular's `ErrorHandler`.
+
+<Go example="error-handling" defaultFile="src/app/app.ts" />
+
+## How It Works
+
+When an unhandled error occurs in your Angular code (template expressions, lifecycle hooks, event handlers), `LynxErrorHandler`:
+
+1. Formats the error as `"ErrorName: message\nstack"`
+2. Stores it in `globalThis.__lynxLastError` for on-device debugging
+3. Calls `_ReportError(error, { errorCode: 1101 })` to notify the native Lynx runtime
+
+The error code `1101` follows the Lynx convention (`LYNX_ERROR_CODE_LEPUS`), matching what React Lynx uses for JavaScript errors.
+
+## On-Device Debugging
+
+Since Lynx apps run on-device with no browser console, `LynxErrorHandler` stores the last error in a global string. Render it in your template to see errors on screen:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <!-- Your app content -->
+
+      @if (lastError) {
+        <view style="background-color: red; padding: 8px;">
+          <text style="color: white; font-size: 12px; word-break: break-all;">
+            {{ lastError }}
+          </text>
+        </view>
+      }
+    </view>
+  `,
+})
+export class App {
+  get lastError(): string {
+    return (globalThis as any).__lynxLastError ?? '';
+  }
+}
+```
+
+:::tip
+Remove the error display before shipping to production. It's a development aid, not a user-facing feature.
+:::
+
+## Unhandled Promise Rejections
+
+Global `onerror` and `onunhandledrejection` handlers also feed into `__lynxLastError`, catching errors that occur outside Angular's scope — such as errors in native callbacks or unhandled promise rejections.
+
+## Custom Error Handling
+
+If you need additional error handling on top of the native reporting, extend `LynxErrorHandler`:
+
+```typescript title="src/app/custom-error-handler.ts"
+import { Injectable } from '@angular/core';
+import { LynxErrorHandler } from '@blotch/angular-lynx';
+
+@Injectable()
+export class CustomErrorHandler extends LynxErrorHandler {
+  override handleError(error: unknown): void {
+    super.handleError(error);
+    // Your custom logic here (analytics, error tracking, etc.)
+  }
+}
+```
+
+Provide it in your app config:
+
+```typescript title="src/app/app.config.ts"
+import { ErrorHandler } from '@angular/core';
+import { CustomErrorHandler } from './custom-error-handler';
+
+export const appConfig = {
+  providers: [
+    provideRenderer(),
+    { provide: ErrorHandler, useClass: CustomErrorHandler }, // [!code highlight]
+  ],
+};
+```

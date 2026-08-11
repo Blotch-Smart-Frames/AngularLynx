@@ -1,0 +1,203 @@
+<app-demo-screen
+  heading="SSR"
+  category="Platform"
+  description="Instant first-frame rendering. Angular's element tree is serialized to a compact opcode snapshot, then replayed natively on device — so the first frame paints before Angular even boots."
+>
+  <!-- The two-phase pipeline, explained -->
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <view class="flex-row items-center flex justify-between">
+        <ui-card-title class="text-lg">The pipeline</ui-card-title>
+        <ui-badge variant="secondary">2 phases</ui-badge>
+      </view>
+      <ui-card-description>
+        SSR on Lynx skips the DOM entirely — it snapshots and replays the native
+        element tree.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
+      <!-- Phase 1: encode -->
+      <view class="flex-row items-start gap-3 flex">
+        <view
+          class="h-8 w-8 items-center rounded-full bg-primary flex justify-center"
+        >
+          <ui-text variant="small" class="text-primary-foreground">1</ui-text>
+        </view>
+        <view class="flex-1 flex-col gap-1 flex">
+          <view class="flex-row items-center gap-2 flex">
+            <ui-text variant="small" class="font-semibold">ssrEncode()</ui-text>
+            <ui-badge variant="outline">server</ui-badge>
+          </view>
+          <ui-text variant="muted">
+            Walks the rendered element tree and emits a flat opcode stream — one
+            instruction per element, attribute, and text node.
+          </ui-text>
+        </view>
+      </view>
+
+      <ui-separator />
+
+      <!-- Phase 2: hydrate -->
+      <view class="flex-row items-start gap-3 flex">
+        <view
+          class="h-8 w-8 items-center rounded-full bg-primary flex justify-center"
+        >
+          <ui-text variant="small" class="text-primary-foreground">2</ui-text>
+        </view>
+        <view class="flex-1 flex-col gap-1 flex">
+          <view class="flex-row items-center gap-2 flex">
+            <ui-text variant="small" class="font-semibold">
+              ssrHydrate()
+            </ui-text>
+            <ui-badge variant="outline">device</ui-badge>
+          </view>
+          <ui-text variant="muted">
+            Replays the opcodes on the main thread to rebuild native elements,
+            then reconnects Angular to them — no re-render, no flash.
+          </ui-text>
+        </view>
+      </view>
+    </ui-card-content>
+  </ui-card>
+
+  <!-- Capability status + live encode -->
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <view class="flex-row items-center flex justify-between">
+        <ui-card-title class="text-lg">Live snapshot</ui-card-title>
+        <ui-badge [variant]="capability().ready ? 'default' : 'destructive'">
+          {{ capability().ready ? 'Ready' : 'Unavailable' }}
+        </ui-badge>
+      </view>
+      <ui-card-description>
+        Serialize this screen's element tree right now and inspect the result.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
+      <!-- Which SSR entry points are registered on this build -->
+      <view class="flex-row gap-3 flex">
+        <view
+          class="flex-1 flex-row items-center rounded-lg bg-muted px-3 py-2.5 flex justify-between"
+        >
+          <ui-text variant="small">ssrEncode</ui-text>
+          <ui-badge [variant]="capability().encode ? 'default' : 'destructive'">
+            {{ capability().encode ? 'on' : 'off' }}
+          </ui-badge>
+        </view>
+        <view
+          class="flex-1 flex-row items-center rounded-lg bg-muted px-3 py-2.5 flex justify-between"
+        >
+          <ui-text variant="small">ssrHydrate</ui-text>
+          <ui-badge
+            [variant]="capability().hydrate ? 'default' : 'destructive'"
+          >
+            {{ capability().hydrate ? 'on' : 'off' }}
+          </ui-badge>
+        </view>
+      </view>
+
+      <ui-button (pressed)="runEncode()" [disabled]="!capability().encode">
+        Run ssrEncode()
+      </ui-button>
+
+      @if (error()) {
+      <view class="rounded-lg bg-destructive-subtle px-4 py-3 flex">
+        <ui-text variant="small" class="text-destructive">
+          {{ error() }}
+        </ui-text>
+      </view>
+      } @if (snapshot(); as snap) {
+      <!-- Headline metrics as a 2x2 stat grid -->
+      <view class="flex-col gap-3 flex">
+        <view class="flex-row gap-3 flex">
+          <view class="flex-1 flex-col gap-1 rounded-xl bg-muted p-4 flex">
+            <ui-text variant="h3" class="text-primary">
+              {{ snap.elements }}
+            </ui-text>
+            <ui-text variant="muted">Elements</ui-text>
+          </view>
+          <view class="flex-1 flex-col gap-1 rounded-xl bg-muted p-4 flex">
+            <ui-text variant="h3" class="text-primary">
+              {{ snap.attributes }}
+            </ui-text>
+            <ui-text variant="muted">Attributes</ui-text>
+          </view>
+        </view>
+        <view class="flex-row gap-3 flex">
+          <view class="flex-1 flex-col gap-1 rounded-xl bg-muted p-4 flex">
+            <ui-text variant="h3" class="text-primary">
+              {{ snap.textNodes }}
+            </ui-text>
+            <ui-text variant="muted">Text nodes</ui-text>
+          </view>
+          <view class="flex-1 flex-col gap-1 rounded-xl bg-muted p-4 flex">
+            <ui-text variant="h3" class="text-primary">
+              {{ sizeLabel() }}
+            </ui-text>
+            <ui-text variant="muted">Snapshot</ui-text>
+          </view>
+        </view>
+      </view>
+
+      <view
+        class="flex-row items-center rounded-lg border border-border px-4 py-2.5 flex justify-between"
+      >
+        <ui-text variant="small" class="text-muted-foreground">
+          Total opcodes
+        </ui-text>
+        <ui-text variant="small" class="font-semibold">
+          {{ snap.totalOpcodes }}
+        </ui-text>
+      </view>
+      }
+    </ui-card-content>
+  </ui-card>
+
+  <!-- The decoded opcode stream — the payload made legible -->
+  @if (snapshot(); as snap) {
+  <ui-card>
+    <ui-card-header class="gap-1 p-4">
+      <ui-card-title class="text-lg">Opcode stream</ui-card-title>
+      <ui-card-description>
+        The decoded snapshot — each row is one instruction the engine replays to
+        rebuild the tree.
+      </ui-card-description>
+    </ui-card-header>
+    <ui-card-content class="p-4 pt-0 flex">
+      <view class="flex-col flex">
+        @for (row of snap.rows; track $index; let last = $last) {
+        <view
+          class="flex-row items-center gap-2 py-1.5 flex"
+          [class.pl-4]="row.kind !== 'begin'"
+        >
+          <ui-badge [variant]="row.badgeVariant" [animated]="false">
+            {{ row.badge }}
+          </ui-badge>
+          @if (row.secondary) {
+          <ui-text variant="small" class="text-muted-foreground">
+            {{ row.primary }}
+          </ui-text>
+          <ui-text variant="small" class="flex-1">{{ row.secondary }}</ui-text>
+          } @else {
+          <ui-text
+            variant="small"
+            class="flex-1"
+            [class.font-semibold]="row.kind === 'begin'"
+          >
+            {{ row.primary }}
+          </ui-text>
+          }
+        </view>
+        @if (!last) {
+        <ui-separator />
+        } }
+      </view>
+      @if (snap.hiddenRows > 0) {
+      <ui-text variant="muted" class="pt-3">
+        + {{ snap.hiddenRows }} more opcodes
+      </ui-text>
+      }
+    </ui-card-content>
+  </ui-card>
+  }
+</app-demo-screen>

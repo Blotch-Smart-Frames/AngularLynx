@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
+    "verbatimModuleSyntax": false,
+    "lib": ["ES2022"],
+    "outDir": "./schematics",
+    "rootDir": "./schematics",
+    "declaration": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["schematics/**/*.ts"],
+  "exclude": ["schematics/**/*.spec.ts", "node_modules"]
+}

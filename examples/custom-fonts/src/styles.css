@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('./assets/fonts/Roboto-Light.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'PlayfairDisplay';
+  src: url('./assets/fonts/PlayfairDisplay-Bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'DancingScript';
+  src: url('./assets/fonts/DancingScript-Regular.ttf') format('truetype');
+}

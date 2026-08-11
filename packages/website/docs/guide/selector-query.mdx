@@ -1,0 +1,187 @@
+# SelectorQuery
+
+`lynx.createSelectorQuery()` is Lynx's API for running imperative operations on native elements — measuring layout, calling element methods, and invoking platform commands. It is the Lynx equivalent of `document.querySelector()` combined with the Web Animations API's `Element.requestAnimationFrame`.
+
+You rarely call this directly in AngularLynx — most platform operations are wrapped by services (`LynxAccessibility`, element methods on `refresh` and `scroll-coordinator`). This page documents the raw API for cases where no wrapper exists.
+
+## How It Works
+
+`createSelectorQuery` uses a builder pattern: select an element, chain an operation, then call `.exec()` to dispatch it to the main thread.
+
+```typescript
+lynx
+  .createSelectorQuery()
+  .select('#my-element') // select by id, class, or tag
+  .invoke({
+    // call a native element method
+    method: 'methodName',
+    params: {},
+    success: (res) => console.log(res),
+    fail: (res) => console.error(res),
+  })
+  .exec();
+```
+
+## Selectors
+
+| Selector | Example       | Description                                    |
+| -------- | ------------- | ---------------------------------------------- |
+| ID       | `'#my-id'`    | Matches `[attr.name]="'my-id'"` on the element |
+| Class    | `'.my-class'` | Matches `class="my-class"`                     |
+| Tag      | `'view'`      | Matches by element tag name                    |
+
+:::warning
+ID selectors match the `name` attribute, not the HTML `id` attribute. Set `[attr.name]="'my-id'"` on the target element.
+:::
+
+## Calling Element Methods
+
+Several Lynx elements expose imperative methods that must be called through `invoke`. AngularLynx provides typed wrappers for the most common ones, but you can always call them directly:
+
+### `<refresh>` — finishRefresh / autoStartRefresh
+
+The `<refresh>` element's `finishRefresh()` and `autoStartRefresh()` methods must be called via SelectorQuery:
+
+```typescript
+import { Component, inject } from '@angular/core';
+
+@Component({
+  template: `
+    <refresh [attr.name]="'page-refresh'" (bindstartrefresh)="onRefresh()">
+      ...
+    </refresh>
+  `,
+})
+export class Example {
+  onRefresh(): void {
+    this.loadData().then(() => {
+      lynx
+        .createSelectorQuery()
+        .select('#page-refresh')
+        .invoke({ method: 'finishRefresh', params: {} })
+        .exec();
+    });
+  }
+}
+```
+
+### `<scroll-coordinator>` — setFoldExpanded
+
+```typescript
+lynx
+  .createSelectorQuery()
+  .select('#my-coordinator')
+  .invoke({
+    method: 'setFoldExpanded',
+    params: { expanded: false },
+    success: () => console.log('Collapsed'),
+  })
+  .exec();
+```
+
+### Accessibility Focus
+
+`LynxAccessibility.requestFocus()` wraps this pattern:
+
+```typescript
+lynx
+  .createSelectorQuery()
+  .select('#confirmation-message')
+  .invoke({
+    method: 'requestAccessibilityFocus',
+    params: {},
+    success: () => resolve(),
+    fail: (res) => reject(new Error(`Failed: ${res.code}`)),
+  })
+  .exec();
+```
+
+## Layout Measurement
+
+Use `.boundingClientRect()` to measure an element's size and position:
+
+```typescript
+lynx
+  .createSelectorQuery()
+  .select('#my-element')
+  .boundingClientRect((rect) => {
+    console.log(rect.width, rect.height, rect.top, rect.left);
+  })
+  .exec();
+```
+
+## Wrapping in a Promise
+
+The callback-based API is easier to use as a Promise:
+
+```typescript
+function invokeElement(
+  selector: string,
+  method: string,
+  params = {},
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    lynx
+      .createSelectorQuery()
+      .select(selector)
+      .invoke({
+        method,
+        params,
+        success: resolve,
+        fail: (res) => reject(new Error(`${method} failed (code ${res.code})`)),
+      })
+      .exec();
+  });
+}
+
+// Usage
+await invokeElement('#page-refresh', 'finishRefresh', {});
+```
+
+## Angular Integration Pattern
+
+Access the element's `name` attribute via a template variable, then call into SelectorQuery on demand:
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <refresh [attr.name]="refreshId" (bindstartrefresh)="onRefresh()">
+      <refresh-header>
+        <text>{{ refreshing() ? 'Loading...' : 'Pull to refresh' }}</text>
+      </refresh-header>
+      <scroll-view scroll-orientation="vertical" style="height: 100%;">
+        @for (item of items(); track item.id) {
+          <view style="padding: 16px;">
+            <text>{{ item.name }}</text>
+          </view>
+        }
+      </scroll-view>
+    </refresh>
+  `,
+})
+export class Example {
+  readonly refreshId = 'main-refresh';
+  refreshing = signal(false);
+  items = signal<Item[]>([]);
+
+  async onRefresh(): Promise<void> {
+    this.refreshing.set(true);
+    this.items.set(await this.api.loadItems());
+    this.refreshing.set(false);
+
+    lynx
+      .createSelectorQuery()
+      .select(`#${this.refreshId}`)
+      .invoke({ method: 'finishRefresh', params: {} })
+      .exec();
+  }
+}
+```
+
+## Reference
+
+Full `SelectorQuery` API documentation: [lynxjs.org — NodesRef.invoke](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html)

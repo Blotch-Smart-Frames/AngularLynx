@@ -1,0 +1,92 @@
+# Dark Mode
+
+Adapt your app's appearance to the OS light/dark theme. AngularLynx provides a reactive `LynxTheme` service that tracks the current theme as a signal.
+
+## CSS Variables (Recommended)
+
+Define theme-aware CSS variables and switch them based on the theme signal:
+
+```typescript
+import { Component, inject, computed } from '@angular/core';
+import { LynxTheme, LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  styles: `
+    .light {
+      --bg: #ffffff;
+      --text: #1a1a1a;
+      --border: #e0e0e0;
+    }
+    .dark {
+      --bg: #1a1a1a;
+      --text: #f0f0f0;
+      --border: #333333;
+    }
+    .card {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 8px;
+    }
+  `,
+  template: `
+    <view [class]="themeClass()">
+      <view class="card">
+        <text [style.color]="'var(--text)'">Hello World</text>
+      </view>
+    </view>
+  `,
+})
+export class App {
+  private readonly theme = inject(LynxTheme);
+  protected readonly themeClass = computed(() =>
+    this.theme.isDarkMode() ? 'dark' : 'light',
+  );
+}
+```
+
+## LynxTheme
+
+For conditional logic in TypeScript:
+
+```typescript
+import { inject } from '@angular/core';
+import { LynxTheme } from '@blotch/angular-lynx';
+
+const theme = inject(LynxTheme);
+
+// Current theme: 'Dark' or 'Light'
+const currentTheme = theme.theme();
+
+// Boolean convenience
+if (theme.isDarkMode()) {
+  // dark mode logic
+}
+```
+
+### API
+
+| Property       | Type                        | Description                                                    |
+| -------------- | --------------------------- | -------------------------------------------------------------- |
+| `theme()`      | `Signal<'Dark' \| 'Light'>` | The current theme from the native host. Defaults to `'Light'`. |
+| `isDarkMode()` | `Signal<boolean>`           | `true` when theme is `'Dark'`.                                 |
+
+Both signals are reactive — they update automatically when the host changes the theme via `updateGlobalProps`.
+
+## Inline Style Approach
+
+For simple cases, bind styles directly:
+
+```angular-html
+<view [style.background-color]="theme.isDarkMode() ? '#1a1a1a' : '#ffffff'">
+  <text [style.color]="theme.isDarkMode() ? '#f0f0f0' : '#1a1a1a'">
+    Themed content
+  </text>
+</view>
+```
+
+:::tip
+Prefer CSS variables over inline style bindings. CSS variables are resolved by the native rendering engine and avoid per-element re-evaluation on theme changes.
+:::

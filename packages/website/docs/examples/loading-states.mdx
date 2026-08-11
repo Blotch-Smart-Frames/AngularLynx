@@ -1,0 +1,12 @@
+# Loading States
+
+A file manager demonstrating progress bars for uploads, skeleton placeholders for pending content, and spinners for indeterminate operations.
+
+<Go example="loading-states" defaultFile="src/app/app.ts" />
+
+## Key concepts
+
+- **Progress bars for measurable operations** — `UiProgress` shows upload percentage for each file, updating in real-time as bytes transfer
+- **Skeleton for placeholder content** — `UiSkeleton` renders shimmering rectangles matching the shape of content that hasn't loaded yet
+- **Spinner for indeterminate waits** — `UiSpinner` indicates an operation is happening (like syncing) when you can't predict how long it will take
+- **Toast for completion feedback** — `toast()` fires when uploads complete or sync finishes, giving non-blocking confirmation

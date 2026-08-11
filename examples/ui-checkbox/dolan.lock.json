@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "components": {
+    "checkbox": {
+      "checkbox.ts": {
+        "hash": "22d8873a7f3efedd"
+      },
+      "index.ts": {
+        "hash": "1f08373e69b58dcf"
+      }
+    },
+    "label": {
+      "index.ts": {
+        "hash": "85cf48114b14edc8"
+      },
+      "label.ts": {
+        "hash": "c62bec8145e47621"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "6010e930f4314a61"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0c4c52d9d2c90630"
+    },
+    "dark.css": {
+      "hash": "73345d8f2179fd64"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+# &lt;scroll-coordinator&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+A nested scroll coordination container that synchronizes a foldable header, sticky toolbar, and scrollable content. Commonly used for sticky-header page layouts where the header folds away as content scrolls.
+
+```angular-html
+<scroll-coordinator
+  style="width: 100%; height: 100%; display: flex; flex-direction: column;"
+>
+  <scroll-coordinator-header style="position: absolute; width: 100%;">
+    <image src="banner.png" style="width: 100%; height: 200px;" />
+  </scroll-coordinator-header>
+  <scroll-coordinator-toolbar
+    style="display: flex; width: 100%; position: sticky; top: 0;"
+  >
+    <text style="font-size: 18px; padding: 12px;">Sticky Tab Bar</text>
+  </scroll-coordinator-toolbar>
+  <scroll-coordinator-slot
+    style="width: 100%; flex: 1; flex-direction: column;"
+  >
+    <list>
+      @for (item of items(); track item.id) {
+        <list-item>
+          <view style="padding: 16px;">
+            <text>{{ item.name }}</text>
+          </view>
+        </list-item>
+      }
+    </list>
+  </scroll-coordinator-slot>
+</scroll-coordinator>
+```
+
+When the outer layer scrolls to the bottom of the header, scroll control automatically hands off to the inner scrollable content. When the inner content scrolls back to its top, control returns to the outer layer.
+
+:::warning
+The coordinator's height must equal the slot height plus the toolbar height. The header uses `position: absolute` and is removed from the normal layout flow.
+:::
+
+## Key Attributes
+
+- `enable-scroll` — (boolean, default `true`) Whether the coordinator can scroll vertically
+- `bounces` — Enable/disable bounce effect at scroll boundaries (iOS/Harmony)
+- `granularity` — (number, default `0.01`) Event response granularity for `bindoffset`
+- `header-over-slot` — (boolean, default `false`) Whether header appears over the slot when overflowing
+- `refresh-mode` — `"none"` (default), `"page"`, or `"fold"` (iOS)
+- `enable-scroll-bar` — Show/hide scrollbar (iOS/Harmony)
+
+## Events
+
+- `(bindoffset)` — Fired on scroll. Detail: `{ height: number, offset: number }` where `height` is the total scrollable distance and `offset` is the current header scroll offset in px
+
+## Methods
+
+Invoked via the [SelectorQuery](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html) API:
+
+- `setFoldExpanded({ offset, smooth })` — Programmatically set the fold position
+
+## Children
+
+- **`<scroll-coordinator-header>`** — Header content that scrolls out of view. Uses `position: absolute`.
+- **`<scroll-coordinator-toolbar>`** — Sticky toolbar that remains visible at the top. Uses `position: sticky; top: 0`.
+- **`<scroll-coordinator-slot>`** — Container for scrollable content. Typically contains a `<list>`. Uses `flex: 1`.

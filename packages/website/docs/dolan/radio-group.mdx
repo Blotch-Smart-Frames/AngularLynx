@@ -1,0 +1,65 @@
+# Radio Group
+
+A group of radio buttons where only one option can be selected at a time. Use `UiRadioGroupItem` inside a `UiRadioGroup` to define options.
+
+<Go example="ui-radio-group" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add radio-group
+```
+
+```typescript
+import { UiRadioGroup, UiRadioGroupItem } from '@/components/ui/radio-group';
+```
+
+## Usage
+
+```angular-html
+<ui-radio-group [(value)]="selected">
+  <ui-radio-group-item value="email">Email</ui-radio-group-item>
+  <ui-radio-group-item value="phone">Phone</ui-radio-group-item>
+  <ui-radio-group-item value="text">Text Message</ui-radio-group-item>
+</ui-radio-group>
+```
+
+### With a label
+
+```angular-html
+<ui-label>Preferred Contact</ui-label>
+<ui-radio-group [(value)]="contact">
+  <ui-radio-group-item value="email">Email</ui-radio-group-item>
+  <ui-radio-group-item value="phone">Phone</ui-radio-group-item>
+</ui-radio-group>
+```
+
+### Disabled
+
+```angular-html
+<ui-radio-group value="us" [disabled]="true">
+  <ui-radio-group-item value="us">United States</ui-radio-group-item>
+  <ui-radio-group-item value="eu">Europe</ui-radio-group-item>
+</ui-radio-group>
+```
+
+## API
+
+### UiRadioGroup
+
+| Input      | Type            | Default | Description                                     |
+| ---------- | --------------- | ------- | ----------------------------------------------- |
+| `value`    | `model<string>` | `''`    | The currently selected value (two-way bindable) |
+| `disabled` | `boolean`       | `false` | Disables all radio items in the group           |
+| `class`    | `string`        | `''`    | Additional CSS classes for the group container  |
+
+| Output    | Type     | Description                              |
+| --------- | -------- | ---------------------------------------- |
+| `changed` | `string` | Emits the selected value when it changes |
+
+### UiRadioGroupItem
+
+| Input   | Type     | Default    | Description                          |
+| ------- | -------- | ---------- | ------------------------------------ |
+| `value` | `string` | _required_ | The value this radio item represents |
+| `class` | `string` | `''`       | Additional CSS classes for the item  |

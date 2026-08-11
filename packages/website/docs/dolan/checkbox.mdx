@@ -1,0 +1,54 @@
+# Checkbox
+
+A control that allows users to toggle between checked and unchecked states. Pair with `UiLabel` for accessible form labels.
+
+<Go example="ui-checkbox" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add checkbox
+```
+
+```typescript
+import { UiCheckbox } from '@/components/ui/checkbox';
+```
+
+## Usage
+
+```angular-html
+<ui-checkbox [(checked)]="accepted" />
+```
+
+### With a label
+
+```angular-html
+<view class="flex flex-row items-center gap-3">
+  <ui-checkbox [(checked)]="terms" />
+  <ui-label>Accept terms and conditions</ui-label>
+</view>
+```
+
+### Disabled
+
+```angular-html
+<ui-checkbox [disabled]="true" [checked]="true" />
+```
+
+### Listening for changes
+
+```angular-html
+<ui-checkbox [(checked)]="value" (changed)="onChanged($event)" />
+```
+
+## API
+
+| Input      | Type             | Default | Description                                        |
+| ---------- | ---------------- | ------- | -------------------------------------------------- |
+| `checked`  | `model<boolean>` | `false` | Whether the checkbox is checked (two-way bindable) |
+| `disabled` | `boolean`        | `false` | Whether the checkbox is disabled                   |
+| `class`    | `string`         | `''`    | Additional CSS classes for the checkbox container  |
+
+| Output    | Type      | Description                              |
+| --------- | --------- | ---------------------------------------- |
+| `changed` | `boolean` | Emits the new checked state when toggled |

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist/out-tsc",
+    "types": ["@angular/localize"],
+    "paths": {
+      "@blotch/angular-lynx": ["../../packages/runtime/dist"],
+      "@blotch/angular-lynx-testing-library": [
+        "../../packages/testing-library/src/index.ts"
+      ]
+    }
+  }
+}

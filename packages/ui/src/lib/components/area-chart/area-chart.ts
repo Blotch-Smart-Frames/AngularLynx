@@ -51,6 +51,7 @@ const interpolateY = (
       return p1.y + ((x - p1.x) / span) * (p2.y - p1.y);
     }
   }
+  /* v8 ignore next 1 */
   return last.y; // defensive: x === last.x but the loop missed it
 };
 

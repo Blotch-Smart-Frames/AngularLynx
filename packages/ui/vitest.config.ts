@@ -61,7 +61,14 @@ export default defineConfig({
         'src/**/*.test.ts',
         'src/**/*.d.ts',
         'src/**/index.ts', // per-component re-export barrels
+        'src/test-utils/**', // test-only fixture helpers
       ],
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
     },
   },
 });

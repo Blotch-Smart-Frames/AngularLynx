@@ -15,6 +15,7 @@
 
 // Web-only: fail loud and clear when the page is not a secure context.
 //
+// cspell:disable-next-line
 // @lynx-js/web-core's engine chunk (kwift.*.js) calls crypto.randomUUID()
 // while registering handlers during startup, inside the background Web Worker
 // it spawns (new Worker(new URL('../background/index.js', import.meta.url))).

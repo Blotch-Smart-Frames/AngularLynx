@@ -89,6 +89,10 @@ export class UiRadioGroupItem {
         this.#previousSelected = selected;
         return;
       }
+      // Defensive early return: with only `isSelected()` as a reactive input,
+      // Angular's computed equality dedupes same-value emissions so the effect
+      // never re-runs with an unchanged `selected`. Kept for safety on-device.
+      /* v8 ignore next 1 */
       if (selected === this.#previousSelected) return;
       this.#previousSelected = selected;
 

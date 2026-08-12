@@ -83,6 +83,11 @@ export class LynxBackgroundElement implements BaseLynxElement {
       this.#firstChild = newChild;
       this.#lastChild = newChild;
     } else {
+      // Invariant: firstChild and lastChild are always both set or both null.
+      // The linked-list bookkeeping in appendChild/insertBefore/remove never
+      // leaves one non-null and the other null. This throw is unreachable
+      // defensive code and stays as a load-bearing assertion.
+      /* v8 ignore next 5 */
       if (!this.#lastChild) {
         throw new Error(
           'Invariant violation: lastChild is null while firstChild is not null.',
@@ -254,6 +259,7 @@ export class LynxBackgroundElement implements BaseLynxElement {
     // on the background thread. Return a no-op animation so callers don't
     // crash; the animation simply won't play. This matches web-core's
     // behavior where __ElementAnimate is a no-op in preview environments.
+    /* v8 ignore next 6 -- build-time __DEV__ define is false in vitest, so the guarded warn is dead code from the test bundle's point of view. */
     if (__DEV__) {
       console.warn(
         '[angular-lynx] animate() called on background thread — animation will not play. ' +

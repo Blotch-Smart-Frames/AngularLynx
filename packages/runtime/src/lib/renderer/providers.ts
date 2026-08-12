@@ -34,7 +34,7 @@ export const provideRenderer = (): EnvironmentProviders => {
           // `__ENABLE_SSR__` is a build-time `define` — `false` in the Vitest
           // config, so the SSR-hydrating branch is dead code from the test
           // bundle's point of view. LynxHydrateDocument itself is covered by
-          // hydrate-document.spec.ts.
+          // hydrate-document.test.ts.
           /* v8 ignore next 6 */
           if (__ENABLE_SSR__ && (globalThis as any).__LYNX_IS_HYDRATING__) {
             return new LynxHydrateDocument(

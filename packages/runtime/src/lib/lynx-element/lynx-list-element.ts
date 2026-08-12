@@ -340,6 +340,10 @@ export class LynxListElement extends LynxElement {
     // can be re-appended fresh if re-added to the list later.
     for (const idx of removeAction) {
       const removed = oldChildren[idx];
+      // Defensive: removeAction is built from oldIds → oldChildren indices, so
+      // every idx maps to a live child. The undefined-guard is unreachable but
+      // stays as safety against index drift from a future refactor.
+      /* v8 ignore next */
       if (removed) (removed as { __appended?: boolean }).__appended = false;
     }
 
@@ -358,6 +362,11 @@ export class LynxListElement extends LynxElement {
         this.element as ListElementRef,
         this.#componentAtIndex,
         this.#enqueueComponent,
+        // componentAtIndexes is optional in the setCallbacks signature — the
+        // batch path is a Lynx optimization the runtime uses only when native
+        // asks for it. Every real caller supplies it, so the nullish fallback
+        // is defensive.
+        /* v8 ignore next */
         this.#componentAtIndexes ?? undefined,
       );
     }

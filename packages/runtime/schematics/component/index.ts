@@ -99,7 +99,7 @@ export default (options: Schema): Rule =>
     }
 
     if (!options.skipTests) {
-      const specPath = `${dirPath}/${dasherized}.spec.ts`;
+      const specPath = `${dirPath}/${dasherized}.test.ts`;
       tree.create(specPath, buildSpecFile(classified, dasherized));
     }
   };

@@ -160,12 +160,12 @@ export class LynxPortal {
   }
 
   /**
-   * Creates a native `<overlay>` and renders the given template into it.
-   *
-   * Use this when you have a `TemplateRef` (from `@ViewChild` or a
-   * template variable) rather than a component class.
+   *   * Creates a native `<overlay>` and renders the given template into it.
+   *   *
+   *   * Use this when you have a `TemplateRef` (from `@ViewChild` or a
+   *   * template variable) rather than a component class.
+   * v8 ignore start -- reaching this path requires a real Angular component render that produces a live TemplateRef; the mocked LYNX_DOCUMENT in the spec doesn't drive one, and viewChild.required doesn't resolve without an appRef flush. Coverage is provided by the on-device examples that use openTemplate. 
    */
-  /* v8 ignore start -- reaching this path requires a real Angular component render that produces a live TemplateRef; the mocked LYNX_DOCUMENT in the spec doesn't drive one, and viewChild.required doesn't resolve without an appRef flush. Coverage is provided by the on-device examples that use openTemplate. */
   openTemplate<C>(
     template: TemplateRef<C>,
     config?: PortalConfig & { context?: C },
@@ -189,7 +189,9 @@ export class LynxPortal {
 
     return new PortalRef(overlay, this.#appRef, null, viewRef);
   }
-  /* v8 ignore stop */
+  /**
+   * v8 ignore stop 
+   */
 
   #createOverlay(config?: PortalConfig): BaseLynxElement {
     const overlay = this.#doc.createElement('overlay');

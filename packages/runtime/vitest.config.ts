@@ -21,7 +21,7 @@ export default defineConfig({
     __WEB__: false,
   },
   test: {
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.test.ts'],
     coverage: {
       // V8 is the built-in provider (@vitest/coverage-v8, installed at the repo
       // root). `all` defaults to true when `include` is set, so EVERY source
@@ -31,13 +31,19 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'], // text=local, html=browse, lcov=Codecov
       include: ['src/**/*.ts'],
       exclude: [
-        'src/**/*.spec.ts',
+        'src/**/*.test.ts',
         'src/**/*.d.ts',
         'src/**/*.types.ts',
         'src/lib/types/**', // ambient global Lynx API type declarations, no runtime code
         'src/lib/testing/**', // fake-native-global.ts is a test-only helper, never shipped
         'src/public-api.ts', // pure re-export barrel
       ],
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
     },
   },
 });

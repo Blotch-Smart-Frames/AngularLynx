@@ -69,12 +69,16 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 - Lazy loading for feature routes
 - `Resource` values accessed via `.value()`
 
+## Testing
+
+- **Test files use `.test.ts`, never `.spec.ts`.** The whole repo standardized on `.test.ts` (the modern Vitest/Node convention). Vitest `include` globs, tsconfig excludes, and the `component` schematic all emit `.test.ts`. When creating a new test file, name it `<name>.test.ts` — never `<name>.spec.ts`.
+
 ## Schematics (`ng add` / `ng generate`)
 
 The runtime package ships an Angular schematics collection (`packages/runtime/schematics/collection.json`). These are the primary developer onboarding paths:
 
 - **`ng add @blotch/angular-lynx`** — transforms an existing `ng new` project into a Lynx-native app: rewrites `main.ts`, `app.config.ts`, `app.ts`, adds `lynx.config.ts`, and optionally installs Tailwind (`--tailwind=false` to skip)
-- **`ng generate @blotch/angular-lynx:component <name>`** (alias `c`) — generates a standalone component with Lynx element templates, `ChangeDetectionStrategy.OnPush`, and a Vitest spec file; options: `--path`, `--prefix`, `--inlineStyle`, `--inlineTemplate`, `--skipTests`, `--flat`
+- **`ng generate @blotch/angular-lynx:component <name>`** (alias `c`) — generates a standalone component with Lynx element templates, `ChangeDetectionStrategy.OnPush`, and a Vitest `.test.ts` file; options: `--path`, `--prefix`, `--inlineStyle`, `--inlineTemplate`, `--skipTests`, `--flat`
 - **`ng generate @blotch/angular-lynx:add-tailwind`** — adds `tailwind.config.ts` with `@lynx-js/tailwind-preset` and updates `styles.css`
 - **`ng generate @blotch/angular-lynx:add-testing`** — adds `vitest.config.ts`, `src/setup.ts`, and installs `@blotch/angular-lynx-testing-library`
 - **`ng generate @blotch/angular-lynx:add-i18n`** — adds `@angular/localize`, configures `angular.json` i18n, and injects `provideLocale()` into app config

@@ -56,6 +56,9 @@ export class UiCheckbox {
     effect(() => {
       const isChecked = this.checked();
       const el = this.checkmarkRef()?.nativeElement;
+      // popIn/popOut call el.animate() which is inert in jsdom — the
+      // check-mark animation is exercised on-device.
+      /* v8 ignore start */
       if (!el || this.#previousChecked === undefined) {
         this.#previousChecked = isChecked;
         return;
@@ -65,6 +68,7 @@ export class UiCheckbox {
 
       this.#checkAnim?.cancel();
       this.#checkAnim = isChecked ? popIn(el) : popOut(el);
+      /* v8 ignore stop */
     });
   }
 

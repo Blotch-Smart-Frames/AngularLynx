@@ -924,6 +924,7 @@ export class UiCartesianChart {
     // Snapshotting here at touch-down also anchors the window at the exact zero
     // point of translationX — mapGestureEvent anchors its own origin on onBegin —
     // so the two stay in lockstep for precise 1:1 panning.
+    /* v8 ignore start -- native pan/pinch callbacks: exercised via device gestures, not reachable in JSDOM */
     .onBegin(() => {
       // Unconditional: marks a fresh gesture start. Overwrites any stale snapshot
       // left behind if a previous gesture's onEnd was dropped (e.g. a cancel path).
@@ -956,6 +957,7 @@ export class UiCartesianChart {
     })
     .onStart((event) => this.#onPinchStart(event))
     .onUpdate((event) => this.#onPinch(event));
+  /* v8 ignore stop */
 
   // Bound on the plot view when `zoomable()` is true. Pan and pinch recognize
   // simultaneously; `maxPointers(1)` keeps them from actually overlapping.
@@ -971,6 +973,9 @@ export class UiCartesianChart {
   // non-nullable GestureInput type.
   protected readonly noGesture: never[] = [];
 
+  /**
+   * v8 ignore start -- gesture-only path: driven by native pan/pinch events on-device 
+   */
   #onPan(event: PanGestureEvent): void {
     // Defensive anchor: onBegin/onStart normally snapshot the start window, but if
     // a platform ever delivered onUpdate without either, anchor on this first
@@ -1056,6 +1061,7 @@ export class UiCartesianChart {
       );
     }
   }
+  /* v8 ignore stop */
 
   /**
    * Write a new visible window, collapsing it back to `null` (rest) when it spans

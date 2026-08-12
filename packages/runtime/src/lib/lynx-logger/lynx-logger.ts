@@ -45,10 +45,11 @@ export class LynxLogger {
         // so the else-if that falls back to `globalThis.fetch` is never
         // reachable. The fallback exists for Lynx's background thread where
         // `fetch` is injected via `tt.define()` instead.
-        /* v8 ignore next 3 */
+        /* v8 ignore start */
       } else if (typeof (globalThis as any).fetch === 'function') {
         this.#fetchFn = (globalThis as any).fetch;
       }
+      /* v8 ignore stop */
     } catch {}
 
     if (!this.#fetchFn) return;

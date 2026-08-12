@@ -51,7 +51,7 @@ Use Node 22 (`nvm use 22`). The lcov report lands at `packages/<dir>/coverage/lc
   it back into runtime creates a turbo build cycle). Use the `// @vitest-environment
   jsdom` pragma + `import '@angular/compiler'` + `TestBed`/`platformBrowserTesting`
   + the fake native tree in `src/lib/testing/fake-native-global.ts` (see
-  `renderer/inline-text.spec.ts`, `renderer/teardown.spec.ts`). Services: `new Service()`
+  `renderer/inline-text.test.ts`, `renderer/teardown.test.ts`). Services: `new Service()`
   + `vi.stubGlobal(...)`.
 - **testing-library** — its own `render()` / `screen` / `fireEvent` / `waitForUpdate`.
 - **ui** — the `render()` idiom from `@blotch/angular-lynx-testing-library` (config

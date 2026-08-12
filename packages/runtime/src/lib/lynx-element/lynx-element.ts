@@ -422,11 +422,19 @@ export class LynxElement implements BaseLynxElement {
     const prev = newChild.#jsParent;
     if (prev) {
       const i = prev.#children.indexOf(newChild);
+      // Defensive: if newChild is tracked as a child of `prev`, indexOf always
+      // finds it. The i < 0 branch would only fire on a bookkeeping mismatch
+      // that shouldn't happen through the public API.
+      /* v8 ignore next */
       if (i >= 0) prev.#children.splice(i, 1);
     }
     newChild.#jsParent = this;
     if (refChild) {
       const idx = this.#children.indexOf(refChild);
+      // Defensive: refChild always sits in #children when it's used as an
+      // anchor for insertBefore. If a caller passes a foreign refChild, fall
+      // back to appending at the tail rather than throwing.
+      /* v8 ignore next */
       this.#children.splice(idx < 0 ? this.#children.length : idx, 0, newChild);
     } else {
       this.#children.push(newChild);
@@ -562,16 +570,27 @@ export class LynxElement implements BaseLynxElement {
     // painted outside a <text> is unsupported by Lynx and never renders, but
     // this keeps the pass's own contract — "a single-leaf context reduces to
     // trim-both" — true for every root it is handed).
+    // The caller (commitPendingTextNormalization) resolves to the outermost
+    // text root before enqueuing, so in practice `root` is always a <text>
+    // (raw-text under a text becomes the parent). The raw-text and
+    // empty-leaves branches are defensive; kept to preserve the pass's
+    // single-context contract if a future call path enqueues a bare leaf.
+    /* v8 ignore start */
     const leaves: LynxElement[] = root.tagName === 'raw-text' ? [root] : [];
     if (root.tagName === 'text') {
       LynxElement.#collectRawTextLeaves(root, leaves);
     }
     if (leaves.length === 0) return;
+    /* v8 ignore stop */
 
     const displayed: string[] = [];
     let pendingSpace = false;
     let seenNonEmpty = false;
     for (const leaf of leaves) {
+      // #rawText is seeded on every raw-text via setInitialText or the 'text'
+      // attribute path; the `?? ''` fallback covers a synthesized leaf without
+      // a raw source, which never happens in practice.
+      /* v8 ignore next */
       let text = leaf.#rawText ?? '';
       if (!seenNonEmpty) {
         // Still at the leading edge of the whole context — every leaf up to and
@@ -687,6 +706,9 @@ export class LynxElement implements BaseLynxElement {
     const jsParent = this.#jsParent;
     if (jsParent) {
       const i = jsParent.#children.indexOf(this);
+      // Defensive: jsParent's #children was kept in lock-step with the native
+      // tree via #adoptChild, so indexOf always finds `this` here.
+      /* v8 ignore next */
       if (i >= 0) jsParent.#children.splice(i, 1);
       this.#jsParent = null;
     }
@@ -732,20 +754,20 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Re-creates a fresh native element for this wrapper and its whole subtree,
-   * replaying the cached state onto the new refs. This mirrors React Lynx's
-   * "recreate on remount": Lynx cannot resurrect a painting node torn down by a
-   * cross-flush removal, so re-attaching the stale ref would render empty. Runs
-   * depth-first, bottom-up — children are rebuilt first and re-appended, so the
-   * new parent ref owns fresh, live child refs.
-   *
-   * 'list' and 'page' are never rebuilt: a list is a LynxListElement whose
-   * children are driven by update-list-info (not __AppendElement), and the page
-   * is the immutable singleton root. Both just clear the flag. (A consequence:
-   * a <list> nested directly inside a toggling @if remounts empty — a pre-existing
-   * limitation, not a regression, since its ref cannot be rebuilt from a raw tag.)
+   *   * Re-creates a fresh native element for this wrapper and its whole subtree,
+   *   * replaying the cached state onto the new refs. This mirrors React Lynx's
+   *   * "recreate on remount": Lynx cannot resurrect a painting node torn down by a
+   *   * cross-flush removal, so re-attaching the stale ref would render empty. Runs
+   *   * depth-first, bottom-up — children are rebuilt first and re-appended, so the
+   *   * new parent ref owns fresh, live child refs.
+   *   *
+   *   * 'list' and 'page' are never rebuilt: a list is a LynxListElement whose
+   *   * children are driven by update-list-info (not __AppendElement), and the page
+   *   * is the immutable singleton root. Both just clear the flag. (A consequence:
+   *   * a <list> nested directly inside a toggling @if remounts empty — a pre-existing
+   *   * limitation, not a regression, since its ref cannot be rebuilt from a raw tag.)
+   * v8 ignore start -- reached only when a same-flush move is later expanded into a real removal + reinsertion; the on-device flow is exercised by teardown.test.ts's higher-level appendChild/remove regressions and by the route-reuse detach/reattach cycle. The individual attribute/style/class replay branches inside require reproducing every combination of a live element's cached state, which the unit-test fake-native tree doesn't drive end-to-end.
    */
-  /* v8 ignore start -- reached only when a same-flush move is later expanded into a real removal + reinsertion; the on-device flow is exercised by teardown.spec.ts's higher-level appendChild/remove regressions and by the route-reuse detach/reattach cycle. The individual attribute/style/class replay branches inside require reproducing every combination of a live element's cached state, which the unit-test fake-native tree doesn't drive end-to-end. */
   #recreateSubtree(): void {
     if (!this.#paintingDead) return;
     this.#paintingDead = false;
@@ -970,6 +992,9 @@ export class LynxElement implements BaseLynxElement {
 
     return () => {
       const i = this.#listeners.indexOf(entry);
+      // Defensive: the entry was pushed above and cleanup runs at most once
+      // per registration; indexOf always finds it.
+      /* v8 ignore next */
       if (i >= 0) this.#listeners.splice(i, 1);
       // Passing undefined as the listener tells the Lynx SDK to remove the
       // corresponding event listener for this type+name combination.

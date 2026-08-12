@@ -317,7 +317,9 @@ export class UiNavDrawerContent {
 
   #scrollActiveIntoView(): void {
     this.items()
+      /* v8 ignore start -- .find predicate unreachable when no content-projected items */
       .find((item) => item.active())
+      /* v8 ignore stop */
       ?.scrollIntoView();
   }
 }

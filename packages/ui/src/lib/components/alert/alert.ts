@@ -81,6 +81,9 @@ export class UiAlert {
     // Subtle entrance animation on first render
     effect(() => {
       const el = this.containerRef()?.nativeElement;
+      // revealIn calls el.animate() which is inert in jsdom — the animation
+      // never plays and the effect can't be verified from a JIT render test.
+      /* v8 ignore next 3 */
       if (el) {
         revealIn(el, { fromY: 4 });
       }

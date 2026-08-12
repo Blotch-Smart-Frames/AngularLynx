@@ -1,25 +1,18 @@
 import { Component } from '@angular/core';
-import { render } from '@blotch/angular-lynx-testing-library';
+import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
+import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiLabel } from './label';
 
 @Component({
   standalone: true,
   imports: [UiLabel, LYNX_ELEMENTS],
-  template: `<ui-label [disabled]="disabled">{{ label }}</ui-label>`,
+  template: `<ui-label>{{ label }}</ui-label>`,
 })
 class LabelHost {
-  disabled = false;
   label = 'Name';
 }
-
-@Component({
-  standalone: true,
-  imports: [UiLabel, LYNX_ELEMENTS],
-  template: `<ui-label [disabled]="true">Off</ui-label>`,
-})
-class DisabledLabelHost {}
 
 describe('UiLabel', () => {
   it('renders projected text', async () => {
@@ -27,8 +20,19 @@ describe('UiLabel', () => {
     expect(getByText('Name')).toBeTruthy();
   });
 
-  it('renders when disabled (applies opacity)', async () => {
-    const { getByText } = await render(DisabledLabelHost);
-    expect(getByText('Off')).toBeTruthy();
+  it('renders standalone with no host wrapper (default disabled=false)', async () => {
+    const { container } = await render(UiLabel);
+    const textEl = container.querySelector('text');
+    expect(textEl?.getAttribute('class')).toContain('font-medium');
+  });
+
+  it('applies opacity when disabled flips to true', async () => {
+    // JIT template bindings don't wire signal inputs — drive the input
+    // directly to exercise the `disabled() && 'opacity-50'` truthy branch.
+    const { componentRef, container } = await render(UiLabel);
+    setInputSignal((componentRef.instance as UiLabel).disabled, true);
+    await waitForUpdate();
+    const textEl = container.querySelector('text');
+    expect(textEl?.getAttribute('class')).toContain('opacity-50');
   });
 });

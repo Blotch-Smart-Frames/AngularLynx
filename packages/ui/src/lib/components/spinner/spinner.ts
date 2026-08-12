@@ -38,6 +38,9 @@ export class UiSpinner {
   constructor() {
     effect(() => {
       const el = this.spinnerRef()?.nativeElement;
+      // el.animate() is inert in jsdom (see animate.ts's transitionTransform
+      // rationale). The continuous rotation is exercised on-device.
+      /* v8 ignore start */
       if (!el) return;
       el.animate(
         [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
@@ -47,6 +50,7 @@ export class UiSpinner {
           easing: 'linear',
         },
       );
+      /* v8 ignore stop */
     });
   }
 

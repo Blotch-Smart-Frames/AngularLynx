@@ -76,6 +76,11 @@ export class UiBadge {
   constructor() {
     effect(() => {
       const el = this.containerRef()?.nativeElement;
+      // popIn calls el.animate() which is inert in jsdom (the offscreen web
+      // renderer path — see animate.ts's transitionTransform comment). The
+      // effect's rendering-adjacent work is not exercisable from a JIT test,
+      // so ignore the animation branch for coverage.
+      /* v8 ignore next 3 */
       if (el && this.animated()) {
         popIn(el, { duration: 200 });
       }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { addSafeAreaUtilities } from './tailwind-plugin';
+import { addSafeAreaUtilities, blotchPlugin } from './tailwind-plugin';
 
 /**
  * These tests exercise the utility generator in isolation with mock Tailwind
@@ -75,5 +75,50 @@ describe('addSafeAreaUtilities', () => {
     expect(generate('1rem')).toEqual({
       'padding-bottom': 'calc(1rem + env(safe-area-inset-bottom))',
     });
+  });
+});
+
+describe('blotchPlugin', () => {
+  it('runs the plugin setup callback, registering base styles and safe area utilities', () => {
+    // Reach the plugin's `handler` (the first arg to the tailwind `plugin()`
+    // factory) so its `addBase` + `addSafeAreaUtilities` calls are covered.
+    const addBase = vi.fn();
+    const addUtilities = vi.fn();
+    const matchUtilities = vi.fn();
+    const theme = vi.fn(() => ({ '4': '1rem' }));
+
+    // The tailwindcss `plugin()` factory returns a `{ handler, config }`
+    // object at runtime. Cast through unknown so TypeScript accepts the
+    // internal shape.
+    const factory = blotchPlugin as unknown as {
+      handler: (api: unknown) => void;
+      config?: unknown;
+    };
+
+    factory.handler({
+      addBase,
+      addUtilities,
+      matchUtilities,
+      theme,
+    });
+
+    expect(addBase).toHaveBeenCalledWith({
+      '*': { 'border-color': 'var(--border)' },
+    });
+    // The safe area utilities came through — bare + matched variants added.
+    expect(addUtilities).toHaveBeenCalled();
+    expect(matchUtilities).toHaveBeenCalled();
+  });
+
+  it('exposes a config object containing the theme extension colors', () => {
+    // The second argument to `plugin()` is a config object that Tailwind
+    // deep-merges into the user's config. Verify our theme extensions round-
+    // trip so the colors are exposed to the utility classes.
+    const factory = blotchPlugin as unknown as {
+      config?: { theme?: { extend?: { colors?: Record<string, unknown> } } };
+    };
+    const colors = factory.config?.theme?.extend?.colors;
+    expect(colors).toBeDefined();
+    expect(colors!['background']).toBe('var(--background)');
   });
 });

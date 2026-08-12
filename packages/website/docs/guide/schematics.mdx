@@ -45,7 +45,7 @@ This creates a component with `<view>`/`<text>` elements, `OnPush` change detect
 ```
 src/app/my-feature/
   my-feature.ts       # Component with Lynx template
-  my-feature.spec.ts  # Vitest test using render()
+  my-feature.test.ts  # Vitest test using render()
 ```
 
 **Example output:**
@@ -68,7 +68,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class MyFeature {}
 ```
 
-```typescript title="my-feature.spec.ts"
+```typescript title="my-feature.test.ts"
 import { describe, expect, it } from 'vitest';
 import { render } from '@blotch/angular-lynx-testing-library';
 
@@ -90,7 +90,7 @@ describe('MyFeature', () => {
 | `--prefix`                | `string`  | from angular.json | Selector prefix               |
 | `--inlineTemplate` / `-t` | `boolean` | `true`            | Inline template in `.ts` file |
 | `--inlineStyle` / `-s`    | `boolean` | `true`            | Inline styles in `.ts` file   |
-| `--skipTests`             | `boolean` | `false`           | Skip `.spec.ts` generation    |
+| `--skipTests`             | `boolean` | `false`           | Skip `.test.ts` generation    |
 | `--flat`                  | `boolean` | `false`           | Create without subdirectory   |
 
 **Nested paths:**

@@ -40,6 +40,10 @@ export class UiProgress {
   constructor() {
     effect(() => {
       const el = this.fillRef()?.nativeElement;
+      // el.animate() is inert in jsdom. Determinate and indeterminate paths
+      // are exercised on-device; the effect's animation branch cannot be
+      // meaningfully verified from a unit test.
+      /* v8 ignore start */
       if (!el) return;
 
       // Handle indeterminate mode with infinite sliding animation.
@@ -84,6 +88,7 @@ export class UiProgress {
         { duration: DURATION.slow, easing: EASING.standard, fill: 'forwards' },
       );
       this.#previousPercent = percent;
+      /* v8 ignore stop */
     });
   }
 

@@ -8,7 +8,7 @@
  * input's SIGNAL node and call `applyValueToInputSignal`, exactly as a parent
  * template binding would at runtime. This drives a PUBLIC input to a value — it
  * does not touch a component's private (`#`) state — and mirrors the existing
- * pattern in packages/runtime/src/lib/transition/lynx-transition.spec.ts.
+ * pattern in packages/runtime/src/lib/transition/lynx-transition.test.ts.
  */
 export const setInputSignal = (signalFn: unknown, value: unknown): void => {
   const symbols = Object.getOwnPropertySymbols(signalFn as object);

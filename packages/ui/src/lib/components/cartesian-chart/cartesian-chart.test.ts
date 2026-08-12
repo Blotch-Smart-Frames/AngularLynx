@@ -74,6 +74,30 @@ describe('niceNum', () => {
     expect(niceNum(2, true)).toBe(2);
   });
 
+  it('rounds down small-fraction values to 1 (round=true) and 1 (round=false)', () => {
+    // fraction < 1.5 branch under round=true.
+    expect(niceNum(11, true)).toBe(10);
+    // fraction <= 1 branch under round=false.
+    expect(niceNum(9, false)).toBe(10);
+    expect(niceNum(1, false)).toBe(1);
+  });
+
+  it('rounds fractions 3–7 to 5 and larger to 10 (round=true)', () => {
+    // fraction=4.5 → nice 5.
+    expect(niceNum(45, true)).toBe(50);
+    // fraction=8 → nice 10.
+    expect(niceNum(80, true)).toBe(100);
+  });
+
+  it('handles round=false fraction branches 2, 5, and 10', () => {
+    // fraction <= 2 → nice 2 (round=false).
+    expect(niceNum(15, false)).toBe(20);
+    // fraction <= 5 → nice 5 (round=false).
+    expect(niceNum(45, false)).toBe(50);
+    // fraction > 5 → nice 10 (round=false).
+    expect(niceNum(60, false)).toBe(100);
+  });
+
   it('returns 0 for non-positive input', () => {
     expect(niceNum(0, true)).toBe(0);
     expect(niceNum(-5, false)).toBe(0);
@@ -102,6 +126,20 @@ describe('niceScale', () => {
     const { domain } = niceScale(5, 5, 5);
     expect(domain[0]).toBeLessThan(5);
     expect(domain[1]).toBeGreaterThan(5);
+    expect(Number.isFinite(domain[0])).toBe(true);
+    expect(Number.isFinite(domain[1])).toBe(true);
+  });
+
+  it('pads flat data around zero with an absolute-pad fallback', () => {
+    // base === 0 branch: pad defaults to 1.
+    const { domain } = niceScale(0, 0, 5);
+    expect(domain[0]).toBeLessThan(0);
+    expect(domain[1]).toBeGreaterThan(0);
+  });
+
+  it('handles non-finite inputs by falling back to a padded zero-based domain', () => {
+    // !Number.isFinite(lo0) branch.
+    const { domain } = niceScale(Number.NaN, 10, 5);
     expect(Number.isFinite(domain[0])).toBe(true);
     expect(Number.isFinite(domain[1])).toBe(true);
   });
@@ -319,6 +357,40 @@ describe('sampleSmoothLine', () => {
       expect(curve[i].x).toBeGreaterThanOrEqual(curve[i - 1].x);
     }
   });
+
+  it('applies the Fritsch-Carlson tangent constraint on steep slopes (monotone clamp)', () => {
+    // Data with a steep rise then steep drop triggers the `magnitude > 9`
+    // tangent-clamp branch inside sampleSmoothLine.
+    const points = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0.01 },
+      { x: 2, y: 100 },
+      { x: 3, y: 0.01 },
+      { x: 4, y: 0 },
+    ];
+    const curve = sampleSmoothLine(points, 12);
+    expect(curve.length).toBeGreaterThan(0);
+    // No sample exceeds the actual data range — the clamp did its job.
+    for (const c of curve) {
+      expect(c.y).toBeLessThanOrEqual(100 + 1e-9);
+      expect(c.y).toBeGreaterThanOrEqual(0 - 1e-9);
+    }
+  });
+
+  it('treats a duplicate-x pair (zero horizontal gap) as a flat secant', () => {
+    // Covers the `dx === 0 ? 0 : ...` branch. Two consecutive points share an x.
+    const curve = sampleSmoothLine(
+      [
+        { x: 0, y: 0 },
+        { x: 5, y: 3 },
+        { x: 5, y: 8 },
+        { x: 10, y: 10 },
+      ],
+      6,
+    );
+    expect(curve.length).toBeGreaterThan(0);
+    for (const c of curve) expect(Number.isFinite(c.y)).toBe(true);
+  });
 });
 
 describe('invertLinear', () => {
@@ -452,5 +524,26 @@ describe('zoomWindow', () => {
     // minZoom 2 → the window can never be wider than baseSpan / 2 = 5.
     const [lo, hi] = zoomWindow([0, 10], [3, 4], 0.01, 3.5, 8, 2);
     expect(hi - lo).toBeCloseTo(5);
+  });
+
+  it('falls back to factor=1 when the caller passes 0 (defensive divide-by-zero guard)', () => {
+    // Covers the `factor || 1` branch.
+    const window = zoomWindow([0, 10], [0, 10], 0, 5, 8);
+    // With factor=0 → treated as 1, the span stays.
+    expect(window[1] - window[0]).toBeCloseTo(10);
+  });
+
+  it('centers a zero-span current window at the focal (fallback fraction 0.5)', () => {
+    // Covers the `span === 0 ? 0.5 : ...` branch.
+    const window = zoomWindow([0, 10], [5, 5], 1, 5, 8);
+    expect(window[0]).toBeLessThanOrEqual(5);
+    expect(window[1]).toBeGreaterThanOrEqual(5);
+  });
+
+  it('falls back to baseSpan when maxZoom or minZoom are non-positive', () => {
+    // Covers `maxZoom > 0` and `minZoom > 0` false branches.
+    expect(() => zoomWindow([0, 10], [0, 10], 1, 5, 0, 1)).not.toThrow();
+    expect(() => zoomWindow([0, 10], [0, 10], 1, 5, 8, 0)).not.toThrow();
+    expect(() => zoomWindow([0, 10], [0, 10], 1, 5, -1, -1)).not.toThrow();
   });
 });

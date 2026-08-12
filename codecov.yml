@@ -3,6 +3,9 @@
 # file tells Codecov how to scope, aggregate, and gate each one. The real CI gate
 # is the per-package vitest `thresholds:{100}` (see each package's config) — these
 # Codecov statuses mirror that target for PR visibility.
+codecov:
+  branch: master
+
 comment:
   layout: "condensed_header, flags, files"
 

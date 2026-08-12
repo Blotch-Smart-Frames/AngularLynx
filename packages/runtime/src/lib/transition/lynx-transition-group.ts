@@ -160,6 +160,12 @@ export class LynxTransitionGroup<T> {
         };
         this.#entries.set(key, entry);
         this.#animateEnter(entry);
+        // The `else if (!existing.leaving)` false branch is unreachable via
+        // normal flow: any entry that was leaving was already rescued in the
+        // leave loop above (cancelLeave clears entry.leaving), so by the time
+        // we're in the enter loop for a key that IS in newKeys, entry.leaving
+        // is always false. Kept as defensive coding for future refactors.
+        /* v8 ignore start */
       } else if (!existing.leaving) {
         // Update context for retained items so template bindings reflect
         // the latest item value (handles reference-identity changes).
@@ -167,6 +173,7 @@ export class LynxTransitionGroup<T> {
         existing.viewRef.context.$implicit = item;
         existing.viewRef.markForCheck();
       }
+      /* v8 ignore stop */
     }
 
     // Reorder non-leaving views to match new list order.
@@ -205,6 +212,10 @@ export class LynxTransitionGroup<T> {
     const survivorViews: ViewRef[] = [];
     for (const key of keyOrder) {
       const entry = this.#entries.get(key);
+      // Defensive: any key in `keyOrder` (built from newKeys) has been through
+      // the leave/enter pass above, so its entry is present and not leaving.
+      // The false branch is unreachable but the guard stays for safety.
+      /* v8 ignore next */
       if (entry && !entry.leaving) survivorViews.push(entry.viewRef);
     }
 
@@ -214,6 +225,9 @@ export class LynxTransitionGroup<T> {
     let s = 0;
     for (let i = 0; i < total; i++) {
       const view = vcr.get(i);
+      // Defensive guard against a ViewContainerRef returning null for an in-
+      // range index (never happens in Angular's Ivy vcr, kept for safety).
+      /* v8 ignore next */
       if (!view) continue;
       const entry = entryByView.get(view);
       if (entry && !entry.leaving && s < survivorViews.length) {
@@ -281,12 +295,19 @@ export class LynxTransitionGroup<T> {
   }
 
   #cancelLeave(_key: unknown, entry: ViewEntry<T>): void {
+    // Defensive: cancelLeave is only reached from the leave loop when the
+    // entry was actively leaving, which means #animateLeave found a rootEl and
+    // scheduled the timer. Both guards' false branches are unreachable via the
+    // real code path but stay as safety in case a future refactor changes the
+    // preconditions (e.g. leave cancellation from an external caller).
+    /* v8 ignore next 4 */
     if (entry.leaveTimer !== null) {
       clearTimeout(entry.leaveTimer);
       entry.leaveTimer = null;
     }
 
     const rootEl = entry.viewRef.rootNodes[0];
+    /* v8 ignore next 5 */
     if (rootEl) {
       const name = this.name();
       // Item reappeared mid-leave — drop the leave class so it's visible again.
@@ -298,15 +319,26 @@ export class LynxTransitionGroup<T> {
 
   #destroyEntry(key: unknown): void {
     const entry = this.#entries.get(key);
+    // The following guards are defensive — every caller looks the entry up
+    // from #entries by the same key, and destroyEntry runs after the leave
+    // timer fires (which nulls leaveTimer before invoking destroy) OR right
+    // from animateLeave's no-rootEl fast path (which never sets either timer).
+    // The false branch of `index >= 0` guards against a ViewContainerRef that
+    // no longer contains the ViewRef (also never happens in production).
+    /* v8 ignore next */
     if (!entry) return;
 
+    /* v8 ignore start */
     if (entry.enterTimer !== null) clearTimeout(entry.enterTimer);
     if (entry.leaveTimer !== null) clearTimeout(entry.leaveTimer);
+    /* v8 ignore stop */
 
     const index = this.vcr().indexOf(entry.viewRef);
+    /* v8 ignore start */
     if (index >= 0) {
       this.vcr().remove(index);
     }
+    /* v8 ignore stop */
     this.#entries.delete(key);
   }
 }

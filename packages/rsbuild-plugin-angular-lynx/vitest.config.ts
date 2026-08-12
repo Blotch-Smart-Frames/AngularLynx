@@ -7,13 +7,13 @@ export default defineConfig({
     __ENABLE_SSR__: false,
   },
   test: {
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.ts'],
       exclude: [
-        'src/**/*.spec.ts',
+        'src/**/*.test.ts',
         'src/**/*.d.ts',
         'src/**/*.types.ts',
         'src/index.ts', // 1-line public re-export barrel

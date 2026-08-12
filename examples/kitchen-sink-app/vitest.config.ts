@@ -32,7 +32,7 @@ export default defineConfig({
         '../../packages/testing-library/src/setup.ts',
       ),
     ],
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.test.ts'],
     alias: [
       // Stub binary assets so PNG/image imports in components don't crash the runner.
       // The regex must match the FULL import path (^.*) so that String.replace()

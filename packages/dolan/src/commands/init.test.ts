@@ -57,7 +57,7 @@ const TAILWIND_PLUGIN = 'export const blotchPlugin = () => {};';
  * @clack/prompts group: invoke each field's builder function and resolve
  * `p.text` to its `defaultValue`. This exercises init.ts's `components: () =>
  * p.text(...)` and `theme: () => p.text(...)` field closures directly,
- * instead of shortcutting past them with a hardcoded resolved object.
+ * instead of skipping past them with a hardcoded resolved object.
  */
 const useDefaultGroupAnswers = async () => {
   const p = await import('@clack/prompts');

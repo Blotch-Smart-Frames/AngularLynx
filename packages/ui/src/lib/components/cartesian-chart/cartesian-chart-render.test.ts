@@ -157,7 +157,9 @@ describe('UiCartesianChart — component', () => {
     setInputSignal(inst.zoomable, true);
     setInputSignal(inst.showZoomControls, true);
     await waitForUpdate();
-    expect(readComputedSignals(inst).zoomControlsStyle.length).toBeGreaterThan(0);
+    expect(readComputedSignals(inst).zoomControlsStyle.length).toBeGreaterThan(
+      0,
+    );
   });
 
   it('containerClass includes user class alias', async () => {

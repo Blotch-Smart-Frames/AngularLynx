@@ -345,7 +345,7 @@ export class UiToastItem implements OnInit {
    *   * new one pushed this one back). This is what makes the stack slide forward
    *   * when the front toast is dismissed.
    * v8 ignore start -- only invoked from the restack effect, which never
-   *     re-runs in JIT (see the effect body above); exercised on device. 
+   *     re-runs in JIT (see the effect body above); exercised on device.
    */
   #animateRestack(from: number, to: number): void {
     // A toast pushed while this one is animating out would shift its depth and
@@ -360,7 +360,7 @@ export class UiToastItem implements OnInit {
     );
   }
   /**
-   * v8 ignore stop 
+   * v8 ignore stop
    */
 
   #animateOut(): void {

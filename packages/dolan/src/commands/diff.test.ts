@@ -373,7 +373,9 @@ describe('diffCommand', () => {
       config: DEFAULT_CONFIG,
       lockfile: {
         version: 1,
-        components: { card: { 'card.ts': { hash: hashContent(cardInstalled) } } },
+        components: {
+          card: { 'card.ts': { hash: hashContent(cardInstalled) } },
+        },
         utils: {},
         theme: {},
       },
@@ -384,8 +386,12 @@ describe('diffCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('cancel-token');
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      'cancel-token',
+    );
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { diffCommand } = await import('./diff');
     await diffCommand();

@@ -243,7 +243,9 @@ describe('removeCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { removeCommand } = await import('./remove');
     await expect(removeCommand('spinner', {})).rejects.toThrow(
@@ -381,7 +383,9 @@ describe('removeCommand', () => {
       config: DEFAULT_CONFIG,
       lockfile: {
         version: 1,
-        components: { avatar: { 'avatar.ts': { hash: hashContent(avatarContent) } } },
+        components: {
+          avatar: { 'avatar.ts': { hash: hashContent(avatarContent) } },
+        },
         utils: {},
         theme: {},
       },

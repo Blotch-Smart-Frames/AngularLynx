@@ -13,7 +13,12 @@ export default defineConfig({
       // subprocess that V8 cannot observe.
       include: ['src/**/*.mjs'],
       exclude: ['src/index.mjs'], // pure re-export barrel
-      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
     },
   },
 });

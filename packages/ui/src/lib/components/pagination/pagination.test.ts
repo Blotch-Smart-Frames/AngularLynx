@@ -45,7 +45,9 @@ describe('UiPagination', () => {
     // total=10, page=5, siblings=1 → rangeStart=4, rangeEnd=6; gaps on both sides.
     const { container } = await setup(10, 5);
     // Two ellipses in the DOM as separate <text> nodes.
-    expect(container.textContent?.match(/\.\.\./g)?.length).toBeGreaterThanOrEqual(1);
+    expect(
+      container.textContent?.match(/\.\.\./g)?.length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it('prev() decrements page when > 1', async () => {

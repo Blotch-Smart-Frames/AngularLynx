@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type * as TypescriptModule from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache';
 
@@ -13,7 +14,7 @@ import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache
 const parseState = vi.hoisted(() => ({ shouldThrow: false }));
 
 vi.mock('typescript', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('typescript')>();
+  const actual = await importOriginal<typeof TypescriptModule>();
   return {
     ...actual,
     default: actual,

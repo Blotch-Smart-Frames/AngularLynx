@@ -44,11 +44,17 @@ describe('ssr-callbacks', () => {
 
   describe('ssrHydrate', () => {
     beforeEach(() => {
-      vi.stubGlobal('__GetTemplateParts', vi.fn(() => ({ '0': {} })));
+      vi.stubGlobal(
+        '__GetTemplateParts',
+        vi.fn(() => ({ '0': {} })),
+      );
     });
 
     it('throws when the snapshot has no page element', () => {
-      vi.stubGlobal('__GetPageElement', vi.fn(() => null));
+      vi.stubGlobal(
+        '__GetPageElement',
+        vi.fn(() => null),
+      );
       expect(() => ssrHydrate('{"__opcodes":[]}')).toThrow(
         /SSR hydration failed: no page element from snapshot/,
       );
@@ -56,7 +62,10 @@ describe('ssr-callbacks', () => {
 
     it('stashes hydration state on globals for the document to consume', () => {
       const nativePage = { _native: true };
-      vi.stubGlobal('__GetPageElement', vi.fn(() => nativePage));
+      vi.stubGlobal(
+        '__GetPageElement',
+        vi.fn(() => nativePage),
+      );
 
       ssrHydrate('{"__opcodes":[0,"0","view",1]}');
 

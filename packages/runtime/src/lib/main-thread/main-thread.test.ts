@@ -137,9 +137,9 @@ describe('LynxMainThread.runOnMainThread', () => {
 
       const mts = new LynxMainThread();
 
-      await expect(
-        mts.runOnMainThread(makeHandle('bg-throws')),
-      ).rejects.toBe(boom);
+      await expect(mts.runOnMainThread(makeHandle('bg-throws'))).rejects.toBe(
+        boom,
+      );
       expect(pendingResolvers[42]).toBeUndefined();
     });
   });

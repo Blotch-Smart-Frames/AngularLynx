@@ -3,9 +3,9 @@ import { isLynxUnknownElementMessage } from './is-lynx-unknown-element-message';
 
 describe('isLynxUnknownElementMessage', () => {
   it('returns true for "is not a known element" messages', () => {
-    expect(
-      isLynxUnknownElementMessage("'view' is not a known element"),
-    ).toBe(true);
+    expect(isLynxUnknownElementMessage("'view' is not a known element")).toBe(
+      true,
+    );
   });
 
   it('returns true for "isn\'t a known property of" messages', () => {

@@ -22,7 +22,9 @@ import { serializeElementTree } from './serialize-tree';
  */
 export const ssrEncode = (): string => {
   if (!__pageElementRef) {
-    throw new Error('ssrEncode called before Angular rendered the page element');
+    throw new Error(
+      'ssrEncode called before Angular rendered the page element',
+    );
   }
   const recorder = new OpcodeRecorder();
   serializeElementTree(__pageElementRef, recorder);

@@ -77,7 +77,8 @@ describe('UiButtonGroupItem', () => {
 
   it('onTap emits `pressed` when neither the group nor the item is disabled', async () => {
     const { itemResult } = await renderItem();
-    const inst = itemResult.componentRef.instance as unknown as UiButtonGroupItem & {
+    const inst = itemResult.componentRef
+      .instance as unknown as UiButtonGroupItem & {
       onTap: () => void;
     };
     const emitted = vi.fn();
@@ -88,7 +89,8 @@ describe('UiButtonGroupItem', () => {
 
   it('onTap is a no-op when the group is disabled', async () => {
     const { itemResult } = await renderItem('default', 'default', true);
-    const inst = itemResult.componentRef.instance as unknown as UiButtonGroupItem & {
+    const inst = itemResult.componentRef
+      .instance as unknown as UiButtonGroupItem & {
       onTap: () => void;
     };
     const emitted = vi.fn();
@@ -99,7 +101,8 @@ describe('UiButtonGroupItem', () => {
 
   it('onTap is a no-op when the item itself is disabled', async () => {
     const { itemResult } = await renderItem();
-    const inst = itemResult.componentRef.instance as unknown as UiButtonGroupItem & {
+    const inst = itemResult.componentRef
+      .instance as unknown as UiButtonGroupItem & {
       onTap: () => void;
     };
     setInputSignal(inst.disabled, true);
@@ -121,10 +124,7 @@ describe('UiButtonGroupItem', () => {
     expect(() => inst.onPressStart()).not.toThrow();
     expect(() => inst.onPressEnd()).not.toThrow();
     expect(() => inst.onPressCancel()).not.toThrow();
-    setInputSignal(
-      (inst as unknown as UiButtonGroupItem).disabled,
-      true,
-    );
+    setInputSignal((inst as unknown as UiButtonGroupItem).disabled, true);
     await waitForUpdate();
     expect(() => inst.onPressStart()).not.toThrow();
     expect(() => inst.onPressEnd()).not.toThrow();

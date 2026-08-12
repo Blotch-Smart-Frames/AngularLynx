@@ -137,7 +137,8 @@ describe('UiActionSheetItem', () => {
 
   it('onTap emits `pressed` and closes the parent sheet', async () => {
     const { parent, itemResult } = await renderItem();
-    const inst = itemResult.componentRef.instance as unknown as UiActionSheetItem & {
+    const inst = itemResult.componentRef
+      .instance as unknown as UiActionSheetItem & {
       onTap: () => void;
     };
     const emitted = vi.fn();

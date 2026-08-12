@@ -132,7 +132,9 @@ describe('getAngularWorkspace', () => {
   });
 
   it('throws when no workspace file exists above cwd', async () => {
-    const root = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'angular-lynx-nows-'));
+    const root = fs.mkdtempSync(
+      nodePath.join(os.tmpdir(), 'angular-lynx-nows-'),
+    );
     // A fresh tmp dir with no angular.json anywhere up the tree.
     vi.spyOn(process, 'cwd').mockReturnValue(root);
 

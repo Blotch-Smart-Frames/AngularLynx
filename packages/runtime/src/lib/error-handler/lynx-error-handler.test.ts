@@ -65,9 +65,7 @@ describe('LynxErrorHandler', () => {
         configurable: true,
       });
       handler.handleError(err);
-      expect((globalThis as any).__lynxLastError).toBe(
-        'Error: no stack\n',
-      );
+      expect((globalThis as any).__lynxLastError).toBe('Error: no stack\n');
     });
   });
 

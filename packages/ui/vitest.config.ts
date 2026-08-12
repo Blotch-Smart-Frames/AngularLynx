@@ -29,10 +29,7 @@ export default defineConfig({
     // testing-library setup (PAPI polyfills + main-thread switch).
     environment: 'jsdom',
     setupFiles: [
-      path.resolve(
-        import.meta.dirname,
-        '../testing-library/src/setup.ts',
-      ),
+      path.resolve(import.meta.dirname, '../testing-library/src/setup.ts'),
     ],
     include: ['src/**/*.test.ts'],
     alias: [

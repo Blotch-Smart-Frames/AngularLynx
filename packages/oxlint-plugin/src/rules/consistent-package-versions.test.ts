@@ -15,7 +15,9 @@ describe('consistent-package-versions', () => {
 
   it('reports nothing when every checked package.json has the same version', async () => {
     const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ version: '1.2.3' }));
+    vi.mocked(readFileSync).mockReturnValue(
+      JSON.stringify({ version: '1.2.3' }),
+    );
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
     const visitors = rule.create(context as never);
@@ -28,7 +30,9 @@ describe('consistent-package-versions', () => {
 
   it('memoizes the check so a second Program() in the same lint run re-reads nothing', async () => {
     const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ version: '1.2.3' }));
+    vi.mocked(readFileSync).mockReturnValue(
+      JSON.stringify({ version: '1.2.3' }),
+    );
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
     const visitors = rule.create(context as never);

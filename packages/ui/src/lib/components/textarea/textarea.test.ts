@@ -118,7 +118,9 @@ describe('UiTextarea', () => {
     const inst = componentRef.instance as UiTextarea;
     setInputSignal(inst.disabled, true);
     await waitForUpdate();
-    const wrapper = container.querySelector('[class*="rounded-xl"][class*="bg-muted"]');
+    const wrapper = container.querySelector(
+      '[class*="rounded-xl"][class*="bg-muted"]',
+    );
     expect(wrapper?.getAttribute('class')).toContain('opacity-50');
   });
 });

@@ -200,12 +200,10 @@ describe('LynxRendererFactory2', () => {
       vi.resetModules();
       vi.stubGlobal('__MAIN_THREAD__', true);
       vi.stubGlobal('__FlushElementTree', vi.fn());
-      const { LynxRendererFactory2: FreshFactory } = await import(
-        './lynx-renderer-factory2'
-      );
-      const { LynxBackgroundDocument: FreshDoc } = await import(
-        '../lynx-document'
-      );
+      const { LynxRendererFactory2: FreshFactory } =
+        await import('./lynx-renderer-factory2');
+      const { LynxBackgroundDocument: FreshDoc } =
+        await import('../lynx-document');
       const { LYNX_DOCUMENT: FRESH_LYNX_DOCUMENT } = await import('./token');
 
       const injector = Injector.create({
@@ -216,10 +214,7 @@ describe('LynxRendererFactory2', () => {
           },
         ],
       });
-      const factory = runInInjectionContext(
-        injector,
-        () => new FreshFactory(),
-      );
+      const factory = runInInjectionContext(injector, () => new FreshFactory());
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();

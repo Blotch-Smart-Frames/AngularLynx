@@ -37,10 +37,7 @@ describe('UiIcon', () => {
   it('substitutes currentColor with the color input value', async () => {
     const { componentRef, container } = await render(UiIcon);
     setInputSignal((componentRef.instance as UiIcon).name, 'check' as IconName);
-    setInputSignal(
-      (componentRef.instance as UiIcon).color,
-      'rgb(255, 0, 0)',
-    );
+    setInputSignal((componentRef.instance as UiIcon).color, 'rgb(255, 0, 0)');
     await waitForUpdate();
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('content')).toContain('rgb(255, 0, 0)');

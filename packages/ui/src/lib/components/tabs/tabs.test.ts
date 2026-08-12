@@ -1,14 +1,9 @@
 import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
-import {
-  UiTabs,
-  UiTabsContent,
-  UiTabsList,
-  UiTabsTrigger,
-} from './tabs';
+import { UiTabs, UiTabsContent, UiTabsList, UiTabsTrigger } from './tabs';
 
 @Component({
   standalone: true,
@@ -142,7 +137,7 @@ describe('UiTabsTrigger', () => {
     // Active path — `#previousActive` starts undefined so the first flip
     // exercises the initialization guard, and toggling activeValue drives the
     // effect through both animate() branches.
-    const { tabs, triggerResult } = await renderTrigger('b');
+    const { tabs } = await renderTrigger('b');
     // Switch tabs so trigger becomes active — activation branch.
     tabs.value.set('a');
     await waitForUpdate();

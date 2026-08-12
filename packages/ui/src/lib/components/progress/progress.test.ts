@@ -63,10 +63,7 @@ describe('UiProgress', () => {
 
   it('uses the fixed 40% fill width when indeterminate is true', async () => {
     const { componentRef, container } = await render(UiProgress);
-    setInputSignal(
-      (componentRef.instance as UiProgress).indeterminate,
-      true,
-    );
+    setInputSignal((componentRef.instance as UiProgress).indeterminate, true);
     await waitForUpdate();
     const fill = container.querySelectorAll('view')[1];
     expect(fill?.getAttribute('style')).toContain('width: 40%');

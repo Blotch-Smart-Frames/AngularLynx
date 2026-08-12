@@ -1,7 +1,10 @@
 // cspell:words ɵcmp
 import path from 'node:path';
 import { transformWorklets } from './worklet-transform.js';
-import type { ComponentScopeInfo, ComponentStylesEntry } from './component-styles-cache.js';
+import type {
+  ComponentScopeInfo,
+  ComponentStylesEntry,
+} from './component-styles-cache.js';
 
 /**
  * Transforms the Angular-compiled JS for a single component module before rspack
@@ -35,7 +38,10 @@ export const buildTransformedCode = (params: {
       // compute the relative path from the component file. Prepending
       // `./` when the relative path doesn't start with `..` keeps it a
       // valid ES module specifier (rspack rejects bare specifiers here).
-      let relativeImport = path.relative(path.dirname(resourcePath), imports[i]);
+      let relativeImport = path.relative(
+        path.dirname(resourcePath),
+        imports[i],
+      );
       if (!relativeImport.startsWith('.')) {
         relativeImport = `./${relativeImport}`;
       }

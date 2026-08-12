@@ -16,16 +16,20 @@ const createContext = (text: string, commentsAfter: unknown[]) => ({
 });
 
 /**
- * Builds a fake decorator/comment AST node whose range is derived from where `snippet` sits in `text`. 
+ * Builds a fake decorator/comment AST node whose range is derived from where `snippet` sits in `text`.
  */
 const rangeOf = (text: string, snippet: string): [number, number] => {
   const start = text.indexOf(snippet);
-  if (start === -1) throw new Error(`snippet not found in fixture text: ${snippet}`);
+  if (start === -1)
+    throw new Error(`snippet not found in fixture text: ${snippet}`);
   return [start, start + snippet.length];
 };
 
 const createFixer = () => ({
-  removeRange: vi.fn((range: [number, number]) => ({ type: 'removeRange', range })),
+  removeRange: vi.fn((range: [number, number]) => ({
+    type: 'removeRange',
+    range,
+  })),
   insertTextBefore: vi.fn((node: unknown, text: string) => ({
     type: 'insertTextBefore',
     node,
@@ -92,9 +96,15 @@ describe('comment-decorator-order', () => {
     const [, decoratorEnd] = decorator.range;
     const removedLineEnd = text.indexOf('class Foo');
     // The whole "// oops" line (plus its trailing newline) is removed...
-    expect(fixer.removeRange).toHaveBeenCalledWith([decoratorEnd + 1, removedLineEnd]);
+    expect(fixer.removeRange).toHaveBeenCalledWith([
+      decoratorEnd + 1,
+      removedLineEnd,
+    ]);
     // ...and reinserted verbatim, reusing the decorator's own indentation.
-    expect(fixer.insertTextBefore).toHaveBeenCalledWith(decorator, '  // oops\n');
+    expect(fixer.insertTextBefore).toHaveBeenCalledWith(
+      decorator,
+      '  // oops\n',
+    );
     expect(edits).toHaveLength(2);
   });
 
@@ -117,7 +127,10 @@ describe('comment-decorator-order', () => {
     const fixer = createFixer();
     const call = context.report.mock.calls[0][0];
     call.fix(fixer);
-    expect(fixer.insertTextBefore).toHaveBeenCalledWith(decorator, '/* oops */\n');
+    expect(fixer.insertTextBefore).toHaveBeenCalledWith(
+      decorator,
+      '/* oops */\n',
+    );
   });
 
   it('removes a trailing comment with no newline after it (end of file)', () => {
@@ -140,7 +153,10 @@ describe('comment-decorator-order', () => {
     const call = context.report.mock.calls[0][0];
     call.fix(fixer);
 
-    expect(fixer.removeRange).toHaveBeenCalledWith([comment.range[0], text.length]);
+    expect(fixer.removeRange).toHaveBeenCalledWith([
+      comment.range[0],
+      text.length,
+    ]);
   });
 
   it('anchors the fix on the first decorator (not the last) and reports every stray comment', () => {
@@ -176,7 +192,15 @@ describe('comment-decorator-order', () => {
     for (const call of context.report.mock.calls) {
       call[0].fix(fixer);
     }
-    expect(fixer.insertTextBefore).toHaveBeenNthCalledWith(1, first, '// one\n');
-    expect(fixer.insertTextBefore).toHaveBeenNthCalledWith(2, first, '// two\n');
+    expect(fixer.insertTextBefore).toHaveBeenNthCalledWith(
+      1,
+      first,
+      '// one\n',
+    );
+    expect(fixer.insertTextBefore).toHaveBeenNthCalledWith(
+      2,
+      first,
+      '// two\n',
+    );
   });
 });

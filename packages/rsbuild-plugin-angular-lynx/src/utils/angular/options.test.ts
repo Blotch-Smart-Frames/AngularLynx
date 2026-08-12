@@ -20,15 +20,17 @@ const baseOptions = (overrides: Record<string, any> = {}) => ({
 });
 
 /**
- * Builds a mock ProjectDefinition with a single "build" target. 
+ * Builds a mock ProjectDefinition with a single "build" target.
  */
-const makeProject = (opts: {
-  options?: Record<string, any>;
-  configurations?: Record<string, any>;
-  defaultConfiguration?: string;
-  noBuildTarget?: boolean;
-  i18n?: unknown;
-} = {}): any => {
+const makeProject = (
+  opts: {
+    options?: Record<string, any>;
+    configurations?: Record<string, any>;
+    defaultConfiguration?: string;
+    noBuildTarget?: boolean;
+    i18n?: unknown;
+  } = {},
+): any => {
   const targets = new Map<string, any>();
   if (!opts.noBuildTarget) {
     targets.set('build', {
@@ -241,7 +243,10 @@ describe('readBuildOptions', () => {
     expect(result.styles).toEqual([]);
     expect(result.fileReplacements).toBeUndefined();
     // No outputHashing → no hash placeholders.
-    expect(result.outputNames).toEqual({ bundles: '[name]', media: 'media/[name]' });
+    expect(result.outputNames).toEqual({
+      bundles: '[name]',
+      media: 'media/[name]',
+    });
     // aot && optimization.scripts (default true) → advancedOptimizations true.
     expect(result.advancedOptimizations).toBe(true);
     // sourceMap defaults to false → all sub-flags false.
@@ -394,14 +399,15 @@ describe('readBuildOptions', () => {
     });
 
     it('resolves file replacements whose replacement file exists', async () => {
-      fs.writeFileSync(nodePath.join(root, 'env.prod.ts'), 'export const x = 1;');
+      fs.writeFileSync(
+        nodePath.join(root, 'env.prod.ts'),
+        'export const x = 1;',
+      );
 
       const result = await readBuildOptions(
         makeProject({
           options: baseOptions({
-            fileReplacements: [
-              { replace: 'env.ts', with: 'env.prod.ts' },
-            ],
+            fileReplacements: [{ replace: 'env.ts', with: 'env.prod.ts' }],
           }),
         }),
         root,

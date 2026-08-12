@@ -64,9 +64,7 @@ describe('declaration-only Lynx element directives', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [
-        { provide: ElementRef, useValue: { nativeElement: {} } },
-      ],
+      providers: [{ provide: ElementRef, useValue: { nativeElement: {} } }],
     });
   });
 

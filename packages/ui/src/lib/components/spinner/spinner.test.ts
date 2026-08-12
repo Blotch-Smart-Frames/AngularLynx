@@ -14,10 +14,7 @@ describe('UiSpinner', () => {
 
   it('substitutes currentColor when the color input is set', async () => {
     const { container, componentRef } = await render(UiSpinner);
-    setInputSignal(
-      (componentRef.instance as UiSpinner).color,
-      'rgb(0, 0, 0)',
-    );
+    setInputSignal((componentRef.instance as UiSpinner).color, 'rgb(0, 0, 0)');
     // Flush CD so the computed re-runs and the `content` attribute updates.
     await waitForUpdate();
     const svg = container.querySelector('svg');

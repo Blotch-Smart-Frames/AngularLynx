@@ -167,7 +167,9 @@ describe('addCommand', () => {
     await addCommand([]);
 
     expect(p.multiselect).toHaveBeenCalled();
-    expect(existsSync(join(fixture.dir, DEFAULT_CONFIG.aliases.components, 'card'))).toBe(true);
+    expect(
+      existsSync(join(fixture.dir, DEFAULT_CONFIG.aliases.components, 'card')),
+    ).toBe(true);
   });
 
   it('cancels when the multiselect prompt is canceled', async () => {
@@ -178,7 +180,9 @@ describe('addCommand', () => {
     (p.multiselect as ReturnType<typeof vi.fn>).mockResolvedValue(
       Symbol('cancel'),
     );
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { addCommand } = await import('./add');
     await expect(addCommand([])).rejects.toThrow('process.exit(0)');
@@ -268,7 +272,9 @@ describe('addCommand', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(Symbol('cancel'));
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { addCommand } = await import('./add');
     await expect(addCommand(['card'])).rejects.toThrow('process.exit(0)');

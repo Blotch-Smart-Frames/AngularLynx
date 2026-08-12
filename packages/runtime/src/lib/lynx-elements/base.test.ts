@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import '@angular/compiler';
-import { ElementRef, type SimpleChange, type SimpleChanges } from '@angular/core';
+import {
+  ElementRef,
+  type SimpleChange,
+  type SimpleChanges,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   BrowserTestingModule,
@@ -14,7 +18,10 @@ describe('LynxElementBase', () => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
   });
 
-  let fakeEl: { setAttribute: ReturnType<typeof vi.fn>; removeAttribute: ReturnType<typeof vi.fn> };
+  let fakeEl: {
+    setAttribute: ReturnType<typeof vi.fn>;
+    removeAttribute: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -25,7 +32,12 @@ describe('LynxElementBase', () => {
   });
 
   const change = (currentValue: unknown): SimpleChange =>
-    ({ currentValue, previousValue: undefined, firstChange: true, isFirstChange: () => true }) as SimpleChange;
+    ({
+      currentValue,
+      previousValue: undefined,
+      firstChange: true,
+      isFirstChange: () => true,
+    }) as SimpleChange;
 
   it('forwards a non-null currentValue to setAttribute', () => {
     const dir = TestBed.runInInjectionContext(() => new LynxElementBase());
@@ -68,7 +80,10 @@ describe('LynxElementBase', () => {
     dir.ngOnChanges(changes);
 
     expect(fakeEl.setAttribute).toHaveBeenCalledWith('id', 'abc');
-    expect(fakeEl.setAttribute).toHaveBeenCalledWith('accessibility-label', 'hello');
+    expect(fakeEl.setAttribute).toHaveBeenCalledWith(
+      'accessibility-label',
+      'hello',
+    );
     expect(fakeEl.removeAttribute).toHaveBeenCalledWith('name');
     expect(fakeEl.setAttribute).toHaveBeenCalledTimes(2);
     expect(fakeEl.removeAttribute).toHaveBeenCalledTimes(1);

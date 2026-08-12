@@ -211,7 +211,11 @@ describe('animate — primitive helpers on a real element', () => {
     expect(keyframes[2].transform).toContain('translateX(20px)');
 
     const el2 = makeEl();
-    springTranslateX(el2, 0, 20, { duration: 500, easing: 'ease', fill: 'none' });
+    springTranslateX(el2, 0, 20, {
+      duration: 500,
+      easing: 'ease',
+      fill: 'none',
+    });
     const [, opts2] = el2.animate.mock.calls[0];
     expect(opts2).toEqual({ duration: 500, easing: 'ease', fill: 'none' });
   });

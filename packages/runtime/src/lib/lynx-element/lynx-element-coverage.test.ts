@@ -38,20 +38,41 @@ const installFakes = () => {
   );
 
   vi.stubGlobal('__SetClasses', vi.fn());
-  vi.stubGlobal('__GetClasses', vi.fn(() => []));
+  vi.stubGlobal(
+    '__GetClasses',
+    vi.fn(() => []),
+  );
   vi.stubGlobal('__AddClass', vi.fn());
   vi.stubGlobal('__SetAttribute', vi.fn());
-  vi.stubGlobal('__GetAttributeByName', vi.fn(() => null));
+  vi.stubGlobal(
+    '__GetAttributeByName',
+    vi.fn(() => null),
+  );
   vi.stubGlobal('__SetID', vi.fn());
   vi.stubGlobal('__SetDataset', vi.fn());
   vi.stubGlobal('__AddInlineStyle', vi.fn());
   vi.stubGlobal('__SetInlineStyles', vi.fn());
   vi.stubGlobal('__AddEvent', vi.fn());
-  vi.stubGlobal('__ElementAnimate', vi.fn(() => 'anim-1'));
-  vi.stubGlobal('__NextElement', vi.fn(() => null));
-  vi.stubGlobal('__GetParent', vi.fn(() => null));
-  vi.stubGlobal('__QuerySelector', vi.fn(() => null));
-  vi.stubGlobal('__QuerySelectorAll', vi.fn(() => []));
+  vi.stubGlobal(
+    '__ElementAnimate',
+    vi.fn(() => 'anim-1'),
+  );
+  vi.stubGlobal(
+    '__NextElement',
+    vi.fn(() => null),
+  );
+  vi.stubGlobal(
+    '__GetParent',
+    vi.fn(() => null),
+  );
+  vi.stubGlobal(
+    '__QuerySelector',
+    vi.fn(() => null),
+  );
+  vi.stubGlobal(
+    '__QuerySelectorAll',
+    vi.fn(() => []),
+  );
   vi.stubGlobal('__InvokeUIMethod', vi.fn());
   vi.stubGlobal('__RemoveElement', vi.fn());
   vi.stubGlobal('__AppendElement', vi.fn());
@@ -65,10 +86,7 @@ describe('LynxElement setAttribute id / data- branches', () => {
   it('routes name="id" through __SetID', () => {
     const el = new LynxElement(makeRef() as unknown as ElementRef);
     el.setAttribute('id', 'hero');
-    expect(globalThis.__SetID).toHaveBeenCalledWith(
-      expect.anything(),
-      'hero',
-    );
+    expect(globalThis.__SetID).toHaveBeenCalledWith(expect.anything(), 'hero');
   });
 
   it('accepts name="id" with a null value (clears the id)', () => {
@@ -134,9 +152,9 @@ describe('LynxElement getters / removers', () => {
   beforeEach(() => installFakes());
 
   it('getAttribute delegates to __GetAttributeByName', () => {
-    (globalThis.__GetAttributeByName as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-      'the-value',
-    );
+    (
+      globalThis.__GetAttributeByName as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce('the-value');
     const el = new LynxElement(makeRef() as unknown as ElementRef);
     expect(el.getAttribute('foo')).toBe('the-value');
     expect(globalThis.__GetAttributeByName).toHaveBeenCalledWith(
@@ -286,9 +304,9 @@ describe('LynxElement parent / sibling / query', () => {
     const hitRef = makeRef();
     const hit = new LynxElement(hitRef as unknown as ElementRef);
     const el = new LynxElement(makeRef() as unknown as ElementRef);
-    (globalThis.__QuerySelector as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-      hitRef,
-    );
+    (
+      globalThis.__QuerySelector as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce(hitRef);
     expect(el.querySelector('.thing')).toBe(hit);
   });
 
@@ -309,9 +327,9 @@ describe('LynxElement parent / sibling / query', () => {
     // ref that no LynxDocument produced still returns a usable wrapper.
     const orphan = makeRef();
     const el = new LynxElement(makeRef() as unknown as ElementRef);
-    (globalThis.__QuerySelector as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-      orphan,
-    );
+    (
+      globalThis.__QuerySelector as ReturnType<typeof vi.fn>
+    ).mockReturnValueOnce(orphan);
     const result = el.querySelector('.orphan');
     expect(result).toBeInstanceOf(LynxElement);
   });
@@ -334,7 +352,9 @@ describe('LynxElement invoke and animate', () => {
   it('invoke supplies a no-op result callback that runs cleanly if native invokes it', () => {
     // The result callback is `() => {}` on the fire-and-forget path. Make the
     // mock call it so the empty body is executed for coverage.
-    (globalThis.__InvokeUIMethod as ReturnType<typeof vi.fn>).mockImplementationOnce(
+    (
+      globalThis.__InvokeUIMethod as ReturnType<typeof vi.fn>
+    ).mockImplementationOnce(
       (
         _el: unknown,
         _method: string,
@@ -369,10 +389,10 @@ describe('LynxElement invoke and animate', () => {
 
   it('animate accepts an options object', () => {
     const el = new LynxElement(makeRef() as unknown as ElementRef);
-    const anim = el.animate(
-      [{ opacity: 0 }, { opacity: 1 }],
-      { duration: 250, iterations: 2 },
-    );
+    const anim = el.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 250,
+      iterations: 2,
+    });
     expect(anim).toBeTruthy();
   });
 
@@ -400,7 +420,9 @@ describe('LynxElement #doRemove animation-cancel and orphan paths', () => {
     // Set up parent → child so parentNode() returns a real wrapper.
     const parentRef = makeRef();
     const childRef = makeRef();
-    const parent = new LynxElement(parentRef as unknown as ElementRef);
+    // Registering this wrapper populates the canonical-wrapper registry so
+    // parentNode(child) below resolves to it — the binding itself is unused.
+    const _parent = new LynxElement(parentRef as unknown as ElementRef);
     const child = new LynxElement(childRef as unknown as ElementRef);
     // Force parentNode(child) to return `parent`.
     (globalThis.__GetParent as ReturnType<typeof vi.fn>).mockImplementation(
@@ -414,10 +436,10 @@ describe('LynxElement #doRemove animation-cancel and orphan paths', () => {
     LynxElement.commitPendingRemovals();
 
     // Wire protocol constant 3 = ANIMATION_CANCEL.
-    expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(
-      childRef,
-      [3, expect.any(String)],
-    );
+    expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(childRef, [
+      3,
+      expect.any(String),
+    ]);
     // Inline-style resets to clear residual opacity / transform.
     expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
       childRef,
@@ -430,7 +452,10 @@ describe('LynxElement #doRemove animation-cancel and orphan paths', () => {
       null,
     );
     // The element itself is detached from the native parent.
-    expect(globalThis.__RemoveElement).toHaveBeenCalledWith(parentRef, childRef);
+    expect(globalThis.__RemoveElement).toHaveBeenCalledWith(
+      parentRef,
+      childRef,
+    );
 
     // Guard against a lingering pending set.
     expect(() => LynxElement.commitPendingRemovals()).not.toThrow();

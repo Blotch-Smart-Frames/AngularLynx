@@ -82,7 +82,9 @@ describe('UiToggle', () => {
     const inst = componentRef.instance as UiToggle;
     setInputSignal(inst.size, 'lg');
     await waitForUpdate();
-    expect(container.querySelector('view')?.getAttribute('class')).toContain('h-11');
+    expect(container.querySelector('view')?.getAttribute('class')).toContain(
+      'h-11',
+    );
   });
 });
 

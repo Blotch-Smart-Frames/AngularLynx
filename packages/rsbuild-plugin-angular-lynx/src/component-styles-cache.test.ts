@@ -51,7 +51,13 @@ describe('createTransformStylesheet', () => {
     const containing = componentFile();
     const stylesheet = path.join(basePath, 'src', 'app.css');
 
-    await transformStylesheet('.a{color:red}', containing, stylesheet, 0, 'App');
+    await transformStylesheet(
+      '.a{color:red}',
+      containing,
+      stylesheet,
+      0,
+      'App',
+    );
 
     const entry = componentStylesCache.get(containing)!;
     expect(entry.imports).toHaveLength(1);

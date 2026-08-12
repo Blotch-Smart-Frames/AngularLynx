@@ -28,7 +28,10 @@ describe('no-function-declaration', () => {
 
       visitors.FunctionDeclaration(node as never);
 
-      expect(context.report).toHaveBeenCalledWith({ node, messageId: 'useArrow' });
+      expect(context.report).toHaveBeenCalledWith({
+        node,
+        messageId: 'useArrow',
+      });
     });
 
     it('does not report a function declaration that references `this` through nested plain objects', () => {
@@ -77,7 +80,10 @@ describe('no-function-declaration', () => {
 
       visitors.FunctionDeclaration(node as never);
 
-      expect(context.report).toHaveBeenCalledWith({ node, messageId: 'useArrow' });
+      expect(context.report).toHaveBeenCalledWith({
+        node,
+        messageId: 'useArrow',
+      });
     });
 
     it('does descend into a nested arrow function to find `this` (arrows do not create their own scope)', () => {
@@ -113,7 +119,10 @@ describe('no-function-declaration', () => {
       };
 
       expect(() => visitors.FunctionDeclaration(node as never)).not.toThrow();
-      expect(context.report).toHaveBeenCalledWith({ node, messageId: 'useArrow' });
+      expect(context.report).toHaveBeenCalledWith({
+        node,
+        messageId: 'useArrow',
+      });
     });
 
     it('ignores null/primitive AST fields while walking (e.g. a null `test` on a for-loop)', () => {
@@ -132,7 +141,10 @@ describe('no-function-declaration', () => {
 
       visitors.FunctionDeclaration(node as never);
 
-      expect(context.report).toHaveBeenCalledWith({ node, messageId: 'useArrow' });
+      expect(context.report).toHaveBeenCalledWith({
+        node,
+        messageId: 'useArrow',
+      });
     });
   });
 
@@ -140,7 +152,10 @@ describe('no-function-declaration', () => {
     it('marks a method body as a method-owned FunctionExpression so it is skipped', () => {
       const context = createContext();
       const visitors = rule.create(context as never);
-      const methodValue = { type: 'FunctionExpression', body: { type: 'BlockStatement', body: [] } };
+      const methodValue = {
+        type: 'FunctionExpression',
+        body: { type: 'BlockStatement', body: [] },
+      };
 
       visitors.MethodDefinition({ value: methodValue } as never);
       visitors.FunctionExpression(methodValue as never);
@@ -154,17 +169,42 @@ describe('no-function-declaration', () => {
 
       expect(() => visitors.MethodDefinition({} as never)).not.toThrow();
       expect(() =>
-        visitors.MethodDefinition({ value: { type: 'ArrowFunctionExpression' } } as never),
+        visitors.MethodDefinition({
+          value: { type: 'ArrowFunctionExpression' },
+        } as never),
       ).not.toThrow();
     });
 
     it('marks a shorthand method Property value as method-owned so it is skipped', () => {
       const context = createContext();
       const visitors = rule.create(context as never);
-      const methodValue = { type: 'FunctionExpression', body: { type: 'BlockStatement', body: [] } };
+      const methodValue = {
+        type: 'FunctionExpression',
+        body: { type: 'BlockStatement', body: [] },
+      };
 
       visitors.Property({ method: true, value: methodValue } as never);
       visitors.FunctionExpression(methodValue as never);
+
+      expect(context.report).not.toHaveBeenCalled();
+    });
+
+    it('marks a getter/setter Property value as method-owned so it is skipped', () => {
+      const context = createContext();
+      const visitors = rule.create(context as never);
+      const getterValue = {
+        type: 'FunctionExpression',
+        body: { type: 'BlockStatement', body: [] },
+      };
+      const setterValue = {
+        type: 'FunctionExpression',
+        body: { type: 'BlockStatement', body: [] },
+      };
+
+      visitors.Property({ kind: 'get', value: getterValue } as never);
+      visitors.Property({ kind: 'set', value: setterValue } as never);
+      visitors.FunctionExpression(getterValue as never);
+      visitors.FunctionExpression(setterValue as never);
 
       expect(context.report).not.toHaveBeenCalled();
     });
@@ -177,11 +217,17 @@ describe('no-function-declaration', () => {
       // non-method property, a method with no value at all (exercises the `?.`
       // short-circuit), and a method whose value isn't a FunctionExpression.
       expect(() =>
-        visitors.Property({ method: false, value: { type: 'FunctionExpression' } } as never),
+        visitors.Property({
+          method: false,
+          value: { type: 'FunctionExpression' },
+        } as never),
       ).not.toThrow();
       expect(() => visitors.Property({ method: true } as never)).not.toThrow();
       expect(() =>
-        visitors.Property({ method: true, value: { type: 'ArrowFunctionExpression' } } as never),
+        visitors.Property({
+          method: true,
+          value: { type: 'ArrowFunctionExpression' },
+        } as never),
       ).not.toThrow();
 
       expect(context.report).not.toHaveBeenCalled();
@@ -199,7 +245,10 @@ describe('no-function-declaration', () => {
 
       visitors.FunctionExpression(node as never);
 
-      expect(context.report).toHaveBeenCalledWith({ node, messageId: 'useArrow' });
+      expect(context.report).toHaveBeenCalledWith({
+        node,
+        messageId: 'useArrow',
+      });
     });
 
     it('does not report a standalone function expression that references `this`', () => {

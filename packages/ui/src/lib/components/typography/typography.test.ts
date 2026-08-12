@@ -27,12 +27,19 @@ describe('typographyVariants', () => {
     expect(typographyVariants()).toContain('text-base');
   });
 
-  it.each(['h1', 'h2', 'h3', 'h4', 'p', 'lead', 'large', 'small', 'muted'] as const)(
-    'returns %s variant classes',
-    (variant) => {
-      expect(typographyVariants({ variant })).toBeTruthy();
-    },
-  );
+  it.each([
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'p',
+    'lead',
+    'large',
+    'small',
+    'muted',
+  ] as const)('returns %s variant classes', (variant) => {
+    expect(typographyVariants({ variant })).toBeTruthy();
+  });
 });
 
 describe('UiText', () => {

@@ -318,9 +318,7 @@ describe('global-callbacks', () => {
     });
 
     it('registers no listeners when lynx has no getJSContext', async () => {
-      await expect(
-        load({ mainThread: true, lynx: {} }),
-      ).resolves.toBeDefined();
+      await expect(load({ mainThread: true, lynx: {} })).resolves.toBeDefined();
     });
   });
 

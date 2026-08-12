@@ -527,9 +527,7 @@ describe('LynxListElement', () => {
       globalThis.__UpdateListCallbacks = vi.fn();
 
       const list = new runtime.LynxListElement(makeRef());
-      const child = new (
-        await import('./lynx-element')
-      ).LynxElement(makeRef());
+      const child = new (await import('./lynx-element')).LynxElement(makeRef());
       list.appendChild(child);
 
       // While first-render is pending nothing is written yet.

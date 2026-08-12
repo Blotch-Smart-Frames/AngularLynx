@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import '@angular/compiler';
-import { ElementRef, type SimpleChange, type SimpleChanges } from '@angular/core';
+import {
+  ElementRef,
+  type SimpleChange,
+  type SimpleChanges,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   BrowserTestingModule,
@@ -10,7 +14,12 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LynxInput, LynxTextarea } from './input';
 
 const change = (currentValue: unknown): SimpleChange =>
-  ({ currentValue, previousValue: undefined, firstChange: true, isFirstChange: () => true }) as SimpleChange;
+  ({
+    currentValue,
+    previousValue: undefined,
+    firstChange: true,
+    isFirstChange: () => true,
+  }) as SimpleChange;
 
 // initTestEnvironment must run exactly once per file — nesting it inside
 // describe.each's beforeAll would call it once per case and throw ("base
@@ -31,7 +40,11 @@ describe.each([
 
   beforeEach(() => {
     TestBed.resetTestingModule();
-    fakeEl = { setAttribute: vi.fn(), removeAttribute: vi.fn(), invoke: vi.fn() };
+    fakeEl = {
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      invoke: vi.fn(),
+    };
     TestBed.configureTestingModule({
       providers: [{ provide: ElementRef, useValue: { nativeElement: fakeEl } }],
     });
@@ -67,9 +80,15 @@ describe.each([
     dir.ngOnChanges(changes);
 
     expect(fakeEl.invoke).toHaveBeenCalledWith('setValue', { value: 'hi' });
-    expect(fakeEl.setAttribute).toHaveBeenCalledWith('placeholder', 'type here');
+    expect(fakeEl.setAttribute).toHaveBeenCalledWith(
+      'placeholder',
+      'type here',
+    );
     // "value" itself must never reach setAttribute — it's stripped before super call.
-    expect(fakeEl.setAttribute).not.toHaveBeenCalledWith('value', expect.anything());
+    expect(fakeEl.setAttribute).not.toHaveBeenCalledWith(
+      'value',
+      expect.anything(),
+    );
   });
 
   it('uses the base setAttribute/removeAttribute path when "value" is absent', () => {

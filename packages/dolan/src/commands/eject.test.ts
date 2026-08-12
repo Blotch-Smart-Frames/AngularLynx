@@ -112,9 +112,9 @@ describe('ejectCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const { ejectCommand } = await import('./eject');
-    await expect(
-      ejectCommand('nonexistent', { force: true }),
-    ).rejects.toThrow('process.exit(1)');
+    await expect(ejectCommand('nonexistent', { force: true })).rejects.toThrow(
+      'process.exit(1)',
+    );
 
     const p = await import('@clack/prompts');
     expect(p.log.error).toHaveBeenCalledWith(
@@ -167,9 +167,7 @@ describe('ejectCommand', () => {
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     const { ejectCommand } = await import('./eject');
-    await expect(ejectCommand('button', {})).rejects.toThrow(
-      'process.exit(0)',
-    );
+    await expect(ejectCommand('button', {})).rejects.toThrow('process.exit(0)');
     expect(p.cancel).toHaveBeenCalledWith('Eject canceled.');
 
     // Lockfile entry must survive an aborted eject.
@@ -195,11 +193,11 @@ describe('ejectCommand', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(Symbol('cancel'));
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { ejectCommand } = await import('./eject');
-    await expect(ejectCommand('button', {})).rejects.toThrow(
-      'process.exit(0)',
-    );
+    await expect(ejectCommand('button', {})).rejects.toThrow('process.exit(0)');
   });
 });

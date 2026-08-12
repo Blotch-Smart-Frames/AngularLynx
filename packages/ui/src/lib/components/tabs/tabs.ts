@@ -72,7 +72,11 @@ export class UiTabs {
       // The `prevIndex !== nextIndex` check is defensive — the earlier
       // `if (currentValue === this.#previousValue) return;` guard makes an
       // equal-index case unreachable in normal flow.
-      if (prevIndex !== -1 && nextIndex !== -1 && /* v8 ignore next 1 */ prevIndex !== nextIndex) {
+      if (
+        prevIndex !== -1 &&
+        nextIndex !== -1 &&
+        /* v8 ignore next 1 */ prevIndex !== nextIndex
+      ) {
         this.direction.set(nextIndex > prevIndex ? 1 : -1);
       }
       this.#previousValue = currentValue;

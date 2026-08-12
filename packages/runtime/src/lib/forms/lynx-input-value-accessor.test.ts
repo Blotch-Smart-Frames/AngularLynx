@@ -14,7 +14,10 @@ describe('LynxInputValueAccessor', () => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
   });
 
-  let renderer: { setAttribute: ReturnType<typeof vi.fn>; removeAttribute: ReturnType<typeof vi.fn> };
+  let renderer: {
+    setAttribute: ReturnType<typeof vi.fn>;
+    removeAttribute: ReturnType<typeof vi.fn>;
+  };
   let nativeElement: { invoke?: ReturnType<typeof vi.fn> };
 
   const configure = (): void => {
@@ -34,7 +37,9 @@ describe('LynxInputValueAccessor', () => {
   });
 
   it('reads the typed value from event.detail.value and forwards it to onChange', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
@@ -44,7 +49,9 @@ describe('LynxInputValueAccessor', () => {
   });
 
   it('defaults to an empty string when the event carries no detail', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
@@ -54,7 +61,9 @@ describe('LynxInputValueAccessor', () => {
   });
 
   it('registerOnChange wires the callback that onInput invokes', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
     const onChange = vi.fn();
 
     // Before registration, onInput must not throw (default no-op onChange).
@@ -67,7 +76,9 @@ describe('LynxInputValueAccessor', () => {
   });
 
   it('registerOnTouched wires the callback that onBlur invokes', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
     const onTouched = vi.fn();
 
     expect(() => dir.onBlur()).not.toThrow();
@@ -79,44 +90,65 @@ describe('LynxInputValueAccessor', () => {
   });
 
   it('writeValue invokes the native setValue UIMethod with the given value', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
 
     dir.writeValue('v');
 
-    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', { value: 'v' });
+    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', {
+      value: 'v',
+    });
   });
 
   it('writeValue defaults a null/undefined value to an empty string', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
 
     dir.writeValue(null as unknown as string);
 
-    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', { value: '' });
+    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', {
+      value: '',
+    });
   });
 
   it('writeValue does not throw when invoke is unavailable (background thread)', () => {
     nativeElement = {};
     configure();
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
 
     expect(() => dir.writeValue('anything')).not.toThrow();
   });
 
   it('setDisabledState(true) sets the disabled attribute via the renderer', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
 
     dir.setDisabledState(true);
 
-    expect(renderer.setAttribute).toHaveBeenCalledWith(nativeElement, 'disabled', 'true');
+    expect(renderer.setAttribute).toHaveBeenCalledWith(
+      nativeElement,
+      'disabled',
+      'true',
+    );
     expect(renderer.removeAttribute).not.toHaveBeenCalled();
   });
 
   it('setDisabledState(false) removes the disabled attribute via the renderer', () => {
-    const dir = TestBed.runInInjectionContext(() => new LynxInputValueAccessor());
+    const dir = TestBed.runInInjectionContext(
+      () => new LynxInputValueAccessor(),
+    );
 
     dir.setDisabledState(false);
 
-    expect(renderer.removeAttribute).toHaveBeenCalledWith(nativeElement, 'disabled');
+    expect(renderer.removeAttribute).toHaveBeenCalledWith(
+      nativeElement,
+      'disabled',
+    );
     expect(renderer.setAttribute).not.toHaveBeenCalled();
   });
 });

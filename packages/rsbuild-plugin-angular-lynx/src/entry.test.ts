@@ -40,7 +40,7 @@ const entryOptions = {
 } as any;
 
 /**
- * Fluent entry + plugin chain mock recording plugin .use() calls. 
+ * Fluent entry + plugin chain mock recording plugin .use() calls.
  */
 const createMockChain = (options: {
   entries?: Record<string, { values: () => unknown[] }> | null;
@@ -76,7 +76,9 @@ const createMockChain = (options: {
       entries: vi.fn(() => options.entries),
       clear: vi.fn(),
     },
-    entry: vi.fn((name: string) => (entryBuilders[name] ??= makeEntryBuilder())),
+    entry: vi.fn(
+      (name: string) => (entryBuilders[name] ??= makeEntryBuilder()),
+    ),
     plugin: vi.fn((name: string) => makePluginBuilder(name)),
   };
 
@@ -92,9 +94,7 @@ const createMockApi = (config: unknown | undefined) => {
     | undefined;
 
   const api = {
-    useExposed: vi.fn(() =>
-      config === undefined ? undefined : { config },
-    ),
+    useExposed: vi.fn(() => (config === undefined ? undefined : { config })),
     modifyBundlerChain: vi.fn((h: any) => {
       handler = h;
     }),
@@ -143,7 +143,10 @@ describe('applyEntry', () => {
     )!;
     expect(wrapperUse).toBeDefined();
     const injectVars = (wrapperUse.args[0] as any).injectVars;
-    expect(injectVars(['Component', 'other'])).toEqual(['__Component', 'other']);
+    expect(injectVars(['Component', 'other'])).toEqual([
+      '__Component',
+      'other',
+    ]);
 
     // LynxEncodePlugin applied on lynx, WebEncodePlugin not.
     expect(pluginUses.some((u) => u.Plugin === LynxEncodePlugin)).toBe(true);
@@ -181,9 +184,9 @@ describe('applyEntry', () => {
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(true);
-    expect(pluginUses.some((u) => u.Plugin === RuntimeWrapperWebpackPlugin)).toBe(
-      false,
-    );
+    expect(
+      pluginUses.some((u) => u.Plugin === RuntimeWrapperWebpackPlugin),
+    ).toBe(false);
     // Web target never enables HMR even in dev.
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
   });

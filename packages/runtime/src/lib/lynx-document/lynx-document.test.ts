@@ -171,9 +171,7 @@ describe('LynxDocument', () => {
       ) => void;
 
       expect(typeof enqueueComponent).toBe('function');
-      expect(() =>
-        enqueueComponent({} as unknown, 1, 2),
-      ).not.toThrow();
+      expect(() => enqueueComponent({} as unknown, 1, 2)).not.toThrow();
     });
 
     it('creates a list-item element via __CreateElement', () => {

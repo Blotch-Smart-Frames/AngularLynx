@@ -260,9 +260,7 @@ describe('LynxLogger', () => {
       new LynxLogger();
       // Invalid JSON in the IPC event data — the inner try/catch must swallow
       // the parse error.
-      expect(() =>
-        capturedHandler!({ data: 'not-json' }),
-      ).not.toThrow();
+      expect(() => capturedHandler!({ data: 'not-json' })).not.toThrow();
       expect(fetchMock).not.toHaveBeenCalled();
     });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 
@@ -147,9 +147,7 @@ describe('doctorCommand', () => {
     expect(p.log.error).toHaveBeenCalledWith(
       expect.stringContaining('components'),
     );
-    expect(p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('theme'),
-    );
+    expect(p.log.error).toHaveBeenCalledWith(expect.stringContaining('theme'));
   });
 
   it('warns when tailwind-plugin.ts and theme CSS are both missing', async () => {

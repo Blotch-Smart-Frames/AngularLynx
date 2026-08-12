@@ -20,10 +20,7 @@ describe('UiScrollArea', () => {
 
   it('emits an explicit height when the height input is set', async () => {
     const { componentRef, container } = await render(UiScrollArea);
-    setInputSignal(
-      (componentRef.instance as UiScrollArea).height,
-      '250px',
-    );
+    setInputSignal((componentRef.instance as UiScrollArea).height, '250px');
     await waitForUpdate();
     const scroll = container.querySelector('scroll-view');
     expect(scroll?.getAttribute('style')).toContain('height: 250px');

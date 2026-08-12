@@ -140,8 +140,9 @@ describe('UiBarSeries', () => {
     const { series } = await renderSeries();
     const cb = vi.fn();
     series.barTap.subscribe(cb);
-    (series as unknown as { onBarTap: (p: { x: number; y: number }) => void })
-      .onBarTap({ x: 1, y: 2 });
+    (
+      series as unknown as { onBarTap: (p: { x: number; y: number }) => void }
+    ).onBarTap({ x: 1, y: 2 });
     expect(cb).toHaveBeenCalledWith({ x: 1, y: 2 });
   });
 

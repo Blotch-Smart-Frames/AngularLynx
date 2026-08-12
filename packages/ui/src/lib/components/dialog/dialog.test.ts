@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import {
   UiDialog,
@@ -127,7 +127,9 @@ describe('UiDialog', () => {
     await waitForUpdate();
     const panelCandidates = Array.from(container.querySelectorAll('view'));
     expect(
-      panelCandidates.some((el) => el.getAttribute('class')?.includes('custom-panel')),
+      panelCandidates.some((el) =>
+        el.getAttribute('class')?.includes('custom-panel'),
+      ),
     ).toBe(true);
   });
 });

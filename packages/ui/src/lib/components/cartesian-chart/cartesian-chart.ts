@@ -974,7 +974,7 @@ export class UiCartesianChart {
   protected readonly noGesture: never[] = [];
 
   /**
-   * v8 ignore start -- gesture-only path: driven by native pan/pinch events on-device 
+   * v8 ignore start -- gesture-only path: driven by native pan/pinch events on-device
    */
   #onPan(event: PanGestureEvent): void {
     // Defensive anchor: onBegin/onStart normally snapshot the start window, but if

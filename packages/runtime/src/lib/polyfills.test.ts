@@ -66,7 +66,7 @@ describe('polyfills', () => {
       const removable = (): void => {};
       signal.addEventListener('abort', removable);
       signal.removeEventListener('abort', removable);
-      signal.removeEventListener('other', () => {});
+      signal.removeEventListener('other', removable);
 
       // dispatchEvent on a non-abort type returns true without notifying.
       expect(signal.dispatchEvent({ type: 'noop' })).toBe(true);
@@ -190,11 +190,12 @@ describe('polyfills', () => {
       await importFresh();
       expect(globalThis.addEventListener).toBeTypeOf('function');
       expect(globalThis.removeEventListener).toBeTypeOf('function');
+      const listener = (): void => {};
       expect(
-        (globalThis as any).addEventListener('x', () => {}),
+        (globalThis as any).addEventListener('x', listener),
       ).toBeUndefined();
       expect(
-        (globalThis as any).removeEventListener('x', () => {}),
+        (globalThis as any).removeEventListener('x', listener),
       ).toBeUndefined();
     });
   });
@@ -258,8 +259,10 @@ describe('polyfills', () => {
       vi.stubGlobal('lynx', undefined);
       await importFresh();
 
-      let deadline: { didTimeout: boolean; timeRemaining: () => number } | null =
-        null;
+      let deadline: {
+        didTimeout: boolean;
+        timeRemaining: () => number;
+      } | null = null;
       const id = (globalThis as any).requestIdleCallback(
         (d: { didTimeout: boolean; timeRemaining: () => number }) => {
           deadline = d;

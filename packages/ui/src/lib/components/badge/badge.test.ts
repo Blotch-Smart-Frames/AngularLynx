@@ -12,7 +12,9 @@ import { UiBadge, badgeVariants } from './badge';
 @Component({
   standalone: true,
   imports: [UiBadge, LYNX_ELEMENTS],
-  template: `<ui-badge [variant]="variant" [animated]="false">Status</ui-badge>`,
+  template: `<ui-badge [variant]="variant" [animated]="false"
+    >Status</ui-badge
+  >`,
 })
 class BadgeHost {
   variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'default';

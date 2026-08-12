@@ -97,7 +97,9 @@ describe('createLynxProcessEvalResultRuntimeModule', () => {
 
       // lynxProcessEvalResult assignment is present with the sorted, filtered ids.
       expect(code).toContain('var moduleOrder = ["b","a"];');
-      expect(code).toContain('__webpack_require__.externalInstallChunk(chunk);');
+      expect(code).toContain(
+        '__webpack_require__.externalInstallChunk(chunk);',
+      );
       expect(code).toContain('__webpack_require__(moduleOrder[i]);');
       // The null-id module is excluded from the order array.
       expect(code).not.toContain('"c"');

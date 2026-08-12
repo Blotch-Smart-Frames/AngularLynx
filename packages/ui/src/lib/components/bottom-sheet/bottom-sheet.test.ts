@@ -8,7 +8,9 @@ import { UiBottomSheet } from './bottom-sheet';
 @Component({
   standalone: true,
   imports: [UiBottomSheet, LYNX_ELEMENTS],
-  template: `<ui-bottom-sheet [(open)]="open"><text>Panel</text></ui-bottom-sheet>`,
+  template: `<ui-bottom-sheet [(open)]="open"
+    ><text>Panel</text></ui-bottom-sheet
+  >`,
 })
 class BottomSheetHost {
   open = true;

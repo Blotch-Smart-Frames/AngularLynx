@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, type Fixture } from '../test-utils';
 
@@ -127,9 +127,9 @@ describe('initCommand', () => {
 
     expect(existsSync(join(fixture.dir, 'src/styles/default.css'))).toBe(true);
     expect(existsSync(join(fixture.dir, 'src/styles/dark.css'))).toBe(false);
-    expect(
-      existsSync(join(fixture.dir, 'src/styles/tailwind-plugin.ts')),
-    ).toBe(false);
+    expect(existsSync(join(fixture.dir, 'src/styles/tailwind-plugin.ts'))).toBe(
+      false,
+    );
   });
 
   it('prompts to overwrite an existing config and proceeds when confirmed', async () => {
@@ -182,7 +182,9 @@ describe('initCommand', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(Symbol('cancel'));
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { initCommand } = await import('./init');
     await expect(initCommand()).rejects.toThrow('process.exit(0)');

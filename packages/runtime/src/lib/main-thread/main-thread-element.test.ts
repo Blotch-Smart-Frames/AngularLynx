@@ -214,9 +214,7 @@ describe('MainThreadElement', () => {
       );
       const el = new MainThreadElement(fakeRef);
 
-      await expect(el.invoke('scrollTo')).rejects.toThrow(
-        /UI method invoke/,
-      );
+      await expect(el.invoke('scrollTo')).rejects.toThrow(/UI method invoke/);
     });
 
     it('schedules a flush after invoking the native method', async () => {

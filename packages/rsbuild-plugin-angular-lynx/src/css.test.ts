@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // The CSS-extract plugins are dynamically imported inside applyCSS; provide
 // constructable stand-ins with a static `loader` so the loader-wiring runs.
@@ -52,7 +52,7 @@ const CHAIN_ID = {
 };
 
 /**
- * A fluent rule builder recording the calls applyCSS makes on it. 
+ * A fluent rule builder recording the calls applyCSS makes on it.
  */
 const createRule = (hasLightning: boolean) => {
   const rule: any = {};
@@ -136,7 +136,10 @@ const createMockChain = (config: {
 
 const createMockApi = (bundlerType: 'rspack' | 'webpack') => {
   let bundlerChainHandler:
-    | ((chain: unknown, utils: { CHAIN_ID: unknown; environment: unknown }) => unknown)
+    | ((
+        chain: unknown,
+        utils: { CHAIN_ID: unknown; environment: unknown },
+      ) => unknown)
     | undefined;
   let rsbuildConfigHandler:
     | ((config: unknown, utils: { mergeRsbuildConfig: unknown }) => unknown)

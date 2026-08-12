@@ -109,16 +109,15 @@ describe('LynxFont', () => {
       let toggle = 0;
       addFontMock.mockImplementation((_font: any, cb: any) => {
         toggle++;
-        if (toggle === 1) cb(); // A loads
+        if (toggle === 1)
+          cb(); // A loads
         else if (toggle === 2) cb(failErr); // B fails
         // Third call (C) never calls the callback → stays 'loading'
       });
       const service = new LynxFont();
 
       await service.addFont({ fontFamily: 'A', src: '/a.ttf' });
-      await service
-        .addFont({ fontFamily: 'B', src: '/b.ttf' })
-        .catch(() => {});
+      await service.addFont({ fontFamily: 'B', src: '/b.ttf' }).catch(() => {});
       service.addFont({ fontFamily: 'C', src: '/c.ttf' }); // no await
 
       expect(service.loadedFamilies()).toEqual(new Set(['A']));

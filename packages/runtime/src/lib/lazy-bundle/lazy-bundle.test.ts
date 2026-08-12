@@ -187,10 +187,7 @@ describe('loadLazyBundle', () => {
       // Covers the `exports?.['default'] ?? exports` fallback on the main-thread
       // path (only the background-thread version had a no-default test).
       const exports = { NamedExport: FakeComponent };
-      vi.stubGlobal(
-        '__QueryComponent',
-        makeMockQueryComponent({ exports }),
-      );
+      vi.stubGlobal('__QueryComponent', makeMockQueryComponent({ exports }));
 
       const result = await loadLazyBundle('./main-named-bundle');
 

@@ -15,11 +15,14 @@ const createContext = () => ({
 });
 
 const createFixer = () => ({
-  replaceText: vi.fn((node: unknown, replacement: string) => ({ node, replacement })),
+  replaceText: vi.fn((node: unknown, replacement: string) => ({
+    node,
+    replacement,
+  })),
 });
 
 /**
- * A CallExpression decorator, e.g. `@Input()` or `@Input('alias')` or `@Input({...})`. 
+ * A CallExpression decorator, e.g. `@Input()` or `@Input('alias')` or `@Input({...})`.
  */
 const callDecorator = (name: string, args: unknown[] = []) => ({
   expression: {
@@ -30,7 +33,7 @@ const callDecorator = (name: string, args: unknown[] = []) => ({
 });
 
 /**
- * A bare identifier decorator with no call, e.g. `@Input`. 
+ * A bare identifier decorator with no call, e.g. `@Input`.
  */
 const bareDecorator = (name: string) => ({
   expression: { type: 'Identifier', name },
@@ -40,9 +43,21 @@ const bareDecorator = (name: string) => ({
  * `text` mirrors what `sourceCode.getText()` would return for this node's source
  * span (quoted, since a string literal's source text includes its quotes).
  */
-const stringLiteral = (value: string) => ({ type: 'Literal', value, text: `'${value}'` });
-const booleanLiteral = (value: boolean) => ({ type: 'Literal', value, text: String(value) });
-const identifier = (name: string, text = name) => ({ type: 'Identifier', name, text });
+const stringLiteral = (value: string) => ({
+  type: 'Literal',
+  value,
+  text: `'${value}'`,
+});
+const booleanLiteral = (value: boolean) => ({
+  type: 'Literal',
+  value,
+  text: String(value),
+});
+const identifier = (name: string, text = name) => ({
+  type: 'Identifier',
+  name,
+  text,
+});
 
 const objectExpression = (
   properties: Array<{ type: string; key?: unknown; value?: unknown }>,
@@ -57,7 +72,10 @@ const property = (name: string, value: unknown) => ({
 /**
  * Runs a fake fix through the rule and returns the replacement text it produced.
  */
-const runFix = (context: ReturnType<typeof createContext>, callIndex = 0): string => {
+const runFix = (
+  context: ReturnType<typeof createContext>,
+  callIndex = 0,
+): string => {
   const call = context.report.mock.calls[callIndex][0];
   const fixer = createFixer();
   call.fix(fixer);
@@ -161,7 +179,9 @@ describe('no-legacy-decorators', () => {
       } as never);
 
       expect(context.report).toHaveBeenCalledTimes(1);
-      expect(context.report.mock.calls[0][0].messageId).toBe('noInputDecorator');
+      expect(context.report.mock.calls[0][0].messageId).toBe(
+        'noInputDecorator',
+      );
     });
 
     it('reports @Input without parentheses (bare decorator) as fixable', () => {
@@ -184,7 +204,9 @@ describe('no-legacy-decorators', () => {
 
       visitors.PropertyDefinition({
         key: identifier('isActive'),
-        decorators: [callDecorator('HostBinding', [stringLiteral('class.active')])],
+        decorators: [
+          callDecorator('HostBinding', [stringLiteral('class.active')]),
+        ],
       } as never);
       visitors.MethodDefinition({
         key: identifier('onClick'),
@@ -193,9 +215,13 @@ describe('no-legacy-decorators', () => {
 
       expect(context.report).toHaveBeenCalledTimes(2);
       expect(context.report.mock.calls[0][0].fix).toBeUndefined();
-      expect(context.report.mock.calls[0][0].messageId).toBe('noHostBindingDecorator');
+      expect(context.report.mock.calls[0][0].messageId).toBe(
+        'noHostBindingDecorator',
+      );
       expect(context.report.mock.calls[1][0].fix).toBeUndefined();
-      expect(context.report.mock.calls[1][0].messageId).toBe('noHostListenerDecorator');
+      expect(context.report.mock.calls[1][0].messageId).toBe(
+        'noHostListenerDecorator',
+      );
     });
   });
 
@@ -266,7 +292,9 @@ describe('no-legacy-decorators', () => {
       visitors.PropertyDefinition({
         key: identifier('name'),
         decorators: [
-          callDecorator('Input', [objectExpression([property('required', booleanLiteral(true))])]),
+          callDecorator('Input', [
+            objectExpression([property('required', booleanLiteral(true))]),
+          ]),
         ],
       } as never);
 
@@ -280,13 +308,17 @@ describe('no-legacy-decorators', () => {
       visitors.PropertyDefinition({
         key: identifier('a'),
         decorators: [
-          callDecorator('Input', [objectExpression([property('required', identifier('flag'))])]),
+          callDecorator('Input', [
+            objectExpression([property('required', identifier('flag'))]),
+          ]),
         ],
       } as never);
       visitors.PropertyDefinition({
         key: identifier('b'),
         decorators: [
-          callDecorator('Input', [objectExpression([property('required', booleanLiteral(false))])]),
+          callDecorator('Input', [
+            objectExpression([property('required', booleanLiteral(false))]),
+          ]),
         ],
       } as never);
 
@@ -327,7 +359,10 @@ describe('no-legacy-decorators', () => {
           callDecorator('Input', [
             objectExpression([
               property('alias', identifier('dynamicAlias')),
-              property('transform', { type: 'ArrowFunctionExpression', text: '(v) => Number(v)' }),
+              property('transform', {
+                type: 'ArrowFunctionExpression',
+                text: '(v) => Number(v)',
+              }),
             ]),
           ]),
         ],
@@ -349,7 +384,9 @@ describe('no-legacy-decorators', () => {
         decorators: [callDecorator('Input', [stringLiteral('myAlias')])],
       } as never);
 
-      expect(runFix(context)).toBe("readonly name = input('', { alias: 'myAlias' })");
+      expect(runFix(context)).toBe(
+        "readonly name = input('', { alias: 'myAlias' })",
+      );
     });
 
     it('prefers an alias already found on an options object over a positional string literal', () => {
@@ -366,7 +403,9 @@ describe('no-legacy-decorators', () => {
         ],
       } as never);
 
-      expect(runFix(context)).toBe("readonly name = input({ alias: 'fromObject' })");
+      expect(runFix(context)).toBe(
+        "readonly name = input({ alias: 'fromObject' })",
+      );
     });
   });
 
@@ -390,7 +429,9 @@ describe('no-legacy-decorators', () => {
 
       visitors.PropertyDefinition({
         key: identifier('clicked'),
-        typeAnnotation: { typeAnnotation: identifier('unused', 'EventEmitter<string>') },
+        typeAnnotation: {
+          typeAnnotation: identifier('unused', 'EventEmitter<string>'),
+        },
         decorators: [callDecorator('Output')],
       } as never);
 
@@ -507,7 +548,9 @@ describe('no-legacy-decorators', () => {
 
       visitors.PropertyDefinition({
         key: identifier('items'),
-        typeAnnotation: { typeAnnotation: identifier('unused', 'QueryList<Item>') },
+        typeAnnotation: {
+          typeAnnotation: identifier('unused', 'QueryList<Item>'),
+        },
         decorators: [callDecorator('ViewChildren', [identifier('Item')])],
       } as never);
 
@@ -537,7 +580,9 @@ describe('no-legacy-decorators', () => {
       visitors.PropertyDefinition({
         key: identifier('tabs'),
         definite: true, // even with `definite`, ContentChildren never supports .required
-        typeAnnotation: { typeAnnotation: identifier('unused', 'QueryList<Tab>') },
+        typeAnnotation: {
+          typeAnnotation: identifier('unused', 'QueryList<Tab>'),
+        },
         decorators: [callDecorator('ContentChildren', [identifier('Tab')])],
       } as never);
 

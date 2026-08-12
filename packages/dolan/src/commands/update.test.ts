@@ -1065,7 +1065,9 @@ describe('updateCommand — config / no-op paths', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { updateCommand } = await import('./update');
     await expect(updateCommand({})).rejects.toThrow('process.exit(0)');
@@ -1393,7 +1395,9 @@ describe('updateCommand — file review "show diff" branch', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
 
     const { updateCommand } = await import('./update');
     await expect(updateCommand({ selective: true })).rejects.toThrow(

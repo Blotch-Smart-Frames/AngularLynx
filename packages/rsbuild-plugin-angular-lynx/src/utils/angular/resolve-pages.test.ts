@@ -185,7 +185,9 @@ describe('resolvePages', () => {
           'main',
           {
             extensions: { projectType: 'application' },
-            targets: new Map([['build', { options: { browser: 'src/main.ts' } }]]),
+            targets: new Map([
+              ['build', { options: { browser: 'src/main.ts' } }],
+            ]),
           },
         ],
       ]),
@@ -193,6 +195,8 @@ describe('resolvePages', () => {
 
     const pages = resolvePages(workspace, basePath, ['main']);
 
-    expect(pages).toEqual([{ name: 'main', browser: '/workspace/src/main.ts' }]);
+    expect(pages).toEqual([
+      { name: 'main', browser: '/workspace/src/main.ts' },
+    ]);
   });
 });

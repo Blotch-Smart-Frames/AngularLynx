@@ -16,16 +16,17 @@ const createContext = (text: string, commentsBefore: unknown[]) => ({
 });
 
 /**
- * Derives a [start, end] range tuple for `snippet` as it appears inside `text`. 
+ * Derives a [start, end] range tuple for `snippet` as it appears inside `text`.
  */
 const rangeOf = (text: string, snippet: string): [number, number] => {
   const start = text.indexOf(snippet);
-  if (start === -1) throw new Error(`snippet not found in fixture text: ${snippet}`);
+  if (start === -1)
+    throw new Error(`snippet not found in fixture text: ${snippet}`);
   return [start, start + snippet.length];
 };
 
 /**
- * Builds a fake Line comment node (`// value`) anchored to its position in `text`. 
+ * Builds a fake Line comment node (`// value`) anchored to its position in `text`.
  */
 const lineComment = (text: string, snippet: string, value: string) => ({
   type: 'Line' as const,
@@ -34,7 +35,7 @@ const lineComment = (text: string, snippet: string, value: string) => ({
 });
 
 /**
- * Builds a fake Block comment node (`/*value*&#47;`) anchored to its position in `text`. 
+ * Builds a fake Block comment node (`/*value*&#47;`) anchored to its position in `text`.
  */
 const blockComment = (text: string, snippet: string, value: string) => ({
   type: 'Block' as const,
@@ -53,7 +54,11 @@ describe('multiline-comment-style', () => {
   describe('MethodDefinition', () => {
     it('rewrites a single-line block comment above a method into multi-line TSDoc', () => {
       const text = ['/** Single line jsdoc. */', 'foo() {}'].join('\n');
-      const comment = blockComment(text, '/** Single line jsdoc. */', '* Single line jsdoc. ');
+      const comment = blockComment(
+        text,
+        '/** Single line jsdoc. */',
+        '* Single line jsdoc. ',
+      );
       const node = { range: rangeOf(text, 'foo() {}') };
       const context = createContext(text, [comment]);
       const visitors = rule.create(context as never);
@@ -76,7 +81,9 @@ describe('multiline-comment-style', () => {
     });
 
     it('leaves an already-valid multi-line TSDoc comment alone', () => {
-      const text = ['/**', ' * Already documented.', ' */', 'foo() {}'].join('\n');
+      const text = ['/**', ' * Already documented.', ' */', 'foo() {}'].join(
+        '\n',
+      );
       const comment = blockComment(
         text,
         '/**\n * Already documented.\n */',
@@ -102,7 +109,9 @@ describe('multiline-comment-style', () => {
 
   describe('ClassDeclaration', () => {
     it('checks comments above the first decorator for a decorated class, not the class keyword', () => {
-      const text = ['// needs tsdoc', '@Component()', 'class Foo {}'].join('\n');
+      const text = ['// needs tsdoc', '@Component()', 'class Foo {}'].join(
+        '\n',
+      );
       const comment = lineComment(text, '// needs tsdoc', ' needs tsdoc');
       const decorator = { range: rangeOf(text, '@Component()') };
       const context = createContext(text, [comment]);
@@ -110,7 +119,9 @@ describe('multiline-comment-style', () => {
 
       visitors.ClassDeclaration({ decorators: [decorator] } as never);
 
-      expect(context.sourceCode.getCommentsBefore).toHaveBeenCalledWith(decorator);
+      expect(context.sourceCode.getCommentsBefore).toHaveBeenCalledWith(
+        decorator,
+      );
       expect(context.report).toHaveBeenCalledTimes(1);
     });
 
@@ -154,7 +165,10 @@ describe('multiline-comment-style', () => {
 
     it('checks a declaration whose initializer is an arrow function', () => {
       const text = ['const helper = () => {};'].join('\n');
-      const node = { declarations: [{ init: { type: 'ArrowFunctionExpression' } }], range: rangeOf(text, 'const helper = () => {};') };
+      const node = {
+        declarations: [{ init: { type: 'ArrowFunctionExpression' } }],
+        range: rangeOf(text, 'const helper = () => {};'),
+      };
       const context = createContext(text, []);
       const visitors = rule.create(context as never);
 
@@ -166,7 +180,10 @@ describe('multiline-comment-style', () => {
     it('checks a declaration whose initializer is a function expression', () => {
       const text = ['const helper = function () {};'].join('\n');
       const node = {
-        declarations: [{ init: { type: 'Literal' } }, { init: { type: 'FunctionExpression' } }],
+        declarations: [
+          { init: { type: 'Literal' } },
+          { init: { type: 'FunctionExpression' } },
+        ],
         range: rangeOf(text, 'const helper = function () {};'),
       };
       const context = createContext(text, []);
@@ -221,9 +238,21 @@ describe('multiline-comment-style', () => {
         '// Second part of doc.',
         'const helper = () => {};',
       ].join('\n');
-      const unrelated = lineComment(text, '// old unrelated comment', ' old unrelated comment');
-      const first = lineComment(text, '// First part of doc.', ' First part of doc.');
-      const second = lineComment(text, '// Second part of doc.', ' Second part of doc.');
+      const unrelated = lineComment(
+        text,
+        '// old unrelated comment',
+        ' old unrelated comment',
+      );
+      const first = lineComment(
+        text,
+        '// First part of doc.',
+        ' First part of doc.',
+      );
+      const second = lineComment(
+        text,
+        '// Second part of doc.',
+        ' Second part of doc.',
+      );
       const node = {
         declarations: [{ init: { type: 'ArrowFunctionExpression' } }],
         range: rangeOf(text, 'const helper = () => {};'),
@@ -247,8 +276,14 @@ describe('multiline-comment-style', () => {
     });
 
     it('extracts text from a plain block comment that does not start with a leading "*"', () => {
-      const text = ['/* plain comment */', 'const helper3 = () => {};'].join('\n');
-      const plain = blockComment(text, '/* plain comment */', ' plain comment ');
+      const text = ['/* plain comment */', 'const helper3 = () => {};'].join(
+        '\n',
+      );
+      const plain = blockComment(
+        text,
+        '/* plain comment */',
+        ' plain comment ',
+      );
       const node = {
         declarations: [{ init: { type: 'ArrowFunctionExpression' } }],
         range: rangeOf(text, 'const helper3 = () => {};'),
@@ -270,9 +305,12 @@ describe('multiline-comment-style', () => {
     });
 
     it('indents the rewritten TSDoc block to match the original comment column', () => {
-      const text = ['function outer() {', '  // needs tsdoc', '  const inner = () => {};', '}'].join(
-        '\n',
-      );
+      const text = [
+        'function outer() {',
+        '  // needs tsdoc',
+        '  const inner = () => {};',
+        '}',
+      ].join('\n');
       const comment = lineComment(text, '// needs tsdoc', ' needs tsdoc');
       const node = {
         declarations: [{ init: { type: 'ArrowFunctionExpression' } }],

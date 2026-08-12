@@ -54,7 +54,7 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * property tag, _processUpdate() diffs Sets of numeric unique-IDs, and
    *   * getUIChildren() filters on the wrapper's tagName — all ordinary field
    *   * access / primitive hashing, never an element-ref Map/Set lookup.
-   * v8 ignore start -- callback invoked synchronously by the native list layout pass (LinearLayoutManager::Fill → BindItemHolder → ComponentAtIndex → into JS). It is not reachable from unit tests without recreating the native call frame; the behavior is covered by the on-device integration checks documented in investigations/list.md. 
+   * v8 ignore start -- callback invoked synchronously by the native list layout pass (LinearLayoutManager::Fill → BindItemHolder → ComponentAtIndex → into JS). It is not reachable from unit tests without recreating the native call frame; the behavior is covered by the on-device integration checks documented in investigations/list.md.
    */
   const componentAtIndex = (
     listRef: ListElementRef,
@@ -79,7 +79,7 @@ export const createListElement = (pageId: number): LynxListElement => {
     return sign;
   };
   /**
-   * v8 ignore stop 
+   * v8 ignore stop
    */
 
   const enqueueComponent = (
@@ -98,7 +98,7 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * If the engine passes asyncFlush: true, we use it since that path delegates
    *   * scheduling to native (no re-entrancy). The !asyncFlush batch path collects
    *   * all elementIDs and does a single non-re-entrant flush at the end.
-   * v8 ignore start -- batch callback invoked by the native list layout pass; same rationale as componentAtIndex above — not reachable from unit tests without simulating the native call frame. 
+   * v8 ignore start -- batch callback invoked by the native list layout pass; same rationale as componentAtIndex above — not reachable from unit tests without simulating the native call frame.
    */
   const componentAtIndexes = (
     listRef: ListElementRef,

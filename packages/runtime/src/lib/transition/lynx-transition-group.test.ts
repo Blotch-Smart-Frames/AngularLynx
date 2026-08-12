@@ -561,10 +561,7 @@ describe('LynxTransitionGroup', () => {
         remove: (i: number) => {
           views.splice(i, 1);
         },
-        createEmbeddedView: (
-          t: typeof tpl,
-          ctx: { $implicit: Item },
-        ) => {
+        createEmbeddedView: (t: typeof tpl, ctx: { $implicit: Item }) => {
           const v = t.createEmbeddedView(ctx);
           views.push(v);
           return v;

@@ -8,6 +8,10 @@
  * Exception: functions that reference `this` are allowed, because arrow
  * functions cannot receive a `this` binding (e.g. via Function.call), making
  * a regular function the only viable option in those cases.
+ *
+ * Exception: object literal getters/setters (`get x() {}` / `set x(v) {}`)
+ * are always exempt, same as class methods — accessor syntax has no arrow
+ * function equivalent.
  * Walk an AST node looking for a ThisExpression. Stops recursing into nested
  * FunctionDeclaration/FunctionExpression because those create their own `this`
  * scope. ArrowFunctionExpression does NOT create its own `this`, so we
@@ -61,7 +65,10 @@ export default {
         }
       },
       Property(node) {
-        if (node.method && node.value?.type === 'FunctionExpression') {
+        if (
+          (node.method || node.kind === 'get' || node.kind === 'set') &&
+          node.value?.type === 'FunctionExpression'
+        ) {
           methodFunctionExpressions.add(node.value);
         }
       },

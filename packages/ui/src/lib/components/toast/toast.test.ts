@@ -3,7 +3,7 @@ import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiToastItem, UiToaster } from './toast';
-import { dismissToast, toast, toasts, type ToastData } from './toast-state';
+import { toast, toasts, type ToastData } from './toast-state';
 
 describe('UiToaster', () => {
   afterEach(() => {
@@ -127,7 +127,9 @@ describe('UiToastItem', () => {
     setInputSignal(inst.data, baseData());
     setInputSignal(inst.depth, 1); // behind — no-op
     await waitForUpdate();
-    expect(() => (inst as unknown as { onTap: () => void }).onTap()).not.toThrow();
+    expect(() =>
+      (inst as unknown as { onTap: () => void }).onTap(),
+    ).not.toThrow();
 
     setInputSignal(inst.depth, 0);
     await waitForUpdate();

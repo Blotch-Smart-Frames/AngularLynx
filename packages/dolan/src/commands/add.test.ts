@@ -126,8 +126,12 @@ describe('addCommand', () => {
     await addCommand(['button']);
 
     const p = await import('@clack/prompts');
+    // "spinner" is wrapped in its own pc.cyan(...) span, so when colors are
+    // enabled (e.g. an interactive TTY) ANSI codes sit between "dependencies:"
+    // and "spinner" — a plain stringContaining would fail outside CI. Match
+    // loosely with a regex instead of relying on literal adjacency.
     expect(p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining('Adding dependencies: spinner'),
+      expect.stringMatching(/Adding dependencies:.*spinner/),
     );
     expect(
       readInstalledFile(fixture.dir, 'spinner', 'spinner.ts'),

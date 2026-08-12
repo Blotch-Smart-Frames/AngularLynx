@@ -38,6 +38,9 @@ export class LynxDocument implements LynxDocumentBase {
     return this.page;
   }
   createElement(tag: string, value?: string): LynxElement | LynxListElement {
+    // `__PROFILE__` is a build-time `define`. In the test config it's `false`
+    // (dead-code-eliminated), so the increment is unreachable from Vitest.
+    /* v8 ignore next */
     if (__PROFILE__) devStats.elementCreated++;
     // Ensure content created outside a CD cycle (e.g. a lazy route component
     // built by RouterOutlet during navigation) still gets flushed — see

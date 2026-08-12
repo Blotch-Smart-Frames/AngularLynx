@@ -113,4 +113,13 @@ describe('LynxPlatformLocation', () => {
 
     expect(loc.href).toBe('lynx://app/page?q=1#top');
   });
+
+  it('onHashChange returns a no-op unsubscribe (hash changes handled via popState)', () => {
+    // This impl treats hash changes as popState — the callback registration is
+    // a no-op that returns a disposer. Cover both call and return.
+    const loc = new LynxPlatformLocation();
+    const unsub = loc.onHashChange(() => {});
+    expect(typeof unsub).toBe('function');
+    expect(() => unsub()).not.toThrow();
+  });
 });

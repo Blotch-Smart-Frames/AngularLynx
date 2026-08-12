@@ -1,4 +1,3 @@
-// cspell:words ɵɵget ɵcmp
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -7,10 +6,16 @@ import {
 } from '@angular/build/src/tools/angular/compilation';
 import { JavaScriptTransformer } from '@angular/build/src/tools/esbuild/javascript-transformer';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import * as ts from 'typescript';
-import { applyAngularConfig } from './utils/angular/angular-config.js';
+import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
+import {
+  type ComponentScopeInfo,
+  type ComponentStylesEntry,
+  createTransformStylesheet,
+} from './component-styles-cache.js';
+import { isLynxUnknownElementMessage } from './is-lynx-unknown-element-message.js';
+import { buildTransformedCode } from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
-import { generateComponentScopeId } from './utils/angular/component-scope-id.js';
+import { applyAngularConfig } from './utils/angular/angular-config.js';
 import { maxWorkers, useTypeChecking } from './utils/angular/env.js';
 import { readBuildOptions } from './utils/angular/options.js';
 import {
@@ -18,8 +23,6 @@ import {
   getProjectByCwd,
 } from './utils/angular/read-workspace.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
-import { injectLynxSchema } from './utils/inject-lynx-schema.js';
-import { stripTemplateWhitespace } from './utils/strip-template-whitespace.js';
 import {
   reportLynxDiagnostics,
   scanCompiledOutputForHtmlElements,
@@ -38,7 +41,7 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  *   2. **Lynx's native element model** — Angular's template type-checker has
  *      no knowledge of `<view>`, `<text>`, `<scroll-view>`, etc., so we inject
  *      CUSTOM_ELEMENTS_SCHEMA into every @Component-bearing source file before
- *      Angular's compiler sees it.
+ *      Angular's compiler sees it (see build-schema-source-file-cache.ts).
  *   3. **rspack's loader pipeline** — Angular emits transformed output into a
  *      `typeScriptFileCache`; the `api.transform()` hook below intercepts every
  *      `.ts`/`.js` request and serves the precompiled content instead of
@@ -50,12 +53,9 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  *     → emitAffectedFiles (fills typeScriptFileCache)
  *     → diagnoseFiles (filtered to suppress Lynx-element false positives)
  *
- * Then for each module request:
- *   api.transform → look up compiled output in typeScriptFileCache
- *     → prepend `import` statements for the component's scoped CSS files
- *     → patch ɵcmp.id to the deterministic scope ID
- *     → inject HMR self-accept on bootstrap entries (dev only)
- *     → run worklet directive transformation
+ * Then for each module request the `api.transform` hook delegates the per-module
+ * string transform (import-prepend + ɵcmp.id + HMR + worklet) to
+ * `buildTransformedCode` in transform-module.ts.
  */
 export const applyAngularRules = async (
   api: RsbuildPluginAPI,
@@ -121,10 +121,6 @@ export const applyAngularRules = async (
   // including template compilation, component metadata generation, and DI
   // ɵfac wiring, none of which a plain TS transpile would reproduce.
   const typeScriptFileCache = new Map<string, string | Uint8Array>();
-  // Determines if TypeScript should process JavaScript files based on tsconfig `allowJs` option
-  // let shouldTsIgnoreJs = true;
-  // Determines if transpilation should be handle by TypeScript or esbuild
-  // let useTypeScriptTranspilation = true;
   // Write scoped CSS to a cache directory instead of next to source files.
   // The bundler resolves them via relative imports computed by path.relative().
   // Using node_modules/.cache means the files are gitignored by default and
@@ -138,26 +134,12 @@ export const applyAngularRules = async (
   fs.mkdirSync(scopedCssCacheDir, { recursive: true });
 
   // Tracks every stylesheet emitted by Angular's transformStylesheet callback
-  // for a given component source file. `imports` lists the on-disk paths the
-  // loader will prepend as `import` statements; `processedFiles` deduplicates
-  // calls that Angular's AOT compiler makes multiple times for the same
-  // stylesheet (see comment inside transformStylesheet for the dedup rationale).
-  const componentStylesCache = new Map<
-    string,
-    {
-      imports: string[];
-      inlineStyles: string[];
-      scopeId: string;
-      processedFiles: Map<string, string>;
-    }
-  >();
+  // for a given component source file (see component-styles-cache.ts).
+  const componentStylesCache = new Map<string, ComponentStylesEntry>();
   // Maps component source file → { className, scopeId } so the loader can emit
   // the `Component.ɵcmp.id = '<scopeId>'` assignment that ties the CSS files
   // (whose filenames carry the same scope ID) to the runtime component instance.
-  const componentScopeIds = new Map<
-    string,
-    { className: string; scopeId: string }
-  >();
+  const componentScopeIds = new Map<string, ComponentScopeInfo>();
   // Fix: onBeforeEnvironmentCompile fires once per environment (web + lynx), and
   // rsbuild's callBatch runs them concurrently. Without deduplication, both calls
   // race on the same `compilation` instance. The first to finish calls close(),
@@ -169,6 +151,13 @@ export const applyAngularRules = async (
   // environment awaits the same result without re-running the compilation.
   let compilationPromise: Promise<void> | null = null;
   const isDevMode = process.env['NODE_ENV'] !== 'production';
+
+  const transformStylesheet = createTransformStylesheet({
+    basePath,
+    scopedCssCacheDir,
+    componentStylesCache,
+    componentScopeIds,
+  });
 
   api.onBeforeEnvironmentCompile(async () => {
     if (compilationPromise) {
@@ -192,109 +181,7 @@ export const applyAngularRules = async (
             processWebWorker: (workerFile, _containingFile) => {
               return workerFile;
             },
-            async transformStylesheet(
-              data,
-              containingFile,
-              stylesheetFile,
-              order,
-              className,
-            ) {
-              const resolvedClassName = className ?? 'Component';
-              const scopeId = generateComponentScopeId(
-                resolvedClassName,
-                containingFile,
-              );
-              let componentStyles = componentStylesCache.get(containingFile);
-              if (!componentStyles) {
-                componentStyles = {
-                  imports: [],
-                  inlineStyles: [],
-                  scopeId,
-                  processedFiles: new Map(),
-                };
-                componentStylesCache.set(containingFile, componentStyles);
-              }
-
-              // Angular's AOT compiler may invoke this callback multiple times
-              // for the same stylesheet — once with className undefined (fallback
-              // to 'Component') and once with the real class name. Deduplicate:
-              // skip fallback calls when the stylesheet was already processed,
-              // but allow real-className calls to overwrite the fallback.
-              const stylesheetKey = stylesheetFile ?? `__inline_${order}`;
-              const previousPath =
-                componentStyles.processedFiles.get(stylesheetKey);
-
-              if (previousPath && !className) {
-                return '';
-              }
-
-              // Prefer the real class name for the scope ID set on ɵcmp.id
-              if (className || !componentScopeIds.has(containingFile)) {
-                componentScopeIds.set(containingFile, {
-                  className: resolvedClassName,
-                  scopeId,
-                });
-              }
-
-              // Use raw CSS without Angular's encapsulateStyle scoping.
-              // Angular's encapsulateStyle generates [_ngcontent-xxx] attribute selectors,
-              // and even class-conjunction replacements (.class._ngscope-xxx) don't work
-              // because the Lynx template stores the scope ID separately from element class
-              // lists — elements only get their component classes (e.g. "nav-title"), not
-              // scope classes. Plain class selectors (.nav-title) match correctly since
-              // enableCSSSelector handles them, and per-component scoping in the template
-              // already associates the CSS with the right component scope.
-              const scopedCss = data;
-
-              const writeIfChanged = (
-                filePath: string,
-                content: string,
-              ): void => {
-                try {
-                  if (fs.readFileSync(filePath, 'utf-8') === content) return;
-                } catch {}
-                fs.writeFileSync(filePath, content);
-              };
-
-              let scopedPath: string;
-              if (stylesheetFile) {
-                const relName = path.relative(basePath, stylesheetFile);
-                scopedPath = path.join(
-                  scopedCssCacheDir,
-                  `${relName.replace(/[/\\]/g, '__')}.__scoped_${scopeId}.css`,
-                );
-              } else {
-                const relDir = path.relative(
-                  basePath,
-                  path.dirname(containingFile),
-                );
-                scopedPath = path.join(
-                  scopedCssCacheDir,
-                  `${relDir.replace(/[/\\]/g, '__')}__inline_${resolvedClassName}_${order}.__scoped_${scopeId}.css`,
-                );
-              }
-
-              writeIfChanged(scopedPath, scopedCss);
-
-              if (previousPath) {
-                const idx = componentStyles.imports.indexOf(previousPath);
-                if (idx >= 0) {
-                  componentStyles.imports[idx] = scopedPath;
-                } else {
-                  componentStyles.imports.push(scopedPath);
-                }
-                if (previousPath !== scopedPath) {
-                  try {
-                    fs.unlinkSync(previousPath);
-                  } catch {}
-                }
-              } else {
-                componentStyles.imports.push(scopedPath);
-              }
-
-              componentStyles.processedFiles.set(stylesheetKey, scopedPath);
-              return '';
-            },
+            transformStylesheet,
           },
           (compilerOptions) => {
             // Do NOT set _enableHmr here. That flag is for Angular's esbuild build path:
@@ -319,15 +206,6 @@ export const applyAngularRules = async (
             };
           },
         );
-        // shouldTsIgnoreJs = !initializationResult.compilerOptions.allowJs;
-        // // Isolated modules option ensures safe non-TypeScript transpilation.
-        // // Typescript printing support for sourcemaps is not yet integrated.
-        // useTypeScriptTranspilation =
-        //   !initializationResult.compilerOptions.isolatedModules ||
-        //   !!initializationResult.compilerOptions.sourceMap ||
-        //   !!initializationResult.compilerOptions.inlineSourceMap;
-        // referencedFiles = initializationResult.referencedFiles;
-        // externalStylesheets = initializationResult.externalStylesheets;
       } catch (error) {
         // Do NOT swallow initialization failures. `compilation.initialize()`
         // drives Angular's worker pool (piscina), which can reject if a worker
@@ -449,148 +327,17 @@ export const applyAngularRules = async (
         // TypeScript with @angular decorators, producing confusing errors).
         throw new Error(`No compiled output found for ${context.resourcePath}`);
       }
-      let code: string;
-      if (typeof content === 'string') {
-        code = content;
-      } else {
-        code = Buffer.from(content).toString();
-      }
-      const componentStyles = componentStylesCache.get(context.resourcePath);
-      if (componentStyles) {
-        const { imports } = componentStyles;
-        let importsString = '';
-        for (let i = 0; i < imports.length; ++i) {
-          // Stylesheets live in node_modules/.cache/angular-lynx-css/, so
-          // compute the relative path from the component file. Prepending
-          // `./` when the relative path doesn't start with `..` keeps it a
-          // valid ES module specifier (rspack rejects bare specifiers here).
-          let relativeImport = path.relative(
-            path.dirname(context.resourcePath),
-            imports[i],
-          );
-          if (!relativeImport.startsWith('.')) {
-            relativeImport = `./${relativeImport}`;
-          }
-          importsString += `import "${relativeImport}";`;
-        }
-        // Prepend the imports so the CSS chunks are pulled into the bundle
-        // before the component class is defined — matching the side-effect
-        // ordering Angular itself produces in its standard build.
-        code = importsString + code;
-      }
-      // Patch the component's \u0275cmp.id to match the scope ID derived from the
-      // component's class name + file path. Angular normally generates this via
-      // encapsulateStyle, but we bypass Angular's style encapsulation entirely
-      // (Lynx's template engine handles scoping). This ID connects CSS files
-      // (which use the scope ID in their filename) to the component's renderer
-      // (EmulatedLynxRenderer adds _nghost-{id} to the host element).
-      const scopeInfo = componentScopeIds.get(context.resourcePath);
-      if (scopeInfo) {
-        code += `\n;${scopeInfo.className}.\u0275cmp.id = '${scopeInfo.scopeId}';\n`;
-      }
-      // In dev mode, inject HMR self-accept in entry files so webpack doesn't
-      // trigger a full page reload. The entry re-evaluates on any dependency
-      // update, calling bootstrapApplication again (which handles
-      // re-bootstrap by destroying the previous app and creating a fresh one).
-      // Without this, webpack falls back to a full CDP Page.reload on every
-      // change because no module calls module.hot.accept() — the reload works
-      // but is slow (rebuilds everything, loses navigation state).
-      if (
-        process.env['NODE_ENV'] !== 'production' &&
-        code.includes('bootstrapApplication')
-      ) {
-        code += `\n;if (module.hot) { module.hot.accept(); }`;
-      }
-      code = transformWorklets(code, context.resourcePath);
+      const code =
+        typeof content === 'string' ? content : Buffer.from(content).toString();
       return {
-        code,
+        code: buildTransformedCode({
+          code,
+          resourcePath: context.resourcePath,
+          componentStyles: componentStylesCache.get(context.resourcePath),
+          scopeInfo: componentScopeIds.get(context.resourcePath),
+          isDevMode,
+        }),
       };
     },
   );
 };
-
-/**
- * Reads the tsconfig to enumerate all project TypeScript files, then returns a
- * Map<filePath, SourceFile> where every file containing an @Component decorator
- * has had CUSTOM_ELEMENTS_SCHEMA injected. Angular's compiler host checks this
- * cache before reading from disk, so the template type-checker never sees unknown
- * Lynx element errors without the user having to add the schema manually.
- *
- * Returns Map<string, any> to avoid TypeScript instance mismatch: the plugin's
- * local `typescript` package and `@angular/build`'s TypeScript resolve to different
- * module instances in the monorepo, making their SourceFile types structurally
- * incompatible at the type level even though they're identical at runtime.
- */
-const buildLynxSchemaSourceFileCache = (
-  tsconfig: string,
-): { sourceFileCache: Map<string, any>; fileNames: string[] } => {
-  const sourceFileCache = new Map<string, any>();
-
-  let fileNames: string[];
-  try {
-    const configFile = ts.readConfigFile(tsconfig, (p) =>
-      fs.readFileSync(p, 'utf-8'),
-    );
-    const parsedConfig = ts.parseJsonConfigFileContent(
-      configFile.config,
-      ts.sys,
-      path.dirname(tsconfig),
-    );
-    fileNames = parsedConfig.fileNames;
-  } catch {
-    // If we can't parse the tsconfig, skip cache population — Angular will read
-    // files from disk normally and the user's explicit schemas (if any) apply.
-    return { sourceFileCache, fileNames: [] };
-  }
-
-  for (const filePath of fileNames) {
-    // Skip library files — only project source needs the schema injection.
-    if (filePath.includes('node_modules')) continue;
-
-    let source: string;
-    try {
-      source = fs.readFileSync(filePath, 'utf-8');
-    } catch {
-      continue;
-    }
-
-    // Quick bail-out: files without @Component don't need transformation.
-    if (!source.includes('@Component')) continue;
-
-    // stripTemplateWhitespace runs here — before Angular's compiler — because this
-    // is the only point where we still have the original template structure, with
-    // newlines that tell us "this whitespace is indentation" vs "this space is
-    // inter-word spacing next to an inline child element". By the time Angular emits
-    // ɵɵtext instructions the structural information is gone and trimming blindly
-    // would break inline text like <text>Hello <text>world</text> again</text> by
-    // eating the spaces between words. Running injectLynxSchema first means the
-    // schema import is already prepended, but stripTemplateWhitespace only matches
-    // the >\n..content..\n< pattern inside template strings, so the two transforms
-    // are order-independent in practice.
-    const transformed = stripTemplateWhitespace(injectLynxSchema(source));
-    // Even if the transforms returned the source unchanged, we still cache it
-    // so Angular uses a consistent file view during the build.
-    sourceFileCache.set(
-      filePath,
-      ts.createSourceFile(filePath, transformed, ts.ScriptTarget.Latest, true),
-    );
-  }
-
-  return { sourceFileCache, fileNames };
-};
-
-/**
- * Returns true for Angular template diagnostic messages that are expected noise
- * for Lynx native elements and should not be shown to the user:
- *
- * - "is not a known element" — suppressed by sourceFileCache schema injection but may
- *   still appear for files not in the tsconfig file list
- * - "isn't a known property of" — Lynx element stubs don't declare @Input() for every
- *   platform-specific attribute (src, item-key, scroll-orientation, etc.) so Angular
- *   reports these as unknown property bindings on the stub components; the renderer
- *   handles them at runtime via setAttribute
- */
-const isLynxUnknownElementMessage = (text: string | undefined): boolean =>
-  (text?.includes('is not a known element') ||
-    text?.includes("isn't a known property of")) ??
-  false;

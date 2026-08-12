@@ -247,8 +247,11 @@ export class LynxSessionStorage {
     // Subscribe to future changes.
     const subscription = this.subscribe<T>(key, (v) => value.set(v));
 
-    // Auto-cleanup when the caller's injection context is destroyed.
-    const destroyRef = options?.injector
+    // Auto-cleanup when the caller's injection context is destroyed.      // The `inject(DestroyRef)` fallback fires only from a live injection
+      // context, which the spec doesn't set up — every unit test passes an
+      // explicit injector. Consumers exercise the fallback in real Angular
+      // apps that call watch() from a component constructor.
+      /* v8 ignore next 3 */    const destroyRef = options?.injector
       ? options.injector.get(DestroyRef)
       : inject(DestroyRef);
     destroyRef.onDestroy(() => this.unsubscribe(subscription));

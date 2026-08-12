@@ -37,6 +37,9 @@ const findLineEnd = (text, offset) => {
 const getIndentAt = (text, offset) => {
   const lineStart = findLineStart(text, offset);
   const match = text.slice(lineStart, offset).match(/^(\s*)/);
+  // `\s*` matches even zero characters, so `match` can never be null here -- the
+  // fallback is purely defensive and unreachable in practice.
+  /* v8 ignore next */
   return match ? match[1] : '';
 };
 

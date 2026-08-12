@@ -73,6 +73,11 @@ export const doctorCommand = async () => {
   // --- Summary ---
 
   const parts: string[] = [];
+  // The `false` side of this check is unreachable: reaching this line at all
+  // requires checkConfig() to have returned a config, and its only successful
+  // return path calls pass('Config is valid') first — so counts.pass is
+  // always >= 1 by the time the summary runs.
+  /* v8 ignore next */
   if (counts.pass > 0) parts.push(pc.green(`${counts.pass} passed`));
   if (counts.warn > 0) parts.push(pc.yellow(`${counts.warn} warning(s)`));
   if (counts.fail > 0) parts.push(pc.red(`${counts.fail} failed`));

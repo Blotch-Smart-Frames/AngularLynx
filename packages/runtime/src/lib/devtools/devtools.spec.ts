@@ -67,4 +67,27 @@ describe('LynxDevTools', () => {
       expect(() => service.refresh()).not.toThrow();
     });
   });
+
+  describe('stats (reactive)', () => {
+    it('mirrors devStats and re-reads after refresh', () => {
+      devStats.cdCycles = 3;
+      devStats.elementCreated = 7;
+      devStats.elementRemoved = 2;
+      devStats.flushCount = 4;
+      devStats.lastCdDurationMs = 1.5;
+
+      const service = new LynxDevTools();
+      const first = service.stats();
+      expect(first.cdCycles).toBe(3);
+      expect(first.elementCreated).toBe(7);
+      expect(first.elementRemoved).toBe(2);
+      expect(first.flushCount).toBe(4);
+      expect(first.lastCdDurationMs).toBe(1.5);
+
+      // Mutate the plain object then trigger the reactive re-read.
+      devStats.cdCycles = 42;
+      service.refresh();
+      expect(service.stats().cdCycles).toBe(42);
+    });
+  });
 });

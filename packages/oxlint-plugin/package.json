@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ci:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui --coverage.enabled=true",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",

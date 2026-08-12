@@ -120,6 +120,21 @@ describe('scanCompiledOutputForHtmlElements', () => {
     expect(result[0]!.message).toContain('<div>');
   });
 
+  it('detects elements emitted via ɵɵrepeaterCreate (@for single root)', () => {
+    const fileCache = new Map<string, string>();
+    fileCache.set(
+      '/src/app/app.ts',
+      // The @for insertion-point optimization emits the root tag through
+      // ɵɵrepeaterCreate rather than ɵɵelementStart.
+      `i0.ɵɵrepeaterCreate(0, AppComponent_For_1_Template, 2, 1, "div", null);`,
+    );
+
+    const result = scanCompiledOutputForHtmlElements(fileCache);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.message).toContain('<div>');
+  });
+
   it('detects text-replacement elements', () => {
     const fileCache = new Map<string, string>();
     fileCache.set(
@@ -159,6 +174,22 @@ describe('scanCompiledOutputForStructuralIssues', () => {
     expect(result[0]!.message).toContain('<list-item>');
     expect(result[0]!.message).toContain('without a <list> parent');
     expect(result[0]!.category).toBe('structural');
+  });
+
+  it('detects list-item without list from Uint8Array contents', () => {
+    const fileCache = new Map<string, string | Uint8Array>();
+    const code = `
+      i0.ɵɵelementStart(0, "view");
+      i0.ɵɵelementStart(1, "list-item");
+      i0.ɵɵelementEnd();
+      i0.ɵɵelementEnd();
+    `;
+    fileCache.set('/src/app/app.ts', Buffer.from(code));
+
+    const result = scanCompiledOutputForStructuralIssues(fileCache);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.message).toContain('<list-item>');
   });
 
   it('does not warn when list-item is inside list', () => {
@@ -336,6 +367,76 @@ describe('scanSourcesForUnsupportedCss', () => {
     `);
 
     const result = scanSourcesForUnsupportedCss(['/src/app/my.service.ts']);
+    expect(result).toHaveLength(0);
+  });
+
+  it('handles unreadable component files gracefully', () => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+      throw new Error('EACCES');
+    });
+
+    const result = scanSourcesForUnsupportedCss(['/src/app/missing.ts']);
+    expect(result).toHaveLength(0);
+  });
+
+  it('detects unsupported CSS in quoted (non-backtick) inline styles', () => {
+    // When the styles array uses quoted strings instead of backticks, the
+    // backtick pass finds nothing and the fallback quoted-string pass runs.
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(`
+      import { Component } from '@angular/core';
+      @Component({
+        template: '<view></view>',
+        styles: ['.a { float: left; }'],
+      })
+      export class Example {}
+    `);
+
+    const result = scanSourcesForUnsupportedCss(['/src/app/my.ts']);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.message).toContain("'float'");
+  });
+
+  it('resolves and scans external styleUrls for unsupported CSS', () => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((p: any) => {
+      const file = String(p);
+      if (file.endsWith('.ts')) {
+        return `
+          import { Component } from '@angular/core';
+          @Component({
+            template: '<view></view>',
+            styleUrls: ['./my.css'],
+          })
+          export class Example {}
+        `;
+      }
+      // The resolved external stylesheet contains an unsupported property.
+      return '.x { outline: none; }';
+    }) as typeof fs.readFileSync);
+
+    const result = scanSourcesForUnsupportedCss(['/src/app/my.ts']);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.message).toContain("'outline'");
+  });
+
+  it('ignores external styleUrls that cannot be read', () => {
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((p: any) => {
+      const file = String(p);
+      if (file.endsWith('.ts')) {
+        return `
+          import { Component } from '@angular/core';
+          @Component({
+            template: '<view></view>',
+            styleUrls: ['./missing.css'],
+          })
+          export class Example {}
+        `;
+      }
+      throw new Error('ENOENT: external stylesheet not found');
+    }) as typeof fs.readFileSync);
+
+    const result = scanSourcesForUnsupportedCss(['/src/app/my.ts']);
     expect(result).toHaveLength(0);
   });
 

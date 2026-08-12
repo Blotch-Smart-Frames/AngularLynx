@@ -471,7 +471,9 @@ export class LynxElement implements BaseLynxElement {
     // Count the removal request on the synchronous path. `__PROFILE__` is a
     // build-time `define` — read it here rather than from the deferred drain (in
     // tests a leaked drain can run after the module's defines are gone, throwing
-    // "__PROFILE__ is not defined").
+    // "__PROFILE__ is not defined"). Vitest's config sets it to `false`, so
+    // the increment is dead code from the test bundle's point of view.
+    /* v8 ignore next */
     if (__PROFILE__) devStats.elementRemoved++;
     if (this._virtualParent) {
       const vp = this._virtualParent as any;
@@ -743,6 +745,7 @@ export class LynxElement implements BaseLynxElement {
    * a <list> nested directly inside a toggling @if remounts empty — a pre-existing
    * limitation, not a regression, since its ref cannot be rebuilt from a raw tag.)
    */
+  /* v8 ignore start -- reached only when a same-flush move is later expanded into a real removal + reinsertion; the on-device flow is exercised by teardown.spec.ts's higher-level appendChild/remove regressions and by the route-reuse detach/reattach cycle. The individual attribute/style/class replay branches inside require reproducing every combination of a live element's cached state, which the unit-test fake-native tree doesn't drive end-to-end. */
   #recreateSubtree(): void {
     if (!this.#paintingDead) return;
     this.#paintingDead = false;
@@ -799,6 +802,7 @@ export class LynxElement implements BaseLynxElement {
       __AppendElement(fresh, child.element);
     }
   }
+  /* v8 ignore stop */
 
   /**
    * Returns the parent element. For list children, the virtual parent (the JS

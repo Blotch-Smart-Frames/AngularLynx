@@ -138,4 +138,61 @@ describe('resolvePages', () => {
       'no "browser" field',
     );
   });
+
+  it('throws when a project has no build target', () => {
+    // Empty targets map → readTarget returns undefined → `target?.options`
+    // short-circuits to undefined, hitting the "no build target" throw.
+    const workspace = {
+      projects: new Map([
+        [
+          'main',
+          { extensions: { projectType: 'application' }, targets: new Map() },
+        ],
+      ]),
+    } as any;
+
+    expect(() => resolvePages(workspace, basePath, ['main'])).toThrow(
+      'no build target or options',
+    );
+  });
+
+  it('throws when a build target has no options', () => {
+    // Build target present but with no `options` section → `target?.options`
+    // is undefined → same "no build target or options" throw.
+    const workspace = {
+      projects: new Map([
+        [
+          'main',
+          {
+            extensions: { projectType: 'application' },
+            targets: new Map([['build', {}]]),
+          },
+        ],
+      ]),
+    } as any;
+
+    expect(() => resolvePages(workspace, basePath, ['main'])).toThrow(
+      'no build target or options',
+    );
+  });
+
+  it('resolves a project that omits tsConfig (no tsconfig collected)', () => {
+    // A project whose build options have a browser but no tsConfig exercises the
+    // `if (tsConfig)` false branch — resolution still succeeds.
+    const workspace = {
+      projects: new Map([
+        [
+          'main',
+          {
+            extensions: { projectType: 'application' },
+            targets: new Map([['build', { options: { browser: 'src/main.ts' } }]]),
+          },
+        ],
+      ]),
+    } as any;
+
+    const pages = resolvePages(workspace, basePath, ['main']);
+
+    expect(pages).toEqual([{ name: 'main', browser: '/workspace/src/main.ts' }]);
+  });
 });

@@ -17,6 +17,7 @@ vi.mock('node:path', () => ({
 
 import {
   createDevLoggerMiddleware,
+  formatArg,
   getLogFilePath,
 } from './dev-logger-middleware.js';
 
@@ -258,6 +259,17 @@ describe('formatArg', () => {
 
   it('joins multiple args with a space', () => {
     expect(logArgs('foo', 'bar', 'baz')).toContain('foo bar baz');
+  });
+
+  it('falls back to String() when JSON.stringify throws on a circular object', () => {
+    // A circular reference makes JSON.stringify throw; formatArg must not crash
+    // and instead returns the String() representation. This path is unreachable
+    // through the middleware (JSON.parse can't yield circular data), so we call
+    // the pure function directly.
+    const circular: Record<string, unknown> = {};
+    circular['self'] = circular;
+
+    expect(formatArg(circular)).toBe('[object Object]');
   });
 });
 

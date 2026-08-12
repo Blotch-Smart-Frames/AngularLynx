@@ -99,4 +99,42 @@ describe('LynxGlobalData', () => {
       expect(service.globalData()).toEqual({ b: 2 });
     });
   });
+
+  describe('when running on the main thread', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('does not subscribe to GlobalEventEmitter (Lepus context has no getJSModule)', () => {
+      // __MAIN_THREAD__ is a compile-time define in the real build; stub it
+      // as a global here to exercise the runtime guard directly.
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      const getJSModule = vi.fn();
+      (globalThis as any).lynx = {
+        __globalProps: { theme: 'dark' },
+        getJSModule,
+      };
+
+      const service = new LynxGlobalData();
+
+      expect(service.globalData()).toEqual({ theme: 'dark' });
+      expect(getJSModule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when the GlobalEventEmitter module has no addListener', () => {
+    it('does not throw and leaves globalData seeded', () => {
+      // A stub/partial host module (no addListener) must not crash construction.
+      (globalThis as any).lynx = {
+        __globalProps: { theme: 'dark' },
+        getJSModule: vi.fn().mockReturnValue({}),
+      };
+
+      let service!: LynxGlobalData;
+      expect(() => {
+        service = new LynxGlobalData();
+      }).not.toThrow();
+      expect(service.globalData()).toEqual({ theme: 'dark' });
+    });
+  });
 });

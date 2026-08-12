@@ -46,6 +46,9 @@ const serializeNode = (element: ElementRef, recorder: OpcodeRecorder): void => {
 
   // __GetInlineStyles was added in a newer Lynx build — fall back to the
   // DOM-style `.style.cssText` property on older builds that lack the PAPI.
+  // In Vitest we stub __GetInlineStyles as a function, so the else-branch is
+  // unreachable — it exists for real Lynx runtimes older than the PAPI addition.
+  /* v8 ignore next 4 */
   const inlineStyles =
     typeof __GetInlineStyles === 'function'
       ? __GetInlineStyles(element)

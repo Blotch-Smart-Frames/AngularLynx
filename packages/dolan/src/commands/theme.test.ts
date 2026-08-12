@@ -125,4 +125,63 @@ describe('themeCommand', () => {
     const { themeCommand } = await import('./theme');
     await expect(themeCommand()).rejects.toThrow('process.exit(1)');
   });
+
+  it('warns when the project theme directory does not exist', async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      themeFiles: { 'default.css': THEME_TEMPLATE },
+    });
+
+    // createFixture always creates the configured theme dir up front — remove
+    // it to exercise the "nothing installed yet" branch of listThemes.
+    const { rmSync } = await import('node:fs');
+    rmSync(join(fixture.dir, DEFAULT_CONFIG.aliases.theme), {
+      recursive: true,
+      force: true,
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    const { themeCommand } = await import('./theme');
+    await themeCommand();
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('No theme directory found'),
+    );
+  });
+
+  it('warns when the theme directory has no CSS files', async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      themeFiles: { 'default.css': THEME_TEMPLATE },
+    });
+    // Project theme dir exists (created by the fixture) but is empty.
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    const { themeCommand } = await import('./theme');
+    await themeCommand();
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('No theme files found'),
+    );
+  });
+
+  it('errors if the default theme template is missing from @blotch/ui', async () => {
+    // No themeFiles passed — createFixture never creates uiDir/theme, so
+    // getUiSourceDir()/theme/default.css can't be found.
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { themeCommand } = await import('./theme');
+    await expect(themeCommand('ocean')).rejects.toThrow('process.exit(1)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Could not find default theme template'),
+    );
+  });
 });

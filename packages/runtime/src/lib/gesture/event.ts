@@ -74,6 +74,10 @@ export const mapGestureEvent = (
       origin.x = absoluteX ?? 0;
       origin.y = absoluteY ?? 0;
     }
+    // The `?? 0` fallbacks are defensive: absoluteX/Y come from the native
+    // gesture payload and are always numbers in practice, but the mapped type
+    // allows undefined so the arithmetic can't silently produce NaN.
+    /* v8 ignore next 2 */
     mapped.translationX = (absoluteX ?? 0) - (origin.x ?? 0);
     mapped.translationY = (absoluteY ?? 0) - (origin.y ?? 0);
     if (name === 'onEnd') {

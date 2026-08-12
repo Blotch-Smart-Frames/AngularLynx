@@ -43,6 +43,11 @@ export class LynxHydrateDocument implements LynxDocumentBase {
       const ref = this.#queue[this.#cursor++]!;
       return new LynxElement(ref);
     }
+    // Defensive throw: every caller (`createElement`, `createText`,
+    // `createComment`) checks `#isHydrating()` before calling `#nextElement()`,
+    // so this branch is unreachable via the public API. Kept as a hard failure
+    // in case a future caller forgets the guard.
+    /* v8 ignore next 3 */
     throw new Error(
       'Hydration queue exhausted during initial render — snapshot/template mismatch',
     );

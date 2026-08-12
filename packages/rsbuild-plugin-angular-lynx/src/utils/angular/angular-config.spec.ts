@@ -159,6 +159,24 @@ describe('applyAngularConfig', () => {
       expect(config.source.preEntry).toContain('zone.js/testing');
     });
 
+    it('skips the polyfills push when polyfills is undefined', () => {
+      const { api, triggerHandler } = createMockApi();
+      const config = {} as any;
+
+      applyAngularConfig(
+        api as never,
+        createBuildOptions({ polyfills: undefined }) as never,
+      );
+      triggerHandler(config);
+
+      // Only the internal polyfills bundle path is present; no user polyfills
+      // were spread in because the `if (polyfills)` guard was false.
+      const userPolyfills = config.source.preEntry.filter(
+        (e: string) => !e.includes('polyfills'),
+      );
+      expect(userPolyfills).toEqual([]);
+    });
+
     it('pushes styles from buildOptions', () => {
       const { api, triggerHandler } = createMockApi();
       const config = {} as any;

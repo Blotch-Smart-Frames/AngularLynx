@@ -230,6 +230,24 @@ describe('LynxGestureDetector', () => {
       expect(relationMap.continueWith).toEqual([]);
     });
 
+    it('populates the simultaneous and continueWith arrays with dependency ids', () => {
+      // Every branch of the relation-map .map() needs to iterate a non-empty
+      // dependency list at least once so branch coverage flips on for
+      // simultaneousWith and continueWith too.
+      const g1 = new TapGesture();
+      const g2 = new PanGesture();
+      const g3 = new TapGesture();
+      g1.simultaneousWith(g2);
+      g1.continueWith(g3);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g1);
+
+      const [, , , , relationMap] = setGestureDetector.mock.calls[0];
+      expect(relationMap.simultaneous).toEqual([g2.id]);
+      expect(relationMap.continueWith).toEqual([g3.id]);
+    });
+
     it('marks the element non-flatten so it can receive gestures', () => {
       const g = new TapGesture();
       const directive = createDirective(nativeEl);

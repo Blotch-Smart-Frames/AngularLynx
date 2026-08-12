@@ -115,5 +115,32 @@ describe('LynxMainThread.runOnMainThread', () => {
       pendingResolvers[7].resolve('done');
       await expect(promise).resolves.toBe('done');
     });
+
+    it('rejects and removes the pending resolver when dispatchEvent throws synchronously', async () => {
+      // A synchronous dispatchEvent failure (e.g. the core context isn't ready)
+      // must still settle the returned promise and must not leave a dangling
+      // pendingResolvers entry that a later FunctionCallRet could match.
+      const boom = new Error('dispatch failed');
+      const dispatchEvent = vi.fn(() => {
+        throw boom;
+      });
+      vi.stubGlobal('lynx', {
+        getCoreContext: () => ({ dispatchEvent }),
+      });
+
+      const pendingResolvers: Record<
+        number,
+        { resolve: (v: unknown) => void; reject: (e: unknown) => void }
+      > = {};
+      vi.stubGlobal('__lynxMtsPendingResolvers', pendingResolvers);
+      vi.stubGlobal('__lynxMtsNextResolveId', () => 42);
+
+      const mts = new LynxMainThread();
+
+      await expect(
+        mts.runOnMainThread(makeHandle('bg-throws')),
+      ).rejects.toBe(boom);
+      expect(pendingResolvers[42]).toBeUndefined();
+    });
   });
 });

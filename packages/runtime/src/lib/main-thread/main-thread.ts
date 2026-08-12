@@ -54,6 +54,9 @@ export class LynxMainThread {
     // Cross-thread params are JSON-serialized via dispatchEvent — non-serializable
     // values (functions, circular refs) would silently become null/undefined on the
     // main thread, leading to hard-to-debug runtime errors.
+    // `__DEV__` is a build-time `define` set to `false` in the Vitest config,
+    // so this dev-only guard is dead code from the test bundle's point of view.
+    /* v8 ignore next 9 */
     if (__DEV__) {
       try {
         JSON.stringify(args);

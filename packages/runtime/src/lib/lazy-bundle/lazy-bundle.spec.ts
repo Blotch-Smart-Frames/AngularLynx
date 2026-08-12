@@ -183,6 +183,20 @@ describe('loadLazyBundle', () => {
       expect(result).toBe(FakeComponent);
     });
 
+    it('resolves with the exports object on main thread when there is no default', async () => {
+      // Covers the `exports?.['default'] ?? exports` fallback on the main-thread
+      // path (only the background-thread version had a no-default test).
+      const exports = { NamedExport: FakeComponent };
+      vi.stubGlobal(
+        '__QueryComponent',
+        makeMockQueryComponent({ exports }),
+      );
+
+      const result = await loadLazyBundle('./main-named-bundle');
+
+      expect(result).toBe(exports);
+    });
+
     it('returns a never-resolving promise on error', async () => {
       vi.stubGlobal(
         '__QueryComponent',
@@ -198,6 +212,27 @@ describe('loadLazyBundle', () => {
       ]);
 
       expect(resolved).toBe('pending');
+    });
+
+    it('wraps a non-Error thrown value in a synthesized Error before reporting', async () => {
+      // Exercises the `cause instanceof Error ? cause : new Error(...)` false
+      // branch of reportError — the main-thread catch(e) forwards whatever
+      // native throws, which is not guaranteed to be an Error instance.
+      const nonErrorThrower = vi.fn(() => {
+        // eslint-disable-next-line no-throw-literal
+        throw 'raw string thrown from native';
+      });
+      vi.stubGlobal('__QueryComponent', nonErrorThrower);
+
+      const promise = loadLazyBundle('./raw-crash');
+      // Wait a tick so reportError has fired.
+      await new Promise((r) => setTimeout(r, 5));
+
+      expect(_ReportError).toHaveBeenCalledWith(expect.any(Error), {
+        errorCode: 6,
+      });
+      // Silence the pending promise so vitest doesn't flag a hanging await.
+      void promise;
     });
   });
 

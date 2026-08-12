@@ -106,4 +106,100 @@ describe('ejectCommand', () => {
       'process.exit(1)',
     );
   });
+
+  it('exits with error for an unknown component', async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { ejectCommand } = await import('./eject');
+    await expect(
+      ejectCommand('nonexistent', { force: true }),
+    ).rejects.toThrow('process.exit(1)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown component'),
+    );
+  });
+
+  it('prompts for confirmation without --force, and ejects when confirmed', async () => {
+    const content = 'export const Button = {};';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { button: { 'button.ts': { hash: hashContent(content) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { button: { 'button.ts': content } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const { ejectCommand } = await import('./eject');
+    await ejectCommand('button', {});
+
+    expect(p.confirm).toHaveBeenCalled();
+    const lockfile = JSON.parse(
+      readFileSync(join(fixture.dir, 'dolan.lock.json'), 'utf-8'),
+    );
+    expect(lockfile.components.button).toBeUndefined();
+  });
+
+  it('cancels when the confirmation is declined', async () => {
+    const content = 'export const Button = {};';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { button: { 'button.ts': { hash: hashContent(content) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { button: { 'button.ts': content } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    const { ejectCommand } = await import('./eject');
+    await expect(ejectCommand('button', {})).rejects.toThrow(
+      'process.exit(0)',
+    );
+    expect(p.cancel).toHaveBeenCalledWith('Eject canceled.');
+
+    // Lockfile entry must survive an aborted eject.
+    const lockfile = JSON.parse(
+      readFileSync(join(fixture.dir, 'dolan.lock.json'), 'utf-8'),
+    );
+    expect(lockfile.components.button).toBeDefined();
+  });
+
+  it('cancels when the confirmation prompt itself is canceled', async () => {
+    const content = 'export const Button = {};';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { button: { 'button.ts': { hash: hashContent(content) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { button: { 'button.ts': content } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(Symbol('cancel'));
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
+
+    const { ejectCommand } = await import('./eject');
+    await expect(ejectCommand('button', {})).rejects.toThrow(
+      'process.exit(0)',
+    );
+  });
 });

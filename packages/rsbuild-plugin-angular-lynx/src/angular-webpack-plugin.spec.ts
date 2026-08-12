@@ -819,6 +819,31 @@ describe('AngularWebpackPlugin', () => {
         ).not.toThrow();
       });
 
+      it('tolerates mainThreadChunks being explicitly undefined (falls back to [])', () => {
+        // Passing `mainThreadChunks: undefined` overrides the default [] via
+        // Object.assign, exercising every `options.mainThreadChunks ?? []`
+        // fallback across both processAssets stages. A lone background asset
+        // still gets its __MAIN_THREAD__=false banner and no crash occurs.
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin({ mainThreadChunks: undefined }).apply(
+          compiler as never,
+        );
+        const compilation = createMockCompilation();
+        compilation.addAsset('bg.js', 'background();');
+        triggerCompilation(compilation);
+
+        expect(() => {
+          compilation.triggerProcessAssets(20000);
+          compilation.triggerProcessAssets(-100);
+        }).not.toThrow();
+
+        expect(compilation.assets['bg.js'].source.source()).toContain(
+          'globalThis["__MAIN_THREAD__"]=false;',
+        );
+      });
+
       it('includes "use strict" prefix when injecting globDynamicComponentEntry into a source starting with "use strict"', () => {
         const { compiler, triggerCompilation } = createMockCompiler();
         setupBeforeEncodeHook();

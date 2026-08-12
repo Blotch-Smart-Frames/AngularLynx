@@ -107,4 +107,42 @@ describe('LynxInitData', () => {
       expect(service.initData()).toEqual(undefined);
     });
   });
+
+  describe('when running on the main thread', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('does not subscribe to GlobalEventEmitter (Lepus context has no getJSModule)', () => {
+      // __MAIN_THREAD__ is a compile-time define in the real build; stub it
+      // as a global here to exercise the runtime guard directly.
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      const getJSModule = vi.fn();
+      (globalThis as any).lynx = {
+        __initData: { userId: 'abc' },
+        getJSModule,
+      };
+
+      const service = new LynxInitData();
+
+      expect(service.initData()).toEqual({ userId: 'abc' });
+      expect(getJSModule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when the GlobalEventEmitter module has no addListener', () => {
+    it('does not throw and leaves initData seeded', () => {
+      // A stub/partial host module (no addListener) must not crash construction.
+      (globalThis as any).lynx = {
+        __initData: { userId: 'abc' },
+        getJSModule: vi.fn().mockReturnValue({}),
+      };
+
+      let service!: LynxInitData;
+      expect(() => {
+        service = new LynxInitData();
+      }).not.toThrow();
+      expect(service.initData()).toEqual({ userId: 'abc' });
+    });
+  });
 });

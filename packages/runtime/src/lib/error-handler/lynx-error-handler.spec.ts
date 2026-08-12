@@ -52,6 +52,23 @@ describe('LynxErrorHandler', () => {
       handler.handleError(new CustomError('custom'));
       expect((globalThis as any).__lynxLastError).toMatch(/^CustomError:/);
     });
+
+    it('falls back to an empty string when the Error has no stack', () => {
+      // Errors reconstructed on the native side sometimes lack a `stack`
+      // property. The `?? ''` fallback prevents `undefined` from being
+      // concatenated into the debug string.
+      const err = new Error('no stack');
+      // Deleting the own `stack` property makes it undefined without breaking
+      // the prototype chain that instanceof checks against.
+      Object.defineProperty(err, 'stack', {
+        value: undefined,
+        configurable: true,
+      });
+      handler.handleError(err);
+      expect((globalThis as any).__lynxLastError).toBe(
+        'Error: no stack\n',
+      );
+    });
   });
 
   describe('_ReportError', () => {

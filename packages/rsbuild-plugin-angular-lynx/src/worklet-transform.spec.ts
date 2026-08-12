@@ -102,6 +102,59 @@ describe('transformWorklets', () => {
     );
   });
 
+  it('does not wrap functions with an empty block body', () => {
+    // The empty arrow has a block body with zero statements (exercising the
+    // `body.statements.length === 0` guard). The directive lives on a second
+    // function so transformWorklets does not bail out at the top-level check.
+    const code = [
+      `const empty = () => {};`,
+      `const fn = () => { "main thread"; run(); };`,
+    ].join('\n');
+    const result = transformWorklets(code, 'test.js');
+    expect(result).toContain('const empty = () => {};');
+    expect(result).toContain('mainThreadFn(() => { "main thread"; run(); })');
+  });
+
+  it('does not wrap when the first statement is not a string literal', () => {
+    // `noop`'s first statement is a call expression, not a string literal, so it
+    // fails the directive check; `fn` still triggers the file-level transform.
+    const code = [
+      `const noop = () => { doStuff(); };`,
+      `const fn = () => { "main thread"; run(); };`,
+    ].join('\n');
+    const result = transformWorklets(code, 'test.js');
+    expect(result).toContain('const noop = () => { doStuff(); };');
+    expect(result).toContain('mainThreadFn(() => { "main thread"; run(); })');
+  });
+
+  it('does not double-wrap a qualified mainThreadFn call (obj.mainThreadFn)', () => {
+    // Property-access callee whose name is `mainThreadFn` counts as already
+    // wrapped, so the inner function is left untouched and no import is added.
+    const code = `const fn = obj.mainThreadFn((event) => { "main thread"; doStuff(); });`;
+    const result = transformWorklets(code, 'test.js');
+    expect(result).toBe(code);
+  });
+
+  it('wraps a function passed to a non-mainThreadFn identifier call', () => {
+    // The parent call's callee is an identifier that is NOT `mainThreadFn`, so
+    // the directive-bearing arrow is genuinely unwrapped and gets wrapped.
+    const code = `const fn = wrap((event) => { "main thread"; doStuff(); });`;
+    const result = transformWorklets(code, 'test.js');
+    expect(result).toContain(
+      'wrap(mainThreadFn((event) => { "main thread"; doStuff(); }))',
+    );
+  });
+
+  it('wraps a function passed to a non-mainThreadFn property call (obj.other)', () => {
+    // Property-access callee whose name is not `mainThreadFn` — the final
+    // `return false` path in isAlreadyWrapped — so the arrow is still wrapped.
+    const code = `const fn = obj.other((event) => { "main thread"; doStuff(); });`;
+    const result = transformWorklets(code, 'test.js');
+    expect(result).toContain(
+      'obj.other(mainThreadFn((event) => { "main thread"; doStuff(); }))',
+    );
+  });
+
   it('handles multiline function bodies', () => {
     const code = [
       'const fn = (event) => {',

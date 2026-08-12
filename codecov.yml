@@ -1,0 +1,53 @@
+# Codecov combines per-package coverage uploaded by .github/workflows/ci.yml.
+# Each publishable package uploads its own coverage/lcov.info under a FLAG; this
+# file tells Codecov how to scope, aggregate, and gate each one. The real CI gate
+# is the per-package vitest `thresholds:{100}` (see each package's config) — these
+# Codecov statuses mirror that target for PR visibility.
+comment:
+  layout: "condensed_header, flags, files"
+
+coverage:
+  status:
+    project:
+      default:
+        target: 100%
+        threshold: 0%
+    patch:
+      default:
+        target: 100%
+
+# Not every push touches every package, and turbo caching can skip re-uploading
+# an unchanged package. `carryforward: true` keeps a flag at its last known
+# coverage instead of dropping it to zero when its lcov is absent from a run.
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: 100%
+
+flags:
+  runtime:
+    paths:
+      - packages/runtime/
+    carryforward: true
+  rsbuild-plugin:
+    paths:
+      - packages/rsbuild-plugin-angular-lynx/
+    carryforward: true
+  testing-library:
+    paths:
+      - packages/testing-library/
+    carryforward: true
+  ui:
+    paths:
+      - packages/ui/
+    carryforward: true
+  dolan:
+    paths:
+      - packages/dolan/
+    carryforward: true
+  oxlint-plugin:
+    paths:
+      - packages/oxlint-plugin/
+    carryforward: true

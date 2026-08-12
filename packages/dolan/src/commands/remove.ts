@@ -59,6 +59,12 @@ export const removeCommand = async (
   // O(1) `installed.has()` checks inside the dependents filter below.
   const allKnown = new Set(getComponentNames());
   const installed = new Set(
+    // The `: []` fallback is unreachable in practice: we already confirmed
+    // `componentDir` (a child of `componentsDir`) exists above, which implies
+    // `componentsDir` itself exists. Kept as a defensive guard rather than a
+    // non-null assertion, in case this function is ever called from a path
+    // that skips that earlier check.
+    /* v8 ignore next 5 */
     existsSync(componentsDir)
       ? readdirSync(componentsDir, { withFileTypes: true })
           .filter((e) => e.isDirectory() && allKnown.has(e.name))
@@ -155,6 +161,10 @@ const findOrphans = (
   removalSet: Set<string>,
 ): string[] => {
   const targetEntry = getEntry(target);
+  // Unreachable in practice: every call site passes a `target` that
+  // `removeCommand` already resolved via the same `getEntry` lookup (and
+  // exited earlier if it were unknown), so this can't be null here.
+  /* v8 ignore next */
   if (!targetEntry) return [];
 
   const orphans: string[] = [];
@@ -163,7 +173,12 @@ const findOrphans = (
     // Skip deps that aren't actually installed (e.g. the user removed them
     // manually) — there's nothing to orphan.
     if (!installed.has(dep)) continue;
-    // Skip deps already queued for removal — avoid double-reporting.
+    // Skip deps already queued for removal — avoid double-reporting. Only
+    // reachable if a component depended on itself (a registry data bug);
+    // `removalSet` holds just `target` for the single findOrphans() call
+    // each removal makes, so this guards against corrupt registry data
+    // rather than anything the current call sites can produce.
+    /* v8 ignore next */
     if (removalSet.has(dep)) continue;
 
     // Check if any other installed component (not being removed) depends on this

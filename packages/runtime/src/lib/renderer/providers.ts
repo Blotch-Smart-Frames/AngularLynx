@@ -31,6 +31,11 @@ export const provideRenderer = (): EnvironmentProviders => {
         // 2. Main thread + normal → LynxDocument (create native elements via PAPI)
         // 3. Background thread → LynxBackgroundDocument (virtual in-memory tree)
         if (__MAIN_THREAD__) {
+          // `__ENABLE_SSR__` is a build-time `define` — `false` in the Vitest
+          // config, so the SSR-hydrating branch is dead code from the test
+          // bundle's point of view. LynxHydrateDocument itself is covered by
+          // hydrate-document.spec.ts.
+          /* v8 ignore next 6 */
           if (__ENABLE_SSR__ && (globalThis as any).__LYNX_IS_HYDRATING__) {
             return new LynxHydrateDocument(
               (globalThis as any).__LYNX_HYDRATE_PAGE__,

@@ -111,6 +111,20 @@ describe('LynxSessionStorage', () => {
       expect(callback).toHaveBeenCalledWith({ data: true });
     });
 
+    it('subscribing twice to the same key reuses the existing listener map', () => {
+      // The first subscribe creates a fresh `Map` for the key; the second must
+      // hit the `keyListeners` truthy branch and just add to it. Without this
+      // test the false side of the `if (!keyListeners)` guard is uncovered.
+      const service = new LynxSessionStorage();
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      service.subscribe('shared', cb1);
+      service.subscribe('shared', cb2);
+      service.setItem('shared', 'v');
+      expect(cb1).toHaveBeenCalledWith('v');
+      expect(cb2).toHaveBeenCalledWith('v');
+    });
+
     it('watch produces a reactive signal', () => {
       const service = new LynxSessionStorage();
       const { injector } = createMockInjector();

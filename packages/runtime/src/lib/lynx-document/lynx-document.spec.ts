@@ -271,6 +271,41 @@ describe('LynxDocument', () => {
         expect.any(Number),
       );
     });
+
+    // Tags below aren't Angular template primitives — they're only reachable
+    // via `createElement(tag)` (typically from LynxElement's subtree-recreate
+    // path), and no other spec drives them. Assert each one dispatches to its
+    // native constructor so every element-creators/* file stays covered.
+    it.each([
+      'refresh',
+      'refresh-header',
+      'viewpager',
+      'viewpager-item',
+      'scroll-coordinator',
+      'scroll-coordinator-header',
+      'scroll-coordinator-toolbar',
+      'scroll-coordinator-slot',
+    ] as const)('creates a %s element via __CreateElement', (tag) => {
+      doc.createElement(tag);
+      expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
+        tag,
+        expect.any(Number),
+      );
+    });
+
+    it('creates a comment element via createCommentElement (__CreateView + display:none)', () => {
+      // The 'comment' tag doesn't go through __CreateElement — it uses
+      // __CreateView and stamps `display:none` inline. That flow is shared by
+      // createNativeRefByTag('comment', ...), so covering it here covers both
+      // call sites.
+      doc.createElement('comment');
+      expect(asMock(globalThis.__CreateView)).toHaveBeenCalled();
+      expect(asMock(globalThis.__AddInlineStyle)).toHaveBeenCalledWith(
+        expect.anything(),
+        'display',
+        'none',
+      );
+    });
   });
 
   // ─── createText ───────────────────────────────────────────────────────────

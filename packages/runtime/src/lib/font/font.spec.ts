@@ -101,6 +101,29 @@ describe('LynxFont', () => {
       expect(service.loadedFamilies()).toEqual(new Set(['A', 'B']));
     });
 
+    it('loadedFamilies omits fonts that failed or are still loading', async () => {
+      // Mix of loaded, error, and in-flight; the computed must filter to only
+      // the `status === 'loaded'` entries, exercising the false side of the
+      // if-branch inside the computed.
+      const failErr = new Error('boom');
+      let toggle = 0;
+      addFontMock.mockImplementation((_font: any, cb: any) => {
+        toggle++;
+        if (toggle === 1) cb(); // A loads
+        else if (toggle === 2) cb(failErr); // B fails
+        // Third call (C) never calls the callback → stays 'loading'
+      });
+      const service = new LynxFont();
+
+      await service.addFont({ fontFamily: 'A', src: '/a.ttf' });
+      await service
+        .addFont({ fontFamily: 'B', src: '/b.ttf' })
+        .catch(() => {});
+      service.addFont({ fontFamily: 'C', src: '/c.ttf' }); // no await
+
+      expect(service.loadedFamilies()).toEqual(new Set(['A']));
+    });
+
     it('deduplicates concurrent requests for the same font-family', () => {
       // Never calls callback — simulates in-flight request
       addFontMock.mockImplementation(() => {});

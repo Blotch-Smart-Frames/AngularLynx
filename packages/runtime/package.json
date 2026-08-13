@@ -2,14 +2,14 @@
   "name": "@blotch/angular-lynx",
   "version": "22.0.0",
   "description": "Angular renderer for the Lynx cross-platform native UI framework",
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
     "directory": "packages/runtime"
-  },
-  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
-  "bugs": {
-    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
   },
   "files": [
     "dist",

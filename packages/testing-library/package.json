@@ -2,6 +2,15 @@
   "name": "@blotch/angular-lynx-testing-library",
   "version": "22.0.0",
   "description": "Testing utilities for AngularLynx apps",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
+    "directory": "packages/testing-library"
+  },
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "files": [
     "dist"
   ],

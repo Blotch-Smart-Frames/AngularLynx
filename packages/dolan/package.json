@@ -3,6 +3,15 @@
   "version": "0.0.1",
   "description": "CLI for adding @blotch/ui components to your project",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
+    "directory": "packages/dolan"
+  },
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "bin": {
     "dolan": "./dist/index.js"
   },

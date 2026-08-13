@@ -15,7 +15,7 @@ const REPO_ROOT = path.resolve(__dirname, '../../..');
 const EXAMPLES_SRC = path.resolve(REPO_ROOT, 'examples');
 const EXAMPLES_DEST = path.resolve(__dirname, '../docs/public/examples');
 const EXAMPLE_GIT_BASE_URL =
-  'https://github.com/Blotch-Smart-Frames/lynx-angular/tree/main/examples';
+  'https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/examples';
 
 const BINARY_EXTENSIONS = new Set([
   '.png',

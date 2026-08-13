@@ -5,6 +5,14 @@
   "keywords": [],
   "license": "ISC",
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git"
+  },
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "workspaces": [
     "packages/*",
     "examples/*"

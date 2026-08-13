@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-testing-library
 
-Testing utilities for [AngularLynx](https://github.com/blotchit/angular-lynx) apps. Renders Angular standalone components through the Lynx PAPI pipeline into a JSDOM tree, then exposes the result via [@testing-library/dom](https://testing-library.com/docs/dom-testing-library/intro) queries.
+Testing utilities for [AngularLynx](https://github.com/Blotch-Smart-Frames/AngularLynx) apps. Renders Angular standalone components through the Lynx PAPI pipeline into a JSDOM tree, then exposes the result via [@testing-library/dom](https://testing-library.com/docs/dom-testing-library/intro) queries.
 
 ## Installation
 

@@ -2,7 +2,16 @@
   "name": "create-angular-lynx",
   "version": "22.0.0",
   "description": "Create a new AngularLynx project",
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
+    "directory": "packages/create-angular-lynx"
+  },
   "bin": {
     "create-angular-lynx": "./src/index.js"
   },

@@ -2,6 +2,15 @@
   "name": "@blotch/rsbuild-plugin-angular-lynx",
   "version": "22.0.0",
   "description": "Rsbuild plugin for building AngularLynx applications",
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
+    "directory": "packages/rsbuild-plugin-angular-lynx"
+  },
   "files": [
     "dist",
     "patch"

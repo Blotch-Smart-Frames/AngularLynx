@@ -2,6 +2,15 @@
   "name": "@blotch/angular-lynx-skills",
   "version": "0.0.1",
   "description": "skills.sh skill pack for building Angular apps on the Lynx native runtime",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
+    "directory": "packages/skills"
+  },
+  "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
+  "bugs": {
+    "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+  },
   "keywords": [
     "angular",
     "claude",

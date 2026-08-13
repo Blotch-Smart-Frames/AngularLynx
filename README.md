@@ -5,8 +5,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@blotch/angular-lynx"><img src="https://img.shields.io/npm/v/@blotch/angular-lynx.svg" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@blotch/angular-lynx"><img src="https://img.shields.io/npm/dm/@blotch/angular-lynx.svg" alt="npm downloads" /></a>
-  <a href="https://github.com/Blotch-Smart-Frames/angular-lynx/blob/master/LICENSE"><img src="https://img.shields.io/github/license/Blotch-Smart-Frames/angular-lynx.svg" alt="license" /></a>
-  <a href="https://github.com/Blotch-Smart-Frames/angular-lynx/actions"><img src="https://img.shields.io/github/actions/workflow/status/Blotch-Smart-Frames/angular-lynx/ci.yml?branch=master" alt="build status" /></a>
+  <a href="https://github.com/Blotch-Smart-Frames/AngularLynx/blob/master/LICENSE"><img src="https://img.shields.io/github/license/Blotch-Smart-Frames/AngularLynx.svg" alt="license" /></a>
+  <a href="https://github.com/Blotch-Smart-Frames/AngularLynx/actions"><img src="https://img.shields.io/github/actions/workflow/status/Blotch-Smart-Frames/AngularLynx/ci.yml?branch=master" alt="build status" /></a>
 </p>
 
 # AngularLynx

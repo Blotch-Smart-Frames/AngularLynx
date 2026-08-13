@@ -25,5 +25,5 @@ The `angular-lynx` skill teaches AI agents how to:
 
 AngularLynx is an Angular renderer for [Lynx](https://lynxjs.org/), a cross-platform native UI framework by ByteDance. Write Angular components using Lynx elements (`<view>`, `<text>`, `<image>`) instead of HTML, and render natively on mobile devices.
 
-- Repository: https://github.com/nicobuzeta/lynx-angular
+- Repository: https://github.com/Blotch-Smart-Frames/AngularLynx
 - Lynx documentation: https://lynxjs.org/

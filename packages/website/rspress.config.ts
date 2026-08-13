@@ -42,7 +42,7 @@ export default defineConfig({
     socialLinks: [
       {
         icon: 'github',
-        content: 'https://github.com/lynx-family/angular-lynx',
+        content: 'https://github.com/Blotch-Smart-Frames/AngularLynx',
         mode: 'link',
       },
     ],

@@ -108,14 +108,22 @@ export class LynxRendererFactory2 implements RendererFactory2 {
     if (__MAIN_THREAD__) {
       // During SSR hydration the native tree already exists from the snapshot
       // — flushing would be redundant and could cause visual glitches.
+      // `__ENABLE_SSR__` is a build-time `define` (false in the Vitest config)
+      // so this guard is dead from the test bundle's point of view.
+      /* v8 ignore start */
       if (__ENABLE_SSR__ && (globalThis as any).__LYNX_IS_HYDRATING__) {
         return;
       }
+      /* v8 ignore stop */
 
+      // Build-time `define` gate — false in the Vitest config, so this
+      // profiling block is dead code from the test bundle's point of view.
+      /* v8 ignore start */
       if (__PROFILE__) {
         devStats.cdCycles++;
         devStats.flushCount++;
       }
+      /* v8 ignore stop */
 
       // Commit queued removals into this cycle's flush (see doc above). Drained
       // even while the first-render flush is skipped: the __RemoveElement calls

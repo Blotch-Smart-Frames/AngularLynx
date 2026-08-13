@@ -62,11 +62,21 @@ export class UiTabs {
         this.#previousValue = currentValue;
         return;
       }
+      // Defensive: signal dedupes same-value writes so the effect never re-runs
+      // with an unchanged `currentValue`. Kept for safety on-device.
+      /* v8 ignore next 1 */
       if (currentValue === this.#previousValue) return;
 
       const prevIndex = this.#tabOrder.indexOf(this.#previousValue);
       const nextIndex = this.#tabOrder.indexOf(currentValue);
-      if (prevIndex !== -1 && nextIndex !== -1 && prevIndex !== nextIndex) {
+      // The `prevIndex !== nextIndex` check is defensive — the earlier
+      // `if (currentValue === this.#previousValue) return;` guard makes an
+      // equal-index case unreachable in normal flow.
+      if (
+        prevIndex !== -1 &&
+        nextIndex !== -1 &&
+        /* v8 ignore next 1 */ prevIndex !== nextIndex
+      ) {
         this.direction.set(nextIndex > prevIndex ? 1 : -1);
       }
       this.#previousValue = currentValue;
@@ -155,6 +165,9 @@ export class UiTabsTrigger {
         this.#previousActive = active;
         return;
       }
+      // Defensive: `isActive` computed dedupes same-value emissions so the
+      // effect never re-runs with an unchanged `active`. Kept for safety.
+      /* v8 ignore next 1 */
       if (active === this.#previousActive) return;
       this.#previousActive = active;
 

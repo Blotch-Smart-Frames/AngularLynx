@@ -963,3 +963,637 @@ describe('updateCommand --selective hunk review', () => {
     expect(lockfile.components.card['card.ts'].hash).toBe(originalHash);
   });
 });
+
+describe('updateCommand — config / no-op paths', () => {
+  it('exits with error when no config exists', async () => {
+    fixture = createFixture({});
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(1)');
+
+    expect(p.intro).toHaveBeenCalled();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('dolan.config.json'),
+    );
+  });
+
+  it('reports nothing to do when only user-modified files exist (no force, no selective)', async () => {
+    const base = 'export const Badge = { v: 1 };';
+    const userVersion = 'export const Badge = { v: 1, custom: true };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { badge: { 'badge.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { badge: { 'badge.ts': userVersion } },
+      uiSource: { badge: { 'badge.ts': base } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
+    (p.select as ReturnType<typeof vi.fn>).mockClear();
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    // Nothing prompts — a lone user-modified file with no force/selective is
+    // treated as "nothing actionable," not something to resolve.
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(p.select).not.toHaveBeenCalled();
+    expect(p.outro).toHaveBeenCalledWith(
+      expect.stringContaining('Everything is up to date'),
+    );
+
+    // The user's file is left completely untouched.
+    expect(readInstalledFile(fixture.dir, 'badge', 'badge.ts')).toBe(
+      userVersion,
+    );
+  });
+
+  it('cancels when the user declines the batch auto-update confirmation', async () => {
+    const base = 'export const Card = { v: 1 };';
+    const upstream = 'export const Card = { v: 2 };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': base } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(0)');
+
+    expect(p.cancel).toHaveBeenCalledWith(
+      expect.stringContaining('Update canceled'),
+    );
+    // Untouched — the confirm was declined before anything was written.
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(base);
+  });
+
+  it('cancels when the batch auto-update confirmation prompt itself is canceled', async () => {
+    const base = 'export const Card = { v: 1 };';
+    const upstream = 'export const Card = { v: 2 };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': base } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(0)');
+  });
+
+  it('keeps an unrelated user-modified file untouched alongside a batch auto-update, and records an up-to-date theme file', async () => {
+    // card is a routine auto-update (drives the batch confirm path); badge is
+    // user-modified with nothing to do about it outside selective/force mode
+    // — it must fall through to the "kept as-is" bookkeeping branch instead of
+    // being silently dropped. The theme file is already up to date, which
+    // only gets exercised because *something* else keeps this update from
+    // short-circuiting at "everything is up to date".
+    const cardBase = 'export const Card = { v: 1 };';
+    const cardUpstream = 'export const Card = { v: 2 };';
+    const badgeBase = 'export const Badge = { v: 1 };';
+    const badgeUserVersion = 'export const Badge = { v: 1, custom: true };';
+    const themeContent = ':root { --primary: rgba(1, 1, 1, 1); }';
+
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: { 'card.ts': { hash: hashContent(cardBase) } },
+          badge: { 'badge.ts': { hash: hashContent(badgeBase) } },
+        },
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(themeContent) } },
+      },
+      components: {
+        card: { 'card.ts': cardBase },
+        badge: { 'badge.ts': badgeUserVersion },
+      },
+      uiSource: {
+        card: { 'card.ts': cardUpstream },
+        badge: { 'badge.ts': badgeBase },
+      },
+      themeFiles: { 'default.css': themeContent },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      themeContent,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+    (p.select as ReturnType<typeof vi.fn>).mockClear();
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(
+      cardUpstream,
+    );
+    // Badge is untouched — no force, no selective, nothing to resolve.
+    expect(readInstalledFile(fixture.dir, 'badge', 'badge.ts')).toBe(
+      badgeUserVersion,
+    );
+    expect(p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining('kept as-is'),
+    );
+
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.components.card['card.ts'].hash).toBe(
+      hashContent(cardUpstream),
+    );
+    // Badge's lockfile hash is preserved as-is (still points at its base).
+    expect(lockfile.components.badge['badge.ts'].hash).toBe(
+      hashContent(badgeBase),
+    );
+    // The already up-to-date theme file's hash is still recorded.
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(themeContent));
+  });
+
+  it('advances the lockfile for an up-to-date component and theme file with no prior lockfile entries', async () => {
+    // Neither the component nor the theme file has ANY lockfile record at
+    // all (not just a missing hash) — buildLockfile() must create fresh
+    // entries for both from scratch on the "nothing to do" fast path.
+    const cardContent = 'export const Card = {};';
+    const themeContent = ':root { --primary: rgba(1, 1, 1, 1); }';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      components: { card: { 'card.ts': cardContent } },
+      uiSource: { card: { 'card.ts': cardContent } },
+      themeFiles: { 'default.css': themeContent },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      themeContent,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.outro).toHaveBeenCalledWith(
+      expect.stringContaining('Everything is up to date'),
+    );
+
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.components.card['card.ts'].hash).toBe(
+      hashContent(cardContent),
+    );
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(themeContent));
+  });
+});
+
+/**
+ * Two independent edits far enough apart (given `context`) that
+ * structuredPatch always produces two distinct, non-adjacent hunks — one
+ * hook for user edits, one for upstream edits, so tests can target either
+ * independently.
+ */
+const makeTwoRegionContent = () => {
+  const base = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`);
+  const current = [...base];
+  current[4] = 'USER change line 5';
+  const upstream = [...base];
+  upstream[14] = 'UPSTREAM change line 15';
+  return {
+    base: base.join('\n') + '\n',
+    current: current.join('\n') + '\n',
+    upstream: upstream.join('\n') + '\n',
+  };
+};
+
+describe('updateCommand — hunk review edge cases', () => {
+  it('cancels mid hunk-review when the user cancels a hunk prompt', async () => {
+    const { original, upstream } = makeMultiHunkContent();
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(original) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': original } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('hunk-review');
+    // First isCancel check is for the file-level 'hunk-review' choice itself
+    // (not canceled); the second is for the first hunk prompt (canceled).
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({ selective: true })).rejects.toThrow(
+      'process.exit(0)',
+    );
+
+    expect(p.cancel).toHaveBeenCalledWith(
+      expect.stringContaining('Update canceled'),
+    );
+    // Untouched — canceled before any hunk decision was applied.
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(original);
+  });
+
+  it('expands context when the user asks to see more, then accepts every hunk', async () => {
+    const { original, upstream } = makeMultiHunkContent();
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(original) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': original } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('hunk-review')
+      // Hunk 1: ask for more context first, then accept.
+      .mockResolvedValueOnce('context')
+      .mockResolvedValueOnce('accept')
+      // Hunk 2: accept directly.
+      .mockResolvedValueOnce('accept');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    const content = readInstalledFile(fixture.dir, 'card', 'card.ts');
+    expect(content).toBe(upstream);
+  });
+
+  it('keeps the current version when hunk reconstruction fails to apply', async () => {
+    // A defensive fallback for when applySelectedHunks() can't reconstruct a
+    // valid file from the accepted subset of hunks. Simulated via a spy since
+    // it's not practically reachable through real diff/patch content.
+    const { original, upstream } = makeMultiHunkContent();
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(original) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': original } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const analyzeUtils = await import('../utils/analyze.js');
+    const applySpy = vi
+      .spyOn(analyzeUtils, 'applySelectedHunks')
+      .mockReturnValue(false);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('hunk-review')
+      .mockResolvedValueOnce('accept')
+      .mockResolvedValueOnce('reject');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    expect(applySpy).toHaveBeenCalled();
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Could not apply selected hunks'),
+    );
+    // Falls back to keeping the user's current file untouched.
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(original);
+  });
+});
+
+describe('updateCommand — file review "show diff" branch', () => {
+  it('shows a diff and loops back for an existing changed file before applying upstream', async () => {
+    const base = 'export const Card = { v: 1 };';
+    const upstream = 'export const Card = { v: 2 };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': base } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('diff')
+      .mockResolvedValueOnce('upstream');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    const messages = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .join('\n');
+    expect(messages).toContain('Diff');
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+  });
+
+  it('shows the full new-file preview and loops back before adding it', async () => {
+    const existing = 'export const Card = { v: 1 };';
+    const brandNew = 'export const helper = () => 42;';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(existing) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': existing } },
+      uiSource: { card: { 'card.ts': existing, 'helper.ts': brandNew } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('diff')
+      .mockResolvedValueOnce('upstream');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    const messages = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .join('\n');
+    expect(messages).toContain('New file');
+    expect(readInstalledFile(fixture.dir, 'card', 'helper.ts')).toBe(brandNew);
+  });
+
+  it('cancels the file-level review prompt', async () => {
+    const base = 'export const Card = { v: 1 };';
+    const upstream = 'export const Card = { v: 2 };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': base } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      true,
+    );
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({ selective: true })).rejects.toThrow(
+      'process.exit(0)',
+    );
+
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(base);
+  });
+});
+
+describe('updateCommand — conflict resolution outside selective mode', () => {
+  it('applies a partial hunk resolution to both a conflicting component file and a conflicting shared theme file', async () => {
+    const card = makeTwoRegionContent();
+    const theme = makeTwoRegionContent();
+
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(card.base) } } },
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(theme.base) } },
+      },
+      components: { card: { 'card.ts': card.current } },
+      uiSource: { card: { 'card.ts': card.upstream } },
+      themeFiles: { 'default.css': theme.upstream },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      theme.current,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      // card.ts: conflict → hunk review → reject the user-edit hunk, accept
+      // the upstream-change hunk.
+      .mockResolvedValueOnce('hunk-review')
+      .mockResolvedValueOnce('reject')
+      .mockResolvedValueOnce('accept')
+      // theme/default.css: same pattern.
+      .mockResolvedValueOnce('hunk-review')
+      .mockResolvedValueOnce('reject')
+      .mockResolvedValueOnce('accept');
+
+    const { updateCommand } = await import('./update');
+    // Not selective, not force — only the conflict-resolution pass runs.
+    await updateCommand({});
+
+    const cardContent = readInstalledFile(fixture.dir, 'card', 'card.ts');
+    // User's own edit (line 5) is preserved; upstream's real change (line 15)
+    // is merged in.
+    expect(cardContent).toContain('USER change line 5');
+    expect(cardContent).toContain('UPSTREAM change line 15');
+
+    const themeContent = readFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      'utf-8',
+    );
+    expect(themeContent).toContain('USER change line 5');
+    expect(themeContent).toContain('UPSTREAM change line 15');
+
+    const lockfile = readLockfile(fixture.dir);
+    // Partial resolutions still advance the lockfile base to upstream.
+    expect(lockfile.components.card['card.ts'].hash).toBe(
+      hashContent(card.upstream),
+    );
+    expect(lockfile.theme['default.css'].hash).toBe(
+      hashContent(theme.upstream),
+    );
+  });
+
+  it('keeps a conflicting shared theme file as-is when the user chooses to keep it', async () => {
+    const base = ':root { --primary: rgba(1, 1, 1, 1); }';
+    const userVersion = ':root { --primary: rgba(9, 9, 9, 1); }';
+    const upstream = ':root { --primary: rgba(2, 2, 2, 1); }';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {},
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(base) } },
+      },
+      themeFiles: { 'default.css': upstream },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      userVersion,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    const themeContent = readFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      'utf-8',
+    );
+    expect(themeContent).toBe(userVersion);
+
+    // Lockfile base still advances to upstream (conflict-keep semantics),
+    // same as the component-file equivalent.
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(upstream));
+  });
+});
+
+describe('updateCommand — selective review of shared theme files', () => {
+  it('skips a shared theme file in selective mode when the user chooses to skip it', async () => {
+    const base = ':root { --primary: rgba(1, 1, 1, 1); }';
+    const upstream = ':root { --primary: rgba(2, 2, 2, 1); }';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {},
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(base) } },
+      },
+      themeFiles: { 'default.css': upstream },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      base,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    const themeContent = readFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      'utf-8',
+    );
+    // Skipped — left exactly as it was.
+    expect(themeContent).toBe(base);
+
+    // Lockfile hash preserved at its old base so it surfaces again next run.
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(base));
+
+    expect(p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("they'll appear again on next update"),
+    );
+  });
+
+  it('partially applies hunks to a shared theme file reviewed in selective mode', async () => {
+    const { original, upstream } = makeMultiHunkContent();
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {},
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(original) } },
+      },
+      themeFiles: { 'default.css': upstream },
+    });
+    const { writeFileSync: seedFile } = await import('node:fs');
+    seedFile(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      original,
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('hunk-review')
+      .mockResolvedValueOnce('accept')
+      .mockResolvedValueOnce('reject');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    const themeContent = readFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      'utf-8',
+    );
+    expect(themeContent).toContain('CHANGED line 2');
+    expect(themeContent).not.toContain('CHANGED line 19');
+
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(upstream));
+  });
+});

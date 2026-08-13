@@ -28,5 +28,22 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/**/*.d.ts',
+        'src/index.ts', // commander bin wiring (the CLI entrypoint)
+        'src/test-utils.ts', // test-only fixture helper
+      ],
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+    },
   },
 });

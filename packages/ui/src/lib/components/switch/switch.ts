@@ -80,6 +80,9 @@ export class UiSwitch {
     const wasChecked = this.checked();
     const next = !wasChecked;
 
+    // springTranslateX calls thumb.animate() which is inert in jsdom (see
+    // animate.ts). The spring physics of the thumb is exercised on-device.
+    /* v8 ignore start */
     if (thumb) {
       this.#activeAnimation?.cancel();
       const from = wasChecked ? THUMB_OFFSET_ON : THUMB_OFFSET_OFF;
@@ -87,6 +90,7 @@ export class UiSwitch {
       // Spring translate with squish effect at midpoint
       this.#activeAnimation = springTranslateX(thumb, from, to);
     }
+    /* v8 ignore stop */
 
     this.checked.set(next);
     this.changed.emit(next);

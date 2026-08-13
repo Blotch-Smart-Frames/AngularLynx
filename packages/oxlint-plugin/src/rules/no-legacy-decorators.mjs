@@ -144,6 +144,10 @@ const buildFix = (decoratorName, fixer, node, decorator, context) => {
         decorator,
         context,
       );
+    // Unreachable: buildFix is only ever invoked for a decorator whose
+    // DECORATOR_CONFIG entry has fixable: true, and only the six cases above
+    // are marked fixable.
+    /* v8 ignore next 2 */
     default:
       return null;
   }

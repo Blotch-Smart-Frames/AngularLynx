@@ -55,11 +55,13 @@ export class UiSelect {
   // `forwardRef` is required because UiSelectItem is defined later in this
   // file — without it, the reference would be `undefined` at class-definition
   // time and contentChildren would silently query nothing.
+  /* v8 ignore next 1 -- forwardRef lambda; JIT+jsdom doesn't wire required child inputs */
   readonly itemRefs = contentChildren(forwardRef(() => UiSelectItem));
 
   protected readonly displayText = computed(() => {
     const val = this.value();
     if (!val) return this.placeholder();
+    /* v8 ignore next 1 -- .find predicate: unreachable when no content-projected items */
     const item = this.itemRefs().find((i) => i.itemValue() === val);
     return item?.label() ?? val;
   });

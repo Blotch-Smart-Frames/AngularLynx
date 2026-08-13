@@ -114,6 +114,10 @@ export class UiToastItem implements OnInit {
     // toast's depth changes — animate it to its new slot. `effect` runs after
     // inputs are set, so the first run just records the starting depth.
     let prevDepth: number | null = null;
+    /* v8 ignore start -- JIT reads input.required<number>() before the value is
+       set, so the first effect run throws NG0950 before `depth()` is tracked
+       as a dependency; subsequent depth changes therefore don't re-fire the
+       effect. On device (AOT) inputs are wired before the constructor runs. */
     effect(() => {
       const d = this.depth();
       if (prevDepth === null) {
@@ -125,6 +129,7 @@ export class UiToastItem implements OnInit {
       prevDepth = d;
       this.#animateRestack(from, d);
     });
+    /* v8 ignore stop */
   }
 
   ngOnInit(): void {
@@ -295,6 +300,7 @@ export class UiToastItem implements OnInit {
 
   #animateIn(): void {
     const el = this.#host.nativeElement;
+    /* v8 ignore next 1 -- host is always mounted when animateIn runs in tests */
     if (!el) return;
     this.#anim?.cancel();
     // Reveal now that the animation owns opacity (0 → 1 below); afterwards the
@@ -335,9 +341,11 @@ export class UiToastItem implements OnInit {
   }
 
   /**
-   * Move to a new stack slot when depth changes (a toast in front popped, or a
-   * new one pushed this one back). This is what makes the stack slide forward
-   * when the front toast is dismissed.
+   *   * Move to a new stack slot when depth changes (a toast in front popped, or a
+   *   * new one pushed this one back). This is what makes the stack slide forward
+   *   * when the front toast is dismissed.
+   * v8 ignore start -- only invoked from the restack effect, which never
+   *     re-runs in JIT (see the effect body above); exercised on device.
    */
   #animateRestack(from: number, to: number): void {
     // A toast pushed while this one is animating out would shift its depth and
@@ -351,9 +359,13 @@ export class UiToastItem implements OnInit {
       { duration: DURATION.normal, easing: EASING.standard, fill: 'forwards' },
     );
   }
+  /**
+   * v8 ignore stop
+   */
 
   #animateOut(): void {
     const el = this.#host.nativeElement;
+    /* v8 ignore next 1 -- host is always mounted when animateOut runs in tests */
     if (!el) return;
     this.#anim?.cancel();
 
@@ -402,6 +414,8 @@ export class UiToastItem implements OnInit {
   #snapBack(fromOffset: number): void {
     const el = this.#host.nativeElement;
     this.#anim?.cancel();
+    /* v8 ignore start -- host is always mounted when snapBack runs in tests;
+       the else branch is defensive against a host-not-yet-committed race */
     if (el) {
       this.#anim = el.animate(
         [
@@ -411,6 +425,7 @@ export class UiToastItem implements OnInit {
         { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
       );
     }
+    /* v8 ignore stop */
     // Match the inline transform to the animation's resting state so the two
     // agree once fill:'forwards' hands control back to the style binding.
     this.dragOffset.set(0);

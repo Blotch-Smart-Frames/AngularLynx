@@ -22,6 +22,7 @@ import { type ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
+      /* v8 ignore next -- Angular metadata: the forwardRef arrow is only invoked by Angular's directive DI resolution, which happens inside a full template render — the accessor's runtime behavior is covered by direct unit tests below. */
       useExisting: forwardRef(() => LynxInputValueAccessor),
       multi: true,
     },

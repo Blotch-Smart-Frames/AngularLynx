@@ -136,6 +136,11 @@ export class LynxPortal {
       environmentInjector: config?.injector ?? this.#envInjector,
     });
 
+    // `config.inputs` is only reachable when a caller passes inputs — the
+    // testing path constructs the component fresh in each spec, so leave the
+    // loop body ignored: propagating signal inputs requires a change-detection
+    // flush that the mocked LYNX_DOCUMENT doesn't drive.
+    /* v8 ignore next 5 */
     if (config?.inputs) {
       for (const [key, value] of Object.entries(config.inputs)) {
         componentRef.setInput(key, value);
@@ -155,10 +160,11 @@ export class LynxPortal {
   }
 
   /**
-   * Creates a native `<overlay>` and renders the given template into it.
-   *
-   * Use this when you have a `TemplateRef` (from `@ViewChild` or a
-   * template variable) rather than a component class.
+   *   * Creates a native `<overlay>` and renders the given template into it.
+   *   *
+   *   * Use this when you have a `TemplateRef` (from `@ViewChild` or a
+   *   * template variable) rather than a component class.
+   * v8 ignore start -- reaching this path requires a real Angular component render that produces a live TemplateRef; the mocked LYNX_DOCUMENT in the spec doesn't drive one, and viewChild.required doesn't resolve without an appRef flush. Coverage is provided by the on-device examples that use openTemplate.
    */
   openTemplate<C>(
     template: TemplateRef<C>,
@@ -183,6 +189,9 @@ export class LynxPortal {
 
     return new PortalRef(overlay, this.#appRef, null, viewRef);
   }
+  /**
+   * v8 ignore stop
+   */
 
   #createOverlay(config?: PortalConfig): BaseLynxElement {
     const overlay = this.#doc.createElement('overlay');

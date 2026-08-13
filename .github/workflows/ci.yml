@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run format:check
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run cspell
@@ -35,30 +35,110 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run lint
 
-  build:
+  # Build the publishable packages first. This validates every package (not just
+  # the ones examples happen to depend on) and, crucially, populates the shared
+  # turbo cache that the sharded example builds below restore from — so
+  # runtime/plugin/ui/dolan are compiled once here instead of redundantly inside
+  # every example shard.
+  build-packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
-      # Constrain build parallelism on the resource-limited CI runner. Every
-      # example build spins up its own Angular AOT compilation backed by a piscina
-      # worker pool; at turbo's default concurrency (10) that oversubscribes the
-      # runner's CPUs and can kill a worker mid-`initialize()`. The plugin now
-      # surfaces that failure clearly (see rsbuild-plugin-angular-lynx/src/angular.ts),
-      # but the real fix is to not starve the workers: cap turbo's concurrency and
-      # the per-build worker count. Raise these if CI machines get bigger.
-      - run: npm run build -- --concurrency=4
+      - name: Restore turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          # Unique per commit so this job owns the write. restore-keys warm it
+          # from the newest prior cache AND let the example shards below find
+          # THIS job's cache in the same run via the shared turbo-<sha>- prefix.
+          key: turbo-${{ github.sha }}-pkgs
+          restore-keys: |
+            turbo-${{ github.sha }}-
+            turbo-
+      - run: npx turbo run build --filter=./packages/* --concurrency=4
         env:
           NG_BUILD_MAX_WORKERS: 2
+
+  # Build all example apps (both lynx AND web targets) split across parallel
+  # runners. Each shard builds ~1/N of the examples, so per-runner memory stays
+  # low and the proven concurrency=4 / 2-worker config never OOMs — the speedup
+  # comes from running N free runners at once, not from cranking a single box.
+  # To rebalance: bump the matrix list and SHARD_TOTAL together (keep them equal).
+  build-examples:
+    needs: build-packages
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't cancel every shard because one example failed — we want the full
+      # picture of what's broken in a single run.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      SHARD_TOTAL: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Restore turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}-ex-${{ matrix.shard }}
+          # Restore build-packages' cache (turbo-<sha>-pkgs) so this shard reuses
+          # the already-compiled package deps instead of rebuilding them, plus any
+          # example outputs unchanged since a previous run.
+          restore-keys: |
+            turbo-${{ github.sha }}-
+            turbo-
+      - name: Build this shard's examples (lynx + web)
+        # Partition examples round-robin by shard index (i % total) so heavy
+        # examples spread evenly rather than clumping into one contiguous slice.
+        # sort() keeps the assignment deterministic across runners. Filter turbo
+        # by directory path so we don't depend on package-name conventions.
+        run: |
+          FILTERS=$(node -e '
+            const fs = require("fs");
+            const dirs = fs.readdirSync("examples", { withFileTypes: true })
+              .filter((d) => d.isDirectory() && fs.existsSync("examples/" + d.name + "/package.json"))
+              .map((d) => d.name)
+              .sort();
+            const total = Number(process.env.SHARD_TOTAL);
+            const idx = Number(process.env.SHARD) - 1;
+            const mine = dirs.filter((_, i) => i % total === idx);
+            console.log(mine.map((n) => "--filter=./examples/" + n).join(" "));
+          ')
+          echo "Shard ${SHARD}/${SHARD_TOTAL} building: ${FILTERS}"
+          npx turbo run build ${FILTERS} --concurrency=4
+        env:
+          SHARD: ${{ matrix.shard }}
+          NG_BUILD_MAX_WORKERS: 2
+
+  # Single aggregation gate so branch protection can require one "build" check
+  # instead of eight shard checks. Runs always() and fails red (not "skipped")
+  # if any package build or example shard failed, so a required check is
+  # unambiguous.
+  build:
+    needs: [build-packages, build-examples]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any build job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: echo "A package build or example shard failed" && exit 1
+      - run: echo "All package and example builds passed"
 
   test:
     runs-on: ubuntu-latest
@@ -66,7 +146,81 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Restore turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          # `test:ci:coverage` dependsOn ^build, so warm from the same shared
+          # cache to skip rebuilding package deps that build-packages compiled.
+          key: turbo-${{ github.sha }}-cov
+          restore-keys: |
+            turbo-${{ github.sha }}-
+            turbo-
+      # THE GATE: each package enforces 100% via vitest `thresholds`, so this
+      # step exits non-zero (failing the job) if any package drops below 100% on
+      # any metric — with or without Codecov. The uploads below are visualization
+      # only. turbo caches each package's coverage/** as a task output.
+      - run: npm run test:ci:coverage
+
+      # Combine coverage across the monorepo via Codecov FLAGS (one per package),
+      # mirroring the board repo. `disable_search` pins the exact lcov path;
+      # `fail_ci_if_error: false` + `if: !cancelled()` keep uploads non-blocking
+      # (the threshold gate above is what protects the branch). Requires the
+      # CODECOV_TOKEN repo secret; without it these steps simply no-op.
+      - name: Upload runtime coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/runtime/coverage/lcov.info
+          flags: runtime
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload rsbuild-plugin coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/rsbuild-plugin-angular-lynx/coverage/lcov.info
+          flags: rsbuild-plugin
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload testing-library coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/testing-library/coverage/lcov.info
+          flags: testing-library
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload ui coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/ui/coverage/lcov.info
+          flags: ui
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload dolan coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/dolan/coverage/lcov.info
+          flags: dolan
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload oxlint-plugin coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/oxlint-plugin/coverage/lcov.info
+          flags: oxlint-plugin
+          disable_search: true
+          fail_ci_if_error: false

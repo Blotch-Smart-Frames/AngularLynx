@@ -66,6 +66,9 @@ const getIndentAt = (sourceText, offset) => {
   // Extract the whitespace between line start and the offset
   const beforeComment = sourceText.slice(lineStart, offset);
   const match = beforeComment.match(/^(\s*)/);
+  // `\s*` matches even zero characters, so `match` can never be null here -- the
+  // fallback is purely defensive and unreachable in practice.
+  /* v8 ignore next */
   return match ? match[1] : '';
 };
 

@@ -12,6 +12,9 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ci:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui --coverage.enabled=true",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
@@ -24,6 +27,8 @@
     "tailwind-merge": "^3.3.0"
   },
   "devDependencies": {
+    "@blotch/angular-lynx": "*",
+    "@blotch/angular-lynx-testing-library": "*",
     "@lynx-js/tailwind-preset": "^0.4.0",
     "tailwindcss": "^3.4.19"
   }

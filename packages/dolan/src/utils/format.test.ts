@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { formatContent } from './format';
 
 // Resolving paths relative to this test file lets the "project uses oxfmt"
@@ -35,5 +37,45 @@ describe('formatContent', () => {
     expect(formatted).not.toBe(messy);
     expect(formatted).toContain('const x = 1;');
     expect(formatted).toContain('return x;');
+  });
+
+  it('returns content unchanged for extension-less file paths', () => {
+    // extensionOf() returns '' when there's no dot in the path at all — that
+    // empty string can never be in FORMATTABLE_EXTENSIONS, so this must
+    // short-circuit before ever consulting the filesystem for an oxfmt config.
+    const noExtension = join(here, 'Makefile');
+    expect(formatContent(messy, noExtension)).toBe(messy);
+  });
+
+  describe('outside a workspace with a config but no oxfmt binary', () => {
+    let tmpDir: string;
+
+    afterEach(() => {
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('returns content unchanged when no oxfmt binary is discoverable', () => {
+      // Config alone isn't enough — dolan also needs to find the oxfmt binary
+      // by walking up from the file. Planting only `.oxfmtrc.json` in a tmpdir
+      // (well outside this repo's node_modules/.bin) exercises the "config
+      // found, binary not found" branch distinctly from the "no config at
+      // all" case already covered above.
+      tmpDir = join(tmpdir(), `dolan-format-test-${randomUUID().slice(0, 8)}`);
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(join(tmpDir, '.oxfmtrc.json'), '{}');
+
+      const target = join(tmpDir, 'x.ts');
+      expect(formatContent(messy, target)).toBe(messy);
+    });
+  });
+
+  it('falls back to the original content when oxfmt fails to parse it', () => {
+    // A formatter failure (e.g. invalid syntax) must never corrupt the file
+    // being installed — spawnSync exits non-zero and formatContent should
+    // return the original, unformatted content rather than throwing or
+    // returning empty/garbage output.
+    const broken = 'const x = {';
+    const formatted = formatContent(broken, join(here, '__fmt_probe__.ts'));
+    expect(formatted).toBe(broken);
   });
 });

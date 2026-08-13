@@ -80,7 +80,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.test.ts'],
   },
 });
 `;

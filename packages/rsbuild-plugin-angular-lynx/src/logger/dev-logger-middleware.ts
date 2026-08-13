@@ -42,7 +42,11 @@ const formatTimestamp = (ts: number): string => {
   return `${h}:${m}:${s}.${ms}`;
 };
 
-const formatArg = (arg: unknown): string => {
+// Exported for direct unit testing: the circular-reference fallback below is
+// unreachable through the middleware (args always come from JSON.parse, which
+// can't produce circular structures), so it's covered by calling formatArg with
+// a genuinely circular object rather than by faking a request payload.
+export const formatArg = (arg: unknown): string => {
   if (arg === null || arg === undefined) return String(arg);
   if (typeof arg === 'string') return arg;
   // Error objects don't survive JSON.stringify (the message/stack are

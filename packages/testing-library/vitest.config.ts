@@ -38,6 +38,23 @@ export default defineConfig({
     globals: true,
     setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
     include: ['src/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      // `include` is package-relative, so the runtime source pulled in via the
+      // `@blotch/angular-lynx` alias below (which lives outside this src/) is not
+      // counted here — coverage stays scoped to the testing-library's own files.
+      // index.ts (auto-cleanup) and setup.ts are real code covered by their own
+      // specs, so they are deliberately NOT excluded.
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+    },
     onConsoleLog(log) {
       if (log.includes('Angular is running in development mode')) return false;
     },

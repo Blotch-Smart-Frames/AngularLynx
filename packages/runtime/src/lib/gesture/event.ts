@@ -74,8 +74,12 @@ export const mapGestureEvent = (
       origin.x = absoluteX ?? 0;
       origin.y = absoluteY ?? 0;
     }
-    mapped.translationX = (absoluteX ?? 0) - (origin.x ?? 0);
-    mapped.translationY = (absoluteY ?? 0) - (origin.y ?? 0);
+    // origin.x/y are guaranteed numeric here: the anchor block above always
+    // runs on the first event (origin.x === null) and populates both fields.
+    // The `?? 0` fallbacks on absoluteX/Y are the real defense — they come
+    // from the native payload and are typed as number|undefined.
+    mapped.translationX = (absoluteX ?? 0) - (origin.x as number);
+    mapped.translationY = (absoluteY ?? 0) - (origin.y as number);
     if (name === 'onEnd') {
       origin.x = null;
       origin.y = null;

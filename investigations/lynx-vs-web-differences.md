@@ -150,7 +150,7 @@ For a same-tick move this is completely safe: the element is removed and re-inse
 
 ### The fix
 
-`remove()` defers its native teardown by one microtask (`#pendingRemovals` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). A re-insert in the same tick — `appendChild`/`insertBefore` — cancels the queued removal, so a move relocates the element with its subtree intact. Only a genuine destroy (never re-inserted) reaches `#doRemove()`. Covered by the reorder test in `packages/runtime/src/lib/renderer/teardown.spec.ts`.
+`remove()` defers its native teardown by one microtask (`#pendingRemovals` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). A re-insert in the same tick — `appendChild`/`insertBefore` — cancels the queued removal, so a move relocates the element with its subtree intact. Only a genuine destroy (never re-inserted) reaches `#doRemove()`. Covered by the reorder test in `packages/runtime/src/lib/renderer/teardown.test.ts`.
 
 ---
 
@@ -168,7 +168,7 @@ This once crashed for a subtler reason: the renderer's old child-"parking" mecha
 
 ### The fix
 
-`#doRemove()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) removes each subtree **as a single unit**, so an overlay is torn down together with its ancestor and no window is orphaned. No overlay-specific exception is needed any more, and the old page-root re-home **leak** (non-overlay subtrees stranded on the page root) is gone with it. Covered by `packages/runtime/src/lib/renderer/teardown.spec.ts` (a TestBed harness over a fake native tree, asserting overlay teardown as a unit, bare-`<ng-content>` re-projection, and `@for` reorder-as-move).
+`#doRemove()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) removes each subtree **as a single unit**, so an overlay is torn down together with its ancestor and no window is orphaned. No overlay-specific exception is needed any more, and the old page-root re-home **leak** (non-overlay subtrees stranded on the page root) is gone with it. Covered by `packages/runtime/src/lib/renderer/teardown.test.ts` (a TestBed harness over a fake native tree, asserting overlay teardown as a unit, bare-`<ng-content>` re-projection, and `@for` reorder-as-move).
 
 ---
 
@@ -195,7 +195,7 @@ React Lynx (the production reference) never hits this: on unmount it drops the n
 
 **Recreate on remount**, mirroring React Lynx. `LynxElement` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) caches each element's state as it is set (tag, attributes, id, dataset, classes, inline styles, event listeners, text, ordered children). `#doRemove()` marks the removed subtree painting-dead; the next `appendChild`/`insertBefore` of a painting-dead element rebuilds a fresh native ref for it and its whole subtree from cache (`#recreateSubtree`), then attaches that. A same-tick move is canceled before it becomes a removal, so it is never painting-dead and never recreated — the reorder fast-path is untouched.
 
-Covered by `packages/runtime/src/lib/renderer/teardown.spec.ts`, whose fake native tree models **both** layers (a removed node's painting node dies at flush unless reinserted in the same flush). The accordion-cycle, bare-`<ng-content>`, event-rebind, attribute-replay and raw-text tests fail without recreation and pass with it.
+Covered by `packages/runtime/src/lib/renderer/teardown.test.ts`, whose fake native tree models **both** layers (a removed node's painting node dies at flush unless reinserted in the same flush). The accordion-cycle, bare-`<ng-content>`, event-rebind, attribute-replay and raw-text tests fail without recreation and pass with it.
 
 **Known limitation:** native-only state not tracked by Angular (uncontrolled input text, scroll position, focus) resets on remount — the same semantics as Angular's web `@if`, which also destroys and rebuilds the DOM subtree on toggle.
 
@@ -215,7 +215,7 @@ How the renderer could in principle hand Lynx a cyclic attach: an Angular reorde
 
 ### The fix
 
-`wouldFormCycle(parent, candidate)` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) walks `parent`→root via `__GetParent`, comparing `__GetElementUniqueID`s (native refs can't be used as keys or reliably `===`-compared). `appendChild` and `insertBefore` skip the attach when it would form a cycle — the DOM's ancestor check, minus the throw. The walk is bounded by tree depth, two cheap native reads per step. Kept as defensive coding for a real hazard even though it wasn't the cause below. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-cycle.spec.ts`.
+`wouldFormCycle(parent, candidate)` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) walks `parent`→root via `__GetParent`, comparing `__GetElementUniqueID`s (native refs can't be used as keys or reliably `===`-compared). `appendChild` and `insertBefore` skip the attach when it would form a cycle — the DOM's ancestor check, minus the throw. The walk is bounded by tree depth, two cheap native reads per step. Kept as defensive coding for a real hazard even though it wasn't the cause below. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-cycle.test.ts`.
 
 ---
 
@@ -236,7 +236,7 @@ Also **disproven** along the way, recorded so they aren't re-attempted: a genuin
 
 ### The fix
 
-Parking was **removed entirely** and replaced by **recreate-on-remount** (see the recreate-on-remount entry above). `#doRemove()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) now removes each subtree as one unit and marks it painting-dead; a later re-insert rebuilds it from cache. So nothing is stranded on the page root, nothing accumulates in a holder, and the projected content still renders on re-show. Why parking couldn't just be fixed in place: content parked outside its component's own subtree can no longer be cleaned up by Angular on destroy (Angular removes only its own subtree, and `destroyNode` isn't called on the relocated nodes), so the holder leaks unrecoverably — proven by the leak test in `teardown.spec.ts`. Recreate-on-remount never relocates content, so it has no such leak. The move/destroy split (`#pendingRemovals`) and the `wouldFormCycle` guards are kept.
+Parking was **removed entirely** and replaced by **recreate-on-remount** (see the recreate-on-remount entry above). `#doRemove()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) now removes each subtree as one unit and marks it painting-dead; a later re-insert rebuilds it from cache. So nothing is stranded on the page root, nothing accumulates in a holder, and the projected content still renders on re-show. Why parking couldn't just be fixed in place: content parked outside its component's own subtree can no longer be cleaned up by Angular on destroy (Angular removes only its own subtree, and `destroyNode` isn't called on the relocated nodes), so the holder leaks unrecoverably — proven by the leak test in `teardown.test.ts`. Recreate-on-remount never relocates content, so it has no such leak. The move/destroy split (`#pendingRemovals`) and the `wouldFormCycle` guards are kept.
 
 **Confirmed on-device:** both watchdog crashes are gone — `examples/transitions` shows/hides/re-shows without freezing, and reloads without the teardown hang. Removing parking then surfaced a separate, pre-existing bug (removed elements leaving a layout gap / stale panels) that had been masked by the crashes — see the flush-timing entry below.
 
@@ -254,7 +254,7 @@ Element mutations only reach the main thread (and layout) on `__FlushElementTree
 
 ### The fix
 
-Drain the queue from `end()`, **before** `__FlushElementTree()`, via `processPendingRemovals()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), so a genuine removal lands in the same flush as the cycle's other mutations. A move still cancels its queued removal during the render traversal, before `end()` runs, so moves are unaffected. Covered by `packages/runtime/src/lib/renderer/teardown.spec.ts`.
+Drain the queue from `end()`, **before** `__FlushElementTree()`, via `processPendingRemovals()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), so a genuine removal lands in the same flush as the cycle's other mutations. A move still cancels its queued removal during the render traversal, before `end()` runs, so moves are unaffected. Covered by `packages/runtime/src/lib/renderer/teardown.test.ts`.
 
 ---
 
@@ -281,7 +281,7 @@ The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpd
 - `LynxDocument`'s element creators — for content *created* out of cycle (first navigation to a lazy route, a dynamic `createComponent()`).
 - `LynxElement.#recreateIfDead()` — recreate-on-remount builds fresh refs via `createNativeRefByTag` directly (bypassing `LynxDocument.createElement`), and a route re-attach runs out of cycle, so the rebuilt subtree needs its own flush.
 
-`LynxRendererFactory2.begin()`/`end()` maintain the in-cycle flag (`setInsideChangeDetection`, `packages/runtime/src/lib/lynx-render-lifecycle.ts`), so in-cycle rendering stays a no-op — its `end()` already flushes. It uses `queueMicrotask`, never `setTimeout` (a macrotask flush crashes the native engine), stands down if a real CD cycle starts first, and is skipped while the first render is pending (native flushes after `renderPage`). Covered by `packages/runtime/src/lib/lynx-element/settle-flush.spec.ts`.
+`LynxRendererFactory2.begin()`/`end()` maintain the in-cycle flag (`setInsideChangeDetection`, `packages/runtime/src/lib/lynx-render-lifecycle.ts`), so in-cycle rendering stays a no-op — its `end()` already flushes. It uses `queueMicrotask`, never `setTimeout` (a macrotask flush crashes the native engine), stands down if a real CD cycle starts first, and is skipped while the first render is pending (native flushes after `renderPage`). Covered by `packages/runtime/src/lib/lynx-element/settle-flush.test.ts`.
 
 ---
 
@@ -303,7 +303,7 @@ Static template content survives because its wrappers are adopted canonically at
 
 ### The fix
 
-A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and `LynxRenderer.destroyNode` (now non-null) drops the entry when Angular tears the element down. Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.spec.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a *fresh* embedded view).
+A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and `LynxRenderer.destroyNode` (now non-null) drops the entry when Angular tears the element down. Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a *fresh* embedded view).
 
 ---
 
@@ -325,7 +325,7 @@ A second property matters for teardown once `<block>` uses `__CreateWrapperEleme
 
 - `createBlockElement()` (`packages/runtime/src/lib/lynx-document/element-creators/create-block-element.ts`) calls `__CreateWrapperElement(pageId)` instead of `__CreateElement('block', pageId)`.
 - `#doRemove()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) removes every subtree as a single unit, so a `<block>`'s flattened children are never picked apart mid-teardown. (This once needed a `<block>`-specific exception, back when the renderer "parked" children individually; parking has since been removed.)
-- Covered by `packages/runtime/src/lib/renderer/teardown.spec.ts`.
+- Covered by `packages/runtime/src/lib/renderer/teardown.test.ts`.
 
 `<if>` and `<for>` are still created via the generic `__CreateElement` path and share the same theoretical "unregistered native UI" risk as `<block>` did — but neither is exercised anywhere in the codebase today, so this is a known latent gap, not a confirmed bug.
 
@@ -4114,7 +4114,7 @@ Disable `ImagePerformanceWarning` in `provideRenderer()` (`packages/runtime/src/
 { provide: IMAGE_CONFIG, useValue: { disableImageSizeWarning: true, disableImageLazyLoadWarning: true } }
 ```
 
-This makes web's document-access path identical to iOS's (which already never reached `getDocument()`), so it is zero-risk on native — and it's semantically correct: Lynx renders native `<image>`, not HTML `<img>`, and has no LCP, so the diagnostic can never apply. Covered by `providers.spec.ts`.
+This makes web's document-access path identical to iOS's (which already never reached `getDocument()`), so it is zero-risk on native — and it's semantically correct: Lynx renders native `<image>`, not HTML `<img>`, and has no LCP, so the diagnostic can never apply. Covered by `providers.test.ts`.
 
 Still-latent hazard: any *other* Angular internal that reads the bare `document`/`window` (instead of the DI `DOCUMENT` token) on the normal path would hit the same shadowed-undefined param on both platforms. None do today. A more general fix would be `ɵsetDocument(stub)` — it sets the module-level `DOCUMENT` var `getDocument()` checks first, bypassing the shadowed global — deliberately avoided for now because it mutates Angular global state on every platform, changing native behavior for no current benefit.
 
@@ -4155,7 +4155,7 @@ if (__WEB__ && __MAIN_THREAD__ && !wasHydrating) {
 - **`setTimeout` (macrotask)** defers the flush until after web-core's `renderPage` frame unwinds — the same safe context `runAfterFirstRender` uses for a `<list>`'s first update, so it can't re-enter `componentAtIndex` mid-`renderPage`.
 - **`!wasHydrating`** skips it during SSR hydration, where the snapshot tree already exists and web-core shows the view via its `[ssr]` CSS attribute.
 
-This was masked until now: the `ImagePerformanceWarning` crash aborted bootstrap before anything could render, so the missing first flush only became visible once that crash was fixed. Covered by the `__WEB__` define tests in `angular-webpack-plugin.spec.ts`.
+This was masked until now: the `ImagePerformanceWarning` crash aborted bootstrap before anything could render, so the missing first flush only became visible once that crash was fixed. Covered by the `__WEB__` define tests in `angular-webpack-plugin.test.ts`.
 
 > **Accessing the web preview:** web-core uses `SharedArrayBuffer` + `Atomics.wait` for synchronous native-module calls, which needs `crossOriginIsolated` — i.e. COOP + COEP headers (the dev server sends both) **and** a trustworthy origin. Load the preview over `http://localhost:<port>` or HTTPS, **not** a LAN IP; on a plain-HTTP LAN IP the browser ignores COOP ("origin untrustworthy"), `SharedArrayBuffer` is `undefined`, and the first synchronous native call throws. This is an access-time requirement, not a code fix.
 

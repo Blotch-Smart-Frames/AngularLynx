@@ -11,6 +11,7 @@
     "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
     "directory": "packages/runtime"
   },
+  "license": "MIT",
   "files": [
     "dist",
     "schematics",

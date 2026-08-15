@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-npx skills add blotch/angular-lynx-skills
+npx skills add https://github.com/Blotch-Smart-Frames/AngularLynx/tree/main/packages/skills/skills/angular-lynx
 ```
 
 ## What's included

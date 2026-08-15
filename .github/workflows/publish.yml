@@ -34,6 +34,7 @@ jobs:
           npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/rsbuild-plugin-angular-lynx
           npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/testing-library
           npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/dolan
+          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/create-angular-lynx
 
       - name: Build @blotch/rsbuild-plugin-angular-lynx
         run: npm run build -w packages/rsbuild-plugin-angular-lynx
@@ -69,5 +70,10 @@ jobs:
 
       - name: Publish @blotch/dolan
         run: npm publish -w packages/dolan --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish create-angular-lynx
+        run: npm publish -w packages/create-angular-lynx --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

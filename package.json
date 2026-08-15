@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Monorepo for AngularLynx — Angular renderer for the Lynx cross-platform native UI framework",
   "keywords": [],
-  "license": "ISC",
+  "license": "MIT",
   "author": "",
   "repository": {
     "type": "git",

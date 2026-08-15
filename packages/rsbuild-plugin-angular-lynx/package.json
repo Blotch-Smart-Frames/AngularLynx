@@ -6,12 +6,12 @@
   "bugs": {
     "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
     "directory": "packages/rsbuild-plugin-angular-lynx"
   },
-  "license": "MIT",
   "files": [
     "dist",
     "patch"

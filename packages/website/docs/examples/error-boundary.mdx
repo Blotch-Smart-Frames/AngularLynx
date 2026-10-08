@@ -1,0 +1,26 @@
+# Error Boundary
+
+Contain rendering failures with Angular's `@boundary` block, show a fallback, and recover with `$reset`.
+
+<Go example="error-boundary" defaultFile="src/app/app.ts" />
+
+```angular-html
+@boundary {
+  <app-price-tile symbol="LYNX" [price]="price()" />
+} @error (let err, retry = $reset) {
+  <text>{{ err.message }}</text>
+  <view (bindtap)="restorePrice(); retry()">
+    <text>Retry</text>
+  </view>
+}
+```
+
+## Key concepts
+
+- **`@boundary` / `@error`**: a widget that throws while rendering is replaced by its fallback. The rest of the screen keeps working.
+- **`$reset`**: renders the primary block again. Fix the cause first, or it fails again.
+- **`when`**: chain `@error` blocks to show a different fallback for each kind of error (offline vs. bug).
+- **`resource()`**: `value()` throws in the error state, so a boundary can catch failed loads. Guard the loading state with `@if`.
+- **`onViewError`**: caught errors still reach the `ErrorHandler`. This example extends `LynxErrorHandler` to list them on screen, deferring the signal write with `queueMicrotask`.
+
+See the [Error Boundaries guide](/guide/error-boundaries) for the full API.

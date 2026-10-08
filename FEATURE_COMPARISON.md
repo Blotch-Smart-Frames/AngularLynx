@@ -102,9 +102,9 @@
 
 | Feature                        |               AngularLynx                |       React Lynx        |        Vue Lynx        |
 | ------------------------------ | :--------------------------------------: | :---------------------: | :--------------------: |
-| Error boundary / recovery      |     🚫 (won't do — `@error` coming)      | ✅ (`useErrorBoundary`) | ✅ (`onErrorCaptured`) |
+| Error boundary / recovery      |       ✅ (`@boundary` + `$reset`)        | ✅ (`useErrorBoundary`) | ✅ (`onErrorCaptured`) |
 | Global unhandled error capture | ✅ (`LynxErrorHandler` + `_ReportError`) | ✅ (`lynx.reportError`) |           ✅           |
-| Component-level error UI       |                    ❌                    |           ✅            |           ✅           |
+| Component-level error UI       |              ✅ (`@error`)               |           ✅            |           ✅           |
 
 ## Testing
 
@@ -173,5 +173,5 @@
 
 ### Both React & Vue have, Angular doesn't
 
-- ~~Component-level error boundaries with recovery UI~~ — won't do (Angular's `@error` control flow will handle this natively)
+- ~~Component-level error boundaries with recovery UI~~ — implemented (Angular 22.2 `@boundary` / `@error` blocks; caught errors reported via `LynxErrorHandler.onViewError`)
 - ~~Main thread refs and worklet event handlers~~ — implemented (`MainThreadRef`, `LynxMainThreadEvent`)

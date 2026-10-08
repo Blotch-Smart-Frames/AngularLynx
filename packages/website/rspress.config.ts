@@ -218,6 +218,7 @@ export default defineConfig({
         { text: 'Routing', link: '/guide/routing' },
         { text: 'Forms', link: '/guide/forms' },
         { text: 'Error Handling', link: '/guide/error-handling' },
+        { text: 'Error Boundaries', link: '/guide/error-boundaries' },
         { text: 'Remote Logging', link: '/guide/remote-logging' },
         { text: 'DevTools', link: '/guide/devtools' },
         {
@@ -350,6 +351,7 @@ export default defineConfig({
         { text: 'Data Dashboard', link: '/examples/data-dashboard' },
         { text: 'Data Flow', link: '/examples/data-flow' },
         { text: 'Defer', link: '/examples/defer' },
+        { text: 'Error Boundary', link: '/examples/error-boundary' },
         { text: 'Error Handling', link: '/examples/error-handling' },
         { text: 'Internationalization', link: '/examples/i18n' },
         { text: 'Main Thread', link: '/examples/main-thread' },

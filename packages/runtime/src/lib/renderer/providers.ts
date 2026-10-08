@@ -49,10 +49,20 @@ export const provideRenderer = (): EnvironmentProviders => {
     },
     {
       // Angular's internal code occasionally accesses @Inject(DOCUMENT). In Lynx
-      // there is no DOM document, so we provide an empty object. Specific access
-      // points (defaultView, querySelector) are polyfilled in runtime.ts.
+      // there is no DOM document, so we provide a minimal stub. Specific access
+      // points (defaultView, querySelector) on the global `document` are
+      // polyfilled in polyfills.ts.
       provide: DOCUMENT,
-      useValue: {},
+      useValue: {
+        // TransferState's root factory calls
+        // `inject(DOCUMENT).getElementById(APP_ID + '-state')` to restore the
+        // `<script>` that Angular SSR inlines. `resource()` and `httpResource()`
+        // inject TransferState on construction, so without this every resource
+        // threw "getElementById is not a function". Lynx never has that script
+        // (AngularLynx SSR hydrates from its own element snapshot), so `null` —
+        // "no transferred state" — is the correct answer, not just a stub.
+        getElementById: () => null,
+      },
     },
     // Provide a base href so Angular's PathLocationStrategy uses it directly
     // instead of calling getBaseHrefFromDOM(), which crashes in Lynx because

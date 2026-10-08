@@ -7,7 +7,7 @@ Outputs allow a child component to emit custom events that a parent component ca
 Declare outputs using the `output()` function. This returns an `OutputEmitterRef`.
 
 ```ts
-import { Component, output } from '@angular/core';
+import {Component, output} from '@angular/core';
 
 @Component({
   selector: 'custom-slider',
@@ -15,10 +15,10 @@ import { Component, output } from '@angular/core';
 })
 export class CustomSlider {
   // Output without event data
-  panelClosed = output<void>();
+  readonly panelClosed = output<void>();
 
   // Output with event data (number)
-  valueChanged = output<number>();
+  readonly valueChanged = output<number>();
 
   changeValue(newValue: number) {
     this.valueChanged.emit(newValue);
@@ -31,10 +31,7 @@ export class CustomSlider {
 Bind to the output event using parentheses `()`. If the event emits data, access it using the special `$event` variable.
 
 ```html
-<custom-slider
-  (panelClosed)="savePanelState()"
-  (valueChanged)="logValue($event)"
-/>
+<custom-slider (panelClosed)="savePanelState()" (valueChanged)="logValue($event)" />
 ```
 
 ## Configuration Options
@@ -46,7 +43,7 @@ The `output` function accepts a config object to specify an alias.
 export class CustomSlider {
   // The event is named 'valueChanged' in the template,
   // but accessed as 'changed' in the component class.
-  changed = output<number>({ alias: 'valueChanged' });
+  readonly changed = output<number>({ alias: 'valueChanged' });
 }
 ```
 
@@ -74,10 +71,10 @@ import { Component, Output, EventEmitter } from '@angular/core';
 
 @Component({...})
 export class LegacyExample {
-  @Output() valueChanged = new EventEmitter<number>();
+  @Output() readonly valueChanged = new EventEmitter<number>();
 
   // With alias
-  @Output('customEventName') changed = new EventEmitter<void>();
+  @Output('customEventName') readonly changed = new EventEmitter<void>();
 }
 ```
 

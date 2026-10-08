@@ -48,6 +48,24 @@ To use a component, add it to the `imports` array of the consuming component and
 export class App {}
 ```
 
+### Self-Closing Tags
+
+Angular supports self-closing tags for custom components.
+
+**Rule:** Always use self-closing tags when a component does not contain projected content or child nodes:
+
+```html
+<!-- Preferred: concise and modern -->
+<app-profile />
+<app-user-card [user]="currentUser()" />
+<router-outlet />
+
+<!-- Avoid: redundant closing tags for empty elements -->
+<app-profile></app-profile>
+<app-user-card [user]="currentUser()"></app-user-card>
+<router-outlet></router-outlet>
+```
+
 ## Template Control Flow
 
 Angular uses built-in blocks for conditional rendering and loops.
@@ -95,8 +113,8 @@ The `@for` block iterates over collections. The `track` expression is **required
 The `@switch` block renders content based on a value. It uses strict equality (`===`) and has **no fallthrough**.
 
 ```html
-@switch (status()) { @case ('loading') { <app-spinner /> } @case ('error') {
-<app-error-msg /> } @case ('success') { <app-data-grid /> } @default {
+@switch (status()) { @case ('loading') { <app-spinner /> } @case ('error') { <app-error-msg /> }
+@case ('success') { <app-data-grid /> } @default {
 <p>Unknown status</p>
 } }
 ```
@@ -104,8 +122,8 @@ The `@switch` block renders content based on a value. It uses strict equality (`
 **Exhaustive Type Checking**: Use `@default never;` to ensure all cases of a union type are handled.
 
 ```html
-@switch (state) { @case ('on') { ... } @case ('off') { ... } @default never; //
-Errors if a new state like 'standby' is added }
+@switch (state) { @case ('on') { ... } @case ('off') { ... } @default never; // Errors if a new
+state like 'standby' is added }
 ```
 
 ## Core Concepts

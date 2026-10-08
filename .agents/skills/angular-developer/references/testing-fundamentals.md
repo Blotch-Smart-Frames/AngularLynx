@@ -16,21 +16,18 @@ This project follows a modern, zoneless testing approach. State changes schedule
 ### Basic Test Structure Example
 
 ```ts
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MyComponent } from './my.component';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {MyComponent} from './my.component';
 
 describe('MyComponent', () => {
   let component: MyComponent;
   let fixture: ComponentFixture<MyComponent>;
   let h1: HTMLElement;
 
-  beforeEach(async () => {
-    // 1. Configure the test module
-    await TestBed.configureTestingModule({
-      imports: [MyComponent],
-    }).compileComponents();
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
 
-    // 2. Create the component fixture
+    // Create the component fixture
     fixture = TestBed.createComponent(MyComponent);
     component = fixture.componentInstance;
     h1 = fixture.nativeElement.querySelector('h1');

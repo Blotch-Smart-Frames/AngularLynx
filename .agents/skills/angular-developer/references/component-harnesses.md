@@ -17,18 +17,16 @@ The `TestbedHarnessEnvironment` is the entry point for using harnesses in unit t
 ### Example: Testing with a `MatButtonHarness`
 
 ```ts
-import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { MatButtonHarness } from '@angular/material/button/testing';
-import { MyButtonContainerComponent } from './my-button-container.component';
+import {TestbedHarnessEnvironment} from '@angular/cdk/testing/testbed';
+import {MatButtonHarness} from '@angular/material/button/testing';
+import {MyButtonContainerComponent} from './my-button-container.component';
 
 describe('MyButtonContainerComponent', () => {
   let fixture: ComponentFixture<MyButtonContainerComponent>;
   let loader: HarnessLoader;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [MyButtonContainerComponent, MatButtonModule],
-    }).compileComponents();
+  beforeEach(() => {
+    TestBed.configureTestingModule({});
 
     fixture = TestBed.createComponent(MyButtonContainerComponent);
     // Create a harness loader for the component's fixture
@@ -37,9 +35,7 @@ describe('MyButtonContainerComponent', () => {
 
   it('should find a button with specific text', async () => {
     // Load the harness for a MatButton with the text "Submit"
-    const submitButton = await loader.getHarness(
-      MatButtonHarness.with({ text: 'Submit' }),
-    );
+    const submitButton = await loader.getHarness(MatButtonHarness.with({text: 'Submit'}));
 
     // Use the harness API to interact with the component
     expect(await submitButton.isDisabled()).toBe(false);

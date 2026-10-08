@@ -1,6 +1,6 @@
 {
   "name": "@blotch/rsbuild-plugin-angular-lynx",
-  "version": "22.0.0",
+  "version": "22.2.0",
   "description": "Rsbuild plugin for building AngularLynx applications",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {
@@ -49,9 +49,9 @@
     "tiny-invariant": "^1.3.3"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^22.0.0",
-    "@angular-devkit/core": "^22.0.0",
-    "@angular/build": "^22.0.0",
+    "@angular-devkit/build-angular": "^22.2.2",
+    "@angular-devkit/core": "^22.2.2",
+    "@angular/build": "^22.2.2",
     "@rsbuild/core": "^2.0.5",
     "@rslib/core": "^0.21.4",
     "@rspack/core": "^2.0.2",
@@ -60,10 +60,10 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@angular-devkit/build-angular": "^22.0.0",
-    "@angular-devkit/core": "^22.0.0",
-    "@angular/build": "^22.0.0",
-    "@angular/localize": "^22.0.0",
+    "@angular-devkit/build-angular": "^22.2.0",
+    "@angular-devkit/core": "^22.2.0",
+    "@angular/build": "^22.2.0",
+    "@angular/localize": "^22.2.0",
     "@lynx-js/rspeedy": "^0.14.3"
   },
   "peerDependenciesMeta": {

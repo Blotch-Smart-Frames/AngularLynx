@@ -33,16 +33,16 @@ Create `examples/<name>/` with this file structure:
     "build": "rspeedy build --environment lynx && rspeedy build --environment web"
   },
   "dependencies": {
-    "@angular/common": "^21.0.0",
-    "@angular/compiler": "^21.0.0",
-    "@angular/core": "^21.0.0",
-    "@angular/platform-browser": "^21.0.0",
+    "@angular/common": "^22.2.1",
+    "@angular/compiler": "^22.2.1",
+    "@angular/core": "^22.2.1",
+    "@angular/platform-browser": "^22.2.1",
     "@blotch/angular-lynx": "*"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^21.0.0",
-    "@angular/cli": "^21.0.0",
-    "@angular/compiler-cli": "^21.0.0",
+    "@angular-devkit/build-angular": "^22.2.2",
+    "@angular/cli": "^22.2.2",
+    "@angular/compiler-cli": "^22.2.1",
     "@blotch/rsbuild-plugin-angular-lynx": "*",
     "@lynx-js/rspeedy": "^0.14.3",
     "@lynx-js/types": "^3.8.0",

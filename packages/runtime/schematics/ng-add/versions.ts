@@ -47,5 +47,5 @@ export const VERSIONS = {
   /**
    * @angular/localize — Angular's runtime i18n / $localize support
    */
-  angularLocalize: '^22.0.0',
+  angularLocalize: '^22.2.1',
 } as const;

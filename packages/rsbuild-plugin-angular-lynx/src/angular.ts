@@ -4,7 +4,7 @@ import {
   createAngularCompilation,
   DiagnosticModes,
 } from '@angular/build/src/tools/angular/compilation';
-import { JavaScriptTransformer } from '@angular/build/src/tools/esbuild/javascript-transformer';
+import { JavaScriptTransformer } from '@angular/build/src/tools/javascript-transformer';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
@@ -13,6 +13,7 @@ import {
   createTransformStylesheet,
 } from './component-styles-cache.js';
 import { isLynxUnknownElementMessage } from './is-lynx-unknown-element-message.js';
+import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { buildTransformedCode } from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
@@ -109,8 +110,10 @@ export const applyAngularRules = async (
       thirdPartySourcemaps,
       advancedOptimizations,
       jit: !aot,
+      // Angular 22.2 folded the former positional `maxThreads` argument into
+      // the options; it sizes the worker pool the same way.
+      maxConcurrency: maxWorkers,
     },
-    maxWorkers,
     undefined,
   );
   const tsconfig = buildOptions.tsconfig;
@@ -172,38 +175,38 @@ export const applyAngularRules = async (
       // in every component.
       const { sourceFileCache, fileNames } =
         buildLynxSchemaSourceFileCache(tsconfig);
+      // Angular 22.2 removed `hostOptions.sourceFileCache`; the cache now lives
+      // on the compilation, so seed it there before initialize() builds the host.
+      seedCompilationSourceFiles(compilation, sourceFileCache);
 
       try {
         await compilation.initialize(
           tsconfig,
           {
-            sourceFileCache,
             processWebWorker: (workerFile, _containingFile) => {
               return workerFile;
             },
             transformStylesheet,
           },
-          (compilerOptions) => {
-            // Do NOT set _enableHmr here. That flag is for Angular's esbuild build path:
-            // it makes the AOT compiler emit AppComponent_HmrLoad() functions that call
-            // ɵɵgetReplaceMetadataURL(), which constructs `new URL('...', 'file:///src/...')`.
-            // Lynx's URL implementation rejects file:// as a base URL, crashing on startup.
-            // Additionally, _enableHmr requires the dev server to serve Angular's HMR update
-            // modules at /__angular_hmr/* endpoints — infrastructure we don't yet provide.
-            // Component-level Angular HMR would need a custom endpoint in the Lynx dev server
-            // and a runtime that applies templateUpdates from compilation.initialize().
-            // Live reload works without this: webpack falls back to a full CDP Page.reload
-            // when no module calls module.hot.accept().
-            return {
-              ...compilerOptions,
-              noEmitOnError: false,
-              inlineSources: !!sourcemap,
-              inlineSourceMap: !!sourcemap,
-              sourceMap: undefined,
-              mapRoot: undefined,
-              sourceRoot: undefined,
-              preserveSymlinks: false,
-            };
+          // Angular 22.2 replaced the compiler-options transformer callback with
+          // declarative overrides. `transformCompilerOptions()` in @angular/build
+          // now applies what the callback used to set by hand: noEmitOnError=false,
+          // inlineSources/inlineSourceMap from `sourcemap`, and clearing
+          // sourceMap/mapRoot/sourceRoot so maps stay inline for rspack to consume.
+          {
+            sourcemap: !!sourcemap,
+            preserveSymlinks: false,
+            // Do NOT set enableHmr here (it maps to _enableHmr). That flag is for Angular's
+            // esbuild build path: it makes the AOT compiler emit AppComponent_HmrLoad()
+            // functions that call ɵɵgetReplaceMetadataURL(), which constructs
+            // `new URL('...', 'file:///src/...')`. Lynx's URL implementation rejects file://
+            // as a base URL, crashing on startup. Additionally, _enableHmr requires the dev
+            // server to serve Angular's HMR update modules at /__angular_hmr/* endpoints —
+            // infrastructure we don't yet provide. Component-level Angular HMR would need a
+            // custom endpoint in the Lynx dev server and a runtime that applies
+            // templateUpdates from compilation.initialize(). Live reload works without
+            // this: webpack falls back to a full CDP Page.reload when no module calls
+            // module.hot.accept().
           },
         );
       } catch (error) {
@@ -308,8 +311,13 @@ export const applyAngularRules = async (
         const contents = await javascriptTransformer.transformData(
           context.resourcePath,
           context.code,
-          false,
-          false,
+          {
+            skipLinker: false,
+            // Angular 22.2 turned this positional `false` into a lazy resolver;
+            // resolving to false still means "side-effect free", which lets the
+            // transformer add pure annotations and wrap tslib decorators.
+            sideEffects: () => Promise.resolve(false),
+          },
         );
         return {
           code: transformWorklets(

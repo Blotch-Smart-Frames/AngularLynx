@@ -6,8 +6,9 @@ const main = () => {
   const fileContentsJson = JSON.parse(
     readFileSync(angularBuildPackageJson, 'utf8'),
   );
-  fileContentsJson.exports['./src/tools/esbuild/javascript-transformer'] =
-    './src/tools/esbuild/javascript-transformer.js';
+  // Angular 22.2 moved the transformer out of `src/tools/esbuild/`.
+  fileContentsJson.exports['./src/tools/javascript-transformer'] =
+    './src/tools/javascript-transformer/index.js';
   fileContentsJson.exports['./src/tools/angular/compilation'] =
     './src/tools/angular/compilation/index.js';
   fileContentsJson.exports[

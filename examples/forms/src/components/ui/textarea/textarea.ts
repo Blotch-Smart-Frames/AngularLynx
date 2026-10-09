@@ -33,7 +33,10 @@ import { cn } from '@blotch/dolan/utils/cn';
            regardless of source order, so this transparent overlay would swallow
            every tap — no focus, no typing. The textarea below carries
            position:relative + z-index:1 so it sits above the overlay on BOTH
-           platforms (redundant on Lynx, required on web). No pointer-events (which
+           platforms (required on web). The wrapper's z-0 makes it the stacking
+           context for that z-index; without it Lynx stacks the native textarea
+           against an ancestor outside the scroll-view, so it stays fixed on
+           screen while the page scrolls. No pointer-events (which
            errors the Lynx build). OUTSET only; Lynx doesn't render inset
            box-shadows. -->
       <view [class]="textareaWrapperClass()">
@@ -109,7 +112,9 @@ export class UiTextarea implements FormValueControl<string> {
 
   protected readonly textareaWrapperClass = computed(() =>
     cn(
-      'min-h-20 rounded-xl bg-muted px-3.5 py-2.5',
+      // z-0: stacking context for the textarea's z-index (see the template
+      // comment) so the native textarea scrolls with its wrapper.
+      'z-0 min-h-20 rounded-xl bg-muted px-3.5 py-2.5',
       this.disabled() && 'opacity-50',
     ),
   );

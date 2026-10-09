@@ -1290,6 +1290,12 @@ Performance tip: explicitly set `overflow: hidden` on non-scrolling animated ele
 
 Without `z-index: 0`, children of a `<scroll-view>` can visually "escape" the scroll container during scrolling animations. Setting `z-index: 0` on the scroll-view creates a stacking context that clips its children correctly. Additionally, **do not set `z-index` directly on `<x-list>` children** — it interferes with the list's recycling mechanism. Set z-index inside the list item content instead.
 
+A z-indexed element is stacked against its nearest stacking-context ancestor, and Lynx only makes an element a stacking context when it sets `z-index` itself. If that ancestor is outside the scroll-view, the element **does not scroll at all**: it stays fixed on screen while its siblings scroll away. Seen on iOS with `<input>`/`<textarea>` carrying `position: relative; z-index: 1` (needed on web to sit above an absolutely positioned focus-ring overlay). The field's background box scrolled, but the transparent native text field didn't, so its placeholder appeared to float over the wrong field. This happens on both old and new Lynx bundles, so it isn't tied to a toolchain version.
+
+### The fix
+
+Make the nearest ancestor *inside* the scrolling content a stacking context: give it `z-index: 0` (Tailwind `z-0`). The `z-index: 1` then stays local to that wrapper and scrolls with it. Do this in the component that introduces the `z-index` (see the wrappers in `packages/ui`'s `input.ts`/`textarea.ts`) rather than relying on every consumer's scroll-view to set `z-index: 0`.
+
 ---
 
 ## `aspect-ratio: auto` is not supported

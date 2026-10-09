@@ -3,7 +3,8 @@
 // } from "@rsbuild/core";
 
 import path from 'node:path';
-import type { ExposedAPI, RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
+import type { LynxConfig } from '@lynx-js/rsbuild-plugin';
+import type { RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
 import { RuntimeWrapperWebpackPlugin } from '@lynx-js/runtime-wrapper-webpack-plugin';
 import {
   CSSPlugins,
@@ -16,7 +17,11 @@ import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import { LAYERS } from './layers.js';
 import type { PluginAngularLynxOptions } from './utils/options.js';
 
-const DEFAULT_DIST_PATH_INTERMEDIATE = '.rspeedy';
+/**
+ * The key `pluginLynx` (the Lynx build engine, which Rspeedy registers) exposes
+ * its resolved config under. Mirrors `S_LYNX_CONFIG` in React Lynx's plugin.
+ */
+const S_LYNX_CONFIG = Symbol.for('@lynx-js/rsbuild-plugin:config');
 const PLUGIN_NAME_TEMPLATE = 'lynx:template';
 const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';
@@ -39,13 +44,19 @@ export const applyEntry = (
     targetSdkVersion,
   } = options;
 
-  const exposed = api.useExposed<ExposedAPI>(Symbol.for('rspeedy.api'));
-  if (!exposed) {
-    throw new Error('Failed to get rspeedy API from useExposed');
-  }
-  const { config } = exposed;
-
   api.modifyBundlerChain((chain, { environment, isDev }) => {
+    // The bundle filename and the intermediate directory are owned by the Lynx
+    // build engine since Rspeedy 0.17. Resolving them through it (rather than
+    // reading `output.filename` and hardcoding the old `.rspeedy` directory)
+    // keeps LynxTemplatePlugin in sync with where css-extract emits its
+    // intermediate CSS (now `.lynx`), and supports function-form filenames.
+    const lynxConfig = api.useExposed<LynxConfig>(S_LYNX_CONFIG);
+    if (!lynxConfig) {
+      throw new Error(
+        'No Lynx config exposed. `pluginLynx` has to be applied for the Lynx build engine to be configured.',
+      );
+    }
+
     const isLynx = environment.name === 'lynx';
     const isWeb = environment.name === 'web';
     // Mirror React Lynx's HMR/live-reload flag logic (rspeedy/plugin-react/src/entry.ts).
@@ -69,10 +80,10 @@ export const applyEntry = (
     for (const [entryName, entryPoint] of Object.entries(entries)) {
       const { imports } = getChunks(entryName, entryPoint.values());
 
-      const templateFilename =
-        (typeof config.output?.filename === 'object'
-          ? (config.output.filename.bundle ?? config.output.filename.template)
-          : config.output?.filename) ?? '[name].[platform].bundle';
+      const templateFilename = lynxConfig.resolveBundleFilename({
+        entryName,
+        platform: environment.name,
+      });
 
       const mainThreadEntry = `${entryName}__main-thread`;
       const mainThreadName = path.posix.join(`${entryName}/main-thread.js`);
@@ -124,13 +135,8 @@ export const applyEntry = (
         .plugin(`${PLUGIN_NAME_TEMPLATE}-${entryName}`)
         .use(LynxTemplatePlugin, [
           {
-            filename: templateFilename
-              .replaceAll('[name]', entryName)
-              .replaceAll('[platform]', environment.name),
-            intermediate: path.posix.join(
-              DEFAULT_DIST_PATH_INTERMEDIATE,
-              entryName,
-            ),
+            filename: templateFilename,
+            intermediate: lynxConfig.resolveIntermediateDir({ entryName }),
             chunks: [mainThreadEntry, backgroundEntry],
             cssPlugins: [CSSPlugins.parserPlugins.removeFunctionWhiteSpace()],
             customCSSInheritanceList,

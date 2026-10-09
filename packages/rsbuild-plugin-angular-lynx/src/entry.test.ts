@@ -85,7 +85,29 @@ const createMockChain = (options: {
   return { chain, pluginUses, entryBuilders };
 };
 
-const createMockApi = (config: unknown | undefined) => {
+/**
+ * A stand-in for the `LynxConfig` that `pluginLynx` exposes. The real one
+ * resolves `output.filename` / the intermediate directory; here they are
+ * deterministic so the template plugin's inputs can be asserted.
+ */
+const createLynxConfig = () => ({
+  resolveBundleFilename: vi.fn(
+    ({ entryName, platform }: { entryName: string; platform: string }) =>
+      `${entryName}.${platform}.bundle`,
+  ),
+  resolveIntermediateDir: vi.fn(
+    ({ entryName }: { entryName: string }) => `.lynx/${entryName}`,
+  ),
+});
+
+/**
+ * Builds a mock RsbuildPluginAPI exposing `lynxConfig`. Pass `null` (rather
+ * than `undefined`, which would hit the default) to simulate `pluginLynx` not
+ * being applied, so nothing is exposed.
+ */
+const createMockApi = (
+  lynxConfig: ReturnType<typeof createLynxConfig> | null = createLynxConfig(),
+) => {
   let handler:
     | ((
         chain: unknown,
@@ -94,7 +116,7 @@ const createMockApi = (config: unknown | undefined) => {
     | undefined;
 
   const api = {
-    useExposed: vi.fn(() => (config === undefined ? undefined : { config })),
+    useExposed: vi.fn(() => lynxConfig ?? undefined),
     modifyBundlerChain: vi.fn((h: any) => {
       handler = h;
     }),
@@ -102,6 +124,7 @@ const createMockApi = (config: unknown | undefined) => {
 
   return {
     api,
+    lynxConfig,
     triggerChain: (
       chain: unknown,
       environment: { name: string; config?: unknown },
@@ -111,18 +134,24 @@ const createMockApi = (config: unknown | undefined) => {
 };
 
 describe('applyEntry', () => {
-  it('throws when the rspeedy API is not exposed', () => {
-    const { api } = createMockApi(undefined);
+  it('throws when the Lynx config is not exposed', () => {
+    const { api, triggerChain } = createMockApi(null);
+    const { chain } = createMockChain({ entries: null });
 
-    expect(() => applyEntry(api as never, entryOptions)).toThrow(
-      'Failed to get rspeedy API',
+    // The lookup is deferred to the chain handler (pluginLynx exposes its
+    // config during setup, possibly after this plugin), so applyEntry itself
+    // must not throw.
+    expect(() => applyEntry(api as never, entryOptions)).not.toThrow();
+    expect(() =>
+      triggerChain(chain, { name: 'lynx', config: {} }, false),
+    ).toThrow('No Lynx config exposed');
+    expect(api.useExposed).toHaveBeenCalledWith(
+      Symbol.for('@lynx-js/rsbuild-plugin:config'),
     );
   });
 
   it('splits entries and wires lynx plugins with HMR + live reload in dev', () => {
-    const { api, triggerChain } = createMockApi({
-      output: { filename: { bundle: '[name].[platform].bundle' } },
-    });
+    const { api, triggerChain } = createMockApi();
     const { chain, pluginUses, entryBuilders } = createMockChain({
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
@@ -154,9 +183,7 @@ describe('applyEntry', () => {
   });
 
   it('skips HMR/live-reload prepends when both are disabled', () => {
-    const { api, triggerChain } = createMockApi({
-      output: { filename: '[name].bundle' },
-    });
+    const { api, triggerChain } = createMockApi();
     const { chain, entryBuilders } = createMockChain({
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
@@ -173,9 +200,7 @@ describe('applyEntry', () => {
   });
 
   it('uses the web encode plugin and no HMR on the web target', () => {
-    const { api, triggerChain } = createMockApi({
-      output: { filename: { template: '[name].[platform].bundle' } },
-    });
+    const { api, triggerChain } = createMockApi();
     const { chain, pluginUses, entryBuilders } = createMockChain({
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
@@ -191,8 +216,8 @@ describe('applyEntry', () => {
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
   });
 
-  it('falls back to the default template filename when output.filename is undefined', () => {
-    const { api, triggerChain } = createMockApi({ output: {} });
+  it('takes the template filename and intermediate dir from the Lynx config', () => {
+    const { api, lynxConfig, triggerChain } = createMockApi();
     const { chain, pluginUses } = createMockChain({
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
@@ -200,13 +225,23 @@ describe('applyEntry', () => {
     applyEntry(api as never, entryOptions);
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
-    // The template plugin (first plugin used) received the default, interpolated.
+    // pluginLynx owns filename/intermediate resolution so the template plugin
+    // stays in sync with where css-extract emits its intermediate CSS.
+    expect(lynxConfig!.resolveBundleFilename).toHaveBeenCalledWith({
+      entryName: 'main',
+      platform: 'lynx',
+    });
+    expect(lynxConfig!.resolveIntermediateDir).toHaveBeenCalledWith({
+      entryName: 'main',
+    });
+    // The template plugin (first plugin used) receives the resolved values as-is.
     const templateUse = pluginUses[0];
     expect((templateUse.args[0] as any).filename).toBe('main.lynx.bundle');
+    expect((templateUse.args[0] as any).intermediate).toBe('.lynx/main');
   });
 
   it('tolerates an empty entry set (entries() returns null)', () => {
-    const { api, triggerChain } = createMockApi({ output: {} });
+    const { api, triggerChain } = createMockApi();
     const { chain } = createMockChain({ entries: null });
 
     applyEntry(api as never, entryOptions);

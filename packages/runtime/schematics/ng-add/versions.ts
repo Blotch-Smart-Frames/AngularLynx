@@ -15,15 +15,15 @@ export const VERSIONS = {
   /**
    * @lynx-js/rspeedy — Lynx dev-server and production build tool
    */
-  rspeedy: '^0.14.3',
+  rspeedy: '^0.18.0',
   /**
    * @lynx-js/qrcode-rsbuild-plugin — generates a QR code in dev mode for on-device testing
    */
-  qrcodePlugin: '^0.4.6',
+  qrcodePlugin: '^0.7.3',
   /**
    * @lynx-js/types — TypeScript type definitions for the Lynx runtime APIs
    */
-  lynxTypes: '^3.8.0',
+  lynxTypes: '^4.3.0',
   /**
    * tailwindcss — utility-first CSS framework (optional, controlled by the `tailwind` schema option)
    */
@@ -31,7 +31,7 @@ export const VERSIONS = {
   /**
    * @lynx-js/tailwind-preset — Lynx-specific Tailwind preset with native design tokens
    */
-  tailwindPreset: '^0.4.0',
+  tailwindPreset: '^0.6.0',
   /**
    * @blotch/angular-lynx-testing-library — Testing Library utilities for AngularLynx components
    */

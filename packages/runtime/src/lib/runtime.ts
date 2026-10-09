@@ -12,6 +12,7 @@ import './error-reporting';
 import './polyfills';
 import { pageReady } from './global-callbacks';
 import { __workletMap } from './worklet-bridge';
+import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
 
 /**
  * Bootstrap Angular application on the Lynx runtime. Waits for the main thread to
@@ -22,6 +23,13 @@ export const bootstrapApplication = async (
   rootComponent: Type<unknown>,
   options?: ApplicationConfig,
 ): Promise<ApplicationRef> => {
+  // Lazy routes and @defer blocks are loaded by Lynx's chunk-loading runtime
+  // through `lynx.loadLazyBundle`, which the framework must provide. Install it
+  // on both threads before Angular can trigger any dynamic import. Placed before
+  // the HMR teardown and the renderPage wait so it is in place even if a
+  // re-bootstrap triggers an import immediately; re-installing is harmless.
+  installLazyBundleLoader();
+
   // HMR re-bootstrap: destroy previous app so Angular's platform accepts a new one.
   // When webpack hot-updates a module and the entry re-evaluates, this function
   // is called again. We destroy the old app (which removes its Lynx elements)

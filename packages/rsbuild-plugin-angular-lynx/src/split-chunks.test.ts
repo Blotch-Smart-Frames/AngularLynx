@@ -2,16 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { applySplitChunksRule } from './split-chunks';
 
 const createMockApi = (userConfig: Record<string, any> = {}) => {
-  let rsbuildConfigHandler:
-    | ((config: any, utils: { mergeRsbuildConfig: any }) => any)
+  let environmentConfigHandler:
+    | ((
+        config: any,
+        utils: { name: string; mergeEnvironmentConfig: any },
+      ) => any)
     | undefined;
   let rspackConfigHandler:
     | ((config: any, utils: { environment: { name: string } }) => any)
     | undefined;
 
   const api = {
-    modifyRsbuildConfig: vi.fn((handler) => {
-      rsbuildConfigHandler = handler;
+    modifyEnvironmentConfig: vi.fn((handler) => {
+      environmentConfigHandler = handler;
     }),
     modifyRspackConfig: vi.fn((handler) => {
       rspackConfigHandler = handler;
@@ -21,14 +24,16 @@ const createMockApi = (userConfig: Record<string, any> = {}) => {
 
   return {
     api,
-    triggerRsbuildConfig: (config: any) => {
-      const mergeRsbuildConfig = vi.fn((_cfg, override) => ({
-        ..._cfg,
+    triggerEnvironmentConfig: (config: any, name = 'lynx') => {
+      const mergeEnvironmentConfig = vi.fn((cfg, override) => ({
+        ...cfg,
         ...override,
-        performance: { ..._cfg.performance, ...override?.performance },
       }));
-      const result = rsbuildConfigHandler!(config, { mergeRsbuildConfig });
-      return { result, mergeRsbuildConfig };
+      const result = environmentConfigHandler!(config, {
+        name,
+        mergeEnvironmentConfig,
+      });
+      return { result, mergeEnvironmentConfig };
     },
     triggerRspackConfig: (config: any, environment = { name: 'lynx' }) => {
       return rspackConfigHandler!(config, { environment });
@@ -41,37 +46,119 @@ const defaultOptions = {
 } as any;
 
 describe('applySplitChunksRule', () => {
-  it('registers modifyRsbuildConfig and modifyRspackConfig handlers', () => {
+  it('registers modifyEnvironmentConfig and modifyRspackConfig handlers', () => {
     const { api } = createMockApi();
 
     applySplitChunksRule(api as never, defaultOptions);
 
-    expect(api.modifyRsbuildConfig).toHaveBeenCalledOnce();
+    expect(api.modifyEnvironmentConfig).toHaveBeenCalledOnce();
     expect(api.modifyRspackConfig).toHaveBeenCalledOnce();
   });
 
-  describe('modifyRsbuildConfig handler', () => {
-    it('sets strategy to "all-in-one" when user has no chunkSplit strategy', () => {
-      const { api, triggerRsbuildConfig } = createMockApi({});
+  describe('modifyEnvironmentConfig handler', () => {
+    // Splitting must default to off: shared chunks extracted by
+    // SplitChunksPlugin are missing from lynx_aci and break lazy routes.
+    it('disables splitChunks when the user configured no splitting', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({});
 
       applySplitChunksRule(api as never, defaultOptions);
-      const { mergeRsbuildConfig } = triggerRsbuildConfig({});
+      const { result, mergeEnvironmentConfig } = triggerEnvironmentConfig({});
 
-      expect(mergeRsbuildConfig).toHaveBeenCalledWith(
+      expect(mergeEnvironmentConfig).toHaveBeenCalledWith(
         {},
-        { performance: { chunkSplit: { strategy: 'all-in-one' } } },
+        { splitChunks: false },
+      );
+      expect(result).toEqual({ splitChunks: false });
+    });
+
+    it('disables splitChunks when the legacy strategy is "all-in-one"', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({
+        performance: { chunkSplit: { strategy: 'all-in-one' } },
+      });
+
+      applySplitChunksRule(api as never, defaultOptions);
+      const { mergeEnvironmentConfig } = triggerEnvironmentConfig({});
+
+      expect(mergeEnvironmentConfig).toHaveBeenCalledWith(
+        {},
+        { splitChunks: false },
       );
     });
 
-    it('preserves config when user already has a chunkSplit strategy', () => {
-      const { api, triggerRsbuildConfig } = createMockApi({
+    it('preserves config when the user set a global legacy splitting strategy', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({
         performance: { chunkSplit: { strategy: 'split-by-experience' } },
       });
 
       applySplitChunksRule(api as never, defaultOptions);
-      const { result } = triggerRsbuildConfig({ existing: true });
+      const config = { existing: true };
+      const { result, mergeEnvironmentConfig } =
+        triggerEnvironmentConfig(config);
 
-      expect(result).toEqual({ existing: true });
+      expect(result).toBe(config);
+      expect(mergeEnvironmentConfig).not.toHaveBeenCalled();
+    });
+
+    it('preserves config when the user set splitChunks globally', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({
+        splitChunks: { preset: 'per-package' },
+      });
+
+      applySplitChunksRule(api as never, defaultOptions);
+      const config = { existing: true };
+      const { result, mergeEnvironmentConfig } =
+        triggerEnvironmentConfig(config);
+
+      expect(result).toBe(config);
+      expect(mergeEnvironmentConfig).not.toHaveBeenCalled();
+    });
+
+    it('preserves config when the user explicitly set splitChunks: false', () => {
+      // `false` is a user choice, not "unset" — nothing to merge.
+      const { api, triggerEnvironmentConfig } = createMockApi({
+        splitChunks: false,
+      });
+
+      applySplitChunksRule(api as never, defaultOptions);
+      const config = { existing: true };
+      const { result } = triggerEnvironmentConfig(config);
+
+      expect(result).toBe(config);
+    });
+
+    it('prefers the environment-scoped splitChunks over the global one', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({
+        environments: { lynx: { splitChunks: { preset: 'per-package' } } },
+      });
+
+      applySplitChunksRule(api as never, defaultOptions);
+      const config = { existing: true };
+
+      // The lynx environment configured splitting itself → left alone...
+      expect(triggerEnvironmentConfig(config, 'lynx').result).toBe(config);
+      // ...while another environment without its own config gets it disabled.
+      expect(triggerEnvironmentConfig({}, 'web').result).toEqual({
+        splitChunks: false,
+      });
+    });
+
+    it('prefers the environment-scoped legacy strategy over the global one', () => {
+      const { api, triggerEnvironmentConfig } = createMockApi({
+        performance: { chunkSplit: { strategy: 'split-by-experience' } },
+        environments: {
+          lynx: { performance: { chunkSplit: { strategy: 'all-in-one' } } },
+        },
+      });
+
+      applySplitChunksRule(api as never, defaultOptions);
+      const config = { existing: true };
+
+      // Scoped `all-in-one` wins over the global split strategy → disabled.
+      expect(triggerEnvironmentConfig({}, 'lynx').result).toEqual({
+        splitChunks: false,
+      });
+      // An environment without scoped config falls back to the global strategy.
+      expect(triggerEnvironmentConfig(config, 'web').result).toBe(config);
     });
   });
 

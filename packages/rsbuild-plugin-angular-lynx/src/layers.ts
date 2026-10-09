@@ -1,4 +1,4 @@
-import type { RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
+import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 
 /**
  * Webpack layer names for the dual-thread build. Each entry is duplicated
@@ -13,14 +13,8 @@ export const LAYERS = {
 
 export const applyLayers = (api: RsbuildPluginAPI): void => {
   api.modifyBundlerChain((chain) => {
-    const experiments = chain.get(
-      'experiments',
-    ) as Rspack.Configuration['experiments'];
-
-    chain.experiments({
-      ...experiments,
-      layers: true,
-    });
+    // No `experiments.layers` opt-in: Rspack 2 made layers a stable,
+    // always-on feature and removed the experiment flag.
 
     // SWC target differentiation per layer. The Lynx bytecode generator
     // requires ES2019 for main-thread and ES2015 for background.

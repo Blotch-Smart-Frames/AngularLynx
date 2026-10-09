@@ -634,6 +634,71 @@ class OutletAnchor {
 })
 class RouteOutletHost {}
 
+/**
+ * @boundary (Angular 22.2+) wrapping projected content plus a child that can
+ * throw mid-update. A failure detaches the whole primary view — projected
+ * content included — and swaps in the @error fallback; $reset re-creates a
+ * fresh primary view and re-attaches the consumer's projected content. That
+ * re-attach is the remount case (the projected root's painting node died at the
+ * flush that committed its removal), so it must be rebuilt, not re-used stale.
+ */
+const boundaryBroken = signal(false);
+let lastBoundaryReset: (() => void) | null = null;
+
+@Component({
+  selector: 'boundary-bomb',
+  standalone: true,
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="bomb">{{ label() }}</text>`,
+})
+class BoundaryBomb {
+  label(): string {
+    if (boundaryBroken()) throw new Error('bomb');
+    return 'armed';
+  }
+}
+
+@Component({
+  selector: 'boundary-card',
+  standalone: true,
+  imports: [BoundaryBomb],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    @boundary {
+      <view class="card-body"><ng-content /><boundary-bomb /></view>
+    } @error (retry = $reset) {
+      <view class="card-fallback">{{ capture(retry) }}</view>
+    }
+  `,
+})
+class BoundaryCard {
+  /**
+   * Captured from the template so the test can call $reset without a tap.
+   */
+  capture(retry: () => void): string {
+    lastBoundaryReset = retry;
+    return 'failed';
+  }
+}
+
+@Component({
+  selector: 'boundary-host',
+  standalone: true,
+  imports: [BoundaryCard],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `
+    <view class="before"></view>
+    <boundary-card
+      ><view class="boundary-projected"><text>hi</text></view></boundary-card
+    >
+    <view class="after"></view>
+  `,
+})
+class BoundaryHost {}
+
 describe('renderer teardown', () => {
   beforeAll(() => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -1024,5 +1089,68 @@ describe('renderer teardown', () => {
     // instead of the canonical #children (fixed via LynxElement.#byNativeId).
     expect(findRenderedByClass('cond-img')).toHaveLength(1);
     expect(findRenderedByClass('row')).toHaveLength(3);
+  });
+
+  it('detaches a failed @boundary primary view and renders its @error fallback in place', async () => {
+    // Boundary-caught errors are still reported to the ErrorHandler (the
+    // default one console.errors) — silence it, the routing is tested elsewhere.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    boundaryBroken.set(false);
+    const fixture = TestBed.createComponent(BoundaryHost);
+    fixture.detectChanges();
+    expect(findRenderedByClass('card-body')).toHaveLength(1);
+
+    boundaryBroken.set(true);
+    fixture.detectChanges();
+    await flush();
+
+    // The whole primary view (projected content and the bomb included) must be
+    // gone from the native tree — not just hidden — and the fallback rendered.
+    expect(findByClass('card-body')).toHaveLength(0);
+    expect(findByClass('boundary-projected')).toHaveLength(0);
+    expect(findByClass('bomb')).toHaveLength(0);
+    const fallback = findRenderedByClass('card-fallback');
+    expect(fallback).toHaveLength(1);
+    // Inserted at the boundary's anchor, between its siblings.
+    const order = descendants()
+      .filter((n) =>
+        ['before', 'card-fallback', 'after'].some((c) => n.classes.has(c)),
+      )
+      .map((n) => [...n.classes][0]);
+    expect(order).toEqual(['before', 'card-fallback', 'after']);
+    errorSpy.mockRestore();
+  });
+
+  it('re-renders projected content after a @boundary $reset', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    boundaryBroken.set(false);
+    const fixture = TestBed.createComponent(BoundaryHost);
+    fixture.detectChanges();
+
+    boundaryBroken.set(true);
+    fixture.detectChanges();
+    await flush();
+    expect(findRenderedByClass('card-fallback')).toHaveLength(1);
+
+    boundaryBroken.set(false);
+    lastBoundaryReset!();
+    fixture.detectChanges();
+    await flush();
+
+    // The fresh primary view is rendered, and the consumer's projected content —
+    // whose painting node died while the fallback was up — is RENDERED again
+    // inside it (findRenderedByClass prunes stale, dead-painting-node refs).
+    expect(findByClass('card-fallback')).toHaveLength(0);
+    const body = findRenderedByClass('card-body');
+    const projected = findRenderedByClass('boundary-projected');
+    expect(body).toHaveLength(1);
+    expect(projected).toHaveLength(1);
+    expect(isAncestorOf(body[0], projected[0])).toBe(true);
+    // And its nested <text> rode along with the rebuilt raw-text inside it.
+    const [textEl] = projected[0].children;
+    expect(textEl.tag).toBe('text');
+    expect(textEl.children.map((c) => c.text)).toContain('hi');
+    expect(findRenderedByClass('bomb')).toHaveLength(1);
+    errorSpy.mockRestore();
   });
 });

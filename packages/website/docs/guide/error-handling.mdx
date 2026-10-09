@@ -14,6 +14,10 @@ When an unhandled error occurs in your Angular code (template expressions, lifec
 
 The error code `1101` follows the Lynx convention (`LYNX_ERROR_CODE_LEPUS`), matching what React Lynx uses for JavaScript errors.
 
+:::tip Recovering from rendering errors
+`LynxErrorHandler` reports errors but can't restore the UI. To swap a crashed part of the screen for a fallback and let the user retry, use an [`@boundary` block](./error-boundaries).
+:::
+
 ## On-Device Debugging
 
 Since Lynx apps run on-device with no browser console, `LynxErrorHandler` stores the last error in a global string. Render it in your template to see errors on screen:

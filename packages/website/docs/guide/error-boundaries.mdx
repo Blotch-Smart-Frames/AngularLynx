@@ -1,0 +1,201 @@
+# Error Boundaries
+
+Angular 22.2 adds **`@boundary`**, a template block that contains rendering failures. If anything inside it throws while Angular creates or updates the view, Angular removes that part of the UI and renders an `@error` fallback in its place. The rest of the screen keeps working. AngularLynx supports `@boundary` with no extra setup, and the fallback swap happens directly on the native Lynx element tree.
+
+<Go example="error-boundary" defaultFile="src/app/app.ts" />
+
+:::warning Developer preview
+`@boundary` is a developer preview API in Angular 22.2. Its syntax and behavior may change in later Angular releases.
+:::
+
+## Basic usage
+
+Wrap the risky part of a template in `@boundary` and add an `@error` block for the fallback:
+
+```angular-html title="src/app/app.html"
+<view>
+  <text>Portfolio</text>
+
+  @boundary {
+    <app-price-tile symbol="LYNX" [price]="price()" />
+  } @error {
+    <text>This price is unavailable right now.</text>
+  }
+
+  <text>Everything outside the boundary keeps rendering.</text>
+</view>
+```
+
+When `app-price-tile` throws (in its constructor, a template binding, a lifecycle hook, and so on), Angular removes its elements and inserts the `@error` content at the same position.
+
+## Reading the error and retrying
+
+The `@error` block has two context variables:
+
+| Variable | Description                                                                                                                             |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `$error` | The caught error. Values that aren't `Error` instances are wrapped in an `ErrorBoundaryWrappedError`, so `.message` is always readable. |
+| `$reset` | A function that removes the fallback and renders the primary block again.                                                               |
+
+Use them directly, or give them names with `let`:
+
+```angular-html
+@boundary {
+  <app-price-tile symbol="LYNX" [price]="price()" />
+} @error (let err, retry = $reset) {
+  <view>
+    <text>{{ err.message }}</text>
+    <view (bindtap)="restorePrice(); retry()">
+      <text>Retry</text>
+    </view>
+  </view>
+}
+```
+
+`$reset()` renders the primary block again with the current state. Fix whatever caused the error first, as `restorePrice()` does above. Otherwise the block throws again and the fallback comes straight back.
+
+## Different fallbacks for different errors
+
+Chain several `@error` blocks with a `when` condition. Angular uses the first one whose condition is truthy:
+
+```angular-html
+@boundary {
+  <app-profile-card [failure]="failure()" />
+} @error (let err, retry = $reset; when isOffline(err)) {
+  <text>You're offline. We'll show your profile once you reconnect.</text>
+} @error (let err) {
+  <text>Something went wrong: {{ err.message }}</text>
+}
+```
+
+```typescript
+isOffline(err: unknown): boolean {
+  return err instanceof OfflineError;
+}
+```
+
+You can have only one `@error` block without a `when`, and it must come last. If no block matches, the error moves up to the nearest enclosing `@boundary`. If there isn't one, Angular throws a `BoundaryError` whose `cause` is the original error.
+
+## Async data with `resource()`
+
+When a `resource()` is in the error state, reading `value()` throws, so a boundary can catch the failure directly. Guard the loading state, though. `value()` is `undefined` during the first load and while the resource reloads after an error:
+
+```angular-html
+@if (quote.isLoading() && !quote.hasValue()) {
+  <text>Loading quote…</text>
+} @else {
+  @boundary {
+    <text>{{ quote.value() }}</text>
+  } @error {
+    <text>{{ quote.error()?.message }}</text>
+    <view (bindtap)="quote.reload()">
+      <text>Try again</text>
+    </view>
+  }
+}
+```
+
+Here **Try again** only calls `reload()`. The reload puts the resource back in the loading state, so the `@if` removes the boundary, and the next successful load creates a fresh one. No `$reset()` is needed.
+
+:::tip
+The error that reaches the boundary is a `ResourceValueError` that wraps the loader's error. In development builds, its message starts with "Resource is currently in an error state…". Read `resource.error()` to show the loader's own message.
+:::
+
+## What a boundary catches
+
+| Caught                                    | Not caught                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| Component and directive constructors      | Event handlers such as `(bindtap)`. These go to the global `ErrorHandler`.        |
+| Template bindings and interpolations      | Errors thrown inside the `@error` block itself. These go to the next boundary up. |
+| Lifecycle hooks                           | Async work that never feeds back into rendering                                   |
+| `@for` and other control-flow expressions | Some projected (`<ng-content>`) content                                           |
+| Effects declared inside the boundary      |                                                                                   |
+| Lazily and dynamically created components |                                                                                   |
+
+Boundaries can be nested. The innermost boundary that matches handles the error.
+
+## Reporting caught errors
+
+Angular also reports caught errors to the app's `ErrorHandler`. When the handler implements `onViewError(error, details)`, Angular calls that method. Otherwise it calls `handleError`.
+
+`LynxErrorHandler`, which `provideRenderer()` registers, implements `onViewError`. It handles a caught error like this:
+
+1. Writes it to `globalThis.__lynxLastError` for [on-device debugging](./error-handling#on-device-debugging).
+2. Reports it with `lynx.reportError(error, { level: 'warning' })`.
+
+Uncaught errors still go through `handleError` and the fatal `_ReportError` channel. A caught error is reported as a warning because the user is already looking at a working fallback. It shouldn't raise the native red error screen or be counted as a crash.
+
+To send caught errors to your own monitoring, extend `LynxErrorHandler`:
+
+```typescript title="src/app/reporting-error-handler.ts"
+import { type ErrorDetails, Injectable } from '@angular/core';
+import { LynxErrorHandler } from '@blotch/angular-lynx';
+
+@Injectable()
+export class ReportingErrorHandler extends LynxErrorHandler {
+  override onViewError(error: Error, details: ErrorDetails): void {
+    super.onViewError(error, details);
+    // details.declarationType — the component that threw
+    // details.boundary?.type  — the component containing the @boundary
+    // details.boundary?.reset — retries the boundary
+    myMonitoring.captureException(error, {
+      component: details.declarationType?.name,
+    });
+  }
+}
+```
+
+```typescript title="src/app/app.config.ts"
+import { ErrorHandler } from '@angular/core';
+
+export const appConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    { provide: ErrorHandler, useClass: ReportingErrorHandler }, // [!code highlight]
+  ],
+};
+```
+
+:::warning Don't write signals in `onViewError`
+Angular calls `onViewError` synchronously in the middle of rendering. Writing a signal there throws `NG0600` and can break the boundary. If you want to show caught errors in the UI, defer the write:
+
+```typescript
+override onViewError(error: Error, details: ErrorDetails): void {
+  super.onViewError(error, details);
+  queueMicrotask(() => this.#log.add(error.message));
+}
+```
+
+:::
+
+## Programmatic boundaries
+
+`ViewContainerRef.createComponent()`, `ViewContainerRef.createEmbeddedView()`, and the standalone `createComponent()` accept an `onError` callback that works like a boundary for views you create in code:
+
+```typescript
+this.vcr.createComponent(Widget, {
+  onError: (error, details) => {
+    this.failed.set(true);
+  },
+});
+```
+
+Unlike `@boundary`, `onError` doesn't catch errors thrown by the component's constructor.
+
+## Testing
+
+`@boundary` works with `@blotch/angular-lynx-testing-library`. Render a component, make it fail, and check the fallback:
+
+```typescript title="src/app/price-tile.test.ts"
+import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+
+it('shows the fallback when the price feed breaks', async () => {
+  const { container, componentRef } = await render(App);
+
+  (componentRef.instance as App).price.set(Number.NaN);
+  await waitForUpdate();
+
+  expect(container.textContent).toContain('Price feed sent NaN');
+});
+```

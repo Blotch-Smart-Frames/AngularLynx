@@ -104,4 +104,59 @@ describe('LynxErrorHandler', () => {
       ).not.toThrow();
     });
   });
+
+  describe('onViewError', () => {
+    // A minimal ErrorDetails — the handler ignores it, but Angular always
+    // passes one, so the tests mirror the real call shape.
+    const details = {
+      declarationType: class {},
+      declarationInstance: {},
+    };
+
+    afterEach(() => {
+      delete (globalThis as any).lynx;
+    });
+
+    it('writes the caught error to __lynxLastError', () => {
+      handler.onViewError(new Error('caught by boundary'), details);
+      expect((globalThis as any).__lynxLastError).toContain(
+        'Error: caught by boundary',
+      );
+    });
+
+    it('reports to lynx.reportError at warning level', () => {
+      const reportError = vi.fn();
+      (globalThis as any).lynx = { reportError };
+
+      const err = new Error('recovered');
+      handler.onViewError(err, details);
+
+      expect(reportError).toHaveBeenCalledWith(err, { level: 'warning' });
+    });
+
+    it('never calls the fatal _ReportError for a caught error', () => {
+      // The boundary already rendered its fallback — escalating to the fatal
+      // LEPUS channel would raise the on-device red error overlay.
+      const fatal = vi.fn();
+      (globalThis as any)._ReportError = fatal;
+      (globalThis as any).lynx = { reportError: vi.fn() };
+
+      handler.onViewError(new Error('recovered'), details);
+
+      expect(fatal).not.toHaveBeenCalled();
+    });
+
+    it('does not throw outside the Lynx runtime (no lynx global)', () => {
+      expect(() =>
+        handler.onViewError(new Error('off device'), details),
+      ).not.toThrow();
+    });
+
+    it('does not throw when lynx.reportError is unavailable (older runtimes)', () => {
+      (globalThis as any).lynx = {};
+      expect(() =>
+        handler.onViewError(new Error('old runtime'), details),
+      ).not.toThrow();
+    });
+  });
 });

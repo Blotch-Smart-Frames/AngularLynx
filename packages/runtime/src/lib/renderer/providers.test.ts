@@ -44,13 +44,16 @@ describe('provideRenderer', () => {
   });
 
   describe('DOCUMENT', () => {
-    it('provides an empty object as DOCUMENT', () => {
+    it('provides a stub DOCUMENT that has no elements to look up', () => {
       vi.stubGlobal('__MAIN_THREAD__', false);
       const injector = createInjector();
 
       const doc = injector.get(DOCUMENT);
 
-      expect(doc).toEqual({});
+      // TransferState's factory looks up Angular SSR's `<script id="ng-state">`
+      // via getElementById; Lynx never has one, so it must exist and say so.
+      expect(Object.keys(doc)).toEqual(['getElementById']);
+      expect(doc.getElementById('ng-state')).toBeNull();
     });
   });
 

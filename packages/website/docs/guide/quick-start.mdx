@@ -59,6 +59,10 @@ To see your app running as a true native experience, use [Lynx Explorer](https:/
 2. **Android** — Download the APK from the same releases page and install on your device or emulator
 3. Scan the QR code shown in the terminal, or enter the bundle URL manually
 
+:::info Turn on Lynx DevTool for live reload
+In Lynx Explorer, open the settings tab and turn on **Lynx DevTool**. When you save a file, the dev server reloads the app through DevTool. With DevTool off, the rebuild succeeds but the app keeps showing the old code until you reopen the bundle URL.
+:::
+
 :::tip
 The QR code plugin (`@lynx-js/qrcode-rsbuild-plugin`) can be added to your `lynx.config.ts` to display a scannable QR code in the terminal during development. See the [kitchen-sink-app](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/examples/kitchen-sink-app) for an example.
 :::

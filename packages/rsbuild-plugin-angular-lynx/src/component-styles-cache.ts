@@ -35,6 +35,14 @@ export const createTransformStylesheet = (params: {
   scopedCssCacheDir: string;
   componentStylesCache: Map<string, ComponentStylesEntry>;
   componentScopeIds: Map<string, ComponentScopeInfo>;
+  /**
+   * Called with the path of each scoped CSS file whose contents were
+   * (re)written. On watch rebuilds the scoped files change after rspack's
+   * watcher has already collected the edit, so angular.ts passes them to
+   * rspack as modified. Otherwise the CSS change would only ship on the
+   * following rebuild.
+   */
+  onStylesheetWritten?: (filePath: string) => void;
 }): ((
   data: string,
   containingFile: string,
@@ -47,6 +55,7 @@ export const createTransformStylesheet = (params: {
     scopedCssCacheDir,
     componentStylesCache,
     componentScopeIds,
+    onStylesheetWritten,
   } = params;
 
   return async (data, containingFile, stylesheetFile, order, className) => {
@@ -98,6 +107,7 @@ export const createTransformStylesheet = (params: {
         if (fs.readFileSync(filePath, 'utf-8') === content) return;
       } catch {}
       fs.writeFileSync(filePath, content);
+      onStylesheetWritten?.(filePath);
     };
 
     let scopedPath: string;

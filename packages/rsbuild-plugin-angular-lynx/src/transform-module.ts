@@ -17,17 +17,26 @@ import type {
  *      stylesheets (resolved relative to the component file).
  *   2. Appends the `Component.ɵcmp.id = '<scopeId>'` assignment that ties the CSS
  *      files (whose filenames carry the same scope ID) to the runtime component.
- *   3. Injects an HMR self-accept on bootstrap entries (dev mode only).
- *   4. Runs the worklet ("main thread" directive) transform over the result.
+ *   3. Runs the worklet ("main thread" directive) transform over the result.
+ *
+ * It deliberately does NOT make the bootstrap entry accept its own hot
+ * updates (`module.hot.accept()`), which an earlier version did. On Lynx the
+ * screen is drawn by the Angular app on the main thread, but webpack HMR only
+ * runs on the background thread: nothing loads the main-thread hot-update
+ * chunk. A self-accepting entry let the background thread apply the update
+ * and re-bootstrap its own copy of the app, so HMR reported success and the
+ * main thread kept rendering the old code until a manual reload. With no
+ * module accepting, the update aborts and the Lynx HMR client
+ * (`@lynx-js/webpack-dev-transport`) falls back to a full `Page.reload`, which
+ * re-runs both threads with the new bundle.
  */
 export const buildTransformedCode = (params: {
   code: string;
   resourcePath: string;
   componentStyles: Pick<ComponentStylesEntry, 'imports'> | undefined;
   scopeInfo: ComponentScopeInfo | undefined;
-  isDevMode: boolean;
 }): string => {
-  const { resourcePath, componentStyles, scopeInfo, isDevMode } = params;
+  const { resourcePath, componentStyles, scopeInfo } = params;
   let code = params.code;
 
   if (componentStyles) {
@@ -60,16 +69,6 @@ export const buildTransformedCode = (params: {
   // (EmulatedLynxRenderer adds _nghost-{id} to the host element).
   if (scopeInfo) {
     code += `\n;${scopeInfo.className}.ɵcmp.id = '${scopeInfo.scopeId}';\n`;
-  }
-  // In dev mode, inject HMR self-accept in entry files so webpack doesn't
-  // trigger a full page reload. The entry re-evaluates on any dependency
-  // update, calling bootstrapApplication again (which handles
-  // re-bootstrap by destroying the previous app and creating a fresh one).
-  // Without this, webpack falls back to a full CDP Page.reload on every
-  // change because no module calls module.hot.accept() — the reload works
-  // but is slow (rebuilds everything, loses navigation state).
-  if (isDevMode && code.includes('bootstrapApplication')) {
-    code += `\n;if (module.hot) { module.hot.accept(); }`;
   }
   return transformWorklets(code, resourcePath);
 };

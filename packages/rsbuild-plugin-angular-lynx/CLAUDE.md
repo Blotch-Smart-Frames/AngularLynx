@@ -31,8 +31,8 @@ Each entry is duplicated into two webpack entries with different layers:
 
 - Reads workspace config via `getAngularWorkspace()` / `getProjectByCwd()`
 - Uses `@angular/build` internal APIs: `JavaScriptTransformer` (JS transform), `createAngularCompilation` (TS compilation with AOT)
-- `onBeforeEnvironmentCompile`: initializes Angular compilation, emits affected files to cache, runs diagnostics
-- `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports
+- `onBeforeEnvironmentCompile`: initializes Angular compilation, emits affected files to cache, runs diagnostics. Runs on every watch rebuild too. `angular-rebuild-coordinator.ts` feeds the compiler's `modifiedFiles` to `compilation.update()`, serializes the `web`/`lynx` hooks onto the one shared compilation, and adds files whose Angular output changed back to `modifiedFiles` so rspack rebuilds them
+- `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports, registers external templates/stylesheets as watched dependencies
 
 ## Key Files
 
@@ -42,6 +42,7 @@ src/
   entry.ts                             # Entry splitting, Lynx plugin application
   layers.ts                            # Layer definitions (LAYERS.MAIN_THREAD, LAYERS.BACKGROUND)
   angular.ts                           # Angular compilation and transform pipeline
+  angular-rebuild-coordinator.ts       # Keeps the Angular compilation in sync with watch rebuilds
   angular-webpack-plugin.ts            # Webpack plugin: banners, defines, async chunk wrapping
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules

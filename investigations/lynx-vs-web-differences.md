@@ -4265,3 +4265,36 @@ readonly isWeb = __WEB__;
 ```
 
 The `z-index` must **not** apply on native. There, a `z-index` on a sticky scroll-view child promotes it out of the scroll content and freezes it like `position: fixed` — the header stops scrolling entirely. So the elevation is web-only: it fixes the web paint order without touching native, where sticky already works. Elevate the header rather than reordering source — Lynx makes every view positioned, so source order alone won't keep it on top (exemplar: `examples/contact-list`).
+
+---
+
+## Saving a file doesn't update the app on Lynx unless Lynx DevTool is on
+
+### What you'd expect (web)
+
+The dev server rebuilds and the page updates: either a hot module update applies in place, or the HMR client falls back to `window.location.reload()`.
+
+### What Lynx does
+
+In AngularLynx, the screen is drawn by the Angular app on the **main thread**, but webpack HMR only runs on the **background thread**. Nothing loads the main-thread hot-update chunk (`main__main-thread.<hash>.hot-update.js`), so a hot update can never change what's on screen.
+
+There is no `window.location.reload()` either. `@lynx-js/webpack-dev-transport` falls back to a full reload through Lynx DevTool (`NativeModules.LynxDevToolSetModule.invokeCdp` with `Page.reload`). With DevTool off in Lynx Explorer, that call does nothing. Explorer logs the `invokeCdp` call, and then no reload follows.
+
+Two things used to hide this:
+
+- The rsbuild plugin made the bootstrap entry accept its own hot updates. The background thread applied the update and reported success, so the reload fallback never ran.
+- Before that, Angular never recompiled on watch rebuilds, so every hot update was empty anyway.
+
+### The fix
+
+- **Don't let any module accept hot updates** (`packages/rsbuild-plugin-angular-lynx/src/transform-module.ts`). An update with no accepting module aborts, and the client falls back to `Page.reload`, which re-runs both threads with the new bundle.
+- **Turn on Lynx DevTool** in Lynx Explorer's settings tab. Without it, the reload request goes nowhere.
+
+Each save is therefore a full reload: the app restarts on its initial route. Updating in place, the way React Lynx does for component edits, would need hot updates applied on the main thread as well.
+
+To check what happened on the iOS Simulator, read Explorer's logs. JS `console` output doesn't appear there, but native module calls and script loads do:
+
+```sh
+xcrun simctl spawn booted log show --last 5m --style compact \
+  --predicate 'process == "LynxExplorer"' | grep -E "hot-update|invokeCdp|LoadTemplate"
+```

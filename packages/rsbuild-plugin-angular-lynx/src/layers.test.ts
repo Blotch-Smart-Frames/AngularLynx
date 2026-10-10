@@ -29,16 +29,17 @@ const createOneOfBuilder = () => {
 };
 
 /**
- * Builds a mock bundler chain that tracks experiments and per-layer rule builders.
+ * Builds a mock bundler chain that tracks per-layer rule builders. `get` and
+ * `experiments` exist only so tests can assert they are never used.
  */
-const createMockChain = (existingExperiments: Record<string, unknown> = {}) => {
+const createMockChain = () => {
   const oneOfBuilders: Record<
     string,
     ReturnType<typeof createOneOfBuilder>
   > = {};
 
   const chain = {
-    get: vi.fn().mockReturnValue(existingExperiments),
+    get: vi.fn(),
     experiments: vi.fn(),
     module: {
       rule: vi.fn().mockReturnValue({
@@ -97,35 +98,16 @@ describe('applyLayers', () => {
     expect(api.modifyBundlerChain).toHaveBeenCalledOnce();
   });
 
-  it('enables the webpack layers experiment', () => {
+  it('does not touch experiments (layers are always-on in Rspack 2)', () => {
     const { api, triggerHandler } = createMockApi();
     const { chain } = createMockChain();
 
     applyLayers(api as never);
     triggerHandler(chain);
 
-    expect(chain.experiments).toHaveBeenCalledWith(
-      expect.objectContaining({ layers: true }),
-    );
-  });
-
-  it('preserves existing experiments when enabling layers', () => {
-    const { api, triggerHandler } = createMockApi();
-    const { chain } = createMockChain({
-      outputModule: true,
-      cacheUnaffected: true,
-    });
-
-    applyLayers(api as never);
-    triggerHandler(chain);
-
-    expect(chain.experiments).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outputModule: true,
-        cacheUnaffected: true,
-        layers: true,
-      }),
-    );
+    // Rspack 2 removed `experiments.layers`; setting it would be rejected.
+    expect(chain.experiments).not.toHaveBeenCalled();
+    expect(chain.get).not.toHaveBeenCalled();
   });
 
   describe('background layer rule', () => {

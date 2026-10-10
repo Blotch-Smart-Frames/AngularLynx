@@ -18,16 +18,26 @@ export const pluginAngularLynx = (
   return {
     name: 'lynx:angular',
     pre: ['lynx:rsbuild:plugin-api'],
-    setup: (api) => {
+    setup: async (api) => {
       const normalizedOptions = normalizeOptions(options);
       applyCSS(api, normalizedOptions);
       applyTailwind(api);
       applyEntry(api, normalizedOptions);
       applyLayers(api);
-      applyAngularRules(api, normalizedOptions);
+      // applyAngularRules reads angular.json asynchronously and only then
+      // registers its hooks (including the modifyRsbuildConfig that adds
+      // polyfills, $localize init and global styles to `source.preEntry`).
+      // Rsbuild awaits an async `setup` before applying modifyRsbuildConfig, so
+      // the promise must be awaited — otherwise the hooks register too late and
+      // are silently skipped. Rsbuild 1 happened to win this race; Rsbuild 2
+      // (rspeedy 0.15+) does not, which dropped every global stylesheet.
+      // It is started here and awaited last so the synchronous registrations
+      // below keep their existing order.
+      const angularRules = applyAngularRules(api, normalizedOptions);
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
       applyDevLogger(api);
+      await angularRules;
     },
   };
 };

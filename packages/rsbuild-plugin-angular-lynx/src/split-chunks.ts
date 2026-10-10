@@ -32,22 +32,37 @@ export const applySplitChunksRule = (
   api: RsbuildPluginAPI,
   options: Required<PluginAngularLynxOptions>,
 ): void => {
-  api.modifyRsbuildConfig((config, { mergeRsbuildConfig }) => {
+  // Per environment rather than global: `splitChunks` can be set per
+  // environment (e.g. only for `web`), so each one needs its own decision.
+  api.modifyEnvironmentConfig((config, { name, mergeEnvironmentConfig }) => {
+    // Read the user's intent for this environment, preferring the
+    // environment-scoped config over the global one (as React Lynx does). The
+    // 'original' config is used because the merged `config` already carries
+    // Rsbuild's defaults, which would make it look as if the user had
+    // configured splitting and stop us from turning it off.
     const userConfig = api.getRsbuildConfig('original');
-    if (!userConfig.performance?.chunkSplit?.strategy) {
-      // all-in-one disables SplitChunksPlugin's shared-module extraction.
-      // This is critical for lazy loading: without it, shared dependencies get
-      // extracted into unnamed sibling chunks that are absent from lynx_aci
-      // (Lynx's async chunk index). Those unnamed chunks fall through to
-      // requireModuleAsync (broken on some SDKs), causing navigation failures.
-      // With all-in-one, each lazy route is a single self-contained chunk.
-      return mergeRsbuildConfig(config, {
-        performance: {
-          chunkSplit: {
-            strategy: 'all-in-one',
-          },
-        },
-      });
+    const scoped = userConfig.environments?.[name];
+    const splitChunks = scoped?.splitChunks ?? userConfig.splitChunks;
+    const chunkSplitStrategy =
+      scoped?.performance?.chunkSplit?.strategy ??
+      userConfig.performance?.chunkSplit?.strategy;
+    // Disabling chunk splitting is critical for lazy loading: without it,
+    // shared dependencies get extracted into unnamed sibling chunks that are
+    // absent from lynx_aci (Lynx's async chunk index). Those unnamed chunks
+    // fall through to requireModuleAsync (broken on some SDKs), causing
+    // navigation failures. With splitting off, each lazy route is a single
+    // self-contained chunk.
+    //
+    // Rsbuild 2 replaced `performance.chunkSplit` with the top-level
+    // `splitChunks` option and ignores the legacy one once `splitChunks` is
+    // set, so we set `splitChunks: false` — unless the user configured
+    // splitting themselves. A legacy `all-in-one` strategy still maps to
+    // "off", matching React Lynx's handling.
+    if (
+      splitChunks === undefined &&
+      (!chunkSplitStrategy || chunkSplitStrategy === 'all-in-one')
+    ) {
+      return mergeEnvironmentConfig(config, { splitChunks: false });
     }
     return config;
   });

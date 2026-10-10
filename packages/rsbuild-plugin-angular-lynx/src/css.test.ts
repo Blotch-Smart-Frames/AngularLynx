@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The CSS-extract plugins are dynamically imported inside applyCSS; provide
-// constructable stand-ins with a static `loader` so the loader-wiring runs.
+// The CSS-extract plugin is dynamically imported inside applyCSS; provide a
+// constructable stand-in with a static `loader` so the loader-wiring runs.
+// Only the Rspack plugin exists since css-extract-webpack-plugin 0.8.
 vi.mock('@lynx-js/css-extract-webpack-plugin', () => {
   class CssExtractRspackPlugin {
     static loader = 'rspack-css-extract-loader';
@@ -10,14 +11,7 @@ vi.mock('@lynx-js/css-extract-webpack-plugin', () => {
       this.args = args;
     }
   }
-  class CssExtractWebpackPlugin {
-    static loader = 'webpack-css-extract-loader';
-    args: unknown[];
-    constructor(...args: unknown[]) {
-      this.args = args;
-    }
-  }
-  return { CssExtractRspackPlugin, CssExtractWebpackPlugin };
+  return { CssExtractRspackPlugin };
 });
 
 vi.mock('@lynx-js/template-webpack-plugin', () => ({
@@ -34,13 +28,13 @@ const CHAIN_ID = {
     SASS: 'sass',
     LESS: 'less',
     STYLUS: 'stylus',
-    CSS_INLINE: 'css-inline',
-    SASS_INLINE: 'sass-inline',
-    LESS_INLINE: 'less-inline',
-    // Deliberately undefined to exercise the `rule && ...` guard in the
-    // inline-rules filter (mirrors bundlers that don't define every variant).
-    STYLUS_INLINE: undefined as unknown as string,
     FONT: 'font',
+  },
+  // Rsbuild 2 splits each CSS rule into `oneOf` branches. Plain CSS uses these
+  // dedicated IDs; Sass/Less/Stylus use `<rule>` and `<rule>-inline`.
+  ONE_OF: {
+    CSS_MAIN: 'css-main',
+    CSS_INLINE: 'css-inline',
   },
   USE: {
     LIGHTNINGCSS: 'lightningcss',
@@ -51,10 +45,28 @@ const CHAIN_ID = {
   PLUGIN: { MINI_CSS_EXTRACT: 'mini-css-extract' },
 };
 
+type MockChainConfig = {
+  /** Top-level rules `chain.module.rules.has()` reports as present. */
+  presentRules?: string[];
+  /** Branch keys (`<rule>/<oneOf>`) whose uses contain lightningcss. */
+  lightningBranches?: string[];
+  /** Branch keys whose uses have no css-loader (e.g. a stripped-down rule). */
+  noCssLoaderBranches?: string[];
+  /** Branch keys whose `uses.entries()` returns undefined (no uses at all). */
+  emptyUsesBranches?: string[];
+  /** Parent rule entries (`test`/`dependency`) keyed by rule name. */
+  parentEntries?: Record<string, Record<string, unknown>>;
+};
+
 /**
- * A fluent rule builder recording the calls applyCSS makes on it.
+ * A fluent rule builder recording the calls applyCSS makes on it. The same
+ * shape serves parent rules, `oneOf` branches and the main-thread copy rules.
  */
-const createRule = (hasLightning: boolean) => {
+const createRule = (
+  key: string,
+  config: MockChainConfig,
+  entries: Record<string, unknown>,
+) => {
   const rule: any = {};
   const useBuilder: any = {
     loader: vi.fn(() => useBuilder),
@@ -63,33 +75,50 @@ const createRule = (hasLightning: boolean) => {
     options: vi.fn(() => useBuilder),
     end: vi.fn(() => rule),
   };
+  const hasLightning = (config.lightningBranches ?? []).includes(key);
   const cssUse = { entries: vi.fn(() => ({ options: { modules: true } })) };
-  const usesEntries: Record<string, unknown> = { css: cssUse };
+  const usesEntries: Record<string, unknown> | undefined = (
+    config.emptyUsesBranches ?? []
+  ).includes(key)
+    ? undefined
+    : (config.noCssLoaderBranches ?? []).includes(key)
+      ? {}
+      : { css: cssUse };
   const usesMap: any = {
     has: vi.fn((k: string) =>
-      k === 'lightningcss' ? hasLightning : k in usesEntries,
+      k === 'lightningcss'
+        ? hasLightning
+        : usesEntries !== undefined && k in usesEntries,
     ),
     delete: vi.fn(() => usesMap),
     merge: vi.fn(() => usesMap),
     entries: vi.fn(() => usesEntries),
     end: vi.fn(() => rule),
   };
+  const oneOfs = new Map<string, any>();
   rule.uses = usesMap;
   rule.oneOfs = { clear: vi.fn() };
-  rule.entries = vi.fn(() => ({ test: /\.css$/ }));
+  rule.oneOf = vi.fn((name: string) => {
+    let branch = oneOfs.get(name);
+    if (!branch) {
+      branch = createRule(`${key}/${name}`, config, {});
+      oneOfs.set(name, branch);
+    }
+    return branch;
+  });
+  rule.getOneOf = (name: string) => oneOfs.get(name);
+  rule.entries = vi.fn(() => entries);
   rule.type = vi.fn(() => rule);
+  rule.test = vi.fn(() => rule);
   rule.merge = vi.fn(() => rule);
   rule.issuerLayer = vi.fn(() => rule);
   rule.use = vi.fn(() => useBuilder);
+  rule._useBuilder = useBuilder;
   return rule;
 };
 
-const createMockChain = (config: {
-  presentRules?: string[];
-  lightningRules?: string[];
-}) => {
+const createMockChain = (config: MockChainConfig) => {
   const present = new Set(config.presentRules ?? []);
-  const lightning = new Set(config.lightningRules ?? []);
   const rulesByName = new Map<string, ReturnType<typeof createRule>>();
 
   const scopedRuleBuilder: any = {
@@ -115,8 +144,7 @@ const createMockChain = (config: {
     rule: vi.fn((n: string) => {
       let r = rulesByName.get(n);
       if (!r) {
-        // Lightning presence is keyed on the base rule name (e.g. "css").
-        r = createRule(lightning.has(n));
+        r = createRule(n, config, config.parentEntries?.[n] ?? {});
         rulesByName.set(n, r);
       }
       return r;
@@ -134,7 +162,7 @@ const createMockChain = (config: {
   return { chain, rulesByName, scopedRuleBuilder, pluginBuilder };
 };
 
-const createMockApi = (bundlerType: 'rspack' | 'webpack') => {
+const createMockApi = () => {
   let bundlerChainHandler:
     | ((
         chain: unknown,
@@ -146,7 +174,6 @@ const createMockApi = (bundlerType: 'rspack' | 'webpack') => {
     | undefined;
 
   const api = {
-    context: { bundlerType },
     modifyRsbuildConfig: vi.fn((handler: any) => {
       rsbuildConfigHandler = handler;
     }),
@@ -176,7 +203,7 @@ const defaultOptions = {
 
 describe('applyCSS', () => {
   it('disables injectStyles via modifyRsbuildConfig', () => {
-    const { api, triggerRsbuildConfig } = createMockApi('rspack');
+    const { api, triggerRsbuildConfig } = createMockApi();
     applyCSS(api as never, defaultOptions);
 
     const mergeRsbuildConfig = vi.fn((_c, override) => override);
@@ -188,36 +215,121 @@ describe('applyCSS', () => {
     );
   });
 
-  it('wires CSS loaders, inlines fonts, and scopes CSS modules on lynx (rspack)', async () => {
-    const { api, triggerBundlerChain } = createMockApi('rspack');
+  it('wires CSS loaders on the css-main branch, inlines fonts, and scopes CSS modules on lynx', async () => {
+    const { api, triggerBundlerChain } = createMockApi();
     const { chain, rulesByName, scopedRuleBuilder, pluginBuilder } =
       createMockChain({
-        presentRules: ['css', 'css-inline', 'font'],
-        lightningRules: ['css'],
+        presentRules: ['css', 'font'],
+        lightningBranches: ['css/css-main', 'css/css-inline'],
+        parentEntries: { css: { test: /\.css$/ } },
       });
 
     applyCSS(api as never, defaultOptions);
     await triggerBundlerChain(chain, 'lynx');
 
-    // LightningCSS removed from the css rule on lynx.
-    expect(rulesByName.get('css')!.uses.delete).toHaveBeenCalledWith(
-      'lightningcss',
+    const cssRule = rulesByName.get('css')!;
+    const mainBranch = cssRule.getOneOf('css-main');
+    const inlineBranch = cssRule.getOneOf('css-inline');
+    // Loaders live on the oneOf branches now, so LightningCSS is removed from
+    // both the main and the `?inline` branch — never from the parent rule.
+    expect(mainBranch.uses.delete).toHaveBeenCalledWith('lightningcss');
+    expect(inlineBranch.uses.delete).toHaveBeenCalledWith('lightningcss');
+    expect(cssRule.uses.delete).not.toHaveBeenCalled();
+    // Background extraction is wired onto the main branch with the Rspack loader.
+    expect(mainBranch.issuerLayer).toHaveBeenCalledWith('background');
+    expect(mainBranch._useBuilder.loader).toHaveBeenCalledWith(
+      'rspack-css-extract-loader',
     );
+
+    // The main-thread copy takes `test` from the parent rule (the branch has
+    // none) and no `dependency` merge happens when the parent has none.
+    const mainThreadRule = rulesByName.get('css:main')!;
+    expect(mainThreadRule.test).toHaveBeenCalledWith(/\.css$/);
+    expect(mainThreadRule.issuerLayer).toHaveBeenCalledWith('main');
+    expect(mainThreadRule.merge).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dependency: expect.anything() }),
+    );
+    // css-loader is re-added with exportOnlyLocals forced on.
+    expect(mainThreadRule._useBuilder.options).toHaveBeenCalledWith({
+      modules: { exportOnlyLocals: true },
+    });
+
     // Fonts inlined as data URIs.
     const fontRule = rulesByName.get('font')!;
     expect(fontRule.oneOfs.clear).toHaveBeenCalled();
     expect(fontRule.type).toHaveBeenCalledWith('asset/inline');
     // Scoped CSS module rule marked side-effect free (enableRemoveCSSScope undefined).
     expect(scopedRuleBuilder.sideEffects).toHaveBeenCalledWith(false);
-    // The extract plugin was constructed via .init() with an rspack instance.
-    expect(pluginBuilder._instance).toBeDefined();
+    // The extract plugin was constructed via .init() with the Rspack plugin
+    // and the Lynx-specific options merged over the defaults.
+    expect(pluginBuilder._instance.constructor.name).toBe(
+      'CssExtractRspackPlugin',
+    );
+    expect(pluginBuilder._instance.args[0]).toMatchObject({
+      base: true,
+      enableCSSSelector: true,
+      targetSdkVersion: '3.0',
+    });
   });
 
-  it('keeps LightningCSS and skips font inlining on web (non-rspack)', async () => {
-    const { api, triggerBundlerChain } = createMockApi('webpack');
+  it('uses `<rule>` / `<rule>-inline` branches for sass and copies the parent dependency', async () => {
+    const { api, triggerBundlerChain } = createMockApi();
+    const dependency = { not: 'url' };
     const { chain, rulesByName } = createMockChain({
-      presentRules: ['css', 'css-inline', 'font'],
-      lightningRules: ['css'],
+      presentRules: ['sass'],
+      lightningBranches: ['sass/sass', 'sass/sass-inline'],
+      parentEntries: { sass: { test: /\.s[ac]ss$/, dependency } },
+    });
+
+    applyCSS(api as never, defaultOptions);
+    await triggerBundlerChain(chain, 'lynx');
+
+    const sassRule = rulesByName.get('sass')!;
+    expect(sassRule.oneOf).toHaveBeenCalledWith('sass');
+    expect(sassRule.oneOf).toHaveBeenCalledWith('sass-inline');
+    expect(sassRule.getOneOf('sass').uses.delete).toHaveBeenCalledWith(
+      'lightningcss',
+    );
+    expect(sassRule.getOneOf('sass-inline').uses.delete).toHaveBeenCalledWith(
+      'lightningcss',
+    );
+
+    // Without the parent's `dependency` (e.g. Rsbuild's `{ not: 'url' }`) the
+    // main-thread copy would also match `url` dependencies the parent excludes.
+    const mainThreadRule = rulesByName.get('sass:main')!;
+    expect(mainThreadRule.test).toHaveBeenCalledWith(/\.s[ac]ss$/);
+    expect(mainThreadRule.merge).toHaveBeenCalledWith({ dependency });
+  });
+
+  it('skips the main-thread copy when the branch has no css-loader', async () => {
+    const { api, triggerBundlerChain } = createMockApi();
+    const { chain, rulesByName } = createMockChain({
+      presentRules: ['css', 'less'],
+      noCssLoaderBranches: ['css/css-main'],
+      // `uses.entries()` may return undefined for a branch with no uses at all;
+      // the `?? {}` fallback must still reach the missing-css-loader skip.
+      emptyUsesBranches: ['less/less'],
+    });
+
+    applyCSS(api as never, defaultOptions);
+    await triggerBundlerChain(chain, 'lynx');
+
+    // Extraction is still wired on the background layer...
+    expect(
+      rulesByName.get('css')!.getOneOf('css-main').issuerLayer,
+    ).toHaveBeenCalledWith('background');
+    // ...but there is nothing to rebuild for the main thread, so no copy rule.
+    expect(rulesByName.has('css:main')).toBe(false);
+    expect(rulesByName.has('less:main')).toBe(false);
+    // The inline branches are still processed afterwards.
+    expect(rulesByName.get('less')!.oneOf).toHaveBeenCalledWith('less-inline');
+  });
+
+  it('keeps LightningCSS and skips font inlining on web', async () => {
+    const { api, triggerBundlerChain } = createMockApi();
+    const { chain, rulesByName } = createMockChain({
+      presentRules: ['css', 'font'],
+      lightningBranches: ['css/css-main', 'css/css-inline'],
     });
 
     applyCSS(
@@ -226,20 +338,21 @@ describe('applyCSS', () => {
     );
     await triggerBundlerChain(chain, 'web');
 
-    // Not lynx → LightningCSS is left in place even though the rule has it.
-    expect(rulesByName.get('css')!.uses.delete).not.toHaveBeenCalledWith(
+    // Not lynx → LightningCSS is left in place even though the branches have it.
+    const cssRule = rulesByName.get('css')!;
+    expect(cssRule.getOneOf('css-main').uses.delete).not.toHaveBeenCalledWith(
       'lightningcss',
     );
+    expect(cssRule.getOneOf('css-inline').uses.delete).not.toHaveBeenCalled();
     // Environment is web → the font branch short-circuits before the rule is
     // ever requested from the chain, so no font rule is created.
     expect(rulesByName.has('font')).toBe(false);
   });
 
   it('handles lynx with no font rule present', async () => {
-    const { api, triggerBundlerChain } = createMockApi('rspack');
+    const { api, triggerBundlerChain } = createMockApi();
     const { chain, rulesByName } = createMockChain({
       presentRules: ['css'],
-      lightningRules: [],
     });
 
     applyCSS(api as never, defaultOptions);
@@ -247,6 +360,10 @@ describe('applyCSS', () => {
 
     // FONT rule absent → never requested from the chain.
     expect(rulesByName.has('font')).toBe(false);
+    // Branches without LightningCSS are left untouched.
+    expect(
+      rulesByName.get('css')!.getOneOf('css-main').uses.delete,
+    ).not.toHaveBeenCalled();
   });
 });
 

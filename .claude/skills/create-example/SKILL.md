@@ -44,8 +44,8 @@ Create `examples/<name>/` with this file structure:
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.1",
     "@blotch/rsbuild-plugin-angular-lynx": "*",
-    "@lynx-js/rspeedy": "^0.14.3",
-    "@lynx-js/types": "^3.8.0",
+    "@lynx-js/rspeedy": "^0.18.0",
+    "@lynx-js/types": "^4.3.0",
     "typescript": "~5.9.0"
   }
 }
@@ -55,7 +55,7 @@ If using Tailwind (for UI component examples), also add:
 
 ```json
 "devDependencies": {
-  "@lynx-js/tailwind-preset": "^0.4.0",
+  "@lynx-js/tailwind-preset": "^0.6.0",
   "tailwindcss": "^3.4.19"
 }
 ```

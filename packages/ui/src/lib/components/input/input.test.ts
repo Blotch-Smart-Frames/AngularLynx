@@ -108,6 +108,18 @@ describe('UiInput', () => {
     expect(container.textContent).toContain('Name');
   });
 
+  it('makes the wrapper a stacking context so the field scrolls with it', async () => {
+    // On Lynx a z-indexed element inside a scroll-view only follows the scroll
+    // when an ancestor inside the scroll content is a stacking context. Without
+    // z-0 on the wrapper, the native field (and its placeholder) stays fixed on
+    // screen while the page scrolls.
+    const { container } = await render(UiInput);
+    const wrapper = container.querySelector(
+      '[class*="rounded-xl"][class*="bg-muted"]',
+    );
+    expect(wrapper?.getAttribute('class')?.split(/\s+/)).toContain('z-0');
+  });
+
   it('applies the disabled dim class when disabled', async () => {
     // Covers the true branch of `disabled() && 'opacity-50'` in inputWrapperClass.
     const { componentRef, container } = await render(UiInput);

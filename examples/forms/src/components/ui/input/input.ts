@@ -36,9 +36,14 @@ import { cn } from '@blotch/dolan/utils/cn';
            positioned (absolute) sibling above a static one regardless of source
            order, so this transparent overlay would swallow every tap — no focus,
            no typing. The <input> below therefore carries position:relative +
-           z-index:1 so it sits above the overlay on BOTH platforms (redundant on
-           Lynx, required on web). pointer-events is avoided — it errors the Lynx
-           build. The shadow is OUTSET only: Lynx doesn't render inset box-shadows,
+           z-index:1 so it sits above the overlay on BOTH platforms (required on
+           web). On Lynx, though, a z-indexed element is stacked against its
+           nearest stacking context, and a scroll-view isn't one unless it sets
+           z-index itself — so the native input would stay fixed on screen while
+           the page scrolled (only its placeholder visibly floats). The wrapper's
+           z-0 makes it that stacking context, keeping the input's z-index local
+           so it scrolls with the field. pointer-events is avoided — it errors
+           the Lynx build. The shadow is OUTSET only: Lynx doesn't render inset box-shadows,
            so the crisp 1px "border" is an outset ring hugging the edge, not a
            real inset border. -->
       <view [class]="inputWrapperClass()">
@@ -118,7 +123,11 @@ export class UiInput implements FormValueControl<string> {
   );
 
   protected readonly inputWrapperClass = computed(() =>
-    cn('h-10 rounded-xl bg-muted px-3.5 py-2', this.disabled() && 'opacity-50'),
+    // z-0: stacking context for the input's z-index (see the template comment).
+    cn(
+      'z-0 h-10 rounded-xl bg-muted px-3.5 py-2',
+      this.disabled() && 'opacity-50',
+    ),
   );
 
   /**

@@ -25,6 +25,9 @@ describe('runtime bootstrapApplication', () => {
     // __MAIN_THREAD__ must be set before the module runs so module-level
     // if (__MAIN_THREAD__) blocks are evaluated with a defined value.
     vi.stubGlobal('__MAIN_THREAD__', false);
+    // bootstrapApplication installs `lynx.loadLazyBundle` on the Lynx global,
+    // which doesn't exist in Node, so give it an empty host object.
+    vi.stubGlobal('lynx', {});
 
     delete (globalThis as any).__LYNX_ANGULAR_APP_REF__;
     delete (globalThis as any).__lynxLastError;
@@ -47,6 +50,17 @@ describe('runtime bootstrapApplication', () => {
     const config = { providers: [] };
     await bootstrapApplication(App, config as any);
     expect(mockNgBootstrap).toHaveBeenCalledWith(App, config);
+  });
+
+  it('installs lynx.loadLazyBundle before bootstrapping', async () => {
+    class App {}
+    mockNgBootstrap.mockImplementation(async () => {
+      // Installed before Angular can trigger any dynamic import.
+      expect(typeof (globalThis as any).lynx.loadLazyBundle).toBe('function');
+      return mockAppRef;
+    });
+    await bootstrapApplication(App);
+    expect(mockNgBootstrap).toHaveBeenCalled();
   });
 
   it('returns the ApplicationRef', async () => {

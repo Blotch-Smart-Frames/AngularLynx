@@ -63,7 +63,7 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  *     → rspack rebuilds the changed files plus any whose compiled output changed
  *
  * Then for each module request the `api.transform` hook delegates the per-module
- * string transform (import-prepend + ɵcmp.id + HMR + worklet) to
+ * string transform (import-prepend + ɵcmp.id + worklet) to
  * `buildTransformedCode` in transform-module.ts.
  */
 export const applyAngularRules = async (
@@ -151,7 +151,6 @@ export const applyAngularRules = async (
   // the `Component.ɵcmp.id = '<scopeId>'` assignment that ties the CSS files
   // (whose filenames carry the same scope ID) to the runtime component instance.
   const componentScopeIds = new Map<string, ComponentScopeInfo>();
-  const isDevMode = process.env['NODE_ENV'] !== 'production';
   // Template and stylesheet files each component reads, keyed by the
   // component's source file. The loader registers them as dependencies so
   // rspack watches them: editing an external template must rebuild the
@@ -465,7 +464,6 @@ export const applyAngularRules = async (
           resourcePath: context.resourcePath,
           componentStyles: componentStylesCache.get(context.resourcePath),
           scopeInfo: componentScopeIds.get(context.resourcePath),
-          isDevMode,
         }),
       };
     },

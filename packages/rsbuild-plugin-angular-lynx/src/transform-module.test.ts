@@ -6,7 +6,6 @@ const base = {
   resourcePath: '/proj/src/app/app.component.ts',
   componentStyles: undefined,
   scopeInfo: undefined,
-  isDevMode: false,
 };
 
 describe('buildTransformedCode', () => {
@@ -72,36 +71,12 @@ describe('buildTransformedCode', () => {
     });
   });
 
-  describe('HMR self-accept', () => {
-    it('appends module.hot.accept in dev mode for bootstrap entries', () => {
-      const result = buildTransformedCode({
-        ...base,
-        code: 'bootstrapApplication(App, config);',
-        isDevMode: true,
-      });
+  // A self-accepting entry let HMR re-bootstrap only the background thread,
+  // so the main thread kept rendering the old code (see transform-module.ts).
+  it('does not make the bootstrap entry accept its own hot updates', () => {
+    const code = 'bootstrapApplication(App, config);';
 
-      expect(result).toContain('if (module.hot) { module.hot.accept(); }');
-    });
-
-    it('does not append HMR in dev mode for non-bootstrap modules', () => {
-      const result = buildTransformedCode({
-        ...base,
-        code: 'export class Foo {}',
-        isDevMode: true,
-      });
-
-      expect(result).not.toContain('module.hot');
-    });
-
-    it('does not append HMR in production even for bootstrap entries', () => {
-      const result = buildTransformedCode({
-        ...base,
-        code: 'bootstrapApplication(App, config);',
-        isDevMode: false,
-      });
-
-      expect(result).not.toContain('module.hot');
-    });
+    expect(buildTransformedCode({ ...base, code })).toBe(code);
   });
 
   describe('worklet transform', () => {
@@ -127,18 +102,16 @@ describe('buildTransformedCode', () => {
     });
   });
 
-  it('applies imports, scope id, HMR and worklet together in order', () => {
+  it('applies imports, scope id and worklet together in order', () => {
     const result = buildTransformedCode({
       resourcePath: '/proj/src/app/app.component.ts',
       code: 'bootstrapApplication(App);',
       componentStyles: { imports: ['/proj/src/app/a.css'] },
       scopeInfo: { className: 'App', scopeId: 'lzz' },
-      isDevMode: true,
     });
 
-    // Imports are prepended, scope id + HMR are appended.
+    // Imports are prepended, the scope id is appended.
     expect(result.startsWith('import "./a.css";')).toBe(true);
     expect(result).toContain("App.ɵcmp.id = 'lzz';");
-    expect(result).toContain('module.hot.accept();');
   });
 });

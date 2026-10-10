@@ -149,6 +149,33 @@ describe('createTransformStylesheet', () => {
     expect(writeSpy).not.toHaveBeenCalled();
   });
 
+  it('reports each scoped file it writes, but not unchanged ones', async () => {
+    const onStylesheetWritten = vi.fn();
+    const transform = createTransformStylesheet({
+      basePath,
+      scopedCssCacheDir,
+      componentStylesCache,
+      componentScopeIds,
+      onStylesheetWritten,
+    });
+    const containing = componentFile();
+    const stylesheet = path.join(basePath, 'src', 'app.css');
+
+    await transform('.a{}', containing, stylesheet, 0, 'App');
+    const scopedPath = componentStylesCache.get(containing)!.imports[0];
+    expect(onStylesheetWritten).toHaveBeenCalledExactlyOnceWith(scopedPath);
+
+    // A rebuild with the same CSS leaves the file alone, so rspack has nothing
+    // new to pick up.
+    await transform('.a{}', containing, stylesheet, 0, 'App');
+    expect(onStylesheetWritten).toHaveBeenCalledTimes(1);
+
+    // An edited stylesheet is rewritten and reported again.
+    await transform('.a{color:red}', containing, stylesheet, 0, 'App');
+    expect(onStylesheetWritten).toHaveBeenCalledTimes(2);
+    expect(onStylesheetWritten).toHaveBeenLastCalledWith(scopedPath);
+  });
+
   it('appends (not replaces) when the previous path is absent from the imports list', async () => {
     const containing = componentFile();
     const stylesheet = path.join(basePath, 'src', 'app.css');

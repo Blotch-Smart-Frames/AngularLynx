@@ -15,9 +15,14 @@ import { stripTemplateWhitespace } from './utils/strip-template-whitespace.js';
  * local `typescript` package and `@angular/build`'s TypeScript resolve to different
  * module instances in the monorepo, making their SourceFile types structurally
  * incompatible at the type level even though they're identical at runtime.
+ *
+ * `shouldInclude` limits which files are read and parsed; `fileNames` still lists
+ * every project file. Watch rebuilds pass it so only changed and new files are
+ * re-parsed, instead of every component in the project on each save.
  */
 export const buildLynxSchemaSourceFileCache = (
   tsconfig: string,
+  shouldInclude: (filePath: string) => boolean = () => true,
 ): { sourceFileCache: Map<string, any>; fileNames: string[] } => {
   const sourceFileCache = new Map<string, any>();
 
@@ -41,6 +46,7 @@ export const buildLynxSchemaSourceFileCache = (
   for (const filePath of fileNames) {
     // Skip library files — only project source needs the schema injection.
     if (filePath.includes('node_modules')) continue;
+    if (!shouldInclude(filePath)) continue;
 
     let source: string;
     try {

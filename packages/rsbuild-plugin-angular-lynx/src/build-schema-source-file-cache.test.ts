@@ -89,6 +89,29 @@ describe('buildLynxSchemaSourceFileCache', () => {
     expect(sourceFileCache.has(nodeModulePath)).toBe(false);
   });
 
+  it('only reads and caches files accepted by shouldInclude, but lists them all', () => {
+    const changedPath = write('src/changed.component.ts', COMPONENT_SOURCE);
+    const unchangedPath = write('src/unchanged.component.ts', COMPONENT_SOURCE);
+    const tsconfig = write(
+      'tsconfig.json',
+      JSON.stringify({
+        files: ['src/changed.component.ts', 'src/unchanged.component.ts'],
+      }),
+    );
+    const readSpy = vi.spyOn(fs, 'readFileSync');
+
+    const { sourceFileCache, fileNames } = buildLynxSchemaSourceFileCache(
+      tsconfig,
+      (file) => file === changedPath,
+    );
+
+    expect([...sourceFileCache.keys()]).toEqual([changedPath]);
+    // Rebuilds still need every project file for the diagnostics scans.
+    expect(fileNames).toEqual([changedPath, unchangedPath]);
+    // The skipped file isn't even read, which is what keeps rebuilds cheap.
+    expect(readSpy).not.toHaveBeenCalledWith(unchangedPath, 'utf-8');
+  });
+
   it('skips files that cannot be read and continues with the rest', () => {
     const componentPath = write('src/app.component.ts', COMPONENT_SOURCE);
     const unreadablePath = write('src/broken.component.ts', COMPONENT_SOURCE);

@@ -4298,3 +4298,68 @@ To check what happened on the iOS Simulator, read Explorer's logs. JS `console` 
 xcrun simctl spawn booted log show --last 5m --style compact \
   --predicate 'process == "LynxExplorer"' | grep -E "hot-update|invokeCdp|LoadTemplate"
 ```
+
+---
+
+## `<webview src>` shows a broken-page icon in the rspeedy web preview, but works on device
+
+### What you'd expect (web / native parity)
+
+`<webview src="https://…">` loads the page on every platform, as it does in a native web view on iOS and Android.
+
+### What Lynx does
+
+Lynx for Web implements `<webview>` as an `x-webview` custom element that wraps an `<iframe>` (`src` sets the iframe's `src`; `html` sets `srcdoc`). The rspeedy dev server's web preview (`/__web_preview`, served by `@lynx-js/web-rsbuild-server-middleware`) makes the page **cross-origin isolated** so web-core can use `SharedArrayBuffer`:
+
+```js
+res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+```
+
+Under `require-corp`, Chrome refuses to load any cross-origin iframe whose response doesn't opt in with a `Cross-Origin-Resource-Policy` header. Almost no public site sends that, so the frame shows Chrome's broken-page icon. The DevTools Issues panel reports "Specify a Cross-Origin Resource Policy to stop a resource from being blocked." Two traps make this look like a renderer bug:
+
+- `bindload` **still fires**, so the app reports a successful load over an empty frame.
+- The site's own headers are not the cause. `lynxjs.org` sends no `X-Frame-Options` and is still blocked.
+
+Native web views (WKWebView, `android.webkit.WebView`) are not iframes, so none of this applies on device. The docs site's `<Go>` preview doesn't send COEP either, so URLs that allow framing load there.
+
+Separately, a URL that sends `X-Frame-Options: DENY` or a CSP `frame-ancestors` rule (MDN, for example) can never load in Lynx for Web, in any preview, because it is still an iframe.
+
+### The fix
+
+Nothing to fix in the renderer: the element is created correctly and `src` reaches the iframe. To check `<webview>` in the local web preview, use the `html` attribute, which loads through `srcdoc` and isn't cross-origin. Check URL loading on a device, or in the docs-site preview with a URL that allows framing (`examples/element-webview` uses `https://angular.dev`).
+
+---
+
+## Text that is exactly `false` disappears on Lynx for Web (any attribute set to `"false"` is removed)
+
+### What you'd expect (web / native parity)
+
+`<text>{{ enabled() }}</text>` renders `false` when the signal is `false`, as Angular does in the browser and as native Lynx does.
+
+### What Lynx does
+
+On native Lynx it renders `false`. On Lynx for Web the text is **blank** whenever the value is the string `false`. Every other value renders, including `true`.
+
+AngularLynx isn't dropping it. The renderer writes it through `__SetAttribute(rawText, 'text', 'false')`, and a main-thread renderer test confirms `'false'` reaches that call. The cause is the base class every Lynx for Web custom element extends (`@lynx-js/web-elements`, `element-reactive/component.js`). It treats the string `"false"` as "attribute absent", like an HTML boolean attribute:
+
+```js
+/** handle attribute='false' */
+setAttribute(qualifiedName, value) {
+  if (value.toString() === 'false'
+      && !_a.notToFilterFalseAttributes?.has(qualifiedName)
+      && !qualifiedName.startsWith('data-')) {
+    this.removeAttribute(qualifiedName);
+    return;
+  }
+  super.setAttribute(qualifiedName, value);
+}
+```
+
+`<raw-text>` stores its content in a `text` attribute and doesn't opt out through `notToFilterFalseAttributes`, so a text node whose content is exactly `false` loses its attribute and renders empty. `attributeChangedCallback` applies the same filter, so the value can't come back in through another path.
+
+The same rule removes **any** attribute set to `"false"` on any web element, e.g. `loop="false"` or `glass-interactive="false"`. For boolean attributes that's the intended behavior.
+
+### The fix
+
+This is upstream in `@lynx-js/web-elements` (it would need `text` in `RawText`'s `notToFilterFalseAttributes`), and it only affects Lynx for Web. Until it's fixed there, avoid rendering a bare `false` as text in content meant for the web preview: show a label instead (`{{ on() ? 'On' : 'Off' }}`, as `examples/element-video` does).

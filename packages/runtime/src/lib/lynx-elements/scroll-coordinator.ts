@@ -17,6 +17,7 @@ import { LynxElementBase } from './base';
     'android-nested-scroll-as-child',
     'ios-force-scroll-detach',
     'ios-scrolls-to-top',
+    'android-adapt-to-empty-slot',
   ],
 })
 export class LynxScrollCoordinator extends LynxElementBase {
@@ -56,6 +57,10 @@ export class LynxScrollCoordinator extends LynxElementBase {
    * Scroll to top when tapping status bar (iOS). @default false
    */
   'ios-scrolls-to-top'?: boolean;
+  /**
+   * Adjust the offset when the active slot is empty or too short to scroll (Android). @default false
+   */
+  'android-adapt-to-empty-slot'?: boolean;
 }
 
 /**
@@ -84,3 +89,19 @@ export class LynxScrollCoordinatorToolbar extends LynxElementBase {}
   standalone: true,
 })
 export class LynxScrollCoordinatorSlot extends LynxElementBase {}
+
+/**
+ * Slot variant whose content can be dragged up/down to fold and unfold the
+ * header. Must be a direct child of `<scroll-coordinator>`.
+ */
+@Directive({
+  selector: 'scroll-coordinator-slot-drag',
+  standalone: true,
+  inputs: ['enable-drag'],
+})
+export class LynxScrollCoordinatorSlotDrag extends LynxElementBase {
+  /**
+   * Whether vertical drag gestures fold/unfold the header. @default true
+   */
+  'enable-drag'?: boolean;
+}

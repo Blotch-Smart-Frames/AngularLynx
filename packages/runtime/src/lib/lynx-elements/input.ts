@@ -26,6 +26,7 @@ import { LynxElementBase } from './base';
     'ios-auto-correct',
     'ios-spell-check',
     'android-fullscreen-mode',
+    'default-value',
   ],
 })
 export class LynxInput extends LynxElementBase {
@@ -107,6 +108,11 @@ export class LynxInput extends LynxElementBase {
    * Enter full-screen editing mode on Android.
    */
   'android-fullscreen-mode'?: boolean;
+  /**
+   * Initial content. Applied on first render only and doesn't fire `bindinput`.
+   * Prefer `value` (or a form control) when the text must stay in sync.
+   */
+  'default-value'?: string;
 }
 
 /**
@@ -132,6 +138,7 @@ export class LynxInput extends LynxElementBase {
     'ios-auto-correct',
     'ios-spell-check',
     'android-fullscreen-mode',
+    'default-value',
   ],
 })
 export class LynxTextarea extends LynxElementBase {
@@ -177,4 +184,9 @@ export class LynxTextarea extends LynxElementBase {
   'ios-auto-correct'?: boolean;
   'ios-spell-check'?: boolean;
   'android-fullscreen-mode'?: boolean;
+  /**
+   * Initial content. Applied on first render only and doesn't fire `bindinput`.
+   * Prefer `value` (or a form control) when the text must stay in sync.
+   */
+  'default-value'?: string;
 }

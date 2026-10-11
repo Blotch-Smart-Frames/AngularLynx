@@ -1,0 +1,99 @@
+# &lt;video&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+:::warning Experimental
+`<video>` is experimental in Lynx 4.1 and its API may change.
+:::
+
+Plays a video from a network URL. Attributes configure the player, but they don't start or stop playback. You control playback by calling the element's UI methods (`play`, `pause`, `stop`, `seek`) through [SelectorQuery](/guide/selector-query). There is no `autoplay` attribute.
+
+<Go example="element-video" defaultFile="src/app/app.ts" />
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-player',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <video
+      id="player"
+      src="https://example.com/clip.mp4"
+      object-fit="cover"
+      [muted]="muted()"
+      (bindtimeupdate)="onTime($event)"
+      (bindended)="playing.set(false)"
+      style="width: 100%; height: 220px;"
+    ></video>
+    <view (bindtap)="toggle()">
+      <text>{{ playing() ? 'Pause' : 'Play' }}</text>
+    </view>
+  `,
+})
+export class Player {
+  readonly playing = signal(false);
+  readonly muted = signal(true);
+  readonly current = signal(0);
+
+  toggle(): void {
+    const method = this.playing() ? 'pause' : 'play';
+    lynx.createSelectorQuery().select('#player').invoke({ method }).exec();
+    this.playing.set(!this.playing());
+  }
+
+  onTime(event: Event): void {
+    const { current } = (event as CustomEvent<{ current: number }>).detail;
+    this.current.set(current);
+  }
+}
+```
+
+## Attributes
+
+| Attribute             | Type                              | Default     | Description                                     |
+| --------------------- | --------------------------------- | ----------- | ----------------------------------------------- |
+| `src`                 | `string`                          | —           | Video URL. Only network URLs are supported      |
+| `loop`                | `boolean`                         | `false`     | Loop playback                                   |
+| `muted`               | `boolean`                         | `false`     | Mute audio                                      |
+| `volume`              | `number`                          | `1`         | Volume from 0 to 1 (Android/iOS)                |
+| `speed`               | `number`                          | `1`         | Playback rate from 0.1 to 2.0                   |
+| `object-fit`          | `'contain' \| 'cover' \| 'fill'`  | `'contain'` | How the video is scaled into the element        |
+| `mode`                | `'queue' \| 'direct' \| 'latest'` | `'queue'`   | How queued UI method calls are executed         |
+| `timeupdate-interval` | `number`                          | `0.33`      | Minimum seconds between `bindtimeupdate` events |
+
+## Events
+
+| Event            | Detail                    | Description                                |
+| ---------------- | ------------------------- | ------------------------------------------ |
+| `bindfirstframe` | `{ duration }`            | First frame loaded                         |
+| `bindplaying`    | —                         | Playback started or resumed                |
+| `bindpaused`     | —                         | Playback paused                            |
+| `bindstopped`    | —                         | Playback stopped via the `stop` method     |
+| `bindtimeupdate` | `{ current, duration }`   | Playback position changed (seconds)        |
+| `bindbuffering`  | `{ buffering }`           | Buffering; `buffering` is the buffered end |
+| `bindended`      | —                         | Playback reached the end                   |
+| `bindlooped`     | —                         | One loop iteration finished                |
+| `binderror`      | `{ errorCode, errorMsg }` | Playback failed                            |
+
+## Methods
+
+Invoke these with `lynx.createSelectorQuery().select('#id').invoke({ method, params }).exec()`:
+
+| Method  | Params                 | Description                    |
+| ------- | ---------------------- | ------------------------------ |
+| `play`  | —                      | Start or resume playback       |
+| `pause` | —                      | Pause playback                 |
+| `stop`  | —                      | Stop playback                  |
+| `seek`  | `{ position: number }` | Jump to a position, in seconds |
+
+## Platform Support
+
+| Platform | Supported |
+| -------- | --------- |
+| iOS      | 4.1+      |
+| Android  | 4.1+      |
+| Harmony  | 4.1+      |

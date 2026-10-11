@@ -1,0 +1,70 @@
+# &lt;webview&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Embeds a native web view that loads a URL or an inline HTML string. Use it for web content such as help articles, terms of service, or OAuth pages. To embed another Lynx bundle, use [`<frame>`](/guide/elements/frame) instead.
+
+<Go example="element-webview" defaultFile="src/app/app.ts" />
+
+```angular-html
+<!-- Load a URL; changing src reloads the page -->
+<webview
+  [src]="url()"
+  (bindload)="loading.set(false)"
+  (binderror)="onError($event)"
+  style="width: 100%; height: 400px;"
+></webview>
+
+<!-- Or render inline HTML (ignored when src is set) -->
+<webview
+  html="<h1>Hello from HTML</h1>"
+  style="width: 100%; height: 200px;"
+></webview>
+```
+
+## Attributes
+
+| Attribute           | Type      | Default     | Description                                                      |
+| ------------------- | --------- | ----------- | ---------------------------------------------------------------- |
+| `src`               | `string`  | —           | URL to load. Changing it reloads the page                        |
+| `html`              | `string`  | —           | Inline HTML to load. Lower priority than `src`                   |
+| `bounces`           | `boolean` | `false`     | Bounce effect (iOS)                                              |
+| `scroll-bar-enable` | `boolean` | `false`     | Show the scroll bar (iOS)                                        |
+| `enable-debug`      | `boolean` | `false`     | Allow remote debugging in Chrome DevTools / Safari Web Inspector |
+| `webview-type`      | `string`  | `'default'` | Use a custom web view implementation injected via `LynxService`  |
+| `params`            | `object`  | —           | Params for a custom web view implementation (Android/iOS)        |
+| `initjs`            | `string`  | —           | JavaScript run when the document is ready (Clay desktop)         |
+| `cookies`           | `array`   | —           | Cookies set before loading (Clay)                                |
+| `use-osr`           | `boolean` | `false`     | Off-screen rendering (Clay)                                      |
+
+## Events
+
+| Event         | Detail                    | Description                       |
+| ------------- | ------------------------- | --------------------------------- |
+| `bindload`    | —                         | Page finished loading             |
+| `binderror`   | `{ errorCode, errorMsg }` | Page failed to load               |
+| `bindmessage` | `{ msg }`                 | The page posted a message to Lynx |
+
+## Methods
+
+Invoke these with `lynx.createSelectorQuery().select('#id').invoke({ method, params }).exec()`:
+
+| Method   | Params             | Description                                        |
+| -------- | ------------------ | -------------------------------------------------- |
+| `reload` | —                  | Reload the current page                            |
+| `eval`   | `{ func: string }` | Call a JavaScript function, e.g. `'greet("Lynx")'` |
+
+## Platform Support
+
+| Platform | Supported |
+| -------- | --------- |
+| iOS      | 4.0+      |
+| Android  | 4.0+      |
+| Harmony  | 4.0+      |
+| Web Lynx | Yes       |
+
+:::info
+On Clay desktop, a `<webview>` paints above regular Lynx content regardless of order or `z-index`. Wrap anything that must appear on top of it in [`<cover-view>`](/guide/elements/cover-view).
+:::

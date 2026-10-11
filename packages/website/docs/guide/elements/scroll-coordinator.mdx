@@ -48,6 +48,7 @@ The coordinator's height must equal the slot height plus the toolbar height. The
 - `header-over-slot` — (boolean, default `false`) Whether header appears over the slot when overflowing
 - `refresh-mode` — `"none"` (default), `"page"`, or `"fold"` (iOS)
 - `enable-scroll-bar` — Show/hide scrollbar (iOS/Harmony)
+- `android-adapt-to-empty-slot` — (boolean, default `false`) Adjust the fold offset when the active slot is empty or too short to scroll (Android)
 
 ## Events
 
@@ -64,3 +65,4 @@ Invoked via the [SelectorQuery](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-
 - **`<scroll-coordinator-header>`** — Header content that scrolls out of view. Uses `position: absolute`.
 - **`<scroll-coordinator-toolbar>`** — Sticky toolbar that remains visible at the top. Uses `position: sticky; top: 0`.
 - **`<scroll-coordinator-slot>`** — Container for scrollable content. Typically contains a `<list>`. Uses `flex: 1`.
+- **`<scroll-coordinator-slot-drag>`** — A slot whose content can be dragged up and down to fold and unfold the header. Toggle the gesture with `enable-drag` (boolean, default `true`).

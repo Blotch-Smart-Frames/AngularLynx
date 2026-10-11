@@ -29,6 +29,9 @@ import { LynxElementBase } from './base';
     'list-main-axis-gap',
     'list-cross-axis-gap',
     'enable-async-list',
+    'enable-insert-platform-view-operation',
+    'experimental-search-ref-anchor-strategy',
+    'harmony-scroll-edge-effect',
   ],
 })
 export class LynxList extends LynxElementBase {
@@ -110,6 +113,20 @@ export class LynxList extends LynxElementBase {
    * @default true
    */
   'enable-async-list'?: boolean;
+  /**
+   * Insert list-item platform views via the C++ list's operations. Recommended
+   * with multi-thread engine strategies. @default false
+   */
+  'enable-insert-platform-view-operation'?: boolean;
+  /**
+   * How the list picks a reference anchor when on-screen items are removed:
+   * 0 = none, 1 = toward start, 2 = toward end (experimental). @default 0
+   */
+  'experimental-search-ref-anchor-strategy'?: 0 | 1 | 2;
+  /**
+   * Allow scrolling when the content is smaller than the list (Harmony). @default false
+   */
+  'harmony-scroll-edge-effect'?: boolean;
 }
 
 /**

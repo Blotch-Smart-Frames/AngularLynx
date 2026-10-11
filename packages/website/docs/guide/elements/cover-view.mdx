@@ -1,0 +1,52 @@
+# &lt;cover-view&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+:::warning Clay Only
+`<cover-view>` is only available on **Clay Windows** and **Clay macOS**. It has no effect on Android, iOS, or web.
+:::
+
+Renders its children into a platform overlay surface above Clay's main rendering surface. On Clay, embedded native views such as a [`<webview>`](/guide/elements/webview) paint over regular Lynx content, whatever their order or `z-index`. Children of `<cover-view>` paint on top of them.
+
+If you only need to cover other Lynx content, use a regular `<view>` with `position: fixed` instead.
+
+```angular-html
+<view style="width: 100%; height: 100%;">
+  <webview
+    src="https://lynxjs.org"
+    style="width: 100%; height: 100%;"
+  ></webview>
+
+  <cover-view
+    style="position: absolute; top: 16px; right: 16px; width: 240px; height: 48px;"
+  >
+    <view
+      style="width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.72);"
+    >
+      <text style="color: white;">Controls above the web view</text>
+    </view>
+  </cover-view>
+</view>
+```
+
+## Attributes
+
+`<cover-view>` has no element-specific attributes. Position and size it with the same layout styles as `<view>`.
+
+## Platform Behavior
+
+- **Windows** renders the subtree into a native child overlay window above sibling child windows. It can't cover top-level or owned popup windows.
+- **macOS** renders the subtree into a `CALayer` in a transparent overlay view above the main Clay view. It can cover native controls inside the renderer's view tree, but not unrelated top-level views.
+
+## Platform Support
+
+| Platform     | Supported |
+| ------------ | --------- |
+| Clay Windows | Yes       |
+| Clay macOS   | Yes       |
+| Android      | No        |
+| iOS          | No        |
+| Harmony      | No        |
+| Web Lynx     | No        |

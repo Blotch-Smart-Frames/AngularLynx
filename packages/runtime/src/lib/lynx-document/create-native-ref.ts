@@ -4,12 +4,15 @@ import type { ElementRef } from '../types/lynx';
 // LynxElement — routing through it would form a cycle (LynxElement imports this
 // module). The individual creators below import only PAPI globals and types.
 import { createBlockElement } from './element-creators/create-block-element';
+import { createBlurViewElement } from './element-creators/create-blur-view-element';
 import { createCommentElement } from './element-creators/create-comment-element';
+import { createCoverViewElement } from './element-creators/create-cover-view-element';
 import { createDefaultElement } from './element-creators/create-default-element';
 import { createForElement } from './element-creators/create-for-element';
 import { createFrameElement } from './element-creators/create-frame-element';
 import { createIfElement } from './element-creators/create-if-element';
 import { createImageElement } from './element-creators/create-image-element';
+import { createInlineTruncationElement } from './element-creators/create-inline-truncation-element';
 import { createInputElement } from './element-creators/create-input-element';
 import { createListItemElement } from './element-creators/create-list-item-element';
 import { createOverlayElement } from './element-creators/create-overlay-element';
@@ -21,6 +24,7 @@ import {
 import {
   createScrollCoordinatorElement,
   createScrollCoordinatorHeaderElement,
+  createScrollCoordinatorSlotDragElement,
   createScrollCoordinatorSlotElement,
   createScrollCoordinatorToolbarElement,
 } from './element-creators/create-scroll-coordinator-element';
@@ -28,11 +32,13 @@ import { createScrollViewElement } from './element-creators/create-scroll-view-e
 import { createSvgElement } from './element-creators/create-svg-element';
 import { createTextElement } from './element-creators/create-text-element';
 import { createTitleBarViewElement } from './element-creators/create-title-bar-view-element';
+import { createVideoElement } from './element-creators/create-video-element';
 import { createViewElement } from './element-creators/create-view-element';
 import {
   createViewPagerElement,
   createViewPagerItemElement,
 } from './element-creators/create-viewpager-element';
+import { createWebViewElement } from './element-creators/create-webview-element';
 
 /**
  * Creates a raw native ElementRef for a logical tag, WITHOUT wrapping it in a
@@ -64,6 +70,8 @@ export const createNativeRefByTag = (
       return createImageElement(pageId);
     case 'text':
       return createTextElement(pageId);
+    case 'inline-truncation':
+      return createInlineTruncationElement(pageId);
     case 'raw-text':
       return createRawTextElement(text ?? '');
     case 'scroll-view':
@@ -103,8 +111,26 @@ export const createNativeRefByTag = (
       return createScrollCoordinatorToolbarElement(pageId);
     case 'scroll-coordinator-slot':
       return createScrollCoordinatorSlotElement(pageId);
+    case 'scroll-coordinator-slot-drag':
+      return createScrollCoordinatorSlotDragElement(pageId);
+    case 'blur-view':
+      return createBlurViewElement(pageId);
+    case 'webview':
+      return createWebViewElement(pageId);
+    case 'video':
+      return createVideoElement(pageId);
+    case 'cover-view':
+      return createCoverViewElement(pageId);
     case 'comment':
       return createCommentElement(pageId);
+    // Unknown tags become views rather than passing straight through to
+    // __CreateElement(tag) the way React Lynx does. Angular renders every
+    // component HOST element (<app-card>, <ng-component>) through this same
+    // createElement path, and those must become real layout containers —
+    // Lynx has no native UI registered for arbitrary selector names. React has
+    // no host elements, so it can afford the pass-through. The cost is that
+    // every native Lynx tag needs an explicit case above, or it silently
+    // degrades to a view.
     default:
       return createDefaultElement(tag, pageId);
   }

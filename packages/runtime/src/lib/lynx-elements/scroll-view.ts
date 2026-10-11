@@ -17,6 +17,7 @@ import { LynxElementBase } from './base';
     'initial-scroll-offset',
     'initial-scroll-to-index',
     'enable-nested-scroll',
+    'experimental-android-enable-new-overflow',
   ],
 })
 export class LynxScrollView extends LynxElementBase {
@@ -56,4 +57,8 @@ export class LynxScrollView extends LynxElementBase {
    * Whether nested scrolling is enabled.
    */
   'enable-nested-scroll'?: boolean;
+  /**
+   * Use the new overflow clipping implementation (Android, Lynx 4.2+, experimental). @default true
+   */
+  'experimental-android-enable-new-overflow'?: boolean;
 }

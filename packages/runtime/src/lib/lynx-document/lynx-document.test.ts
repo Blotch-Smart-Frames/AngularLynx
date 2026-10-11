@@ -302,6 +302,8 @@ describe('LynxDocument', () => {
       'scroll-coordinator-header',
       'scroll-coordinator-toolbar',
       'scroll-coordinator-slot',
+      'scroll-coordinator-slot-drag',
+      'inline-truncation',
     ] as const)('creates a %s element via __CreateElement', (tag) => {
       doc.createElement(tag);
       expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
@@ -309,6 +311,28 @@ describe('LynxDocument', () => {
         expect.any(Number),
       );
     });
+
+    // Each of these must reach the native engine under its OWN tag. Before
+    // they had explicit cases they hit the unknown-tag fallback and became
+    // plain views, so their attributes (blur-radius, src, …) did nothing.
+    it.each(['blur-view', 'webview', 'video', 'cover-view'] as const)(
+      'creates a native %s element instead of falling back to a view',
+      (tag) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const viewCallsBefore = asMock(globalThis.__CreateView).mock.calls
+          .length;
+        doc.createElement(tag);
+        expect(asMock(globalThis.__CreateElement)).toHaveBeenCalledWith(
+          tag,
+          expect.any(Number),
+        );
+        expect(asMock(globalThis.__CreateView).mock.calls.length).toBe(
+          viewCallsBefore,
+        );
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+      },
+    );
 
     it('creates a comment element via createCommentElement (__CreateView + display:none)', () => {
       // The 'comment' tag doesn't go through __CreateElement — it uses

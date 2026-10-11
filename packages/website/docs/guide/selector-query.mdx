@@ -73,8 +73,9 @@ lynx
   .select('#my-coordinator')
   .invoke({
     method: 'setFoldExpanded',
-    params: { expanded: false },
-    success: () => console.log('Collapsed'),
+    // offset is the header's scroll offset: '0px' fully expands the header.
+    params: { offset: '0px', smooth: true },
+    success: () => console.log('Expanded'),
   })
   .exec();
 ```

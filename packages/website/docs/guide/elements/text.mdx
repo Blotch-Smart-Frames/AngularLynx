@@ -36,6 +36,19 @@ Use `text-overflow` and `text-maxline` to control how long text is clipped:
 }
 ```
 
+### Custom truncation content
+
+Put an `<inline-truncation>` inside the `<text>` to replace the default ellipsis with your own content. It only appears when the text is actually truncated:
+
+```angular-html
+<text [text-maxline]="2" style="text-overflow: ellipsis;">
+  {{ article().body }}
+  <inline-truncation>
+    <text style="color: #2563eb;">… Read more</text>
+  </inline-truncation>
+</text>
+```
+
 ## Key Attributes
 
 | Attribute      | Type     | Description                                                                                 |
@@ -47,3 +60,4 @@ Use `text-overflow` and `text-maxline` to control how long text is clipped:
 - **Nested `<text>`** inherits `color` and `font-family` from the parent `<text>`, even without CSS inheritance enabled
 - **Nested `<image>`** can appear inside `<text>` for inline text-and-image layouts
 - **Nested `<view>`** inside `<text>` participates in inline layout (like an inline-block)
+- **`<inline-truncation>`** must be a direct child of `<text>`. See [Custom truncation content](#custom-truncation-content)

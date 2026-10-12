@@ -106,6 +106,12 @@ export const runFlow = (
         // default; neither belongs in a test run.
         MAESTRO_CLI_NO_ANALYTICS: '1',
         MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: 'true',
+        // Maestro gives its XCTest driver 15s to start by default. On GitHub's
+        // macOS runners the first start (which installs the driver on the
+        // fresh simulator) takes longer, and every flow then failed with "iOS
+        // driver not ready in time" before touching the app.
+        MAESTRO_DRIVER_STARTUP_TIMEOUT:
+          process.env['MAESTRO_DRIVER_STARTUP_TIMEOUT'] ?? '180000',
       },
     },
   );

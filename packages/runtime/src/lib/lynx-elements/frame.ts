@@ -7,7 +7,16 @@ import { LynxElementBase } from './base';
 @Directive({
   selector: 'frame',
   standalone: true,
-  inputs: ['src', 'data', 'global-props', 'auto-width', 'auto-height'],
+  inputs: [
+    'src',
+    'data',
+    'global-props',
+    'auto-width',
+    'auto-height',
+    'preset-width',
+    'preset-height',
+    'enable-multi-async-thread',
+  ],
 })
 export class LynxFrame extends LynxElementBase {
   /**
@@ -30,4 +39,16 @@ export class LynxFrame extends LynxElementBase {
    * Size the frame to match its content height.
    */
   'auto-height'?: boolean;
+  /**
+   * Width used before the embedded page reports its content size (e.g. `'200px'`).
+   */
+  'preset-width'?: string;
+  /**
+   * Height used before the embedded page reports its content size (e.g. `'200px'`).
+   */
+  'preset-height'?: string;
+  /**
+   * Override the host's multi-async-thread setting for the embedded page.
+   */
+  'enable-multi-async-thread'?: boolean;
 }

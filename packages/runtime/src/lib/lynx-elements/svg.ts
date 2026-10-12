@@ -7,7 +7,7 @@ import { LynxElementBase } from './base';
 @Directive({
   selector: 'svg',
   standalone: true,
-  inputs: ['src', 'content'],
+  inputs: ['src', 'content', 'current-color'],
 })
 export class LynxSvg extends LynxElementBase {
   /**
@@ -18,4 +18,8 @@ export class LynxSvg extends LynxElementBase {
    * Inline SVG XML string.
    */
   content?: string;
+  /**
+   * Color used for `currentColor` in the SVG. Doesn't override explicit `fill`/`stroke`.
+   */
+  'current-color'?: string;
 }

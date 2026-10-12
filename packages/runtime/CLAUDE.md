@@ -39,11 +39,11 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 ## Supported Lynx Elements
 
-`page`, `view`, `text`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`
+`page`, `view`, `text`, `inline-truncation`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`, `scroll-coordinator-slot-drag`, `blur-view`, `webview`, `video`, `cover-view`
 
 `page` is special — it returns the existing root page element (created by `createRootElement()`), not a new element. Only one `<page>` is allowed per app. The element has `_isRootPageElement = true` which prevents Angular from reparenting or removing it.
 
-Unknown tags fall back to `view` with a console warning.
+Unknown tags fall back to `view` with a console warning. Unlike React Lynx (which passes any tag to `__CreateElement`), this fallback is required because Angular component host elements (`<app-card>`) are created through the same path. So every native Lynx tag needs an explicit case in `create-native-ref.ts`, or it silently renders as a plain view.
 
 ## Angular Constraints
 

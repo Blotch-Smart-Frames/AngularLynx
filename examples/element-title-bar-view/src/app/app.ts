@@ -23,7 +23,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             class="h-[44px] flex-row items-center rounded-lg bg-zinc-100 overflow-hidden"
           >
             <title-bar-view
-              moveable="true"
+              [moveable]="true"
               class="h-full flex-1 justify-center"
             >
               <text class="pl-3.5 text-sm font-semibold text-zinc-900">

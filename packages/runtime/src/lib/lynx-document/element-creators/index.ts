@@ -1,10 +1,13 @@
 export { createBlockElement } from './create-block-element';
+export { createBlurViewElement } from './create-blur-view-element';
 export { createCommentElement } from './create-comment-element';
+export { createCoverViewElement } from './create-cover-view-element';
 export { createDefaultElement } from './create-default-element';
 export { createForElement } from './create-for-element';
 export { createFrameElement } from './create-frame-element';
 export { createIfElement } from './create-if-element';
 export { createImageElement } from './create-image-element';
+export { createInlineTruncationElement } from './create-inline-truncation-element';
 export { createInputElement } from './create-input-element';
 export { createListElement } from './create-list-element';
 export { createListItemElement } from './create-list-item-element';
@@ -18,6 +21,7 @@ export {
 export {
   createScrollCoordinatorElement,
   createScrollCoordinatorHeaderElement,
+  createScrollCoordinatorSlotDragElement,
   createScrollCoordinatorSlotElement,
   createScrollCoordinatorToolbarElement,
 } from './create-scroll-coordinator-element';
@@ -25,8 +29,10 @@ export { createScrollViewElement } from './create-scroll-view-element';
 export { createSvgElement } from './create-svg-element';
 export { createTextElement } from './create-text-element';
 export { createTitleBarViewElement } from './create-title-bar-view-element';
+export { createVideoElement } from './create-video-element';
 export { createViewElement } from './create-view-element';
 export {
   createViewPagerElement,
   createViewPagerItemElement,
 } from './create-viewpager-element';
+export { createWebViewElement } from './create-webview-element';

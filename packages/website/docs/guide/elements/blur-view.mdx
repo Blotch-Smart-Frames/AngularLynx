@@ -1,0 +1,113 @@
+# &lt;blur-view&gt;
+
+:::tip
+Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
+:::
+
+Blurs whatever is rendered **behind** it, like CSS `backdrop-filter: blur()` on the web. Lynx doesn't support `backdrop-filter`, so `<blur-view>` is how you build frosted headers, tab bars, and sheets. On iOS it can also render Apple's **Liquid Glass** material.
+
+To blur an element's own content instead of what's behind it, use the `filter: blur()` style.
+
+<Go example="element-blur-view" defaultFile="src/app/app.ts" />
+
+```angular-html
+<view style="width: 100%; height: 300px;">
+  <image
+    src="https://example.com/photo.jpg"
+    style="width: 100%; height: 100%;"
+  />
+
+  <!-- Frosted bar floating over the image -->
+  <blur-view
+    blur-radius="20px"
+    blur-effect="light"
+    style="position: absolute; left: 16px; right: 16px; bottom: 16px; height: 64px; border-radius: 16px;"
+  >
+    <text style="font-weight: 600;">Now Playing</text>
+  </blur-view>
+</view>
+```
+
+## Liquid Glass (iOS)
+
+Set `blur-effect="glass"` to render the iOS 26 Liquid Glass material. Wrap several glass elements in a `blur-view` with `blur-effect="glass-container"`. Within that container, glass shapes closer than `spacing` blend into each other.
+
+```angular-html
+<blur-view
+  blur-effect="glass-container"
+  [spacing]="12"
+  style="flex-direction: row;"
+>
+  <blur-view
+    blur-effect="glass"
+    glass-style="regular"
+    [glass-interactive]="true"
+    style="width: 56px; height: 56px; border-radius: 28px;"
+  ></blur-view>
+  <blur-view
+    blur-effect="glass"
+    glass-tint-color="rgba(0, 122, 255, 0.3)"
+    style="width: 56px; height: 56px; border-radius: 28px; margin-left: 8px;"
+  ></blur-view>
+</blur-view>
+```
+
+:::info
+The `glass` and `glass-container` effects are built on UIKit's iOS 26 glass APIs, so they need iOS 26 or later. Other platforms ignore the iOS-only attributes, so set `blur-radius` too if you want a blur on Android and Harmony.
+:::
+
+### Draggable glass
+
+The example's **Glass playground** tab lets you drag glass blobs over text. Drag two blobs closer than `spacing` and they merge into one shape.
+
+```typescript
+// Main-thread state: the blob's position and where the current drag began.
+const position = createMainThreadRef({ x: 20, y: 56 });
+const start = createMainThreadRef({ touchX: 0, touchY: 0, x: 0, y: 0 });
+
+const onTouchStart = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0]!;
+  start.current = {
+    touchX: touch.pageX,
+    touchY: touch.pageY,
+    ...position.current,
+  };
+});
+
+const onTouchMove = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0]!;
+  const x = start.current.x + touch.pageX - start.current.touchX;
+  const y = start.current.y + touch.pageY - start.current.touchY;
+  position.current = { x, y };
+  event.currentTarget.setStyleProperties({ left: `${x}px`, top: `${y}px` });
+});
+```
+
+- **Drag on the main thread.** [Main-thread touch handlers](/guide/main-thread/main-thread-event) move the blob on the same frame as the finger. Angular event bindings would add a round trip to the background thread on every move.
+- **Move with `left`/`top`**, not `transform`, so each blob's native frame moves with it.
+- **Keep it out of `<scroll-view>`.** The scroll view's own pan gesture competes for the same touches, so a vertical drag scrolls the page instead.
+
+## Attributes
+
+| Attribute                         | Type                                                                 | Default         | Platforms             | Description                                                                    |
+| --------------------------------- | -------------------------------------------------------------------- | --------------- | --------------------- | ------------------------------------------------------------------------------ |
+| `blur-radius`                     | `string`                                                             | `"0px"`         | Android, iOS, Harmony | Gaussian blur radius                                                           |
+| `blur-effect`                     | `'light' \| 'extra-light' \| 'dark' \| 'glass' \| 'glass-container'` | `'light'`       | iOS                   | Brightness of the blur, or the Liquid Glass material                           |
+| `glass-style`                     | `'regular' \| 'clear'`                                               | `'regular'`     | iOS                   | Glass variant                                                                  |
+| `glass-tint-color`                | `string`                                                             | `'transparent'` | iOS                   | Tint applied to the glass                                                      |
+| `glass-interactive`               | `boolean`                                                            | `false`         | iOS                   | Whether the glass reacts to touches                                            |
+| `spacing`                         | `number`                                                             | `0`             | iOS                   | Distance at which glass elements inside a `glass-container` start to merge     |
+| `ios-user-interface-style`        | `'light' \| 'dark'`                                                  | —               | iOS (4.1+)            | Forces a light or dark appearance for the material                             |
+| `blur-sampling`                   | `number`                                                             | `6`             | Android               | Downsampling ratio. Higher values are faster but slightly softer               |
+| `enable-auto-blur`                | `boolean`                                                            | `true`          | Android               | Re-blur automatically when the content behind changes                          |
+| `android-capture-target`          | `string`                                                             | —               | Android               | Raw id of the view to capture and blur. The target must have `flatten="false"` |
+| `experimental-update-blur-radius` | `boolean`                                                            | —               | Android               | Switches the internal blur-buffer refresh path (experimental)                  |
+
+## Platform Support
+
+| Platform | Supported                                     |
+| -------- | --------------------------------------------- |
+| iOS      | Yes (Liquid Glass on iOS 26+)                 |
+| Android  | Yes                                           |
+| Harmony  | Yes                                           |
+| Web Lynx | `blur-radius` only, via CSS `backdrop-filter` |

@@ -35,6 +35,8 @@
  *   via renderer.listen() which handles all unrecognized event names.
  */
 export { LynxElementBase } from './base';
+export { LynxBlurView } from './blur-view';
+export { LynxCoverView } from './cover-view';
 export {
   LYNX_FORM_ACCESSORS,
   LynxInputValueAccessor,
@@ -51,15 +53,21 @@ export {
   LynxScrollCoordinator,
   LynxScrollCoordinatorHeader,
   LynxScrollCoordinatorSlot,
+  LynxScrollCoordinatorSlotDrag,
   LynxScrollCoordinatorToolbar,
 } from './scroll-coordinator';
 export { LynxScrollView } from './scroll-view';
 export { LynxSvg } from './svg';
-export { LynxText } from './text';
+export { LynxInlineTruncation, LynxText } from './text';
+export { LynxTitleBarView } from './title-bar-view';
+export { LynxVideo } from './video';
 export { LynxView } from './view';
 export { LynxViewPager, LynxViewPagerItem } from './viewpager';
+export { LynxWebView } from './webview';
 
 import { LYNX_FORM_ACCESSORS } from '../forms';
+import { LynxBlurView } from './blur-view';
+import { LynxCoverView } from './cover-view';
 import { LynxFrame } from './frame';
 import { LynxImage } from './image';
 import { LynxInput, LynxTextarea } from './input';
@@ -71,13 +79,17 @@ import {
   LynxScrollCoordinator,
   LynxScrollCoordinatorHeader,
   LynxScrollCoordinatorSlot,
+  LynxScrollCoordinatorSlotDrag,
   LynxScrollCoordinatorToolbar,
 } from './scroll-coordinator';
 import { LynxScrollView } from './scroll-view';
 import { LynxSvg } from './svg';
-import { LynxText } from './text';
+import { LynxInlineTruncation, LynxText } from './text';
+import { LynxTitleBarView } from './title-bar-view';
+import { LynxVideo } from './video';
 import { LynxView } from './view';
 import { LynxViewPager, LynxViewPagerItem } from './viewpager';
+import { LynxWebView } from './webview';
 
 /**
  * All Lynx native element directives as a single importable array.
@@ -86,6 +98,7 @@ import { LynxViewPager, LynxViewPagerItem } from './viewpager';
 export const LYNX_ELEMENTS = [
   LynxView,
   LynxText,
+  LynxInlineTruncation,
   LynxImage,
   LynxScrollView,
   LynxList,
@@ -105,8 +118,14 @@ export const LYNX_ELEMENTS = [
   LynxScrollCoordinator,
   LynxScrollCoordinatorHeader,
   LynxScrollCoordinatorSlot,
+  LynxScrollCoordinatorSlotDrag,
   LynxScrollCoordinatorToolbar,
   LynxSvg,
   LynxViewPager,
   LynxViewPagerItem,
+  LynxBlurView,
+  LynxVideo,
+  LynxWebView,
+  LynxCoverView,
+  LynxTitleBarView,
 ] as const;

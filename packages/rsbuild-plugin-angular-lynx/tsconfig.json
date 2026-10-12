@@ -9,7 +9,14 @@
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": true,
     "noPropertyAccessFromIndexSignature": false,
-    "types": ["node"]
+    "types": ["node"],
+    // Types for the `@angular/build` internals loaded by
+    // src/utils/angular/build-internals.ts. Its `exports` map doesn't list
+    // these paths, so resolve them straight from the hoisted package files,
+    // mirroring how the runtime loads them by absolute path.
+    "paths": {
+      "@angular/build/src/*": ["../../node_modules/@angular/build/src/*"]
+    }
   },
   "angularCompilerOptions": {},
   "include": ["src"]

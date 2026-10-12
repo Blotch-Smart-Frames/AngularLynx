@@ -12,10 +12,9 @@ const {
   mockTransformTargets: vi.fn().mockReturnValue(['chrome90']),
 }));
 
-vi.mock(
-  '@angular/build/src/tools/esbuild/angular/component-stylesheets',
-  () => ({ ComponentStylesheetBundler: mockBundlerConstructor }),
-);
+vi.mock('./build-internals.js', () => ({
+  ComponentStylesheetBundler: mockBundlerConstructor,
+}));
 
 vi.mock('@angular/build/private', () => ({
   getSupportedBrowsers: mockGetSupportedBrowsers,

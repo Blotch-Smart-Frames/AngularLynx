@@ -2,7 +2,7 @@ import {
   getSupportedBrowsers,
   transformSupportedBrowsersToTargets,
 } from '@angular/build/private';
-import { ComponentStylesheetBundler } from '@angular/build/src/tools/esbuild/angular/component-stylesheets';
+import { ComponentStylesheetBundler } from './build-internals.js';
 import type { NormalizedOptions } from './options.js';
 
 /**

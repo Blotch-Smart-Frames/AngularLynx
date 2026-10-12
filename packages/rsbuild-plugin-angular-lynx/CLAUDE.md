@@ -30,7 +30,7 @@ Each entry is duplicated into two webpack entries with different layers:
 ## Angular Integration (`angular.ts`)
 
 - Reads workspace config via `getAngularWorkspace()` / `getProjectByCwd()`
-- Uses `@angular/build` internal APIs: `JavaScriptTransformer` (JS transform), `createAngularCompilation` (TS compilation with AOT)
+- Uses `@angular/build` internal APIs: `JavaScriptTransformer` (JS transform), `createAngularCompilation` (TS compilation with AOT). Import them from `utils/angular/build-internals.ts`, never from `@angular/build/src/...` directly: those paths aren't in `@angular/build`'s `exports`, so bare imports fail in users' apps (the old postinstall patch that worked around this no longer runs under npm 11)
 - `onBeforeEnvironmentCompile`: initializes Angular compilation, emits affected files to cache, runs diagnostics. Runs on every watch rebuild too. `angular-rebuild-coordinator.ts` feeds the compiler's `modifiedFiles` to `compilation.update()`, serializes the `web`/`lynx` hooks onto the one shared compilation, and adds files whose Angular output changed back to `modifiedFiles` so rspack rebuilds them
 - `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports, registers external templates/stylesheets as watched dependencies
 
@@ -55,6 +55,7 @@ src/
       read-workspace.ts                # Reads angular.json, finds project
       options.ts                       # Reads Angular build options from workspace
       angular-config.ts                # Applies Angular config to Rsbuild
+      build-internals.ts               # Loads @angular/build internals by file path (they're not in its `exports`)
       env.ts                           # maxWorkers, useTypeChecking flags
       component-style-bundler.ts       # Component style handling
       find-up.ts                       # File search utility

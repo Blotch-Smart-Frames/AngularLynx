@@ -9,7 +9,7 @@
       "glob": "**/*",
       "input": "./schematics",
       "output": "./schematics",
-      "ignore": ["**/*.ts", "!**/*.d.ts"]
+      "ignore": ["**/*.ts", "!**/*.d.ts", "**/.gitignore"]
     }
   ]
 }

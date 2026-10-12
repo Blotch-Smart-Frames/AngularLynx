@@ -1,10 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  createAngularCompilation,
-  DiagnosticModes,
-} from '@angular/build/src/tools/angular/compilation';
-import { JavaScriptTransformer } from '@angular/build/src/tools/javascript-transformer';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
 import type { Compiler } from '@rspack/core';
 import {
@@ -22,6 +17,11 @@ import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { buildTransformedCode } from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
+import {
+  createAngularCompilation,
+  DiagnosticModes,
+  JavaScriptTransformer,
+} from './utils/angular/build-internals.js';
 import { maxWorkers, useTypeChecking } from './utils/angular/env.js';
 import { readBuildOptions } from './utils/angular/options.js';
 import {

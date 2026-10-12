@@ -114,7 +114,7 @@ export type NormalizedOptions = {
   };
   fileReplacements: Record<string, string> | undefined;
   polyfills?: string[];
-  index: string;
+  index: string | undefined;
   browser: string;
   advancedOptimizations: boolean;
   outputPath: string | undefined;
@@ -141,6 +141,52 @@ export const readTarget = (
 ): TargetDefinition | undefined => {
   return project.targets.get(target);
 };
+/**
+ * Resolves angular.json's `index` option to an absolute path the way
+ * `@angular/build`'s application builder does. Projects from recent `ng new`
+ * omit it and rely on the builder's default of `<sourceRoot>/index.html`, so
+ * assuming a string here crashed on every freshly generated app. It may also be
+ * an `{ input, output }` object, or a boolean to build without an index page.
+ */
+export const resolveIndexPath = (
+  index: unknown,
+  project: workspaces.ProjectDefinition,
+  workspaceRoot: string,
+): string | undefined => {
+  if (typeof index === 'boolean') {
+    return undefined;
+  }
+  if (typeof index === 'string') {
+    return path.join(workspaceRoot, index);
+  }
+  if (index && typeof index === 'object') {
+    return path.join(workspaceRoot, (index as { input: string }).input);
+  }
+  // Same as @angular/build's getProjectRootPaths(): `sourceRoot` is relative
+  // to the workspace and defaults to `<root>/src`.
+  const sourceRoot = project.sourceRoot ?? path.join(project.root ?? '', 'src');
+  return path.join(workspaceRoot, sourceRoot, 'index.html');
+};
+
+/**
+ * Resolves angular.json's `outputPath`, which may be a string or a
+ * `{ base, browser, ... }` object. Recent `ng new` omits it; returning
+ * `undefined` then keeps rspeedy's own `dist` directory (see
+ * `applyAngularConfig`) rather than crashing on `path.join(root, undefined)`.
+ */
+export const resolveOutputPath = (
+  outputPath: unknown,
+  workspaceRoot: string,
+): string | undefined => {
+  if (typeof outputPath === 'string') {
+    return path.join(workspaceRoot, outputPath);
+  }
+  if (outputPath && typeof outputPath === 'object') {
+    return path.join(workspaceRoot, (outputPath as { base: string }).base);
+  }
+  return undefined;
+};
+
 export const readBuildOptions = async (
   project: workspaces.ProjectDefinition,
   basePath: string,
@@ -157,7 +203,7 @@ export const readBuildOptions = async (
   if (!buildOptions) {
     throw new Error(
       `No build options found for the "${configurationName ?? 'build'}" target in angular.json. ` +
-        'Make sure the target has an "options" section with at least "browser", "tsConfig", and "index" defined.',
+        'Make sure the target has an "options" section with at least "browser" and "tsConfig" defined.',
     );
   }
   // Merge the selected configuration (e.g., 'production') over base options.
@@ -184,7 +230,7 @@ export const readBuildOptions = async (
   );
   const sourcemapOptions = normalizeSourceMaps(buildOptions.sourceMap ?? false);
   const browser = path.join(workspaceRoot, buildOptions.browser as string);
-  const index = path.join(workspaceRoot, buildOptions.index as string);
+  const index = resolveIndexPath(buildOptions.index, project, workspaceRoot);
   // Angular's `polyfills` option accepts either a string or string[] in angular.json.
   // Normalize to array so downstream code can always use spread/push.
   let polyfills = buildOptions.polyfills as string | string[] | undefined;
@@ -253,10 +299,7 @@ export const readBuildOptions = async (
     path.join(workspaceRoot, stylePath),
   );
 
-  const outputPath = path.join(
-    workspaceRoot,
-    buildOptions.outputPath as string,
-  );
+  const outputPath = resolveOutputPath(buildOptions.outputPath, workspaceRoot);
   const i18n = normalizeI18nOptions(project.extensions['i18n']);
   const i18nMissingTranslation =
     (buildOptions.i18nMissingTranslation as

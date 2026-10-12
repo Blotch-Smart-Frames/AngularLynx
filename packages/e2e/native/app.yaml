@@ -5,17 +5,7 @@
 # accessibility-label.
 appId: ${APP_ID}
 ---
-- launchApp
-- openLink: lynx://open?url=${BUNDLE_URL}
-# iOS asks before an app opens its own URL scheme, even when the app is
-# already in front ("Open in “LynxExplorer”?"). Maestro text matching is a
-# full-string regex, so this can't tap "Open lazy page".
-- tapOn:
-    text: Open
-    optional: true
-- extendedWaitUntil:
-    visible: my-app # The title, a <text> element
-    timeout: 30000
+- runFlow: open-app.yaml
 - assertVisible: 'Count: 0'
 - tapOn: Increment
 - assertVisible: 'Count: 1'

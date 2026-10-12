@@ -1,0 +1,22 @@
+# Subflow shared by app.yaml and lazy-route.yaml: launches Lynx Explorer and
+# opens the app's bundle in it. Not a test on its own (src/native/maestro.ts
+# lists the flows that run).
+appId: ${APP_ID}
+---
+- launchApp
+# Retried because on a fresh CI simulator, the first deep link after Explorer's
+# first launch can be dropped: Explorer stays on its home screen and only
+# fetches the bundle long after the wait below has timed out.
+- retry:
+    maxRetries: 2
+    commands:
+      - openLink: lynx://open?url=${BUNDLE_URL}
+      # iOS asks before an app opens its own URL scheme, even when the app is
+      # already in front ("Open in “LynxExplorer”?"). Maestro text matching is
+      # a full-string regex, so this can't tap "Open lazy page".
+      - tapOn:
+          text: Open
+          optional: true
+      - extendedWaitUntil:
+          visible: my-app # The title, a <text> element
+          timeout: 20000

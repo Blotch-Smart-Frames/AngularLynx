@@ -3,14 +3,7 @@
 # (src/native/maestro.ts, BUG_LIST.md "Lazy routes fail in production builds").
 appId: ${APP_ID}
 ---
-- launchApp
-- openLink: lynx://open?url=${BUNDLE_URL}
-- tapOn:
-    text: Open
-    optional: true
-- extendedWaitUntil:
-    visible: my-app
-    timeout: 30000
+- runFlow: open-app.yaml
 - tapOn: Open lazy page
 - extendedWaitUntil:
     visible: Lazy page loaded

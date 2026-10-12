@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    // Node runs the harness's .ts files directly (type stripping), so imports
+    // name the .ts file and the code avoids syntax that needs transforming.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "noEmit": true,
+    "importHelpers": false
+  },
+  // fixtures/ is copied into the generated app and compiled there, against
+  // that app's own Angular setup.
+  "include": ["src", "playwright"]
+}

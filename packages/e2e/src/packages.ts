@@ -1,0 +1,125 @@
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * The single list of packages we publish to npm.
+ *
+ * The E2E harness packs and installs exactly these, and `publish.yml` stamps
+ * versions on and publishes exactly these (through `set-version.ts` and the
+ * tarballs this harness produces). Before this list existed the publish
+ * workflow repeated it five times, and a package missing from one of those
+ * copies would ship stale or not at all.
+ */
+export type PublishablePackage = {
+  /** The npm package name. */
+  readonly name: string;
+  /** The workspace directory, relative to the repository root. */
+  readonly dir: string;
+  /**
+   * The directory `npm publish` runs from, relative to the repository root.
+   * Differs from `dir` for the runtime, which ng-packagr builds into `dist/`
+   * together with its own copy of `package.json`.
+   */
+  readonly publishDir: string;
+  /** Whether the package ships TypeScript types, so `attw` should check them. */
+  readonly hasTypes: boolean;
+  /**
+   * Files that must be in the tarball. A tripwire for the failure behind
+   * 22.2.0 and 22.2.1, where packaging rules stripped the library and the
+   * compiled schematics from the runtime tarball without any error.
+   */
+  readonly requiredFiles: readonly string[];
+};
+
+export const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../..',
+);
+
+// Order matters: it is the publish order. Each package is published before
+// anything that installs it, so a failed publish part-way through never leaves
+// a released package pointing at a version of a dependency that doesn't exist.
+export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
+  {
+    name: '@blotch/rsbuild-plugin-angular-lynx',
+    dir: 'packages/rsbuild-plugin-angular-lynx',
+    publishDir: 'packages/rsbuild-plugin-angular-lynx',
+    hasTypes: true,
+    requiredFiles: ['dist/index.js', 'dist/index.d.ts'],
+  },
+  {
+    name: '@blotch/angular-lynx',
+    dir: 'packages/runtime',
+    publishDir: 'packages/runtime/dist',
+    hasTypes: true,
+    requiredFiles: [
+      'fesm2022/blotch-angular-lynx.mjs',
+      'types/blotch-angular-lynx.d.ts',
+      'schematics/collection.json',
+      // Marks the tsc-compiled schematics as CommonJS. ng-packagr stamps
+      // `"type": "module"` on the dist package, and without this marker Node
+      // loads them as ESM and Angular CLI reports that the package "does not
+      // provide any `ng add` actions". Every factory in collection.json is
+      // also checked separately, in check-packages.ts.
+      'schematics/package.json',
+    ],
+  },
+  {
+    name: '@blotch/angular-lynx-testing-library',
+    dir: 'packages/testing-library',
+    publishDir: 'packages/testing-library',
+    hasTypes: true,
+    requiredFiles: ['dist/index.js', 'dist/index.d.ts', 'dist/setup.js'],
+  },
+  {
+    name: '@blotch/dolan',
+    dir: 'packages/dolan',
+    publishDir: 'packages/dolan',
+    // dolan is a CLI first; its two `utils/*` exports are consumed by copied
+    // component source, not by a type-checked import of the package root.
+    hasTypes: false,
+    requiredFiles: ['dist/index.js'],
+  },
+  {
+    name: 'create-angular-lynx',
+    dir: 'packages/create-angular-lynx',
+    publishDir: 'packages/create-angular-lynx',
+    hasTypes: false,
+    requiredFiles: ['src/index.js'],
+  },
+];
+
+type WorkspacePackageJson = {
+  name: string;
+  version: string;
+  private?: boolean;
+};
+
+const readJson = <T>(file: string): T =>
+  JSON.parse(readFileSync(file, 'utf8')) as T;
+
+/** Reads a publishable package's `package.json` from its source directory. */
+export const readPackageJson = (pkg: PublishablePackage) =>
+  readJson<WorkspacePackageJson>(path.join(REPO_ROOT, pkg.dir, 'package.json'));
+
+/**
+ * Finds workspace packages that npm would publish (no `"private": true`) but
+ * that are missing from {@link PUBLISHABLE_PACKAGES}. A new package added to the
+ * monorepo must either be listed here, so it is tested and published, or be
+ * marked private.
+ */
+export const findUnlistedPublicPackages = (): string[] => {
+  const listed = new Set(PUBLISHABLE_PACKAGES.map((pkg) => pkg.dir));
+  const packagesDir = path.join(REPO_ROOT, 'packages');
+  return readdirSync(packagesDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `packages/${entry.name}`)
+    .filter((dir) => existsSync(path.join(REPO_ROOT, dir, 'package.json')))
+    .filter((dir) => {
+      const pkg = readJson<WorkspacePackageJson>(
+        path.join(REPO_ROOT, dir, 'package.json'),
+      );
+      return !pkg.private && !listed.has(dir);
+    });
+};

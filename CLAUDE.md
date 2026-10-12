@@ -11,6 +11,7 @@ Lynx uses a dual-thread model: **main thread** (native UI rendering) and **backg
 - `packages/runtime` — Core Angular renderer for Lynx (published as `@blotch/angular-lynx`)
 - `packages/rsbuild-plugin-angular-lynx` — Rsbuild plugin for building AngularLynx apps (published as `@blotch/rsbuild-plugin-angular-lynx`)
 - `packages/create-angular-lynx` — Zero-setup scaffolder: `npm create angular-lynx <name>` runs `ng new` then `ng add @blotch/angular-lynx` automatically
+- `packages/e2e` — End-to-end tests (private): packs the publishable packages, installs them into a fresh `npm create angular-lynx` app from a local Verdaccio registry, builds it, and renders it in Chromium (and natively on the iOS Simulator). `src/packages.ts` is the single list of published packages, shared with `publish.yml`. Run with `npm run e2e`; see its README
 - `examples/kitchen-sink-app` — Kitchen sink Angular app running on Lynx (the `npm run demo` target; consumes `@blotch/dolan` UI components)
 - `references/lynx-stack-main/packages/react` — **React Lynx** (production-proven reference implementation). Always refer to how React Lynx does things — it's battle-tested and used in production. When unsure about renderer design, element handling, or Lynx API usage, check this reference first.
 - `references/lynx-website-main` — **Lynx official documentation website**. Contains API docs, guides, element/CSS/native API compatibility data, and examples. Reference for understanding Lynx platform capabilities, supported elements, CSS properties, and API status across platforms.
@@ -46,12 +47,12 @@ Never author raw HSL. Lynx's parser accepts only comma-separated `hsl(240, 5.9%,
 
 Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile to hex/rgb, and their opacity modifiers (`bg-black/50`) compile to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
 
-| Need | Use |
-|------|-----|
-| Themed color (preferred) | `bg-background`, `text-foreground`, `bg-card` |
+| Need                       | Use                                                    |
+| -------------------------- | ------------------------------------------------------ |
+| Themed color (preferred)   | `bg-background`, `text-foreground`, `bg-card`          |
 | Translucent semantic color | dedicated var (`bg-destructive-subtle`) or `opacity-*` |
-| One-off custom color | `style="background-color: rgba(0, 0, 0, 0.5)"` |
-| Named color (± opacity) | `bg-white`, `bg-black/50` |
+| One-off custom color       | `style="background-color: rgba(0, 0, 0, 0.5)"`         |
+| Named color (± opacity)    | `bg-white`, `bg-black/50`                              |
 
 ## Angular
 
@@ -72,6 +73,8 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 ## Testing
 
 - **Test files use `.test.ts`, never `.spec.ts`.** The whole repo standardized on `.test.ts` (the modern Vitest/Node convention). Vitest `include` globs, tsconfig excludes, and the `component` schematic all emit `.test.ts`. When creating a new test file, name it `<name>.test.ts` — never `<name>.spec.ts`.
+
+- **End-to-end tests:** `npm run e2e` installs the packed packages into a fresh app the way a user does. Run it after changing schematics, the scaffolder, package.json `files`/`exports`, or anything in the build plugin: unit tests run against source and can't see packaging bugs.
 
 ## Schematics (`ng add` / `ng generate`)
 

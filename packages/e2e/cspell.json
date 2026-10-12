@@ -1,0 +1,16 @@
+{
+  "import": ["../../cspell.json"],
+  "words": [
+    "bootstatus",
+    "devicetypes",
+    "logcat",
+    "noasan",
+    "serialno",
+    "simctl",
+    "taskkill",
+    "udid",
+    "USERCONFIG",
+    "xcrun"
+  ],
+  "ignorePaths": ["artifacts"]
+}

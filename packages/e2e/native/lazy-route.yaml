@@ -1,0 +1,18 @@
+# Layer 6: lazy route loading on the native renderer. A separate flow from
+# app.yaml so its result is reported on its own. Currently a known failure
+# (src/native/maestro.ts, BUG_LIST.md "Lazy routes fail in production builds").
+appId: ${APP_ID}
+---
+- launchApp
+- openLink: lynx://open?url=${BUNDLE_URL}
+- tapOn:
+    text: Open
+    optional: true
+- extendedWaitUntil:
+    visible: my-app
+    timeout: 30000
+- tapOn: Open lazy page
+- extendedWaitUntil:
+    visible: Lazy page loaded
+    timeout: 15000
+- takeScreenshot: lazy-route

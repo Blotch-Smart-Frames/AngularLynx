@@ -4,9 +4,60 @@ on:
   push:
     tags:
       - 'v*'
+  # Changes to the release process are dry-run before anyone tags. Every step
+  # runs except the real publish: the "Version not changed" failure of 22.2.0
+  # would have shown up here.
+  pull_request:
+    branches: [master]
+    paths:
+      - .github/workflows/publish.yml
+      - .github/workflows/e2e.yml
+      - packages/*/package.json
+      - packages/e2e/src/packages.ts
+      - packages/e2e/src/publish-tarballs.ts
+      - packages/e2e/src/set-version.ts
+      - packages/e2e/src/wait-for-npm.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      dry-run: ${{ steps.version.outputs.dry-run }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          # A tag publishes its own version. Anything else is a dry run of the
+          # version already in the repository.
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "dry-run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./packages/runtime/package.json').version")" >> "$GITHUB_OUTPUT"
+            echo "dry-run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The release gate: layers 1-3 of the E2E tests on the tagged commit, with
+  # the tag's version stamped in, across the full matrix. A dry run only packs
+  # and checks the tarballs (Layer 1); e2e.yml already tests PRs end to end.
+  verify:
+    needs: version
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+      issues: write
+    with:
+      version: ${{ needs.version.outputs.version }}
+      matrix: ${{ needs.version.outputs.dry-run == 'true' && 'none' || 'full' }}
+      native: ${{ needs.version.outputs.dry-run != 'true' }}
+
   publish:
+    needs: [version, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,91 +68,22 @@ jobs:
       # Publisher), and provenance is attached automatically.
       id-token: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Only for the publish script and the package list; nothing is built.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Set version in all packages
-        run: |
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/runtime
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/rsbuild-plugin-angular-lynx
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/testing-library
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/dolan
-          npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version -w packages/create-angular-lynx
-
-      - name: Build @blotch/rsbuild-plugin-angular-lynx
-        run: npm run build -w packages/rsbuild-plugin-angular-lynx
-
-      # ng-packagr copies packages/runtime/package.json (already stamped with
-      # the tag version above) into dist/, so the dist needs no version step of
-      # its own; re-running `npm version` there fails with "Version not changed".
-      - name: Build @blotch/angular-lynx
-        run: npm run build -w packages/runtime
-
-      - name: Build @blotch/angular-lynx-testing-library
-        run: npm run build -w packages/testing-library
-
-      - name: Build @blotch/dolan
-        run: npm run build -w packages/dolan
-
-      # The runtime publishes from ng-packagr's dist/, whose package.json and
-      # assets are copied from the source package, so packaging rules meant for
-      # packages/runtime can silently strip the dist tarball (22.2.0 and 22.2.1
-      # shipped without the library bundle or compiled schematics this way).
-      # Fail before anything is published if the files users import, and the
-      # ones `ng add` / `ng generate` run, are missing from the tarball.
-      # `schematics/package.json` marks the tsc-compiled CommonJS schematics as
-      # such: ng-packagr stamps `"type": "module"` on the dist package, and
-      # without the marker Node loads them as ESM, so Angular CLI reports that
-      # the package "does not provide any `ng add` actions".
-      - name: Verify @blotch/angular-lynx tarball contents
-        working-directory: packages/runtime/dist
-        run: |
-          npm pack --dry-run --json > "$RUNNER_TEMP/runtime-pack.json"
-          node -e '
-            const packed = new Set(require(process.argv[1])[0].files.map((f) => f.path));
-            const required = [
-              "fesm2022/blotch-angular-lynx.mjs",
-              "types/blotch-angular-lynx.d.ts",
-              "schematics/collection.json",
-              "schematics/package.json",
-              "schematics/ng-add/index.js",
-              "schematics/component/index.js",
-            ];
-            const missing = required.filter((path) => !packed.has(path));
-            if (missing.length) {
-              console.error(`Missing from the @blotch/angular-lynx tarball: ${missing.join(", ")}`);
-              process.exit(1);
-            }
-          ' "$RUNNER_TEMP/runtime-pack.json"
-
-      - name: Publish @blotch/rsbuild-plugin-angular-lynx
-        run: npm publish -w packages/rsbuild-plugin-angular-lynx --provenance --access public
-
-      - name: Publish @blotch/angular-lynx
-        working-directory: packages/runtime/dist
-        run: npm publish --provenance --access public
-
-      - name: Publish @blotch/angular-lynx-testing-library
-        run: npm publish -w packages/testing-library --provenance --access public
-
-      - name: Publish @blotch/dolan
-        run: npm publish -w packages/dolan --provenance --access public
-
-      - name: Publish create-angular-lynx
-        run: npm publish -w packages/create-angular-lynx --provenance --access public
+      # The exact tarballs the release gate tested, so what users install is
+      # byte-for-byte what passed.
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs
+      - name: Publish the tested tarballs
+        run: >-
+          node packages/e2e/src/publish-tarballs.ts "$RUNNER_TEMP/tarballs"
+          ${{ needs.version.outputs.dry-run == 'true' && '--dry-run' || '--provenance' }}
 
       # When the trusted-publishing token exchange fails, npm silently falls
       # back to publishing unauthenticated and the registry answers with a
@@ -112,3 +94,57 @@ jobs:
       - name: Show npm trusted publishing log
         if: failure()
         run: grep -h " oidc " ~/.npm/_logs/*.log || echo "No OIDC log lines found"
+
+  # npm holds new versions briefly for processing before they install.
+  wait-for-npm:
+    needs: [version, publish]
+    if: needs.version.outputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node packages/e2e/src/wait-for-npm.ts "${{ needs.version.outputs.version }}"
+
+  # Layers 2 and 3 against the public registry: catches problems that only
+  # exist on npm, such as a broken `latest` tag or a held version.
+  post-publish:
+    needs: [version, wait-for-npm]
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      contents: read
+      issues: write
+    with:
+      version: ${{ needs.version.outputs.version }}
+      registry: public
+
+  # Never deprecates automatically: a maintainer decides, with the commands
+  # ready to paste.
+  report-post-publish:
+    needs: [version, post-publish]
+    if: always() && needs.post-publish.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          commands=$(node --input-type=module -e '
+            const { PUBLISHABLE_PACKAGES } = await import("./packages/e2e/src/packages.ts");
+            for (const { name } of PUBLISHABLE_PACKAGES) {
+              console.log(`npm deprecate ${name}@${process.env.VERSION} "Broken release, use the next version"`);
+            }
+          ')
+          gh issue create --title "Published $VERSION fails the post-publish E2E check" --body "The E2E tests failed against the packages on npm: $RUN_URL
+
+          If the release is broken, deprecate it:
+
+          \`\`\`sh
+          $commands
+          \`\`\`"

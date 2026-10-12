@@ -6,6 +6,12 @@ export default defineConfig({
       format: 'esm',
       syntax: 'es2022',
       dts: true,
+      // The package is ESM, so under `node16`/`nodenext` module resolution
+      // TypeScript requires relative imports in the emitted .d.ts files to
+      // carry their `.js` extension. Without it, a lynx.config.ts
+      // type-checked with that resolution loses the plugin's types (found by
+      // @arethetypeswrong/cli in the E2E package checks).
+      redirect: { dts: { extension: true } },
     },
   ],
   source: {

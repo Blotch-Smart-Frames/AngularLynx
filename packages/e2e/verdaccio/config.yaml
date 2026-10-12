@@ -1,0 +1,31 @@
+# Local npm registry for the E2E tests. registry.ts copies this file into the
+# run's temporary directory and replaces STORAGE_DIR with an absolute path.
+storage: STORAGE_DIR
+
+# The packages built in this run are large (dolan alone ships ~270 files), and
+# Verdaccio's default 10 MB limit would reject some of them.
+max_body_size: 200mb
+
+uplinks:
+  public:
+    url: https://registry.npmjs.org/
+    # Generous, because the first run fills the cache from the public registry
+    # through slow CI networking.
+    timeout: 60s
+    max_fails: 5
+
+packages:
+  '@blotch/*':
+    access: $all
+    publish: $all
+    # No proxy: only versions published by this run exist. A broken local
+    # package can never be silently swapped for a working one from the public
+    # registry.
+  'create-angular-lynx':
+    access: $all
+    publish: $all
+  '**':
+    access: $all
+    proxy: public
+
+log: { type: stdout, format: pretty, level: warn }

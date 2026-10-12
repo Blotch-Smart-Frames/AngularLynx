@@ -167,6 +167,6 @@ export class Home {}
 ## Key concepts
 
 - **`provideRouter()`** — AngularLynx's router provider wraps Angular's router with an in-memory location strategy (no browser URL bar)
-- **`loadComponent`** — Lazy-loads route components; each tab is a separate chunk loaded on demand
+- **`loadComponent`** — Lazy-loads route components; each tab's component is created on first navigation
 - **`<router-outlet>`** — Standard Angular directive; works in Lynx exactly like on the web
 - **`LynxRouteReuseStrategy`** — (optional) Keeps tab components alive in memory instead of destroying/recreating them on every navigation

@@ -99,6 +99,19 @@ describe('polyfills', () => {
     });
   });
 
+  describe('URL and URLSearchParams', () => {
+    // The install guard itself is tested in url/index.test.ts with a stand-in
+    // global: stubbing out the real URL breaks Vitest's module loader.
+    it('keeps the platform implementation where one exists', async () => {
+      const NativeURL = globalThis.URL;
+      const NativeURLSearchParams = globalThis.URLSearchParams;
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect(globalThis.URL).toBe(NativeURL);
+      expect(globalThis.URLSearchParams).toBe(NativeURLSearchParams);
+    });
+  });
+
   describe('queueMicrotask', () => {
     it('uses lynx.queueMicrotask when available', async () => {
       const lynxQueueMicrotask = vi.fn();

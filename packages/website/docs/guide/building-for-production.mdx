@@ -19,8 +19,6 @@ After building, your `dist/` directory looks like this:
 ```
 dist/
 ├── main.lynx.bundle            # Your app's main bundle
-├── async/
-│   └── lazy-route.lynx.bundle  # Lazy-loaded route chunks
 └── static/
     ├── image/
     │   └── logo.a1b2c3.png     # Hashed image assets
@@ -30,14 +28,13 @@ dist/
         └── custom.g7h8i9.woff2
 ```
 
-| File                  | Purpose                                                 |
-| --------------------- | ------------------------------------------------------- |
-| `main.lynx.bundle`    | The primary bundle loaded when your app starts          |
-| `async/*.lynx.bundle` | Chunks for lazy-loaded routes (loaded on demand)        |
-| `static/`             | Images, fonts, and other assets referenced in your code |
+| File               | Purpose                                                 |
+| ------------------ | ------------------------------------------------------- |
+| `main.lynx.bundle` | The primary bundle loaded when your app starts          |
+| `static/`          | Images, fonts, and other assets referenced in your code |
 
 :::tip
-Lazy-loaded routes (`loadComponent(() => import('./path'))`) are automatically split into separate async bundles. See [Routing](/guide/routing) for more on lazy loading.
+Lazy-loaded routes (`loadComponent(() => import('./path'))`) and `@defer` blocks are built into `main.lynx.bundle`. They still load lazily in your code, but no separate bundle has to be fetched. See [Routing](/guide/routing) for more on lazy loading.
 :::
 
 ## Deployment

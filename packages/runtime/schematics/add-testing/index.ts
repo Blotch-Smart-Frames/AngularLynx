@@ -7,6 +7,7 @@ import {
 import {
   addDependency,
   DependencyType,
+  ExistingBehavior,
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
 import { JSONFile } from '@schematics/angular/utility/json-file';
@@ -128,19 +129,20 @@ const addTestingDependencies = (): Rule => {
         install: InstallBehavior.Auto,
       },
     ),
-    // `ng new` already adds vitest and jsdom, at newer majors than these.
-    // Replace them (the default): @lynx-js/testing-environment, which the
-    // testing library runs on, doesn't work with Vitest 5 or jsdom 30 yet
-    // (it can't replace jsdom 30's `window.document`, and Vitest 5 fails to
-    // tear the environment down). The E2E tests run `npm test` in a fresh
-    // `ng new` project to catch this.
+    // `ng new` already adds vitest and jsdom: keep the project's versions
+    // rather than replacing them (the default), which silently downgraded
+    // every new project. The testing library works with Vitest 4 and 5 and
+    // jsdom 25 to 30. The E2E tests run `npm test` in a fresh `ng new`
+    // project to keep it that way.
     addDependency('vitest', VERSIONS.vitest, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
+      existing: ExistingBehavior.Skip,
     }),
     addDependency('jsdom', VERSIONS.jsdom, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
+      existing: ExistingBehavior.Skip,
     }),
   ]);
 };

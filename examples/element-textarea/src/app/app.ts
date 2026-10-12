@@ -37,7 +37,14 @@ export class App {
   readonly text = signal('');
   readonly charCount = computed(() => this.text().length);
 
-  onInput(event: { detail: { value: string } }): void {
-    this.text.set(event.detail.value);
+  /**
+   * Angular types `$event` on `<textarea>` as the DOM `Event`, so a narrower
+   * parameter type (`{ detail: { value: string } }`) is a template type error.
+   * That error used to be printed without failing the build; now it fails
+   * `rspeedy build`. Lynx delivers a CustomEvent-shaped object, so the cast is
+   * safe (element-input does the same).
+   */
+  onInput(event: Event): void {
+    this.text.set((event as CustomEvent<{ value: string }>).detail.value);
   }
 }

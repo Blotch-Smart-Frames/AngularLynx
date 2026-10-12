@@ -29,6 +29,8 @@ The iOS run creates and reuses its own simulator, "AngularLynx E2E", so your own
 node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
 ```
 
+Android has no `npm run e2e` flag: boot an emulator first (CI uses API 34 with Google APIs; on Apple silicon, the `arm64-v8a` image), put `adb` on your `PATH`, then run the same command with `--platform android`.
+
 ## What each layer does
 
 | Layer | Where                          | What it checks                                                                                                                                           |
@@ -54,4 +56,5 @@ Layers 4 (the OS, package manager and version matrix) and 5 (release gates) are 
 - **Verdaccio's storage is cached** in `node_modules/.cache/angular-lynx-e2e/verdaccio` (or `--storage <dir>`), so third-party packages only download once.
 - **`packages.ts` is the one list of published packages.** `publish.yml` uses it through `set-version.ts`, `publish-tarballs.ts` and `wait-for-npm.ts`. A new public package must be added there or marked `"private": true`, or Layer 1 fails.
 - **Lynx Explorer is pinned** in `src/native/explorer.ts` with its SHA-256. Bump it together with the Lynx toolchain.
+- **Native flows can only find elements that aren't flattened.** On Android, Lynx draws most elements into their parent without a View of their own, and Lynx Explorer only builds an accessibility tree for them while TalkBack is on. So every element a flow taps or checks sets `flatten` to false (see `fixtures/counter.ts`), which gives it a View carrying its label or text. iOS doesn't need it, but works the same with it.
 - **Known failures are marked, not skipped.** A check for a known bug uses `test.fail()` and points at `BUG_LIST.md`, so it turns red when the bug is fixed.

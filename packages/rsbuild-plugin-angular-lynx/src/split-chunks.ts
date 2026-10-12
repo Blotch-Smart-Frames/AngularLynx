@@ -67,18 +67,22 @@ export const applySplitChunksRule = (
     return config;
   });
 
-  api.modifyRspackConfig((rspackConfig, { environment }) => {
-    if (environment.name !== 'lynx') {
-      return rspackConfig;
-    }
-
+  // Every environment, not just `lynx`: the web bundle is a Lynx bundle too
+  // (encoded by WebEncodePlugin), with the same main-thread / background
+  // split, and React Lynx applies its rule to every environment as well.
+  api.modifyRspackConfig((rspackConfig) => {
     // When experimental_isLazyBundle is disabled (the default), set asyncChunks=false
     // so rspack inlines all dynamic imports into the initial bundle. Routes still use
     // loadComponent() syntax but modules are synchronously available at runtime — this
-    // avoids needing Lynx's native async chunk loading APIs (requireModuleAsync /
-    // QueryComponent) which require AMD wrapping, .lynx.bundle packaging, and SDK 2.14+.
+    // avoids needing Lynx's async chunk loading (lynx.loadLazyBundle → QueryComponent),
+    // which needs a main-thread half in every lazy bundle. The plugin compiles both
+    // threads' modules into the same layer, so the two entries share one async chunk,
+    // and the lazy bundle encoded from it has no main-thread code. Applying this only to
+    // `lynx` once left `web` emitting such bundles: Lynx for Web evaluates a lazy
+    // bundle's main-thread root when loading it, so every lazy route and @defer block
+    // failed there with "SyntaxError: Unexpected token '}'".
     // When enabled, asyncChunks remains true and each loadComponent() produces a
-    // separate .js file loaded at runtime via Lynx's native requireModuleAsync.
+    // separate lazy bundle loaded at runtime.
     rspackConfig.output = rspackConfig.output ?? {};
     if (!options.experimental_isLazyBundle) {
       (rspackConfig.output as any).asyncChunks = false;

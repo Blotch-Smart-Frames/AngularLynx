@@ -150,9 +150,27 @@ const addTestingAndRunTests = async (
   step(
     'Layer 2: ng generate @blotch/angular-lynx:add-testing, then run the tests',
   );
+  const testRunners = () => {
+    const { devDependencies = {} } = readJson<PackageJson>(
+      path.join(appDir, 'package.json'),
+    );
+    return {
+      vitest: devDependencies['vitest'],
+      jsdom: devDependencies['jsdom'],
+    };
+  };
+  const testRunnersBefore = testRunners();
   await exec(
     ...pm.exec('ng', ['generate', '@blotch/angular-lynx:add-testing']),
   );
+  // add-testing used to replace the Vitest and jsdom `ng new` installs with
+  // older majors; the tests below must pass on the project's own versions.
+  if (testRunnersBefore.vitest && testRunnersBefore.jsdom) {
+    check(
+      JSON.stringify(testRunners()) === JSON.stringify(testRunnersBefore),
+      `add-testing changed the project's test runner versions from ${JSON.stringify(testRunnersBefore)} to ${JSON.stringify(testRunners())}.`,
+    );
+  }
   // add-testing adds devDependencies without installing them.
   await exec(...pm.install());
   check(
@@ -480,9 +498,11 @@ const buildApp = async (
     env: registry.env,
     logFile: context.logFile,
   });
-  // The build reports some failures while still exiting 0: rspeedy logs
-  // `error` lines, and the Angular plugin prints TypeScript and Angular
-  // compiler diagnostics (TS2307, NG8001, ...) without failing the build.
+  // The build can report failures while still exiting 0: rspeedy logs
+  // `error` lines for some of them. TypeScript and Angular compiler
+  // diagnostics (TS2307, NG8001, ...) fail the build since the plugin reports
+  // them through rspack; matching them here as well keeps a regression of
+  // that from passing silently.
   const errorLines = stripAnsi(output)
     .split('\n')
     .filter(
@@ -505,9 +525,10 @@ const buildApp = async (
 };
 
 /**
- * Type-checks the app, templates included. rspeedy can report type errors as
- * warnings and still exit 0, and an `ng add` that generates code with type
- * errors (as 22.2.1's app.ts did) must fail the run.
+ * Type-checks the app, templates included, with Angular's own compiler rather
+ * than the build's: an `ng add` that generates code with type errors (as
+ * 22.2.1's app.ts did) must fail the run even if the build plugin stops
+ * reporting them.
  */
 const typeCheck = async (
   appDir: string,

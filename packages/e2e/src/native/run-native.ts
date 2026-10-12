@@ -71,8 +71,8 @@ export const runNative = async ({
             artifactsDir,
             logFile,
           });
-    // Independent of the flows, which can't read the screen on Android (see
-    // FLOWS): Explorer must at least have fetched the bundle.
+    // Independent of the flows, which would only report that they couldn't
+    // find an element: Explorer must at least have fetched the bundle.
     if (
       !readFileSync(requestLog, 'utf8').includes('200 GET /main.lynx.bundle')
     ) {

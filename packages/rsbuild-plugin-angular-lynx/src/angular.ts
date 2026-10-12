@@ -12,7 +12,11 @@ import {
   type ComponentStylesEntry,
   createTransformStylesheet,
 } from './component-styles-cache.js';
-import { isLynxUnknownElementMessage } from './is-lynx-unknown-element-message.js';
+import {
+  type AngularDiagnostics,
+  filterAngularDiagnostics,
+  toAngularDiagnosticError,
+} from './angular-diagnostics.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { buildTransformedCode } from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
@@ -59,7 +63,8 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  *     → compilation.update (rebuilds only: invalidate the changed files)
  *     → compilation.initialize (Angular AOT walk + transformStylesheet callback)
  *     → emitAffectedFiles (refreshes typeScriptFileCache)
- *     → diagnoseFiles (filtered to suppress Lynx-element false positives)
+ *     → diagnoseFiles (filtered to suppress Lynx-element false positives, then
+ *       reported as rspack errors/warnings so type errors fail the build)
  *     → rspack rebuilds the changed files plus any whose compiled output changed
  *
  * Then for each module request the `api.transform` hook delegates the per-module
@@ -163,6 +168,10 @@ export const applyAngularRules = async (
   // Project files seen by the previous compile. A rebuild re-parses only new
   // or changed files for schema injection instead of every component.
   let knownSourceFiles = new Set<string>();
+  // Type and template diagnostics from the most recent Angular compile. They
+  // stay until the next compile, because a rebuild that doesn't recompile
+  // (e.g. a global CSS edit) still contains the code they point at.
+  let angularDiagnostics: AngularDiagnostics = { errors: [], warnings: [] };
 
   const transformStylesheet = createTransformStylesheet({
     basePath,
@@ -325,24 +334,17 @@ export const applyAngularRules = async (
       ...scanSourcesForUnsupportedCss(fileNames),
     ]);
 
-    const diagnostics = await compilation.diagnoseFiles(
-      useTypeChecking
-        ? DiagnosticModes.All
-        : DiagnosticModes.All & ~DiagnosticModes.Semantic,
+    // Kept rather than printed: the compiler hook below reports them through
+    // rspack, so type and template errors fail the build like `ng build`.
+    // Only diagnostics the schema injection doesn't already cover are kept,
+    // i.e. real errors, not "unknown element" noise for Lynx native elements.
+    angularDiagnostics = filterAngularDiagnostics(
+      await compilation.diagnoseFiles(
+        useTypeChecking
+          ? DiagnosticModes.All
+          : DiagnosticModes.All & ~DiagnosticModes.Semantic,
+      ),
     );
-    // Only log diagnostics that aren't suppressed by the schema injection — i.e. real errors
-    // the user should know about, not "unknown element" noise for Lynx native elements.
-    // diagnoseFiles returns { errors?: PartialMessage[], warnings?: PartialMessage[] }
-    // where PartialMessage.text holds the message string.
-    const actionableErrors = diagnostics.errors?.filter(
-      (e: { text?: string }) => !isLynxUnknownElementMessage(e.text),
-    );
-    const actionableWarnings = diagnostics.warnings?.filter(
-      (w: { text?: string }) => !isLynxUnknownElementMessage(w.text),
-    );
-    if (actionableErrors?.length || actionableWarnings?.length) {
-      console.log({ errors: actionableErrors, warnings: actionableWarnings });
-    }
 
     return {
       changedOutputs,
@@ -379,6 +381,29 @@ export const applyAngularRules = async (
         );
       }
     }
+
+    // Every environment shares the one Angular compilation, so only the first
+    // compiler reports its diagnostics: rsbuild concatenates the errors of all
+    // compilers, and reporting in each would print every error once per
+    // environment. One compiler with errors is enough to fail the build.
+    // `thisCompilation` runs after `onBeforeEnvironmentCompile` (rsbuild
+    // calls that from the compiler's `run`/`watchRun`), so the diagnostics are
+    // already up to date for this compile.
+    compilers[0]?.hooks.thisCompilation.tap(
+      'lynx:angular:diagnostics',
+      (rspackCompilation) => {
+        rspackCompilation.errors.push(
+          ...angularDiagnostics.errors.map((message) =>
+            toAngularDiagnosticError(message, 'error'),
+          ),
+        );
+        rspackCompilation.warnings.push(
+          ...angularDiagnostics.warnings.map((message) =>
+            toAngularDiagnosticError(message, 'warning'),
+          ),
+        );
+      },
+    );
   });
 
   let compilationClosed = false;

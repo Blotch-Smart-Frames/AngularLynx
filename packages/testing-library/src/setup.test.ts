@@ -196,3 +196,62 @@ describe('Node global', () => {
     expect((globalThis as any).Node).toBe(globalThis.window.Node);
   });
 });
+
+describe('thread switches keep their writes off the jsdom window', () => {
+  // Vitest 5's jsdom environment defines window properties on the global as
+  // accessors whose setter writes through to the window, and jsdom 30's
+  // `window.document` has no setter. Simulate that for one thread global.
+  it('replaces a write-through accessor with a data property before writing', () => {
+    const env = (globalThis as any).lynxTestingEnv;
+    const windowSide: unknown[] = [];
+    Object.defineProperty(globalThis, 'requestAnimationFrame', {
+      get: () => undefined,
+      set: (value: unknown) => {
+        windowSide.push(value);
+        throw new TypeError('Cannot set property which has only a getter');
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    expect(() => env.switchToMainThread()).not.toThrow();
+
+    expect(windowSide).toEqual([]);
+    const descriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'requestAnimationFrame',
+    );
+    expect(descriptor?.set).toBeUndefined();
+    expect(descriptor?.writable).toBe(true);
+    expect(descriptor?.enumerable).toBe(true);
+    expect(globalThis.requestAnimationFrame).toBe(
+      env.mainThread.globalThis.requestAnimationFrame,
+    );
+  });
+
+  it('does the same on a switch to the background thread', () => {
+    const env = (globalThis as any).lynxTestingEnv;
+    Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+      get: () => undefined,
+      set: () => {
+        throw new TypeError('Cannot set property which has only a getter');
+      },
+      configurable: true,
+    });
+
+    expect(() => env.switchToBackgroundThread()).not.toThrow();
+    expect(globalThis.cancelAnimationFrame).toBe(
+      env.backgroundThread.globalThis.cancelAnimationFrame,
+    );
+    env.switchToMainThread();
+  });
+
+  it('leaves the jsdom window that Vitest tears down intact', () => {
+    // The thread globals include `_globalProxy`, the object jsdom returns as
+    // `dom.window`. Writing it through made Vitest's teardown call `close()`
+    // on a thread global ("dom.window.close is not a function").
+    const dom = (globalThis as any).jsdom;
+    expect(typeof dom.window.close).toBe('function');
+    expect(dom.window.document).toBe(document);
+  });
+});

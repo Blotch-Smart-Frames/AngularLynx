@@ -687,6 +687,7 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 - Shim `window = globalThis`, `document = { defaultView: globalThis, querySelector: () => null }`, and no-op `addEventListener` / `removeEventListener` at startup (see `runtime.ts`).
 - Implement a custom `LynxPlatformLocation` that stores the current path in a signal and provides manual URL string parsing, bypassing the `URL` constructor entirely (see `packages/runtime/src/lib/lynx-platform-location.ts`).
+- Polyfill `URL` and `URLSearchParams` (see `packages/runtime/src/lib/url/`), because Angular itself calls them. Since 22.2, `DefaultUrlSerializer.serialize()` runs every URL through `new URL(url, 'http://fake')` to reject protocol-relative URLs, and treats the `ReferenceError` as such a URL. Every URL then serialized to `/`, so every navigation on the main thread looked like a navigation to the current URL and was skipped (`NavigationSkipped`, no error). No route could be opened on device, lazy or not, while the web build (which has a real `URL`) worked. HttpClient and `NgOptimizedImage`'s loaders call `URL` too. The polyfill follows the WHATWG URL Standard and is checked against Node's `URL` in its tests.
 
 ---
 

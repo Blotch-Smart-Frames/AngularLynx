@@ -37,13 +37,15 @@ export const VERSIONS = {
    */
   angularLynxTestingLibrary: '^22.2.0',
   /**
-   * vitest — fast unit test runner powered by Vite
+   * vitest — fast unit test runner powered by Vite. Only added when the
+   * project has none; `ng new` already adds it.
    */
-  vitest: '^4.0.0',
+  vitest: '^5.0.0',
   /**
-   * jsdom — DOM environment for running component tests
+   * jsdom — DOM environment for running component tests. Only added when the
+   * project has none; `ng new` already adds it.
    */
-  jsdom: '^25.0.0',
+  jsdom: '^30.0.0',
   /**
    * @angular/localize — Angular's runtime i18n / $localize support
    */

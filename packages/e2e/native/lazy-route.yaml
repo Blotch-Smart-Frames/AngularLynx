@@ -1,6 +1,7 @@
 # Layer 6: lazy route loading on the native renderer. A separate flow from
-# app.yaml so its result is reported on its own. Currently a known failure
-# (src/native/maestro.ts, BUG_LIST.md "Lazy routes fail in production builds").
+# app.yaml so its result is reported on its own. It also proves navigation
+# works at all on device: before the runtime polyfilled `URL`, Angular's
+# Router skipped every navigation on Lynx's main thread.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml

@@ -113,6 +113,12 @@ export class App {
     {
       title: 'Elements',
       items: [
+        { path: 'blur-view-demo', label: 'Blur View', icon: 'droplet' },
+        {
+          path: 'glass-playground-demo',
+          label: 'Glass Playground',
+          icon: 'move',
+        },
         { path: 'images-demo', label: 'Images', icon: 'camera' },
         { path: 'list-example', label: 'List', icon: 'list' },
         {
@@ -120,6 +126,8 @@ export class App {
           label: 'Scroll View',
           icon: 'chevrons-down',
         },
+        { path: 'video-demo', label: 'Video', icon: 'video' },
+        { path: 'webview-demo', label: 'WebView', icon: 'monitor' },
       ],
     },
     {

@@ -19,6 +19,28 @@ export const routes: Routes = [
       import('./events-demo/events-demo').then((m) => m.EventsDemo),
   },
   {
+    path: 'blur-view-demo',
+    loadComponent: () =>
+      import('./blur-view-demo/blur-view-demo').then((m) => m.BlurViewDemo),
+  },
+  {
+    path: 'glass-playground-demo',
+    loadComponent: () =>
+      import('./glass-playground-demo/glass-playground-demo').then(
+        (m) => m.GlassPlaygroundDemo,
+      ),
+  },
+  {
+    path: 'video-demo',
+    loadComponent: () =>
+      import('./video-demo/video-demo').then((m) => m.VideoDemo),
+  },
+  {
+    path: 'webview-demo',
+    loadComponent: () =>
+      import('./webview-demo/webview-demo').then((m) => m.WebViewDemo),
+  },
+  {
     path: 'images-demo',
     loadComponent: () =>
       import('./images-demo/images-demo').then((m) => m.ImagesDemo),

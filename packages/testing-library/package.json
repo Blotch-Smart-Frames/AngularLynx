@@ -59,6 +59,6 @@
     "@angular/compiler": "^22.2.0",
     "@angular/core": "^22.2.0",
     "@angular/platform-browser": "^22.2.0",
-    "@blotch/angular-lynx": "^22.0.0"
+    "@blotch/angular-lynx": "^22.2.0"
   }
 }

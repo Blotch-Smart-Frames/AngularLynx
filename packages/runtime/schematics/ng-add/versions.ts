@@ -11,7 +11,7 @@ export const VERSIONS = {
   /**
    * @blotch/rsbuild-plugin-angular-lynx — Rsbuild plugin that compiles Angular for Lynx
    */
-  rsbuildPluginAngularLynx: '^0.0.1',
+  rsbuildPluginAngularLynx: '^22.2.0',
   /**
    * @lynx-js/rspeedy — Lynx dev-server and production build tool
    */
@@ -35,7 +35,7 @@ export const VERSIONS = {
   /**
    * @blotch/angular-lynx-testing-library — Testing Library utilities for AngularLynx components
    */
-  angularLynxTestingLibrary: '^22.0.0',
+  angularLynxTestingLibrary: '^22.2.0',
   /**
    * vitest — fast unit test runner powered by Vite
    */

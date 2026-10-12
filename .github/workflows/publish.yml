@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Publishing uses npm trusted publishing: npm swaps this GitHub OIDC
+      # token for a short-lived publish token, so no NPM_TOKEN secret is
+      # stored. Each package must list this repo + `publish.yml` as its
+      # trusted publisher on npmjs.com (Package → Settings → Trusted
+      # Publisher), and provenance is attached automatically.
       id-token: write
     steps:
       - name: Checkout
@@ -54,26 +59,16 @@ jobs:
 
       - name: Publish @blotch/rsbuild-plugin-angular-lynx
         run: npm publish -w packages/rsbuild-plugin-angular-lynx --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @blotch/angular-lynx
         working-directory: packages/runtime/dist
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @blotch/angular-lynx-testing-library
         run: npm publish -w packages/testing-library --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @blotch/dolan
         run: npm publish -w packages/dolan --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish create-angular-lynx
         run: npm publish -w packages/create-angular-lynx --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

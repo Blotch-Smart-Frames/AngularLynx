@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
 import { addCommand } from './commands/add.js';
@@ -13,12 +14,20 @@ import { outdatedCommand } from './commands/outdated.js';
 import { themeCommand } from './commands/theme.js';
 import { printBanner } from './utils/banner.js';
 
+// The publish workflow stamps the release version (from the git tag) into
+// package.json, so reading it at runtime keeps `dolan --version` in step with
+// what was published instead of drifting from a hardcoded string. The path is
+// relative to the compiled `dist/index.js`, and package.json always ships.
+const { version } = createRequire(import.meta.url)('../package.json') as {
+  version: string;
+};
+
 const program = new Command();
 
 program
   .name('dolan')
   .description('Add ui components to your AngularLynx project')
-  .version('0.0.1')
+  .version(version)
   .action(() => {
     printBanner();
     program.outputHelp();

@@ -44,12 +44,11 @@ jobs:
       - name: Build @blotch/rsbuild-plugin-angular-lynx
         run: npm run build -w packages/rsbuild-plugin-angular-lynx
 
+      # ng-packagr copies packages/runtime/package.json (already stamped with
+      # the tag version above) into dist/, so the dist needs no version step of
+      # its own; re-running `npm version` there fails with "Version not changed".
       - name: Build @blotch/angular-lynx
         run: npm run build -w packages/runtime
-
-      - name: Set version in runtime dist
-        working-directory: packages/runtime/dist
-        run: npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version
 
       - name: Build @blotch/angular-lynx-testing-library
         run: npm run build -w packages/testing-library

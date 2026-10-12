@@ -40,12 +40,11 @@ test('the generated app renders and handles taps', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// Lynx for Web loads a lazy bundle by evaluating its main-thread half, which
+// the plugin never emitted, so this used to fail with "SyntaxError: Unexpected
+// token '}'". Dynamic imports are now inlined into the main bundle on every
+// environment, so a regression here means a lazy bundle is being emitted again.
 test('the generated app loads lazy routes', async ({ page }) => {
-  // Known bug (BUG_LIST.md, "Lazy routes fail in production builds"): the lazy
-  // bundle's main-thread code fails to evaluate. test.fail() keeps the suite
-  // green while the bug exists and turns it red once the bug is fixed, so
-  // remove this line together with the fix.
-  test.fail();
   const errors = collectErrors(page);
   await page.goto('/');
   await expect(page.getByText(appName, { exact: true })).toBeVisible();

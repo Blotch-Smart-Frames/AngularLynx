@@ -99,6 +99,11 @@ const createLynxConfig = () => ({
   resolveIntermediateDir: vi.fn(
     ({ entryName }: { entryName: string }) => `.lynx/${entryName}`,
   ),
+  // `undefined` is what the real config returns unless `output.filename.bundle`
+  // is a function.
+  resolveLazyBundleFilename: vi.fn(
+    (_context: { platform: string }): string | undefined => undefined,
+  ),
 });
 
 /**
@@ -239,6 +244,39 @@ describe('applyEntry', () => {
     const templateUse = pluginUses[0];
     expect((templateUse.args[0] as any).filename).toBe('main.lynx.bundle');
     expect((templateUse.args[0] as any).intermediate).toBe('.lynx/main');
+  });
+
+  it('leaves the lazy bundle filename to the template plugin by default', () => {
+    const { api, lynxConfig, triggerChain } = createMockApi();
+    const { chain, pluginUses } = createMockChain({
+      entries: { main: { values: () => ['./src/main.ts'] } },
+    });
+
+    applyEntry(api as never, entryOptions);
+    triggerChain(chain, { name: 'web', config: {} }, false);
+
+    expect(lynxConfig!.resolveLazyBundleFilename).toHaveBeenCalledWith({
+      platform: 'web',
+    });
+    expect(pluginUses[0].args[0]).not.toHaveProperty('lazyBundleFilename');
+  });
+
+  it('passes a lazy bundle filename resolved per platform to the template plugin', () => {
+    const lynxConfig = createLynxConfig();
+    lynxConfig.resolveLazyBundleFilename.mockImplementation(
+      ({ platform }) => `lazy/[name].${platform}.bundle`,
+    );
+    const { api, triggerChain } = createMockApi(lynxConfig);
+    const { chain, pluginUses } = createMockChain({
+      entries: { main: { values: () => ['./src/main.ts'] } },
+    });
+
+    applyEntry(api as never, entryOptions);
+    triggerChain(chain, { name: 'lynx', config: {} }, false);
+
+    expect((pluginUses[0].args[0] as any).lazyBundleFilename).toBe(
+      'lazy/[name].lynx.bundle',
+    );
   });
 
   it('passes the enableA11y option to the template plugin', () => {

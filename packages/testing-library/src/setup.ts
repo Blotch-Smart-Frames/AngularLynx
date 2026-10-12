@@ -52,7 +52,52 @@ if (typeof Element.prototype.animate !== 'function') {
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────
 
-const lynxTestingEnv = new LynxTestingEnv({ window: globalThis.window as any });
+/**
+ * Turns the globals the testing environment is about to write into plain data
+ * properties, so the writes stay on the global object.
+ *
+ * Vitest's jsdom environment defines each jsdom window property on the global
+ * as an accessor. Since Vitest 5 its setter also writes the value through to
+ * the jsdom window. A thread switch copies every thread global onto the
+ * global, and two of those writes break the window: jsdom 30's
+ * `window.document` has no setter, so assigning it threw "Cannot set property
+ * document of [object Window] which has only a getter", and `_globalProxy` is
+ * the object jsdom returns as `dom.window`, so overwriting it made Vitest's
+ * teardown fail with "dom.window.close is not a function". The thread
+ * globals' values are the window's own (`document`, `Event`) or replace them
+ * only for the test (`requestAnimationFrame`), so keeping them on the global
+ * matches what Vitest 4 did.
+ */
+const keepWritesOffWindow = (keys: readonly string[]): void => {
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
+    if (!descriptor?.set) continue;
+    Object.defineProperty(globalThis, key, {
+      value: (globalThis as any)[key],
+      writable: true,
+      configurable: true,
+      enumerable: descriptor.enumerable,
+    });
+  }
+};
+
+class AngularLynxTestingEnv extends LynxTestingEnv {
+  override switchToMainThread(): void {
+    keepWritesOffWindow(Object.getOwnPropertyNames(this.mainThread.globalThis));
+    super.switchToMainThread();
+  }
+
+  override switchToBackgroundThread(): void {
+    keepWritesOffWindow(
+      Object.getOwnPropertyNames(this.backgroundThread.globalThis),
+    );
+    super.switchToBackgroundThread();
+  }
+}
+
+const lynxTestingEnv = new AngularLynxTestingEnv({
+  window: globalThis.window as any,
+});
 (globalThis as any).lynxTestingEnv = lynxTestingEnv;
 // Expose Node so @testing-library/dom detects element types correctly.
 (globalThis as any).Node = globalThis.window.Node;

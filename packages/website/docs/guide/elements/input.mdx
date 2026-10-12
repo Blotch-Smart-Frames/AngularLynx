@@ -16,11 +16,11 @@ Single-line text input field.
 />
 ```
 
-The input event provides the value via `event.detail.value`:
+The input event provides the value via `event.detail.value`. Angular types `$event` as `Event`, so read `detail` through `CustomEvent`. A narrower parameter type fails the build's type check.
 
 ```typescript
-onInput(event: { detail: { value: string } }): void {
-  this.name.set(event.detail.value);
+onInput(event: Event): void {
+  this.name.set((event as CustomEvent<{ value: string }>).detail.value);
 }
 ```
 

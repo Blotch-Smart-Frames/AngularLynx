@@ -86,6 +86,14 @@ export const applyEntry = (
         platform: environment.name,
       });
 
+      // Set only when `output.filename.bundle` is a function, which can name
+      // lazy bundles per platform. Otherwise LynxTemplatePlugin keeps its
+      // default name (under `lazy-bundle/`, with the compilation hash), as in
+      // React Lynx.
+      const lazyBundleFilename = lynxConfig.resolveLazyBundleFilename({
+        platform: environment.name,
+      });
+
       const mainThreadEntry = `${entryName}__main-thread`;
       const mainThreadName = path.posix.join(`${entryName}/main-thread.js`);
       const backgroundEntry = entryName;
@@ -137,6 +145,7 @@ export const applyEntry = (
         .use(LynxTemplatePlugin, [
           {
             filename: templateFilename,
+            ...(lazyBundleFilename ? { lazyBundleFilename } : {}),
             intermediate: lynxConfig.resolveIntermediateDir({ entryName }),
             chunks: [mainThreadEntry, backgroundEntry],
             cssPlugins: [CSSPlugins.parserPlugins.removeFunctionWhiteSpace()],

@@ -13,6 +13,8 @@
  * requestIdleCallback), so keep these blocks in sequence.
  */
 
+import { installUrl } from './url';
+
 // Web-only: fail loud and clear when the page is not a secure context.
 //
 // cspell:disable-next-line
@@ -93,6 +95,15 @@ if (typeof AbortController === 'undefined') {
     }
   };
 }
+
+// Lynx's main thread (PrimJS) has no `URL` or `URLSearchParams`. Since 22.2,
+// Angular's Router serializes every URL through `new URL(url, 'http://fake')`
+// to reject protocol-relative URLs, and treats the ReferenceError as such a
+// URL, so every URL serialized to `/`. Each navigation then looked like a
+// navigation to the current URL and was skipped (NavigationSkipped): no route
+// could be opened on device, lazy or not. HttpClient and NgOptimizedImage's
+// loaders use `URL` as well.
+installUrl(globalThis);
 
 // Angular core uses queueMicrotask for effect scheduling and change detection.
 // React Lynx polyfills this from lynx.queueMicrotask (see motion/src/polyfill/shim.ts).

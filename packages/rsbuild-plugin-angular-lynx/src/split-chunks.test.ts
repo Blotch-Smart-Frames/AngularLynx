@@ -163,14 +163,19 @@ describe('applySplitChunksRule', () => {
   });
 
   describe('modifyRspackConfig handler', () => {
-    it('returns config unchanged when environment.name is not "lynx"', () => {
+    it('inlines dynamic imports for the web environment too', () => {
+      // The web bundle loads lazy bundles through Lynx for Web, which needs
+      // each one's main-thread code. Leaving web out made every lazy route
+      // fail there (BUG_LIST.md, "Lazy routes fail in production builds").
       const { api, triggerRspackConfig } = createMockApi();
-      const config = { output: {}, optimization: { splitChunks: {} } };
+      const config = { optimization: { splitChunks: { chunks: 'all' } } };
 
       applySplitChunksRule(api as never, defaultOptions);
       const result = triggerRspackConfig(config, { name: 'web' });
 
-      expect(result).toBe(config);
+      expect((result as any).output.asyncChunks).toBe(false);
+      const chunks = (result as any).optimization.splitChunks.chunks;
+      expect(chunks({ name: 'main__main-thread' })).toBe(false);
     });
 
     it('sets asyncChunks to false when experimental_isLazyBundle is false', () => {

@@ -18,23 +18,14 @@ export type Flow = {
   readonly knownFailure?: Partial<Record<Platform, string>>;
 };
 
-const ANDROID_ACCESSIBILITY =
-  'BUG_LIST.md, "Maestro can\'t see Lynx elements on Android"';
-
+// No flow is a known failure on any platform. Android used to fail both flows
+// because Maestro couldn't see flattened Lynx elements, which the fixtures now
+// avoid (fixtures/counter.ts), and the iOS lazy route failed because Angular's
+// Router skipped every navigation without a `URL` global (now polyfilled by
+// the runtime).
 export const FLOWS: readonly Flow[] = [
-  {
-    file: 'app.yaml',
-    description: 'renders and handles taps',
-    knownFailure: { android: ANDROID_ACCESSIBILITY },
-  },
-  {
-    file: 'lazy-route.yaml',
-    description: 'loads lazy routes',
-    knownFailure: {
-      ios: 'BUG_LIST.md, "Lazy routes fail in production builds"',
-      android: ANDROID_ACCESSIBILITY,
-    },
-  },
+  { file: 'app.yaml', description: 'renders and handles taps' },
+  { file: 'lazy-route.yaml', description: 'loads lazy routes' },
 ];
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */

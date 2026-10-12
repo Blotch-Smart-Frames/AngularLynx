@@ -1,6 +1,6 @@
 # @defer Blocks
 
-Angular's [deferrable views](https://angular.dev/guide/defer) work on Lynx, enabling code splitting to reduce your initial bundle size. Deferred components are split into separate async chunks at build time and loaded on demand.
+Angular's [deferrable views](https://angular.dev/guide/defer) work on Lynx: a deferred component is created only when its trigger fires. Its code ships in the main bundle, so there's no separate chunk to download.
 
 <Go example="defer" defaultFile="src/app/app.ts" />
 
@@ -43,10 +43,6 @@ export class Feed {
 </view>
 ```
 
-:::tip
-The deferred component (`app-comments` above) must be in a **separate file** for code splitting to take effect. Components defined in the same file won't produce a separate chunk.
-:::
-
 ## Supported Triggers
 
 | Trigger          | Supported | Notes                                                 |
@@ -68,8 +64,8 @@ Viewport-based triggers (`on viewport`) do **not** work on Lynx. Use `when` with
 All four `@defer` sub-blocks work as expected:
 
 - **`@placeholder`** — Shown before the trigger condition is met
-- **`@loading`** — Shown while the async chunk is downloading
-- **`@error`** — Shown if the chunk fails to load
+- **`@loading`** — Shown while the deferred dependencies load
+- **`@error`** — Shown if they fail to load
 - **`@defer`** — The deferred content itself
 
 ## Timer Example

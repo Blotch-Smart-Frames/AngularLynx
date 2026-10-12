@@ -17,6 +17,9 @@ appId: ${APP_ID}
       - tapOn:
           text: Open
           optional: true
+      # The counter fixture's text, rendered inside the root component. Not the
+      # generated title: Android only exposes elements that aren't flattened,
+      # which the fixtures control (fixtures/counter.ts).
       - extendedWaitUntil:
-          visible: my-app # The title, a <text> element
+          visible: 'Count: 0'
           timeout: 20000

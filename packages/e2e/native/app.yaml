@@ -2,7 +2,8 @@
 # iOS Simulator and the Android emulator; run-native.ts passes APP_ID and
 # BUNDLE_URL. Maestro finds elements through the accessibility tree: <text>
 # is labeled with its content, and the <view>s the flows tap carry
-# accessibility-label.
+# accessibility-label. On Android it only sees elements that aren't flattened
+# (see fixtures/counter.ts).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml

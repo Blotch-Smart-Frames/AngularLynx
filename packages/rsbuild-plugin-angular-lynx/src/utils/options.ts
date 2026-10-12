@@ -44,6 +44,10 @@ export const normalizeOptions = (
     //@ts-expect-error
     customCSSInheritanceList: undefined,
     debugInfoOutside: true,
+    // True like React Lynx: on Android, Lynx uses real Views for accessibility
+    // while TalkBack is on. The cost is that while it's off, Lynx draws the
+    // page flat and UiAutomator-based test tools (Maestro, Appium) see no
+    // elements. false exposes a virtual node tree to them at all times.
     enableA11y: true,
     enableAccessibilityElement: false,
     enableCSSInheritance: false,

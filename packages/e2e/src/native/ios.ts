@@ -15,8 +15,9 @@ type SimctlList = {
     name: string;
     isAvailable: boolean;
     platform?: string;
+    /** Newest first. */
+    supportedDeviceTypes?: { identifier: string; productFamily?: string }[];
   }[];
-  devicetypes: { identifier: string; name: string; productFamily?: string }[];
 };
 
 const simctl = async (args: string[], logFile: string) =>
@@ -50,12 +51,20 @@ const bootSimulator = async (
     runtimes.length > 0,
     'No iOS Simulator runtime is installed. Install one in Xcode → Settings → Components.',
   );
-  const deviceType = list.devicetypes
-    .filter((type) => type.name.startsWith('iPhone'))
-    .at(-1);
-  check(deviceType, 'Xcode has no iPhone simulator device type.');
 
   for (const runtime of runtimes) {
+    // Each runtime runs only some device types, and the global device type
+    // list isn't in release order: on GitHub's macOS 15 image its last iPhone
+    // was the 6s Plus, which iOS 26 can't run (`simctl create` exit 147).
+    const deviceType = runtime.supportedDeviceTypes?.find(
+      (type) => type.productFamily === 'iPhone',
+    );
+    if (!deviceType) {
+      console.warn(
+        `${runtime.name} supports no iPhone; trying an older runtime.`,
+      );
+      continue;
+    }
     const device = list.devices[runtime.identifier]?.find(
       (candidate) => candidate.name === DEVICE_NAME,
     );

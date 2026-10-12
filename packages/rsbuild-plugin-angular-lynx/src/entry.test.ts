@@ -28,6 +28,7 @@ const entryOptions = {
   customCSSInheritanceList: [],
   debugInfoOutside: true,
   defaultDisplayLinear: true,
+  enableA11y: true,
   enableAccessibilityElement: true,
   enableCSSInheritance: false,
   enableCSSInvalidation: true,
@@ -238,6 +239,20 @@ describe('applyEntry', () => {
     const templateUse = pluginUses[0];
     expect((templateUse.args[0] as any).filename).toBe('main.lynx.bundle');
     expect((templateUse.args[0] as any).intermediate).toBe('.lynx/main');
+  });
+
+  it('passes the enableA11y option to the template plugin', () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain, pluginUses } = createMockChain({
+      entries: { main: { values: () => ['./src/main.ts'] } },
+    });
+
+    // It used to be hard-coded to true, so an app couldn't switch Android to
+    // the accessibility path that UI test tools can read without TalkBack.
+    applyEntry(api as never, { ...entryOptions, enableA11y: false });
+    triggerChain(chain, { name: 'lynx', config: {} }, false);
+
+    expect((pluginUses[0].args[0] as any).enableA11y).toBe(false);
   });
 
   it('tolerates an empty entry set (entries() returns null)', () => {

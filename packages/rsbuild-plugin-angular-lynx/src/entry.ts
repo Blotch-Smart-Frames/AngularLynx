@@ -34,6 +34,7 @@ export const applyEntry = (
     customCSSInheritanceList,
     debugInfoOutside,
     defaultDisplayLinear,
+    enableA11y,
     enableAccessibilityElement,
     enableCSSInheritance,
     enableCSSInvalidation,
@@ -150,7 +151,7 @@ export const applyEntry = (
             enableRemoveCSSScope,
             removeDescendantSelectorScope,
             targetSdkVersion,
-            enableA11y: true,
+            enableA11y,
             // DO NOT pass experimental_isLazyBundle to LynxTemplatePlugin.
             // Setting it here would make the ROOT app a standalone lazy bundle
             // (appType: DynamicComponent), which crashes LynxExplorer with decode

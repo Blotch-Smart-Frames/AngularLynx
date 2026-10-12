@@ -56,6 +56,37 @@ Set `blur-effect="glass"` to render the iOS 26 Liquid Glass material. Wrap sever
 The `glass` and `glass-container` effects are built on UIKit's iOS 26 glass APIs, so they need iOS 26 or later. Other platforms ignore the iOS-only attributes, so set `blur-radius` too if you want a blur on Android and Harmony.
 :::
 
+### Draggable glass
+
+The example's **Glass playground** tab lets you drag glass blobs over text. Drag two blobs closer than `spacing` and they merge into one shape.
+
+```typescript
+// Main-thread state: the blob's position and where the current drag began.
+const position = createMainThreadRef({ x: 20, y: 56 });
+const start = createMainThreadRef({ touchX: 0, touchY: 0, x: 0, y: 0 });
+
+const onTouchStart = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0]!;
+  start.current = {
+    touchX: touch.pageX,
+    touchY: touch.pageY,
+    ...position.current,
+  };
+});
+
+const onTouchMove = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0]!;
+  const x = start.current.x + touch.pageX - start.current.touchX;
+  const y = start.current.y + touch.pageY - start.current.touchY;
+  position.current = { x, y };
+  event.currentTarget.setStyleProperties({ left: `${x}px`, top: `${y}px` });
+});
+```
+
+- **Drag on the main thread.** [Main-thread touch handlers](/guide/main-thread/main-thread-event) move the blob on the same frame as the finger. Angular event bindings would add a round trip to the background thread on every move.
+- **Move with `left`/`top`**, not `transform`, so each blob's native frame moves with it.
+- **Keep it out of `<scroll-view>`.** The scroll view's own pan gesture competes for the same touches, so a vertical drag scrolls the page instead.
+
 ## Attributes
 
 | Attribute                         | Type                                                                 | Default         | Platforms             | Description                                                                    |

@@ -1,6 +1,6 @@
-import { createAngularCompilation } from '@angular/build/src/tools/angular/compilation';
 import { describe, expect, it } from 'vitest';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files';
+import { createAngularCompilation } from './utils/angular/build-internals.js';
 
 describe('seedCompilationSourceFiles', () => {
   it('copies every cached SourceFile into the compilation-owned map', () => {

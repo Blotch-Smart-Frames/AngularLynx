@@ -13,8 +13,7 @@
     "directory": "packages/rsbuild-plugin-angular-lynx"
   },
   "files": [
-    "dist",
-    "patch"
+    "dist"
   ],
   "type": "module",
   "module": "./dist/index.js",
@@ -37,7 +36,6 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "cspell": "cspell .",
-    "postinstall": "node ./patch/patch-angular-build.cjs",
     "publish:local": "yalc publish --push"
   },
   "dependencies": {

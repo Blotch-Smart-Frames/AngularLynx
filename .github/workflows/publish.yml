@@ -56,6 +56,37 @@ jobs:
       - name: Build @blotch/dolan
         run: npm run build -w packages/dolan
 
+      # The runtime publishes from ng-packagr's dist/, whose package.json and
+      # assets are copied from the source package, so packaging rules meant for
+      # packages/runtime can silently strip the dist tarball (22.2.0 and 22.2.1
+      # shipped without the library bundle or compiled schematics this way).
+      # Fail before anything is published if the files users import, and the
+      # ones `ng add` / `ng generate` run, are missing from the tarball.
+      # `schematics/package.json` marks the tsc-compiled CommonJS schematics as
+      # such: ng-packagr stamps `"type": "module"` on the dist package, and
+      # without the marker Node loads them as ESM, so Angular CLI reports that
+      # the package "does not provide any `ng add` actions".
+      - name: Verify @blotch/angular-lynx tarball contents
+        working-directory: packages/runtime/dist
+        run: |
+          npm pack --dry-run --json > "$RUNNER_TEMP/runtime-pack.json"
+          node -e '
+            const packed = new Set(require(process.argv[1])[0].files.map((f) => f.path));
+            const required = [
+              "fesm2022/blotch-angular-lynx.mjs",
+              "types/blotch-angular-lynx.d.ts",
+              "schematics/collection.json",
+              "schematics/package.json",
+              "schematics/ng-add/index.js",
+              "schematics/component/index.js",
+            ];
+            const missing = required.filter((path) => !packed.has(path));
+            if (missing.length) {
+              console.error(`Missing from the @blotch/angular-lynx tarball: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+          ' "$RUNNER_TEMP/runtime-pack.json"
+
       - name: Publish @blotch/rsbuild-plugin-angular-lynx
         run: npm publish -w packages/rsbuild-plugin-angular-lynx --provenance --access public
 

@@ -12,11 +12,6 @@
     "url": "git+https://github.com/Blotch-Smart-Frames/AngularLynx.git",
     "directory": "packages/runtime"
   },
-  "files": [
-    "dist",
-    "schematics",
-    "README.md"
-  ],
   "sideEffects": false,
   "exports": {
     "./package.json": {
@@ -39,7 +34,7 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "cspell": "cspell .",
-    "publish:local": "yalc publish --push"
+    "publish:local": "cd dist && yalc publish --push"
   },
   "dependencies": {
     "tslib": "^2.3.0"

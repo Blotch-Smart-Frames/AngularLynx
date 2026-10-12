@@ -7,10 +7,13 @@ import {
   normalizeOptimization,
   normalizeSourceMaps,
   readBuildOptions,
+  resolveIndexPath,
+  resolveOutputPath,
 } from './options';
 
-/** Minimal but complete build options — every field that readBuildOptions joins
- *  with the workspace root must be present or path.join() throws. */
+/**
+ * Build options with every path field set explicitly, as in the examples.
+ */
 const baseOptions = (overrides: Record<string, any> = {}) => ({
   browser: 'src/main.ts',
   index: 'src/index.html',
@@ -29,6 +32,8 @@ const makeProject = (
     defaultConfiguration?: string;
     noBuildTarget?: boolean;
     i18n?: unknown;
+    root?: string;
+    sourceRoot?: string;
   } = {},
 ): any => {
   const targets = new Map<string, any>();
@@ -40,6 +45,8 @@ const makeProject = (
     });
   }
   return {
+    root: opts.root,
+    sourceRoot: opts.sourceRoot,
     targets,
     extensions: opts.i18n === undefined ? {} : { i18n: opts.i18n },
   };
@@ -203,8 +210,88 @@ describe('normalizeI18nOptions', () => {
   });
 });
 
+describe('resolveIndexPath', () => {
+  const root = '/workspace';
+
+  it('joins a string index with the workspace root', () => {
+    expect(resolveIndexPath('src/index.html', makeProject(), root)).toBe(
+      nodePath.join(root, 'src/index.html'),
+    );
+  });
+
+  it('uses the input of an { input, output } index', () => {
+    expect(
+      resolveIndexPath(
+        { input: 'src/app.html', output: 'index.html' },
+        makeProject(),
+        root,
+      ),
+    ).toBe(nodePath.join(root, 'src/app.html'));
+  });
+
+  it('returns undefined when the index page is disabled', () => {
+    expect(resolveIndexPath(false, makeProject(), root)).toBeUndefined();
+  });
+
+  it('defaults to index.html in the project sourceRoot', () => {
+    expect(
+      resolveIndexPath(
+        undefined,
+        makeProject({ root: 'projects/app', sourceRoot: 'projects/app/lib' }),
+        root,
+      ),
+    ).toBe(nodePath.join(root, 'projects/app/lib/index.html'));
+  });
+
+  it('defaults sourceRoot to <root>/src like @angular/build', () => {
+    expect(
+      resolveIndexPath(undefined, makeProject({ root: 'projects/app' }), root),
+    ).toBe(nodePath.join(root, 'projects/app/src/index.html'));
+  });
+
+  it('defaults to src/index.html when the project has no root', () => {
+    expect(resolveIndexPath(undefined, makeProject(), root)).toBe(
+      nodePath.join(root, 'src/index.html'),
+    );
+  });
+});
+
+describe('resolveOutputPath', () => {
+  const root = '/workspace';
+
+  it('joins a string outputPath with the workspace root', () => {
+    expect(resolveOutputPath('dist/app', root)).toBe(
+      nodePath.join(root, 'dist/app'),
+    );
+  });
+
+  it('uses the base of an object outputPath', () => {
+    expect(resolveOutputPath({ base: 'dist/app', browser: '' }, root)).toBe(
+      nodePath.join(root, 'dist/app'),
+    );
+  });
+
+  it('returns undefined when outputPath is omitted', () => {
+    expect(resolveOutputPath(undefined, root)).toBeUndefined();
+  });
+});
+
 describe('readBuildOptions', () => {
   const basePath = '/workspace';
+
+  it('reads the options `ng new` generates, which omit index and outputPath', async () => {
+    const result = await readBuildOptions(
+      makeProject({
+        root: '',
+        sourceRoot: 'src',
+        options: { browser: 'src/main.ts', tsConfig: 'tsconfig.app.json' },
+      }),
+      basePath,
+    );
+
+    expect(result.index).toBe(nodePath.join(basePath, 'src/index.html'));
+    expect(result.outputPath).toBeUndefined();
+  });
 
   it('throws when the project has no build target', async () => {
     await expect(

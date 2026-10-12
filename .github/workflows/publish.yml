@@ -13,7 +13,7 @@ jobs:
       # Publishing uses npm trusted publishing: npm swaps this GitHub OIDC
       # token for a short-lived publish token, so no NPM_TOKEN secret is
       # stored. Each package must list this repo + `publish.yml` as its
-      # trusted publisher on npmjs.com (Package → Settings → Trusted
+      # trusted publisher on the npm website (Package → Settings → Trusted
       # Publisher), and provenance is attached automatically.
       id-token: write
     steps:
@@ -71,3 +71,13 @@ jobs:
 
       - name: Publish create-angular-lynx
         run: npm publish -w packages/create-angular-lynx --provenance --access public
+
+      # When the trusted-publishing token exchange fails, npm silently falls
+      # back to publishing unauthenticated and the registry answers with a
+      # misleading 404. npm logs the exchange's real error only at verbose
+      # level, which the console hides but the debug log file keeps, so surface
+      # those lines (they never contain the token itself) to make a failed
+      # publish explain itself.
+      - name: Show npm trusted publishing log
+        if: failure()
+        run: grep -h " oidc " ~/.npm/_logs/*.log || echo "No OIDC log lines found"

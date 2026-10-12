@@ -1,4 +1,4 @@
-# Subflow shared by app.yaml and lazy-route.yaml: launches Lynx Explorer and
+# Shared steps run by app.yaml and lazy-route.yaml: launches Lynx Explorer and
 # opens the app's bundle in it. Not a test on its own (src/native/maestro.ts
 # lists the flows that run).
 appId: ${APP_ID}

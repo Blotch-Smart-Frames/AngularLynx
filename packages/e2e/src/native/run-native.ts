@@ -1,4 +1,9 @@
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -66,6 +71,15 @@ export const runNative = async ({
             artifactsDir,
             logFile,
           });
+    // Independent of the flows, which can't read the screen on Android (see
+    // FLOWS): Explorer must at least have fetched the bundle.
+    if (
+      !readFileSync(requestLog, 'utf8').includes('200 GET /main.lynx.bundle')
+    ) {
+      failures.push(
+        `Lynx Explorer never fetched ${bundleUrl}; the deep link didn't open it (see ${platform}-requests.log).`,
+      );
+    }
     check(
       failures.length === 0,
       `Layer 6 (${platform}) failed:\n  - ${failures.join('\n  - ')}\nScreenshots and logs are in ${artifactsDir}.`,

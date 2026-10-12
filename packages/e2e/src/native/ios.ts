@@ -182,7 +182,7 @@ export const runOnIosSimulator = async ({
         outputDir: path.join(artifactsDir, 'ios'),
         logFile,
       });
-      const failure = judgeFlow(flow, result.code);
+      const failure = judgeFlow(flow, 'ios', result.code);
       if (failure) {
         failures.push(failure);
       }

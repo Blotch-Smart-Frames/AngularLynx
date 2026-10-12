@@ -446,23 +446,6 @@ const applyFixtures = (appDir: string) => {
     path.join(appDir, 'src/app/hello/hello.test.ts'),
     readFileSync(path.join(FIXTURES_DIR, 'counter.test.ts'), 'utf8'),
   );
-  // Android only: with the default `enableA11y: true`, Lynx exposes elements
-  // to accessibility only while TalkBack is on, and Maestro (UiAutomator)
-  // sees an empty page. false exposes them always. iOS and the web ignore it,
-  // and Android users with TalkBack get working accessibility either way.
-  const lynxConfigPath = path.join(appDir, 'lynx.config.ts');
-  const lynxConfig = readFileSync(lynxConfigPath, 'utf8');
-  check(
-    lynxConfig.includes('pluginAngularLynx()'),
-    "Couldn't set enableA11y in lynx.config.ts; the template ng add generates has changed shape. Update applyFixtures() in packages/e2e/src/scaffold.ts.",
-  );
-  writeFileSync(
-    lynxConfigPath,
-    lynxConfig.replace(
-      'pluginAngularLynx()',
-      'pluginAngularLynx({ enableA11y: false })',
-    ),
-  );
   writeFileSync(
     path.join(appDir, 'src/app/app.routes.ts'),
     `import type { Routes } from '@angular/router';

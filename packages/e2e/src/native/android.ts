@@ -46,7 +46,7 @@ export const runOnAndroidEmulator = async ({
         outputDir: path.join(artifactsDir, 'android'),
         logFile,
       });
-      const failure = judgeFlow(flow, result.code);
+      const failure = judgeFlow(flow, 'android', result.code);
       if (failure) {
         failures.push(failure);
       }

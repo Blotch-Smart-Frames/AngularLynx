@@ -2,6 +2,16 @@
 
 Known bugs that still need fixing. Add new entries at the top. Remove an entry (or mark it fixed with the commit) once it's resolved.
 
+## Maestro can't see Lynx elements on Android
+
+**Found by:** E2E Layer 6 on the Android emulator (`packages/e2e/native/*.yaml`). Both flows are marked as known failures on Android until this is fixed; the job still fails if Explorer doesn't fetch the bundle or logs JavaScript errors.
+
+The app renders correctly in Lynx Explorer 4.1.0 (the failure screenshots show the title, the counter and both buttons), but Maestro's view hierarchy has nothing below Explorer's Lynx container: no text, and not the `<view>`s marked `accessibility-element` with an `accessibility-label`. So no flow can find or tap anything. iOS exposes the same app fine.
+
+What was ruled out: building with `pluginAngularLynx({ enableA11y: false })`, which switches Lynx from its View-based accessibility helper to the virtual-node provider, made no difference. In `LynxAccessibilityWrapper.java`, both paths are only set up when system accessibility _and_ touch exploration (TalkBack) are on, if Lynx's lazy a11y init is enabled (`LynxEnv.enableLazyInitA11y()` or embedded mode), which Explorer probably does.
+
+Where to look: whether Explorer turns on lazy a11y init, and whether turning on touch exploration on the emulator (without changing how Maestro's taps behave) exposes the tree; how Lynx's own Android UI tests find elements; and whether `enableAccessibilityElement: true` changes anything. Real users with TalkBack aren't known to be affected, but no test covers it either.
+
 ## Lazy routes fail in production builds (web and native)
 
 **Found by:** E2E Layer 3 (`packages/e2e/playwright/render.test.ts`) and Layer 6 (`packages/e2e/native/lazy-route.yaml`). Both are marked as known failures until this is fixed.

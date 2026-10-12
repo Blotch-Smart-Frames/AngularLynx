@@ -91,7 +91,7 @@ jobs:
             const { REGISTRY, MATRIX } = process.env;
             // Each entry is one fresh-app job. `args` go to the harness;
             // `experimental` entries may fail without failing the run (they
-            // warn early about upstream changes, or cover things we haven't
+            // warn early about upstream changes, or cover things we have not
             // promised to support yet).
             const base = { os: "ubuntu-latest", node: "24", npm: "", args: "", experimental: false };
             const entries = [{ ...base, name: "ubuntu, npm, Node 24" }];
@@ -108,7 +108,7 @@ jobs:
                 { ...base, name: "Angular next", args: "--angular next", experimental: true },
                 { ...base, name: "rspeedy latest", args: "--rspeedy latest", experimental: true },
                 // The scaffolder is npm-only; pnpm and Yarn are tested through
-                // ng new + ng add, and aren't promised to work yet.
+                // ng new + ng add, and are not promised to work yet.
                 { ...base, name: "pnpm", args: "--pm pnpm", experimental: true },
                 { ...base, name: "Yarn", args: "--pm yarn", experimental: true },
               );

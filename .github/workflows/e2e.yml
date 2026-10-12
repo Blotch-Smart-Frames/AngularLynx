@@ -83,8 +83,8 @@ jobs:
           # Native iOS/Android runs on every PR as well as nightly: bugs that
           # only exist on Lynx's own engine (missing globals, native elements,
           # threading) should block a merge, not surface the next morning.
-          # publish.yml's PR dry run also arrives as a pull_request, but it
-          # passes matrix: none, which turns native off below.
+          # publish.yml's dry run passes matrix: none, which turns native off
+          # below.
           NATIVE: ${{ inputs.native || github.event_name == 'schedule' || github.event_name == 'pull_request' }}
         run: |
           node -e '

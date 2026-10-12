@@ -1,0 +1,440 @@
+name: E2E
+
+# Installs and runs AngularLynx the way a user does: packs every publishable
+# package, publishes them to a throwaway registry, scaffolds a fresh app with
+# `npm create angular-lynx`, builds it, and renders it in a browser. See
+# E2E_TESTING_PLAN.md and packages/e2e/README.md.
+#
+# The same workflow is the PR check, the nightly drift check, the release gate
+# (publish.yml calls it before publishing) and the post-publish check.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    # Nightly: the full matrix and the published packages. (Native iOS and
+    # Android also run on every PR.)
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      registry:
+        description: 'local: test this commit; public: test what is on npm'
+        type: choice
+        options: [local, public]
+        default: local
+      matrix:
+        description: 'default: one configuration; full: every OS, package manager and version'
+        type: choice
+        options: [default, full]
+        default: default
+      native:
+        description: Also run on the iOS Simulator and an Android emulator
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      version:
+        description: Version to stamp on the packages before testing (local) or to install (public)
+        type: string
+        default: ''
+      registry:
+        type: string
+        default: local
+      matrix:
+        description: 'default, full, or none (Layer 1 only: just pack and check the tarballs)'
+        type: string
+        default: default
+      native:
+        type: boolean
+        default: false
+
+concurrency:
+  # In a called workflow, github.workflow is the caller's name, so publish.yml's
+  # runs never cancel this workflow's own PR runs. The registry keeps the
+  # release gate and the post-publish check, which publish.yml calls in one
+  # run, from cancelling each other.
+  group: e2e-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.registry || 'local' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NG_BUILD_MAX_WORKERS: 2
+  # Read by Maestro's install script, and part of the Maestro cache key.
+  MAESTRO_VERSION: 2.10.0
+
+jobs:
+  # Decides what this run covers, from the event and inputs.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.plan.outputs.registry }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      native: ${{ steps.plan.outputs.native }}
+    steps:
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REGISTRY: ${{ inputs.registry || 'local' }}
+          MATRIX: ${{ inputs.matrix || (github.event_name == 'schedule' && 'full' || 'default') }}
+          # Native iOS/Android runs on every PR as well as nightly: bugs that
+          # only exist on Lynx's own engine (missing globals, native elements,
+          # threading) should block a merge, not surface the next morning.
+          # publish.yml's dry run passes matrix: none, which turns native off
+          # below.
+          NATIVE: ${{ inputs.native || github.event_name == 'schedule' || github.event_name == 'pull_request' }}
+        run: |
+          node -e '
+            const { REGISTRY, MATRIX } = process.env;
+            // Each entry is one fresh-app job. `args` go to the harness;
+            // `experimental` entries may fail without failing the run (they
+            // warn early about upstream changes, or cover things we have not
+            // promised to support yet).
+            const base = { os: "ubuntu-latest", node: "24", npm: "", args: "", experimental: false };
+            const entries = [{ ...base, name: "ubuntu, npm, Node 24" }];
+            if (MATRIX === "full") {
+              entries.push(
+                { ...base, name: "windows, npm", os: "windows-latest" },
+                { ...base, name: "macos, npm", os: "macos-latest" },
+                // The lowest Node that Angular 22 supports.
+                { ...base, name: "Node 22.22.3", node: "22.22.3" },
+                { ...base, name: "npm latest", npm: "latest" },
+                // Our peer range starts at 22.2.0; keep it honest.
+                { ...base, name: "Angular 22.2.0", args: "--angular 22.2.0" },
+                { ...base, name: "no Tailwind", args: "--no-tailwind" },
+                { ...base, name: "Angular next", args: "--angular next", experimental: true },
+                { ...base, name: "rspeedy latest", args: "--rspeedy latest", experimental: true },
+                // The scaffolder is npm-only; pnpm and Yarn are tested through
+                // ng new + ng add, and are not promised to work yet.
+                { ...base, name: "pnpm", args: "--pm pnpm", experimental: true },
+                { ...base, name: "Yarn", args: "--pm yarn", experimental: true },
+              );
+            }
+            const out = [
+              `registry=${REGISTRY}`,
+              `matrix=${JSON.stringify({ include: MATRIX === "none" ? [] : entries })}`,
+              `native=${process.env.NATIVE === "true" && MATRIX !== "none"}`,
+            ];
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, out.join("\n") + "\n");
+            console.log(out.join("\n"));
+          '
+
+  # Layer 1: build, pack and check every publishable package. The tarballs it
+  # uploads are what every later job installs, and what publish.yml publishes.
+  package-contract:
+    needs: setup
+    if: needs.setup.outputs.registry == 'local'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Stamp the release version
+        if: inputs.version != ''
+        run: node packages/e2e/src/set-version.ts "${{ inputs.version }}"
+      - name: Restore turbo cache
+        # Skipped when stamping a version: the version changes every package's
+        # inputs, so the cache can't hit anyway.
+        if: inputs.version == ''
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}-e2e
+          restore-keys: |
+            turbo-${{ github.sha }}-
+            turbo-
+      - name: Build the publishable packages
+        run: npx turbo run build --filter='@blotch/angular-lynx-e2e^...'
+      - name: 'Layer 1: package contract checks'
+        run: >-
+          node packages/e2e/src/run.ts --layers 1
+          --tarball-dir "$RUNNER_TEMP/tarballs"
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs/*.tgz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-artifacts-package-contract
+          path: ${{ runner.temp }}/e2e-artifacts
+
+  # Layers 2 and 3: a fresh app, from scaffold to a render in Chromium.
+  fresh-app:
+    needs: [setup, package-contract]
+    # Runs when Layer 1 passed, or was skipped because this run tests the
+    # public registry.
+    if: >-
+      always() && needs.setup.result == 'success'
+      && fromJSON(needs.setup.outputs.matrix).include[0] != null
+      && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
+    name: fresh-app (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install npm ${{ matrix.npm }}
+        if: matrix.npm != ''
+        run: npm install -g "npm@${{ matrix.npm }}"
+      - name: Enable pnpm and Yarn
+        if: contains(matrix.args, '--pm')
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+          corepack prepare yarn@stable --activate
+      # Only for the harness's own dependencies (Verdaccio, Playwright). The
+      # packages under test come from the tarballs, never from this checkout.
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        if: needs.setup.outputs.registry == 'local'
+        with:
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs
+      - name: Date for the registry cache key
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      # Verdaccio's storage keeps every third-party package the app installs,
+      # so later runs don't depend on (or wait for) the public registry. Keyed
+      # by date so it refreshes daily.
+      - name: Cache Verdaccio storage
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/verdaccio-storage
+          key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: verdaccio-${{ runner.os }}-
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium's system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true' && runner.os == 'Linux'
+        run: npx playwright install-deps chromium
+      - name: 'Layers 2 and 3: fresh app and browser render'
+        env:
+          REGISTRY: ${{ needs.setup.outputs.registry }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=(--layers 2,3 --registry "$REGISTRY"
+            --storage "$RUNNER_TEMP/verdaccio-storage"
+            --artifacts-dir "$RUNNER_TEMP/e2e-artifacts")
+          if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
+          if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
+          node packages/e2e/src/run.ts "${args[@]}" ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-artifacts-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/e2e-artifacts
+
+  # Builds just the app the native jobs run (scaffold, fixtures, production
+  # build), so they can start without waiting for fresh-app's tests, dev
+  # server and browser checks, which continue in parallel.
+  build-app:
+    needs: [setup, package-contract]
+    if: >-
+      always() && needs.setup.outputs.native == 'true'
+      && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # For the harness's own dependencies (Verdaccio).
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        if: needs.setup.outputs.registry == 'local'
+        with:
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs
+      - name: Date for the registry cache key
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      # Restore only: fresh-app saves this cache, and two jobs saving the same
+      # key race.
+      - name: Restore Verdaccio storage
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/verdaccio-storage
+          key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: verdaccio-${{ runner.os }}-
+      - name: Build the app for the native tests
+        env:
+          REGISTRY: ${{ needs.setup.outputs.registry }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=(--layers 2 --build-only --registry "$REGISTRY"
+            --storage "$RUNNER_TEMP/verdaccio-storage"
+            --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+            --export-dist "$RUNNER_TEMP/app-dist")
+          if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
+          if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
+          node packages/e2e/src/run.ts "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app-dist
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-artifacts-build-app
+          path: ${{ runner.temp }}/e2e-artifacts
+
+  # Layer 6: the same app on Lynx's native renderer and JavaScript engine.
+  #
+  # The native jobs skip `npm ci`: run-native.ts and everything it imports use
+  # only Node built-ins, and installing the monorepo on the Mac costs minutes.
+  ios:
+    needs: [setup, build-app]
+    if: always() && needs.build-app.result == 'success'
+    # Apple silicon, which the prebuilt Lynx Explorer simulator app targets.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Cache Lynx Explorer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/angular-lynx-e2e/explorer
+          key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
+      # Booting the simulator is the slowest step, so start it first. The
+      # simulator keeps booting while the steps below run; the test step
+      # waits for it to finish.
+      - name: Start the iOS Simulator
+        run: >-
+          node packages/e2e/src/native/run-native.ts --platform ios --prepare
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      - name: Cache Maestro
+        id: maestro-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.maestro
+          key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
+      - name: Install Maestro
+        if: steps.maestro-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+      - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # main.lynx.bundle is the same file on every platform, so reuse the one
+      # the Linux job built instead of rebuilding on the slower Mac.
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app-dist
+      - name: 'Layer 6: iOS Simulator'
+        run: >-
+          node packages/e2e/src/native/run-native.ts --platform ios
+          --dist "$RUNNER_TEMP/app-dist"
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-artifacts-ios
+          path: ${{ runner.temp }}/e2e-artifacts
+
+  android:
+    needs: [setup, build-app]
+    if: always() && needs.build-app.result == 'success'
+    runs-on: ubuntu-latest
+    # Until the Android flow has run reliably for a while (rollout phase 7).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app-dist
+      - name: Cache Lynx Explorer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/angular-lynx-e2e/explorer
+          key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
+      - name: Cache Maestro
+        id: maestro-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.maestro
+          key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
+      - name: Install Maestro
+        if: steps.maestro-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+      - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # Hardware acceleration for the emulator on Linux runners.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: 'Layer 6: Android emulator'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          script: node packages/e2e/src/native/run-native.ts --platform android --dist "$RUNNER_TEMP/app-dist" --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-artifacts-android
+          path: ${{ runner.temp }}/e2e-artifacts
+
+  # A failing nightly run opens (or comments on) one issue, so upstream drift
+  # doesn't go unnoticed.
+  report-nightly:
+    needs: [package-contract, fresh-app, build-app, ios, android]
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Nightly E2E run failed"
+          gh label create e2e-nightly --color B60205 --description "Nightly E2E failures" 2>/dev/null || true
+          existing=$(gh issue list --label e2e-nightly --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          body="The nightly E2E run failed: $RUN_URL
+
+          Experimental matrix entries (Angular next, rspeedy latest, pnpm, Yarn) don't fail the run, so a failure here is in a supported configuration, the public registry check or a native platform."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --title "$title" --label e2e-nightly --body "$body"
+          fi

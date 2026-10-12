@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AngularLynx E2E</title>
+    <!--
+      Lynx for Web, from the e2e package's pinned @lynx-js/web-core. The same
+      prebuilt client the docs site uses for its live examples.
+    -->
+    <link rel="stylesheet" href="/static/css/client.css" />
+    <script type="module" src="/static/js/client.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <lynx-view
+      id="app"
+      style="display: block; height: 100vh; width: 100vw"
+    ></lynx-view>
+    <script type="module">
+      // Set `url` only once <lynx-view> is defined: a property set on the
+      // element before it upgrades would hide the element's own `url` setter.
+      await customElements.whenDefined('lynx-view');
+      const view = document.getElementById('app');
+      // <lynx-view> reports load and runtime failures as `error` events, not
+      // as page errors. Re-log them so render.test.ts sees them.
+      view.addEventListener('error', (event) => {
+        console.error('lynx-view error:', event.detail ?? event);
+      });
+      view.url = '/main.web.bundle';
+    </script>
+  </body>
+</html>

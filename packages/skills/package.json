@@ -1,6 +1,7 @@
 {
   "name": "@blotch/angular-lynx-skills",
   "version": "0.0.1",
+  "private": true,
   "description": "skills.sh skill pack for building Angular apps on the Lynx native runtime",
   "repository": {
     "type": "git",

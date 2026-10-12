@@ -1,0 +1,32 @@
+{
+  "name": "@blotch/angular-lynx-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "description": "End-to-end tests that install and run the published AngularLynx packages the way a user does",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "e2e": "node src/run.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell ."
+  },
+  "devDependencies": {
+    "@angular-devkit/schematics": "^22.2.2",
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@blotch/angular-lynx": "*",
+    "@blotch/angular-lynx-testing-library": "*",
+    "@blotch/dolan": "*",
+    "@blotch/rsbuild-plugin-angular-lynx": "*",
+    "@lynx-js/web-core": "0.26.2",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^22.0.0",
+    "create-angular-lynx": "*",
+    "publint": "^0.3.25",
+    "typescript": "~6.0.0",
+    "verdaccio": "^6.10.5"
+  }
+}

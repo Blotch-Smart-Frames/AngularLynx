@@ -52,10 +52,15 @@ export default (options: Schema): Rule =>
  * - `define.__MAIN_THREAD__: true` — tests run on the "main thread" path because
  *   PAPI functions (__CreateView, etc.) are available via the testing environment
  * - `define.__DEV__: true` — enables development-mode warnings and diagnostics
- * - `experimentalDecorators: true` — Angular's JIT compiler in tests still uses
- *   legacy TypeScript decorators (@Component, @Injectable)
- * - `useDefineForClassFields: false` — prevents class fields from being emitted
- *   as Object.defineProperty calls, which breaks Angular's metadata reflection
+ * - `define.__WEB__`, `__PROFILE__`, `__ENABLE_SSR__` — the runtime reads these
+ *   compile-time flags, which the Rsbuild plugin injects into app builds.
+ *   Without them, importing the runtime in a test throws "ReferenceError:
+ *   __WEB__ is not defined". Tests emulate the native main thread: not web,
+ *   no profiling, no SSR. Keep in sync with the examples' vitest configs.
+ * - `oxc.decorator.legacy: true` — Angular's JIT compiler in tests reads the
+ *   metadata of legacy TypeScript decorators (@Component, @Injectable). Vite 8
+ *   transforms TypeScript with OXC rather than esbuild, so the old
+ *   `esbuild.tsconfigRaw.experimentalDecorators` setting is ignored.
  */
 const addVitestConfig = (projectRoot: string): Rule => {
   return (tree: Tree) => {
@@ -67,13 +72,13 @@ export default defineConfig({
   define: {
     __DEV__: JSON.stringify(true),
     __MAIN_THREAD__: JSON.stringify(true),
+    __WEB__: JSON.stringify(false),
+    __PROFILE__: JSON.stringify(false),
+    __ENABLE_SSR__: JSON.stringify(false),
   },
-  esbuild: {
-    tsconfigRaw: {
-      compilerOptions: {
-        experimentalDecorators: true,
-        useDefineForClassFields: false,
-      },
+  oxc: {
+    decorator: {
+      legacy: true,
     },
   },
   test: {
@@ -123,6 +128,12 @@ const addTestingDependencies = (): Rule => {
         install: InstallBehavior.Auto,
       },
     ),
+    // `ng new` already adds vitest and jsdom, at newer majors than these.
+    // Replace them (the default): @lynx-js/testing-environment, which the
+    // testing library runs on, doesn't work with Vitest 5 or jsdom 30 yet
+    // (it can't replace jsdom 30's `window.document`, and Vitest 5 fails to
+    // tear the environment down). The E2E tests run `npm test` in a fresh
+    // `ng new` project to catch this.
     addDependency('vitest', VERSIONS.vitest, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,

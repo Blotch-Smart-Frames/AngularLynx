@@ -1,0 +1,12 @@
+# Layer 6: the Layer 3 render checks, on Lynx's native renderer. Shared by the
+# iOS Simulator and the Android emulator; run-native.ts passes APP_ID and
+# BUNDLE_URL. Maestro finds elements through the accessibility tree: <text>
+# is labeled with its content, and the <view>s the flows tap carry
+# accessibility-label.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- assertVisible: 'Count: 0'
+- tapOn: Increment
+- assertVisible: 'Count: 1'
+- takeScreenshot: rendered

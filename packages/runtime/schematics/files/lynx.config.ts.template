@@ -3,6 +3,13 @@ import { pluginQRCode } from '@lynx-js/qrcode-rsbuild-plugin';
 import { defineConfig } from '@lynx-js/rspeedy';
 
 export default defineConfig({
+  // `lynx` builds the native bundle that Lynx Explorer and your app load.
+  // `web` builds a bundle for Lynx for Web, so the app can also be previewed
+  // in a browser (and is, by AngularLynx's own end-to-end tests).
+  environments: {
+    lynx: {},
+    web: {},
+  },
   source: {
     entry: './src/main.ts',
   },

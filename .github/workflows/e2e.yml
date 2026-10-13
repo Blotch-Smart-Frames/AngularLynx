@@ -36,7 +36,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: Version to stamp on the packages before testing (local) or to install (public)
+        description: Version to install (public only; a local run tests the version in the repository)
         type: string
         default: ''
       registry:
@@ -135,13 +135,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Stamp the release version
-        if: inputs.version != ''
-        run: node packages/e2e/src/set-version.ts "${{ inputs.version }}"
       - name: Restore turbo cache
-        # Skipped when stamping a version: the version changes every package's
-        # inputs, so the cache can't hit anyway.
-        if: inputs.version == ''
         uses: actions/cache@v4
         with:
           path: .turbo

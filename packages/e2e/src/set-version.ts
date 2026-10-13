@@ -3,13 +3,13 @@ import { execFileSync } from 'node:child_process';
 import { PUBLISHABLE_PACKAGES, REPO_ROOT } from './packages.ts';
 
 /**
- * Stamps one version on every publishable package:
+ * Sets one version on every publishable package, to prepare a release:
  *
  *   node packages/e2e/src/set-version.ts 22.3.0
  *
- * The publish workflow runs this with the tag's version before building, and
- * so does the E2E release gate, so the tarballs it tests carry the version
- * that will be published.
+ * Commit the result, then tag that commit `v22.3.0`. The publish workflow
+ * never runs this: it refuses a tag that doesn't match the repository (see
+ * `check-version.ts`), so the repository always says what was published.
  */
 const version = process.argv[2]?.replace(/^v/, '');
 if (!version) {

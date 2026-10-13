@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * The single list of packages we publish to npm.
  *
- * The E2E harness packs and installs exactly these, and `publish.yml` stamps
- * versions on and publishes exactly these (through `set-version.ts` and the
- * tarballs this harness produces). Before this list existed the publish
+ * The E2E harness packs and installs exactly these, and `publish.yml` checks
+ * the versions of and publishes exactly these (through `check-version.ts` and
+ * the tarballs this harness produces). Before this list existed the publish
  * workflow repeated it five times, and a package missing from one of those
  * copies would ship stale or not at all.
  */
@@ -102,6 +102,18 @@ const readJson = <T>(file: string): T =>
 /** Reads a publishable package's `package.json` from its source directory. */
 export const readPackageJson = (pkg: PublishablePackage) =>
   readJson<WorkspacePackageJson>(path.join(REPO_ROOT, pkg.dir, 'package.json'));
+
+/**
+ * Each publishable package's version, from its source `package.json`. The
+ * packages are released in lockstep, so these should all be equal: the
+ * `consistent-package-versions` lint rule checks that on every lint run, and
+ * `check-version.ts` checks them against the tag before a release.
+ */
+export const readVersions = () =>
+  PUBLISHABLE_PACKAGES.map((pkg) => ({
+    name: pkg.name,
+    version: readPackageJson(pkg).version,
+  }));
 
 /**
  * Finds workspace packages that npm would publish (no `"private": true`) but

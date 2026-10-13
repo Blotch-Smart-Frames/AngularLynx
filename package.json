@@ -1,6 +1,5 @@
 {
-  "name": "@blotch/angular-lynx",
-  "version": "22.2.0",
+  "name": "angular-lynx-monorepo",
   "private": true,
   "description": "Monorepo for AngularLynx — Angular renderer for the Lynx cross-platform native UI framework",
   "keywords": [],

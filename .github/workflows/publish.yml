@@ -20,6 +20,10 @@ jobs:
       dry-run: ${{ steps.version.outputs.dry-run }}
     steps:
       - uses: actions/checkout@v4
+      # Node 24 runs check-version.ts directly (type stripping).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - id: version
         run: |
           # A tag publishes its own version. Anything else (a manual dispatch
@@ -31,10 +35,21 @@ jobs:
             echo "version=$(node -p "require('./packages/runtime/package.json').version")" >> "$GITHUB_OUTPUT"
             echo "dry-run=true" >> "$GITHUB_OUTPUT"
           fi
+      # The release gate's first check, before anything is built: every
+      # publishable package in the repository must already be at the tag's
+      # version. The workflow used to stamp the tag's version on at build time
+      # instead, which is how 22.2.1 was published while the repository still
+      # said 22.2.0. A dry run has no tag, so it checks that the packages agree
+      # with the runtime's version.
+      - name: Check the packages are at the release version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node packages/e2e/src/check-version.ts "$VERSION"
 
-  # The release gate: layers 1-3 of the E2E tests on the tagged commit, with
-  # the tag's version stamped in, across the full matrix. A dry run only packs
-  # and checks the tarballs (Layer 1).
+  # The release gate: layers 1-3 of the E2E tests on the tagged commit, across
+  # the full matrix. A dry run only packs and checks the tarballs (Layer 1).
+  # The version isn't passed: the `version` job has already checked that the
+  # repository is at it.
   verify:
     needs: version
     uses: ./.github/workflows/e2e.yml
@@ -42,7 +57,6 @@ jobs:
       contents: read
       issues: write
     with:
-      version: ${{ needs.version.outputs.version }}
       matrix: ${{ needs.version.outputs.dry-run == 'true' && 'none' || 'full' }}
       native: ${{ needs.version.outputs.dry-run != 'true' }}
 

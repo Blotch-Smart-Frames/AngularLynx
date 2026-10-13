@@ -237,7 +237,7 @@ Pull requests run one configuration: ubuntu-latest, Node 24 with its bundled npm
 ## Layer 5: Release gates
 
 1. **Publishing waits for the tests on the tagged commit.**
-   - Split `publish.yml` into a `verify` job and a `publish` job. `verify` runs layers 1–3 on the tagged commit with the tag's version stamped in, and `publish` only runs if it passes.
+   - Split `publish.yml` into a `verify` job and a `publish` job. `verify` runs layers 1–3 on the tagged commit, and `publish` only runs if it passes. Before either, the workflow refuses a tag that doesn't match the version already in the repository (`check-version.ts`) rather than stamping the tag's version on: stamping is how 22.2.1 was published while the repository still said 22.2.0.
    - The E2E workflow is reusable (`on: workflow_call`), so `ci.yml`, `publish.yml` and the nightly schedule all call the same workflow.
 2. **Publish the bytes that were tested.**
    - `verify` uploads the tarballs it tested as an artifact, and `publish` publishes those exact files with `npm publish <tarball>`. What users install is then byte-for-byte what passed.

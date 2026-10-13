@@ -1,15 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..', '..', '..', '..');
-
-const PACKAGES = [
-  'packages/runtime',
-  'packages/rsbuild-plugin-angular-lynx',
-  'packages/testing-library',
-];
+// The shared publish list, so this rule checks exactly the packages that get
+// published. It used to keep its own list, which fell behind and missed
+// @blotch/dolan and create-angular-lynx.
+import { readVersions } from '../../../e2e/src/packages.ts';
 
 // Only check once per lint run.
 let checked = false;
@@ -19,16 +11,10 @@ const check = () => {
   if (checked) return mismatch;
   checked = true;
 
-  const versions = PACKAGES.map((p) => {
-    const pkg = JSON.parse(
-      readFileSync(resolve(ROOT, p, 'package.json'), 'utf-8'),
-    );
-    return { path: p, version: pkg.version };
-  });
-
+  const versions = readVersions();
   const unique = new Set(versions.map((v) => v.version));
   if (unique.size !== 1) {
-    mismatch = versions.map((v) => `${v.path}: ${v.version}`).join(', ');
+    mismatch = versions.map((v) => `${v.name}@${v.version}`).join(', ');
   }
   return mismatch;
 };
@@ -42,7 +28,7 @@ export default {
     },
     messages: {
       versionMismatch:
-        'Package version mismatch: {{ detail }}. All published packages must share the same version.',
+        'Package version mismatch: {{ detail }}. All published packages must share the same version; set them with `node packages/e2e/src/set-version.ts <version>`.',
     },
   },
   create(context) {

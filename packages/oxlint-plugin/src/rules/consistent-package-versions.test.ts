@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The rule reads real package.json files off disk via node:fs. Mocking node:fs lets us
-// deterministically drive both the "versions match" and "versions mismatch" branches
-// without depending on (or being broken by) the actual versions checked into the repo.
-vi.mock('node:fs', () => ({ readFileSync: vi.fn() }));
+// The rule reads real package.json files through the shared publish list.
+// Mocking readVersions lets us deterministically drive both the "versions
+// match" and "versions mismatch" branches without depending on (or being
+// broken by) the actual versions checked into the repo.
+vi.mock('../../../e2e/src/packages.ts', () => ({ readVersions: vi.fn() }));
 
 const createContext = () => ({ report: vi.fn() });
+
+const versionsOf = (...versions: string[]) =>
+  versions.map((version, i) => ({ name: `pkg-${i}`, version }));
 
 describe('consistent-package-versions', () => {
   beforeEach(() => {
@@ -13,11 +17,9 @@ describe('consistent-package-versions', () => {
     vi.resetAllMocks();
   });
 
-  it('reports nothing when every checked package.json has the same version', async () => {
-    const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ version: '1.2.3' }),
-    );
+  it('reports nothing when every published package has the same version', async () => {
+    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
     const visitors = rule.create(context as never);
@@ -25,14 +27,12 @@ describe('consistent-package-versions', () => {
     visitors.Program();
 
     expect(context.report).not.toHaveBeenCalled();
-    expect(readFileSync).toHaveBeenCalledTimes(3);
+    expect(readVersions).toHaveBeenCalledTimes(1);
   });
 
   it('memoizes the check so a second Program() in the same lint run re-reads nothing', async () => {
-    const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ version: '1.2.3' }),
-    );
+    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
     const visitors = rule.create(context as never);
@@ -40,19 +40,15 @@ describe('consistent-package-versions', () => {
     visitors.Program();
     visitors.Program();
 
-    // Only the first Program() call should have actually read the filesystem; the
-    // second must hit the `checked` memoization guard instead.
-    expect(readFileSync).toHaveBeenCalledTimes(3);
+    // Only the first Program() call should have actually read the versions;
+    // the second must hit the `checked` memoization guard instead.
+    expect(readVersions).toHaveBeenCalledTimes(1);
     expect(context.report).not.toHaveBeenCalled();
   });
 
   it('reports a versionMismatch diagnostic (repeatedly, once per Program() call) when versions differ', async () => {
-    const { readFileSync } = await import('node:fs');
-    let callCount = 0;
-    vi.mocked(readFileSync).mockImplementation(() => {
-      callCount += 1;
-      return JSON.stringify({ version: callCount === 1 ? '1.0.0' : '2.0.0' });
-    });
+    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    vi.mocked(readVersions).mockReturnValue(versionsOf('1.0.0', '2.0.0'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
     const visitors = rule.create(context as never);
@@ -63,12 +59,11 @@ describe('consistent-package-versions', () => {
     const report = context.report.mock.calls[0][0];
     expect(report.messageId).toBe('versionMismatch');
     expect(report.loc).toEqual({ line: 1, column: 0 });
-    expect(report.data.detail).toContain('1.0.0');
-    expect(report.data.detail).toContain('2.0.0');
+    expect(report.data.detail).toBe('pkg-0@1.0.0, pkg-1@2.0.0');
 
-    // A second call re-reports using the memoized mismatch instead of re-reading disk.
+    // A second call re-reports using the memoized mismatch instead of re-reading.
     visitors.Program();
     expect(context.report).toHaveBeenCalledTimes(2);
-    expect(readFileSync).toHaveBeenCalledTimes(3);
+    expect(readVersions).toHaveBeenCalledTimes(1);
   });
 });

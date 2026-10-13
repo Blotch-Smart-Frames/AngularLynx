@@ -2,6 +2,8 @@
 name: update-angular
 description: Update Angular across the entire monorepo to a new major version. Use when the user says "update angular", "upgrade angular", "bump angular version", "angular 22", "angular 23", or wants to migrate to a newer Angular release.
 invocationControl: user
+metadata:
+  internal: true
 ---
 
 # Update Angular

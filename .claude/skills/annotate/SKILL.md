@@ -2,6 +2,8 @@
 name: annotate
 description: Add detailed comments to recent code changes explaining what was fixed, why it's needed, and the rationale. Use after making code changes to document the reasoning inline.
 allowed-tools: Bash, Read, Edit
+metadata:
+  internal: true
 ---
 
 # Annotate Changes

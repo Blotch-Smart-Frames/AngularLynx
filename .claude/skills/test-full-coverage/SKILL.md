@@ -2,6 +2,8 @@
 name: test-full-coverage
 description: Run and enforce board-style 100% V8 test coverage across the publishable packages. Use when asked to check coverage, find uncovered code, reach 100%, or verify the coverage gate.
 allowed-tools: Bash
+metadata:
+  internal: true
 ---
 
 # Test Full Coverage

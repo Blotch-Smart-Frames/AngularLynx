@@ -35,7 +35,7 @@ These prevent crashes and silent failures. Violating any will break your app on-
 
 ## Bootstrap & Project Setup
 
-How to create and configure a AngularLynx application. Covers `bootstrapApplication()`, `provideRenderer()`, `provideRouter()`, app config, and `lynx.config.ts` with `pluginAngularLynx()`.
+How to create and configure an AngularLynx application. Covers `bootstrapApplication()`, `provideRenderer()`, `provideRouter()`, app config, and `lynx.config.ts` with `pluginAngularLynx()`.
 
 Read [bootstrap-and-setup.md](references/bootstrap-and-setup.md)
 

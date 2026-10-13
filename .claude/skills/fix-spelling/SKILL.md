@@ -1,6 +1,8 @@
 ---
 name: fix-spelling
 description: "Fix cspell spelling errors by finding the best resolution for each unknown word. Always prefer rewording the text (in American English) over dictionaries, regex patterns, or suppressions. Use when cspell reports unknown words, when you want to clean up spelling lint errors, or when adding new words/patterns to cspell config."
+metadata:
+  internal: true
 ---
 
 # Fix Spelling (cspell)

@@ -1,6 +1,8 @@
 ---
 name: lint
 description: Run the linter (oxlint) across all packages in the monorepo using turbo. Use when the user says "lint", "run lint", "check lint", or wants to find code quality issues.
+metadata:
+  internal: true
 ---
 
 # Lint

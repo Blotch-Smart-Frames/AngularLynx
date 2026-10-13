@@ -1,6 +1,8 @@
 ---
 name: format
 description: Run the formatter (oxfmt) across all packages in the monorepo using turbo. Use when the user says "format", "run format", "format code", "check formatting", or wants to auto-format files.
+metadata:
+  internal: true
 ---
 
 # Format

@@ -1,6 +1,8 @@
 ---
 name: ui-component
 description: Create a new Dolan UI component end-to-end — the component in packages/ui, its dolan registry entry, a runnable example in examples/, website docs, and tests. Use when creating, adding, or scaffolding a new @blotch/ui / Dolan UI component.
+metadata:
+  internal: true
 ---
 
 # Create a Dolan UI Component

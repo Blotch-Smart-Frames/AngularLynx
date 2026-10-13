@@ -1,6 +1,8 @@
 ---
 name: create-example
 description: Create a new interactive example in examples/ with a <Go> preview in the website docs. Use when adding a new example, demo, or showcase for an AngularLynx feature or component.
+metadata:
+  internal: true
 ---
 
 # Create an AngularLynx Example

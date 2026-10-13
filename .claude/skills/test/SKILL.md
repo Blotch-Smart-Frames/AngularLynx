@@ -1,6 +1,8 @@
 ---
 name: test
 description: Run the test suite (vitest) across all packages in the monorepo using turbo. Use when the user says "test", "run tests", "run the tests", or wants to verify correctness.
+metadata:
+  internal: true
 ---
 
 # Test

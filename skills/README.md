@@ -5,14 +5,14 @@
 ## Install
 
 ```bash
-npx skills add https://github.com/Blotch-Smart-Frames/AngularLynx/tree/main/packages/skills/skills/angular-lynx
+npx skills add Blotch-Smart-Frames/AngularLynx
 ```
 
 ## What's included
 
 The `angular-lynx` skill teaches AI agents how to:
 
-- **Bootstrap** a AngularLynx app (`bootstrapApplication`, `provideRenderer`, `provideRouter`)
+- **Bootstrap** an AngularLynx app (`bootstrapApplication`, `provideRenderer`, `provideRouter`)
 - **Use Lynx elements** (`view`, `text`, `image`, `scroll-view`, `list`, `input`, `overlay`, etc.)
 - **Handle events** with `bind`/`catch` prefixes (`bindtap`, `bindinput`, `catchtap`)
 - **Style components** with Lynx CSS (linear layout, `rpx` units, no CSS inheritance)

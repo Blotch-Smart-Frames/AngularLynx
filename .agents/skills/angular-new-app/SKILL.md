@@ -4,6 +4,7 @@ description: Creates a new Angular app using the Angular CLI. This skill should 
 license: MIT
 compatibility: Requires node, npm, and access to the internet
 metadata:
+  internal: true
   author: Angular Team @ Google
   version: '1.0'
 ---

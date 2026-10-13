@@ -1,6 +1,8 @@
 ---
 name: cspell
 description: Run the spell checker (cspell) across all packages in the monorepo using turbo. Use when the user says "cspell", "spell check", "check spelling", or wants to find typos.
+metadata:
+  internal: true
 ---
 
 # CSpell

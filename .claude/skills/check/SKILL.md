@@ -2,6 +2,8 @@
 name: check
 description: Run all quality checks (format, lint, cspell, build, test) across the monorepo. Use when the user says "check", "run all checks", "CI checks", "verify everything", or wants a full quality gate before committing or pushing.
 invocationControl: user
+metadata:
+  internal: true
 ---
 
 # Check

@@ -1,6 +1,8 @@
 ---
 name: build
 description: Build all packages in the monorepo using turbo. Use when the user says "build", "run build", "compile", or wants to produce build artifacts.
+metadata:
+  internal: true
 ---
 
 # Build

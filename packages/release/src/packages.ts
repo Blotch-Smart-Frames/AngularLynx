@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * The single list of packages we publish to npm.
  *
- * The E2E harness packs and installs exactly these, and `publish.yml` checks
- * the versions of and publishes exactly these (through `check-version.ts` and
- * the tarballs this harness produces). Before this list existed the publish
+ * The E2E harness (`packages/e2e`) packs and installs exactly these, and
+ * `publish.yml` checks the versions of and publishes exactly these (through
+ * `check-version.ts` and the tarballs the harness produces). Before this list existed the publish
  * workflow repeated it five times, and a package missing from one of those
  * copies would ship stale or not at all.
  */
@@ -78,7 +78,7 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       // `"type": "module"` on the dist package, and without this marker Node
       // loads them as ESM and Angular CLI reports that the package "does not
       // provide any `ng add` actions". Every factory in collection.json is
-      // also checked separately, in check-packages.ts.
+      // also checked separately, in packages/e2e/src/check-packages.ts.
       'schematics/package.json',
       // The `ng build` / `ng serve` builders, CommonJS like the schematics.
       'builders/builders.json',

@@ -18,7 +18,7 @@ import {
   PUBLISHABLE_PACKAGES,
   REPO_ROOT,
   type PublishablePackage,
-} from './packages.ts';
+} from '../../release/src/packages.ts';
 import { check, CheckError, run, runAllowFailure, step } from './process.ts';
 
 /** A packed tarball of one publishable package. */
@@ -143,7 +143,7 @@ export const checkPackages = async (
     const unlisted = findUnlistedPublicPackages();
     check(
       unlisted.length === 0,
-      `These workspace packages aren't private, so npm would publish them, but they're missing from packages/e2e/src/packages.ts: ${unlisted.join(', ')}. Add them to PUBLISHABLE_PACKAGES so they're tested and published, or set "private": true.`,
+      `These workspace packages aren't private, so npm would publish them, but they're missing from packages/release/src/packages.ts: ${unlisted.join(', ')}. Add them to PUBLISHABLE_PACKAGES so they're tested and published, or set "private": true.`,
     );
     console.log('✓ every public workspace package is in the publish list');
   });

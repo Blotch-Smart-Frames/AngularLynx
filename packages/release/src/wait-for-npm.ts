@@ -6,14 +6,14 @@ import { PUBLISHABLE_PACKAGES } from './packages.ts';
  * Waits until every publishable package reports `version` on the public npm
  * registry:
  *
- *   node packages/e2e/src/wait-for-npm.ts 22.3.0
+ *   node packages/release/src/wait-for-npm.ts 22.3.0
  *
  * npm holds new versions briefly for processing (2-3 minutes for 22.2.0), so
  * the post-publish E2E check would otherwise install the previous release.
  */
 const version = process.argv[2]?.replace(/^v/, '');
 if (!version) {
-  console.error('Usage: node packages/e2e/src/wait-for-npm.ts <version>');
+  console.error('Usage: node packages/release/src/wait-for-npm.ts <version>');
   process.exit(1);
 }
 

@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import type { RunContext } from './context.ts';
-import { PUBLISHABLE_PACKAGES, REPO_ROOT } from './packages.ts';
+import { PUBLISHABLE_PACKAGES, REPO_ROOT } from '../../release/src/packages.ts';
 import { start, stop, waitFor } from './process.ts';
 
 /** The registry every tool in the run installs from. */

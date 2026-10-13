@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mocking readVersions lets us deterministically drive both the "versions
 // match" and "versions mismatch" branches without depending on (or being
 // broken by) the actual versions checked into the repo.
-vi.mock('../../../e2e/src/packages.ts', () => ({ readVersions: vi.fn() }));
+vi.mock('../../../release/src/packages.ts', () => ({ readVersions: vi.fn() }));
 
 const createContext = () => ({ report: vi.fn() });
 
@@ -18,7 +18,7 @@ describe('consistent-package-versions', () => {
   });
 
   it('reports nothing when every published package has the same version', async () => {
-    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    const { readVersions } = await import('../../../release/src/packages.ts');
     vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
@@ -31,7 +31,7 @@ describe('consistent-package-versions', () => {
   });
 
   it('memoizes the check so a second Program() in the same lint run re-reads nothing', async () => {
-    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    const { readVersions } = await import('../../../release/src/packages.ts');
     vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();
@@ -47,7 +47,7 @@ describe('consistent-package-versions', () => {
   });
 
   it('reports a versionMismatch diagnostic (repeatedly, once per Program() call) when versions differ', async () => {
-    const { readVersions } = await import('../../../e2e/src/packages.ts');
+    const { readVersions } = await import('../../../release/src/packages.ts');
     vi.mocked(readVersions).mockReturnValue(versionsOf('1.0.0', '2.0.0'));
     const { default: rule } = await import('./consistent-package-versions.mjs');
     const context = createContext();

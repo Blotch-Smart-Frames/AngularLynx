@@ -1,3 +1,10 @@
+---
+name: lynx-architecture
+description: Reference for the Lynx dual-thread model and how AngularLynx maps onto it. Use when reasoning about main vs background thread, bundle structure, IPC, __MAIN_THREAD__ branches, or renderer design.
+metadata:
+  internal: true
+---
+
 # Lynx Architecture Reference
 
 Reference for the Lynx dual-thread model and how Angular-Lynx maps onto it. Use this when reasoning about threading, bundle structure, IPC, or renderer design.

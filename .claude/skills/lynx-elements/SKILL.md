@@ -1,3 +1,10 @@
+---
+name: lynx-elements
+description: Reference for using Lynx elements in Angular component templates. Use when writing or reviewing templates that use Lynx elements, their attributes and events, or CUSTOM_ELEMENTS_SCHEMA setup.
+metadata:
+  internal: true
+---
+
 # Lynx Elements Reference
 
 Reference for using Lynx elements in Angular components. Use this when writing or reviewing component templates.

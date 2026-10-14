@@ -1,3 +1,10 @@
+---
+name: add-lynx-element
+description: Add support for a new Lynx element to the AngularLynx runtime. Use when wiring a new native element into LynxDocument.createElement, exposing a new __Create* element API, or updating the runtime README's element support table.
+metadata:
+  internal: true
+---
+
 # Add Lynx Element
 
 Add support for a new Lynx element to the runtime.

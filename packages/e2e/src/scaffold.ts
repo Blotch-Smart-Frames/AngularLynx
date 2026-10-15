@@ -2,9 +2,11 @@ import {
   copyFileSync,
   existsSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 
@@ -349,22 +351,17 @@ const checkGeneratedProject = (appDir: string) => {
   }>(path.join(appDir, 'angular.json')).projects;
   const architect = Object.values(targets)[0]?.architect ?? {};
   check(
-    architect['build']?.builder === '@blotch/angular-lynx:application',
-    `angular.json's build target uses ${JSON.stringify(architect['build']?.builder)}, not @blotch/angular-lynx:application. \`ng add\` didn't switch it.`,
+    architect['build']?.builder === '@blotch/angular-lynx-build:application',
+    `angular.json's build target uses ${JSON.stringify(architect['build']?.builder)}, not @blotch/angular-lynx-build:application. \`ng add\` didn't switch it.`,
   );
   check(
-    architect['serve']?.builder === '@blotch/angular-lynx:dev-server',
-    `angular.json's serve target uses ${JSON.stringify(architect['serve']?.builder)}, not @blotch/angular-lynx:dev-server. \`ng add\` didn't switch it.`,
+    architect['serve']?.builder === '@blotch/angular-lynx-build:dev-server',
+    `angular.json's serve target uses ${JSON.stringify(architect['serve']?.builder)}, not @blotch/angular-lynx-build:dev-server. \`ng add\` didn't switch it.`,
   );
-  for (const dependency of [
-    '@blotch/rsbuild-plugin-angular-lynx',
-    '@blotch/angular-lynx-native',
-  ]) {
-    check(
-      pkg.devDependencies?.[dependency],
-      `\`ng add\` didn't add ${dependency} to devDependencies.`,
-    );
-  }
+  check(
+    pkg.devDependencies?.['@blotch/angular-lynx-build'],
+    "`ng add` didn't add @blotch/angular-lynx-build to devDependencies.",
+  );
   const mainTs = readFileSync(path.join(appDir, 'src/main.ts'), 'utf8');
   check(
     /import\s*\{[^}]*\bbootstrapApplication\b[^}]*\}\s*from\s*'@blotch\/angular-lynx'/.test(
@@ -401,11 +398,39 @@ const checkGeneratedProject = (appDir: string) => {
   );
 };
 
+/**
+ * Our packages in a generated app, and the package that depends on each. The
+ * rsbuild plugin and the native builder are dependencies of the builders, not
+ * of the app, so they are found the way Node finds them from there: pnpm
+ * doesn't link them into the app's own node_modules.
+ */
 const OUR_RUNTIME_PACKAGES = [
-  '@blotch/angular-lynx',
-  '@blotch/rsbuild-plugin-angular-lynx',
-  '@blotch/angular-lynx-native',
+  { name: '@blotch/angular-lynx' },
+  { name: '@blotch/angular-lynx-build' },
+  {
+    name: '@blotch/rsbuild-plugin-angular-lynx',
+    from: '@blotch/angular-lynx-build',
+  },
+  {
+    name: '@blotch/angular-lynx-native',
+    from: '@blotch/angular-lynx-build',
+  },
 ];
+
+const findManifest = (
+  appDir: string,
+  { name, from }: { name: string; from?: string },
+) => {
+  const appManifest = path.join(appDir, 'package.json');
+  const parent = from
+    ? realpathSync(path.join(appDir, 'node_modules', from, 'package.json'))
+    : appManifest;
+  try {
+    return createRequire(parent).resolve(`${name}/package.json`);
+  } catch {
+    return undefined;
+  }
+};
 
 type PackageLock = {
   packages: Record<
@@ -420,12 +445,10 @@ const checkInstalledPackages = (
   registry: Registry,
   installOutput: string,
 ) => {
-  for (const name of OUR_RUNTIME_PACKAGES) {
-    const manifest = path.join(appDir, 'node_modules', name, 'package.json');
-    check(
-      existsSync(manifest),
-      `${name} isn't installed in the generated app.`,
-    );
+  for (const pkg of OUR_RUNTIME_PACKAGES) {
+    const { name } = pkg;
+    const manifest = findManifest(appDir, pkg);
+    check(manifest, `${name} isn't installed in the generated app.`);
     const { version } = readJson<PackageJson>(manifest);
     check(
       version === options.version,
@@ -464,7 +487,7 @@ const checkInstalledPackages = (
     `npm skipped install scripts of our packages:\n${skipped.join('\n')}`,
   );
   console.log(
-    `✓ ${OUR_RUNTIME_PACKAGES.join(' and ')} are installed at ${options.version} from ${registry.url}, with no install scripts`,
+    `✓ ${OUR_RUNTIME_PACKAGES.map(({ name }) => name).join(', ')} are installed at ${options.version} from ${registry.url}, with no install scripts`,
   );
 };
 

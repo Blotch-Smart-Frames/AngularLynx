@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "AngularLynxDevServerBuilder",
+  "title": "AngularLynx dev-server builder",
+  "description": "Runs the rspeedy dev server, which Lynx Explorer and the web preview load the app from.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "buildTarget": {
+      "type": "string",
+      "description": "The build target to serve, as `project:target[:configuration]`, e.g. `my-app:build:development`. Its options (the Angular compiler options, `config`, `mode`) configure the build. Defaults to the project's build target with its development configuration, as Angular's own dev server does.",
+      "pattern": "^[^:\\s]*:[^:\\s]*(:[^\\s]+)?$"
+    },
+    "port": {
+      "type": "number",
+      "description": "The port to serve on. Overrides `server.port` in lynx.config.ts."
+    },
+    "host": {
+      "type": "string",
+      "description": "The host to listen on. Overrides `server.host` in lynx.config.ts."
+    },
+    "environment": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Only build these rspeedy environments (e.g. lynx). Defaults to the build target's `environment`, or all of them."
+    }
+  }
+}

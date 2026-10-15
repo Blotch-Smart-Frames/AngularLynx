@@ -12,7 +12,7 @@ Creates a runnable example in `examples/<name>/` that appears as an interactive 
 ## Pipeline Overview
 
 1. Source code lives in `examples/<name>/`
-2. `rspeedy build` produces `dist/main.lynx.bundle` and `dist/main.web.bundle`
+2. `npm run build` (`ng build`, the `@blotch/angular-lynx-build:application` builder) produces `dist/main.lynx.bundle` and `dist/main.web.bundle`
 3. `packages/website/scripts/prepare-examples.mjs` copies source + bundles to `docs/public/examples/<name>/` and generates `example-metadata.json`
 4. Docs reference it via `<Go example="<name>" defaultFile="src/app/app.ts" />`
 
@@ -31,8 +31,8 @@ Create `examples/<name>/` with this file structure:
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "rspeedy dev",
-    "build": "rspeedy build --environment lynx && rspeedy build --environment web"
+    "start": "ng serve",
+    "build": "ng build"
   },
   "dependencies": {
     "@angular/common": "^22.2.1",
@@ -42,10 +42,9 @@ Create `examples/<name>/` with this file structure:
     "@blotch/angular-lynx": "*"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.1",
-    "@blotch/rsbuild-plugin-angular-lynx": "*",
+    "@blotch/angular-lynx-build": "*",
     "@lynx-js/rspeedy": "^0.18.0",
     "@lynx-js/types": "^4.3.0",
     "typescript": "~5.9.0"
@@ -65,22 +64,20 @@ If using Tailwind (for UI component examples), also add:
 #### `lynx.config.ts`
 
 ```typescript
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
 import { defineConfig } from '@lynx-js/rspeedy';
 
 export default defineConfig({
   environments: {
-    web: {
-      output: { cleanDistPath: false },
-    },
+    web: {},
     lynx: {},
   },
   source: {
     entry: './src/main.ts',
   },
-  plugins: [pluginAngularLynx()],
 });
 ```
+
+`ng build` and `ng serve` add the AngularLynx rsbuild plugin themselves. List it only to pass it options, imported from the builders package: `import { pluginAngularLynx } from '@blotch/angular-lynx-build'`, then `plugins: [pluginAngularLynx({ enableSSR: true })]`.
 
 For multi-page examples, use an entry object:
 
@@ -107,7 +104,7 @@ source: {
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@blotch/angular-lynx-build:application",
           "options": {
             "outputPath": "dist",
             "index": "src/index.html",
@@ -116,6 +113,12 @@ source: {
             "tsConfig": "tsconfig.app.json",
             "styles": [],
             "scripts": []
+          }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": {
+            "buildTarget": "<name>:build"
           }
         }
       }

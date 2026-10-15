@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 
-import { PUBLISHABLE_PACKAGES, REPO_ROOT } from './packages.ts';
+import {
+  PUBLISHABLE_PACKAGES,
+  REPO_ROOT,
+  readInternalPins,
+} from './packages.ts';
 
 /**
  * Sets one version on every publishable package, to prepare a release:
@@ -35,3 +41,24 @@ for (const pkg of PUBLISHABLE_PACKAGES) {
     { cwd: REPO_ROOT, stdio: 'inherit', shell: process.platform === 'win32' },
   );
 }
+
+// `npm version` leaves other packages' dependencies on the one it versions
+// alone, so move each pin between published packages here, then bring the
+// lockfile in line with them.
+for (const pkg of PUBLISHABLE_PACKAGES) {
+  const pins = readInternalPins(pkg);
+  if (pins.length === 0) {
+    continue;
+  }
+  const file = path.join(REPO_ROOT, pkg.dir, 'package.json');
+  const json = JSON.parse(readFileSync(file, 'utf8'));
+  for (const { name } of pins) {
+    json.dependencies[name] = version;
+  }
+  writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+}
+execFileSync(
+  'npm',
+  ['install', '--package-lock-only', '--ignore-scripts', '--no-audit'],
+  { cwd: REPO_ROOT, stdio: 'inherit', shell: process.platform === 'win32' },
+);

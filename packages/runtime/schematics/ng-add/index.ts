@@ -15,6 +15,7 @@ import {
   DependencyType,
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
+import type { JsonValue } from '@angular-devkit/core';
 import { JSONFile } from '@schematics/angular/utility/json-file';
 import {
   getWorkspace,
@@ -249,9 +250,10 @@ const excludeTestFilesFromAppBuild = (tsconfigPath: string): Rule => {
 
 /**
  * Angular compiler options from `ng new`'s build target that the Lynx builder
- * accepts (see builders/application/schema.json). @blotch/rsbuild-plugin-angular-lynx
- * and `ng test` read them from angular.json; anything else, such as options
- * only the browser builder knows, would fail the builder's option validation.
+ * accepts (see @blotch/angular-lynx-build's builders/application/schema.json).
+ * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them from
+ * angular.json; anything else, such as options only the browser builder
+ * knows, would fail the builder's option validation.
  */
 const ANGULAR_BUILD_OPTIONS = new Set([
   'browser',
@@ -283,8 +285,23 @@ const keepAngularOptions = (
   );
 
 /**
+ * Options of Angular's dev server that the Lynx dev server accepts too (see
+ * @blotch/angular-lynx-build's builders/dev-server/schema.json).
+ */
+const DEV_SERVER_OPTIONS = new Set(['buildTarget', 'port', 'host']);
+
+const keepDevServerOptions = (
+  options: Record<string, JsonValue | undefined> | undefined,
+): Record<string, JsonValue | undefined> =>
+  Object.fromEntries(
+    Object.entries(options ?? {}).filter(([key]) =>
+      DEV_SERVER_OPTIONS.has(key),
+    ),
+  );
+
+/**
  * Points `ng build` and `ng serve` at the AngularLynx builders. They run
- * rspeedy (which applies @blotch/rsbuild-plugin-angular-lynx), and
+ * rspeedy with @blotch/rsbuild-plugin-angular-lynx added, and
  * `ng build --platform ios|android` also produces the native app. The build
  * target keeps `ng new`'s Angular compiler options, which the build plugin
  * and `ng test` read, and gains the app's identity for native builds.
@@ -305,7 +322,7 @@ const useLynxBuilders = (projectName: string): Rule =>
       ]),
     );
     const buildDefinition = {
-      builder: '@blotch/angular-lynx:application',
+      builder: '@blotch/angular-lynx-build:application',
       options: {
         ...keepAngularOptions(build?.options),
         appName: projectName,
@@ -321,16 +338,50 @@ const useLynxBuilders = (projectName: string): Rule =>
     }
     project.targets.add({ name: 'build', ...buildDefinition });
 
-    // The browser dev server's options all reference a build target; the
-    // Lynx dev server takes its settings from lynx.config.ts instead.
-    if (project.targets.has('serve')) {
+    // The Lynx dev server takes `buildTarget` like Angular's, so `ng new`'s
+    // configurations (production and development, each naming its build
+    // configuration) carry over, and `ng serve -c production` keeps working.
+    // Options only the browser dev server knows (ssl, proxyConfig, ...) are
+    // dropped: they would fail the builder's option validation.
+    // Without a serve target to keep, write the one `ng new` would have, for
+    // the build configurations that exist. Without a development one, serve
+    // the build target's default configuration rather than the dev server's
+    // default (`::development`), which would point at nothing.
+    const serve = project.targets.get('serve');
+    const serveConfigurations = Object.fromEntries(
+      Object.entries(
+        serve?.configurations ??
+          Object.fromEntries(
+            ['production', 'development']
+              .filter((name) => name in configurations)
+              .map((name) => [
+                name,
+                { buildTarget: `${projectName}:build:${name}` },
+              ]),
+          ),
+      ).map(([name, options]) => [name, keepDevServerOptions(options)]),
+    );
+    const serveDefinition = serve
+      ? {
+          builder: '@blotch/angular-lynx-build:dev-server',
+          options: keepDevServerOptions(serve.options),
+          configurations: serveConfigurations,
+          defaultConfiguration: serve.defaultConfiguration,
+        }
+      : {
+          builder: '@blotch/angular-lynx-build:dev-server',
+          options:
+            'development' in serveConfigurations
+              ? {}
+              : { buildTarget: `${projectName}:build` },
+          configurations: serveConfigurations,
+          defaultConfiguration:
+            'development' in serveConfigurations ? 'development' : undefined,
+        };
+    if (serve) {
       project.targets.delete('serve');
     }
-    project.targets.add({
-      name: 'serve',
-      builder: '@blotch/angular-lynx:dev-server',
-      options: {},
-    });
+    project.targets.add({ name: 'serve', ...serveDefinition });
   });
 
 const updatePackageScripts = (): Rule => {
@@ -346,18 +397,9 @@ const updatePackageScripts = (): Rule => {
 
 const addCoreDependencies = (): Rule => {
   return chain([
-    addDependency(
-      '@blotch/rsbuild-plugin-angular-lynx',
-      VERSIONS.rsbuildPluginAngularLynx,
-      {
-        type: DependencyType.Dev,
-        install: InstallBehavior.Auto,
-      },
-    ),
-    // Builds the iOS and Android apps for `ng build --platform`. Loaded only
-    // then, so a project that never builds native apps doesn't need it, but
-    // installed up front so the command works without another step.
-    addDependency('@blotch/angular-lynx-native', VERSIONS.angularLynxNative, {
+    // The `ng build` and `ng serve` builders. They bring the rsbuild plugin
+    // that compiles Angular and the iOS and Android app builder with them.
+    addDependency('@blotch/angular-lynx-build', VERSIONS.angularLynxBuild, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
     }),

@@ -21,8 +21,7 @@ export default defineConfig({
     __WEB__: false,
   },
   test: {
-    // builders/ holds the ng build / ng serve builders (CommonJS, Node-only).
-    include: ['src/**/*.test.ts', 'builders/**/*.test.ts'],
+    include: ['src/**/*.test.ts'],
     coverage: {
       // V8 is the built-in provider (@vitest/coverage-v8, installed at the repo
       // root). `all` defaults to true when `include` is set, so EVERY source

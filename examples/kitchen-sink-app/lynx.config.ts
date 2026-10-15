@@ -1,15 +1,12 @@
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
+import { pluginAngularLynx } from '@blotch/angular-lynx-build';
 import { pluginQRCode } from '@lynx-js/qrcode-rsbuild-plugin';
 import { defineConfig } from '@lynx-js/rspeedy';
 
 export default defineConfig({
   // Build for both targets: `lynx` produces the native bundle, `web` the browser
-  // preview bundle. `cleanDistPath: false` on web keeps the lynx bundle in place
-  // when the two builds run sequentially (see the dual-environment build script).
+  // preview bundle.
   environments: {
-    web: {
-      output: { cleanDistPath: false },
-    },
+    web: {},
     lynx: {},
   },
   source: {
@@ -22,6 +19,8 @@ export default defineConfig({
         return `${url}?fullscreen=true`;
       },
     }),
+    // Listed only to pass options; `ng build` and `ng serve` use this
+    // instance instead of adding their own.
     pluginAngularLynx({ enableSSR: true }),
   ],
 });

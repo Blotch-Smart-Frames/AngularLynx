@@ -1,0 +1,5 @@
+{
+  "import": ["../../cspell.json"],
+  "words": ["myapp", "teardowns"],
+  "ignorePaths": ["coverage", "dist"]
+}

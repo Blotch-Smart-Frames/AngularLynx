@@ -4,11 +4,13 @@ Rsbuild plugin that compiles Angular apps for the [Lynx](https://lynxjs.org/) na
 
 ## Installation
 
+> **Using the Angular CLI?** You don't need this package directly. `ng add @blotch/angular-lynx` installs [`@blotch/angular-lynx-build`](../build), whose `ng build` and `ng serve` builders depend on this plugin and add it to rspeedy's config. To pass it options, import it from there: `import { pluginAngularLynx } from '@blotch/angular-lynx-build'`.
+
+To run rspeedy directly:
+
 ```bash
 npm install @blotch/rsbuild-plugin-angular-lynx
 ```
-
-> Starting a new project? `ng add @blotch/angular-lynx` sets this up automatically.
 
 ## Usage
 

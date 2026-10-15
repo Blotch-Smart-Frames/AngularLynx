@@ -1,7 +1,9 @@
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
 import { pluginQRCode } from '@lynx-js/qrcode-rsbuild-plugin';
 import { defineConfig } from '@lynx-js/rspeedy';
 
+// `ng build` and `ng serve` run rspeedy with this config and add the plugin
+// that compiles Angular. To pass that plugin options, list it here:
+// `import { pluginAngularLynx } from '@blotch/angular-lynx-build'`.
 export default defineConfig({
   // `lynx` builds the native bundle that Lynx Explorer and your app load.
   // `web` builds a bundle for Lynx for Web, so the app can also be previewed
@@ -19,6 +21,5 @@ export default defineConfig({
         return `${url}?fullscreen=true`;
       },
     }),
-    pluginAngularLynx(),
   ],
 });

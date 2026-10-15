@@ -13,7 +13,7 @@ Run all tests from the project root:
 npm run test
 ```
 
-This runs `vitest run` in packages that have a test script (`runtime`, `rsbuild-plugin-angular-lynx`, `kitchen-sink-app`, `testing-library`) via turbo. Tests depend on `^build` completing first.
+This runs `vitest run` in packages that have a test script (`runtime`, `build`, `rsbuild-plugin-angular-lynx`, `native`, `kitchen-sink-app`, `testing-library`) via turbo. Tests depend on `^build` completing first.
 
 ## No cache
 

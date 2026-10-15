@@ -6,8 +6,13 @@ import {
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { importFromProject } from '../project-import';
-import { type RspeedyModule, createRspeedy, importRspeedy } from '../rspeedy';
+import {
+  type RspeedyModule,
+  type RspeedyPluginModule,
+  createRspeedy,
+  importPlugin,
+  importRspeedy,
+} from '../rspeedy';
 import type * as Native from '@blotch/angular-lynx-native' with {
   'resolution-mode': 'import',
 };
@@ -18,24 +23,30 @@ type NativeModule = typeof Native;
 
 export type ApplicationBuilderDeps = {
   readonly importRspeedy: (projectRoot: string) => Promise<RspeedyModule>;
-  readonly importNative: (projectRoot: string) => Promise<NativeModule>;
-};
-
-const defaultDeps: ApplicationBuilderDeps = {
-  importRspeedy,
-  importNative: (projectRoot) =>
-    importFromProject<NativeModule>(
-      '@blotch/angular-lynx-native',
-      projectRoot,
-      'Install it to build native apps: npm install --save-dev @blotch/angular-lynx-native',
-    ),
+  readonly importPlugin: () => Promise<RspeedyPluginModule>;
+  readonly importNative: () => Promise<NativeModule>;
 };
 
 /**
- * `ng build`: builds the Lynx bundle with rspeedy, exactly as `rspeedy build`
- * did before this builder existed, then, with `--platform`, the native
- * binaries. The Angular compile happens inside rspeedy (through
- * @blotch/rsbuild-plugin-angular-lynx), so this builder only orchestrates.
+ * Like the rsbuild plugin, the native builder is this package's own
+ * dependency, resolved from here. Imported only for `--platform`, so a plain
+ * bundle build never loads it.
+ */
+const importNative = (): Promise<NativeModule> =>
+  import('@blotch/angular-lynx-native');
+
+const defaultDeps: ApplicationBuilderDeps = {
+  importRspeedy,
+  importPlugin,
+  importNative,
+};
+
+/**
+ * `ng build`: builds the Lynx bundle with rspeedy, as `rspeedy build` would,
+ * then, with `--platform`, the native binaries. The Angular compile happens
+ * inside rspeedy (through @blotch/rsbuild-plugin-angular-lynx, which
+ * `createRspeedy` adds when lynx.config.ts doesn't), so this builder only
+ * orchestrates.
  */
 export const runApplication = async (
   options: ApplicationBuilderOptions,
@@ -59,15 +70,23 @@ export const runApplication = async (
         : [];
 
   try {
-    // Load the native builder first, so a missing package fails before a
+    // Load the native builder first, so a broken install fails before a
     // minute of bundling rather than after it.
-    const native =
-      platforms.length > 0 ? await deps.importNative(projectRoot) : undefined;
+    const native = platforms.length > 0 ? await deps.importNative() : undefined;
 
     context.reportStatus('Building the Lynx bundle');
     const rspeedy = await createRspeedy({
       rspeedy: await deps.importRspeedy(projectRoot),
+      plugin: await deps.importPlugin(),
+      command: 'build',
       projectRoot,
+      // Angular CLI already merged these: base options, the configurations
+      // chosen with -c (or the default one), then command-line overrides.
+      angularCli: {
+        workspaceRoot: context.workspaceRoot,
+        project: projectName,
+        buildOptions: options,
+      },
       config: options.config,
       mode: options.mode,
       // Native shells only load the Lynx bundle; skipping the web

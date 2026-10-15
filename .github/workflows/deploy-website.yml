@@ -26,12 +26,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: examples/*/dist
-          key: examples-${{ hashFiles('examples/**/src/**', 'examples/**/package.json', 'packages/runtime/src/**', 'packages/rsbuild-plugin-angular-lynx/src/**') }}
+          key: examples-${{ hashFiles('examples/**/src/**', 'examples/**/package.json', 'examples/**/angular.json', 'examples/**/lynx.config.ts', 'packages/runtime/src/**', 'packages/build/builders/**', 'packages/rsbuild-plugin-angular-lynx/src/**') }}
           restore-keys: examples-
 
-      - name: Build runtime and plugin
+      - name: Build runtime and builders
         if: steps.cache-examples.outputs.cache-hit != 'true'
-        run: npx turbo run build --filter=./packages/runtime --filter=./packages/rsbuild-plugin-angular-lynx
+        # The examples build with `ng build`, so they need the builders, which
+        # turbo builds after the rsbuild plugin and the native builder they
+        # depend on.
+        run: npx turbo run build --filter=./packages/runtime --filter=./packages/build
 
       - name: Build examples
         if: steps.cache-examples.outputs.cache-hit != 'true'

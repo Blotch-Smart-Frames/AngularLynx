@@ -1,0 +1,6 @@
+dist
+coverage
+# Compiled next to their sources by `tsc -p tsconfig.builders.json`. Ignored
+# here rather than in builders/: npm applies ignore files inside a package's
+# folders even to paths `files` lists, and these files are what it ships.
+builders/**/*.js

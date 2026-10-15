@@ -1,16 +1,16 @@
 # Publishing your App
 
-This guide covers how to build your AngularLynx app into a production bundle and deploy it to a native mobile app.
+This guide covers how to build your AngularLynx app into a production bundle, and from it the iOS and Android apps you submit to the App Store and Google Play.
 
 ## Build Command
 
 Run the production build from your project root:
 
 ```bash
-npx rspeedy build
+ng build
 ```
 
-This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory.
+This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory. `ng build` runs the `@blotch/angular-lynx:application` builder, which runs RSpeedy with your `lynx.config.ts`, so the output is the same as `npx rspeedy build`.
 
 ## Output Files
 
@@ -37,13 +37,102 @@ dist/
 Lazy-loaded routes (`loadComponent(() => import('./path'))`) and `@defer` blocks are built into `main.lynx.bundle`. They still load lazily in your code, but no separate bundle has to be fetched. See [Routing](/guide/routing) for more on lazy loading.
 :::
 
-## Deployment
+## Building the iOS and Android Apps
+
+Add `--platform` and the same command builds the store binaries:
+
+```bash
+ng build --platform ios       # dist/ios/MyApp.ipa and dist/ios/MyApp-simulator.app
+ng build --platform android   # dist/android/my-app.aab and dist/android/my-app.apk
+ng build --platform all
+```
+
+You never see an Xcode or Gradle project. The builder generates one into `.angular-lynx/native/` (git-ignored), copies your bundle into it, and builds it. The generated project is reused until your options change, so a rebuild takes seconds.
+
+| Output                         | Use                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `dist/ios/MyApp-simulator.app` | Drag onto a simulator, or `xcrun simctl install booted dist/ios/MyApp-simulator.app` |
+| `dist/ios/MyApp.ipa`           | Upload to TestFlight and the App Store. Only built when iOS signing is configured    |
+| `dist/android/my-app.apk`      | Install on an emulator or device with `adb install`                                  |
+| `dist/android/my-app.aab`      | Upload to Google Play                                                                |
+
+**Requirements:** iOS builds need macOS with Xcode (Apple only ships its build tools for macOS). Android builds need JDK 17 or newer and the Android SDK, which Android Studio installs.
+
+### App identity
+
+The app's name, ID and version are options of the `build` target in `angular.json`. `ng add` sets `appName` and a placeholder `appId`; replace the ID before your first upload, because the stores identify your app by it.
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx:application",
+  "options": {
+    "appName": "My App",
+    "appId": "com.example.myapp",
+    "version": "1.2.0",
+    "buildNumber": 42,
+    "icon": "src/assets/icon.png",
+    "orientation": "portrait",
+    "permissions": { "camera": "Scan receipts" },
+    "deepLinkSchemes": ["myapp"]
+  }
+}
+```
+
+| Option            | Description                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `appName`         | The name under the icon. Defaults to the project name                                                             |
+| `appId`           | The iOS bundle ID and Android application ID. Letters and digits in dot-separated parts                           |
+| `version`         | The version users see. Defaults to `package.json`'s version                                                       |
+| `buildNumber`     | Must increase with every store upload                                                                             |
+| `icon`            | A 1024×1024 PNG without transparency                                                                              |
+| `orientation`     | `portrait` (default), `landscape` or `all`                                                                        |
+| `permissions`     | `camera`, `microphone`, `location`, `photos`, `contacts`, `notifications`, each with the reason shown to the user |
+| `deepLinkSchemes` | URL schemes that open the app                                                                                     |
+
+Use Angular's `configurations` for per-environment values, e.g. `"staging": { "appId": "com.example.myapp.staging" }` and `ng build --platform ios --configuration staging`. Angular merges configurations one key deep, so a configuration that sets `ios` or `android` replaces that whole object.
+
+### Signing
+
+Signing secrets never go in `angular.json`: the options name the environment variables that hold them.
+
+```json title="angular.json"
+"ios": {
+  "teamId": "ABCDE12345",
+  "signing": { "keyIdEnv": "ASC_KEY_ID", "issuerIdEnv": "ASC_ISSUER_ID", "keyPathEnv": "ASC_KEY_PATH" }
+},
+"android": {
+  "signing": {
+    "storeFileEnv": "UPLOAD_KEYSTORE",
+    "storePasswordEnv": "UPLOAD_STORE_PASSWORD",
+    "keyAlias": "upload",
+    "keyPasswordEnv": "UPLOAD_KEY_PASSWORD"
+  }
+}
+```
+
+- **iOS** uses an [App Store Connect API key](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) with the App Manager role. Xcode creates the certificate and provisioning profile itself, so you never open Xcode. Without signing, only the simulator app is built.
+- **Android** uses your Google Play upload key. Without it, the release build is signed with a debug key: it installs on emulators and devices, but Google Play rejects it.
+
+### Customizing the native project
+
+When you need a native change the options don't cover, eject:
+
+```bash
+ng generate @blotch/angular-lynx:eject                    # both platforms
+ng generate @blotch/angular-lynx:eject --platform ios
+```
+
+This writes the generated projects into `ios/` and `android/`, where you edit and commit them. `ng build --platform` then builds those folders as they are. Ejecting is one-way: the app options in `angular.json` stop applying to an ejected project, and keeping it current with new Lynx, Xcode and Google Play requirements becomes your job. Delete the folder to go back to the generated project.
+
+## Embedding in an Existing App
+
+If you already have a native app, embed the bundle in it instead of using the generated one.
 
 Lynx apps run inside a **native host app** that embeds the Lynx engine. You provide the `.lynx.bundle` files; the host app loads them into a `LynxView`.
 
 ```mermaid
 flowchart LR
-    A[rspeedy build] --> B[".lynx.bundle"]
+    A[ng build] --> B[".lynx.bundle"]
     B --> C{Delivery method}
     C --> D[Embedded in app]
     C --> E[Hosted on server]

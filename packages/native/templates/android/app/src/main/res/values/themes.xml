@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      No action bar: the Angular app draws the whole screen. The window
+      background shows before the first Lynx frame, so it matches the default
+      light/dark page background instead of flashing.
+    -->
+    <style name="Theme.AngularLynxShell" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

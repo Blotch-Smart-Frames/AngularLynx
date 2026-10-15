@@ -1,0 +1,9 @@
+// Written by @blotch/angular-lynx-native from the builder options in
+// angular.json on every build. Edits here are overwritten; change angular.json
+// instead (or eject).
+ANGULAR_LYNX_PRODUCT_NAME = App
+ANGULAR_LYNX_DISPLAY_NAME = App
+PRODUCT_BUNDLE_IDENTIFIER = dev.angularlynx.app
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+DEVELOPMENT_TEAM =

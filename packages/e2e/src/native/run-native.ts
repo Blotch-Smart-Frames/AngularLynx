@@ -1,16 +1,63 @@
 import {
   appendFileSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { CheckError, check } from '../process.ts';
+import { CheckError, check, run, step } from '../process.ts';
 import { serveStatic } from '../static-server.ts';
 import { runOnAndroidEmulator } from './android.ts';
 import { prepareIos, runOnIosSimulator } from './ios.ts';
+import type { NativeHost } from './maestro.ts';
+
+/**
+ * Builds the app's own binary with `ng build --platform`, the command users
+ * run, and describes it for the Maestro flows. The iOS build needs Lynx's
+ * XCFrameworks: published ones, or a local folder in
+ * ANGULAR_LYNX_IOS_FRAMEWORKS (see @blotch/angular-lynx-native).
+ */
+const buildShell = async (
+  platform: 'ios' | 'android',
+  appDir: string,
+  logFile: string,
+): Promise<NativeHost> => {
+  step(`Layer 6: ng build --platform ${platform}`);
+  await run('npx', ['ng', 'build', '--platform', platform], {
+    cwd: appDir,
+    logFile,
+  });
+  const angularJson = JSON.parse(
+    readFileSync(path.join(appDir, 'angular.json'), 'utf8'),
+  ) as {
+    projects: Record<
+      string,
+      { architect: { build: { options: { appId: string } } } }
+    >;
+  };
+  const appId = Object.values(angularJson.projects)[0]!.architect.build.options
+    .appId;
+  const outputDir = path.join(appDir, 'dist', platform);
+  const binary = readdirSync(outputDir).find((file) =>
+    platform === 'ios'
+      ? file.endsWith('-simulator.app')
+      : file.endsWith('.apk'),
+  );
+  check(
+    binary,
+    `ng build --platform ${platform} wrote no app to ${outputDir}.`,
+  );
+  return {
+    kind: 'shell',
+    binary: path.join(outputDir, binary),
+    appId,
+    // The executable is the .app's name without "-simulator".
+    processName: binary.replace(/-simulator\.app$/, ''),
+  };
+};
 
 /**
  * Layer 6: runs an already-built app on a native platform.
@@ -24,18 +71,37 @@ import { prepareIos, runOnIosSimulator } from './ios.ts';
 export const runNative = async ({
   platform,
   distDir,
+  appDir,
   artifactsDir,
   port,
   keepRunning,
 }: {
   platform: 'ios' | 'android';
   distDir: string;
+  /**
+   * The app's folder. When set, Layer 6 tests the app's own binary from
+   * `ng build --platform` instead of Lynx Explorer.
+   */
+  appDir?: string;
   artifactsDir: string;
   port: number;
   keepRunning?: boolean;
 }) => {
   mkdirSync(artifactsDir, { recursive: true });
   const logFile = path.join(artifactsDir, `${platform}-commands.log`);
+  if (appDir) {
+    const host = await buildShell(platform, appDir, logFile);
+    const failures =
+      platform === 'ios'
+        ? await runOnIosSimulator({ host, artifactsDir, logFile, keepRunning })
+        : await runOnAndroidEmulator({ host, port, artifactsDir, logFile });
+    check(
+      failures.length === 0,
+      `Layer 6 (${platform}) failed:\n  - ${failures.join('\n  - ')}\nScreenshots and logs are in ${artifactsDir}.`,
+    );
+    console.log(`✓ Layer 6 (${platform}, the app's own build) passed`);
+    return;
+  }
   // The simulator shares the Mac's network, and the emulator reaches the host
   // through `adb reverse`, so both load the bundle from localhost. Explorer
   // allows plain HTTP.
@@ -60,13 +126,13 @@ export const runNative = async ({
     const failures =
       platform === 'ios'
         ? await runOnIosSimulator({
-            bundleUrl,
+            host: { kind: 'explorer', bundleUrl },
             artifactsDir,
             logFile,
             keepRunning,
           })
         : await runOnAndroidEmulator({
-            bundleUrl,
+            host: { kind: 'explorer', bundleUrl },
             port,
             artifactsDir,
             logFile,
@@ -95,6 +161,8 @@ if (import.meta.main) {
     options: {
       platform: { type: 'string' },
       dist: { type: 'string' },
+      // Test the app's own binary (ng build --platform) instead of Explorer.
+      app: { type: 'string' },
       'artifacts-dir': { type: 'string' },
       port: { type: 'string', default: '3210' },
       // Start the simulator booting and download Explorer, then exit. A later
@@ -118,10 +186,14 @@ if (import.meta.main) {
       mkdirSync(artifactsDir, { recursive: true });
       await prepareIos(path.join(artifactsDir, 'ios-commands.log'));
     } else {
-      check(values.dist, "--dist must point at the built app's dist/ folder");
+      check(
+        values.dist || values.app,
+        "--dist must point at the built app's dist/ folder, or --app at the app",
+      );
       await runNative({
         platform: values.platform,
-        distDir: values.dist,
+        distDir: values.dist ?? path.join(values.app!, 'dist'),
+        appDir: values.app,
         artifactsDir,
         port: Number(values.port),
       });

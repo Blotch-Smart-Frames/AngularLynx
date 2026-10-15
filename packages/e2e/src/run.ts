@@ -46,6 +46,8 @@ Options:
   --export-dist <dir>    Copy the built app's dist/ here (CI reuses it for
                          the native jobs instead of rebuilding)
   --ios                  Also run Layer 6 on the iOS Simulator (needs Xcode)
+  --shell                With --ios, test the app's own build from
+                         \`ng build --platform ios\` instead of Lynx Explorer
   --help                 Show this help
 `;
 
@@ -67,6 +69,7 @@ const { values: args } = parseArgs({
     'build-only': { type: 'boolean', default: false },
     'export-dist': { type: 'string' },
     ios: { type: 'boolean', default: false },
+    shell: { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
   },
 });
@@ -191,6 +194,7 @@ try {
     await runNative({
       platform: 'ios',
       distDir: app.distDir,
+      appDir: args.shell ? app.dir : undefined,
       artifactsDir: context.artifactsDir,
       port: 3210,
     });

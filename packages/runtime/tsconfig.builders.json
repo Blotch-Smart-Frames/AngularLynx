@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node16 keeps `import()` as a real dynamic import in the CommonJS output.
+    // The builders load rspeedy and @blotch/angular-lynx-native, which are
+    // ESM-only, and `module: commonjs` would turn that into a require().
+    "module": "node16",
+    "moduleResolution": "node16",
+    "verbatimModuleSyntax": false,
+    "lib": ["ES2022"],
+    "outDir": "./builders",
+    "rootDir": "./builders",
+    "declaration": true,
+    "resolveJsonModule": true,
+    "importHelpers": false,
+    "types": ["node"]
+  },
+  "include": ["builders/**/*.ts"],
+  "exclude": ["builders/**/*.test.ts", "node_modules"]
+}

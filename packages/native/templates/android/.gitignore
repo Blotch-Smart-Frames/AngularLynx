@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+# Copied in from dist/ by the generator on every build.
+app/src/main/assets/*
+!app/src/main/assets/.gitkeep

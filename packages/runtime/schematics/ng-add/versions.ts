@@ -13,6 +13,10 @@ export const VERSIONS = {
    */
   rsbuildPluginAngularLynx: '^22.2.0',
   /**
+   * @blotch/angular-lynx-native — builds the iOS and Android apps for `ng build --platform`
+   */
+  angularLynxNative: '^22.2.1',
+  /**
    * @lynx-js/rspeedy — Lynx dev-server and production build tool
    */
   rspeedy: '^0.18.0',

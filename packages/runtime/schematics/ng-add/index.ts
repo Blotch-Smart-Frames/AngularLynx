@@ -16,7 +16,10 @@ import {
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
 import { JSONFile } from '@schematics/angular/utility/json-file';
-import { getWorkspace } from '@schematics/angular/utility/workspace';
+import {
+  getWorkspace,
+  updateWorkspace,
+} from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
 import { VERSIONS } from './versions';
@@ -69,6 +72,7 @@ export default (options: Schema): Rule =>
       replaceApp(sourceRoot, prefix, projectName),
       deleteOldAppFiles(sourceRoot),
       excludeTestFilesFromAppBuild(appTsconfig),
+      useLynxBuilders(projectName),
       updatePackageScripts(),
       addCoreDependencies(),
     ];
@@ -242,17 +246,100 @@ const excludeTestFilesFromAppBuild = (tsconfigPath: string): Rule => {
   };
 };
 
+/**
+ * Angular compiler options from `ng new`'s build target that the Lynx builder
+ * accepts (see builders/application/schema.json). @blotch/rsbuild-plugin-angular-lynx
+ * and `ng test` read them from angular.json; anything else, such as options
+ * only the browser builder knows, would fail the builder's option validation.
+ */
+const ANGULAR_BUILD_OPTIONS = new Set([
+  'browser',
+  'tsConfig',
+  'polyfills',
+  'styles',
+  'assets',
+  'scripts',
+  'inlineStyleLanguage',
+  'fileReplacements',
+  'aot',
+  'optimization',
+  'sourceMap',
+  'outputHashing',
+  'i18nMissingTranslation',
+  'budgets',
+  'extractLicenses',
+  'outputPath',
+  'index',
+]);
+
+const keepAngularOptions = (
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(options ?? {}).filter(([key]) =>
+      ANGULAR_BUILD_OPTIONS.has(key),
+    ),
+  );
+
+/**
+ * Points `ng build` and `ng serve` at the AngularLynx builders. They run
+ * rspeedy (which applies @blotch/rsbuild-plugin-angular-lynx), and
+ * `ng build --platform ios|android` also produces the native app. The build
+ * target keeps `ng new`'s Angular compiler options, which the build plugin
+ * and `ng test` read, and gains the app's identity for native builds.
+ */
+const useLynxBuilders = (projectName: string): Rule =>
+  updateWorkspace((workspace) => {
+    const project = workspace.projects.get(projectName)!;
+    const build = project.targets.get('build');
+    const configurations = Object.fromEntries(
+      Object.entries(build?.configurations ?? {}).map(([name, options]) => [
+        name,
+        {
+          ...keepAngularOptions(options),
+          ...(name === 'production' || name === 'development'
+            ? { mode: name }
+            : {}),
+        },
+      ]),
+    );
+    const buildDefinition = {
+      builder: '@blotch/angular-lynx:application',
+      options: {
+        ...keepAngularOptions(build?.options),
+        appName: projectName,
+        // A placeholder the user replaces before publishing: the stores
+        // identify the app by it, and it can't change after the first upload.
+        appId: `com.example.${projectName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'app'}`,
+      },
+      configurations,
+      defaultConfiguration: build?.defaultConfiguration ?? 'production',
+    };
+    if (build) {
+      project.targets.delete('build');
+    }
+    project.targets.add({ name: 'build', ...buildDefinition });
+
+    // The browser dev server's options all reference a build target; the
+    // Lynx dev server takes its settings from lynx.config.ts instead.
+    if (project.targets.has('serve')) {
+      project.targets.delete('serve');
+    }
+    project.targets.add({
+      name: 'serve',
+      builder: '@blotch/angular-lynx:dev-server',
+      options: {},
+    });
+  });
+
 const updatePackageScripts = (): Rule => {
   return (tree: Tree) => {
-    // `ng new` writes `ng serve` and `ng build` scripts that invoke the
-    // Angular CLI's browser builder. AngularLynx builds via rspeedy (which
-    // applies the rsbuild-plugin-angular-lynx plugin), so swap both scripts
-    // to the rspeedy equivalents. The user's existing `test`/`lint` scripts
-    // are left alone — they still work since they don't go through the
-    // browser builder.
+    // `npm start` and `npm run build` go through the Angular CLI, which runs
+    // the AngularLynx builders set up by useLynxBuilders. They call rspeedy,
+    // so the output is the same as running `rspeedy dev` / `rspeedy build`.
     const pkg = new JSONFile(tree, '/package.json');
-    pkg.modify(['scripts', 'start'], 'rspeedy dev');
-    pkg.modify(['scripts', 'build'], 'rspeedy build');
+    pkg.modify(['scripts', 'start'], 'ng serve');
+    pkg.modify(['scripts', 'build'], 'ng build');
   };
 };
 
@@ -266,6 +353,13 @@ const addCoreDependencies = (): Rule => {
         install: InstallBehavior.Auto,
       },
     ),
+    // Builds the iOS and Android apps for `ng build --platform`. Loaded only
+    // then, so a project that never builds native apps doesn't need it, but
+    // installed up front so the command works without another step.
+    addDependency('@blotch/angular-lynx-native', VERSIONS.angularLynxNative, {
+      type: DependencyType.Dev,
+      install: InstallBehavior.Auto,
+    }),
     addDependency('@lynx-js/rspeedy', VERSIONS.rspeedy, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,

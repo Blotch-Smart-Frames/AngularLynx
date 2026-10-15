@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import type { RunContext } from './context.ts';
-import { REPO_ROOT } from './packages.ts';
+import { REPO_ROOT } from '../../release/src/packages.ts';
 import { run, step } from './process.ts';
 import type { ScaffoldedApp } from './scaffold.ts';
 

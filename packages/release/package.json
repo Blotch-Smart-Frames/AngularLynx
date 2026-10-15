@@ -1,0 +1,20 @@
+{
+  "name": "@blotch/angular-lynx-release",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Release tooling: the list of published packages and the scripts that version, check and publish them",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "cspell": "cspell ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~6.0.0"
+  }
+}

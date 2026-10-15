@@ -25,6 +25,7 @@
     "test:coverage": "turbo run test:coverage",
     "test:ci:coverage": "turbo run test:ci:coverage",
     "e2e": "turbo run build --filter=@blotch/angular-lynx-e2e^... && npm run e2e -w packages/e2e --",
+    "set-version": "node packages/release/src/set-version.ts",
     "demo": "turbo run start --filter=@angular-lynx-example/kitchen-sink-app",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",

@@ -8,7 +8,7 @@ import { PUBLISHABLE_PACKAGES, REPO_ROOT } from './packages.ts';
  * Publishes the tarballs the E2E release gate tested, so what users install
  * is byte-for-byte what passed:
  *
- *   node packages/e2e/src/publish-tarballs.ts <dir> [--dry-run]
+ *   node packages/release/src/publish-tarballs.ts <dir> [--dry-run]
  *
  * Packages are published in PUBLISHABLE_PACKAGES order. Extra arguments
  * (such as --provenance) are passed through to `npm publish`.
@@ -18,7 +18,7 @@ import { PUBLISHABLE_PACKAGES, REPO_ROOT } from './packages.ts';
 const [tarballDir, ...npmArgs] = process.argv.slice(2);
 if (!tarballDir) {
   console.error(
-    'Usage: node packages/e2e/src/publish-tarballs.ts <dir> [npm publish options, e.g. --dry-run]',
+    'Usage: node packages/release/src/publish-tarballs.ts <dir> [npm publish options, e.g. --dry-run]',
   );
   process.exit(1);
 }

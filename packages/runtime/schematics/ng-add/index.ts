@@ -77,7 +77,8 @@ export default (options: Schema): Rule =>
       addCoreDependencies(),
     ];
 
-    if (options.tailwind !== false) {
+    // `"false"` is how `ng add ... --tailwind=false` arrives (see schema.ts).
+    if (options.tailwind !== false && options.tailwind !== 'false') {
       rules.push(
         addTailwindConfig(projectRoot),
         updateStylesCss(sourceRoot),

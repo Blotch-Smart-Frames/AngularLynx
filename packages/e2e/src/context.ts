@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { REPO_ROOT } from './packages.ts';
+import { REPO_ROOT } from '../../release/src/packages.ts';
 
 /** Directories one E2E run works in. */
 export type RunContext = {

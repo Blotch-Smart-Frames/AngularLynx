@@ -1,0 +1,11 @@
+{
+  "import": ["../../cspell.json"],
+  "words": [
+    "gradlew",
+    "pbxproj",
+    "xcodeproj",
+    "xcscheme",
+    "xcschemes",
+    "xcshareddata"
+  ]
+}

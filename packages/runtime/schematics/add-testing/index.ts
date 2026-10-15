@@ -17,7 +17,7 @@ import {
 } from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
-import { VERSIONS } from '../ng-add/versions';
+import { VERSIONS, ownVersionRange } from '../ng-add/versions';
 
 export default (options: Schema): Rule =>
   async (tree: Tree) => {
@@ -83,14 +83,11 @@ const updatePackageScripts = (): Rule => {
 
 const addTestingDependencies = (): Rule => {
   return chain([
-    addDependency(
-      '@blotch/angular-lynx-testing-library',
-      VERSIONS.angularLynxTestingLibrary,
-      {
-        type: DependencyType.Dev,
-        install: InstallBehavior.Auto,
-      },
-    ),
+    // At this package's own release, like the builders `ng add` installs.
+    addDependency('@blotch/angular-lynx-testing-library', ownVersionRange(), {
+      type: DependencyType.Dev,
+      install: InstallBehavior.Auto,
+    }),
     // `ng new` already adds vitest and jsdom: keep the project's versions
     // rather than replacing them (the default), which silently downgraded
     // every new project. The testing library works with Vitest 4 and 5 and

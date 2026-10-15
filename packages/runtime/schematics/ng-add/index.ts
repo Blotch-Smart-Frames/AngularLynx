@@ -23,7 +23,7 @@ import {
 } from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
-import { VERSIONS } from './versions';
+import { VERSIONS, ownVersionRange } from './versions';
 
 /**
  * Transforms a standard `ng new` Angular project into a Lynx-native application.
@@ -505,8 +505,9 @@ const addCoreDependencies = (): Rule => {
     // The `ng build`, `ng serve` and `ng test` builders, the one build
     // dependency an AngularLynx app needs, as `@angular/build` is for a web
     // app. They bring rspeedy, the rsbuild plugin that compiles Angular, the
-    // QR code plugin and the iOS and Android app builder with them.
-    addDependency('@blotch/angular-lynx-build', VERSIONS.angularLynxBuild, {
+    // QR code plugin and the iOS and Android app builder with them. Taken at
+    // this package's own release, which they were tested with.
+    addDependency('@blotch/angular-lynx-build', ownVersionRange(), {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
     }),

@@ -68,7 +68,7 @@ export const judgeFlow = (
  * standalone CLI (https://maestro.mobile.dev), installed by CI with its
  * install script; it isn't an npm package.
  */
-export const runFlow = (
+const runFlowOnce = (
   flow: Flow,
   {
     device,
@@ -124,4 +124,35 @@ export const runFlow = (
       },
     },
   );
+};
+
+/**
+ * What Maestro prints when its XCTest driver didn't start on the simulator in
+ * time. The flow then fails before touching the app, so it says nothing about
+ * the app.
+ */
+const DRIVER_NOT_READY = 'iOS driver not ready in time';
+
+/**
+ * {@link runFlowOnce}, run again once if Maestro's iOS driver didn't start.
+ *
+ * Even with MAESTRO_DRIVER_STARTUP_TIMEOUT at 180s, the driver sometimes
+ * isn't up in time on GitHub's macOS runners (the nightly of 2026-10-14 and
+ * PR runs on 2026-10-13 and 2026-10-15). It's always the first flow on the
+ * fresh simulator, and the next flow, with the driver installed, passes. Only
+ * this infrastructure error is retried: a flow that ran and failed an
+ * assertion fails the run as before.
+ */
+export const runFlow = async (
+  flow: Flow,
+  options: Parameters<typeof runFlowOnce>[1],
+): Promise<RunResult> => {
+  const result = await runFlowOnce(flow, options);
+  if (result.code === 0 || !result.output.includes(DRIVER_NOT_READY)) {
+    return result;
+  }
+  console.warn(
+    `! Maestro's iOS driver didn't start in time for native/${flow.file}; running it again.`,
+  );
+  return runFlowOnce(flow, options);
 };

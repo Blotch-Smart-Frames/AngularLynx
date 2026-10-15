@@ -13,7 +13,10 @@
     "udid",
     "USERCONFIG",
     "xcodeproj",
-    "xcrun"
+    "xcrun",
+    "xcscheme",
+    "xcschemes",
+    "xcshareddata"
   ],
   "ignorePaths": ["artifacts"]
 }

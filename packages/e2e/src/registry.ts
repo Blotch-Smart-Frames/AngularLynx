@@ -29,6 +29,11 @@ const baseEnv = (context: RunContext): NodeJS.ProcessEnv => ({
   // No terminal is attached in CI, so `ng new` uses its defaults instead of
   // prompting. Set it locally too, so local runs behave like CI.
   CI: 'true',
+  // CI=true also makes pnpm install with --frozen-lockfile, which fails as
+  // soon as `ng add` adds dependencies to package.json. A developer running
+  // `ng add` has no CI variable, so turn it back off. (pnpm 11+ only reads
+  // `pnpm_config_*`; npm ignores the variable.)
+  pnpm_config_frozen_lockfile: 'false',
   NG_CLI_ANALYTICS: 'false',
   // A cache per run. npx keys its cache by package spec, so a cache shared
   // between runs would keep running the create-angular-lynx@<version> built

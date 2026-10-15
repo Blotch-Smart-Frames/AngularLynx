@@ -1,4 +1,12 @@
 export type Schema = {
   project?: string;
-  tailwind?: boolean;
+  /**
+   * A string when it comes from `ng add`: the CLI parses the command line
+   * before it has downloaded the package, so it doesn't know this option is a
+   * boolean and passes `--tailwind=false` through as `"false"`. schema.json
+   * accepts `"true"` and `"false"` for that reason (and makes the prompt a
+   * yes/no confirmation explicitly, since a union type would otherwise turn it
+   * into a text input).
+   */
+  tailwind?: boolean | 'true' | 'false';
 };

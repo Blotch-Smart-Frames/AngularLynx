@@ -323,9 +323,37 @@ describe('global-callbacks', () => {
   });
 
   describe('background-thread cross-thread RPC', () => {
+    // Regression: the background thread hears the main thread on
+    // getCoreContext(). Listening on getJSContext() (its own context) meant
+    // native runOnBackground() requests from Angular event handlers, which run
+    // on the main thread, never arrived.
+    it('listens on getCoreContext, not getJSContext', async () => {
+      const core = makeFakeJSContext();
+      const js = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => core.ctx, getJSContext: () => js.ctx },
+      });
+
+      expect(Object.keys(core.listeners).sort()).toEqual([
+        'Lynx.Worklet.FunctionCallRet',
+        'Lynx.Worklet.runOnBackground',
+      ]);
+      expect(js.listeners).toEqual({});
+    });
+
+    it('registers no listeners when lynx has no getCoreContext', async () => {
+      await expect(
+        load({ mainThread: false, lynx: {} }),
+      ).resolves.toBeDefined();
+    });
+
     it('resolves pending promises on FunctionCallRet', async () => {
       const fake = makeFakeJSContext();
-      await load({ mainThread: false, lynx: { getJSContext: () => fake.ctx } });
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
 
       const resolve = vi.fn();
       const reject = vi.fn();
@@ -340,7 +368,10 @@ describe('global-callbacks', () => {
 
     it('rejects pending promises on FunctionCallRet with an error', async () => {
       const fake = makeFakeJSContext();
-      await load({ mainThread: false, lynx: { getJSContext: () => fake.ctx } });
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
 
       const resolve = vi.fn();
       const reject = vi.fn();
@@ -355,7 +386,10 @@ describe('global-callbacks', () => {
 
     it('ignores a FunctionCallRet with no matching resolver', async () => {
       const fake = makeFakeJSContext();
-      await load({ mainThread: false, lynx: { getJSContext: () => fake.ctx } });
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
       expect(() =>
         fake.listeners['Lynx.Worklet.FunctionCallRet']({
           data: JSON.stringify({ resolveId: 111, returnValue: 'x' }),
@@ -365,7 +399,10 @@ describe('global-callbacks', () => {
 
     it('executes runOnBackground requests from the main thread and replies', async () => {
       const fake = makeFakeJSContext();
-      await load({ mainThread: false, lynx: { getJSContext: () => fake.ctx } });
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
 
       const worklet = vi.fn().mockReturnValue('bg-result');
       globalThis.registerWorklet('background', 'bg-fn', worklet);
@@ -390,7 +427,10 @@ describe('global-callbacks', () => {
 
     it('captures a thrown worklet error in the runOnBackground reply', async () => {
       const fake = makeFakeJSContext();
-      await load({ mainThread: false, lynx: { getJSContext: () => fake.ctx } });
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
 
       globalThis.registerWorklet('background', 'bg-boom', () => {
         throw new Error('bg boom');
@@ -410,12 +450,12 @@ describe('global-callbacks', () => {
       expect(JSON.parse(ret.data).error).toContain('bg boom');
     });
 
-    it('swallows a getJSContext that throws during background listener setup', async () => {
+    it('swallows a getCoreContext that throws during background listener setup', async () => {
       await expect(
         load({
           mainThread: false,
           lynx: {
-            getJSContext: () => {
+            getCoreContext: () => {
               throw new Error('no ctx');
             },
           },

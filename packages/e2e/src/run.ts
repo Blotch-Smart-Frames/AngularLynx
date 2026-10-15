@@ -132,7 +132,7 @@ try {
   let version = args.version;
   if (args.registry === 'local') {
     const packed = args.tarballs
-      ? await loadTarballs(args.tarballs, context)
+      ? await loadTarballs(args.tarballs)
       : await packAll(context);
     version = packed[0]!.version;
     if (layers.has(1)) {

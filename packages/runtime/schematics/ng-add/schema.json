@@ -14,10 +14,14 @@
       }
     },
     "tailwind": {
-      "type": "boolean",
+      "type": ["boolean", "string"],
+      "pattern": "^(true|false)$",
       "description": "Whether to add Tailwind CSS with @lynx-js/tailwind-preset.",
       "default": true,
-      "x-prompt": "Would you like to add Tailwind CSS with Lynx preset?"
+      "x-prompt": {
+        "message": "Would you like to add Tailwind CSS with Lynx preset?",
+        "type": "confirmation"
+      }
     }
   },
   "required": []

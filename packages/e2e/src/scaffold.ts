@@ -247,6 +247,17 @@ const scaffoldWithNgAdd = async (
     context.workDir,
   );
   configurePackageManager(appDir, options.packageManager, registry);
+  // An Angular prerelease (`--angular next`) never satisfies our `^22.x.0`
+  // peer range, so npm refuses to install @blotch/angular-lynx at all and the
+  // job never gets as far as testing anything. The job is there to catch the
+  // next Angular breaking us early, so let npm skip the peer check. A project
+  // .npmrc covers ng add's own install and every later npm command.
+  if (
+    options.packageManager === 'npm' &&
+    (angular === 'next' || angular.includes('-'))
+  ) {
+    writeFileSync(path.join(appDir, '.npmrc'), 'legacy-peer-deps=true\n');
+  }
 
   step(`Layer 2: ng add @blotch/angular-lynx@${options.version}`);
   const { output } = await exec(
@@ -287,6 +298,13 @@ const configurePackageManager = (
         // needs every dependency declared, which Angular CLI itself doesn't
         // manage.
         'nodeLinker: node-modules',
+        // Yarn quarantines versions published less than a day ago, and every
+        // package under test was published to the local registry seconds ago.
+        'npmMinimalAgeGate: 0',
+        // CI=true (see registry.ts) makes Yarn refuse to change the lockfile,
+        // but `ng add` adds dependencies and then installs them, as it would
+        // on a developer's machine.
+        'enableImmutableInstalls: false',
         `npmRegistryServer: "${registry.url}"`,
         `unsafeHttpWhitelist: ["${host}"]`,
         '',

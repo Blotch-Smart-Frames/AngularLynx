@@ -54,25 +54,27 @@ export const packAll = async (context: RunContext) => {
  * Loads tarballs packed by an earlier job, so every job in a CI matrix tests
  * the same bytes without rebuilding the packages on each OS.
  */
-export const loadTarballs = async (
-  dir: string,
-  context: RunContext,
-): Promise<PackedPackage[]> => {
+export const loadTarballs = async (dir: string): Promise<PackedPackage[]> => {
   step(`Loading tarballs from ${dir}`);
   const tarballs = readdirSync(dir)
     .filter((file) => file.endsWith('.tgz'))
     .map((file) => path.resolve(dir, file));
   const packed: PackedPackage[] = [];
   for (const tarball of tarballs) {
-    const listing = await run('tar', ['-tzf', tarball], {
-      cwd: context.workDir,
+    // tar runs from the tarball's folder and gets a bare file name. On the
+    // Windows runner, Git Bash puts GNU tar first on PATH, and GNU tar reads
+    // an archive named `D:\a\...` as `host:path` on a remote machine and
+    // fails. `--force-local` would fix that, but the BSD tar that macOS and
+    // Windows ship rejects the option.
+    const listing = await run('tar', ['-tzf', path.basename(tarball)], {
+      cwd: dir,
       echo: false,
     });
     const manifest = await run(
       'tar',
-      ['-xzOf', tarball, 'package/package.json'],
+      ['-xzOf', path.basename(tarball), 'package/package.json'],
       {
-        cwd: context.workDir,
+        cwd: dir,
         echo: false,
       },
     );
@@ -305,10 +307,21 @@ const checkSchematicsLoad = async (
   const installDir = path.join(host, 'node_modules/@blotch/angular-lynx');
   mkdirSync(installDir, { recursive: true });
   writeFileSync(path.join(host, 'package.json'), '{ "private": true }\n');
+  // A bare archive name, for GNU tar on Windows (see loadTarballs).
   await run(
     'tar',
-    ['-xzf', runtime.tarball, '-C', installDir, '--strip-components=1'],
-    { cwd: host, logFile: context.logFile, echo: false },
+    [
+      '-xzf',
+      path.basename(runtime.tarball),
+      '-C',
+      installDir,
+      '--strip-components=1',
+    ],
+    {
+      cwd: path.dirname(runtime.tarball),
+      logFile: context.logFile,
+      echo: false,
+    },
   );
   for (const scope of ['@angular-devkit', '@schematics']) {
     symlinkSync(

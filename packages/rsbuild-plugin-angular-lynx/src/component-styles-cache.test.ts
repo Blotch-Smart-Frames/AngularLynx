@@ -6,7 +6,9 @@ import {
   type ComponentScopeInfo,
   type ComponentStylesEntry,
   createTransformStylesheet,
+  forgetComponentStyleSizes,
 } from './component-styles-cache';
+import type { ComponentStyleSize } from './utils/angular/budgets';
 
 describe('createTransformStylesheet', () => {
   let basePath: string;
@@ -235,5 +237,72 @@ describe('createTransformStylesheet', () => {
     await transformStylesheet('.a-changed{}', containing, stylesheet, 0, 'App');
 
     expect(componentStylesCache.get(containing)!.imports).toHaveLength(1);
+  });
+
+  describe('componentStyleSizes', () => {
+    let componentStyleSizes: Map<string, ComponentStyleSize>;
+
+    beforeEach(() => {
+      componentStyleSizes = new Map();
+      transformStylesheet = createTransformStylesheet({
+        basePath,
+        scopedCssCacheDir,
+        componentStylesCache,
+        componentScopeIds,
+        componentStyleSizes,
+      });
+    });
+
+    it('records the compiled size of each stylesheet, labeled like Angular', async () => {
+      const containing = componentFile();
+      await transformStylesheet(
+        '.a{color:red}',
+        containing,
+        path.join(basePath, 'src', 'app.css'),
+        0,
+        'App',
+      );
+      // Inline styles have no file, so they're labeled with their component.
+      await transformStylesheet('.é{}', containing, undefined, 1, 'App');
+
+      expect([...componentStyleSizes.values()]).toEqual([
+        { label: 'src/app.css', size: 13 },
+        { label: 'src/app.component.ts', size: 5 },
+      ]);
+    });
+
+    it('keeps the latest size when a stylesheet is recompiled', async () => {
+      const containing = componentFile();
+      const stylesheet = path.join(basePath, 'src', 'app.css');
+      await transformStylesheet('.a{}', containing, stylesheet, 0, 'App');
+      await transformStylesheet(
+        '.a{color:red}',
+        containing,
+        stylesheet,
+        0,
+        'App',
+      );
+      // A fallback call for a stylesheet already processed is skipped, and
+      // must not record its data either.
+      await transformStylesheet('', containing, stylesheet, 0, undefined);
+
+      expect([...componentStyleSizes.values()]).toEqual([
+        { label: 'src/app.css', size: 13 },
+      ]);
+    });
+
+    it("forgets a deleted component's stylesheets only", async () => {
+      const deleted = componentFile();
+      const kept = path.join(basePath, 'src', 'other.component.ts');
+      await transformStylesheet('.a{}', deleted, undefined, 0, 'App');
+      await transformStylesheet('.b{}', deleted, undefined, 1, 'App');
+      await transformStylesheet('.c{}', kept, undefined, 0, 'Other');
+
+      forgetComponentStyleSizes(componentStyleSizes, deleted);
+
+      expect([...componentStyleSizes.values()]).toEqual([
+        { label: 'src/other.component.ts', size: 4 },
+      ]);
+    });
   });
 });

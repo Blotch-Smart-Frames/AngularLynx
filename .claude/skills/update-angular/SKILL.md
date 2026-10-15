@@ -70,6 +70,7 @@ The `consistent-package-versions` lint rule fails if they disagree, and `publish
 
 **`packages/build/package.json`** peerDependencies:
 - `@angular-devkit/architect` → the architect range for the new major. Architect is versioned `0.MMmm.p` (Angular 22.2 is `0.2202.x`), so for Angular 23 use `>=0.2300.0 <0.2400.0`
+- `@angular/build` → TARGET_RANGE (`ng test` runs the project's own unit-test builder from it)
 
 ### 5. Update dev dependencies in published packages
 
@@ -160,7 +161,13 @@ Fix any errors. Common causes:
 npm run test
 ```
 
-Fix any failures.
+Fix any failures. Three tests compare a copy of an Angular schema with the new Angular's, and fail when Angular added or changed an option:
+
+- `packages/runtime/schematics/component/schema.test.ts` — the `component` schematic hands its options to `@schematics/angular:component`. Copy Angular's `component/schema.json` properties into `packages/runtime/schematics/component/schema.json`, without their `default`s (so angular.json's defaults for `@schematics/angular:component` still apply).
+- `packages/build/builders/builders.test.ts` ("takes the same options as Angular's unit-test builder") — copy `@angular/build`'s `src/builders/unit-test/schema.json` properties into `packages/build/builders/unit-test/schema.json`.
+- The same file checks that every option in `ANGULAR_BUILD_OPTIONS` (`packages/build/builders/unit-test/index.ts`) still exists in Angular's application builder schema.
+
+`examples/kitchen-sink-app` runs `ng test` through Angular's unit-test builder, so it also catches a change in how that builder runs tests.
 
 ### 14. Lint and format
 

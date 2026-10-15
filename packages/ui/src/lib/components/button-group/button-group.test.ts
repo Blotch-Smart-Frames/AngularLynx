@@ -1,24 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-// Mock Angular so importing the component module doesn't require the framework
-// runtime. Only the exported `cva` variant fn is exercised here; the class field
-// initializers (input/output/viewChild/inject) never run because we never
-// construct the components.
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  inject: () => ({}),
-  input: () => () => {},
-  output: () => () => {},
-  viewChild: () => () => {},
-}));
-
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-}));
-
-const { buttonGroupItemVariants } = await import('./button-group');
+import { describe, expect, it } from 'vitest';
+import { buttonGroupItemVariants } from './button-group';
 
 describe('buttonGroupItemVariants', () => {
   it('returns default variant and size classes', () => {

@@ -14,6 +14,8 @@ Or add to an existing Angular project:
 ng add @blotch/angular-lynx
 ```
 
+Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng generate component`, which makes components with Lynx elements. `ng update @blotch/angular-lynx` updates every AngularLynx package together.
+
 ## Features
 
 - Standalone components with signals, `@if`/`@for`/`@switch`, DI, and pipes

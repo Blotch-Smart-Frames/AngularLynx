@@ -12,10 +12,10 @@ There are two ways to define pages — choose whichever fits your workflow.
 
 ### Option A: `source.entry` in lynx.config.ts
 
-Specify an object where each key is a page name and each value is the entry file path:
+Specify an object where each key is a page name and each value is the entry file path. It replaces the single entry `ng build` takes from the build target's `browser` option:
 
 ```typescript title="lynx.config.ts"
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   source: {
@@ -73,8 +73,7 @@ Define each page as a separate project in `angular.json`, then tell the plugin w
 ```
 
 ```typescript title="lynx.config.ts"
-import { pluginAngularLynx } from '@blotch/angular-lynx-build';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   plugins: [

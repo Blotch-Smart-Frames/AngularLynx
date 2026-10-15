@@ -111,7 +111,7 @@ await waitForUpdate();
 ```
 
 :::note
-`componentRef.setInput()` does not work in the Vitest JIT environment. Use writable `signal()` fields on the component instance instead.
+`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime (JIT), it doesn't: use writable `signal()` fields on the component instance there.
 :::
 
 ## Control Flow

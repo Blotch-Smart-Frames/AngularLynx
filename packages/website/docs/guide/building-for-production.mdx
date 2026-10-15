@@ -10,9 +10,31 @@ Run the production build from your project root:
 ng build
 ```
 
-This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory. `ng build` runs the `@blotch/angular-lynx-build:application` builder, which runs RSpeedy with your `lynx.config.ts` and the AngularLynx plugin.
+This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory. `ng build` runs the `@blotch/angular-lynx-build:application` builder, which runs RSpeedy with the AngularLynx plugin. It takes the entry point from the build target's `browser` option and builds both the native bundle and the web preview bundle.
 
 **Configurations work as in any Angular app.** `ng build` uses the build target's `defaultConfiguration` (`production` after `ng add`). `ng build -c development` builds the development one, and flags like `--source-map` override single options. `ng serve -c production` serves a production build.
+
+**`optimization` decides between a production and a development build.** As in Angular, a build that optimizes scripts is a production build, and one that doesn't (`"optimization": false`, as in `ng new`'s development configuration) is a development build with dev mode on. There is no separate mode option.
+
+**`ng build --watch` rebuilds on every change**, like `npm run watch`, which `ng new` adds. It rebuilds the bundle only, so it can't be combined with `--platform`.
+
+### Budgets
+
+The `budgets` in your build configuration are enforced, with the same units and messages as `ng build` for a web app: a warning is printed, an error fails the build. They are checked against the Lynx bundle (each entry's bundle is its own `initial` budget) and against each component stylesheet (`anyComponentStyle`). The web preview bundle isn't checked.
+
+`ng add` raises the `initial` budget `ng new` writes (500 kB warning, 1 MB error) to 2 MB and 5 MB. A Lynx bundle holds Angular twice, once for each of Lynx's threads, so a new app's bundle is already about 1 MB. See the [plugin's README](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/packages/rsbuild-plugin-angular-lynx#budgets) for what each budget type measures.
+
+### Customizing RSpeedy
+
+An app doesn't need a `lynx.config.ts`. Add one to change something RSpeedy does, such as its environments, entries, or the AngularLynx plugin's options; whatever it doesn't set still comes from `angular.json`. Import `defineConfig` and the plugin from `@blotch/angular-lynx-build`, which brings RSpeedy with it:
+
+```typescript title="lynx.config.ts"
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
+
+export default defineConfig({
+  plugins: [pluginAngularLynx({ enableSSR: true })],
+});
+```
 
 ## Output Files
 
@@ -171,6 +193,6 @@ Before deploying, verify:
 
 - **Error handling** — Confirm your [error handler](/guide/error-handling) is configured (remove any on-screen debug overlays)
 - **Accessibility** — The [accessibility inspector](/guide/accessibility) is disabled by default in production builds
-- **Bundle size** — Check `dist/` file sizes; lazy-load heavy routes to keep the main bundle small
+- **Bundle size** — Set [budgets](#budgets) that fail the build when the bundle grows; lazy-load heavy routes to keep the main bundle small
 - **Remote logging** — Set up [remote logging](/guide/remote-logging) so you can diagnose issues on-device
 - **Host data** — Coordinate with the native team on [InitData](/guide/host-data/init-data) and [GlobalData](/guide/host-data/global-data) contracts

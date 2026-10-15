@@ -45,9 +45,8 @@ Create `examples/<name>/` with this file structure:
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.1",
     "@blotch/angular-lynx-build": "*",
-    "@lynx-js/rspeedy": "^0.18.0",
     "@lynx-js/types": "^4.3.0",
-    "typescript": "~5.9.0"
+    "typescript": "~6.0.0"
   }
 }
 ```
@@ -61,23 +60,17 @@ If using Tailwind (for UI component examples), also add:
 }
 ```
 
-#### `lynx.config.ts`
+#### No `lynx.config.ts`
+
+An example doesn't need one. `ng build` and `ng serve` take the entry from the build target's `browser` in angular.json, build both the `web` and `lynx` environments, and add the AngularLynx rsbuild plugin themselves. Add a `lynx.config.ts` only to pass the plugin options or change RSpeedy settings (see `examples/ssr` and `examples/multi-page`), importing from the builders package:
 
 ```typescript
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
-  environments: {
-    web: {},
-    lynx: {},
-  },
-  source: {
-    entry: './src/main.ts',
-  },
+  plugins: [pluginAngularLynx({ enableSSR: true })],
 });
 ```
-
-`ng build` and `ng serve` add the AngularLynx rsbuild plugin themselves. List it only to pass it options, imported from the builders package: `import { pluginAngularLynx } from '@blotch/angular-lynx-build'`, then `plugins: [pluginAngularLynx({ enableSSR: true })]`.
 
 For multi-page examples, use an entry object:
 
@@ -281,7 +274,7 @@ cd packages/website && npm run dev
 
 - [ ] `examples/<name>/` directory with all required files
 - [ ] Package name follows `@angular-lynx-example/<name>` convention
-- [ ] `lynx.config.ts` has both `web` and `lynx` environments
+- [ ] No `lynx.config.ts` unless the example needs plugin options or more than one entry
 - [ ] Component uses Lynx elements, not HTML
 - [ ] `packages/website/docs/examples/<name>.mdx` created
 - [ ] `<Go>` component added to relevant guide/component page
@@ -290,6 +283,6 @@ cd packages/website && npm run dev
 
 ## Notes
 
-- The `prepare-examples.mjs` script parses `lynx.config.ts` to extract entry names — each entry produces a `dist/<name>.lynx.bundle` and `dist/<name>.web.bundle`
+- The `prepare-examples.mjs` script takes entry names from `entry` in `lynx.config.ts`, or else from the `dist/<name>.lynx.bundle` files the build wrote — each entry produces a `dist/<name>.lynx.bundle` and `dist/<name>.web.bundle`
 - Preview images: place a `preview-image.png` at the example root for a static preview fallback
 - The `<Go>` component props: `example` (folder name), `defaultFile` (initial file to show), `defaultTab` (`'web'`/`'preview'`/`'qrcode'`), `img` (static preview path)

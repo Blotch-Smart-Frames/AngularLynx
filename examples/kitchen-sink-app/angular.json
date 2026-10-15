@@ -23,9 +23,8 @@
             "scripts": []
           },
           "configurations": {
-            "production": { "mode": "production", "outputHashing": "all" },
+            "production": { "outputHashing": "all" },
             "development": {
-              "mode": "development",
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
@@ -44,6 +43,9 @@
             }
           },
           "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@blotch/angular-lynx-build:unit-test"
         }
       }
     }

@@ -115,7 +115,7 @@ The options are flat rather than nested under `app`: Angular merges a configurat
     }
   },
   "configurations": {
-    "production": { "mode": "production" },
+    "production": { "outputHashing": "all" },
     "staging": { "appId": "com.example.myapp.staging", "appName": "My App (Staging)" }
   }
 }
@@ -268,11 +268,12 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 ### Changes from the plan above
 
 - **Flat builder options** instead of an `app` object, because of Angular's one-level configuration merge (see [Configuration](#configuration)).
-- **The build target keeps Angular's compiler options**, read by the build plugin and `ng test`. Side effect: `ng test` warns on every run that its `buildTarget` uses a builder it doesn't know ("Unexpected behavior or build failures may occur"). Tests still pass. Accepted (2026-10-15): removing the warning would mean a second target holding the same compiler options, which can drift.
+- **The build target keeps Angular's compiler options**, read by the build plugin and `ng test`. `ng test` runs `@blotch/angular-lynx-build:unit-test`, which hands Angular's unit-test builder the build target as an Angular one, with only the options both builders share. Angular's builder used to warn on every run that the build target used a builder it didn't know.
 - **No asset scheme needed.** RSpeedy's default asset prefix (`/static/...`) works: both shells resolve URLs without a scheme against the bundled `dist/` (iOS through a `LynxMediaResourceFetcher`, Android by rewriting to `asset:///`). Images render on both, unlike Sparkling's `asset:///` on iOS.
 - **XCFrameworks referenced directly** rather than through Swift Package Manager (see Native builds).
 - **Android toolchain:** AGP 9.4.1 (built-in Kotlin), Gradle 9.6.1, compile/target SDK 36, minSdk 24, Fresco 2.3.0 (what Lynx's image service is built against). R8 is off until Lynx's keep rules are verified, and XElement isn't included (its Android artifact is all-or-nothing).
-- **One builders package** (2026-10-15). The builders moved out of the runtime into `@blotch/angular-lynx-build`, a thin Angular CLI layer that depends on `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native`. The builders add `pluginAngularLynx()` when `lynx.config.ts` doesn't list it, and set `NODE_ENV` the way the rspeedy CLI does; without that, a project with no `mode` option built unminified (rspeedy's JS API falls back to mode `none`).
+- **One builders package** (2026-10-15). The builders moved out of the runtime into `@blotch/angular-lynx-build`, a thin Angular CLI layer that depends on `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native`. The builders add `pluginAngularLynx()` when `lynx.config.ts` doesn't list it, and always set rspeedy's mode; rspeedy's JS API otherwise falls back to mode `none`, which built unminified.
+- **Angular CLI conventions** (2026-10-15). The builders package also depends on rspeedy and its QR code plugin, so an app's only build dependency is `@blotch/angular-lynx-build`, and lynx.config.ts is optional (the entry comes from `browser`, the environments default to `lynx` and `web`). The mode follows Angular's `optimization` rather than a builder option of its own. `ng test` runs Angular's unit-test builder through `@blotch/angular-lynx-build:unit-test`, `ng build --watch` works, budgets are enforced, `ng generate component` makes Lynx components, and the packages form an `ng update` group.
 - **Back button:** the Android shell sends `angularLynxBack` once the app opts in through `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`. The runtime doesn't call it from Router state yet.
 
 ### Next

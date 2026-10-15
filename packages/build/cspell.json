@@ -1,5 +1,5 @@
 {
   "import": ["../../cspell.json"],
-  "words": ["myapp", "teardowns"],
+  "words": ["lcovonly", "myapp", "teardowns", "widthxheight"],
   "ignorePaths": ["coverage", "dist"]
 }

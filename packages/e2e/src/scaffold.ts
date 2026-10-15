@@ -3,6 +3,7 @@ import {
   existsSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -32,8 +33,8 @@ export type ScaffoldOptions = {
   readonly packageManager: PackageManager;
   readonly tailwind: boolean;
   /**
-   * Replace the @lynx-js/rspeedy version `ng add` pins, e.g. with `latest`,
-   * for early warning of Lynx toolchain changes.
+   * Replace the @lynx-js/rspeedy version @blotch/angular-lynx-build depends
+   * on, e.g. with `latest`, for early warning of Lynx toolchain changes.
    */
   readonly rspeedy?: string;
   /**
@@ -91,23 +92,15 @@ export const scaffoldApp = async (
   checkInstalledPackages(appDir, options, registry, scaffoldOutput);
 
   if (options.rspeedy) {
-    step(`Layer 2: install @lynx-js/rspeedy@${options.rspeedy}`);
-    await exec(...pm.addDev(`@lynx-js/rspeedy@${options.rspeedy}`));
+    await overrideRspeedy(appDir, options, pm, exec);
   }
 
   // Step 5 comes before the final build so the build (and Layer 3) cover the
-  // generated component, the test setup and i18n together.
-  step('Layer 2: ng generate @blotch/angular-lynx:component hello');
-  await exec(
-    ...pm.exec('ng', ['generate', '@blotch/angular-lynx:component', 'hello']),
-  );
-  const helloDir = path.join(appDir, 'src/app/hello');
-  for (const file of ['hello.ts', 'hello.test.ts']) {
-    check(
-      existsSync(path.join(helloDir, file)),
-      `\`ng generate @blotch/angular-lynx:component hello\` didn't create src/app/hello/${file}.`,
-    );
-  }
+  // generated component, the test setup and i18n together. Plain
+  // `ng generate component`: `ng add` makes it reach AngularLynx's schematic.
+  step('Layer 2: ng generate component hello');
+  await exec(...pm.exec('ng', ['generate', 'component', 'hello']));
+  checkGeneratedComponent(appDir, 'hello', 'hello.spec.ts');
   useHelloInApp(appDir);
   if (!options.buildOnly) {
     await buildApp(appDir, pm, registry, context, ['lynx']);
@@ -175,29 +168,91 @@ const addTestingAndRunTests = async (
   }
   // add-testing adds devDependencies without installing them.
   await exec(...pm.install());
+  const { scripts } = readJson<PackageJson>(path.join(appDir, 'package.json'));
   check(
-    existsSync(path.join(appDir, 'vitest.config.ts')),
-    "`ng generate @blotch/angular-lynx:add-testing` didn't create vitest.config.ts.",
+    scripts?.['test'] === 'ng test',
+    `package.json's test script is ${JSON.stringify(scripts?.['test'])}, not "ng test".`,
   );
+  // With the testing library installed, a generated component's test renders
+  // it on Lynx instead of with TestBed.
+  await exec(...pm.exec('ng', ['generate', 'component', 'greeting']));
+  checkGeneratedComponent(appDir, 'greeting', 'greeting.test.ts');
   const { output: testOutput } = await exec(...pm.run('test'));
-  // The generated component's test is the project's only test, so one passing
-  // test file proves add-testing's `include` pattern finds it. (Vitest only
-  // lists test file names when attached to a terminal.)
+  // `ng test` finds both kinds: hello's Angular TestBed spec (generated
+  // before the testing library was installed) and greeting's Lynx test.
+  // (Vitest only lists test file names when attached to a terminal.)
   check(
-    /Test Files\s+1 passed/.test(stripAnsi(testOutput)),
-    "The generated component's test (src/app/hello/hello.test.ts) didn't run. Check the `include` pattern in the vitest.config.ts that add-testing writes.",
+    /Test Files\s+2 passed/.test(stripAnsi(testOutput)),
+    "`ng test` didn't run and pass both generated tests (src/app/hello/hello.spec.ts and src/app/greeting/greeting.test.ts).",
   );
-  console.log("✓ the generated component's test passes");
+  console.log("✓ the generated components' tests pass under `ng test`");
+};
+
+/**
+ * Checks what `ng generate component <name>` produced: Angular's files, made
+ * Lynx ones by AngularLynx's schematic, and the test it should have written.
+ */
+const checkGeneratedComponent = (
+  appDir: string,
+  name: string,
+  testFile: string,
+) => {
+  const dir = path.join(appDir, 'src/app', name);
+  for (const file of [`${name}.ts`, `${name}.html`, testFile]) {
+    check(
+      existsSync(path.join(dir, file)),
+      `\`ng generate component ${name}\` didn't create src/app/${name}/${file}.`,
+    );
+  }
+  check(
+    readFileSync(path.join(dir, `${name}.html`), 'utf8').includes(
+      `<text>${name} works!</text>`,
+    ) &&
+      readFileSync(path.join(dir, `${name}.ts`), 'utf8').includes(
+        'imports: [LYNX_ELEMENTS]',
+      ),
+    `\`ng generate component ${name}\` made a web component, not a Lynx one. Check that \`ng add\` put @blotch/angular-lynx first in angular.json's cli.schematicCollections.`,
+  );
+};
+
+/**
+ * Makes every package in the app use `options.rspeedy`: rspeedy is a
+ * dependency of @blotch/angular-lynx-build, not of the app, so installing
+ * it in the app wouldn't change the one the builders run. Each package
+ * manager has its own override field; the spec (often a dist-tag) is resolved
+ * to a version first, which all of them accept.
+ */
+const overrideRspeedy = async (
+  appDir: string,
+  options: ScaffoldOptions,
+  pm: PackageManagerCommands,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+) => {
+  step(`Layer 2: override @lynx-js/rspeedy with ${options.rspeedy}`);
+  const { output } = await exec('npm', [
+    'view',
+    `@lynx-js/rspeedy@${options.rspeedy}`,
+    'version',
+  ]);
+  const version = output.trim().split('\n').pop()!.trim();
+  const manifestPath = path.join(appDir, 'package.json');
+  const manifest = readJson<Record<string, unknown>>(manifestPath);
+  const override = { '@lynx-js/rspeedy': version };
+  if (options.packageManager === 'npm') {
+    manifest['overrides'] = override;
+  } else if (options.packageManager === 'pnpm') {
+    manifest['pnpm'] = { overrides: override };
+  } else {
+    manifest['resolutions'] = override;
+  }
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+  await exec(...pm.install());
 };
 
 type Command = [command: string, args: string[]];
 
 const packageManagerCommands = (packageManager: PackageManager) => ({
   install: (): Command => [packageManager, ['install']],
-  addDev: (spec: string): Command =>
-    packageManager === 'npm'
-      ? ['npm', ['install', '--save-dev', spec]]
-      : [packageManager, ['add', '--save-dev', spec]],
   run: (script: string): Command => [packageManager, ['run', script]],
   exec: (bin: string, args: string[]): Command => {
     switch (packageManager) {
@@ -328,8 +383,14 @@ const readJson = <T>(file: string) =>
 
 const checkGeneratedProject = (appDir: string) => {
   check(
-    existsSync(path.join(appDir, 'lynx.config.ts')),
-    '`ng add` didn\'t create lynx.config.ts. If it printed "does not provide any `ng add` actions", the schematics failed to load.',
+    existsSync(path.join(appDir, 'src/rspeedy-env.d.ts')),
+    '`ng add` didn\'t create src/rspeedy-env.d.ts. If it printed "does not provide any `ng add` actions", the schematics failed to load.',
+  );
+  // angular.json holds the build config; lynx.config.ts is only for
+  // customizing rspeedy.
+  check(
+    !existsSync(path.join(appDir, 'lynx.config.ts')),
+    "`ng add` created lynx.config.ts, which a new app doesn't need.",
   );
   const pkg = readJson<PackageJson>(path.join(appDir, 'package.json'));
   check(
@@ -343,13 +404,22 @@ const checkGeneratedProject = (appDir: string) => {
   // `npm run build` and `npm start` only build a Lynx bundle when the targets
   // run AngularLynx's builders; Angular's own builders would try to build a
   // browser app from Lynx templates.
-  const targets = readJson<{
+  const workspace = readJson<{
+    cli?: { schematicCollections?: string[] };
     projects: Record<
       string,
-      { architect?: Record<string, { builder: string }> }
+      {
+        architect?: Record<
+          string,
+          {
+            builder: string;
+            configurations?: Record<string, Record<string, unknown>>;
+          }
+        >;
+      }
     >;
-  }>(path.join(appDir, 'angular.json')).projects;
-  const architect = Object.values(targets)[0]?.architect ?? {};
+  }>(path.join(appDir, 'angular.json'));
+  const architect = Object.values(workspace.projects)[0]?.architect ?? {};
   check(
     architect['build']?.builder === '@blotch/angular-lynx-build:application',
     `angular.json's build target uses ${JSON.stringify(architect['build']?.builder)}, not @blotch/angular-lynx-build:application. \`ng add\` didn't switch it.`,
@@ -359,8 +429,32 @@ const checkGeneratedProject = (appDir: string) => {
     `angular.json's serve target uses ${JSON.stringify(architect['serve']?.builder)}, not @blotch/angular-lynx-build:dev-server. \`ng add\` didn't switch it.`,
   );
   check(
+    architect['test']?.builder === '@blotch/angular-lynx-build:unit-test',
+    `angular.json's test target uses ${JSON.stringify(architect['test']?.builder)}, not @blotch/angular-lynx-build:unit-test. \`ng add\` didn't switch it.`,
+  );
+  check(
+    workspace.cli?.schematicCollections?.[0] === '@blotch/angular-lynx',
+    `angular.json's cli.schematicCollections is ${JSON.stringify(workspace.cli?.schematicCollections)}, so \`ng generate component\` wouldn't make Lynx components.`,
+  );
+  // Angular's `optimization` picks the mode; `ng add` adds no option of its
+  // own to the configurations.
+  const configurations = architect['build']?.configurations ?? {};
+  check(
+    Object.values(configurations).every((options) => !('mode' in options)),
+    "angular.json's build configurations have a `mode` option, which Angular doesn't know.",
+  );
+  check(
     pkg.devDependencies?.['@blotch/angular-lynx-build'],
     "`ng add` didn't add @blotch/angular-lynx-build to devDependencies.",
+  );
+  // The builders bring rspeedy and its plugins, as @angular/build brings
+  // esbuild and Vite.
+  const extras = ['@lynx-js/rspeedy', '@lynx-js/qrcode-rsbuild-plugin'].filter(
+    (name) => pkg.devDependencies?.[name] ?? pkg.dependencies?.[name],
+  );
+  check(
+    extras.length === 0,
+    `\`ng add\` added build tools the app doesn't need: ${extras.join(', ')}.`,
   );
   const mainTs = readFileSync(path.join(appDir, 'src/main.ts'), 'utf8');
   check(
@@ -394,7 +488,7 @@ const checkGeneratedProject = (appDir: string) => {
     `\`ng add\` left these \`ng new\` files behind in src/app: ${leftovers.join(', ')}.`,
   );
   console.log(
-    '✓ the project has lynx.config.ts, the AngularLynx builders and Lynx bootstrap files',
+    '✓ the project has the AngularLynx builders and schematics, and Lynx bootstrap files',
   );
 };
 
@@ -525,6 +619,7 @@ const applyFixtures = (appDir: string) => {
   );
   // The generated test checks the generated template, which the fixture
   // replaced. It already passed in its own step.
+  rmSync(path.join(appDir, 'src/app/hello/hello.spec.ts'), { force: true });
   writeFileSync(
     path.join(appDir, 'src/app/hello/hello.test.ts'),
     readFileSync(path.join(FIXTURES_DIR, 'counter.test.ts'), 'utf8'),
@@ -548,8 +643,8 @@ const stripAnsi = stripVTControlCharacters;
 
 /**
  * Builds the app and checks the output. `environments` are the bundles the
- * build must produce; the web bundle needs the `web` environment that `ng add`
- * puts in lynx.config.ts.
+ * build must produce; the builders build both the `lynx` and `web`
+ * environments when the app has no lynx.config.ts.
  */
 const buildApp = async (
   appDir: string,
@@ -581,7 +676,7 @@ const buildApp = async (
     const bundle = path.join(appDir, 'dist', `main.${environment}.bundle`);
     check(
       existsSync(bundle) && statSync(bundle).size > 0,
-      `The build didn't produce a non-empty dist/main.${environment}.bundle.${environment === 'web' ? ' Check that lynx.config.ts has a `web` environment.' : ''}`,
+      `The build didn't produce a non-empty dist/main.${environment}.bundle.${environment === 'web' ? ' Check that the builders still build the `web` environment by default.' : ''}`,
     );
   }
   console.log(

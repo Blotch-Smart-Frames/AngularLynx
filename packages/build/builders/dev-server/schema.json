@@ -8,7 +8,7 @@
   "properties": {
     "buildTarget": {
       "type": "string",
-      "description": "The build target to serve, as `project:target[:configuration]`, e.g. `my-app:build:development`. Its options (the Angular compiler options, `config`, `mode`) configure the build. Defaults to the project's build target with its development configuration, as Angular's own dev server does.",
+      "description": "The build target to serve, as `project:target[:configuration]`, e.g. `my-app:build:development`. Its options (the Angular compiler options, `config`) configure the build, and its `optimization` picks a production or development build. Defaults to the project's build target with its development configuration, as Angular's own dev server does.",
       "pattern": "^[^:\\s]*:[^:\\s]*(:[^\\s]+)?$"
     },
     "port": {

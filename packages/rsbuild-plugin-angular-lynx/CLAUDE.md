@@ -44,6 +44,7 @@ src/
   angular.ts                           # Angular compilation and transform pipeline
   angular-rebuild-coordinator.ts       # Keeps the Angular compilation in sync with watch rebuilds
   angular-webpack-plugin.ts            # Webpack plugin: banners, defines, async chunk wrapping
+  budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules
   split-chunks.ts                      # Chunk splitting config
@@ -54,6 +55,7 @@ src/
     angular/
       read-workspace.ts                # Reads angular.json, finds project
       options.ts                       # Reads Angular build options from workspace
+      budgets.ts                       # Budget size math and messages, ported from @angular/build's bundle calculator
       angular-config.ts                # Applies Angular config to Rsbuild
       build-internals.ts               # Loads @angular/build internals by file path (they're not in its `exports`)
       env.ts                           # maxWorkers, useTypeChecking flags

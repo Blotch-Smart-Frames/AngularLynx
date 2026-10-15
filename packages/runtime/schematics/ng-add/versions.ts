@@ -9,18 +9,11 @@
  */
 export const VERSIONS = {
   /**
-   * @blotch/angular-lynx-build — the `ng build` / `ng serve` builders, with the
-   * rsbuild plugin that compiles Angular for Lynx and the native app builder
+   * @blotch/angular-lynx-build — the `ng build` / `ng serve` / `ng test`
+   * builders, with rspeedy, the rsbuild plugin that compiles Angular for Lynx
+   * and the native app builder
    */
   angularLynxBuild: '^22.2.1',
-  /**
-   * @lynx-js/rspeedy — Lynx dev-server and production build tool
-   */
-  rspeedy: '^0.18.0',
-  /**
-   * @lynx-js/qrcode-rsbuild-plugin — generates a QR code in dev mode for on-device testing
-   */
-  qrcodePlugin: '^0.7.3',
   /**
    * @lynx-js/types — TypeScript type definitions for the Lynx runtime APIs
    */

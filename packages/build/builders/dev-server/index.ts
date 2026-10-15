@@ -7,25 +7,29 @@ import {
 import path from 'node:path';
 
 import {
+  type QRCodePluginModule,
   type RspeedyModule,
   type RspeedyPluginModule,
   createRspeedy,
   importPlugin,
+  importQRCodePlugin,
   importRspeedy,
 } from '../rspeedy';
 import type { ApplicationBuilderOptions } from '../application/schema';
 import type { DevServerBuilderOptions } from './schema';
 
 type Deps = {
-  readonly importRspeedy: (projectRoot: string) => Promise<RspeedyModule>;
+  readonly importRspeedy: () => Promise<RspeedyModule>;
   readonly importPlugin: () => Promise<RspeedyPluginModule>;
+  readonly importQRCodePlugin: () => Promise<QRCodePluginModule>;
 };
 
 /**
  * Starts rspeedy's dev server in this process, as `rspeedy dev` would, and
  * closes it when Angular CLI tears the builder down (Ctrl+C). rspeedy's own
- * plugins keep working unchanged (the QR code plugin still prints the Lynx
- * Explorer link), and live reload is rspeedy's.
+ * plugins keep working unchanged, and live reload is rspeedy's. The QR code
+ * plugin, which prints the link Lynx Explorer opens, is added unless
+ * lynx.config.ts lists it.
  *
  * Like Angular's own dev server, it builds what `buildTarget` describes: its
  * options configure the compile, so `ng serve -c production` serves the
@@ -60,9 +64,9 @@ const startDevServer = async (
       await context.getBuilderNameForTarget(buildTarget),
     )) as ApplicationBuilderOptions;
     const rspeedy = await createRspeedy({
-      rspeedy: await deps.importRspeedy(projectRoot),
+      rspeedy: await deps.importRspeedy(),
       plugin: await deps.importPlugin(),
-      command: 'dev',
+      qrCode: await deps.importQRCodePlugin(),
       projectRoot,
       angularCli: {
         workspaceRoot: context.workspaceRoot,
@@ -70,7 +74,6 @@ const startDevServer = async (
         buildOptions,
       },
       config: buildOptions.config,
-      mode: buildOptions.mode,
       environment: options.environment ?? buildOptions.environment,
       server: { port: options.port, host: options.host },
     });
@@ -93,7 +96,7 @@ const startDevServer = async (
 export const runDevServer = (
   options: DevServerBuilderOptions,
   context: BuilderContext,
-  deps: Deps = { importRspeedy, importPlugin },
+  deps: Deps = { importRspeedy, importPlugin, importQRCodePlugin },
 ): AsyncIterable<BuilderOutput> => ({
   [Symbol.asyncIterator]: () => {
     let started: Promise<BuilderOutput> | undefined;

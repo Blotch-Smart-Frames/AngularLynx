@@ -97,7 +97,7 @@ const isTextFile = (relPath) => {
 /**
  * Parse lynx.config.ts to extract entry points for templateFiles.
  */
-const parseEntries = (configPath) => {
+const parseConfigEntries = (configPath) => {
   if (!fs.existsSync(configPath)) return [];
 
   const content = fs.readFileSync(configPath, 'utf-8');
@@ -122,6 +122,24 @@ const parseEntries = (configPath) => {
   return entries;
 };
 
+/**
+ * The example's pages: the entries its lynx.config.ts lists, or else the Lynx
+ * bundles its build wrote. Most examples have no lynx.config.ts (`ng build`
+ * takes the entry from angular.json), and some set no `entry` in theirs (the
+ * plugin's `pages` option names the bundles after angular.json projects).
+ */
+const parseEntries = (srcDir) => {
+  const configEntries = parseConfigEntries(path.join(srcDir, 'lynx.config.ts'));
+  if (configEntries.length > 0) return configEntries;
+  const distDir = path.join(srcDir, 'dist');
+  if (!fs.existsSync(distDir)) return [];
+  return fs
+    .readdirSync(distDir)
+    .filter((file) => file.endsWith('.lynx.bundle'))
+    .map((file) => ({ name: file.slice(0, -'.lynx.bundle'.length) }))
+    .sort((a, b) => (a.name === 'main' ? -1 : b.name === 'main' ? 1 : 0));
+};
+
 const processExample = (exampleName) => {
   const srcDir = path.join(EXAMPLES_SRC, exampleName);
   const destDir = path.join(EXAMPLES_DEST, exampleName);
@@ -140,8 +158,7 @@ const processExample = (exampleName) => {
 
   const previewImage = allFiles.find(isPreviewImage) || undefined;
 
-  const configPath = path.join(srcDir, 'lynx.config.ts');
-  const entries = parseEntries(configPath);
+  const entries = parseEntries(srcDir);
 
   const templateFiles = entries.map(({ name }) => {
     const entry = {

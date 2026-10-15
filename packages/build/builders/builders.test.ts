@@ -1,13 +1,35 @@
 import type { BuilderContext } from '@angular-devkit/architect';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createRequire } from 'node:module';
+
+import applicationSchema from './application/schema.json';
 import { runApplication } from './application/index';
 import { runDevServer } from './dev-server/index';
 import { importFromProject } from './project-import';
-import type { RspeedyModule, RspeedyPluginModule } from './rspeedy';
+import {
+  type RspeedyBuildResult,
+  type RspeedyModule,
+  type RspeedyPluginModule,
+  modeFromOptimization,
+} from './rspeedy';
+import unitTestSchema from './unit-test/schema.json';
+import {
+  ANGULAR_BUILD_OPTIONS,
+  ASSET_LOADERS,
+  type AngularBuildModule,
+  hasTestingLibrary,
+  runUnitTest,
+} from './unit-test/index';
 
 let root: string;
 beforeEach(() => {
@@ -26,7 +48,10 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const fakeContext = (
   project: string | undefined = 'my-app',
   buildTargets: Record<string, Record<string, unknown>> = {
-    'my-app:build:development': { tsConfig: 'tsconfig.app.json' },
+    'my-app:build:development': {
+      tsConfig: 'tsconfig.app.json',
+      optimization: false,
+    },
   },
 ) => {
   const teardowns: (() => unknown)[] = [];
@@ -73,13 +98,26 @@ const fakeContext = (
 
 /**
  * rspeedy's loadConfig/createRspeedy, recording what the builder asked for.
+ * Given a config, the project has a lynx.config.ts that loads as it.
  */
-const fakeRspeedy = (config: Record<string, unknown> = {}) => {
+const fakeRspeedy = (config?: Record<string, unknown>) => {
+  if (config) {
+    writeFileSync(path.join(root, 'lynx.config.ts'), 'export default {};');
+  }
   const close = vi.fn(async () => {});
   const serverClose = vi.fn(async () => {});
+  const afterBuild: ((result: RspeedyBuildResult) => void)[] = [];
   const instance = {
     context: { distPath: path.join(root, 'dist'), rootPath: root },
-    build: vi.fn(async () => ({ close })),
+    build: vi.fn(async (_options?: { watch?: boolean }) => ({ close })),
+    onAfterBuild: (callback: (result: RspeedyBuildResult) => void) =>
+      afterBuild.push(callback),
+    /** Reports a compile, as rspeedy does after each (re)build. */
+    compiled: (hasErrors: boolean) => {
+      for (const callback of afterBuild) {
+        callback({ stats: { hasErrors: () => hasErrors } });
+      }
+    },
     startDevServer: vi.fn(async () => ({
       urls: ['http://localhost:3000'],
       port: 3000,
@@ -101,6 +139,12 @@ const fakeRspeedy = (config: Record<string, unknown> = {}) => {
   return { rspeedy, instance, close, serverClose, passedConfig };
 };
 
+/**
+ * The first result a builder reports, which is all a one-shot build reports.
+ */
+const firstOutput = async <T>(outputs: AsyncIterable<T>): Promise<T> =>
+  (await outputs[Symbol.asyncIterator]().next()).value as T;
+
 /** What `pluginAngularLynx()` returns, as far as the builders can tell. */
 const angularPlugin = { name: 'lynx:angular' };
 /**
@@ -115,17 +159,39 @@ const importPlugin = async (): Promise<RspeedyPluginModule> => ({
   pluginAngularCliContext: contextPlugin,
 });
 
+/**
+ * What `pluginQRCode()` returns, as far as the dev server can tell.
+ */
+const qrCodePlugin = (options: unknown) => ({
+  name: 'lynx:rsbuild:qrcode',
+  options,
+});
+const importQRCodePlugin = async () => ({ pluginQRCode: qrCodePlugin });
+
 describe('application builder', () => {
-  it('builds the bundle like `rspeedy build` without --platform', async () => {
-    const { rspeedy, close } = fakeRspeedy();
-    const importNative = vi.fn();
-    const { context } = fakeContext();
-    const options = { mode: 'development', tsConfig: 'tsconfig.app.json' };
-    const result = await runApplication(options as never, context, {
+  const build = (
+    options: Record<string, unknown>,
+    rspeedy: RspeedyModule,
+    context = fakeContext().context,
+    importNative: () => Promise<never> = vi.fn(),
+  ) =>
+    runApplication(options as never, context, {
       importRspeedy: async () => rspeedy,
       importPlugin,
       importNative,
     });
+
+  it('builds the bundle like `rspeedy build` without --platform', async () => {
+    const { rspeedy, close } = fakeRspeedy({});
+    const importNative = vi.fn();
+    const options = {
+      optimization: false,
+      tsConfig: 'tsconfig.app.json',
+      browser: 'src/main.ts',
+    };
+    const result = await firstOutput(
+      build(options, rspeedy, fakeContext().context, importNative),
+    );
     expect(result).toEqual({ success: true });
     expect(rspeedy.loadConfig).toHaveBeenCalledWith({
       cwd: root,
@@ -135,6 +201,8 @@ describe('application builder', () => {
       cwd: root,
       rspeedyConfig: {
         mode: 'development',
+        environments: { lynx: {}, web: {} },
+        source: { entry: path.join(root, 'src/main.ts') },
         plugins: [
           // The options as Angular CLI merged them reach the plugin as they
           // are: the builder doesn't re-read angular.json.
@@ -152,6 +220,39 @@ describe('application builder', () => {
     expect(importNative).not.toHaveBeenCalled();
   });
 
+  it('builds the app from angular.json alone when the project has no lynx.config.ts', async () => {
+    const { rspeedy, passedConfig } = fakeRspeedy();
+    await firstOutput(build({ browser: 'src/main.ts' }, rspeedy));
+    expect(rspeedy.loadConfig).not.toHaveBeenCalled();
+    expect(passedConfig()).toEqual({
+      mode: 'production',
+      environments: { lynx: {}, web: {} },
+      source: { entry: path.join(root, 'src/main.ts') },
+      plugins: [expect.anything(), angularPlugin],
+    });
+  });
+
+  it("keeps lynx.config.ts's entry and environments", async () => {
+    const { passedConfig, rspeedy } = fakeRspeedy({
+      environments: { lynx: {} },
+      source: { entry: { main: './src/main.ts', settings: './src/s.ts' } },
+    });
+    await firstOutput(build({ browser: 'src/main.ts' }, rspeedy));
+    expect(passedConfig()).toMatchObject({
+      environments: { lynx: {} },
+      source: { entry: { main: './src/main.ts', settings: './src/s.ts' } },
+    });
+  });
+
+  it('loads the config file the `config` option names, which rspeedy requires to exist', async () => {
+    const { rspeedy } = fakeRspeedy();
+    await firstOutput(build({ config: 'lynx.prod.ts' }, rspeedy));
+    expect(rspeedy.loadConfig).toHaveBeenCalledWith({
+      cwd: root,
+      configPath: 'lynx.prod.ts',
+    });
+  });
+
   it('builds only the lynx environment, then each platform, with --platform all', async () => {
     const { rspeedy } = fakeRspeedy();
     const buildNativeApp = vi.fn(
@@ -161,18 +262,17 @@ describe('application builder', () => {
       }),
     );
     const { context, raw } = fakeContext();
-    const result = await runApplication(
-      {
-        platform: 'all',
-        appId: 'com.example.app',
-        tsConfig: 'tsconfig.app.json',
-      },
-      context,
-      {
-        importRspeedy: async () => rspeedy,
-        importPlugin,
-        importNative: async () => ({ buildNativeApp }) as never,
-      },
+    const result = await firstOutput(
+      build(
+        {
+          platform: 'all',
+          appId: 'com.example.app',
+          tsConfig: 'tsconfig.app.json',
+        },
+        rspeedy,
+        context,
+        async () => ({ buildNativeApp }) as never,
+      ),
     );
     expect(result).toEqual({ success: true });
     expect(rspeedy.createRspeedy).toHaveBeenCalledWith(
@@ -197,26 +297,27 @@ describe('application builder', () => {
   it('turns failures into a failed build with the message', async () => {
     const { rspeedy, instance } = fakeRspeedy();
     instance.build.mockRejectedValueOnce(new Error('Rspack build failed.'));
-    const result = await runApplication({}, fakeContext().context, {
-      importRspeedy: async () => rspeedy,
-      importPlugin,
-      importNative: vi.fn(),
+    expect(await firstOutput(build({}, rspeedy))).toEqual({
+      success: false,
+      error: 'Rspack build failed.',
     });
-    expect(result).toEqual({ success: false, error: 'Rspack build failed.' });
+  });
+
+  it('turns a config that fails to load into a failed build', async () => {
+    const { rspeedy } = fakeRspeedy({});
+    vi.mocked(rspeedy.loadConfig).mockRejectedValueOnce('not an Error');
+    expect(await firstOutput(build({}, rspeedy))).toEqual({
+      success: false,
+      error: 'not an Error',
+    });
   });
 
   it('fails before bundling when the native builder fails to load', async () => {
-    const { rspeedy } = fakeRspeedy();
-    const result = await runApplication(
-      { platform: 'ios' },
-      fakeContext().context,
-      {
-        importRspeedy: async () => rspeedy,
-        importPlugin,
-        importNative: async () => {
-          throw new Error("Cannot find module '@blotch/angular-lynx-native'");
-        },
-      },
+    const { rspeedy } = fakeRspeedy({});
+    const result = await firstOutput(
+      build({ platform: 'ios' }, rspeedy, fakeContext().context, async () => {
+        throw new Error("Cannot find module '@blotch/angular-lynx-native'");
+      }),
     );
     expect(result.success).toBe(false);
     expect(rspeedy.loadConfig).not.toHaveBeenCalled();
@@ -224,7 +325,7 @@ describe('application builder', () => {
 
   it('needs a project', async () => {
     expect(
-      await runApplication({}, fakeContext(null as never).context),
+      await firstOutput(runApplication({}, fakeContext(null as never).context)),
     ).toEqual({
       success: false,
       error: 'The builder needs a project target.',
@@ -241,13 +342,62 @@ describe('application builder', () => {
       const { rspeedy, passedConfig } = fakeRspeedy({
         performance: { buildCache },
       });
-      await runApplication({}, fakeContext().context, {
-        importRspeedy: async () => rspeedy,
-        importPlugin,
-        importNative: vi.fn(),
-      });
+      await firstOutput(build({}, rspeedy));
       expect(passedConfig()['performance']).toEqual({ buildCache: expected });
     }
+  });
+
+  describe('--watch', () => {
+    it('reports every rebuild and stops watching on teardown', async () => {
+      const { rspeedy, instance, close } = fakeRspeedy();
+      const { context, teardowns } = fakeContext();
+      const outputs = build({ watch: true }, rspeedy, context)[
+        Symbol.asyncIterator
+      ]();
+      const first = outputs.next();
+      // Wait for the watch build to start, then compile twice: a broken
+      // save fails that result but the watch goes on.
+      await vi.waitFor(() =>
+        expect(instance.build).toHaveBeenCalledWith({ watch: true }),
+      );
+      instance.compiled(false);
+      expect((await first).value).toEqual({ success: true });
+      instance.compiled(true);
+      instance.compiled(false);
+      expect((await outputs.next()).value).toEqual({ success: false });
+      expect((await outputs.next()).value).toEqual({ success: true });
+      await Promise.all(teardowns.map((teardown) => teardown()));
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('reports a watch build that fails to start', async () => {
+      const { rspeedy, instance } = fakeRspeedy();
+      instance.build.mockRejectedValueOnce(new Error('no compiler'));
+      expect(await firstOutput(build({ watch: true }, rspeedy))).toEqual({
+        success: false,
+        error: 'no compiler',
+      });
+    });
+
+    it("can't be combined with --platform", async () => {
+      const { rspeedy } = fakeRspeedy();
+      const result = await firstOutput(
+        build({ watch: true, platform: 'ios' }, rspeedy),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('--platform');
+      expect(rspeedy.createRspeedy).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('the mode', () => {
+  it("follows Angular's optimization option, as Angular's dev mode does", () => {
+    expect(modeFromOptimization(undefined)).toBe('production');
+    expect(modeFromOptimization(true)).toBe('production');
+    expect(modeFromOptimization(false)).toBe('development');
+    expect(modeFromOptimization({ scripts: true })).toBe('production');
+    expect(modeFromOptimization({ styles: true })).toBe('development');
   });
 });
 
@@ -256,11 +406,13 @@ describe('the AngularLynx plugin', () => {
     const { rspeedy, passedConfig } = fakeRspeedy(
       plugins === undefined ? {} : { plugins },
     );
-    await runApplication({}, fakeContext().context, {
-      importRspeedy: async () => rspeedy,
-      importPlugin,
-      importNative: vi.fn(),
-    });
+    await firstOutput(
+      runApplication({}, fakeContext().context, {
+        importRspeedy: async () => rspeedy,
+        importPlugin,
+        importNative: vi.fn(),
+      }),
+    );
     return passedConfig()['plugins'];
   };
   const cliContext = contextPlugin({
@@ -270,10 +422,10 @@ describe('the AngularLynx plugin', () => {
   });
 
   it("is added after lynx.config.ts's own plugins, with the Angular CLI context first", async () => {
-    const qrCode = { name: 'lynx:qrcode' };
-    expect(await pluginsPassed([qrCode])).toEqual([
+    const other = { name: 'lynx:other' };
+    expect(await pluginsPassed([other])).toEqual([
       cliContext,
-      qrCode,
+      other,
       angularPlugin,
     ]);
   });
@@ -298,32 +450,37 @@ describe('NODE_ENV', () => {
     vi.unstubAllEnvs();
   });
 
-  it('defaults to production for ng build and development for ng serve, as rspeedy does', async () => {
+  it("follows the mode: production for a production build, development for ng serve's default", async () => {
     vi.stubEnv('NODE_ENV', '');
-    await runApplication({}, fakeContext().context, {
-      importRspeedy: async () => fakeRspeedy().rspeedy,
-      importPlugin,
-      importNative: vi.fn(),
-    });
+    await firstOutput(
+      runApplication({}, fakeContext().context, {
+        importRspeedy: async () => fakeRspeedy().rspeedy,
+        importPlugin,
+        importNative: vi.fn(),
+      }),
+    );
     expect(process.env['NODE_ENV']).toBe('production');
 
     vi.stubEnv('NODE_ENV', '');
-    await runDevServer({}, fakeContext().context, {
-      importRspeedy: async () => fakeRspeedy().rspeedy,
-      importPlugin,
-    })
-      [Symbol.asyncIterator]()
-      .next();
+    await firstOutput(
+      runDevServer({}, fakeContext().context, {
+        importRspeedy: async () => fakeRspeedy().rspeedy,
+        importPlugin,
+        importQRCodePlugin,
+      }),
+    );
     expect(process.env['NODE_ENV']).toBe('development');
   });
 
   it('keeps one that is already set', async () => {
     vi.stubEnv('NODE_ENV', 'development');
-    await runApplication({}, fakeContext().context, {
-      importRspeedy: async () => fakeRspeedy().rspeedy,
-      importPlugin,
-      importNative: vi.fn(),
-    });
+    await firstOutput(
+      runApplication({}, fakeContext().context, {
+        importRspeedy: async () => fakeRspeedy().rspeedy,
+        importPlugin,
+        importNative: vi.fn(),
+      }),
+    );
     expect(process.env['NODE_ENV']).toBe('development');
   });
 });
@@ -332,13 +489,14 @@ describe('dev-server builder', () => {
   const serve = async (
     options: Parameters<typeof runDevServer>[0],
     buildTargets?: Record<string, Record<string, unknown>>,
-    config: Record<string, unknown> = {},
+    config?: Record<string, unknown>,
   ) => {
     const fake = fakeRspeedy(config);
     const ctx = fakeContext('my-app', buildTargets);
     const outputs = runDevServer(options, ctx.context, {
       importRspeedy: async () => fake.rspeedy,
       importPlugin,
+      importQRCodePlugin,
     })[Symbol.asyncIterator]();
     const first = await outputs.next();
     return { ...fake, ...ctx, outputs, first };
@@ -361,7 +519,7 @@ describe('dev-server builder', () => {
         'my-app:build:development': {
           tsConfig: 'tsconfig.app.json',
           config: 'lynx.dev.ts',
-          mode: 'development',
+          optimization: false,
           environment: ['lynx'],
         },
       },
@@ -393,7 +551,7 @@ describe('dev-server builder', () => {
           orientation: 'portrait',
           tsConfig: 'tsconfig.app.json',
           config: 'lynx.dev.ts',
-          mode: 'development',
+          optimization: false,
           environment: ['lynx'],
         },
       }),
@@ -403,7 +561,7 @@ describe('dev-server builder', () => {
   it('serves the build target it is given, e.g. `ng serve -c production`', async () => {
     const { raw, passedConfig } = await serve(
       { buildTarget: 'my-app:build:production' },
-      { 'my-app:build:production': { mode: 'production' } },
+      { 'my-app:build:production': { outputHashing: 'all' } },
     );
     expect(raw.getTargetOptions).toHaveBeenCalledWith({
       project: 'my-app',
@@ -411,6 +569,21 @@ describe('dev-server builder', () => {
       configuration: 'production',
     });
     expect(passedConfig()['mode']).toBe('production');
+  });
+
+  it('prints the Lynx Explorer QR code in full screen, unless lynx.config.ts configures it', async () => {
+    const { passedConfig } = await serve({});
+    expect(passedConfig()['plugins']).toContainEqual(
+      qrCodePlugin({ fullscreen: true }),
+    );
+
+    const configured = { name: 'lynx:rsbuild:qrcode', options: 'custom' };
+    const second = await serve({}, undefined, { plugins: [configured] });
+    expect(
+      (second.passedConfig()['plugins'] as { name: string }[]).filter(
+        ({ name }) => name === 'lynx:rsbuild:qrcode',
+      ),
+    ).toEqual([configured]);
   });
 
   it("applies its own environment, port and host over the build target's and lynx.config.ts's", async () => {
@@ -453,6 +626,7 @@ describe('dev-server builder', () => {
     const outputs = runDevServer({}, fakeContext().context, {
       importRspeedy: async () => fake.rspeedy,
       importPlugin,
+      importQRCodePlugin,
     })[Symbol.asyncIterator]();
     expect((await outputs.next()).value).toEqual({
       success: false,
@@ -468,6 +642,247 @@ describe('dev-server builder', () => {
     expect((await outputs.next()).value).toEqual({
       success: false,
       error: 'The builder needs a project target.',
+    });
+  });
+});
+
+describe('unit-test builder', () => {
+  /**
+   * @angular/build's unit-test builder, recording what it was handed.
+   */
+  const fakeAngularBuild = () => {
+    const calls: {
+      options: Record<string, unknown>;
+      context: BuilderContext;
+    }[] = [];
+    const angularBuild: AngularBuildModule = {
+      executeUnitTestBuilder: async function* (options, context) {
+        calls.push({ options: options as never, context });
+        yield { success: true };
+      },
+    };
+    return { angularBuild, calls };
+  };
+
+  const test = async (
+    options: Record<string, unknown> = {},
+    { testingLibrary = false } = {},
+  ) => {
+    const { angularBuild, calls } = fakeAngularBuild();
+    const ctx = fakeContext('my-app', {
+      'my-app:build:development': {
+        tsConfig: 'tsconfig.app.json',
+        appId: 'com.example.app',
+        platform: 'ios',
+        config: 'lynx.config.ts',
+        environment: ['lynx'],
+      },
+      'my-app:lib:development': { project: 'ng-package.json' },
+    });
+    const result = await firstOutput(
+      runUnitTest(options as never, ctx.context, {
+        importAngularBuild: async () => angularBuild,
+        hasTestingLibrary: () => testingLibrary,
+      }),
+    );
+    return { ...ctx, result, ...calls[0]! };
+  };
+
+  /**
+   * A schema of @angular/build's, which its `exports` don't list.
+   */
+  const angularSchema = (builder: string) =>
+    JSON.parse(
+      readFileSync(
+        path.join(
+          path.dirname(
+            createRequire(__filename).resolve('@angular/build/package.json'),
+          ),
+          'src/builders',
+          builder,
+          'schema.json',
+        ),
+        'utf8',
+      ),
+    );
+
+  const buildTarget = {
+    project: 'my-app',
+    target: 'build',
+    configuration: 'development',
+  };
+  const LYNX_GLOBALS = '@blotch/angular-lynx-build/unit-test/lynx-globals';
+
+  it("runs Angular's unit-test builder with the options it was given", async () => {
+    const { result, options } = await test({
+      include: ['src/**/*.test.ts'],
+      setupFiles: ['src/test-setup.ts'],
+    });
+    expect(result).toEqual({ success: true });
+    expect(options).toEqual({
+      include: ['src/**/*.test.ts'],
+      setupFiles: ['src/test-setup.ts'],
+    });
+  });
+
+  it('leaves out the empty lists Angular CLI fills in for options the user left out', async () => {
+    const { options } = await test({
+      reporters: [],
+      browsers: [],
+      coverageWatermarks: { lines: [], statements: [80, 95] },
+      coverageThresholds: {},
+      include: ['src/**/*.test.ts'],
+    });
+    expect(options).toEqual({
+      coverageWatermarks: { statements: [80, 95] },
+      coverageThresholds: {},
+      include: ['src/**/*.test.ts'],
+    });
+  });
+
+  it("loads the Lynx globals, then the testing library's setup when the project has it, after the app's polyfills", async () => {
+    const without = await test();
+    expect(
+      (await without.context.getTargetOptions(buildTarget))['polyfills'],
+    ).toEqual([LYNX_GLOBALS]);
+
+    const { context, raw } = await test({}, { testingLibrary: true });
+    raw.getTargetOptions.mockImplementation(async () => ({
+      polyfills: '@angular/localize/init',
+    }));
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      '@angular/localize/init',
+      LYNX_GLOBALS,
+      '@blotch/angular-lynx-testing-library/setup',
+    ]);
+    raw.getTargetOptions.mockImplementation(async () => ({
+      polyfills: ['zone.js'],
+    }));
+    expect((await context.getTargetOptions(buildTarget))['polyfills']).toEqual([
+      'zone.js',
+      LYNX_GLOBALS,
+      '@blotch/angular-lynx-testing-library/setup',
+    ]);
+  });
+
+  it('hands Angular a Lynx build target as an Angular one, with the options both builders share', async () => {
+    const { context, raw } = await test();
+    expect(await context.getBuilderNameForTarget(buildTarget)).toBe(
+      '@angular/build:application',
+    );
+    expect(await context.getTargetOptions(buildTarget)).toEqual({
+      tsConfig: 'tsconfig.app.json',
+      // Imported images, fonts and media load as file URLs, as in the app.
+      loader: ASSET_LOADERS,
+      polyfills: [LYNX_GLOBALS],
+    });
+    expect(ASSET_LOADERS).toMatchObject({ '.png': 'file', '.ttf': 'file' });
+    // Everything else is the real context's.
+    expect(context.workspaceRoot).toBe(root);
+    context.reportStatus('testing');
+    expect(raw.reportStatus).toHaveBeenCalledWith('testing');
+  });
+
+  it('leaves other build targets alone', async () => {
+    const { context, raw } = await test();
+    raw.getBuilderNameForTarget.mockImplementation(
+      async () => '@angular/build:ng-packagr',
+    );
+    const target = {
+      project: 'my-app',
+      target: 'lib',
+      configuration: 'development',
+    };
+    expect(await context.getBuilderNameForTarget(target)).toBe(
+      '@angular/build:ng-packagr',
+    );
+    expect(await context.getTargetOptions(target)).toEqual({
+      project: 'ng-package.json',
+    });
+  });
+
+  it('reports a project without @angular/build', async () => {
+    const result = await firstOutput(
+      runUnitTest({}, fakeContext().context, {
+        importAngularBuild: async () => {
+          throw new Error('@angular/build is not installed.');
+        },
+        hasTestingLibrary: () => false,
+      }),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: '@angular/build is not installed.',
+    });
+  });
+
+  it('needs a project', async () => {
+    expect(
+      await firstOutput(runUnitTest({}, fakeContext(null as never).context)),
+    ).toEqual({ success: false, error: 'The builder needs a project target.' });
+  });
+
+  it("takes the same options as Angular's unit-test builder", () => {
+    expect(unitTestSchema.properties).toEqual(
+      angularSchema('unit-test').properties,
+    );
+  });
+
+  it("passes on only options Angular's application builder knows, and classifies every option", () => {
+    const angular = angularSchema('application');
+    for (const option of ANGULAR_BUILD_OPTIONS) {
+      expect(angular.properties).toHaveProperty(option);
+    }
+    // Every other option of the Lynx builder is Lynx-only. A new one must
+    // be added to one list or the other.
+    expect(
+      Object.keys(applicationSchema.properties).filter(
+        (option) => !ANGULAR_BUILD_OPTIONS.includes(option),
+      ),
+    ).toEqual([
+      'platform',
+      'config',
+      'environment',
+      'appName',
+      'appId',
+      'version',
+      'buildNumber',
+      'orientation',
+      'icon',
+      'permissions',
+      'deepLinkSchemes',
+      'ios',
+      'android',
+    ]);
+  });
+
+  describe('hasTestingLibrary', () => {
+    const install = (packageJson: object) => {
+      const dir = path.join(
+        root,
+        'node_modules',
+        '@blotch',
+        'angular-lynx-testing-library',
+      );
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify(packageJson),
+      );
+    };
+
+    it('is false without the package', () => {
+      expect(hasTestingLibrary(root)).toBe(false);
+    });
+
+    it("is true when it's installed, whether or not its package.json is exported", () => {
+      install({ name: '@blotch/angular-lynx-testing-library' });
+      expect(hasTestingLibrary(root)).toBe(true);
+      install({
+        name: '@blotch/angular-lynx-testing-library',
+        exports: { '.': './index.js' },
+      });
+      expect(hasTestingLibrary(root)).toBe(true);
     });
   });
 });

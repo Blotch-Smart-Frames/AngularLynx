@@ -6,8 +6,7 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "ng test",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
@@ -31,8 +30,6 @@
     "@angular/localize": "^22.2.1",
     "@blotch/angular-lynx-build": "*",
     "@blotch/angular-lynx-testing-library": "*",
-    "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3",
-    "@lynx-js/rspeedy": "^0.18.0",
     "@lynx-js/tailwind-preset": "^0.6.0",
     "@lynx-js/testing-environment": "^0.3.4",
     "@lynx-js/types": "^4.3.0",

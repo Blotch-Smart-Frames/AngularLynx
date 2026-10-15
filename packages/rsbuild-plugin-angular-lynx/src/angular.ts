@@ -6,11 +6,13 @@ import {
   type AngularCompileResult,
   createAngularRebuildCoordinator,
 } from './angular-rebuild-coordinator.js';
+import { applyBudgets } from './budgets-plugin.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   type ComponentScopeInfo,
   type ComponentStylesEntry,
   createTransformStylesheet,
+  forgetComponentStyleSizes,
 } from './component-styles-cache.js';
 import {
   type AngularDiagnostics,
@@ -27,6 +29,7 @@ import {
   DiagnosticModes,
   JavaScriptTransformer,
 } from './utils/angular/build-internals.js';
+import type { ComponentStyleSize } from './utils/angular/budgets.js';
 import { maxWorkers, useTypeChecking } from './utils/angular/env.js';
 import { getAngularWorkspace } from './utils/angular/read-workspace.js';
 import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
@@ -100,6 +103,14 @@ export const applyAngularRules = async (
     cli,
   });
   applyAngularConfig(api, buildOptions);
+  // The compiled size of each component stylesheet, which `transformStylesheet`
+  // records on every compile, for `anyComponentStyle` budgets.
+  const componentStyleSizes = new Map<string, ComponentStyleSize>();
+  applyBudgets(api, {
+    budgets: buildOptions.budgets,
+    componentStyleSizes,
+    underAngularCli: cli !== undefined,
+  });
   const sourcemap = !!(
     !!buildOptions.sourcemapOptions.scripts &&
     (buildOptions.sourcemapOptions.hidden ? 'external' : true)
@@ -169,6 +180,7 @@ export const applyAngularRules = async (
     componentStylesCache,
     componentScopeIds,
     onStylesheetWritten: (filePath) => writtenStylesheets.add(filePath),
+    componentStyleSizes,
   });
 
   /**
@@ -314,7 +326,10 @@ export const applyAngularRules = async (
     for (const file of changedFiles ?? []) {
       // Drop the output of deleted files so the scans below stop reporting
       // diagnostics for code that no longer exists.
-      if (!fs.existsSync(file)) typeScriptFileCache.delete(file);
+      if (!fs.existsSync(file)) {
+        typeScriptFileCache.delete(file);
+        forgetComponentStyleSizes(componentStyleSizes, file);
+      }
     }
 
     reportLynxDiagnostics([

@@ -5,27 +5,43 @@ Testing utilities for [AngularLynx](https://github.com/Blotch-Smart-Frames/Angul
 ## Installation
 
 ```sh
-npm install --save-dev @blotch/angular-lynx-testing-library \
-  @lynx-js/testing-environment \
-  @testing-library/dom \
-  @testing-library/jest-dom \
-  vitest jsdom
+ng generate @blotch/angular-lynx:add-testing
 ```
+
+It installs this package (and Vitest and jsdom, if the project doesn't have them; `ng new` adds both) and makes sure `ng test` runs through AngularLynx's unit-test builder. To install it by hand: `npm install --save-dev @blotch/angular-lynx-testing-library`.
 
 ## Setup
 
-Add a `vitest.config.ts` to your project:
+None. Tests run with `ng test`, whose builder (`@blotch/angular-lynx-build:unit-test`, which `ng add` sets up) loads this package's setup before the tests whenever the project has it. There is no Vitest config or setup file to write.
+
+The setup:
+
+- Enables Angular JIT compilation (`@angular/compiler`), for components compiled at runtime
+- Installs `LynxTestingEnv` on the jsdom window
+- Switches to the Lynx main thread (where PAPI functions live)
+- Polyfills PAPI functions the testing environment doesn't implement (`__GetParent`, `__QuerySelector`, etc.)
+- Installs `@testing-library/jest-dom` matchers
+
+`ng test` compiles the tests ahead of time, like the app, and checks templates strictly, as the Angular Language Service does: a component that uses Lynx elements imports `LYNX_ELEMENTS` from `@blotch/angular-lynx`. The examples below do.
+
+### Without Angular CLI
+
+Under plain Vitest, load the setup yourself and define the compile-time flags the AngularLynx runtime reads (the rsbuild plugin defines them in the app, and `ng test` sets them too):
 
 ```ts
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
-import path from 'node:path';
 
 export default defineConfig({
   define: {
     __DEV__: JSON.stringify(true),
     __MAIN_THREAD__: JSON.stringify(true),
+    __WEB__: JSON.stringify(false),
+    __PROFILE__: JSON.stringify(false),
+    __ENABLE_SSR__: JSON.stringify(false),
   },
+  // Angular's JIT compiler reads the metadata of legacy decorators.
+  oxc: { decorator: { legacy: true } },
   test: {
     environment: 'jsdom',
     globals: true,
@@ -33,14 +49,6 @@ export default defineConfig({
   },
 });
 ```
-
-The setup file:
-
-- Enables Angular JIT compilation (`@angular/compiler`)
-- Installs `LynxTestingEnv` on the jsdom window
-- Switches to the Lynx main thread (where PAPI functions live)
-- Polyfills PAPI functions the testing environment doesn't implement (`__GetParent`, `__QuerySelector`, etc.)
-- Installs `@testing-library/jest-dom` matchers
 
 ## API
 
@@ -144,10 +152,12 @@ console.log(Object.keys(eventMap));
 
 ```ts
 import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render } from '@blotch/angular-lynx-testing-library';
 
 @Component({
   selector: 'greeting',
+  imports: [LYNX_ELEMENTS],
   template: `<text>Hello, {{ name }}!</text>`,
 })
 class GreetingComponent {
@@ -163,13 +173,15 @@ it('renders the greeting', async () => {
 ### Injecting providers
 
 ```ts
-import { InjectionToken, inject } from '@angular/core';
+import { Component, InjectionToken, inject } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render } from '@blotch/angular-lynx-testing-library';
 
 const GREETING = new InjectionToken<string>('GREETING');
 
 @Component({
   selector: 'test-greeting',
+  imports: [LYNX_ELEMENTS],
   template: `<text>{{ greeting() }}</text>`,
 })
 class GreetingComponent {
@@ -190,12 +202,14 @@ Define the signal outside the component so both the component and the test can a
 
 ```ts
 import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 
 const count = signal(0);
 
 @Component({
   selector: 'test-counter',
+  imports: [LYNX_ELEMENTS],
   template: `<text>{{ count() }}</text>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -220,6 +234,7 @@ AngularLynx event bindings use Lynx prefixes: `(bindtap)`, `(catchtap)`, `(bindi
 
 ```ts
 import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
   render,
   fireEvent,
@@ -228,6 +243,7 @@ import {
 
 @Component({
   selector: 'test-button',
+  imports: [LYNX_ELEMENTS],
   template: `
     <view (bindtap)="increment()">
       <text>{{ count() }}</text>
@@ -260,6 +276,7 @@ it('shows content conditionally', async () => {
 
   @Component({
     selector: 'test-if',
+    imports: [LYNX_ELEMENTS],
     template: `@if (visible()) {
       <text>Hello</text>
     }`,
@@ -286,6 +303,7 @@ it('renders a dynamic list', async () => {
 
   @Component({
     selector: 'test-for',
+    imports: [LYNX_ELEMENTS],
     template: `@for (item of items(); track item) {
       <text>{{ item }}</text>
     }`,
@@ -361,7 +379,7 @@ Template binding → PAPI registration → DOM listener key:
 | Auto-cleanup env var    | `PTL_SKIP_AUTO_CLEANUP` | —                 | `ATL_SKIP_AUTO_CLEANUP` |
 | `renderHook()`          | ✓                       | —                 | —                       |
 | Snapshot serializer     | ✓ (RefProxy)            | —                 | —                       |
-| Vitest plugin           | ✓                       | —                 | —                       |
+| Vitest plugin           | ✓                       | —                 | — (`ng test` sets up)   |
 | Named fireEvent helpers | 30+                     | 16                | 16                      |
 | Thread-aware fireEvent  | ✓                       | ✓                 | — (single thread)       |
 | Async state helper      | `waitSchedule()`        | `waitForUpdate()` | `waitForUpdate()`       |

@@ -141,23 +141,11 @@ overflow-hidden rounded-md border border-border bg-border flex gap-px
 
 ## 3. Write a test
 
-Tests live next to the component as `<name>.test.ts` and run under Vitest. The established pattern **tests the exported `cva` variant function**, not the rendered component — mock Angular so importing the module needs no framework runtime (the class field initializers never run because the component is never constructed):
+Tests live next to the component as `<name>.test.ts` and run under Vitest here, and under `ng test` in apps that copy them. The established pattern **tests the exported `cva` variant function**, not the rendered component. Import it directly; importing the module loads Angular and the runtime, which both runners provide:
 
 ```typescript
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  inject: () => ({}),
-  input: () => () => {},
-  output: () => () => {},
-  viewChild: () => () => {},
-}));
-vi.mock('@blotch/angular-lynx', () => ({ LYNX_ELEMENTS: [] }));
-
-const { buttonGroupItemVariants } = await import('./button-group');
+import { describe, expect, it } from 'vitest';
+import { buttonGroupItemVariants } from './button-group';
 
 describe('buttonGroupItemVariants', () => {
   it('returns default variant and size classes', () => {
@@ -169,7 +157,7 @@ describe('buttonGroupItemVariants', () => {
 });
 ```
 
-The mock only needs the symbols referenced when the module **loads** (the `@Component` decorator and `ViewEncapsulation`); provide the rest defensively. `<name>.test.ts` is copied into examples too, so keep it self-contained (it imports only `./＜name＞`).
+Don't `vi.mock('@angular/core')` or `@blotch/angular-lynx`: `ng test` (Angular's unit-test builder) runs test files in one shared module graph, so the mock leaks into every other test and breaks them, and it doesn't support mocking relative imports at all. Test code is type-checked there too. `<name>.test.ts` is copied into examples too, so keep it self-contained (it imports only `./＜name＞`).
 
 ---
 
@@ -218,7 +206,7 @@ Then edit:
 - **`src/components/ui/<name>/`** — the scaffolded copy. You can hand-write it now (apply the import rewrite: `../../utils/*` → `@blotch/dolan/utils/*`) so the example builds immediately; the sync step will normalize it.
 - **`dolan.lock.json`** — list the component(s) under `components` (and keep the `theme` block). Exact hashes don't matter yet — the sync step rewrites them. List every scaffolded file, including `<name>.test.ts`.
 
-Leave `lynx.config.ts`, `tsconfig*.json`, `src/main.ts`, `src/app/app.config.ts`, `src/styles.css`, `tailwind.config.ts`, and `src/styles/*` as copied.
+Leave `tsconfig*.json`, `src/main.ts`, `src/app/app.config.ts`, `src/styles.css`, `tailwind.config.ts`, and `src/styles/*` as copied. The example needs no `lynx.config.ts`: `ng build` takes the entry from angular.json.
 
 ### The demo (`src/app/app.ts`)
 

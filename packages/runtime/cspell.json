@@ -1,4 +1,4 @@
 {
   "import": ["../../cspell.json"],
-  "words": ["subdirs", "trimmable", "WHATWG"]
+  "words": ["WHATWG", "stylesheet", "subdirs", "trimmable"]
 }

@@ -115,6 +115,43 @@ export type NormalizedI18nOptions = {
  */
 export type OutputHashing = 'all' | 'bundles' | 'media' | 'none';
 
+/**
+ * One entry of angular.json's `budgets` build option: a size limit on part
+ * of the build output, which `ng build` reports as a warning or an error
+ * when the output crosses it. See budgets.ts for what each `type` measures
+ * in a Lynx build.
+ *
+ * Copied from the `Budget` type (and its `Type` enum, as a string union) that
+ * Angular's application builder schema generates, for the same reason as
+ * {@link OutputHashing}: importing it would make an Angular builder package a
+ * dependency of this plugin for one type. Keep it in step with Angular's
+ * schema when Angular adds a field or a budget type.
+ *
+ * @see `Budget` in `@angular/build/src/builders/application/schema.d.ts`
+ */
+export type Budget = {
+  readonly type:
+    | 'all'
+    | 'allScript'
+    | 'any'
+    | 'anyComponentStyle'
+    | 'anyScript'
+    | 'bundle'
+    | 'initial';
+  /** The bundle a `bundle` budget measures: an entry name. */
+  readonly name?: string;
+  /** The size that the relative thresholds below are relative to. */
+  readonly baseline?: string;
+  readonly maximumWarning?: string;
+  readonly maximumError?: string;
+  readonly minimumWarning?: string;
+  readonly minimumError?: string;
+  /** A threshold in both directions from `baseline`. */
+  readonly warning?: string;
+  /** A threshold in both directions from `baseline`. */
+  readonly error?: string;
+};
+
 export type NormalizedOptions = {
   tsconfig: string;
   aot: boolean;
@@ -146,6 +183,7 @@ export type NormalizedOptions = {
   styles: string[];
   i18n: NormalizedI18nOptions;
   i18nMissingTranslation: 'error' | 'warning' | 'ignore';
+  budgets: readonly Budget[];
 };
 type Replacement = {
   with: string;
@@ -366,6 +404,7 @@ export const normalizeBuildOptions = async (
     styles,
     i18n,
     i18nMissingTranslation,
+    budgets: (buildOptions.budgets as Budget[] | undefined) ?? [],
   };
   return normalizedOptions;
 };

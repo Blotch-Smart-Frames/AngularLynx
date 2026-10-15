@@ -2,14 +2,12 @@
 
 Rsbuild plugin that compiles Angular for the Lynx runtime.
 
-**`ng build` and `ng serve` add it for you.** List it in `lynx.config.ts` only to pass options. Import it from `@blotch/angular-lynx-build`, which depends on it:
+**`ng build` and `ng serve` add it for you.** List it in `lynx.config.ts` only to pass options. Import it, and `defineConfig`, from `@blotch/angular-lynx-build`, which depends on it and on RSpeedy:
 
 ```typescript title="lynx.config.ts"
-import { pluginAngularLynx } from '@blotch/angular-lynx-build';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
-  source: { entry: './src/main.ts' },
   plugins: [
     pluginAngularLynx({
       enableSSR: true, // Enable snapshot SSR

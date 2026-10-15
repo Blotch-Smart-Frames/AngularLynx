@@ -38,8 +38,8 @@ Options:
   --tarball-dir <dir>    Where to write the tested tarballs (for publishing)
   --tarballs <dir>       Test tarballs packed by an earlier run instead of
                          packing the workspace (used by the CI matrix)
-  --rspeedy <version>    Install this @lynx-js/rspeedy instead of the one
-                         ng add pins, e.g. latest
+  --rspeedy <version>    Override @lynx-js/rspeedy with this version instead
+                         of the one the builders depend on, e.g. latest
   --artifacts-dir <dir>  Where to write logs and failure artifacts
   --build-only           Layer 2 only scaffolds the app and builds it for
                          production (CI uses this to feed the native jobs)

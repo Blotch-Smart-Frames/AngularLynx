@@ -19,11 +19,15 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       dry-run: ${{ steps.version.outputs.dry-run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Node 24 runs check-version.ts directly (type stripping).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
+          # setup-node turns npm caching on by itself because package.json
+          # has a `packageManager` field. No job here runs `npm ci`, and a
+          # release shouldn't restore a cache another workflow saved.
+          package-manager-cache: false
       - id: version
         run: |
           # A tag publishes its own version. Anything else (a manual dispatch
@@ -77,14 +81,15 @@ jobs:
       id-token: write
     steps:
       # Only for the publish script and the package list; nothing is built.
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       # The exact tarballs the release gate tested, so what users install is
       # byte-for-byte what passed.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: e2e-tarballs
           path: ${{ runner.temp }}/tarballs
@@ -108,10 +113,11 @@ jobs:
     needs: [version, publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
+          package-manager-cache: false
       - run: node packages/release/src/wait-for-npm.ts "${{ needs.version.outputs.version }}"
 
   # Layers 2 and 3 against the public registry: catches problems that only
@@ -135,7 +141,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

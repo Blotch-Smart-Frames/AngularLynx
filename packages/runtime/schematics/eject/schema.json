@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "SchematicsAngularLynxEject",
+  "title": "AngularLynx eject schematic",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Writes the generated iOS and Android projects into ios/ and android/, where you own and edit them. One-way: angular.json app options stop applying to an ejected project.",
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "The project to eject.",
+      "$default": {
+        "$source": "projectName"
+      }
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android", "all"],
+      "default": "all",
+      "description": "Which native project to eject."
+    }
+  },
+  "required": []
+}

@@ -6,6 +6,22 @@ import { runAllowFailure, type RunResult } from '../process.ts';
 
 export type Platform = 'ios' | 'android';
 
+/**
+ * What Layer 6 runs the bundle in: the app's own binary from
+ * `ng build --platform` (what users ship), or Lynx Explorer opening the
+ * bundle from a local server.
+ */
+export type NativeHost =
+  | {
+      readonly kind: 'shell';
+      /** The .app or .apk `ng build --platform` wrote. */
+      readonly binary: string;
+      readonly appId: string;
+      /** The iOS process name, for reading its log. */
+      readonly processName: string;
+    }
+  | { readonly kind: 'explorer'; readonly bundleUrl: string };
+
 /** A Maestro flow in packages/e2e/native/, and what it proves. */
 export type Flow = {
   readonly file: string;
@@ -57,13 +73,13 @@ export const runFlow = (
   {
     device,
     appId,
-    bundleUrl,
+    host,
     outputDir,
     logFile,
   }: {
     device: string;
     appId: string;
-    bundleUrl: string;
+    host: NativeHost;
     outputDir: string;
     logFile: string;
   },
@@ -79,7 +95,9 @@ export const runFlow = (
       '-e',
       `APP_ID=${appId}`,
       '-e',
-      `BUNDLE_URL=${bundleUrl}`,
+      `OPEN_WITH=${host.kind}`,
+      '-e',
+      `BUNDLE_URL=${host.kind === 'explorer' ? host.bundleUrl : ''}`,
       // Maestro 2 saves `takeScreenshot` images here, and refuses paths
       // outside it.
       '--test-output-dir',

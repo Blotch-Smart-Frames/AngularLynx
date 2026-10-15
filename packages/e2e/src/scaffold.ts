@@ -313,17 +313,40 @@ const checkGeneratedProject = (appDir: string) => {
   );
   const pkg = readJson<PackageJson>(path.join(appDir, 'package.json'));
   check(
-    pkg.scripts?.['build'] === 'rspeedy build',
-    `package.json's build script is ${JSON.stringify(pkg.scripts?.['build'])}, not "rspeedy build". \`ng add\` didn't rewrite it.`,
+    pkg.scripts?.['build'] === 'ng build',
+    `package.json's build script is ${JSON.stringify(pkg.scripts?.['build'])}, not "ng build".`,
   );
   check(
-    pkg.scripts?.['start'] === 'rspeedy dev',
-    `package.json's start script is ${JSON.stringify(pkg.scripts?.['start'])}, not "rspeedy dev". \`ng add\` didn't rewrite it.`,
+    pkg.scripts?.['start'] === 'ng serve',
+    `package.json's start script is ${JSON.stringify(pkg.scripts?.['start'])}, not "ng serve".`,
+  );
+  // `npm run build` and `npm start` only build a Lynx bundle when the targets
+  // run AngularLynx's builders; Angular's own builders would try to build a
+  // browser app from Lynx templates.
+  const targets = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { builder: string }> }
+    >;
+  }>(path.join(appDir, 'angular.json')).projects;
+  const architect = Object.values(targets)[0]?.architect ?? {};
+  check(
+    architect['build']?.builder === '@blotch/angular-lynx:application',
+    `angular.json's build target uses ${JSON.stringify(architect['build']?.builder)}, not @blotch/angular-lynx:application. \`ng add\` didn't switch it.`,
   );
   check(
-    pkg.devDependencies?.['@blotch/rsbuild-plugin-angular-lynx'],
-    "`ng add` didn't add @blotch/rsbuild-plugin-angular-lynx to devDependencies.",
+    architect['serve']?.builder === '@blotch/angular-lynx:dev-server',
+    `angular.json's serve target uses ${JSON.stringify(architect['serve']?.builder)}, not @blotch/angular-lynx:dev-server. \`ng add\` didn't switch it.`,
   );
+  for (const dependency of [
+    '@blotch/rsbuild-plugin-angular-lynx',
+    '@blotch/angular-lynx-native',
+  ]) {
+    check(
+      pkg.devDependencies?.[dependency],
+      `\`ng add\` didn't add ${dependency} to devDependencies.`,
+    );
+  }
   const mainTs = readFileSync(path.join(appDir, 'src/main.ts'), 'utf8');
   check(
     /import\s*\{[^}]*\bbootstrapApplication\b[^}]*\}\s*from\s*'@blotch\/angular-lynx'/.test(
@@ -356,13 +379,14 @@ const checkGeneratedProject = (appDir: string) => {
     `\`ng add\` left these \`ng new\` files behind in src/app: ${leftovers.join(', ')}.`,
   );
   console.log(
-    '✓ the project has lynx.config.ts, rspeedy scripts and Lynx bootstrap files',
+    '✓ the project has lynx.config.ts, the AngularLynx builders and Lynx bootstrap files',
   );
 };
 
 const OUR_RUNTIME_PACKAGES = [
   '@blotch/angular-lynx',
   '@blotch/rsbuild-plugin-angular-lynx',
+  '@blotch/angular-lynx-native',
 ];
 
 type PackageLock = {

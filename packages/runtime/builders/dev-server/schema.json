@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "AngularLynxDevServerBuilder",
+  "title": "AngularLynx dev-server builder",
+  "description": "Runs the rspeedy dev server, which Lynx Explorer and the web preview load the app from.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "type": "string",
+      "description": "The rspeedy config file, relative to the project root. Defaults to lynx.config.ts (or .js, .mts, .mjs)."
+    },
+    "environment": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Only build these rspeedy environments (e.g. lynx)."
+    }
+  }
+}

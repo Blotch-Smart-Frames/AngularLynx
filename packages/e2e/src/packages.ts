@@ -49,6 +49,23 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
     requiredFiles: ['dist/index.js', 'dist/index.d.ts'],
   },
   {
+    name: '@blotch/angular-lynx-native',
+    dir: 'packages/native',
+    publishDir: 'packages/native',
+    hasTypes: true,
+    requiredFiles: [
+      'dist/index.js',
+      'dist/index.d.ts',
+      // The native shells the generator copies. Without them every
+      // `ng build --platform` fails, and no unit test would notice.
+      'templates/ios/App.xcodeproj/project.pbxproj',
+      'templates/ios/App/Info.plist',
+      'templates/android/gradlew',
+      'templates/android/app/build.gradle.kts',
+      'templates/android/app/src/main/AndroidManifest.xml',
+    ],
+  },
+  {
     name: '@blotch/angular-lynx',
     dir: 'packages/runtime',
     publishDir: 'packages/runtime/dist',
@@ -63,6 +80,13 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       // provide any `ng add` actions". Every factory in collection.json is
       // also checked separately, in check-packages.ts.
       'schematics/package.json',
+      // The `ng build` / `ng serve` builders, CommonJS like the schematics.
+      'builders/builders.json',
+      'builders/package.json',
+      'builders/application/index.js',
+      'builders/application/schema.json',
+      'builders/dev-server/index.js',
+      'builders/dev-server/schema.json',
     ],
   },
   {

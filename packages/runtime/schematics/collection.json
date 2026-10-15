@@ -25,6 +25,11 @@
       "factory": "./component/index",
       "schema": "./component/schema.json",
       "aliases": ["c"]
+    },
+    "eject": {
+      "description": "Writes the generated iOS and Android projects into ios/ and android/ for native changes (one-way)",
+      "factory": "./eject/index",
+      "schema": "./eject/schema.json"
     }
   }
 }

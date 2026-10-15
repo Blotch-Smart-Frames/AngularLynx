@@ -2,27 +2,32 @@ import path from 'node:path';
 
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { FLOWS, judgeFlow, runFlow } from './maestro.ts';
+import { FLOWS, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
 
 /**
- * Layer 6 on Android: installs Lynx Explorer on the running emulator (CI
- * starts it with android-emulator-runner) and runs the same Maestro flows as
- * iOS. `adb reverse` makes the host's static server reachable at the same
- * localhost URL as on iOS.
+ * Layer 6 on Android: installs the app's own APK, or Lynx Explorer, on the
+ * running emulator (CI starts it with android-emulator-runner) and runs the
+ * same Maestro flows as iOS. For Explorer, `adb reverse` makes the host's
+ * static server reachable at the same localhost URL as on iOS.
  */
 export const runOnAndroidEmulator = async ({
-  bundleUrl,
+  host,
   port,
   artifactsDir,
   logFile,
 }: {
-  bundleUrl: string;
+  host: NativeHost;
   port: number;
   artifactsDir: string;
   logFile: string;
 }) => {
-  step('Layer 6: Android emulator');
-  const apk = await getExplorer('android', logFile);
+  step(
+    `Layer 6: Android emulator (${host.kind === 'shell' ? "the app's own build" : 'Lynx Explorer'})`,
+  );
+  const apk =
+    host.kind === 'shell' ? host.binary : await getExplorer('android', logFile);
+  const appId =
+    host.kind === 'shell' ? host.appId : EXPLORER.android.packageName;
   const adb = (args: string[]) =>
     run('adb', args, { cwd: process.cwd(), logFile, echo: false });
   await adb(['wait-for-device']);
@@ -41,8 +46,8 @@ export const runOnAndroidEmulator = async ({
     for (const flow of FLOWS) {
       const result = await runFlow(flow, {
         device,
-        appId: EXPLORER.android.packageName,
-        bundleUrl,
+        appId,
+        host,
         outputDir: path.join(artifactsDir, 'android'),
         logFile,
       });
@@ -71,7 +76,7 @@ export const runOnAndroidEmulator = async ({
         ),
     );
   if (jsErrors.length > 0) {
-    failures.push(`Explorer logged JavaScript errors:\n${jsErrors.join('\n')}`);
+    failures.push(`The app logged JavaScript errors:\n${jsErrors.join('\n')}`);
   }
   return failures;
 };

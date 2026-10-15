@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- fetch() and XMLHttpRequest go through Lynx's HTTP service. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- angular-lynx:permissions -->
+
+    <application
+        android:name=".ShellApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AngularLynxShell">
+        <!--
+          One activity holding one LynxView; Angular Router does all navigation
+          inside it. configChanges keeps the activity (and the running Angular
+          app) alive on rotation, resizing and dark-mode switches instead of
+          restarting it; the LynxView re-lays itself out.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="${screenOrientation}"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- angular-lynx:deep-links -->
+        </activity>
+    </application>
+
+</manifest>

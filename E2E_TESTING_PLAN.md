@@ -167,7 +167,7 @@ Set `CI=true` and `NG_CLI_ANALYTICS=false`. CI has no terminal attached, so `ng 
    ```
 2. **Check what the scaffold produced:**
    - `lynx.config.ts` exists.
-   - `package.json` has `scripts.build === "rspeedy build"` and `scripts.start === "rspeedy dev"`.
+   - `package.json` has `scripts.build === "ng build"` and `scripts.start === "ng serve"`, and `angular.json`'s `build` and `serve` targets use the `@blotch/angular-lynx` builders.
    - `devDependencies` includes `@blotch/rsbuild-plugin-angular-lynx`.
    - `src/main.ts` imports `bootstrapApplication` from `@blotch/angular-lynx`.
    - `src/app/app.ts` imports `LYNX_ELEMENTS`.

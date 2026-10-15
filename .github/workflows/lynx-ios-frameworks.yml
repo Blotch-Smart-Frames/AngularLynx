@@ -1,0 +1,65 @@
+# Builds Lynx for iOS as the prebuilt XCFrameworks that `ng build --platform
+# ios` links (see packages/native/README.md). Lynx only publishes iOS source
+# pods, so this compiles them once per Lynx version instead of on every
+# user's machine.
+#
+# Run it by hand after bumping the versions in
+# packages/native/scripts/build-lynx-ios-frameworks.sh. With `publish`, it
+# attaches the zips to a `lynx-ios-<version>` GitHub release; then pin that
+# zip's URL and SHA-256 (printed in the job summary) in
+# packages/native/src/ios/frameworks.ts.
+name: Lynx iOS frameworks
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the zips to a lynx-ios-<version> GitHub release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      # macOS ships Ruby 2.6, which current CocoaPods rejects.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build the XCFrameworks
+        run: packages/native/scripts/build-lynx-ios-frameworks.sh "$RUNNER_TEMP/lynx-ios"
+      - name: Summarize
+        id: summary
+        run: |
+          cd "$RUNNER_TEMP/lynx-ios/out"
+          version=$(sed -n 's/^lynx=//p' LynxFrameworks/VERSIONS)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Lynx $version for iOS"
+            echo '```'
+            cat LynxFrameworks/VERSIONS
+            shasum -a 256 ./*.zip
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lynx-ios-frameworks
+          path: ${{ runner.temp }}/lynx-ios/out/*.zip
+          if-no-files-found: error
+      - name: Publish the release
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.summary.outputs.version }}
+        run: >-
+          gh release create "lynx-ios-$VERSION" "$RUNNER_TEMP"/lynx-ios/out/*.zip
+          --title "Lynx $VERSION for iOS (XCFrameworks)"
+          --notes "Prebuilt Lynx $VERSION XCFrameworks for @blotch/angular-lynx-native, built by the Lynx iOS frameworks workflow. Not an AngularLynx release."

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { check, run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { FLOWS, judgeFlow, runFlow } from './maestro.ts';
+import { FLOWS, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
 
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
@@ -133,28 +133,32 @@ const JS_ERROR_PATTERN =
   /\[lynx\].*\b(Uncaught|TypeError|ReferenceError|SyntaxError|RangeError|lynx_console.*error|js error)/i;
 
 /**
- * Layer 6 on iOS: opens the app's native bundle in Lynx Explorer on the
- * simulator and runs the Maestro flows against it.
+ * Layer 6 on iOS: installs the app's own simulator build, or Lynx Explorer
+ * opening the bundle, on the simulator and runs the Maestro flows against it.
  */
 export const runOnIosSimulator = async ({
-  bundleUrl,
+  host,
   artifactsDir,
   logFile,
   keepRunning = false,
 }: {
-  /** URL of main.lynx.bundle, reachable from the simulator. */
-  bundleUrl: string;
+  host: NativeHost;
   artifactsDir: string;
   logFile: string;
   keepRunning?: boolean;
 }) => {
-  step('Layer 6: iOS Simulator');
-  const app = await getExplorer('ios', logFile);
+  step(
+    `Layer 6: iOS Simulator (${host.kind === 'shell' ? "the app's own build" : 'Lynx Explorer'})`,
+  );
+  const app =
+    host.kind === 'shell' ? host.binary : await getExplorer('ios', logFile);
+  const appId = host.kind === 'shell' ? host.appId : EXPLORER.ios.bundleId;
+  const processName = host.kind === 'shell' ? host.processName : 'LynxExplorer';
   const udid = await bootSimulator(logFile);
   await simctl(['install', udid, app], logFile);
 
-  // Explorer's own log, for JavaScript errors and for debugging failures.
-  const explorerLog = path.join(artifactsDir, 'ios-explorer.log');
+  // The app's own log, for JavaScript errors and for debugging failures.
+  const explorerLog = path.join(artifactsDir, `ios-${host.kind}.log`);
   writeFileSync(explorerLog, '');
   const logStream = start(
     'xcrun',
@@ -167,7 +171,7 @@ export const runOnIosSimulator = async ({
       '--level',
       'debug',
       '--predicate',
-      'process == "LynxExplorer"',
+      `process == "${processName}"`,
     ],
     { cwd: process.cwd(), logFile: explorerLog, echo: false },
   );
@@ -177,8 +181,8 @@ export const runOnIosSimulator = async ({
     for (const flow of FLOWS) {
       const result = await runFlow(flow, {
         device: udid,
-        appId: EXPLORER.ios.bundleId,
-        bundleUrl,
+        appId,
+        host,
         outputDir: path.join(artifactsDir, 'ios'),
         logFile,
       });
@@ -207,7 +211,7 @@ export const runOnIosSimulator = async ({
     .split('\n')
     .filter((line) => JS_ERROR_PATTERN.test(line));
   if (jsErrors.length > 0) {
-    failures.push(`Explorer logged JavaScript errors:\n${jsErrors.join('\n')}`);
+    failures.push(`The app logged JavaScript errors:\n${jsErrors.join('\n')}`);
   }
   return failures;
 };

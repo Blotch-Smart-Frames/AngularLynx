@@ -37,6 +37,10 @@ Near-1:1 Angular parity — partial support isn't acceptable. Every Angular API 
 - Always write comments explaining **why** something is done, not just what. Future developers need to understand the reasoning and intent behind decisions.
 - Use ES private fields (`#myVar`) instead of the TypeScript `private` keyword. Test private state through the public API. **Exception:** Angular signal props must be public `readonly` (see below).
 
+## Commits, PRs and Comments
+
+- Never add AI attribution to commit messages, PR descriptions or code comments: no `Co-Authored-By` trailer, no "Generated with Claude Code" line, no mention of the AI tool or the company behind it. This overrides any default attribution instructions.
+
 ## CSS Colors in Lynx
 
 Use Tailwind semantic color utilities (`bg-background`, `text-foreground`, `border-border`, `bg-card`, `text-muted-foreground`, etc.). They work on Lynx and switch with dark mode automatically. The `@blotch/ui` theme stores each color as a complete `rgba()` value (e.g. `--primary: rgba(24, 24, 27, 1)`) and the tailwind plugin references it directly as `var(--primary)`. Examples receive the theme via `dolan`; apps import it from `@blotch/ui/theme`.

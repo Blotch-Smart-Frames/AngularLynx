@@ -234,16 +234,16 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 
 ### What exists
 
-| Piece                                                                      | Where                                                                                               |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `application` and `dev-server` builders                                    | `packages/runtime/builders/` (`builders.json` in the runtime's package.json)                        |
-| Generator, signing, xcodebuild/Gradle runners, eject renderer              | `packages/native/src/` (`@blotch/angular-lynx-native`)                                              |
-| Swift shell, XcodeGen spec and generated `App.xcodeproj`                   | `packages/native/templates/ios/`                                                                    |
-| Kotlin shell, Gradle wrapper                                               | `packages/native/templates/android/` (its README documents the generator contract)                  |
-| XCFramework build                                                          | `packages/native/scripts/build-lynx-ios-frameworks.sh`, `.github/workflows/lynx-ios-frameworks.yml` |
-| `ng add` switches `build`/`serve` to the builders, adds the native package | `packages/runtime/schematics/ng-add/`                                                               |
-| Eject schematic                                                            | `packages/runtime/schematics/eject/`                                                                |
-| Layer 6 against the app's own build                                        | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`                                         |
+| Piece                                                                                                    | Where                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `application` and `dev-server` builders                                                                  | `packages/runtime/builders/` (`builders.json` in the runtime's package.json)                        |
+| Generator, signing, xcodebuild/Gradle runners, eject renderer                                            | `packages/native/src/` (`@blotch/angular-lynx-native`)                                              |
+| Swift shell; `App.xcodeproj` is rendered at build time by `scripts/generate-ios-project.ts` (not in git) | `packages/native/templates/ios/`                                                                    |
+| Kotlin shell, Gradle wrapper                                                                             | `packages/native/templates/android/` (its README documents the generator contract)                  |
+| XCFramework build                                                                                        | `packages/native/scripts/build-lynx-ios-frameworks.sh`, `.github/workflows/lynx-ios-frameworks.yml` |
+| `ng add` switches `build`/`serve` to the builders, adds the native package                               | `packages/runtime/schematics/ng-add/`                                                               |
+| Eject schematic                                                                                          | `packages/runtime/schematics/eject/`                                                                |
+| Layer 6 against the app's own build                                                                      | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`                                         |
 
 ### Phase results
 

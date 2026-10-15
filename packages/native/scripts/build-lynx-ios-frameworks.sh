@@ -10,18 +10,22 @@
 #
 #   scripts/build-lynx-ios-frameworks.sh [work-dir]
 #
-# Needs Xcode and Ruby >= 2.7 with Bundler (macOS's own Ruby 2.6 is too old).
+# Needs Xcode, Node 22.18+ with the repository's dependencies installed
+# (`npm ci`), and Ruby >= 2.7 with Bundler (macOS's own Ruby 2.6 is too old).
 set -euo pipefail
 
 LYNX_VERSION=4.1.0
 PRIMJS_VERSION=4.1.1
 SDWEBIMAGE_VERSION=5.15.5
 SDWEBIMAGE_WEBP_VERSION=0.11.0
-# Every framework the shell links, in dependency order. Keep in sync with the
-# `dependencies` in templates/ios/project.yml.
-FRAMEWORKS=(Lynx LynxBase LynxServiceAPI LynxService PrimJS SDWebImage SDWebImageWebPCoder libwebp)
 
 here="$(cd "$(dirname "$0")" && pwd)"
+# Every framework the shell links: LYNX_IOS_FRAMEWORKS, the same list the
+# template project and the builder use.
+read -ra FRAMEWORKS <<< "$(node --input-type=module -e "
+  const { LYNX_IOS_FRAMEWORKS } = await import('$here/../src/ios/frameworks.ts');
+  console.log(LYNX_IOS_FRAMEWORKS.join(' '));
+")"
 work="${1:-$here/../.lynx-ios-build}"
 mkdir -p "$work/Host"
 work="$(cd "$work" && pwd)"
@@ -30,21 +34,8 @@ cd "$work"
 specs=https://raw.githubusercontent.com/lynx-family/Specs/master
 
 # CocoaPods needs a host app target to install into. It is never shipped.
-cat > Host.yml <<EOF
-name: Host
-options:
-  deploymentTarget:
-    iOS: "15.0"
-targets:
-  Host:
-    type: application
-    platform: iOS
-    sources: [Host]
-    settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.angularlynx.frameworkhost
-      GENERATE_INFOPLIST_FILE: YES
-      CODE_SIGNING_ALLOWED: NO
-EOF
+# HOST_PROJECT in generate-ios-project.ts describes it.
+node "$here/generate-ios-project.ts" --host "$work"
 echo 'import UIKit
 UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, nil)' > Host/main.swift
 
@@ -83,7 +74,6 @@ post_install do |installer|
 end
 EOF
 
-xcodegen generate --spec Host.yml --quiet
 bundle config set --local path vendor/bundle
 bundle install --quiet
 bundle exec pod install

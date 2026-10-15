@@ -27,7 +27,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/generate-ios-project.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -37,11 +37,12 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "cspell": "cspell .",
-    "generate:ios-project": "cd templates/ios && mkdir -p Frameworks && xcodegen generate --quiet && rmdir Frameworks",
+    "generate:ios-project": "node scripts/generate-ios-project.ts",
     "build:lynx-ios-frameworks": "scripts/build-lynx-ios-frameworks.sh",
     "publish:local": "yalc publish --push"
   },
   "devDependencies": {
+    "@bacons/xcode": "1.0.0-alpha.33",
     "@types/node": "^22.0.0",
     "typescript": "~6.0.0"
   },

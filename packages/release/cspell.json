@@ -1,6 +1,7 @@
 {
   "import": ["../../cspell.json"],
   "words": [
+    "ETARGET",
     "gradlew",
     "pbxproj",
     "xcodeproj",

@@ -26,6 +26,10 @@ if (!version) {
 for (const pkg of PUBLISHABLE_PACKAGES) {
   // --allow-same-version: without it npm fails with "Version not changed"
   // for a package already at the version, so a rerun would stop part-way.
+  // --no-workspaces-update: otherwise npm installs after each package, while
+  // the others still pin the old version of it, which the workspace no longer
+  // provides. npm then looks for that version on the registry and fails
+  // (ETARGET); the install below runs once every pin has moved.
   // The runtime is stamped in its source folder, not dist/: ng-packagr copies
   // the source package.json into dist/ when it builds.
   execFileSync(
@@ -35,6 +39,7 @@ for (const pkg of PUBLISHABLE_PACKAGES) {
       version,
       '--no-git-tag-version',
       '--allow-same-version',
+      '--no-workspaces-update',
       '-w',
       pkg.dir,
     ],

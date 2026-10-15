@@ -5,8 +5,9 @@ description: >-
   components, using Lynx elements (view, text, image, scroll-view, list),
   handling Lynx events (bindtap, catchtap, bindinput), configuring
   bootstrapApplication, provideRenderer, provideRouter, debugging
-  on-device errors, working with Lynx CSS differences, or building with
-  pluginAngularLynx and rspeedy.
+  on-device errors, working with Lynx CSS differences, or building and testing
+  with the Angular CLI (ng build, ng serve, ng test), pluginAngularLynx and
+  rspeedy.
 license: MIT
 metadata:
   author: Blotch Smart Frames
@@ -35,7 +36,7 @@ These prevent crashes and silent failures. Violating any will break your app on-
 
 ## Bootstrap & Project Setup
 
-How to create and configure an AngularLynx application. Covers `bootstrapApplication()`, `provideRenderer()`, `provideRouter()`, app config, and `lynx.config.ts` with `pluginAngularLynx()`.
+How to create and configure an AngularLynx application. Covers `bootstrapApplication()`, `provideRenderer()`, `provideRouter()`, app config, and the builders `ng add` sets up in `angular.json`.
 
 Read [bootstrap-and-setup.md](references/bootstrap-and-setup.md)
 
@@ -95,7 +96,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## Build Configuration
 
-`lynx.config.ts` with `defineConfig` from `@lynx-js/rspeedy`. `pluginAngularLynx()` handles Angular compilation, entry splitting (main + background bundles), and CSS scoping. Dev server with QR code for Lynx Explorer.
+`ng build` / `ng serve` / `ng test` run the `@blotch/angular-lynx-build` builders, configured in `angular.json`; `optimization` picks a production or development build, and `budgets` are enforced. `lynx.config.ts` is optional (import `defineConfig` from `@blotch/angular-lynx-build`). `pluginAngularLynx()` handles Angular compilation, entry splitting (main + background bundles), and CSS scoping. Dev server with QR code for Lynx Explorer.
 
 Read [build-configuration.md](references/build-configuration.md)
 

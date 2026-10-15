@@ -1,4 +1,5 @@
 import type { RsbuildPlugin } from '@lynx-js/rspeedy';
+import { ANGULAR_CLI_CONTEXT_PLUGIN_NAME } from './angular-cli-context.js';
 import { applyAngularRules } from './angular.js';
 import { applyCSS } from './css.js';
 import { applyEntry } from './entry.js';
@@ -17,7 +18,9 @@ export const pluginAngularLynx = (
 ): RsbuildPlugin => {
   return {
     name: 'lynx:angular',
-    pre: ['lynx:rsbuild:plugin-api'],
+    // The Angular CLI context plugin is only there under `ng build` /
+    // `ng serve`; Rsbuild ignores a `pre` entry that isn't registered.
+    pre: ['lynx:rsbuild:plugin-api', ANGULAR_CLI_CONTEXT_PLUGIN_NAME],
     setup: async (api) => {
       const normalizedOptions = normalizeOptions(options);
       applyCSS(api, normalizedOptions);

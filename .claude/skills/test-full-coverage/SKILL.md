@@ -56,10 +56,12 @@ Use Node 22 (`nvm use 22`). The lcov report lands at `packages/<dir>/coverage/lc
   `renderer/inline-text.test.ts`, `renderer/teardown.test.ts`). Services: `new Service()`
   + `vi.stubGlobal(...)`.
 - **testing-library** — its own `render()` / `screen` / `fireEvent` / `waitForUpdate`.
-- **ui** — the `render()` idiom from `@blotch/angular-lynx-testing-library` (config
-  mirrors `examples/kitchen-sink-app/vitest.config.ts`), plus direct pure-function
-  assertions (`buttonVariants`, chart geometry). Extract branchy logic into exported
-  helpers (e.g. `toast-state.ts`) for heavy components.
+- **ui** — the `render()` idiom from `@blotch/angular-lynx-testing-library` (its
+  `vitest.config.ts` aliases the packages to source and loads the library's setup),
+  plus direct pure-function assertions (`buttonVariants`, chart geometry), imported
+  directly — never by mocking `@angular/core`: the copies `dolan` puts in apps run
+  under `ng test`, whose test files share one module graph. Extract branchy logic
+  into exported helpers (e.g. `toast-state.ts`) for heavy components.
 - **rsbuild-plugin / dolan** — plain node/vitest with tmp-dir fixtures; mock
   build-tool / prompt internals with `vi.mock`.
 - **oxlint-plugin** — drive each rule IN-PROCESS: `rule.create(fakeContext)` with

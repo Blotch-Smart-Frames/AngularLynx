@@ -1,30 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { ChartDomain } from './cartesian-chart';
-
-// Mock Angular so importing the component module doesn't require the framework
-// runtime. Only the exported pure geometry fns are exercised here; the class
-// field initializers (input/computed) never run because we never construct the
-// component.
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  input: () => () => {},
-  signal: () => () => {},
-}));
-
-// The module now imports the gesture primitives at top level. They're only used
-// inside class field initializers (which never run — we don't construct the
-// component), so bare stubs are enough to satisfy the imports.
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-  LynxGestureDetector: class {},
-  PanGesture: class {},
-  PinchGesture: class {},
-  Gesture: { Simultaneous: () => ({}) },
-}));
-
-const {
+import { describe, expect, it } from 'vitest';
+import {
+  type ChartDomain,
   linearScale,
   invertLinear,
   niceNum,
@@ -37,7 +13,7 @@ const {
   clampWindow,
   panWindow,
   zoomWindow,
-} = await import('./cartesian-chart');
+} from './cartesian-chart';
 
 describe('linearScale', () => {
   it('interpolates a value across the range', () => {

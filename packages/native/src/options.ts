@@ -1,6 +1,6 @@
 /**
  * The app identity and native settings a project declares in angular.json, as
- * options of the `@blotch/angular-lynx:application` builder.
+ * options of the `@blotch/angular-lynx-build:application` builder.
  *
  * The options are flat on purpose. Angular merges a `configurations` entry
  * into the base options one key deep, so a nested `app: { id }` override in a

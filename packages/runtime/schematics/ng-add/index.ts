@@ -15,6 +15,7 @@ import {
   DependencyType,
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
+import type { JsonObject, JsonValue } from '@angular-devkit/core';
 import { JSONFile } from '@schematics/angular/utility/json-file';
 import {
   getWorkspace,
@@ -27,11 +28,13 @@ import { VERSIONS } from './versions';
 /**
  * Transforms a standard `ng new` Angular project into a Lynx-native application.
  * The schematic replaces browser-specific bootstrap (main.ts, app.config.ts,
- * app.component.ts) with Lynx equivalents, adds lynx.config.ts via template
- * files, rewires package.json scripts to rspeedy, and optionally sets up
- * Tailwind with the Lynx preset. This is a one-shot destructive transform —
- * the old browser-Angular files are deleted because they reference DOM APIs
- * and HTML elements that don't exist on the Lynx runtime.
+ * app.component.ts) with Lynx equivalents, points `ng build`, `ng serve` and
+ * `ng test` at the AngularLynx builders and `ng generate` at its schematics,
+ * and optionally sets up Tailwind with the Lynx preset. Everything else stays
+ * as `ng new` left it: the app needs no build config besides angular.json.
+ * This is a one-shot destructive transform — the old browser-Angular files
+ * are deleted because they reference DOM APIs and HTML elements that don't
+ * exist on the Lynx runtime.
  */
 export default (options: Schema): Rule =>
   async (tree: Tree) => {
@@ -72,7 +75,11 @@ export default (options: Schema): Rule =>
       replaceApp(sourceRoot, prefix, projectName),
       deleteOldAppFiles(sourceRoot),
       excludeTestFilesFromAppBuild(appTsconfig),
+      includeTestFilesInSpecTsconfig(
+        `${projectRoot ? projectRoot + '/' : ''}tsconfig.spec.json`,
+      ),
       useLynxBuilders(projectName),
+      useLynxSchematics(),
       updatePackageScripts(),
       addCoreDependencies(),
     ];
@@ -92,8 +99,8 @@ export default (options: Schema): Rule =>
 const addTemplateFiles = (projectRoot: string, _sourceRoot: string): Rule =>
   mergeWith(
     // MergeStrategy.Overwrite is deliberate — `ng add` is meant to be
-    // idempotent so re-running it should refresh the lynx.config.ts and any
-    // other template assets to the package's current version. Default merge
+    // idempotent so re-running it should refresh the template files
+    // (src/rspeedy-env.d.ts) to the package's current version. Default merge
     // strategy would error on file collisions.
     apply(url('../files'), [applyTemplates({}), move(projectRoot || '/')]),
     MergeStrategy.Overwrite,
@@ -247,11 +254,33 @@ const excludeTestFilesFromAppBuild = (tsconfigPath: string): Rule => {
   };
 };
 
+const includeTestFilesInSpecTsconfig = (tsconfigPath: string): Rule => {
+  return (tree: Tree) => {
+    // `ng test` compiles `*.test.ts` files alongside `ng new`'s `*.spec.ts`
+    // ones, and AngularLynx's schematics name tests `*.test.ts`. Listed in
+    // tsconfig.spec.json, editors type-check them with the test types
+    // (vitest/globals) instead of treating them as files of no project.
+    if (!tree.exists(tsconfigPath)) {
+      return;
+    }
+    const tsconfig = new JSONFile(tree, tsconfigPath);
+    const include = tsconfig.get(['include']);
+    if (Array.isArray(include) && !include.includes('src/**/*.test.ts')) {
+      tsconfig.modify(
+        ['include'],
+        [...(include as string[]), 'src/**/*.test.ts'],
+      );
+    }
+  };
+};
+
 /**
  * Angular compiler options from `ng new`'s build target that the Lynx builder
- * accepts (see builders/application/schema.json). @blotch/rsbuild-plugin-angular-lynx
- * and `ng test` read them from angular.json; anything else, such as options
- * only the browser builder knows, would fail the builder's option validation.
+ * accepts (see @blotch/angular-lynx-build's builders/application/schema.json).
+ * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them from
+ * angular.json; anything else, such as options only the browser builder
+ * knows, would fail the builder's option validation. `optimization` also picks
+ * the bundle's production or development mode.
  */
 const ANGULAR_BUILD_OPTIONS = new Set([
   'browser',
@@ -274,8 +303,8 @@ const ANGULAR_BUILD_OPTIONS = new Set([
 ]);
 
 const keepAngularOptions = (
-  options: Record<string, unknown> | undefined,
-): Record<string, unknown> =>
+  options: Record<string, JsonValue | undefined> | undefined,
+): Record<string, JsonValue | undefined> =>
   Object.fromEntries(
     Object.entries(options ?? {}).filter(([key]) =>
       ANGULAR_BUILD_OPTIONS.has(key),
@@ -283,11 +312,62 @@ const keepAngularOptions = (
   );
 
 /**
- * Points `ng build` and `ng serve` at the AngularLynx builders. They run
- * rspeedy (which applies @blotch/rsbuild-plugin-angular-lynx), and
- * `ng build --platform ios|android` also produces the native app. The build
- * target keeps `ng new`'s Angular compiler options, which the build plugin
- * and `ng test` read, and gains the app's identity for native builds.
+ * Options of Angular's dev server that the Lynx dev server accepts too (see
+ * @blotch/angular-lynx-build's builders/dev-server/schema.json).
+ */
+const DEV_SERVER_OPTIONS = new Set(['buildTarget', 'port', 'host']);
+
+const keepDevServerOptions = (
+  options: Record<string, JsonValue | undefined> | undefined,
+): Record<string, JsonValue | undefined> =>
+  Object.fromEntries(
+    Object.entries(options ?? {}).filter(([key]) =>
+      DEV_SERVER_OPTIONS.has(key),
+    ),
+  );
+
+/**
+ * `ng new`'s initial-bundle budget, sized for a web app's first download.
+ */
+const NG_NEW_INITIAL_BUDGET = { maximumWarning: '500kB', maximumError: '1MB' };
+
+/**
+ * The initial-bundle budget for a Lynx bundle. It carries more than a web
+ * app's first download: Angular runs on both of Lynx's threads, so the
+ * framework is in it twice, and a new app's bundle is already about 1 MB.
+ * Kept at roughly the same multiples of a new app as Angular's budget.
+ */
+const LYNX_INITIAL_BUDGET = { maximumWarning: '2MB', maximumError: '5MB' };
+
+/**
+ * A configuration's options with `ng new`'s initial-bundle budget resized for
+ * a Lynx bundle. Budgets the user set differently stay as they are.
+ */
+const withLynxBudgets = (
+  options: Record<string, JsonValue | undefined>,
+): Record<string, JsonValue | undefined> => {
+  if (!Array.isArray(options['budgets'])) {
+    return options;
+  }
+  return {
+    ...options,
+    budgets: (options['budgets'] as JsonObject[]).map((budget) =>
+      budget['type'] === 'initial' &&
+      budget['maximumWarning'] === NG_NEW_INITIAL_BUDGET.maximumWarning &&
+      budget['maximumError'] === NG_NEW_INITIAL_BUDGET.maximumError
+        ? { ...budget, ...LYNX_INITIAL_BUDGET }
+        : budget,
+    ),
+  };
+};
+
+/**
+ * Points `ng build`, `ng serve` and `ng test` at the AngularLynx builders.
+ * The first two run rspeedy with @blotch/rsbuild-plugin-angular-lynx added,
+ * and `ng build --platform ios|android` also produces the native app; the
+ * third runs Angular's unit-test builder set up for Lynx. The build target
+ * keeps `ng new`'s Angular compiler options, which the build plugin and
+ * `ng test` read, and gains the app's identity for native builds.
  */
 const useLynxBuilders = (projectName: string): Rule =>
   updateWorkspace((workspace) => {
@@ -296,16 +376,11 @@ const useLynxBuilders = (projectName: string): Rule =>
     const configurations = Object.fromEntries(
       Object.entries(build?.configurations ?? {}).map(([name, options]) => [
         name,
-        {
-          ...keepAngularOptions(options),
-          ...(name === 'production' || name === 'development'
-            ? { mode: name }
-            : {}),
-        },
+        withLynxBudgets(keepAngularOptions(options)),
       ]),
     );
     const buildDefinition = {
-      builder: '@blotch/angular-lynx:application',
+      builder: '@blotch/angular-lynx-build:application',
       options: {
         ...keepAngularOptions(build?.options),
         appName: projectName,
@@ -321,23 +396,104 @@ const useLynxBuilders = (projectName: string): Rule =>
     }
     project.targets.add({ name: 'build', ...buildDefinition });
 
-    // The browser dev server's options all reference a build target; the
-    // Lynx dev server takes its settings from lynx.config.ts instead.
-    if (project.targets.has('serve')) {
+    // The Lynx dev server takes `buildTarget` like Angular's, so `ng new`'s
+    // configurations (production and development, each naming its build
+    // configuration) carry over, and `ng serve -c production` keeps working.
+    // Options only the browser dev server knows (ssl, proxyConfig, ...) are
+    // dropped: they would fail the builder's option validation.
+    // Without a serve target to keep, write the one `ng new` would have, for
+    // the build configurations that exist. Without a development one, serve
+    // the build target's default configuration rather than the dev server's
+    // default (`::development`), which would point at nothing.
+    const serve = project.targets.get('serve');
+    const serveConfigurations = Object.fromEntries(
+      Object.entries(
+        serve?.configurations ??
+          Object.fromEntries(
+            ['production', 'development']
+              .filter((name) => name in configurations)
+              .map((name) => [
+                name,
+                { buildTarget: `${projectName}:build:${name}` },
+              ]),
+          ),
+      ).map(([name, options]) => [name, keepDevServerOptions(options)]),
+    );
+    const serveDefinition = serve
+      ? {
+          builder: '@blotch/angular-lynx-build:dev-server',
+          options: keepDevServerOptions(serve.options),
+          configurations: serveConfigurations,
+          defaultConfiguration: serve.defaultConfiguration,
+        }
+      : {
+          builder: '@blotch/angular-lynx-build:dev-server',
+          options:
+            'development' in serveConfigurations
+              ? {}
+              : { buildTarget: `${projectName}:build` },
+          configurations: serveConfigurations,
+          defaultConfiguration:
+            'development' in serveConfigurations ? 'development' : undefined,
+        };
+    if (serve) {
       project.targets.delete('serve');
     }
+    project.targets.add({ name: 'serve', ...serveDefinition });
+
+    // The Lynx unit-test builder is Angular's, set up for Lynx, so it takes
+    // the same options and `ng new`'s carry over (as do its own, when `ng add`
+    // runs again). Any other test builder (Karma, from older `ng new`
+    // versions) can't run Lynx code; its options don't apply.
+    const test = project.targets.get('test');
+    const keepTest =
+      test?.builder === '@angular/build:unit-test' ||
+      test?.builder === '@blotch/angular-lynx-build:unit-test';
+    if (test) {
+      project.targets.delete('test');
+    }
     project.targets.add({
-      name: 'serve',
-      builder: '@blotch/angular-lynx:dev-server',
-      options: {},
+      name: 'test',
+      builder: '@blotch/angular-lynx-build:unit-test',
+      ...(keepTest && {
+        options: test.options,
+        configurations: test.configurations,
+        defaultConfiguration: test.defaultConfiguration,
+      }),
     });
+  });
+
+/**
+ * Makes `ng generate` reach AngularLynx's schematics first, so
+ * `ng generate component` makes a component with Lynx elements. Angular's own
+ * collection stays after it: AngularLynx only has the schematics that differ
+ * on Lynx, and `ng generate service`, `pipe`, `guard` and the rest come from
+ * Angular's as before.
+ */
+const useLynxSchematics = (): Rule =>
+  updateWorkspace((workspace) => {
+    const cli = (workspace.extensions['cli'] ?? {}) as JsonObject;
+    const collections = Array.isArray(cli['schematicCollections'])
+      ? (cli['schematicCollections'] as string[])
+      : // What Angular CLI uses when the list isn't set.
+        ['@schematics/angular'];
+    workspace.extensions['cli'] = {
+      ...cli,
+      schematicCollections: [
+        '@blotch/angular-lynx',
+        ...collections.filter(
+          (collection) => collection !== '@blotch/angular-lynx',
+        ),
+      ],
+    };
   });
 
 const updatePackageScripts = (): Rule => {
   return (tree: Tree) => {
     // `npm start` and `npm run build` go through the Angular CLI, which runs
-    // the AngularLynx builders set up by useLynxBuilders. They call rspeedy,
-    // so the output is the same as running `rspeedy dev` / `rspeedy build`.
+    // the AngularLynx builders set up by useLynxBuilders. `ng new` already
+    // writes these (and `npm test` as `ng test`); this keeps them for
+    // projects whose scripts called rspeedy directly.
     const pkg = new JSONFile(tree, '/package.json');
     pkg.modify(['scripts', 'start'], 'ng serve');
     pkg.modify(['scripts', 'build'], 'ng build');
@@ -346,26 +502,11 @@ const updatePackageScripts = (): Rule => {
 
 const addCoreDependencies = (): Rule => {
   return chain([
-    addDependency(
-      '@blotch/rsbuild-plugin-angular-lynx',
-      VERSIONS.rsbuildPluginAngularLynx,
-      {
-        type: DependencyType.Dev,
-        install: InstallBehavior.Auto,
-      },
-    ),
-    // Builds the iOS and Android apps for `ng build --platform`. Loaded only
-    // then, so a project that never builds native apps doesn't need it, but
-    // installed up front so the command works without another step.
-    addDependency('@blotch/angular-lynx-native', VERSIONS.angularLynxNative, {
-      type: DependencyType.Dev,
-      install: InstallBehavior.Auto,
-    }),
-    addDependency('@lynx-js/rspeedy', VERSIONS.rspeedy, {
-      type: DependencyType.Dev,
-      install: InstallBehavior.Auto,
-    }),
-    addDependency('@lynx-js/qrcode-rsbuild-plugin', VERSIONS.qrcodePlugin, {
+    // The `ng build`, `ng serve` and `ng test` builders, the one build
+    // dependency an AngularLynx app needs, as `@angular/build` is for a web
+    // app. They bring rspeedy, the rsbuild plugin that compiles Angular, the
+    // QR code plugin and the iOS and Android app builder with them.
+    addDependency('@blotch/angular-lynx-build', VERSIONS.angularLynxBuild, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
     }),

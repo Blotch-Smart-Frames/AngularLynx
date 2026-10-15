@@ -1,3 +1,6 @@
 dist
 coverage
 .lynx-ios-build
+# Rendered by `npm run build` (scripts/generate-ios-project.ts) and shipped in
+# the npm package; APP_PROJECT in that script is the source.
+templates/ios/App.xcodeproj

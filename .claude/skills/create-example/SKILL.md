@@ -12,7 +12,7 @@ Creates a runnable example in `examples/<name>/` that appears as an interactive 
 ## Pipeline Overview
 
 1. Source code lives in `examples/<name>/`
-2. `rspeedy build` produces `dist/main.lynx.bundle` and `dist/main.web.bundle`
+2. `npm run build` (`ng build`, the `@blotch/angular-lynx-build:application` builder) produces `dist/main.lynx.bundle` and `dist/main.web.bundle`
 3. `packages/website/scripts/prepare-examples.mjs` copies source + bundles to `docs/public/examples/<name>/` and generates `example-metadata.json`
 4. Docs reference it via `<Go example="<name>" defaultFile="src/app/app.ts" />`
 
@@ -31,8 +31,8 @@ Create `examples/<name>/` with this file structure:
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "rspeedy dev",
-    "build": "rspeedy build --environment lynx && rspeedy build --environment web"
+    "start": "ng serve",
+    "build": "ng build"
   },
   "dependencies": {
     "@angular/common": "^22.2.1",
@@ -42,13 +42,11 @@ Create `examples/<name>/` with this file structure:
     "@blotch/angular-lynx": "*"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.1",
-    "@blotch/rsbuild-plugin-angular-lynx": "*",
-    "@lynx-js/rspeedy": "^0.18.0",
+    "@blotch/angular-lynx-build": "*",
     "@lynx-js/types": "^4.3.0",
-    "typescript": "~5.9.0"
+    "typescript": "~6.0.0"
   }
 }
 ```
@@ -62,23 +60,15 @@ If using Tailwind (for UI component examples), also add:
 }
 ```
 
-#### `lynx.config.ts`
+#### No `lynx.config.ts`
+
+An example doesn't need one. `ng build` and `ng serve` take the entry from the build target's `browser` in angular.json, build both the `web` and `lynx` environments, and add the AngularLynx rsbuild plugin themselves. Add a `lynx.config.ts` only to pass the plugin options or change RSpeedy settings (see `examples/ssr` and `examples/multi-page`), importing from the builders package:
 
 ```typescript
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
-  environments: {
-    web: {
-      output: { cleanDistPath: false },
-    },
-    lynx: {},
-  },
-  source: {
-    entry: './src/main.ts',
-  },
-  plugins: [pluginAngularLynx()],
+  plugins: [pluginAngularLynx({ enableSSR: true })],
 });
 ```
 
@@ -107,7 +97,7 @@ source: {
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@blotch/angular-lynx-build:application",
           "options": {
             "outputPath": "dist",
             "index": "src/index.html",
@@ -116,6 +106,12 @@ source: {
             "tsConfig": "tsconfig.app.json",
             "styles": [],
             "scripts": []
+          }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": {
+            "buildTarget": "<name>:build"
           }
         }
       }
@@ -278,7 +274,7 @@ cd packages/website && npm run dev
 
 - [ ] `examples/<name>/` directory with all required files
 - [ ] Package name follows `@angular-lynx-example/<name>` convention
-- [ ] `lynx.config.ts` has both `web` and `lynx` environments
+- [ ] No `lynx.config.ts` unless the example needs plugin options or more than one entry
 - [ ] Component uses Lynx elements, not HTML
 - [ ] `packages/website/docs/examples/<name>.mdx` created
 - [ ] `<Go>` component added to relevant guide/component page
@@ -287,6 +283,6 @@ cd packages/website && npm run dev
 
 ## Notes
 
-- The `prepare-examples.mjs` script parses `lynx.config.ts` to extract entry names — each entry produces a `dist/<name>.lynx.bundle` and `dist/<name>.web.bundle`
+- The `prepare-examples.mjs` script takes entry names from `entry` in `lynx.config.ts`, or else from the `dist/<name>.lynx.bundle` files the build wrote — each entry produces a `dist/<name>.lynx.bundle` and `dist/<name>.web.bundle`
 - Preview images: place a `preview-image.png` at the example root for a static preview fallback
 - The `<Go>` component props: `example` (folder name), `defaultFile` (initial file to show), `defaultTab` (`'web'`/`'preview'`/`'qrcode'`), `img` (static preview path)

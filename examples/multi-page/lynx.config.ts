@@ -1,19 +1,13 @@
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
-  environments: {
-    web: {
-      output: { cleanDistPath: false },
-    },
-    lynx: {},
-  },
   // Multi-page via source.entry: each key becomes a separate .lynx.bundle.
+  // Without it, `ng build` and `ng serve` would build only the build
+  // target's `browser` entry.
   source: {
     entry: {
       main: './src/main.ts',
       settings: './src/pages/settings/main.ts',
     },
   },
-  plugins: [pluginAngularLynx()],
 });

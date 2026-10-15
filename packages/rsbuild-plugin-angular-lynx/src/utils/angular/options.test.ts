@@ -3,10 +3,12 @@ import os from 'node:os';
 import nodePath from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  normalizeBuildOptions,
   normalizeI18nOptions,
   normalizeOptimization,
   normalizeSourceMaps,
   readBuildOptions,
+  readBuildTargetOptions,
   resolveIndexPath,
   resolveOutputPath,
 } from './options';
@@ -373,6 +375,23 @@ describe('readBuildOptions', () => {
     });
   });
 
+  it('leaves the parsed angular.json target as it was', () => {
+    const project = makeProject({
+      options: baseOptions({ aot: true }),
+      configurations: { production: { aot: false } },
+      defaultConfiguration: 'production',
+    });
+
+    expect(readBuildTargetOptions(project)).toMatchObject({ aot: false });
+    expect(project.targets.get('build').options.aot).toBe(true);
+  });
+
+  it('uses the base options alone without a configuration', () => {
+    expect(
+      readBuildTargetOptions(makeProject({ options: baseOptions() })),
+    ).toEqual(baseOptions());
+  });
+
   it('uses an explicit configurationName over the default configuration', async () => {
     const result = await readBuildOptions(
       makeProject({
@@ -465,6 +484,23 @@ describe('readBuildOptions', () => {
     });
   });
 
+  it('reads budgets, and has none by default', async () => {
+    const budgets = [
+      { type: 'initial', maximumWarning: '1.5mb', maximumError: '3mb' },
+    ];
+    const withBudgets = await readBuildOptions(
+      makeProject({ options: baseOptions({ budgets }) }),
+      basePath,
+    );
+    expect(withBudgets.budgets).toEqual(budgets);
+
+    const withoutBudgets = await readBuildOptions(
+      makeProject({ options: baseOptions() }),
+      basePath,
+    );
+    expect(withoutBudgets.budgets).toEqual([]);
+  });
+
   it('sets advancedOptimizations false when script optimization is disabled', async () => {
     const result = await readBuildOptions(
       makeProject({ options: baseOptions({ optimization: false }) }),
@@ -519,5 +555,20 @@ describe('readBuildOptions', () => {
         ),
       ).rejects.toThrow('path in file replacements does not exist');
     });
+  });
+});
+
+describe('normalizeBuildOptions', () => {
+  it('normalizes options Angular CLI already merged, without reading the target', async () => {
+    // The target in angular.json says aot: true; the options passed in win.
+    const result = await normalizeBuildOptions(
+      baseOptions({ aot: false, outputHashing: 'all' }),
+      makeProject({ options: baseOptions({ aot: true }) }),
+      '/workspace',
+    );
+
+    expect(result.aot).toBe(false);
+    expect(result.browser).toBe(nodePath.join('/workspace', 'src/main.ts'));
+    expect(result.outputNames.bundles).toBe('[name]-[hash]');
   });
 });

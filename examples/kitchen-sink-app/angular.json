@@ -12,7 +12,7 @@
       },
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@blotch/angular-lynx-build:application",
           "options": {
             "outputPath": "dist",
             "index": "src/index.html",
@@ -31,6 +31,21 @@
             }
           },
           "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "configurations": {
+            "production": {
+              "buildTarget": "kitchen-sink-app:build:production"
+            },
+            "development": {
+              "buildTarget": "kitchen-sink-app:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@blotch/angular-lynx-build:unit-test"
         }
       }
     }

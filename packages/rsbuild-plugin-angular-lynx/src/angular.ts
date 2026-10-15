@@ -6,11 +6,13 @@ import {
   type AngularCompileResult,
   createAngularRebuildCoordinator,
 } from './angular-rebuild-coordinator.js';
+import { applyBudgets } from './budgets-plugin.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   type ComponentScopeInfo,
   type ComponentStylesEntry,
   createTransformStylesheet,
+  forgetComponentStyleSizes,
 } from './component-styles-cache.js';
 import {
   type AngularDiagnostics,
@@ -20,18 +22,17 @@ import {
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import { buildTransformedCode } from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
+import { getAngularCliContext } from './angular-cli-context.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
 import {
   createAngularCompilation,
   DiagnosticModes,
   JavaScriptTransformer,
 } from './utils/angular/build-internals.js';
+import type { ComponentStyleSize } from './utils/angular/budgets.js';
 import { maxWorkers, useTypeChecking } from './utils/angular/env.js';
-import { readBuildOptions } from './utils/angular/options.js';
-import {
-  getAngularWorkspace,
-  getProjectByCwd,
-} from './utils/angular/read-workspace.js';
+import { getAngularWorkspace } from './utils/angular/read-workspace.js';
+import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
 import {
   reportLynxDiagnostics,
@@ -75,7 +76,10 @@ export const applyAngularRules = async (
   api: RsbuildPluginAPI,
   pluginOptions: Required<PluginAngularLynxOptions>,
 ): Promise<void> => {
-  const { basePath, workspace } = await getAngularWorkspace();
+  // Set under `ng build` / `ng serve`: the project being built and its build
+  // options as Angular CLI resolved them. Plain rspeedy reads angular.json.
+  const cli = getAngularCliContext(api);
+  const { basePath, workspace } = await getAngularWorkspace(cli?.workspaceRoot);
 
   // When `pages` is set, resolve multiple angular.json projects into entries.
   // Each project's `browser` field becomes a named entry that the entry-splitting
@@ -90,26 +94,23 @@ export const applyAngularRules = async (
     });
   }
 
-  // The primary project provides shared build config (tsconfig, polyfills, styles,
-  // output path). When using `pages`, use the first resolved page's project.
-  // Otherwise fall back to the CWD-based single-project resolution.
-  const primaryProjectName = pluginOptions.pages
-    ? ((Array.isArray(pluginOptions.pages)
-        ? pluginOptions.pages[0]
-        : Array.from(workspace.projects.entries()).find(
-            ([, def]) => def.extensions['projectType'] === 'application',
-          )?.[0]) ?? null)
-    : getProjectByCwd(workspace, basePath);
-
-  if (!primaryProjectName) {
-    throw new Error("couldn't find the project");
-  }
-  const projectDefinition = workspace.projects.get(primaryProjectName);
-  if (!projectDefinition) {
-    throw new Error(`Project "${primaryProjectName}" not found in workspace`);
-  }
-  const buildOptions = await readBuildOptions(projectDefinition, basePath);
+  // The primary project provides shared build config (tsconfig, polyfills,
+  // styles, output path).
+  const { buildOptions } = await resolvePrimaryBuild({
+    workspace,
+    basePath,
+    pages: pluginOptions.pages,
+    cli,
+  });
   applyAngularConfig(api, buildOptions);
+  // The compiled size of each component stylesheet, which `transformStylesheet`
+  // records on every compile, for `anyComponentStyle` budgets.
+  const componentStyleSizes = new Map<string, ComponentStyleSize>();
+  applyBudgets(api, {
+    budgets: buildOptions.budgets,
+    componentStyleSizes,
+    underAngularCli: cli !== undefined,
+  });
   const sourcemap = !!(
     !!buildOptions.sourcemapOptions.scripts &&
     (buildOptions.sourcemapOptions.hidden ? 'external' : true)
@@ -179,6 +180,7 @@ export const applyAngularRules = async (
     componentStylesCache,
     componentScopeIds,
     onStylesheetWritten: (filePath) => writtenStylesheets.add(filePath),
+    componentStyleSizes,
   });
 
   /**
@@ -324,7 +326,10 @@ export const applyAngularRules = async (
     for (const file of changedFiles ?? []) {
       // Drop the output of deleted files so the scans below stop reporting
       // diagnostics for code that no longer exists.
-      if (!fs.existsSync(file)) typeScriptFileCache.delete(file);
+      if (!fs.existsSync(file)) {
+        typeScriptFileCache.delete(file);
+        forgetComponentStyleSizes(componentStyleSizes, file);
+      }
     }
 
     reportLynxDiagnostics([

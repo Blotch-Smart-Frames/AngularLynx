@@ -14,7 +14,7 @@ npm run dolan:update:force
 
 This rebuilds `@blotch/dolan` and overwrites every example copy with the upstream version.
 
-**`--force` discards un-upstreamed example edits.** It overwrites example copies from upstream and does *not* reconcile local drift. A fix made only in an example vanishes on the next sync. So port any example-only edits up to `packages/ui/` before running it. To find drift, diff each example component against its upstream counterpart; they should match except for dolan's `@blotch/dolan/utils/*` import rewrite.
+**`--force` discards un-upstreamed example edits.** It overwrites example copies from upstream and does _not_ reconcile local drift. A fix made only in an example vanishes on the next sync. So port any example-only edits up to `packages/ui/` before running it. To find drift, diff each example component against its upstream counterpart; they should match except for dolan's `@blotch/dolan/utils/*` import rewrite.
 
 Two things `dolan:update:force` does not sync — handle these by hand:
 
@@ -23,7 +23,7 @@ Two things `dolan:update:force` does not sync — handle these by hand:
 
 ## Fixing examples via shared packages
 
-Examples consume the shared packages under `packages/` — the renderer `@blotch/angular-lynx` (`packages/runtime`) and the build plugin `@blotch/rsbuild-plugin-angular-lynx` (`packages/rsbuild-plugin-angular-lynx`).
+Examples consume the shared packages under `packages/` — the renderer `@blotch/angular-lynx` (`packages/runtime`) and the builders `@blotch/angular-lynx-build` (`packages/build`), which run `npm run build` (`ng build`) and `npm start` (`ng serve`) with the build plugin `@blotch/rsbuild-plugin-angular-lynx` (`packages/rsbuild-plugin-angular-lynx`).
 
 When an example is broken because of a bug in one of these packages, fix the package — not the example. Building workarounds in the example is not acceptable (see the "fix the renderer" goal in the root `CLAUDE.md`).
 
@@ -33,4 +33,4 @@ After editing a shared package, rebuild it so the examples pick up the change. R
 npx turbo run build --filter=@blotch/angular-lynx
 ```
 
-Swap the filter for whichever package you changed (e.g. `--filter=@blotch/rsbuild-plugin-angular-lynx`). If the build fails, fix the package before retrying the example.
+Swap the filter for whichever package you changed. For the build plugin or the builders, use `--filter=@blotch/angular-lynx-build`: turbo builds the plugin first. If the build fails, fix the package before retrying the example.

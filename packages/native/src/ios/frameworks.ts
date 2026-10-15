@@ -29,7 +29,11 @@ export const LYNX_IOS = {
     | undefined,
 } as const;
 
-/** The frameworks in the zip, matching templates/ios/project.yml. */
+/**
+ * The frameworks in the zip. The template project (APP_PROJECT in
+ * scripts/generate-ios-project.ts) and the frameworks build both read this
+ * list, so it is the only place to change it.
+ */
 export const LYNX_IOS_FRAMEWORKS = [
   'Lynx',
   'LynxBase',

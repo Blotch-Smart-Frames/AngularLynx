@@ -68,10 +68,11 @@ export type RenderResult<Q extends Queries = typeof domQueries> = {
    *   - `componentRef.injector.get(Token)` — retrieve a service provided to the app.
    *   - `componentRef.instance.someSignal.set(v)` — drive writable signal state directly.
    *
-   * Note: `componentRef.setInput()` requires the full AOT pipeline to register
-   * signal inputs (input()) or @Input() decorators in component metadata. In the
-   * Vitest JIT environment this metadata is not available, so the recommended
-   * pattern is to expose writable signals on the component instance instead.
+   * Note: `componentRef.setInput()` needs the input metadata that ahead-of-time
+   * compilation registers for signal inputs (input()) and @Input() decorators.
+   * `ng test` compiles tests that way, so it works there. Under plain Vitest,
+   * which compiles components just in time, that metadata isn't available;
+   * expose writable signals on the component instance instead.
    */
   componentRef: ComponentRef<unknown>;
 } & BoundFunctions<typeof domQueries> &

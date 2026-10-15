@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-native
 
-Builds AngularLynx apps into iOS and Android binaries. You don't call it directly: `ng build --platform ios|android|all` (the `@blotch/angular-lynx:application` builder) loads it after building the Lynx bundle. `ng add @blotch/angular-lynx` installs it.
+Builds AngularLynx apps into iOS and Android binaries. You don't call it directly: `ng build --platform ios|android|all` (the `@blotch/angular-lynx-build:application` builder) loads it after building the Lynx bundle. It's a dependency of [`@blotch/angular-lynx-build`](../build), which `ng add @blotch/angular-lynx` installs.
 
 User documentation: [Publishing your App](../website/docs/guide/building-for-production.mdx). The design and its reasoning: [`investigations/native-app-builds.md`](../../investigations/native-app-builds.md).
 
@@ -30,11 +30,11 @@ Lynx publishes iOS only as source pods, which take minutes to compile and need C
 The zip for Lynx 4.1.0 is the [`lynx-ios-4.1.0` release](https://github.com/Blotch-Smart-Frames/AngularLynx/releases/tag/lynx-ios-4.1.0). For a new Lynx version, bump the versions in the script, run the **Lynx iOS frameworks** workflow with `publish` (or the script locally), and pin the new zip's URL and SHA-256. To test a locally built folder before publishing it:
 
 ```sh
-npm run build:lynx-ios-frameworks -w packages/native   # needs Xcode, Ruby >= 2.7 with Bundler, XcodeGen
+npm run build:lynx-ios-frameworks -w packages/native   # needs Xcode, and Ruby >= 2.7 with Bundler for CocoaPods
 export ANGULAR_LYNX_IOS_FRAMEWORKS=$PWD/packages/native/.lynx-ios-build/out/LynxFrameworks
 ```
 
 ## Changing a template
 
-- **iOS:** edit `templates/ios/project.yml`, not `App.xcodeproj`, then run `npm run generate:ios-project -w packages/native` (needs [XcodeGen](https://github.com/yonaskolb/XcodeGen)). The generated project is committed, so users never need XcodeGen.
+- **iOS:** `App/` is a synchronized folder, so adding or removing a Swift file needs no project change. For anything else (a build setting, a framework, a resource folder), edit `APP_PROJECT` in `scripts/generate-ios-project.ts`. `App.xcodeproj` isn't in git: `npm run build` (and the tests' setup) renders it with [`@bacons/xcode`](https://github.com/EvanBacon/xcode), which needs only Node, and the npm package ships the result. Run `npm run generate:ios-project -w packages/native` to render it without the TypeScript build, e.g. to open the template in Xcode.
 - **Both:** run `npm run e2e -- --ios --shell` (and Layer 6 for Android, see the [E2E README](../e2e/README.md)) to build and tap through a fresh app on each platform.

@@ -1,196 +1,161 @@
+import { strings } from '@angular-devkit/core';
 import {
   type Rule,
   type Tree,
-  SchematicsException,
+  chain,
+  externalSchematic,
 } from '@angular-devkit/schematics';
-import { getWorkspace } from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
 
 /**
- * Generates a Lynx-flavored Angular component (standalone, OnPush, signal-based)
- * along with optional template/style/spec files. This is the AngularLynx
- * equivalent of `ng generate component`, but it differs in three important
- * ways:
+ * `ng generate component` for Lynx (`ng add` makes it the one
+ * `ng generate component` runs). Angular's own component schematic generates
+ * the files, so every option, file name and angular.json default works as it
+ * does in any Angular app. Then the component becomes a Lynx one:
  *
- *   1. **Template uses Lynx elements** — the boilerplate template renders
- *      `<view><text>...</text></view>` instead of `<div><p>...`. LYNX_ELEMENTS
- *      is imported automatically so the elements type-check.
- *   2. **OnPush + zoneless** — Lynx apps run zoneless, so default change
- *      detection would never tick. OnPush + signals is the only safe pattern.
- *   3. **Vitest spec, not Karma** — Karma launches a browser and can't host
- *      the Lynx runtime; the testing-library spec template runs under Vitest
- *      with `@blotch/angular-lynx-testing-library` providing PAPI polyfills.
+ *   1. **Its template uses Lynx elements**: `<view><text>…</text></view>`
+ *      instead of `<p>…</p>`, which Lynx has no element for.
+ *   2. **It imports LYNX_ELEMENTS**, the directives that declare Lynx's
+ *      elements to Angular, so the template type-checks in the editor and
+ *      under `ng test`, as it does in the app build.
+ *   3. **Its test renders it on Lynx** when the project has
+ *      @blotch/angular-lynx-testing-library: a `*.test.ts` that renders the
+ *      component through the Lynx renderer, in place of Angular's TestBed
+ *      spec, which renders it with the DOM renderer. Without the library,
+ *      Angular's spec stays: `ng test` runs both.
  */
 export default (options: Schema): Rule =>
   async (tree: Tree) => {
-    const workspace = await getWorkspace(tree);
-    const projectName =
-      options.project ??
-      (workspace.extensions['defaultProject'] as string | undefined) ??
-      [...workspace.projects.keys()][0];
-
-    if (!projectName) {
-      throw new SchematicsException(
-        'No project found. Run this schematic inside an Angular workspace.',
-      );
-    }
-
-    const project = workspace.projects.get(projectName);
-    if (!project) {
-      throw new SchematicsException(
-        `Project "${projectName}" not found in angular.json.`,
-      );
-    }
-
-    const sourceRoot = (project.sourceRoot ?? `${project.root}/src`) as string;
-    const prefix =
-      options.prefix ?? (project.extensions['prefix'] as string) ?? 'app';
-
-    // Split a slash-bearing name like "forms/inputs/my-button" into
-    //   componentName     = "my-button"  (the actual component identifier)
-    //   additionalPath    = "forms/inputs" (intermediate directories to nest in)
-    // This lets users colocate generated components with their feature folder
-    // in a single `ng generate` invocation instead of cd-ing or passing --path.
-    const nameParts = options.name.split('/');
-    const componentName = nameParts[nameParts.length - 1];
-    const additionalPath = nameParts.slice(0, -1).join('/');
-
-    const dasherized = dasherize(componentName);
-    const classified = classify(componentName);
-    const selector = `${prefix}-${dasherized}`;
-
-    // --flat means "put the files directly in the parent directory", matching
-    // Angular's own --flat. Otherwise create a wrapping folder named after
-    // the dasherized component so each component has its own directory for
-    // template, styles, spec, and any future per-component assets.
-    const basePath = options.path ?? 'app';
-    const dirPath = options.flat
-      ? `${sourceRoot}/${basePath}${additionalPath ? '/' + additionalPath : ''}`
-      : `${sourceRoot}/${basePath}${additionalPath ? '/' + additionalPath : ''}/${dasherized}`;
-
-    const componentPath = `${dirPath}/${dasherized}.ts`;
-
-    if (tree.exists(componentPath)) {
-      // Hard fail rather than overwrite — Schematics has no "force" semantics
-      // for component generation and silently overwriting user code would be
-      // dangerous. The user can `rm` and re-run if they really want to.
-      throw new SchematicsException(
-        `Component file already exists: ${componentPath}`,
-      );
-    }
-
-    const componentContent = buildComponentFile(
-      selector,
-      classified,
-      dasherized,
-      options,
-    );
-    tree.create(componentPath, componentContent);
-
-    if (!options.inlineTemplate) {
-      const templatePath = `${dirPath}/${dasherized}.html`;
-      tree.create(templatePath, buildTemplateFile(dasherized));
-    }
-
-    if (!options.inlineStyle) {
-      const stylePath = `${dirPath}/${dasherized}.css`;
-      tree.create(stylePath, buildStyleFile());
-    }
-
-    if (!options.skipTests) {
-      const specPath = `${dirPath}/${dasherized}.test.ts`;
-      tree.create(specPath, buildSpecFile(classified, dasherized));
-    }
+    const before = createdFiles(tree);
+    return chain([
+      externalSchematic(
+        '@schematics/angular',
+        'component',
+        withoutUnset(options),
+      ),
+      (tree: Tree) => {
+        const created = [...createdFiles(tree)].filter(
+          (file) => !before.has(file),
+        );
+        const componentFile = created.find(
+          (file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'),
+        );
+        if (!componentFile) {
+          return;
+        }
+        for (const file of created) {
+          if (file.endsWith('.html')) {
+            tree.overwrite(file, lynxTemplate(tree.readText(file)));
+          }
+        }
+        tree.overwrite(
+          componentFile,
+          lynxComponent(tree.readText(componentFile)),
+        );
+        const specFile = created.find((file) => file.endsWith('.spec.ts'));
+        if (specFile && hasTestingLibrary(tree)) {
+          tree.delete(specFile);
+          tree.create(
+            specFile.replace(/\.spec\.ts$/, '.test.ts'),
+            lynxTest(tree.readText(componentFile), componentFile, options.name),
+          );
+        }
+      },
+    ]);
   };
 
-const buildComponentFile = (
-  selector: string,
-  className: string,
-  dasherized: string,
-  options: Schema,
-): string => {
-  const lines: string[] = [];
+/**
+ * The options the user (or angular.json's defaults for this schematic) set.
+ * Leaving the rest out lets Angular CLI apply angular.json's defaults for
+ * `@schematics/angular:component` (e.g. `style: scss` from
+ * `ng new --style scss`), then Angular's own, as `ng generate component`
+ * does without AngularLynx.
+ */
+const withoutUnset = (options: Schema): Schema =>
+  Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined),
+  ) as Schema;
 
-  lines.push(
-    `import { Component, ChangeDetectionStrategy } from '@angular/core';`,
+/**
+ * The files created so far in this run.
+ */
+const createdFiles = (tree: Tree): Set<string> =>
+  new Set(
+    tree.actions
+      .filter((action) => action.kind === 'c')
+      .map((action) => action.path),
   );
-  lines.push(`import { LYNX_ELEMENTS } from '@blotch/angular-lynx';`);
-  lines.push('');
-  lines.push(`@Component({`);
-  lines.push(`  selector: '${selector}',`);
-  lines.push(`  imports: [LYNX_ELEMENTS],`);
-  lines.push(`  changeDetection: ChangeDetectionStrategy.OnPush,`);
 
-  // `!== false` means the template is inlined by default (when the option
-  // is true or undefined). This matches Lynx's convention of keeping the
-  // template in the same file since Lynx components rarely have large templates.
-  if (options.inlineTemplate !== false) {
-    lines.push(`  template: \``);
-    lines.push(`    <view>`);
-    lines.push(`      <text>${dasherized} works!</text>`);
-    lines.push(`    </view>`);
-    lines.push(`  \`,`);
-  } else {
-    lines.push(`  templateUrl: './${dasherized}.html',`);
+/**
+ * Angular's placeholder paragraph (`<p>name works!</p>`, in a template file
+ * or inline), as Lynx elements. Lynx has no `<p>`: text goes in `<text>`,
+ * inside a `<view>` for layout.
+ */
+const lynxTemplate = (source: string): string =>
+  source.replace(
+    /^([ \t]*)<p>\s*([\s\S]*?)\s*<\/p>/m,
+    (_match, indent: string, text: string) =>
+      `${indent}<view>\n${indent}  <text>${text}</text>\n${indent}</view>`,
+  );
+
+/**
+ * The generated component, with a Lynx template if it's inline, and
+ * LYNX_ELEMENTS among its imports. A component declared in an NgModule
+ * (`--standalone false`) has no `imports` of its own; its module would import
+ * them, so it's left as Angular generates it.
+ */
+const lynxComponent = (source: string): string => {
+  const component = lynxTemplate(source);
+  if (!/^\s*imports: \[\],$/m.test(component)) {
+    return component;
   }
+  return component
+    .replace(/^(\s*)imports: \[\],$/m, '$1imports: [LYNX_ELEMENTS],')
+    .replace(
+      /^(import .* from '@angular\/core';)$/m,
+      "$1\nimport { LYNX_ELEMENTS } from '@blotch/angular-lynx';",
+    );
+};
 
-  if (options.inlineStyle !== false) {
-    lines.push(`  styles: [\`\`],`);
-  } else {
-    lines.push(`  styleUrl: './${dasherized}.css',`);
+const hasTestingLibrary = (tree: Tree): boolean => {
+  if (!tree.exists('/package.json')) {
+    return false;
   }
-
-  lines.push(`})`);
-  lines.push(`export class ${className} {}`);
-  lines.push('');
-
-  return lines.join('\n');
+  const packageJson = tree.readJson('/package.json') as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  return [packageJson.dependencies, packageJson.devDependencies].some(
+    (dependencies) =>
+      dependencies?.['@blotch/angular-lynx-testing-library'] !== undefined,
+  );
 };
 
-const buildTemplateFile = (dasherized: string): string => {
-  return `<view>
-  <text>${dasherized} works!</text>
-</view>
-`;
-};
+/**
+ * A test that renders the component on Lynx with the testing library and
+ * finds its placeholder text, in place of Angular's TestBed spec.
+ */
+const lynxTest = (
+  component: string,
+  componentFile: string,
+  name: string,
+): string => {
+  const className = /export (?:default )?class (\w+)/.exec(component)![1]!;
+  const isDefault = /export default class/.test(component);
+  const importPath = `./${componentFile.split('/').pop()!.replace(/\.ts$/, '')}`;
+  // The text Angular's template says: the name's last segment, dasherized.
+  const text = `${strings.dasherize(name.split('/').pop()!)} works!`;
+  return `import { render } from '@blotch/angular-lynx-testing-library';
+import { describe, expect, it } from 'vitest';
 
-const buildStyleFile = (): string => {
-  return '';
-};
-
-const buildSpecFile = (className: string, dasherized: string): string => {
-  return `import { describe, expect, it } from 'vitest';
-import { render } from '@blotch/angular-lynx-testing-library';
-
-import { ${className} } from './${dasherized}';
+import ${isDefault ? className : `{ ${className} }`} from '${importPath}';
 
 describe('${className}', () => {
   it('should render', async () => {
     const { getByText } = await render(${className});
-    expect(getByText('${dasherized} works!')).toBeTruthy();
+    expect(getByText('${text}')).toBeTruthy();
   });
 });
 `;
-};
-
-/**
- * Converts "myComponent" or "MyComponent" to "my-component"
- */
-const dasherize = (str: string): string => {
-  return str
-    .replace(/([a-z\d])([A-Z])/g, '$1-$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
-    .replace(/_/g, '-')
-    .toLowerCase();
-};
-
-/**
- * Converts "my-component" to "MyComponent" (PascalCase)
- */
-const classify = (str: string): string => {
-  return str
-    .split(/[-_]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
 };

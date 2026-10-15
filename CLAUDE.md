@@ -9,11 +9,12 @@ Lynx uses a dual-thread model: **main thread** (native UI rendering) and **backg
 ## Monorepo Structure
 
 - `packages/runtime` — Core Angular renderer for Lynx (published as `@blotch/angular-lynx`)
-- `packages/rsbuild-plugin-angular-lynx` — Rsbuild plugin for building AngularLynx apps (published as `@blotch/rsbuild-plugin-angular-lynx`)
-- `packages/native` — Native app builder (published as `@blotch/angular-lynx-native`): the Swift and Kotlin shell templates and the generator behind `ng build --platform ios|android`. The `ng build` / `ng serve` builders themselves live in `packages/runtime/builders` and load this package only for `--platform`. See its README and `investigations/native-app-builds.md`
+- `packages/build` — The Angular CLI builders (published as `@blotch/angular-lynx-build`): `ng build` / `ng serve` run rspeedy with the rsbuild plugin, and `ng build --platform ios|android` then runs the native app builder; `ng test` runs Angular's own unit-test builder set up for Lynx. A thin layer over the next two packages and rspeedy, all its dependencies, so it's an app's only build dependency (like `@angular/build`); apps reference it in `angular.json` as `@blotch/angular-lynx-build:application` / `:dev-server` / `:unit-test`. Without a lynx.config.ts, the builders take the entry from angular.json's `browser` and build the `lynx` and `web` environments
+- `packages/rsbuild-plugin-angular-lynx` — Rsbuild plugin that compiles Angular for Lynx (published as `@blotch/rsbuild-plugin-angular-lynx`). A dependency of `packages/build`, which adds it to rspeedy's config; also usable with plain rspeedy
+- `packages/native` — Native app builder (published as `@blotch/angular-lynx-native`): the Swift and Kotlin shell templates and the generator behind `ng build --platform ios|android`. A dependency of `packages/build`, which loads it only for `--platform`. See its README and `investigations/native-app-builds.md`
 - `packages/create-angular-lynx` — Zero-setup scaffolder: `npm create angular-lynx <name>` runs `ng new` then `ng add @blotch/angular-lynx` automatically
 - `packages/e2e` — End-to-end tests (private): packs the publishable packages, installs them into a fresh `npm create angular-lynx` app from a local Verdaccio registry, builds it, and renders it in Chromium (and natively on the iOS Simulator). Run with `npm run e2e`; see its README
-- `packages/release` — Release tooling (private): `src/packages.ts` is the single list of published packages, shared with the E2E tests, `publish.yml` and the `consistent-package-versions` lint rule. `npm run set-version <version>` sets every published package's version before tagging a release; see its README
+- `packages/release` — Release tooling (private): `src/packages.ts` is the single list of published packages, shared with the E2E tests, `publish.yml` and the `consistent-package-versions` lint rule, and the `ng update` package group (`NG_UPDATE_PACKAGE_GROUP`, which each grouped package lists as `ng-update.packageGroup`). `npm run set-version <version>` sets every published package's version before tagging a release; see its README
 - `skills/angular-lynx` — Public [skills.sh](https://skills.sh) skill, installed with `npx skills add Blotch-Smart-Frames/AngularLynx`. It lives at the repo root because the skills CLI only searches root-level skill folders. The dev skills in `.claude/skills` and `.agents/skills` set `metadata.internal: true` so the CLI hides them; any new dev skill needs that flag too, or it gets listed on skills.sh under this repo
 - `examples/kitchen-sink-app` — Kitchen sink Angular app running on Lynx (the `npm run demo` target; consumes `@blotch/dolan` UI components)
 - `references/lynx-stack-main/packages/react` — **React Lynx** (production-proven reference implementation). Always refer to how React Lynx does things — it's battle-tested and used in production. When unsure about renderer design, element handling, or Lynx API usage, check this reference first.
@@ -75,7 +76,9 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 
 ## Testing
 
-- **Test files use `.test.ts`, never `.spec.ts`.** The whole repo standardized on `.test.ts` (the modern Vitest/Node convention). Vitest `include` globs, tsconfig excludes, and the `component` schematic all emit `.test.ts`. When creating a new test file, name it `<name>.test.ts` — never `<name>.spec.ts`.
+- **Test files use `.test.ts`, never `.spec.ts`.** The whole repo standardized on `.test.ts` (the modern Vitest/Node convention). Vitest `include` globs and tsconfig excludes expect `.test.ts`. When creating a new test file, name it `<name>.test.ts` — never `<name>.spec.ts`. (In users' apps, `ng test` runs both: the `component` schematic emits a `.test.ts` that renders on Lynx when the app has the testing library, and keeps Angular's `.spec.ts` otherwise.)
+
+- **Apps run tests with `ng test`** (`@blotch/angular-lynx-build:unit-test`, wrapping Angular's `@angular/build:unit-test`). It compiles tests ahead of time and checks templates strictly, so a component using Lynx elements must import `LYNX_ELEMENTS` (the app build alone would let it pass). Angular's runner shares one module graph across test files: don't `vi.mock('@angular/core')` or relative imports. `examples/kitchen-sink-app` runs its tests this way; the packages run theirs with plain Vitest.
 
 - **End-to-end tests:** `npm run e2e` installs the packed packages into a fresh app the way a user does. Run it after changing schematics, the scaffolder, package.json `files`/`exports`, or anything in the build plugin: unit tests run against source and can't see packaging bugs.
 
@@ -83,17 +86,18 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 
 The runtime package ships an Angular schematics collection (`packages/runtime/schematics/collection.json`). These are the primary developer onboarding paths:
 
-- **`ng add @blotch/angular-lynx`** — transforms an existing `ng new` project into a Lynx-native app: rewrites `main.ts`, `app.config.ts`, `app.ts`, adds `lynx.config.ts`, and optionally installs Tailwind (`--tailwind=false` to skip)
-- **`ng generate @blotch/angular-lynx:component <name>`** (alias `c`) — generates a standalone component with Lynx element templates, `ChangeDetectionStrategy.OnPush`, and a Vitest `.test.ts` file; options: `--path`, `--prefix`, `--inlineStyle`, `--inlineTemplate`, `--skipTests`, `--flat`
+- **`ng add @blotch/angular-lynx`** — transforms an existing `ng new` project into a Lynx-native app: rewrites `main.ts`, `app.config.ts`, `app.ts`; points `build` / `serve` / `test` at the AngularLynx builders (keeping `ng new`'s options, resizing its `initial` budget for a Lynx bundle); puts `@blotch/angular-lynx` first in `cli.schematicCollections`; installs only `@blotch/angular-lynx-build`; and optionally installs Tailwind (`--tailwind=false` to skip). It writes no `lynx.config.ts`: angular.json holds the build config
+- **`ng generate component <name>`** (or `ng generate @blotch/angular-lynx:component`, alias `c`) — runs Angular's own component schematic (every option, angular.json's `@schematics/angular:component` defaults), then turns the `<p>` template into Lynx elements, imports `LYNX_ELEMENTS`, and, if the app has the testing library, swaps Angular's TestBed `.spec.ts` for a `.test.ts` using `render()`. Its schema mirrors Angular's without defaults (a test in `schematics/component/schema.test.ts` keeps it in step). Other `ng generate` schematics come from Angular
 - **`ng generate @blotch/angular-lynx:add-tailwind`** — adds `tailwind.config.ts` with `@lynx-js/tailwind-preset` and updates `styles.css`
-- **`ng generate @blotch/angular-lynx:add-testing`** — adds `vitest.config.ts`, `src/setup.ts`, and installs `@blotch/angular-lynx-testing-library`
+- **`ng generate @blotch/angular-lynx:add-testing`** — installs `@blotch/angular-lynx-testing-library` and points the `test` target at the unit-test builder, which loads the library's setup itself (no `vitest.config.ts` or setup file)
 - **`ng generate @blotch/angular-lynx:add-i18n`** — adds `@angular/localize`, configures `angular.json` i18n, and injects `provideLocale()` into app config
+- **`ng update @blotch/angular-lynx`** — updates every package of the group together; migrations for breaking changes go in `packages/runtime/schematics/migrations.json` (its `ng-update.migrations`)
 
 ## Build & Run
 
 ```sh
 npm install && npm run build   # Build all packages
-npm run demo                   # Start demo dev server (rspeedy)
+npm run demo                   # Start demo dev server (ng serve)
 ```
 
 ## Debugging

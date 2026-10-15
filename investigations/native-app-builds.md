@@ -94,7 +94,7 @@ The options are flat rather than nested under `app`: Angular merges a configurat
 
 ```jsonc
 "build": {
-  "builder": "@blotch/angular-lynx:application",
+  "builder": "@blotch/angular-lynx-build:application",
   "options": {
     "browser": "src/main.ts",                // Angular options, as ng new wrote them
     "tsConfig": "tsconfig.app.json",
@@ -115,7 +115,7 @@ The options are flat rather than nested under `app`: Angular merges a configurat
     }
   },
   "configurations": {
-    "production": { "mode": "production" },
+    "production": { "outputHashing": "all" },
     "staging": { "appId": "com.example.myapp.staging", "appName": "My App (Staging)" }
   }
 }
@@ -132,7 +132,7 @@ ng build --platform ios
    │
    ├─ 1. Bundle      rspeedy (JS API) + pluginAngularLynx  → dist/main.lynx.bundle, lazy bundles, static/
    │
-   ├─ 2. Generate    template(@blotch/angular-lynx-native) + angular.json options
+   ├─ 2. Generate    template(packages/native) + angular.json options
    │                 → .angular-lynx/native/ios   (gitignored, cached by input hash)
    │
    ├─ 3. Build       xcodebuild archive + export  |  ./gradlew bundleRelease assembleRelease
@@ -140,14 +140,14 @@ ng build --platform ios
    └─ 4. Collect     → dist/ios/*.ipa, *.app      |  → dist/android/*.aab, *.apk
 ```
 
-### 1. Builders (`packages/runtime`, alongside the schematics)
+### 1. Builders (`packages/build`, published as `@blotch/angular-lynx-build`)
 
-- `@blotch/angular-lynx:application`: `ng build`. Without `--platform`, it only builds the bundle (equivalent to today's `rspeedy build`).
-- `@blotch/angular-lynx:dev-server`: `ng serve`. Hosts the rspeedy dev server; with `--platform`, also builds and launches the debug shell.
+- `@blotch/angular-lynx-build:application`: `ng build`. Without `--platform`, it only builds the bundle (equivalent to today's `rspeedy build`).
+- `@blotch/angular-lynx-build:dev-server`: `ng serve`. Hosts the rspeedy dev server; with `--platform`, also builds and launches the debug shell.
 - Both drive rspeedy through its JavaScript API rather than spawning the CLI, so errors and progress go through the Angular builder context and look like a normal `ng build`.
 - Users never configure asset paths: the shells resolve RSpeedy's default `/static/...` URLs against the bundled files (see the shell section below).
 
-### 2. Native shell templates (new package `@blotch/angular-lynx-native`)
+### 2. Native shell templates (`packages/native`, published as `@blotch/angular-lynx-native`)
 
 Swift and Kotlin source we own, versioned and released with the runtime, pinned to one Lynx version (4.1 at the start) and covered by E2E. Both shells implement the same features:
 
@@ -234,16 +234,16 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 
 ### What exists
 
-| Piece                                                                      | Where                                                                                               |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `application` and `dev-server` builders                                    | `packages/runtime/builders/` (`builders.json` in the runtime's package.json)                        |
-| Generator, signing, xcodebuild/Gradle runners, eject renderer              | `packages/native/src/` (`@blotch/angular-lynx-native`)                                              |
-| Swift shell, XcodeGen spec and generated `App.xcodeproj`                   | `packages/native/templates/ios/`                                                                    |
-| Kotlin shell, Gradle wrapper                                               | `packages/native/templates/android/` (its README documents the generator contract)                  |
-| XCFramework build                                                          | `packages/native/scripts/build-lynx-ios-frameworks.sh`, `.github/workflows/lynx-ios-frameworks.yml` |
-| `ng add` switches `build`/`serve` to the builders, adds the native package | `packages/runtime/schematics/ng-add/`                                                               |
-| Eject schematic                                                            | `packages/runtime/schematics/eject/`                                                                |
-| Layer 6 against the app's own build                                        | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`                                         |
+| Piece                                                                                                    | Where                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `application` and `dev-server` builders                                                                  | `packages/build/builders/` (`@blotch/angular-lynx-build`)                                           |
+| Generator, signing, xcodebuild/Gradle runners, eject renderer                                            | `packages/native/src/` (`@blotch/angular-lynx-native`, a dependency of the builders)                |
+| Swift shell; `App.xcodeproj` is rendered at build time by `scripts/generate-ios-project.ts` (not in git) | `packages/native/templates/ios/`                                                                    |
+| Kotlin shell, Gradle wrapper                                                                             | `packages/native/templates/android/` (its README documents the generator contract)                  |
+| XCFramework build                                                                                        | `packages/native/scripts/build-lynx-ios-frameworks.sh`, `.github/workflows/lynx-ios-frameworks.yml` |
+| `ng add` switches `build`/`serve` to the builders, adds `@blotch/angular-lynx-build`                     | `packages/runtime/schematics/ng-add/`                                                               |
+| Eject schematic                                                                                          | `packages/runtime/schematics/eject/`                                                                |
+| Layer 6 against the app's own build                                                                      | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`                                         |
 
 ### Phase results
 
@@ -268,10 +268,12 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 ### Changes from the plan above
 
 - **Flat builder options** instead of an `app` object, because of Angular's one-level configuration merge (see [Configuration](#configuration)).
-- **The build target keeps Angular's compiler options**, read by the build plugin and `ng test`. Side effect: `ng test` warns on every run that its `buildTarget` uses a builder it doesn't know ("Unexpected behavior or build failures may occur"). Tests still pass. Accepted (2026-10-15): removing the warning would mean a second target holding the same compiler options, which can drift.
+- **The build target keeps Angular's compiler options**, read by the build plugin and `ng test`. `ng test` runs `@blotch/angular-lynx-build:unit-test`, which hands Angular's unit-test builder the build target as an Angular one, with only the options both builders share. Angular's builder used to warn on every run that the build target used a builder it didn't know.
 - **No asset scheme needed.** RSpeedy's default asset prefix (`/static/...`) works: both shells resolve URLs without a scheme against the bundled `dist/` (iOS through a `LynxMediaResourceFetcher`, Android by rewriting to `asset:///`). Images render on both, unlike Sparkling's `asset:///` on iOS.
 - **XCFrameworks referenced directly** rather than through Swift Package Manager (see Native builds).
 - **Android toolchain:** AGP 9.4.1 (built-in Kotlin), Gradle 9.6.1, compile/target SDK 36, minSdk 24, Fresco 2.3.0 (what Lynx's image service is built against). R8 is off until Lynx's keep rules are verified, and XElement isn't included (its Android artifact is all-or-nothing).
+- **One builders package** (2026-10-15). The builders moved out of the runtime into `@blotch/angular-lynx-build`, a thin Angular CLI layer that depends on `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native`. The builders add `pluginAngularLynx()` when `lynx.config.ts` doesn't list it, and always set rspeedy's mode; rspeedy's JS API otherwise falls back to mode `none`, which built unminified.
+- **Angular CLI conventions** (2026-10-15). The builders package also depends on rspeedy and its QR code plugin, so an app's only build dependency is `@blotch/angular-lynx-build`, and lynx.config.ts is optional (the entry comes from `browser`, the environments default to `lynx` and `web`). The mode follows Angular's `optimization` rather than a builder option of its own. `ng test` runs Angular's unit-test builder through `@blotch/angular-lynx-build:unit-test`, `ng build --watch` works, budgets are enforced, `ng generate component` makes Lynx components, and the packages form an `ng update` group.
 - **Back button:** the Android shell sends `angularLynxBack` once the app opts in through `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`. The runtime doesn't call it from Router state yet.
 
 ### Next
@@ -281,7 +283,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 3. **Verify headless iOS signing** with an App Store Connect API key, and upload to TestFlight and a Play internal track.
 4. Router-driven Android back navigation in the runtime; Android icon and splash generation; a `doctor` target.
 5. Phase 4 (debug shells loading from the dev server, with Lynx DevTool).
-6. **Before the next release tag:** `@blotch/angular-lynx-native` has never been published, and `publish.yml` uses npm trusted publishing, which is configured per package on npmjs.com and needs the package to exist. Publish it once by hand (`npm publish --access public` from `packages/native`), then add this repository and `publish.yml` as its trusted publisher. Otherwise the release stops at this package, after the build plugin is published and before the runtime is.
+6. **Before the next release tag:** `@blotch/angular-lynx-native` and `@blotch/angular-lynx-build` have never been published, and `publish.yml` uses npm trusted publishing, which is configured per package on npmjs.com and needs the package to exist. Publish each once by hand (`npm run build`, then `npm publish --access public` from `packages/native`, then from `packages/build`), then add this repository and `publish.yml` as their trusted publisher. Otherwise the release stops at the first of them, after the build plugin is published and before the runtime is.
 
 ---
 

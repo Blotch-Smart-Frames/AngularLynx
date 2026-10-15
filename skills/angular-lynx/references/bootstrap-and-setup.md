@@ -52,29 +52,17 @@ export const routes: Routes = [
 
 ## Build Configuration
 
-### `lynx.config.ts`
+### `angular.json`
 
-```typescript
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
-import { pluginQRCode } from '@lynx-js/qrcode-rsbuild-plugin';
-import { defineConfig } from '@lynx-js/rspeedy';
-
-export default defineConfig({
-  source: {
-    entry: './src/main.ts',
-  },
-  plugins: [
-    pluginQRCode(), // Shows QR code in terminal for Lynx Explorer
-    pluginAngularLynx(), // Angular compilation + Lynx entry splitting
-  ],
-});
-```
+`ng build`, `ng serve` and `ng test` run the `@blotch/angular-lynx-build` builders, which `ng add` sets up. They take the entry point from the build target's `browser` option and add `pluginAngularLynx()`, which does the Angular compilation and Lynx entry splitting. A `lynx.config.ts` is optional: add one only for RSpeedy settings or plugin options, importing `defineConfig` and `pluginAngularLynx` from `@blotch/angular-lynx-build`. See [build-configuration.md](build-configuration.md).
 
 ### Running
 
 ```bash
-npx rspeedy dev    # Start dev server — scan QR code with Lynx Explorer app
-npx rspeedy build  # Production build
+ng serve  # Start dev server — scan QR code with Lynx Explorer app
+ng build  # Production build
+ng test   # Unit tests
+ng generate component my-feature  # A component with Lynx elements
 ```
 
 ## What the Providers Do

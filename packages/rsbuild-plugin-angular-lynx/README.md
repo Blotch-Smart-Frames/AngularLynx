@@ -4,11 +4,13 @@ Rsbuild plugin that compiles Angular apps for the [Lynx](https://lynxjs.org/) na
 
 ## Installation
 
+> **Using the Angular CLI?** You don't need this package directly. `ng add @blotch/angular-lynx` installs [`@blotch/angular-lynx-build`](../build), whose `ng build` and `ng serve` builders depend on this plugin and add it to rspeedy's config. To pass it options, import it from there: `import { pluginAngularLynx } from '@blotch/angular-lynx-build'`.
+
+To run rspeedy directly:
+
 ```bash
 npm install @blotch/rsbuild-plugin-angular-lynx
 ```
-
-> Starting a new project? `ng add @blotch/angular-lynx` sets this up automatically.
 
 ## Usage
 
@@ -32,6 +34,21 @@ export default defineConfig({
 - Splits each entry into **main-thread** and **background-thread** bundles for Lynx's dual-thread model
 - Bundles component stylesheets and processes CSS
 - Registers `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts Lynx elements (`<view>`, `<text>`, etc.)
+- Enforces the build target's `budgets` with `ng build`'s units and messages: a warning is printed, an error fails the build
+
+## Budgets
+
+Budgets in angular.json are checked against the `lynx` environment, the bundles devices load. The `web` preview isn't checked. A Lynx app ships `.bundle` files rather than separate scripts and stylesheets, so each budget type measures:
+
+| Type                | Measures                                                           |
+| ------------------- | ------------------------------------------------------------------ |
+| `initial`           | Each entry's bundle on its own, since a Lynx page loads one bundle |
+| `bundle`            | The bundle of the entry named by `name`                            |
+| `all` / `allScript` | All bundles and scripts together (scripts ship inside the bundles) |
+| `any` / `anyScript` | Each bundle and script                                             |
+| `anyComponentStyle` | Each component stylesheet, compiled                                |
+
+Media and fonts aren't counted. Under plain `rspeedy dev` budgets are skipped: the plugin then reads angular.json's default configuration, usually production, whose budgets don't fit a development build. `ng serve` checks them when the configuration it serves has them, as Angular's dev server does.
 
 ## Documentation
 

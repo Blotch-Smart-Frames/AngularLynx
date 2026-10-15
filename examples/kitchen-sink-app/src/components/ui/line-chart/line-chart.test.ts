@@ -1,27 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-// Mock Angular (and the sibling cartesian-chart's Angular usage, which loads
-// transitively) so importing the module needs no framework runtime. Only the
-// exported pure `computeLineSegments` is exercised; components are never built.
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  inject: () => ({}),
-  input: () => () => {},
-  output: () => () => {},
-}));
-
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-  // cartesian-chart (imported transitively) registers these in its decorator.
-  LynxGestureDetector: class {},
-  PanGesture: class {},
-  PinchGesture: class {},
-  Gesture: { Simultaneous: () => ({}) },
-}));
-
-const { computeLineSegments } = await import('./line-chart');
+import { describe, expect, it } from 'vitest';
+import { computeLineSegments } from './line-chart';
 
 describe('computeLineSegments', () => {
   it('produces a horizontal segment (angle 0)', () => {

@@ -11,7 +11,7 @@
       "schema": "./add-tailwind/schema.json"
     },
     "add-testing": {
-      "description": "Adds AngularLynx Testing Library with Vitest to an existing project",
+      "description": "Adds the AngularLynx Testing Library, which `ng test` sets up for rendering components on Lynx",
       "factory": "./add-testing/index",
       "schema": "./add-testing/schema.json"
     },
@@ -21,7 +21,7 @@
       "schema": "./add-i18n/schema.json"
     },
     "component": {
-      "description": "Generates a standalone Angular component with Lynx element template",
+      "description": "Generates a component with Angular's component schematic, with a Lynx element template and LYNX_ELEMENTS imported",
       "factory": "./component/index",
       "schema": "./component/schema.json",
       "aliases": ["c"]

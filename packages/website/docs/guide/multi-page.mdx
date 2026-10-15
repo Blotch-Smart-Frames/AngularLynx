@@ -12,11 +12,10 @@ There are two ways to define pages — choose whichever fits your workflow.
 
 ### Option A: `source.entry` in lynx.config.ts
 
-Specify an object where each key is a page name and each value is the entry file path:
+Specify an object where each key is a page name and each value is the entry file path. It replaces the single entry `ng build` takes from the build target's `browser` option:
 
 ```typescript title="lynx.config.ts"
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   source: {
@@ -25,7 +24,6 @@ export default defineConfig({
       settings: './src/pages/settings/main.ts',
     },
   },
-  plugins: [pluginAngularLynx()],
 });
 ```
 
@@ -44,11 +42,15 @@ Define each page as a separate project in `angular.json`, then tell the plugin w
       "sourceRoot": "src",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@blotch/angular-lynx-build:application",
           "options": {
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json"
           }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": { "buildTarget": "main:build" }
         }
       }
     },
@@ -58,7 +60,7 @@ Define each page as a separate project in `angular.json`, then tell the plugin w
       "sourceRoot": "src",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@blotch/angular-lynx-build:application",
           "options": {
             "browser": "src/pages/settings/main.ts",
             "tsConfig": "tsconfig.app.json"
@@ -71,8 +73,7 @@ Define each page as a separate project in `angular.json`, then tell the plugin w
 ```
 
 ```typescript title="lynx.config.ts"
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   plugins: [
@@ -83,6 +84,8 @@ export default defineConfig({
   ],
 });
 ```
+
+Both projects share the workspace root, so name one when you run the CLI: `ng build main` and `ng serve main` build every page.
 
 This is the Angular-native approach — useful when you want each page to be visible as a distinct project in your workspace, benefiting from IDE project awareness and Angular CLI tooling.
 

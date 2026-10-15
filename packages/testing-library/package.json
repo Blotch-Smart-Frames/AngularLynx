@@ -60,5 +60,14 @@
     "@angular/core": "^22.2.0",
     "@angular/platform-browser": "^22.2.0",
     "@blotch/angular-lynx": "^22.2.0"
+  },
+  "ng-update": {
+    "packageGroup": [
+      "@blotch/angular-lynx",
+      "@blotch/angular-lynx-build",
+      "@blotch/angular-lynx-testing-library",
+      "@blotch/rsbuild-plugin-angular-lynx",
+      "@blotch/angular-lynx-native"
+    ]
   }
 }

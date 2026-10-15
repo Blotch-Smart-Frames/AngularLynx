@@ -1,0 +1,229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "AngularLynxApplicationBuilder",
+  "title": "AngularLynx application builder",
+  "description": "Builds the Lynx bundle with rspeedy and, with --platform, the iOS and Android binaries.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android", "all"],
+      "description": "Also build native binaries into dist/<platform>/. Without it, only the bundle is built, as `rspeedy build` does."
+    },
+    "watch": {
+      "type": "boolean",
+      "default": false,
+      "description": "Rebuild the bundle when files change, as Angular's `ng build --watch` does. Can't be combined with `platform`."
+    },
+    "config": {
+      "type": "string",
+      "description": "The rspeedy config file, relative to the project root. Defaults to lynx.config.ts (or .js, .mts, .mjs) when the project has one. Without one, the app builds from angular.json: `browser` is the entry, and both the lynx and web environments are built."
+    },
+    "environment": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Only build these rspeedy environments (e.g. lynx). With --platform, only the lynx environment is built."
+    },
+    "browser": {
+      "type": "string",
+      "description": "Angular: the app's entry point. Read by @blotch/rsbuild-plugin-angular-lynx and `ng test`, and rspeedy's `source.entry` unless lynx.config.ts sets one."
+    },
+    "tsConfig": {
+      "type": "string",
+      "description": "Angular: the tsconfig the app compiles with."
+    },
+    "polyfills": {
+      "type": ["array", "string"],
+      "items": {
+        "type": "string"
+      },
+      "description": "Angular: modules loaded before the app (e.g. @angular/localize/init)."
+    },
+    "styles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Angular: global stylesheets."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Angular: used by `ng test` only. Lynx bundles reference assets through imports."
+    },
+    "scripts": {
+      "type": "array",
+      "description": "Angular: used by `ng test` only."
+    },
+    "inlineStyleLanguage": {
+      "type": "string",
+      "description": "Angular: the language of inline component styles."
+    },
+    "fileReplacements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "replace": {
+            "type": "string"
+          },
+          "with": {
+            "type": "string"
+          }
+        },
+        "required": ["replace", "with"]
+      },
+      "description": "Angular: files swapped at build time, e.g. environment files."
+    },
+    "aot": {
+      "type": "boolean",
+      "description": "Angular: ahead-of-time compilation. Defaults to true."
+    },
+    "optimization": {
+      "type": ["boolean", "object"],
+      "description": "Angular: script and style optimization. Also sets rspeedy's mode: production when scripts are optimized (the default), development otherwise."
+    },
+    "sourceMap": {
+      "type": ["boolean", "object"],
+      "description": "Angular: source maps."
+    },
+    "outputHashing": {
+      "type": "string",
+      "enum": ["none", "all", "media", "bundles"],
+      "description": "Angular: hashes in emitted file names."
+    },
+    "i18nMissingTranslation": {
+      "type": "string",
+      "enum": ["warning", "error", "ignore"],
+      "description": "Angular: how to report missing translations."
+    },
+    "budgets": {
+      "type": "array",
+      "description": "Angular: size budgets, checked against the Lynx bundles (each entry's bundle is its own `initial` budget) and component stylesheets."
+    },
+    "extractLicenses": {
+      "type": "boolean",
+      "description": "Angular: accepted for compatibility with `ng new`."
+    },
+    "outputPath": {
+      "type": ["string", "object"],
+      "description": "Angular: the output folder. Defaults to rspeedy's dist/."
+    },
+    "index": {
+      "type": ["boolean", "string", "object"],
+      "description": "Angular: accepted for compatibility; Lynx apps have no index.html."
+    },
+    "appName": {
+      "type": "string",
+      "description": "The app's name under its icon. Defaults to the project name."
+    },
+    "appId": {
+      "type": "string",
+      "description": "The iOS bundle ID and Android applicationId, e.g. com.example.myapp."
+    },
+    "version": {
+      "type": "string",
+      "description": "The user-facing version, e.g. 1.2.0. Defaults to package.json's version."
+    },
+    "buildNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The store build number (CFBundleVersion / versionCode). Must increase with every store upload."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": ["portrait", "landscape", "all"],
+      "default": "portrait",
+      "description": "The screen orientations the app supports."
+    },
+    "icon": {
+      "type": "string",
+      "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root."
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Each permission the app uses, with the reason shown to the user.",
+      "additionalProperties": false,
+      "properties": {
+        "camera": {
+          "type": "string"
+        },
+        "microphone": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "photos": {
+          "type": "string"
+        },
+        "contacts": {
+          "type": "string"
+        },
+        "notifications": {
+          "type": "string"
+        }
+      }
+    },
+    "deepLinkSchemes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]."
+    },
+    "ios": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "teamId": {
+          "type": "string",
+          "description": "The Apple Developer team ID that signs the app."
+        },
+        "signing": {
+          "type": "object",
+          "description": "An App Store Connect API key for headless signing. Each field names the environment variable holding the value.",
+          "additionalProperties": false,
+          "properties": {
+            "keyIdEnv": {
+              "type": "string"
+            },
+            "issuerIdEnv": {
+              "type": "string"
+            },
+            "keyPathEnv": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "android": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "signing": {
+          "type": "object",
+          "description": "The Google Play upload key. The *Env fields name the environment variables holding the values.",
+          "additionalProperties": false,
+          "properties": {
+            "storeFileEnv": {
+              "type": "string"
+            },
+            "storePasswordEnv": {
+              "type": "string"
+            },
+            "keyAlias": {
+              "type": "string"
+            },
+            "keyPasswordEnv": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

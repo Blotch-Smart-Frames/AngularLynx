@@ -1,27 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-// Mock Angular (and the transitively-loaded cartesian-chart Angular usage) so
-// importing the module needs no framework runtime. Only the exported pure
-// `computeBars` is exercised; the components are never built.
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  inject: () => ({}),
-  input: () => () => {},
-  output: () => () => {},
-}));
-
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-  // cartesian-chart (imported transitively) registers these in its decorator.
-  LynxGestureDetector: class {},
-  PanGesture: class {},
-  PinchGesture: class {},
-  Gesture: { Simultaneous: () => ({}) },
-}));
-
-const { computeBars } = await import('./bar-chart');
+import { describe, expect, it } from 'vitest';
+import { computeBars } from './bar-chart';
 
 // Screen y grows downward, so a value ABOVE the baseline has a SMALLER pixel y
 // than baseY. Baseline pixel y = 100 in these cases (bottom of the plot).

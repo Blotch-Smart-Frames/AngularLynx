@@ -57,12 +57,39 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       'dist/index.js',
       'dist/index.d.ts',
       // The native shells the generator copies. Without them every
-      // `ng build --platform` fails, and no unit test would notice.
+      // `ng build --platform` fails, and no unit test would notice. The
+      // Xcode project isn't in git: `npm run build` renders it.
       'templates/ios/App.xcodeproj/project.pbxproj',
+      'templates/ios/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme',
       'templates/ios/App/Info.plist',
       'templates/android/gradlew',
       'templates/android/app/build.gradle.kts',
       'templates/android/app/src/main/AndroidManifest.xml',
+    ],
+  },
+  {
+    name: '@blotch/angular-lynx-build',
+    dir: 'packages/build',
+    publishDir: 'packages/build',
+    hasTypes: true,
+    requiredFiles: [
+      'dist/index.js',
+      'dist/index.d.ts',
+      // The `ng build` / `ng serve` / `ng test` builders. builders/package.json
+      // marks them as CommonJS in this ESM package: Angular CLI require()s
+      // them.
+      'builders/builders.json',
+      'builders/package.json',
+      'builders/application/index.js',
+      'builders/application/schema.json',
+      'builders/dev-server/index.js',
+      'builders/dev-server/schema.json',
+      'builders/unit-test/index.js',
+      'builders/unit-test/schema.json',
+      // Loaded by `ng test` before the tests, through the package's exports.
+      'builders/unit-test/lynx-globals.mjs',
+      // The app's types for asset and CSS imports.
+      'client.d.ts',
     ],
   },
   {
@@ -80,13 +107,6 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       // provide any `ng add` actions". Every factory in collection.json is
       // also checked separately, in packages/e2e/src/check-packages.ts.
       'schematics/package.json',
-      // The `ng build` / `ng serve` builders, CommonJS like the schematics.
-      'builders/builders.json',
-      'builders/package.json',
-      'builders/application/index.js',
-      'builders/application/schema.json',
-      'builders/dev-server/index.js',
-      'builders/dev-server/schema.json',
     ],
   },
   {
@@ -118,6 +138,7 @@ type WorkspacePackageJson = {
   name: string;
   version: string;
   private?: boolean;
+  dependencies?: Record<string, string>;
 };
 
 const readJson = <T>(file: string): T =>
@@ -127,17 +148,70 @@ const readJson = <T>(file: string): T =>
 export const readPackageJson = (pkg: PublishablePackage) =>
   readJson<WorkspacePackageJson>(path.join(REPO_ROOT, pkg.dir, 'package.json'));
 
+const PUBLISHABLE_NAMES = new Set(PUBLISHABLE_PACKAGES.map((pkg) => pkg.name));
+
 /**
- * Each publishable package's version, from its source `package.json`. The
- * packages are released in lockstep, so these should all be equal: the
- * `consistent-package-versions` lint rule checks that on every lint run, and
- * `check-version.ts` checks them against the tag before a release.
+ * The dependencies of one publishable package on another (such as
+ * @blotch/angular-lynx-build on @blotch/rsbuild-plugin-angular-lynx). They
+ * are pinned to an exact version: the packages are released together, and a
+ * package is tested only with the others from its own release.
+ */
+export const readInternalPins = (pkg: PublishablePackage) =>
+  Object.entries(readPackageJson(pkg).dependencies ?? {})
+    .filter(([name]) => PUBLISHABLE_NAMES.has(name))
+    .map(([name, version]) => ({ name, version }));
+
+/**
+ * Each publishable package's version, from its source `package.json`, and
+ * each pin from one to another. The packages are released in lockstep, so
+ * these should all be equal: the `consistent-package-versions` lint rule
+ * checks that on every lint run, and `check-version.ts` checks them against
+ * the tag before a release.
  */
 export const readVersions = () =>
-  PUBLISHABLE_PACKAGES.map((pkg) => ({
-    name: pkg.name,
-    version: readPackageJson(pkg).version,
-  }));
+  PUBLISHABLE_PACKAGES.flatMap((pkg) => [
+    { name: pkg.name, version: readPackageJson(pkg).version },
+    ...readInternalPins(pkg).map((pin) => ({
+      name: `${pkg.name}'s dependency ${pin.name}`,
+      version: pin.version,
+    })),
+  ]);
+
+/**
+ * The packages `ng update` moves together: the ones an app installs. Each
+ * declares this list as its `ng-update.packageGroup`, the way every @angular
+ * package lists the others, so `ng update @blotch/angular-lynx` (or any one of
+ * them) updates them all to the same release, and `ng update` with no
+ * arguments lists them. The runtime's `ng-update` also names the migrations
+ * collection that `ng update` runs.
+ */
+export const NG_UPDATE_PACKAGE_GROUP: readonly string[] = [
+  '@blotch/angular-lynx',
+  '@blotch/angular-lynx-build',
+  '@blotch/angular-lynx-testing-library',
+  '@blotch/rsbuild-plugin-angular-lynx',
+  '@blotch/angular-lynx-native',
+];
+
+/**
+ * The packages of {@link NG_UPDATE_PACKAGE_GROUP} whose `ng-update.packageGroup`
+ * isn't that list. The `consistent-package-versions` lint rule reports them.
+ */
+export const findPackageGroupMismatches = (): string[] =>
+  PUBLISHABLE_PACKAGES.filter((pkg) =>
+    NG_UPDATE_PACKAGE_GROUP.includes(pkg.name),
+  )
+    .filter(
+      (pkg) =>
+        JSON.stringify(
+          (
+            readPackageJson(pkg) as {
+              'ng-update'?: { packageGroup?: string[] };
+            }
+          )['ng-update']?.packageGroup,
+        ) !== JSON.stringify(NG_UPDATE_PACKAGE_GROUP),
+    )
+    .map((pkg) => pkg.name);
 
 /**
  * Finds workspace packages that npm would publish (no `"private": true`) but

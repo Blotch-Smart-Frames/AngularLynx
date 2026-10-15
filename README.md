@@ -29,11 +29,13 @@ Full documentation at [angularlynx.dev](https://angularlynx.dev).
 
 ## Packages
 
-| Package | Description |
-| --- | --- |
-| [`@blotch/angular-lynx`](./packages/runtime) | Angular `Renderer2` bridging to Lynx's native element APIs |
-| [`@blotch/rsbuild-plugin-angular-lynx`](./packages/rsbuild-plugin-angular-lynx) | Rsbuild plugin — Angular AOT compiler + Lynx dual-thread bundling |
-| [`examples/kitchen-sink-app`](./examples/kitchen-sink-app) | Flagship demo app (`npm run demo`) — routing, signals, and `@blotch/dolan` UI components on Lynx |
+| Package                                                                         | Description                                                                                                                 |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [`@blotch/angular-lynx`](./packages/runtime)                                    | Angular `Renderer2` bridging to Lynx's native element APIs                                                                  |
+| [`@blotch/angular-lynx-build`](./packages/build)                                | Angular CLI builders — `ng build` / `ng serve` / `ng test` for Lynx, and `ng build --platform ios\|android` for native apps |
+| [`@blotch/rsbuild-plugin-angular-lynx`](./packages/rsbuild-plugin-angular-lynx) | Rsbuild plugin — Angular AOT compiler + Lynx dual-thread bundling                                                           |
+| [`@blotch/angular-lynx-native`](./packages/native)                              | Native app builder — the Swift and Kotlin shells `ng build --platform` builds into iOS and Android apps                     |
+| [`examples/kitchen-sink-app`](./examples/kitchen-sink-app)                      | Flagship demo app (`npm run demo`) — routing, signals, and `@blotch/dolan` UI components on Lynx                            |
 
 ## Architecture
 
@@ -44,10 +46,11 @@ graph TB
     subgraph build ["Build Time"]
         direction TB
         src["kitchen-sink-app<br/><i>Angular components using<br/>Lynx elements (x-view, x-text, ...)</i>"]
+        builder["@blotch/angular-lynx-build<br/><i>ng build / ng serve / ng test</i>"]
         plugin["@blotch/rsbuild-plugin-angular-lynx<br/><i>RSpeedy/Rsbuild plugin +<br/>Angular compiler (webpack)</i>"]
         bundle[".lynx.bundle<br/><i>main-thread JS + background-thread JS<br/>+ CSS + template</i>"]
 
-        src --> plugin --> bundle
+        src --> builder --> plugin --> bundle
     end
 
     subgraph device ["Runtime (on device)"]
@@ -77,7 +80,7 @@ graph TB
 
     subgraph dev ["Dev Flow"]
         direction LR
-        dev_server["Dev Server<br/><i>rspeedy dev</i>"]
+        dev_server["Dev Server<br/><i>ng serve</i>"]
         explorer["Lynx Explorer App<br/><i>scan QR code</i>"]
 
         dev_server -- "serves bundle" --> explorer
@@ -90,7 +93,7 @@ graph TB
 
 ```bash
 npm install && npm run build   # Build all packages
-npm run demo                   # Start dev server (rspeedy)
+npm run demo                   # Start dev server (ng serve)
 ```
 
 Scan the QR code with [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html) to run on your phone. Turn on Lynx DevTool in Explorer's settings tab so the app reloads when you save a file.

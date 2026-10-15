@@ -1,0 +1,19 @@
+{
+  "builders": {
+    "application": {
+      "implementation": "./application/index",
+      "schema": "./application/schema.json",
+      "description": "Builds the Lynx bundle with rspeedy (--watch to rebuild on changes) and, with --platform, the iOS and Android binaries"
+    },
+    "dev-server": {
+      "implementation": "./dev-server/index",
+      "schema": "./dev-server/schema.json",
+      "description": "Runs the rspeedy dev server for Lynx Explorer and the web preview"
+    },
+    "unit-test": {
+      "implementation": "./unit-test/index",
+      "schema": "./unit-test/schema.json",
+      "description": "Runs the unit tests with Angular's unit-test builder, set up for AngularLynx"
+    }
+  }
+}

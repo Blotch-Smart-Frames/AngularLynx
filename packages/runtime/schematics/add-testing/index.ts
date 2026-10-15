@@ -11,7 +11,10 @@ import {
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
 import { JSONFile } from '@schematics/angular/utility/json-file';
-import { getWorkspace } from '@schematics/angular/utility/workspace';
+import {
+  getWorkspace,
+  updateWorkspace,
+} from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
 import { VERSIONS } from '../ng-add/versions';
@@ -37,85 +40,44 @@ export default (options: Schema): Rule =>
       );
     }
 
-    const sourceRoot = (project.sourceRoot ?? `${project.root}/src`) as string;
-    const projectRoot = project.root as string;
-
     return chain([
-      addVitestConfig(projectRoot),
-      addSetupFile(sourceRoot),
+      useLynxTestBuilder(projectName),
       updatePackageScripts(),
       addTestingDependencies(),
     ]);
   };
 
 /**
- * Vitest config requires careful alignment with the AngularLynx build pipeline:
- * - `define.__MAIN_THREAD__: true` — tests run on the "main thread" path because
- *   PAPI functions (__CreateView, etc.) are available via the testing environment
- * - `define.__DEV__: true` — enables development-mode warnings and diagnostics
- * - `define.__WEB__`, `__PROFILE__`, `__ENABLE_SSR__` — the runtime reads these
- *   compile-time flags, which the Rsbuild plugin injects into app builds.
- *   Without them, importing the runtime in a test throws "ReferenceError:
- *   __WEB__ is not defined". Tests emulate the native main thread: not web,
- *   no profiling, no SSR. Keep in sync with the examples' vitest configs.
- * - `oxc.decorator.legacy: true` — Angular's JIT compiler in tests reads the
- *   metadata of legacy TypeScript decorators (@Component, @Injectable). Vite 8
- *   transforms TypeScript with OXC rather than esbuild, so the old
- *   `esbuild.tsconfigRaw.experimentalDecorators` setting is ignored.
+ * Tests run with `ng test`, through the AngularLynx unit-test builder (which
+ * `ng add` already sets up; this covers projects set up before it). It sets
+ * up the testing library's Lynx environment itself when the package is
+ * installed, so the project needs no Vitest config or setup file of its own.
  */
-const addVitestConfig = (projectRoot: string): Rule => {
-  return (tree: Tree) => {
-    const configPath = `${projectRoot ? projectRoot + '/' : ''}vitest.config.ts`;
-    const content = `import { defineConfig } from 'vitest/config';
-import path from 'node:path';
-
-export default defineConfig({
-  define: {
-    __DEV__: JSON.stringify(true),
-    __MAIN_THREAD__: JSON.stringify(true),
-    __WEB__: JSON.stringify(false),
-    __PROFILE__: JSON.stringify(false),
-    __ENABLE_SSR__: JSON.stringify(false),
-  },
-  oxc: {
-    decorator: {
-      legacy: true,
-    },
-  },
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
-    include: ['src/**/*.test.ts'],
-  },
-});
-`;
-    if (tree.exists(configPath)) {
-      tree.overwrite(configPath, content);
-    } else {
-      tree.create(configPath, content);
+const useLynxTestBuilder = (projectName: string): Rule =>
+  updateWorkspace((workspace) => {
+    const project = workspace.projects.get(projectName)!;
+    const test = project.targets.get('test');
+    if (test?.builder === '@blotch/angular-lynx-build:unit-test') {
+      return;
     }
-  };
-};
-
-const addSetupFile = (sourceRoot: string): Rule => {
-  return (tree: Tree) => {
-    const setupPath = `${sourceRoot}/setup.ts`;
-    const content = `import '@blotch/angular-lynx-testing-library/setup';
-`;
-    if (tree.exists(setupPath)) {
-      tree.overwrite(setupPath, content);
-    } else {
-      tree.create(setupPath, content);
+    if (test) {
+      project.targets.delete('test');
     }
-  };
-};
+    project.targets.add({
+      name: 'test',
+      builder: '@blotch/angular-lynx-build:unit-test',
+    });
+  });
 
 const updatePackageScripts = (): Rule => {
   return (tree: Tree) => {
+    // `ng test` watches by default when run in a terminal, so the separate
+    // watch script this schematic used to add is gone with Vitest's.
     const pkg = new JSONFile(tree, '/package.json');
-    pkg.modify(['scripts', 'test'], 'vitest run');
-    pkg.modify(['scripts', 'test:watch'], 'vitest');
+    pkg.modify(['scripts', 'test'], 'ng test');
+    if (pkg.get(['scripts', 'test:watch']) === 'vitest') {
+      pkg.remove(['scripts', 'test:watch']);
+    }
   };
 };
 

@@ -10,18 +10,21 @@ Transforms an existing Angular project into a Lynx-native application in one com
 ng add @blotch/angular-lynx
 ```
 
-This rewrites your project's entry point, app config, and root component for Lynx, installs the required build tooling, and optionally adds Tailwind CSS.
+This rewrites your project's entry point, app config, and root component for Lynx, points the Angular CLI at the AngularLynx builders and schematics, installs the build tooling, and optionally adds Tailwind CSS. Everything else stays as `ng new` left it: the build config is in `angular.json`, as in any Angular app.
 
 **What it does:**
 
 - Replaces `main.ts` with `bootstrapApplication` from `@blotch/angular-lynx`
 - Rewrites `app.config.ts` with `provideRenderer()` and `provideZonelessChangeDetection()`
-- Replaces the root component template with Lynx elements (`<view>`, `<text>`)
-- Removes `.html` template files (Lynx templates are inline TypeScript strings)
-- Creates `lynx.config.ts` for RSpeedy
-- Points `ng build` and `ng serve` at the AngularLynx builders, and the `build` / `start` scripts at them
-- Installs build tooling (`@lynx-js/rspeedy`, `@blotch/rsbuild-plugin-angular-lynx`, `@blotch/angular-lynx-native`)
+- Replaces the root component with one whose inline template uses Lynx elements (`<view>`, `<text>`), and removes its `.html`, `.css` and spec files
+- Points `ng build`, `ng serve` and `ng test` at the AngularLynx builders, keeping `ng new`'s configurations and options
+- Puts `@blotch/angular-lynx` first in `cli.schematicCollections`, so `ng generate component` makes Lynx components
+- Raises `ng new`'s `initial` budget (500 kB warning, 1 MB error) to 2 MB and 5 MB: a Lynx bundle holds Angular twice, once for each of Lynx's threads, so a new app's bundle is already about 1 MB
+- Adds `src/rspeedy-env.d.ts`, the types for asset and CSS module imports
+- Installs `@blotch/angular-lynx-build`, the builders, which bring rspeedy, the AngularLynx rsbuild plugin and the native app builder with them
 - Optionally sets up Tailwind CSS (prompted interactively)
+
+It doesn't create a `lynx.config.ts`: the builders take the entry point from `angular.json`. Add one only to [customize rspeedy](/guide/building-for-production).
 
 **Options:**
 
@@ -32,45 +35,54 @@ This rewrites your project's entry point, app config, and root component for Lyn
 
 ## `component` — Generate Components
 
-Generates a standalone Angular component with Lynx element template:
+After `ng add`, Angular's own command generates Lynx components:
 
 ```bash
-ng generate @blotch/angular-lynx:component my-feature
+ng generate component my-feature   # or: ng g c my-feature
 ```
 
-This creates a component with `<view>`/`<text>` elements, `OnPush` change detection, `LYNX_ELEMENTS` import, and a test file using the AngularLynx Testing Library.
+`ng add` puts `@blotch/angular-lynx` first in `angular.json`'s `cli.schematicCollections`, so `ng generate component` runs this schematic. Every other schematic (`service`, `pipe`, `guard`, `directive`, ...) still comes from Angular's collection, which is listed after it. Without that setting, call it by name: `ng generate @blotch/angular-lynx:component my-feature`.
 
-**Generated files** (default):
+It runs Angular's own component schematic, so the files, names and options are the ones you know, and `angular.json`'s defaults for `@schematics/angular:component` (such as `style: scss`) apply. Then it makes the component a Lynx one:
+
+- The placeholder `<p>` becomes Lynx elements: `<view><text>my-feature works!</text></view>`
+- The component imports `LYNX_ELEMENTS`, so its template type-checks in the editor and under `ng test`
+- With [`@blotch/angular-lynx-testing-library`](/guide/testing) installed, Angular's `TestBed` spec is replaced with a `*.test.ts` that renders the component on Lynx. Without it, Angular's spec stays; `ng test` runs both kinds.
+
+**Generated files** (default, with the testing library installed):
 
 ```
 src/app/my-feature/
-  my-feature.ts       # Component with Lynx template
-  my-feature.test.ts  # Vitest test using render()
+  my-feature.ts       # Component, importing LYNX_ELEMENTS
+  my-feature.html     # Lynx template
+  my-feature.css      # Styles
+  my-feature.test.ts  # Test using render()
 ```
 
 **Example output:**
 
 ```typescript title="my-feature.ts"
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
-  selector: 'app-my-feature',
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <view>
-      <text>my-feature works!</text>
-    </view>
-  `,
-  styles: [``],
+  selector: 'app-my-feature',
+  styleUrl: './my-feature.css',
+  templateUrl: './my-feature.html',
 })
 export class MyFeature {}
 ```
 
+```html title="my-feature.html"
+<view>
+  <text>my-feature works!</text>
+</view>
+```
+
 ```typescript title="my-feature.test.ts"
-import { describe, expect, it } from 'vitest';
 import { render } from '@blotch/angular-lynx-testing-library';
+import { describe, expect, it } from 'vitest';
 
 import { MyFeature } from './my-feature';
 
@@ -82,33 +94,16 @@ describe('MyFeature', () => {
 });
 ```
 
-**Options:**
+Angular 22 components use `OnPush` change detection by default, which zoneless Lynx apps need.
 
-| Option                    | Type      | Default           | Description                   |
-| ------------------------- | --------- | ----------------- | ----------------------------- |
-| `--project`               | `string`  | default project   | Target project                |
-| `--prefix`                | `string`  | from angular.json | Selector prefix               |
-| `--inlineTemplate` / `-t` | `boolean` | `true`            | Inline template in `.ts` file |
-| `--inlineStyle` / `-s`    | `boolean` | `true`            | Inline styles in `.ts` file   |
-| `--skipTests`             | `boolean` | `false`           | Skip `.test.ts` generation    |
-| `--flat`                  | `boolean` | `false`           | Create without subdirectory   |
+**Options:** all of [Angular's component options](https://angular.dev/cli/generate/component), e.g. `--inline-template` (`-t`), `--inline-style` (`-s`), `--style`, `--skip-tests`, `--flat`, `--type`, `--export-default`, `--selector`, `--change-detection`.
 
 **Nested paths:**
 
 ```bash
 # Creates src/app/pages/dashboard/dashboard.ts
-ng generate @blotch/angular-lynx:component pages/dashboard
+ng generate component pages/dashboard
 ```
-
-**Alias:**
-
-```bash
-ng generate @blotch/angular-lynx:c my-feature
-```
-
-:::tip Why not `ng generate component`?
-Angular's built-in component generator creates HTML templates with `<p>`, `<div>`, and browser-centric boilerplate. AngularLynx components use Lynx native elements (`<view>`, `<text>`, `<image>`) and inline templates (since Angular templates in Lynx are TypeScript string literals, not `.html` files). The AngularLynx generator produces components that work out of the box.
-:::
 
 ## `add-tailwind` — Add Tailwind CSS
 
@@ -132,7 +127,7 @@ ng generate @blotch/angular-lynx:add-tailwind
 
 ## `add-testing` — Add Testing Library
 
-Adds the [AngularLynx Testing Library](/guide/testing) with Vitest to an existing project:
+Adds the [AngularLynx Testing Library](/guide/testing) to an existing project:
 
 ```bash
 ng generate @blotch/angular-lynx:add-testing
@@ -140,10 +135,11 @@ ng generate @blotch/angular-lynx:add-testing
 
 **What it does:**
 
-- Creates `vitest.config.ts` with jsdom environment, globals, and proper esbuild settings for Angular decorators
-- Creates `src/setup.ts` importing `@blotch/angular-lynx-testing-library/setup`
-- Adds `test` and `test:watch` scripts to `package.json`
-- Installs `@blotch/angular-lynx-testing-library`, `vitest`, and `jsdom` as devDependencies
+- Installs `@blotch/angular-lynx-testing-library`, plus `vitest` and `jsdom` if the project doesn't have them (`ng new` adds both, and keeps its versions)
+- Points the `test` target at `@blotch/angular-lynx-build:unit-test` if it isn't already (`ng add` does that for new projects)
+- Sets the `test` script in `package.json` to `ng test`
+
+`ng test` loads the library's setup itself whenever it's installed, so there's no Vitest config or setup file to add. Components generated from then on get a test that renders them on Lynx.
 
 **Options:**
 
@@ -193,7 +189,7 @@ ng generate @blotch/angular-lynx:eject
 | Schematic      | Command                                  | Purpose                          |
 | -------------- | ---------------------------------------- | -------------------------------- |
 | `ng-add`       | `ng add @blotch/angular-lynx`            | Convert Angular project to Lynx  |
-| `component`    | `ng g @blotch/angular-lynx:c <name>`     | Generate Lynx component          |
+| `component`    | `ng g c <name>`                          | Generate Lynx component          |
 | `add-tailwind` | `ng g @blotch/angular-lynx:add-tailwind` | Add Tailwind CSS                 |
 | `add-testing`  | `ng g @blotch/angular-lynx:add-testing`  | Add testing infrastructure       |
 | `add-i18n`     | `ng g @blotch/angular-lynx:add-i18n`     | Add i18n support                 |

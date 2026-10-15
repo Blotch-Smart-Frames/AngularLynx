@@ -10,13 +10,15 @@ export type AngularWorkspace = {
 
 const configNames = ['angular.json', '.angular.json'];
 
-const findWorkspaceFile = () => {
-  return findUp(configNames, process.cwd());
-};
-
-export const getAngularWorkspace = async (): Promise<AngularWorkspace> => {
+/**
+ * Reads the angular.json found by searching up from `from`: the workspace
+ * root Angular CLI passed in, or the working directory under plain rspeedy.
+ */
+export const getAngularWorkspace = async (
+  from: string = process.cwd(),
+): Promise<AngularWorkspace> => {
   const host = workspaces.createWorkspaceHost(new NodeJsSyncHost());
-  const workspaceFile = findWorkspaceFile();
+  const workspaceFile = findUp(configNames, from);
   if (!workspaceFile) throw new Error("couldn't find workspace file");
   const { workspace } = await workspaces.readWorkspace(workspaceFile, host);
   return {

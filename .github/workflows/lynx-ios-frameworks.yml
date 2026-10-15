@@ -67,4 +67,4 @@ jobs:
         run: >-
           gh release create "lynx-ios-$VERSION" "$RUNNER_TEMP"/lynx-ios/out/*.zip
           --title "Lynx $VERSION for iOS (XCFrameworks)"
-          --notes "Prebuilt Lynx $VERSION XCFrameworks for @blotch/angular-lynx-native, built by the Lynx iOS frameworks workflow. Not an AngularLynx release."
+          --notes "Prebuilt Lynx $VERSION XCFrameworks for ng build --platform ios (@blotch/angular-lynx-build), built by the Lynx iOS frameworks workflow. Not an AngularLynx release."

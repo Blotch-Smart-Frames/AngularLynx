@@ -18,7 +18,7 @@ import type { NativeHost } from './maestro.ts';
  * Builds the app's own binary with `ng build --platform`, the command users
  * run, and describes it for the Maestro flows. The iOS build needs Lynx's
  * XCFrameworks: published ones, or a local folder in
- * ANGULAR_LYNX_IOS_FRAMEWORKS (see @blotch/angular-lynx-native).
+ * ANGULAR_LYNX_IOS_FRAMEWORKS (see packages/native/README.md).
  */
 const buildShell = async (
   platform: 'ios' | 'android',

@@ -4,7 +4,7 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import { getWorkspace } from '@schematics/angular/utility/workspace';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -27,24 +27,34 @@ type NativeModule = {
 
 /**
  * A real dynamic import. The schematics compile to CommonJS, where TypeScript
- * rewrites `import()` into `require()`, and @blotch/angular-lynx-native is
- * ESM-only (the same reason Angular CLI keeps its own `loadEsmModule`).
+ * rewrites `import()` into `require()`, and the native builder is ESM-only
+ * (the same reason Angular CLI keeps its own `loadEsmModule`).
  */
 const importEsm = new Function('specifier', 'return import(specifier)') as (
   specifier: string,
 ) => Promise<unknown>;
 
+/**
+ * Loads the native builder that `ng build --platform` uses, so the ejected
+ * project is exactly the one it would have generated. It is a dependency of
+ * @blotch/angular-lynx-build rather than of the app, so it is resolved from
+ * there: pnpm doesn't link it into the app's own node_modules.
+ */
 const loadNative = async (workspaceRoot: string): Promise<NativeModule> => {
-  const require = createRequire(path.join(workspaceRoot, 'package.json'));
-  let packageJsonPath: string;
+  const fromApp = createRequire(path.join(workspaceRoot, 'package.json'));
+  let buildersPackageJson: string;
   try {
-    packageJsonPath =
-      require.resolve('@blotch/angular-lynx-native/package.json');
+    buildersPackageJson = realpathSync(
+      fromApp.resolve('@blotch/angular-lynx-build/package.json'),
+    );
   } catch {
     throw new SchematicsException(
-      '@blotch/angular-lynx-native is not installed. Install it first: npm install --save-dev @blotch/angular-lynx-native',
+      '@blotch/angular-lynx-build is not installed. Install it first: npm install --save-dev @blotch/angular-lynx-build',
     );
   }
+  const packageJsonPath = createRequire(buildersPackageJson).resolve(
+    '@blotch/angular-lynx-native/package.json',
+  );
   const entry = JSON.parse(readFileSync(packageJsonPath, 'utf8')).exports['.']
     .import as string;
   return (await importEsm(

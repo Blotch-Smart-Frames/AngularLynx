@@ -12,10 +12,11 @@
       // silently skipping build-examples/prepare-examples entirely.
       //
       // Two things fix that here:
-      //  1. dependsOn the runtime + plugin builds. The examples (built inside
-      //     this task by build-examples) need @blotch/angular-lynx and its
-      //     rsbuild plugin on disk first. The website has no npm dep on them,
-      //     so "^build" wouldn't order them — name them explicitly.
+      //  1. dependsOn the runtime + builders builds. The examples (built
+      //     inside this task by build-examples) need @blotch/angular-lynx and
+      //     @blotch/angular-lynx-build (whose build depends on the rsbuild
+      //     plugin's) on disk first. The website has no npm dep on them, so
+      //     "^build" wouldn't order them — name them explicitly.
       //  2. inputs add the examples tree to this task's hash. $TURBO_DEFAULT$
       //     keeps the website's own files; $TURBO_ROOT$/examples/** makes any
       //     example SOURCE edit invalidate the website cache. node_modules and
@@ -24,7 +25,7 @@
       //     "did the example change").
       "dependsOn": [
         "@blotch/angular-lynx#build",
-        "@blotch/rsbuild-plugin-angular-lynx#build"
+        "@blotch/angular-lynx-build#build"
       ],
       "inputs": [
         "$TURBO_DEFAULT$",

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // The builders compile next to their sources, so the root task's
+      // outputs (dist/** and friends) would miss them on a cache hit.
+      "outputs": ["dist/**", "builders/**/*.js"]
+    }
+  }
+}

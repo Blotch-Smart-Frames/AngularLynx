@@ -9,8 +9,9 @@ Lynx uses a dual-thread model: **main thread** (native UI rendering) and **backg
 ## Monorepo Structure
 
 - `packages/runtime` — Core Angular renderer for Lynx (published as `@blotch/angular-lynx`)
-- `packages/rsbuild-plugin-angular-lynx` — Rsbuild plugin for building AngularLynx apps (published as `@blotch/rsbuild-plugin-angular-lynx`)
-- `packages/native` — Native app builder (published as `@blotch/angular-lynx-native`): the Swift and Kotlin shell templates and the generator behind `ng build --platform ios|android`. The `ng build` / `ng serve` builders themselves live in `packages/runtime/builders` and load this package only for `--platform`. See its README and `investigations/native-app-builds.md`
+- `packages/build` — The Angular CLI builders (published as `@blotch/angular-lynx-build`): `ng build` / `ng serve` run rspeedy with the rsbuild plugin, and `ng build --platform ios|android` then runs the native app builder. A thin layer over the next two packages; apps reference it in `angular.json` as `@blotch/angular-lynx-build:application` / `:dev-server`
+- `packages/rsbuild-plugin-angular-lynx` — Rsbuild plugin that compiles Angular for Lynx (published as `@blotch/rsbuild-plugin-angular-lynx`). A dependency of `packages/build`, which adds it to rspeedy's config; also usable with plain rspeedy
+- `packages/native` — Native app builder (published as `@blotch/angular-lynx-native`): the Swift and Kotlin shell templates and the generator behind `ng build --platform ios|android`. A dependency of `packages/build`, which loads it only for `--platform`. See its README and `investigations/native-app-builds.md`
 - `packages/create-angular-lynx` — Zero-setup scaffolder: `npm create angular-lynx <name>` runs `ng new` then `ng add @blotch/angular-lynx` automatically
 - `packages/e2e` — End-to-end tests (private): packs the publishable packages, installs them into a fresh `npm create angular-lynx` app from a local Verdaccio registry, builds it, and renders it in Chromium (and natively on the iOS Simulator). Run with `npm run e2e`; see its README
 - `packages/release` — Release tooling (private): `src/packages.ts` is the single list of published packages, shared with the E2E tests, `publish.yml` and the `consistent-package-versions` lint rule. `npm run set-version <version>` sets every published package's version before tagging a release; see its README
@@ -93,7 +94,7 @@ The runtime package ships an Angular schematics collection (`packages/runtime/sc
 
 ```sh
 npm install && npm run build   # Build all packages
-npm run demo                   # Start demo dev server (rspeedy)
+npm run demo                   # Start demo dev server (ng serve)
 ```
 
 ## Debugging

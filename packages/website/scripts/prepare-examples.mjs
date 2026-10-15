@@ -241,18 +241,21 @@ const needsBuild = examples.some(
 );
 
 if (needsBuild) {
-  // Ensure the runtime and plugin are built first
+  // Ensure the runtime and the builders are built first
   const runtimeBuilt = fs.existsSync(
-    path.join(REPO_ROOT, 'packages/runtime/dist/index.js'),
+    path.join(
+      REPO_ROOT,
+      'packages/runtime/dist/fesm2022/blotch-angular-lynx.mjs',
+    ),
   );
-  const pluginBuilt = fs.existsSync(
-    path.join(REPO_ROOT, 'packages/rsbuild-plugin-angular-lynx/dist/index.js'),
+  const buildersBuilt = fs.existsSync(
+    path.join(REPO_ROOT, 'packages/build/builders/application/index.js'),
   );
 
-  if (!runtimeBuilt || !pluginBuilt) {
-    console.info('Building runtime and plugin (required by examples)...');
+  if (!runtimeBuilt || !buildersBuilt) {
+    console.info('Building runtime and builders (required by examples)...');
     execSync(
-      'npm run build -w packages/rsbuild-plugin-angular-lynx && npm run build -w packages/runtime',
+      'npx turbo run build --filter=@blotch/angular-lynx --filter=@blotch/angular-lynx-build',
       { cwd: REPO_ROOT, stdio: 'inherit' },
     );
   }

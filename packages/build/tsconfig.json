@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    // NodeNext takes each file's module format from the nearest package.json:
+    // builders/ is CommonJS (see builders/package.json), the rest is ESM.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true,
+    "rewriteRelativeImportExtensions": true,
+    "importHelpers": false
+  },
+  "include": ["src", "builders"]
+}

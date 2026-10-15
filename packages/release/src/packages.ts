@@ -68,6 +68,24 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
     ],
   },
   {
+    name: '@blotch/angular-lynx-build',
+    dir: 'packages/build',
+    publishDir: 'packages/build',
+    hasTypes: true,
+    requiredFiles: [
+      'dist/index.js',
+      'dist/index.d.ts',
+      // The `ng build` / `ng serve` builders. builders/package.json marks
+      // them as CommonJS in this ESM package: Angular CLI require()s them.
+      'builders/builders.json',
+      'builders/package.json',
+      'builders/application/index.js',
+      'builders/application/schema.json',
+      'builders/dev-server/index.js',
+      'builders/dev-server/schema.json',
+    ],
+  },
+  {
     name: '@blotch/angular-lynx',
     dir: 'packages/runtime',
     publishDir: 'packages/runtime/dist',
@@ -82,13 +100,6 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       // provide any `ng add` actions". Every factory in collection.json is
       // also checked separately, in packages/e2e/src/check-packages.ts.
       'schematics/package.json',
-      // The `ng build` / `ng serve` builders, CommonJS like the schematics.
-      'builders/builders.json',
-      'builders/package.json',
-      'builders/application/index.js',
-      'builders/application/schema.json',
-      'builders/dev-server/index.js',
-      'builders/dev-server/schema.json',
     ],
   },
   {
@@ -120,6 +131,7 @@ type WorkspacePackageJson = {
   name: string;
   version: string;
   private?: boolean;
+  dependencies?: Record<string, string>;
 };
 
 const readJson = <T>(file: string): T =>
@@ -129,17 +141,34 @@ const readJson = <T>(file: string): T =>
 export const readPackageJson = (pkg: PublishablePackage) =>
   readJson<WorkspacePackageJson>(path.join(REPO_ROOT, pkg.dir, 'package.json'));
 
+const PUBLISHABLE_NAMES = new Set(PUBLISHABLE_PACKAGES.map((pkg) => pkg.name));
+
 /**
- * Each publishable package's version, from its source `package.json`. The
- * packages are released in lockstep, so these should all be equal: the
- * `consistent-package-versions` lint rule checks that on every lint run, and
- * `check-version.ts` checks them against the tag before a release.
+ * The dependencies of one publishable package on another (such as
+ * @blotch/angular-lynx-build on @blotch/rsbuild-plugin-angular-lynx). They
+ * are pinned to an exact version: the packages are released together, and a
+ * package is tested only with the others from its own release.
+ */
+export const readInternalPins = (pkg: PublishablePackage) =>
+  Object.entries(readPackageJson(pkg).dependencies ?? {})
+    .filter(([name]) => PUBLISHABLE_NAMES.has(name))
+    .map(([name, version]) => ({ name, version }));
+
+/**
+ * Each publishable package's version, from its source `package.json`, and
+ * each pin from one to another. The packages are released in lockstep, so
+ * these should all be equal: the `consistent-package-versions` lint rule
+ * checks that on every lint run, and `check-version.ts` checks them against
+ * the tag before a release.
  */
 export const readVersions = () =>
-  PUBLISHABLE_PACKAGES.map((pkg) => ({
-    name: pkg.name,
-    version: readPackageJson(pkg).version,
-  }));
+  PUBLISHABLE_PACKAGES.flatMap((pkg) => [
+    { name: pkg.name, version: readPackageJson(pkg).version },
+    ...readInternalPins(pkg).map((pin) => ({
+      name: `${pkg.name}'s dependency ${pin.name}`,
+      version: pin.version,
+    })),
+  ]);
 
 /**
  * Finds workspace packages that npm would publish (no `"private": true`) but

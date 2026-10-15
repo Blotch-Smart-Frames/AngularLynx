@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "rspeedy dev",
-    "build": "rspeedy build --environment lynx && rspeedy build --environment web",
+    "start": "ng serve",
+    "build": "ng build",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
@@ -21,10 +21,9 @@
     "@blotch/dolan": "*"
   },
   "devDependencies": {
-    "@angular-devkit/build-angular": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.1",
-    "@blotch/rsbuild-plugin-angular-lynx": "*",
+    "@blotch/angular-lynx-build": "*",
     "@lynx-js/rspeedy": "^0.18.0",
     "@lynx-js/tailwind-preset": "^0.6.0",
     "@lynx-js/types": "^4.3.0",

@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-native
 
-Builds AngularLynx apps into iOS and Android binaries. You don't call it directly: `ng build --platform ios|android|all` (the `@blotch/angular-lynx:application` builder) loads it after building the Lynx bundle. `ng add @blotch/angular-lynx` installs it.
+Builds AngularLynx apps into iOS and Android binaries. You don't call it directly: `ng build --platform ios|android|all` (the `@blotch/angular-lynx-build:application` builder) loads it after building the Lynx bundle. It's a dependency of [`@blotch/angular-lynx-build`](../build), which `ng add @blotch/angular-lynx` installs.
 
 User documentation: [Publishing your App](../website/docs/guide/building-for-production.mdx). The design and its reasoning: [`investigations/native-app-builds.md`](../../investigations/native-app-builds.md).
 

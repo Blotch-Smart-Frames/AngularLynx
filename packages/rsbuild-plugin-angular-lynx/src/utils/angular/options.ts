@@ -1,7 +1,5 @@
-import assert from 'node:assert';
 import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
-import type { OutputHashing } from '@angular-devkit/build-angular';
 import type { workspaces } from '@angular-devkit/core';
 import type { TargetDefinition } from '@angular-devkit/core/src/workspace/definitions';
 import {
@@ -98,6 +96,25 @@ export type NormalizedI18nOptions = {
   hasDefinedSourceLocale: boolean;
 };
 
+/**
+ * The values of angular.json's `outputHashing` build option: which emitted
+ * file names get a content hash.
+ *
+ * Copied from the `OutputHashing` enum that Angular's builder schemas
+ * generate, as a string union because angular.json holds plain strings.
+ * Keep it in step with them when Angular adds a value.
+ *
+ * It used to be imported from `@angular-devkit/build-angular`, which made
+ * that package a peer dependency of this plugin. That package is Angular's
+ * legacy webpack-based builder: apps from a current `ng new` don't have it,
+ * and npm installs missing peer dependencies, so every AngularLynx app got it
+ * and its webpack toolchain (about 300 packages) for this one type.
+ *
+ * @see `OutputHashing` in `@angular/build/src/builders/application/schema.d.ts`
+ * @see `OutputHashing` in `@angular-devkit/build-angular/src/builders/browser/schema.d.ts`
+ */
+export type OutputHashing = 'all' | 'bundles' | 'media' | 'none';
+
 export type NormalizedOptions = {
   tsconfig: string;
   aot: boolean;
@@ -187,40 +204,62 @@ export const resolveOutputPath = (
   return undefined;
 };
 
-export const readBuildOptions = async (
+/**
+ * Reads the build target's options from angular.json, merged the way Angular
+ * CLI merges them: the selected configuration's keys (by default the
+ * target's `defaultConfiguration`) over the base options, leaving the keys it
+ * doesn't mention at their base values.
+ *
+ * Only for plain rspeedy runs. Under `ng build` / `ng serve`, Angular CLI has
+ * already merged them, `-c` and command-line overrides included, and the
+ * builders pass them in (see angular-cli-context.ts).
+ */
+export const readBuildTargetOptions = (
   project: workspaces.ProjectDefinition,
-  basePath: string,
   configurationName?: string,
-): Promise<NormalizedOptions> => {
-  const workspaceRoot = basePath;
+): Record<string, unknown> => {
   const target = readTarget(project);
   if (!target) {
     throw new Error("couldn't find target");
   }
   const resolvedConfigurationName =
     configurationName ?? target.defaultConfiguration;
-  const buildOptions = target?.options;
+  const buildOptions = target.options;
   if (!buildOptions) {
     throw new Error(
       `No build options found for the "${configurationName ?? 'build'}" target in angular.json. ` +
         'Make sure the target has an "options" section with at least "browser" and "tsConfig" defined.',
     );
   }
-  // Merge the selected configuration (e.g., 'production') over base options.
-  // Object.assign overwrites keys present in the configuration while leaving
-  // unmentioned keys at their base-options values.
-  const configurations = target.configurations;
-  if (configurations) {
-    for (const name in configurations) {
-      if (name === resolvedConfigurationName) {
-        Object.assign(buildOptions, {
-          ...configurations[name],
-        });
-        break;
-      }
-    }
-  }
-  assert(!!buildOptions, 'build options is undefined');
+  return {
+    ...buildOptions,
+    ...(resolvedConfigurationName
+      ? target.configurations?.[resolvedConfigurationName]
+      : undefined),
+  };
+};
+
+export const readBuildOptions = async (
+  project: workspaces.ProjectDefinition,
+  basePath: string,
+  configurationName?: string,
+): Promise<NormalizedOptions> =>
+  normalizeBuildOptions(
+    readBuildTargetOptions(project, configurationName),
+    project,
+    basePath,
+  );
+
+/**
+ * Turns a build target's options into the shape the compile pipeline uses:
+ * absolute paths, and the expanded forms of Angular's shorthand options.
+ */
+export const normalizeBuildOptions = async (
+  buildOptions: Readonly<Record<string, unknown>>,
+  project: workspaces.ProjectDefinition,
+  basePath: string,
+): Promise<NormalizedOptions> => {
+  const workspaceRoot = basePath;
   // angular.json `aot` option — defaults to true (AOT). When false, Angular
   // skips template compilation and emits JIT-compatible metadata instead.
   const aot = (buildOptions.aot as boolean | undefined) ?? true;

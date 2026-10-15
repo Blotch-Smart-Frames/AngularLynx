@@ -18,6 +18,7 @@
     "@angular-devkit/schematics": "^22.2.2",
     "@arethetypeswrong/cli": "^0.18.5",
     "@blotch/angular-lynx": "*",
+    "@blotch/angular-lynx-build": "*",
     "@blotch/angular-lynx-testing-library": "*",
     "@blotch/dolan": "*",
     "@blotch/rsbuild-plugin-angular-lynx": "*",

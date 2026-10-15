@@ -10,12 +10,6 @@
       "input": "./schematics",
       "output": "./schematics",
       "ignore": ["**/*.ts", "!**/*.d.ts", "**/.gitignore"]
-    },
-    {
-      "glob": "**/*",
-      "input": "./builders",
-      "output": "./builders",
-      "ignore": ["**/*.ts", "!**/*.d.ts", "**/.gitignore", "**/*.test.*"]
     }
   ]
 }

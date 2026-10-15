@@ -31,7 +31,7 @@ To lint a specific package, run from the project root:
 npx turbo run lint --filter=<package-name>
 ```
 
-Package names: `runtime`, `rsbuild-plugin-angular-lynx`, `kitchen-sink-app`, `testing-library`, `create-angular-lynx`, `oxlint-plugin`, `website`.
+Package names: `runtime`, `build`, `rsbuild-plugin-angular-lynx`, `native`, `kitchen-sink-app`, `testing-library`, `create-angular-lynx`, `oxlint-plugin`, `website`.
 
 ## After running
 

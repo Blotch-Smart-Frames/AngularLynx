@@ -131,6 +131,23 @@ describe('getAngularWorkspace', () => {
     }
   });
 
+  it('searches from the folder it is given, such as the workspace root Angular CLI passed', async () => {
+    const root = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'angular-lynx-ws-'));
+    fs.writeFileSync(
+      nodePath.join(root, 'angular.json'),
+      JSON.stringify({ version: 1, projects: { demo: { root: '' } } }),
+    );
+    vi.spyOn(process, 'cwd').mockReturnValue(os.tmpdir());
+
+    try {
+      const { basePath } = await getAngularWorkspace(root);
+
+      expect(basePath).toBe(root);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('throws when no workspace file exists above cwd', async () => {
     const root = fs.mkdtempSync(
       nodePath.join(os.tmpdir(), 'angular-lynx-nows-'),

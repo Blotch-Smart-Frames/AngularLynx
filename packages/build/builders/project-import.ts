@@ -4,15 +4,14 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
- * Imports a package installed in the user's project (rspeedy, the native
- * builder), not one bundled with this package. The project pins its own
- * rspeedy version in package.json, and that is the version `ng build` must
- * run, just as `rspeedy build` would.
+ * Imports a package installed in the user's project (rspeedy), not one this
+ * package depends on. The project pins its own rspeedy version in
+ * package.json, and that is the version `ng build` must run, just as
+ * `rspeedy build` would.
  *
- * rspeedy and @blotch/angular-lynx-native are ESM-only packages whose
- * `exports` have no `require` condition, so `require.resolve` can't find their
- * entry point. Their package.json is exported, though: resolve that and read
- * the `import` entry from it.
+ * rspeedy is ESM-only, and its `exports` have no `require` condition, so
+ * `require.resolve` can't find its entry point. Its package.json is exported,
+ * though: resolve that and read the `import` entry from it.
  */
 export const importFromProject = async <T>(
   packageName: string,

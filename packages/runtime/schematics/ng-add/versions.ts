@@ -9,13 +9,10 @@
  */
 export const VERSIONS = {
   /**
-   * @blotch/rsbuild-plugin-angular-lynx — Rsbuild plugin that compiles Angular for Lynx
+   * @blotch/angular-lynx-build — the `ng build` / `ng serve` builders, with the
+   * rsbuild plugin that compiles Angular for Lynx and the native app builder
    */
-  rsbuildPluginAngularLynx: '^22.2.0',
-  /**
-   * @blotch/angular-lynx-native — builds the iOS and Android apps for `ng build --platform`
-   */
-  angularLynxNative: '^22.2.1',
+  angularLynxBuild: '^22.2.1',
   /**
    * @lynx-js/rspeedy — Lynx dev-server and production build tool
    */

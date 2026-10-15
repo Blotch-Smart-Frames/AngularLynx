@@ -30,10 +30,13 @@ describe('pluginAngularLynx', () => {
     expect(plugin.name).toBe('lynx:angular');
   });
 
-  it('has pre dependency on "lynx:rsbuild:plugin-api"', () => {
+  it('sets up after "lynx:rsbuild:plugin-api" and the Angular CLI context', () => {
     const plugin = pluginAngularLynx();
 
-    expect(plugin.pre).toEqual(['lynx:rsbuild:plugin-api']);
+    expect(plugin.pre).toEqual([
+      'lynx:rsbuild:plugin-api',
+      'lynx:angular-cli-context',
+    ]);
   });
 
   it('calls normalizeOptions with provided options', () => {

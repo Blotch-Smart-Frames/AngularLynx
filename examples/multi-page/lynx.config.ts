@@ -1,11 +1,8 @@
-import { pluginAngularLynx } from '@blotch/rsbuild-plugin-angular-lynx';
 import { defineConfig } from '@lynx-js/rspeedy';
 
 export default defineConfig({
   environments: {
-    web: {
-      output: { cleanDistPath: false },
-    },
+    web: {},
     lynx: {},
   },
   // Multi-page via source.entry: each key becomes a separate .lynx.bundle.
@@ -15,5 +12,4 @@ export default defineConfig({
       settings: './src/pages/settings/main.ts',
     },
   },
-  plugins: [pluginAngularLynx()],
 });

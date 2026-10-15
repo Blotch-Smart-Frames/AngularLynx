@@ -10,7 +10,9 @@ Run the production build from your project root:
 ng build
 ```
 
-This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory. `ng build` runs the `@blotch/angular-lynx:application` builder, which runs RSpeedy with your `lynx.config.ts`, so the output is the same as `npx rspeedy build`.
+This compiles your Angular components, templates, styles, and assets into optimized `.lynx.bundle` files in the `dist/` directory. `ng build` runs the `@blotch/angular-lynx-build:application` builder, which runs RSpeedy with your `lynx.config.ts` and the AngularLynx plugin.
+
+**Configurations work as in any Angular app.** `ng build` uses the build target's `defaultConfiguration` (`production` after `ng add`). `ng build -c development` builds the development one, and flags like `--source-map` override single options. `ng serve -c production` serves a production build.
 
 ## Output Files
 
@@ -64,7 +66,7 @@ The app's name, ID and version are options of the `build` target in `angular.jso
 
 ```json title="angular.json"
 "build": {
-  "builder": "@blotch/angular-lynx:application",
+  "builder": "@blotch/angular-lynx-build:application",
   "options": {
     "appName": "My App",
     "appId": "com.example.myapp",

@@ -75,14 +75,21 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
     requiredFiles: [
       'dist/index.js',
       'dist/index.d.ts',
-      // The `ng build` / `ng serve` builders. builders/package.json marks
-      // them as CommonJS in this ESM package: Angular CLI require()s them.
+      // The `ng build` / `ng serve` / `ng test` builders. builders/package.json
+      // marks them as CommonJS in this ESM package: Angular CLI require()s
+      // them.
       'builders/builders.json',
       'builders/package.json',
       'builders/application/index.js',
       'builders/application/schema.json',
       'builders/dev-server/index.js',
       'builders/dev-server/schema.json',
+      'builders/unit-test/index.js',
+      'builders/unit-test/schema.json',
+      // Loaded by `ng test` before the tests, through the package's exports.
+      'builders/unit-test/lynx-globals.mjs',
+      // The app's types for asset and CSS imports.
+      'client.d.ts',
     ],
   },
   {
@@ -169,6 +176,42 @@ export const readVersions = () =>
       version: pin.version,
     })),
   ]);
+
+/**
+ * The packages `ng update` moves together: the ones an app installs. Each
+ * declares this list as its `ng-update.packageGroup`, the way every @angular
+ * package lists the others, so `ng update @blotch/angular-lynx` (or any one of
+ * them) updates them all to the same release, and `ng update` with no
+ * arguments lists them. The runtime's `ng-update` also names the migrations
+ * collection that `ng update` runs.
+ */
+export const NG_UPDATE_PACKAGE_GROUP: readonly string[] = [
+  '@blotch/angular-lynx',
+  '@blotch/angular-lynx-build',
+  '@blotch/angular-lynx-testing-library',
+  '@blotch/rsbuild-plugin-angular-lynx',
+  '@blotch/angular-lynx-native',
+];
+
+/**
+ * The packages of {@link NG_UPDATE_PACKAGE_GROUP} whose `ng-update.packageGroup`
+ * isn't that list. The `consistent-package-versions` lint rule reports them.
+ */
+export const findPackageGroupMismatches = (): string[] =>
+  PUBLISHABLE_PACKAGES.filter((pkg) =>
+    NG_UPDATE_PACKAGE_GROUP.includes(pkg.name),
+  )
+    .filter(
+      (pkg) =>
+        JSON.stringify(
+          (
+            readPackageJson(pkg) as {
+              'ng-update'?: { packageGroup?: string[] };
+            }
+          )['ng-update']?.packageGroup,
+        ) !== JSON.stringify(NG_UPDATE_PACKAGE_GROUP),
+    )
+    .map((pkg) => pkg.name);
 
 /**
  * Finds workspace packages that npm would publish (no `"private": true`) but

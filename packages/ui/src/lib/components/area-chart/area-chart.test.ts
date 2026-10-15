@@ -1,27 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-// Mock Angular (and the transitively-loaded line-chart / cartesian-chart Angular
-// usage) so importing the module needs no framework runtime. Only the exported
-// pure `computeAreaColumns` is exercised; components are never built.
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  inject: () => ({}),
-  input: () => () => {},
-  output: () => () => {},
-}));
-
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-  // cartesian-chart (imported transitively) registers these in its decorator.
-  LynxGestureDetector: class {},
-  PanGesture: class {},
-  PinchGesture: class {},
-  Gesture: { Simultaneous: () => ({}) },
-}));
-
-const { computeAreaColumns } = await import('./area-chart');
+import { describe, expect, it } from 'vitest';
+import { computeAreaColumns } from './area-chart';
 
 describe('computeAreaColumns', () => {
   it('fills a flat line down to the baseline with uniform columns', () => {

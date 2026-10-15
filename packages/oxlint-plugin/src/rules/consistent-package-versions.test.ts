@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Mocking readVersions lets us deterministically drive both the "versions
 // match" and "versions mismatch" branches without depending on (or being
 // broken by) the actual versions checked into the repo.
-vi.mock('../../../release/src/packages.ts', () => ({ readVersions: vi.fn() }));
+vi.mock('../../../release/src/packages.ts', () => ({
+  readVersions: vi.fn(),
+  findPackageGroupMismatches: vi.fn(() => []),
+}));
 
 const createContext = () => ({ report: vi.fn() });
 
@@ -12,9 +15,12 @@ const versionsOf = (...versions: string[]) =>
   versions.map((version, i) => ({ name: `pkg-${i}`, version }));
 
 describe('consistent-package-versions', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.resetAllMocks();
+    const { findPackageGroupMismatches } =
+      await import('../../../release/src/packages.ts');
+    vi.mocked(findPackageGroupMismatches).mockReturnValue([]);
   });
 
   it('reports nothing when every published package has the same version', async () => {
@@ -65,5 +71,23 @@ describe('consistent-package-versions', () => {
     visitors.Program();
     expect(context.report).toHaveBeenCalledTimes(2);
     expect(readVersions).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports packages whose ng update package group differs from the shared list', async () => {
+    const { readVersions, findPackageGroupMismatches } =
+      await import('../../../release/src/packages.ts');
+    vi.mocked(readVersions).mockReturnValue(versionsOf('1.2.3', '1.2.3'));
+    vi.mocked(findPackageGroupMismatches).mockReturnValue([
+      '@blotch/angular-lynx-build',
+    ]);
+    const { default: rule } = await import('./consistent-package-versions.mjs');
+    const context = createContext();
+
+    rule.create(context as never).Program();
+
+    expect(context.report).toHaveBeenCalledTimes(1);
+    const report = context.report.mock.calls[0][0];
+    expect(report.messageId).toBe('packageGroupMismatch');
+    expect(report.data.detail).toBe('@blotch/angular-lynx-build');
   });
 });

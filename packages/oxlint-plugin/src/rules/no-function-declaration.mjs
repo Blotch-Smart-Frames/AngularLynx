@@ -12,6 +12,11 @@
  * Exception: object literal getters/setters (`get x() {}` / `set x(v) {}`)
  * are always exempt, same as class methods — accessor syntax has no arrow
  * function equivalent.
+ *
+ * Exception: generator functions (`function*`, `async function*`) are
+ * exempt for the same reason: there are no arrow generators. Angular's
+ * builder API takes async iterables, which a generator writes most clearly.
+ *
  * Walk an AST node looking for a ThisExpression. Stops recursing into nested
  * FunctionDeclaration/FunctionExpression because those create their own `this`
  * scope. ArrowFunctionExpression does NOT create its own `this`, so we
@@ -56,6 +61,7 @@ export default {
 
     return {
       FunctionDeclaration(node) {
+        if (node.generator) return;
         if (usesThis(node.body)) return;
         context.report({ node, messageId: 'useArrow' });
       },
@@ -74,6 +80,7 @@ export default {
       },
       FunctionExpression(node) {
         if (methodFunctionExpressions.has(node)) return;
+        if (node.generator) return;
         if (usesThis(node.body)) return;
         context.report({ node, messageId: 'useArrow' });
       },

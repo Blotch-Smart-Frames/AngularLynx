@@ -2,9 +2,9 @@
 
 ## Overview
 
-AngularLynx apps build with the Angular CLI. `ng build` and `ng serve` run the `@blotch/angular-lynx-build` builders, which run [RSpeedy](https://lynxjs.org/rspeedy) (Lynx's build tool based on Rsbuild) with the `@blotch/rsbuild-plugin-angular-lynx` plugin that adds Angular compilation.
+AngularLynx apps build, serve and test with the Angular CLI. `ng build` and `ng serve` run the `@blotch/angular-lynx-build` builders, which run [RSpeedy](https://lynxjs.org/rspeedy) (Lynx's build tool based on Rsbuild) with the `@blotch/rsbuild-plugin-angular-lynx` plugin that adds Angular compilation. `ng test` runs Angular's own unit-test builder (Vitest), set up for Lynx.
 
-`ng add @blotch/angular-lynx` sets all of this up.
+`ng add @blotch/angular-lynx` sets all of this up. The build config lives in `angular.json`, as in any Angular app.
 
 ## angular.json
 
@@ -24,8 +24,26 @@ AngularLynx apps build with the Angular CLI. `ng build` and `ng serve` run the `
             "styles": ["src/styles.css"]
           },
           "configurations": {
-            "production": { "mode": "production" },
-            "development": { "mode": "development" }
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "5MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
           },
           "defaultConfiguration": "production"
         },
@@ -36,6 +54,9 @@ AngularLynx apps build with the Angular CLI. `ng build` and `ng serve` run the `
             "development": { "buildTarget": "my-app:build:development" }
           },
           "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@blotch/angular-lynx-build:unit-test"
         }
       }
     }
@@ -45,37 +66,26 @@ AngularLynx apps build with the Angular CLI. `ng build` and `ng serve` run the `
 
 The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`, `fileReplacements`, ...) configure the compile, as Angular CLI resolves them: `ng build -c development` and command-line overrides apply. `ng build --platform ios|android|all` also builds the native app; its options (`appId`, `appName`, `icon`, ...) live in the same target.
 
-Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default the build target's `development` configuration), so `ng serve -c production` serves a production build. It also takes `--port` and `--host`.
+- **`optimization` picks a production or development build.** There is no `mode` option: as in Angular, a build that optimizes scripts is a production build, and one that doesn't is a development build with dev mode on.
+- **`budgets` are enforced** against the Lynx bundle (each entry's bundle is its own `initial` budget) and each component stylesheet, with `ng build`'s messages. A Lynx bundle holds Angular twice (once per thread), so a new app's bundle is about 1 MB; `ng add` raises `ng new`'s `initial` budget to 2 MB / 5 MB.
+- **`ng build --watch`** rebuilds the bundle on every change. It can't be combined with `--platform`.
 
-## Config File: `lynx.config.ts`
+Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default the build target's `development` configuration), so `ng serve -c production` serves a production build. It also takes `--port` and `--host`, and prints the QR code Lynx Explorer scans.
 
-RSpeedy's own settings. The builders add `pluginAngularLynx()` to it:
+`ng test` takes the options of Angular's unit-test builder. It finds `*.spec.ts` and `*.test.ts` files, compiles them ahead of time like the app, and loads `@blotch/angular-lynx-testing-library`'s setup when the project has it. Templates are checked strictly, so a component using Lynx elements imports `LYNX_ELEMENTS`.
+
+## Config File: `lynx.config.ts` (optional)
+
+An app doesn't need one. Without it, the builders use `angular.json` and AngularLynx's defaults: the entry is the build target's `browser`, the environments are `lynx` (the bundle Lynx Explorer and native apps load) and `web` (the browser preview), and `ng serve` adds the QR code plugin. Each default applies only where lynx.config.ts doesn't set its own.
+
+Add one for RSpeedy settings, or to pass the plugin options. Import `defineConfig` and `pluginAngularLynx` from `@blotch/angular-lynx-build`, which depends on RSpeedy and the plugin. The builders use your plugin instance instead of adding one:
 
 ```typescript
-import { pluginQRCode } from '@lynx-js/qrcode-rsbuild-plugin';
-import { defineConfig } from '@lynx-js/rspeedy';
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
-  environments: {
-    lynx: {}, // the bundle Lynx Explorer and native apps load
-    web: {}, // the bundle for the browser preview
-  },
-  source: {
-    entry: './src/main.ts',
-  },
-  plugins: [
-    pluginQRCode(), // Dev convenience: shows QR code in terminal
-  ],
-});
-```
-
-To pass the plugin options, list it yourself. The builders then use your instance instead of adding one:
-
-```typescript
-import { pluginAngularLynx } from '@blotch/angular-lynx-build';
-
-// ...
   plugins: [pluginAngularLynx({ enableSSR: true })],
+});
 ```
 
 ## What `pluginAngularLynx()` Does
@@ -94,11 +104,11 @@ Minimal project structure:
 ```
 my-app/
 ├── angular.json            # Angular workspace config: builders + compiler options
-├── lynx.config.ts          # RSpeedy configuration
 ├── tsconfig.json           # TypeScript config
 ├── package.json
 └── src/
     ├── main.ts             # Entry point (bootstrapApplication)
+    ├── rspeedy-env.d.ts    # /// <reference types="@blotch/angular-lynx-build/client" />
     └── app/
         ├── app.config.ts   # Angular app config
         ├── app.routes.ts   # Route definitions
@@ -113,6 +123,12 @@ ng serve
 
 # Production build
 ng build
+
+# Rebuild on every change
+ng build --watch
+
+# Unit tests
+ng test
 
 # Native apps
 ng build --platform ios       # or android, or all
@@ -139,14 +155,12 @@ npm run demo              # Runs ng serve for the kitchen-sink-app
     "@blotch/angular-lynx": "^22.2.0"
   },
   "devDependencies": {
-    "@blotch/angular-lynx-build": "^22.2.0",
-    "@lynx-js/rspeedy": "^0.18.0",
-    "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3"
+    "@blotch/angular-lynx-build": "^22.2.0"
   }
 }
 ```
 
-`@blotch/angular-lynx-build` brings `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native` (the iOS and Android app builder) with it.
+`@blotch/angular-lynx-build` is the only build dependency, as `@angular/build` is for a web app. It brings RSpeedy, the QR code plugin, `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native` (the iOS and Android app builder) with it.
 
 ## Tailwind CSS
 

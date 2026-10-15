@@ -13,21 +13,22 @@ import { provideRenderer } from '@blotch/angular-lynx';
  * shared testing-library `render()` helper, which forces an extra explicit
  * `appRef.tick()` after `bootstrapApplication()` resolves.
  *
- * That second tick triggers an Angular 22 zoneless bug: re-refreshing an
- * already-created child view resets its `input()`-bound values back to
- * their defaults (reproducible with a bare custom component and a
- * property-bound input — unrelated to Lynx or this app). Use this helper
- * instead of `render()` for specs whose assertions depend on a child
- * component's bound input actually reaching the DOM; the initial render
- * from `bootstrapApplication()` already reflects all signal-driven state,
- * so the extra tick isn't needed anyway.
+ * It was written for the tests' old setup, plain Vitest compiling components
+ * just in time, where that second tick reset already-created child views'
+ * `input()`-bound values to their defaults. `ng test` compiles the tests
+ * ahead of time, like the app, and `render()` renders these demos correctly
+ * there too; the specs keep this helper because the initial render from
+ * `bootstrapApplication()` already reflects all signal-driven state, so the
+ * extra tick isn't needed.
  */
 export const renderOnce = async <T>(
   component: Type<T>,
   options: { providers?: (Provider | EnvironmentProviders)[] } = {},
 ): Promise<{
   instance: T;
-  container: Element;
+  // An HTMLElement, as @testing-library/dom's queries take: the testing
+  // environment's elements are jsdom ones.
+  container: HTMLElement;
   destroy: () => void;
 }> => {
   const env = (globalThis as any).lynxTestingEnv;
@@ -42,7 +43,7 @@ export const renderOnce = async <T>(
     ],
   });
 
-  const container = (globalThis as any).elementTree.root as Element;
+  const container = (globalThis as any).elementTree.root as HTMLElement;
   const instance = appRef.components[0]?.instance as T;
 
   return { instance, container, destroy: () => appRef.destroy() };

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { ComponentStyleSize } from './utils/angular/budgets.js';
 import { generateComponentScopeId } from './utils/angular/component-scope-id.js';
 
 /**
@@ -16,6 +17,31 @@ export type ComponentStylesEntry = {
 };
 
 export type ComponentScopeInfo = { className: string; scopeId: string };
+
+/**
+ * The key a stylesheet's size is recorded under in `componentStyleSizes`:
+ * per component, since two components sharing a stylesheet each ship it.
+ */
+const componentStyleSizeKey = (
+  containingFile: string,
+  stylesheetKey: string,
+): string => `${containingFile}#${stylesheetKey}`;
+
+/**
+ * Drops the recorded stylesheet sizes of a component whose file was deleted,
+ * so `anyComponentStyle` budgets stop reporting styles that no longer ship.
+ */
+export const forgetComponentStyleSizes = (
+  componentStyleSizes: Map<string, ComponentStyleSize>,
+  containingFile: string,
+): void => {
+  const prefix = componentStyleSizeKey(containingFile, '');
+  for (const key of componentStyleSizes.keys()) {
+    if (key.startsWith(prefix)) {
+      componentStyleSizes.delete(key);
+    }
+  }
+};
 
 /**
  * Builds the `transformStylesheet` callback that Angular's AOT compiler invokes
@@ -43,6 +69,12 @@ export const createTransformStylesheet = (params: {
    * following rebuild.
    */
   onStylesheetWritten?: (filePath: string) => void;
+  /**
+   * The compiled size of every component stylesheet, for `anyComponentStyle`
+   * budgets. Overwritten each time Angular compiles a stylesheet, so watch
+   * rebuilds check the current sizes.
+   */
+  componentStyleSizes?: Map<string, ComponentStyleSize>;
 }): ((
   data: string,
   containingFile: string,
@@ -56,6 +88,7 @@ export const createTransformStylesheet = (params: {
     componentStylesCache,
     componentScopeIds,
     onStylesheetWritten,
+    componentStyleSizes,
   } = params;
 
   return async (data, containingFile, stylesheetFile, order, className) => {
@@ -83,6 +116,18 @@ export const createTransformStylesheet = (params: {
     if (previousPath && !className) {
       return '';
     }
+
+    componentStyleSizes?.set(
+      componentStyleSizeKey(containingFile, stylesheetKey),
+      {
+        // Angular labels a component style budget failure with the stylesheet;
+        // inline styles have none, so they're labeled with their component.
+        label: path
+          .relative(basePath, stylesheetFile ?? containingFile)
+          .replace(/\\/g, '/'),
+        size: Buffer.byteLength(data),
+      },
+    );
 
     // Prefer the real class name for the scope ID set on ɵcmp.id
     if (className || !componentScopeIds.has(containingFile)) {

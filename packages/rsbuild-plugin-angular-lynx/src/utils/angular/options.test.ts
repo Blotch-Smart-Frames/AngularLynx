@@ -484,6 +484,23 @@ describe('readBuildOptions', () => {
     });
   });
 
+  it('reads budgets, and has none by default', async () => {
+    const budgets = [
+      { type: 'initial', maximumWarning: '1.5mb', maximumError: '3mb' },
+    ];
+    const withBudgets = await readBuildOptions(
+      makeProject({ options: baseOptions({ budgets }) }),
+      basePath,
+    );
+    expect(withBudgets.budgets).toEqual(budgets);
+
+    const withoutBudgets = await readBuildOptions(
+      makeProject({ options: baseOptions() }),
+      basePath,
+    );
+    expect(withoutBudgets.budgets).toEqual([]);
+  });
+
   it('sets advancedOptimizations false when script optimization is disabled', async () => {
     const result = await readBuildOptions(
       makeProject({ options: baseOptions({ optimization: false }) }),

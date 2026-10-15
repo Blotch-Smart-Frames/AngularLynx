@@ -68,5 +68,14 @@
     "@angular/localize": {
       "optional": true
     }
+  },
+  "ng-update": {
+    "packageGroup": [
+      "@blotch/angular-lynx",
+      "@blotch/angular-lynx-build",
+      "@blotch/angular-lynx-testing-library",
+      "@blotch/rsbuild-plugin-angular-lynx",
+      "@blotch/angular-lynx-native"
+    ]
   }
 }

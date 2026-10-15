@@ -11,22 +11,16 @@ afterEach(() => {
 });
 
 describe('IconShowcase', () => {
-  // Data-level checks first: this codebase's own app.test.ts ("groups every
-  // route in the nav drawer") asserts on the underlying array rather than
-  // scraping rendered DOM for a large nested @for, because a single
-  // renderOnce() tick under Angular's zoneless JIT pipeline only fully
-  // materializes the FIRST outer @for iteration's subtree — here, only the
-  // "Common" category's 24 tiles (+1 preview icon = 25 <svg>s) exist in the
-  // DOM; the other 13 categories never instantiate on this single tick. Same
-  // bug family as the already-documented render() double-tick issue, just a
-  // different manifestation, and confirmed JIT/harness-only — the production
-  // AOT build (`rspeedy build --environment web`) compiles and bundles clean.
-  // Verify the real filtering logic directly, independent of that harness gap.
+  // Data-level checks first, on the filtering logic itself; the rendering
+  // checks follow. (Under the old JIT test setup, a single renderOnce() tick
+  // only materialized the first outer @for iteration, so these used to be the
+  // only checks of the other categories. `ng test` compiles the templates
+  // ahead of time, as the app build does, and renders them all.)
   it('exposes all 195 icons across 14 categories with no query', async () => {
     const { instance, destroy } = await renderOnce(IconShowcase);
     destroyDemo = destroy;
 
-    const categories = instance.filteredCategories();
+    const categories = instance['filteredCategories']();
     expect(categories.length).toBe(14);
     const total = categories.reduce((sum, c) => sum + c.icons.length, 0);
     expect(total).toBe(195);
@@ -49,24 +43,22 @@ describe('IconShowcase', () => {
     destroyDemo = destroy;
 
     instance.query.set('chart');
-    const matched = instance.filteredCategories().flatMap((c) => c.icons);
+    const matched = instance['filteredCategories']().flatMap((c) => c.icons);
     expect(matched.sort()).toEqual(
       ['chart-bar', 'chart-column', 'chart-line', 'chart-pie'].sort(),
     );
 
     instance.query.set('zzz-does-not-exist');
-    expect(instance.filteredCategories()).toEqual([]);
+    expect(instance['filteredCategories']()).toEqual([]);
 
     instance.query.set('');
-    expect(instance.filteredCategories().length).toBe(14);
+    expect(instance['filteredCategories']().length).toBe(14);
   });
 
-  it('renders the first category fully — 24 tiles + the preview icon', async () => {
+  it('renders every category — 195 tiles + the preview icon', async () => {
     const { container, destroy } = await renderOnce(IconShowcase);
     destroyDemo = destroy;
-    // See the harness-limitation note above: only "Common" (24 icons)
-    // instantiates under a single tick, +1 for the preview panel's icon.
-    expect(container.querySelectorAll('svg').length).toBe(25);
+    expect(container.querySelectorAll('svg').length).toBe(196);
   });
 
   it('wires (bindtap) correctly on a tile deep in the rendered category', async () => {
@@ -97,7 +89,7 @@ describe('IconShowcase', () => {
     expect(container.querySelector('input')).toBeTruthy();
 
     instance.query.set('zzz-nope');
-    expect(instance.filteredCategories()).toEqual([]);
+    expect(instance['filteredCategories']()).toEqual([]);
   });
 
   it('reflects a preview-size change in the rendered snippet', async () => {

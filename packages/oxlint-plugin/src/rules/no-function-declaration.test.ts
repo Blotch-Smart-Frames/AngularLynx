@@ -264,4 +264,26 @@ describe('no-function-declaration', () => {
       expect(context.report).not.toHaveBeenCalled();
     });
   });
+
+  describe('generators', () => {
+    it('does not report generator declarations or expressions, which have no arrow form', () => {
+      const context = createContext();
+      const visitors = rule.create(context as never);
+      const body = { type: 'BlockStatement', body: [] };
+
+      visitors.FunctionDeclaration({
+        type: 'FunctionDeclaration',
+        generator: true,
+        body,
+      } as never);
+      visitors.FunctionExpression({
+        type: 'FunctionExpression',
+        generator: true,
+        async: true,
+        body,
+      } as never);
+
+      expect(context.report).not.toHaveBeenCalled();
+    });
+  });
 });

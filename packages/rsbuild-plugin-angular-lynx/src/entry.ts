@@ -21,7 +21,7 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  * The key `pluginLynx` (the Lynx build engine, which Rspeedy registers) exposes
  * its resolved config under. Mirrors `S_LYNX_CONFIG` in React Lynx's plugin.
  */
-const S_LYNX_CONFIG = Symbol.for('@lynx-js/rsbuild-plugin:config');
+export const S_LYNX_CONFIG = Symbol.for('@lynx-js/rsbuild-plugin:config');
 const PLUGIN_NAME_TEMPLATE = 'lynx:template';
 const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';

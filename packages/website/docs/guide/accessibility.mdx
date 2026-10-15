@@ -141,11 +141,10 @@ Use `accessibility-exclusive-focus` to trap screen reader focus inside an open m
 
 ## Enabling Accessibility in Production
 
-To include accessibility metadata in your production build, enable it in `lynx.config.ts`:
+To include accessibility metadata in your production build, enable it in `lynx.config.ts` (create the file if your app doesn't have one):
 
-```typescript
-import { pluginAngularLynx } from '@blotch/angular-lynx-build';
-import { defineConfig } from '@lynx-js/rspeedy';
+```typescript title="lynx.config.ts"
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   plugins: [

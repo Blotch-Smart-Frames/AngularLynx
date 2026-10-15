@@ -1,7 +1,7 @@
 {
   "name": "@blotch/angular-lynx-build",
   "version": "22.2.1",
-  "description": "Angular CLI builders for AngularLynx: ng build and ng serve for Lynx, and native iOS and Android apps",
+  "description": "Angular CLI builders for AngularLynx: ng build, ng serve and ng test for Lynx, and native iOS and Android apps",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {
     "url": "https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
@@ -15,7 +15,10 @@
   "files": [
     "dist",
     "builders/**/*.js",
-    "builders/**/*.json"
+    "builders/**/*.mjs",
+    "builders/**/*.d.mts",
+    "builders/**/*.json",
+    "client.d.ts"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -24,6 +27,13 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./client.d.ts"
+    },
+    "./unit-test/lynx-globals": {
+      "types": "./builders/unit-test/lynx-globals.d.mts",
+      "default": "./builders/unit-test/lynx-globals.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -42,19 +52,31 @@
   },
   "dependencies": {
     "@blotch/angular-lynx-native": "22.2.1",
-    "@blotch/rsbuild-plugin-angular-lynx": "22.2.1"
+    "@blotch/rsbuild-plugin-angular-lynx": "22.2.1",
+    "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3",
+    "@lynx-js/rspeedy": "^0.18.0"
   },
   "devDependencies": {
     "@angular-devkit/architect": "^0.2202.2",
+    "@angular/build": "^22.2.1",
     "@types/node": "^22.0.0",
     "typescript": "~6.0.0"
   },
   "peerDependencies": {
     "@angular-devkit/architect": ">=0.2200.0 <0.2300.0",
-    "@lynx-js/rspeedy": "^0.18.0"
+    "@angular/build": "^22.2.0"
   },
   "engines": {
     "node": ">=22.12"
   },
-  "builders": "./builders/builders.json"
+  "builders": "./builders/builders.json",
+  "ng-update": {
+    "packageGroup": [
+      "@blotch/angular-lynx",
+      "@blotch/angular-lynx-build",
+      "@blotch/angular-lynx-testing-library",
+      "@blotch/rsbuild-plugin-angular-lynx",
+      "@blotch/angular-lynx-native"
+    ]
+  }
 }

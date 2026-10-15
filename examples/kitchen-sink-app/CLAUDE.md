@@ -48,18 +48,31 @@ Every route wraps its content in either:
 - Use `catchtap` (not `bindtap`) on modal/dialog panels to stop tap bubbling —
   Lynx controls propagation via the event prefix, not `stopPropagation()`.
 
-## Testing gotcha: `render()`'s extra tick
+## Testing
+
+Tests run with `ng test` (`npm test`): the `test` target uses
+`@blotch/angular-lynx-build:unit-test`, Angular's unit-test builder set up for
+Lynx. There is no Vitest config. Three things differ from plain Vitest:
+
+- Templates compile ahead of time, like the app, and are checked strictly: a
+  component that uses Lynx elements imports `LYNX_ELEMENTS`.
+- Test code is type-checked. Reach a `protected` member with bracket access
+  (`instance['filteredCategories']()`); `@testing-library/dom` queries take an
+  `HTMLElement`.
+- Test files share one module graph, so don't `vi.mock('@angular/core')` or
+  relative imports.
+
+### `render()`'s extra tick
 
 The shared `render()` helper (`@blotch/angular-lynx-testing-library`) calls
-`appRef.tick()` a second time after `bootstrapApplication()`. Under Angular
-22's zoneless JIT pipeline this second tick can reset a freshly-created child
-component's `input()`-bound value back to its default (reproducible with a
-bare custom component — unrelated to Lynx). Specs whose assertions depend on
-a child's bound input reaching the DOM should use
-`src/test-utils/render-once.ts`'s `renderOnce()` instead, which bootstraps
-with a single tick. Angular's AOT compiler is unaffected — the compiled
-`ɵcmp.inputs` metadata and `consts` bindings are correct in production
-builds; this is JIT/test-harness-only.
+`appRef.tick()` a second time after `bootstrapApplication()`. Under the old
+JIT test setup (plain Vitest compiling components at runtime), this second
+tick could reset a freshly-created child component's `input()`-bound value
+back to its default, so specs whose assertions depend on a child's bound
+input reaching the DOM use `src/test-utils/render-once.ts`'s `renderOnce()`,
+which bootstraps with a single tick. `ng test` compiles ahead of time, where
+the compiled `ɵcmp.inputs` metadata and `consts` bindings are correct, as in
+production builds.
 
 ## Routes
 
@@ -69,7 +82,7 @@ All demo routes are grouped under `App.navGroups` in `src/app/app.ts`, plus a
 ## Key Files
 
 ```
-lynx.config.ts                     # RSpeedy config: pluginAngularLynx() + dual lynx/web environments
+lynx.config.ts                     # Only passes pluginAngularLynx() its options (SSR); entry and environments come from angular.json
 src/
   main.ts                          # Entry point — bootstrapApplication()
   test-utils/render-once.ts        # Single-tick bootstrap helper for specs (see gotcha above)
@@ -90,5 +103,6 @@ src/
 ## Run
 
 ```sh
-npm run demo    # Start dev server (rspeedy) — run from repo root
+npm run demo    # Start dev server (ng serve) — run from repo root
+npm test        # ng test, from this folder
 ```

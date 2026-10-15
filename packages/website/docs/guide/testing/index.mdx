@@ -1,50 +1,30 @@
 # AngularLynx Testing Library
 
-Test AngularLynx components in jsdom via Vitest. `@blotch/angular-lynx-testing-library` bootstraps the full Lynx rendering pipeline and exposes `@testing-library/dom` queries.
+Test AngularLynx components with `ng test`, as in any Angular app. `@blotch/angular-lynx-testing-library` renders a component through the full Lynx rendering pipeline in jsdom and exposes `@testing-library/dom` queries.
+
+## Running tests
+
+```bash
+ng test               # watches in a terminal, runs once in CI
+ng test --watch=false
+```
+
+`ng add` points the `test` target in angular.json at `@blotch/angular-lynx-build:unit-test`. It is Angular's own unit-test builder (Vitest) set up for Lynx, with the same options (`include`, `coverage`, `setupFiles`, `providersFile`, ...). It finds `*.spec.ts` and `*.test.ts` files, and compiles the tests ahead of time, like the app. Angular's `TestBed` works too: specs from `ng generate service` or `pipe` run as they are.
+
+Because the tests compile like the app, their templates are checked strictly, as the Angular Language Service checks them in the editor: a component that uses Lynx elements imports `LYNX_ELEMENTS` from `@blotch/angular-lynx`. Generated components do. The test code is type-checked too.
 
 ## Setup
-
-:::tip Automatic Setup
-Set up testing in one command:
 
 ```bash
 ng generate @blotch/angular-lynx:add-testing
 ```
 
-This installs dependencies, creates config files, and configures test scripts. Skip the manual steps below.
-:::
+This installs the testing library (and Vitest and jsdom, if the project doesn't have them) and makes sure `ng test` uses the AngularLynx builder. There's nothing else to set up: whenever the project has the library, `ng test` loads its setup before the tests, so the app needs no Vitest config or setup file. Components generated from then on get a `*.test.ts` that renders them with `render()`.
 
-Install the package:
+To install it by hand instead:
 
 ```sh
 npm install --save-dev @blotch/angular-lynx-testing-library
-```
-
-Configure Vitest:
-
-```ts
-// vitest.config.ts
-import { defineConfig } from 'vitest/config';
-import path from 'node:path';
-
-export default defineConfig({
-  define: {
-    __DEV__: JSON.stringify(true),
-    __MAIN_THREAD__: JSON.stringify(true),
-  },
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
-    include: ['src/**/*.test.ts'],
-  },
-});
-```
-
-Create `src/setup.ts`:
-
-```ts
-import '@blotch/angular-lynx-testing-library/setup';
 ```
 
 ## Rendering a Component
@@ -53,10 +33,12 @@ import '@blotch/angular-lynx-testing-library/setup';
 
 ```ts
 import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render } from '@blotch/angular-lynx-testing-library';
 
 @Component({
   selector: 'my-greeting',
+  imports: [LYNX_ELEMENTS],
   template: `<text>Hello {{ name() }}</text>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

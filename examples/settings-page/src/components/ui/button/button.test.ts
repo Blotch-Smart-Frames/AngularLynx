@@ -1,18 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('@angular/core', () => ({
-  Component: () => () => {},
-  ViewEncapsulation: { None: 0 },
-  computed: () => () => {},
-  input: () => () => {},
-  output: () => () => {},
-}));
-
-vi.mock('@blotch/angular-lynx', () => ({
-  LYNX_ELEMENTS: [],
-}));
-
-const { buttonVariants } = await import('./button');
+import { describe, expect, it } from 'vitest';
+import { buttonVariants } from './button';
 
 describe('buttonVariants', () => {
   it('returns default variant and size classes', () => {

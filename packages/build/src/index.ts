@@ -7,3 +7,10 @@
  * than of the app.
  */
 export * from '@blotch/rsbuild-plugin-angular-lynx';
+
+/**
+ * rspeedy's config helper, for the same reason: rspeedy is this package's
+ * dependency, so an app's lynx.config.ts imports it from here.
+ */
+export { defineConfig } from '@lynx-js/rspeedy';
+export type { Config } from '@lynx-js/rspeedy';

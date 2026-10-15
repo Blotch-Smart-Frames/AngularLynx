@@ -213,7 +213,13 @@ try {
   if (args.keep || failed) {
     console.log(`\nThe generated app and logs are in ${context.workDir}`);
   } else {
-    rmSync(context.workDir, { recursive: true, force: true });
+    // Retries cover Windows, which can take a moment after a process exits
+    // to release its files (Node retries on EPERM and EBUSY).
+    rmSync(context.workDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+    });
   }
   console.log(`Logs: ${context.artifactsDir}`);
 }

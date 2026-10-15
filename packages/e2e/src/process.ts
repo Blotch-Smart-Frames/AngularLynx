@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 
 /**
@@ -91,7 +91,10 @@ export const stop = (child: ChildProcess) => {
   }
   try {
     if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f']);
+      // Wait for taskkill: Windows won't delete a folder while a process
+      // still has files open in it, so the work-dir cleanup right after
+      // stopping Verdaccio failed with EPERM.
+      spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f']);
     } else {
       process.kill(-child.pid, 'SIGTERM');
     }

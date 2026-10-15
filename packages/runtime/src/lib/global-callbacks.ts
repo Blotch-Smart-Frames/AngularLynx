@@ -182,12 +182,20 @@ if (__MAIN_THREAD__) {
 }
 
 // Cross-thread RPC: background thread listens for return values from main thread
-// AND for runOnBackground execution requests from main thread
+// AND for runOnBackground execution requests from main thread.
+//
+// The background thread reaches the main thread through getCoreContext(), not
+// getJSContext(): each thread talks to the *other* thread's context (see the
+// "RuntimeProxy API summary" in investigations/lynx-vs-web-differences.md, and
+// React Lynx's runtime/src/worklet/call/runOnBackground.ts). Listening on
+// getJSContext() here meant native runOnBackground() requests never arrived, so
+// main-thread code (every Angular event handler) could not reach
+// background-only APIs such as NativeModules.
 if (!__MAIN_THREAD__) {
   try {
-    if (typeof lynx !== 'undefined' && (lynx as any).getJSContext) {
+    if (typeof lynx !== 'undefined' && (lynx as any).getCoreContext) {
       (lynx as any)
-        .getJSContext()
+        .getCoreContext()
         .addEventListener(
           'Lynx.Worklet.FunctionCallRet',
           (event: { data: string }) => {
@@ -206,7 +214,7 @@ if (!__MAIN_THREAD__) {
 
       // Listen for runOnBackground requests from main thread
       (lynx as any)
-        .getJSContext()
+        .getCoreContext()
         .addEventListener(
           'Lynx.Worklet.runOnBackground',
           (event: { data: string }) => {
@@ -219,7 +227,7 @@ if (!__MAIN_THREAD__) {
             } catch (e) {
               error = String(e);
             }
-            (lynx as any).getJSContext().dispatchEvent({
+            (lynx as any).getCoreContext().dispatchEvent({
               type: 'Lynx.Worklet.BgFunctionCallRet',
               data: JSON.stringify({ resolveId, returnValue, error }),
             });
@@ -227,7 +235,7 @@ if (!__MAIN_THREAD__) {
         );
     }
   } catch {
-    // lynx.getJSContext() may not be available in all environments
+    // lynx.getCoreContext() may not be available in all environments
   }
 }
 

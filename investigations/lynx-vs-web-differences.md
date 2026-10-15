@@ -4364,3 +4364,37 @@ The same rule removes **any** attribute set to `"false"` on any web element, e.g
 ### The fix
 
 This is upstream in `@lynx-js/web-elements` (it would need `text` in `RawText`'s `notToFilterFalseAttributes`), and it only affects Lynx for Web. Until it's fixed there, avoid rendering a bare `false` as text in content meant for the web preview: show a label instead (`{{ on() ? 'On' : 'Off' }}`, as `examples/element-video` does).
+
+---
+
+## `NativeModules` is `undefined` in Angular event handlers; call native modules through `runOnBackground`
+
+### What you'd expect (web)
+
+Code in a click handler can call any API the page has. There is one JS thread, so every global is in reach.
+
+### What Lynx does
+
+Lynx gives `NativeModules` only to the **background thread**: it's a parameter of the background bundle's `tt.define` wrapper, and the main thread has no equivalent. In AngularLynx, the app on the **main thread** draws the screen, and the renderer registers every `(bind*)`/`(catch*)` handler as a main-thread worklet. So inside a handler, `typeof NativeModules === 'undefined'`, and any library that wraps it fails. Sparkling's `sparkling-navigation`, for example, answers `router.open()` with `{"code":-2,"msg":"NativeModules is not available. Ensure you are running in a lynx environment."}`.
+
+React Lynx doesn't hit this because its component code runs on the background thread.
+
+### The fix
+
+Wrap the call in a `backgroundFn` at module level, and invoke it from the handler with the `runOnBackground` global:
+
+```ts
+import { backgroundFn } from '@blotch/angular-lynx';
+import * as router from 'sparkling-navigation';
+
+const openPage = backgroundFn((scheme: string) => {
+  router.open({ scheme }, () => {});
+});
+
+// In the component
+open() {
+  (globalThis as any).runOnBackground(openPage, 'hybrid://lynxview_page?bundle=second.lynx.bundle');
+}
+```
+
+Until October 2026 this didn't work either: the background thread listened for `runOnBackground` requests on `lynx.getJSContext()` instead of `lynx.getCoreContext()` (see the RuntimeProxy API summary above), so requests never arrived and the promise never settled. The fix is in `packages/runtime/src/lib/global-callbacks.ts`. It was found by running an Angular bundle in a Sparkling app on the iOS Simulator and an Android emulator.

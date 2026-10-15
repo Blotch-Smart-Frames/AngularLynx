@@ -36,11 +36,20 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const script = (file: string, body: string) => {
+const script = (file: string, body: string, shell = '/bin/sh') => {
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, `#!/bin/sh\n${body}\n`);
+  writeFileSync(file, `#!${shell}\n${body}\n`);
   chmodSync(file, 0o755);
 };
+
+/**
+ * The real gradlew is a /bin/sh script, and on Debian and Ubuntu that is
+ * dash, which drops environment variables whose names aren't shell
+ * identifiers. Run the fake one with dash where it's installed (macOS has
+ * it at /bin/dash, though its /bin/sh is bash), so a dotted variable name
+ * fails here too and not only on Linux CI.
+ */
+const GRADLEW_SHELL = existsSync('/bin/dash') ? '/bin/dash' : '/bin/sh';
 
 const app = (options = {}) =>
   resolveAppOptions(
@@ -166,6 +175,7 @@ env | grep '^ORG_GRADLE_PROJECT_angularLynx' | sort >> "${calls}"
 mkdir -p app/build/outputs/apk/release app/build/outputs/bundle/release
 echo apk > app/build/outputs/apk/release/app-release.apk
 echo aab > app/build/outputs/bundle/release/app-release.aab`,
+      GRADLEW_SHELL,
     );
     return {
       project: { dir: projectDir, ejected: false, regenerated: true },
@@ -210,10 +220,10 @@ echo aab > app/build/outputs/bundle/release/app-release.aab`,
     expect(readFileSync(calls, 'utf8')).toBe(
       [
         ':app:assembleRelease :app:bundleRelease --console=plain',
-        'ORG_GRADLE_PROJECT_angularLynx.keyAlias=upload',
-        'ORG_GRADLE_PROJECT_angularLynx.keyPassword=secret2',
-        'ORG_GRADLE_PROJECT_angularLynx.storeFile=/upload.jks',
-        'ORG_GRADLE_PROJECT_angularLynx.storePassword=secret1',
+        'ORG_GRADLE_PROJECT_angularLynxKeyAlias=upload',
+        'ORG_GRADLE_PROJECT_angularLynxKeyPassword=secret2',
+        'ORG_GRADLE_PROJECT_angularLynxStoreFile=/upload.jks',
+        'ORG_GRADLE_PROJECT_angularLynxStorePassword=secret1',
         '',
       ].join('\n'),
     );

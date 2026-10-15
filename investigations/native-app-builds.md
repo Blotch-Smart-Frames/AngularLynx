@@ -182,7 +182,7 @@ Swift and Kotlin source we own, versioned and released with the runtime, pinned 
 **Android:**
 
 - Gradle wrapper (downloads Gradle itself). On macOS, when `JAVA_HOME` isn't set, the builder asks `java_home` for JDK 17 or newer. It passes the SDK to Gradle as `ANDROID_HOME` (from the environment or Android Studio's default location), so the project never stores a machine path. Android SDK packages are installed with `sdkmanager` after the user accepts the licenses.
-- `assembleRelease` + `bundleRelease` → `.apk` (emulators, sideloading) and `.aab` (Google Play). The upload key reaches Gradle as `ORG_GRADLE_PROJECT_angularLynx.*` environment variables, never on the command line or in a file; without it, the release build is signed with the debug key.
+- `assembleRelease` + `bundleRelease` → `.apk` (emulators, sideloading) and `.aab` (Google Play). The upload key reaches Gradle as `ORG_GRADLE_PROJECT_angularLynx*` environment variables, never on the command line or in a file (no dots in the names: dash, `/bin/sh` on Ubuntu, drops such variables before `gradlew` starts Gradle); without it, the release build is signed with the debug key.
 - `targetSdk` follows Google Play's current requirement. We own bumping it each year.
 
 ### 5. Doctor

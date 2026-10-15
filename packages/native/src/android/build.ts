@@ -92,11 +92,15 @@ export const buildAndroid = async ({
     ...process.env,
     ...(sdk && { ANDROID_HOME: sdk }),
     ...(await javaEnv()),
+    // Plain identifiers, no dots: gradlew is a /bin/sh script, and dash
+    // (/bin/sh on Debian and Ubuntu) silently drops environment variables
+    // whose names aren't valid shell identifiers, which would leave Linux
+    // builds signed with the debug key.
     ...(signing && {
-      'ORG_GRADLE_PROJECT_angularLynx.storeFile': signing.storeFile,
-      'ORG_GRADLE_PROJECT_angularLynx.storePassword': signing.storePassword,
-      'ORG_GRADLE_PROJECT_angularLynx.keyAlias': signing.keyAlias,
-      'ORG_GRADLE_PROJECT_angularLynx.keyPassword': signing.keyPassword,
+      ORG_GRADLE_PROJECT_angularLynxStoreFile: signing.storeFile,
+      ORG_GRADLE_PROJECT_angularLynxStorePassword: signing.storePassword,
+      ORG_GRADLE_PROJECT_angularLynxKeyAlias: signing.keyAlias,
+      ORG_GRADLE_PROJECT_angularLynxKeyPassword: signing.keyPassword,
     }),
   };
   if (!signing) {

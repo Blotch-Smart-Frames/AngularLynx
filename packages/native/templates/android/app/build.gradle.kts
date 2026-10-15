@@ -15,13 +15,15 @@ fun appConfig(key: String): String =
     appConfig.getProperty(key) ?: error("angular-lynx.properties has no $key")
 
 // Release signing arrives as Gradle properties (the builder sets
-// ORG_GRADLE_PROJECT_angularLynx.storeFile etc. in the environment, which
+// ORG_GRADLE_PROJECT_angularLynxStoreFile etc. in the environment, which
 // keeps secrets out of command lines and logs) and is never written to disk,
-// so the generated project never holds secrets. Without
-// it, release builds fall back to the debug key: still installable on an
-// emulator, but Google Play rejects them.
-val releaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
-    .associateWith { providers.gradleProperty("angularLynx.$it").orNull }
+// so the generated project never holds secrets. The names have no dots:
+// gradlew is a /bin/sh script, and dash (Debian and Ubuntu's /bin/sh) drops
+// environment variables whose names aren't shell identifiers before Gradle
+// starts. Without them, release builds fall back to the debug key: still
+// installable on an emulator, but Google Play rejects them.
+val releaseSigning = listOf("StoreFile", "StorePassword", "KeyAlias", "KeyPassword")
+    .associateWith { providers.gradleProperty("angularLynx$it").orNull }
 val hasReleaseSigning = releaseSigning.values.all { !it.isNullOrEmpty() }
 
 // One place for the Lynx version, so a Lynx upgrade is a one-line change.
@@ -56,10 +58,10 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                storeFile = file(releaseSigning.getValue("storeFile")!!)
-                storePassword = releaseSigning.getValue("storePassword")
-                keyAlias = releaseSigning.getValue("keyAlias")
-                keyPassword = releaseSigning.getValue("keyPassword")
+                storeFile = file(releaseSigning.getValue("StoreFile")!!)
+                storePassword = releaseSigning.getValue("StorePassword")
+                keyAlias = releaseSigning.getValue("KeyAlias")
+                keyPassword = releaseSigning.getValue("KeyPassword")
             }
         }
     }

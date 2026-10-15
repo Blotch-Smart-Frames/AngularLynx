@@ -34,7 +34,7 @@ jobs:
           ruby-version: '3.3'
       # The script generates its host Xcode project with the repository's own
       # TypeScript generator (packages/native/scripts/generate-ios-project.ts).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm

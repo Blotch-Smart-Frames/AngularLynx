@@ -32,8 +32,13 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      # The script generates its host Xcode project with the repository's own
+      # TypeScript generator (packages/native/scripts/generate-ios-project.ts).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - name: Build the XCFrameworks
         run: packages/native/scripts/build-lynx-ios-frameworks.sh "$RUNNER_TEMP/lynx-ios"
       - name: Summarize

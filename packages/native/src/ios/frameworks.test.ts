@@ -48,7 +48,8 @@ const fakeFrameworks = (folder: string) => {
   return folder;
 };
 
-const log = path.join(dir ?? os.tmpdir(), 'log');
+/** Only the download test writes to a log, and it passes its own. */
+const log = path.join(os.tmpdir(), 'angular-lynx-frameworks-test.log');
 
 describe('resolveLynxFrameworks', () => {
   it('uses the folder the environment variable names', async () => {

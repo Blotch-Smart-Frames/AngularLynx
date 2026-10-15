@@ -57,8 +57,10 @@ export const PUBLISHABLE_PACKAGES: readonly PublishablePackage[] = [
       'dist/index.js',
       'dist/index.d.ts',
       // The native shells the generator copies. Without them every
-      // `ng build --platform` fails, and no unit test would notice.
+      // `ng build --platform` fails, and no unit test would notice. The
+      // Xcode project isn't in git: `npm run build` renders it.
       'templates/ios/App.xcodeproj/project.pbxproj',
+      'templates/ios/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme',
       'templates/ios/App/Info.plist',
       'templates/android/gradlew',
       'templates/android/app/build.gradle.kts',

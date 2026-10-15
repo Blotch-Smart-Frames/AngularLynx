@@ -9,5 +9,5 @@
     "rewriteRelativeImportExtensions": true,
     "importHelpers": false
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

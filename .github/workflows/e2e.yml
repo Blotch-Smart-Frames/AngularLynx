@@ -129,14 +129,14 @@ jobs:
     if: needs.setup.outputs.registry == 'local'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - name: Restore turbo cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .turbo
           key: turbo-${{ github.sha }}-e2e
@@ -150,12 +150,12 @@ jobs:
           node packages/e2e/src/run.ts --layers 1
           --tarball-dir "$RUNNER_TEMP/tarballs"
           --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: e2e-tarballs
           path: ${{ runner.temp }}/tarballs/*.tgz
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-artifacts-package-contract
@@ -180,8 +180,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -197,7 +197,7 @@ jobs:
       # Only for the harness's own dependencies (Verdaccio, Playwright). The
       # packages under test come from the tarballs, never from this checkout.
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: needs.setup.outputs.registry == 'local'
         with:
           name: e2e-tarballs
@@ -209,7 +209,7 @@ jobs:
       # so later runs don't depend on (or wait for) the public registry. Keyed
       # by date so it refreshes daily.
       - name: Cache Verdaccio storage
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/verdaccio-storage
           key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
@@ -219,7 +219,7 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/ms-playwright
@@ -243,7 +243,7 @@ jobs:
           if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
           if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
           node packages/e2e/src/run.ts "${args[@]}" ${{ matrix.args }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-artifacts-${{ strategy.job-index }}
@@ -259,14 +259,14 @@ jobs:
       && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       # For the harness's own dependencies (Verdaccio).
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: needs.setup.outputs.registry == 'local'
         with:
           name: e2e-tarballs
@@ -277,7 +277,7 @@ jobs:
       # Restore only: fresh-app saves this cache, and two jobs saving the same
       # key race.
       - name: Restore Verdaccio storage
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/verdaccio-storage
           key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
@@ -294,12 +294,12 @@ jobs:
           if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
           if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
           node packages/e2e/src/run.ts "${args[@]}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: e2e-app-dist-${{ needs.setup.outputs.registry }}
           path: ${{ runner.temp }}/app-dist
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-artifacts-build-app
@@ -315,12 +315,16 @@ jobs:
     # Apple silicon, which the prebuilt Lynx Explorer simulator app targets.
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
+          # No `npm ci` here, so don't restore the npm cache that setup-node
+          # would otherwise restore because of package.json's
+          # `packageManager` field.
+          package-manager-cache: false
       - name: Cache Lynx Explorer
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx-e2e/explorer
           key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
@@ -333,7 +337,7 @@ jobs:
           --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
       - name: Cache Maestro
         id: maestro-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.maestro
           key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
@@ -343,7 +347,7 @@ jobs:
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       # main.lynx.bundle is the same file on every platform, so reuse the one
       # the Linux job built instead of rebuilding on the slower Mac.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: e2e-app-dist-${{ needs.setup.outputs.registry }}
           path: ${{ runner.temp }}/app-dist
@@ -352,7 +356,7 @@ jobs:
           node packages/e2e/src/native/run-native.ts --platform ios
           --dist "$RUNNER_TEMP/app-dist"
           --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-artifacts-ios
@@ -365,22 +369,23 @@ jobs:
     # Until the Android flow has run reliably for a while (rollout phase 7).
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
         with:
           name: e2e-app-dist-${{ needs.setup.outputs.registry }}
           path: ${{ runner.temp }}/app-dist
       - name: Cache Lynx Explorer
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx-e2e/explorer
           key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
       - name: Cache Maestro
         id: maestro-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.maestro
           key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
@@ -401,7 +406,7 @@ jobs:
           arch: x86_64
           target: google_apis
           script: node packages/e2e/src/native/run-native.ts --platform android --dist "$RUNNER_TEMP/app-dist" --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-artifacts-android

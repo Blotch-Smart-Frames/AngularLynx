@@ -48,10 +48,10 @@ Summarize anything relevant to this monorepo for the user.
 
 ### 3. Update published package versions
 
-Set every published package (the list in `packages/e2e/src/packages.ts`) to the new version in one go:
+Set every published package (the list in `packages/release/src/packages.ts`) to the new version in one go:
 
 ```sh
-node packages/e2e/src/set-version.ts TARGET_MAJOR.0.0
+npm run set-version TARGET_MAJOR.0.0
 ```
 
 The `consistent-package-versions` lint rule fails if they disagree, and `publish.yml` refuses a tag that doesn't match them.

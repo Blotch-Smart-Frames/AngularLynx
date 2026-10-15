@@ -3,7 +3,7 @@ import { readVersions } from './packages.ts';
 /**
  * Fails unless every publishable package's `package.json` is at `version`:
  *
- *   node packages/e2e/src/check-version.ts 22.3.0
+ *   node packages/release/src/check-version.ts 22.3.0
  *
  * `publish.yml` runs this with the tag's version before anything is built.
  * The repository is the source of truth for what gets published, so a tag
@@ -12,7 +12,7 @@ import { readVersions } from './packages.ts';
  */
 const version = process.argv[2]?.replace(/^v/, '');
 if (!version) {
-  console.error('Usage: node packages/e2e/src/check-version.ts <version>');
+  console.error('Usage: node packages/release/src/check-version.ts <version>');
   process.exit(1);
 }
 
@@ -24,7 +24,7 @@ if (wrong.length > 0) {
 
 Set the version in the repository, commit it, and tag that commit:
 
-  node packages/e2e/src/set-version.ts ${version}`,
+  npm run set-version ${version}`,
   );
   process.exit(1);
 }

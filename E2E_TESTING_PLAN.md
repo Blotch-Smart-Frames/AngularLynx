@@ -74,7 +74,7 @@ packages/e2e/
   verdaccio/
     config.yaml           # Local registry config (Layer 2)
   src/
-    packages.ts           # The single list of publishable packages
+    packages.ts           # The single list of publishable packages (since moved to packages/release)
     registry.ts           # Starts and stops Verdaccio, writes the temporary .npmrc
     publish-local.ts      # Packs and publishes every package to Verdaccio
     check-packages.ts     # Layer 1

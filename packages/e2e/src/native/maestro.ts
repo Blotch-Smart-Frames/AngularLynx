@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { REPO_ROOT } from '../packages.ts';
+import { REPO_ROOT } from '../../../release/src/packages.ts';
 import { runAllowFailure, type RunResult } from '../process.ts';
 
 export type Platform = 'ios' | 'android';

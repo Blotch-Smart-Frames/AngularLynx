@@ -44,7 +44,7 @@ jobs:
       - name: Check the packages are at the release version
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node packages/e2e/src/check-version.ts "$VERSION"
+        run: node packages/release/src/check-version.ts "$VERSION"
 
   # The release gate: layers 1-3 of the E2E tests on the tagged commit, across
   # the full matrix. A dry run only packs and checks the tarballs (Layer 1).
@@ -90,7 +90,7 @@ jobs:
           path: ${{ runner.temp }}/tarballs
       - name: Publish the tested tarballs
         run: >-
-          node packages/e2e/src/publish-tarballs.ts "$RUNNER_TEMP/tarballs"
+          node packages/release/src/publish-tarballs.ts "$RUNNER_TEMP/tarballs"
           --provenance
 
       # When the trusted-publishing token exchange fails, npm silently falls
@@ -112,7 +112,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node packages/e2e/src/wait-for-npm.ts "${{ needs.version.outputs.version }}"
+      - run: node packages/release/src/wait-for-npm.ts "${{ needs.version.outputs.version }}"
 
   # Layers 2 and 3 against the public registry: catches problems that only
   # exist on npm, such as a broken `latest` tag or a held version.
@@ -143,7 +143,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           commands=$(node --input-type=module -e '
-            const { PUBLISHABLE_PACKAGES } = await import("./packages/e2e/src/packages.ts");
+            const { PUBLISHABLE_PACKAGES } = await import("./packages/release/src/packages.ts");
             for (const { name } of PUBLISHABLE_PACKAGES) {
               console.log(`npm deprecate ${name}@${process.env.VERSION} "Broken release, use the next version"`);
             }

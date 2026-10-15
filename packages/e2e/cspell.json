@@ -3,16 +3,13 @@
   "words": [
     "bootstatus",
     "devicetypes",
-    "gradlew",
     "logcat",
     "noasan",
-    "pbxproj",
     "serialno",
     "simctl",
     "taskkill",
     "udid",
     "USERCONFIG",
-    "xcodeproj",
     "xcrun"
   ],
   "ignorePaths": ["artifacts"]

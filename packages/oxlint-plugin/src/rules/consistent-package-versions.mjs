@@ -1,7 +1,7 @@
 // The shared publish list, so this rule checks exactly the packages that get
 // published. It used to keep its own list, which fell behind and missed
 // @blotch/dolan and create-angular-lynx.
-import { readVersions } from '../../../e2e/src/packages.ts';
+import { readVersions } from '../../../release/src/packages.ts';
 
 // Only check once per lint run.
 let checked = false;
@@ -28,7 +28,7 @@ export default {
     },
     messages: {
       versionMismatch:
-        'Package version mismatch: {{ detail }}. All published packages must share the same version; set them with `node packages/e2e/src/set-version.ts <version>`.',
+        'Package version mismatch: {{ detail }}. All published packages must share the same version; set them with `npm run set-version <version>`.',
     },
   },
   create(context) {

@@ -9,7 +9,7 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 
 import type { RunContext } from './context.ts';
-import { REPO_ROOT } from './packages.ts';
+import { REPO_ROOT } from '../../release/src/packages.ts';
 import type { Registry } from './registry.ts';
 import { check, run, start, step, stop, waitFor } from './process.ts';
 

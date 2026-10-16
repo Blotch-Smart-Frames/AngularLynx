@@ -18,6 +18,7 @@ import type * as Native from '@blotch/angular-lynx-native' with {
   'resolution-mode': 'import',
 };
 
+import { nativeCacheDir } from './native-cache';
 import type { ApplicationBuilderOptions } from './schema';
 
 type NativeModule = typeof Native;
@@ -91,10 +92,19 @@ export const runApplication = async function* (
 
   let rspeedy: RspeedyInstance;
   let native: NativeModule | undefined;
+  let workDir = '';
   try {
     // Load the native builder first, so a broken install fails before a
     // minute of bundling rather than after it.
-    native = platforms.length > 0 ? await deps.importNative() : undefined;
+    if (platforms.length > 0) {
+      native = await deps.importNative();
+      workDir = nativeCacheDir({
+        metadata,
+        workspaceRoot: context.workspaceRoot,
+        projectRoot,
+        projectName,
+      });
+    }
     rspeedy = await createRspeedy({
       rspeedy: await deps.importRspeedy(),
       plugin: await deps.importPlugin(),
@@ -132,6 +142,7 @@ export const runApplication = async function* (
       const { artifacts } = await native!.buildNativeApp({
         platform,
         projectRoot,
+        workDir,
         projectName,
         packageVersion: readPackageVersion(projectRoot),
         bundleDir,

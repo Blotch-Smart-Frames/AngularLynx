@@ -1,6 +1,6 @@
 # Android shell template
 
-The Android app that `ng build --platform android` builds. The generator copies this folder into `.angular-lynx/native/android`, fills in the few files below, and runs Gradle. Everything else is static: it's code we own and test, not something users edit (they can `eject` to get a copy they own).
+The Android app that `ng build --platform android` builds. The generator copies this folder into `.angular/cache/<Angular version>/<project>/lynx-native/android`, fills in the few files below, and runs Gradle. Everything else is static: it's code we own and test, not something users edit (they can `eject` to get a copy they own).
 
 The app is one activity holding one full-screen `LynxView` that runs `main.lynx.bundle`. Angular Router does all navigation inside it.
 

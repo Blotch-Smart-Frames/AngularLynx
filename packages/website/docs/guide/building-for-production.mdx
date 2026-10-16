@@ -71,7 +71,7 @@ ng build --platform android   # dist/android/my-app.aab and dist/android/my-app.
 ng build --platform all
 ```
 
-You never see an Xcode or Gradle project. The builder generates one into `.angular-lynx/native/` (git-ignored), copies your bundle into it, and builds it. The generated project is reused until your options change, so a rebuild takes seconds.
+You never see an Xcode or Gradle project. The builder generates one into Angular's build cache (`.angular/cache/`, which `ng new` already git-ignores), copies your bundle into it, and builds it. The generated project is reused until your options change, so a rebuild takes seconds. `ng cache clean` deletes it, and the next build generates it again.
 
 | Output                         | Use                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------ |

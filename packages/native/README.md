@@ -6,7 +6,7 @@ User documentation: [Publishing your App](../website/docs/guide/building-for-pro
 
 ## What it does
 
-1. **Generates** the native project from `templates/ios` or `templates/android` into `.angular-lynx/native/<platform>`, writing the app options from `angular.json` into the few files the templates mark for it. It regenerates only when a hash of its inputs changes (this package's version, the template, the options, the icon), so Xcode and Gradle keep their incremental state.
+1. **Generates** the native project from `templates/ios` or `templates/android` into the project's folder in Angular's build cache (`.angular/cache/<Angular version>/<project>/lynx-native/<platform>`, which `ng new` already gitignores and `ng cache clean` clears), writing the app options from `angular.json` into the few files the templates mark for it. It regenerates only when a hash of its inputs changes (this package's version, the template, the options, the icon), so Xcode and Gradle keep their incremental state.
 2. **Copies** `dist/` (without the web bundle) into the project.
 3. **Builds** it with `xcodebuild` or Gradle and copies the binaries to `dist/<platform>/`.
 

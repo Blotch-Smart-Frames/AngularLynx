@@ -1,4 +1,5 @@
-// The Android shell that AngularLynx generates into .angular-lynx/native/android.
+// The Android shell that AngularLynx generates into Angular's build cache
+// (.angular/cache/<Angular version>/<project>/lynx-native/android).
 // See README.md for what the generator changes; everything else is static.
 pluginManagement {
     repositories {

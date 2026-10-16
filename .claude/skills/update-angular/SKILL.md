@@ -89,12 +89,11 @@ The `consistent-package-versions` lint rule fails if they disagree, and `publish
 **`packages/build/package.json`** devDependencies:
 - `@angular-devkit/architect` → the matching `^0.MMmm.p` version
 
-### 6. Update schematic versions file
+### 6. Check the schematics' third-party versions
 
-Edit `packages/runtime/schematics/ng-add/versions.ts`:
-- `angularLynxTestingLibrary` → `'TARGET_RANGE'`
-- `angularLocalize` → `'TARGET_RANGE'`
-- Also check if `angularLynxBuild` version needs updating
+The schematics hard-code no Angular or AngularLynx version, so there is nothing to bump for them: `ng add` and `add-testing` install our packages at the runtime's own release (`ownVersionRange`), and `add-i18n` installs `@angular/localize` at the app's `@angular/core` range. The E2E tests fail if either is hard-coded again.
+
+Check that the third-party versions in `packages/runtime/schematics/ng-add/versions.ts` (`vitest`, `jsdom`, `@lynx-js/types`, Tailwind) work with the new Angular.
 
 ### 7. Update kitchen-sink-app
 
@@ -197,7 +196,7 @@ Angular update: OLD_MAJOR → TARGET_MAJOR
 - [x] Published package versions → TARGET_MAJOR.0.0
 - [x] Peer dependencies → TARGET_RANGE
 - [x] Dev dependencies updated
-- [x] Schematic versions.ts updated
+- [x] Schematic third-party versions checked
 - [x] kitchen-sink-app updated
 - [x] All examples bulk-updated
 - [x] create-example skill template updated

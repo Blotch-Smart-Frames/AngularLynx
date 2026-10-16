@@ -13,7 +13,6 @@ import { JSONFile } from '@schematics/angular/utility/json-file';
 import { getWorkspace } from '@schematics/angular/utility/workspace';
 
 import type { Schema } from './schema';
-import { VERSIONS } from '../ng-add/versions';
 
 /**
  * Wires Angular's `@angular/localize` package into an AngularLynx app and
@@ -176,8 +175,23 @@ const updateAppConfig = (sourceRoot: string): Rule => {
 };
 
 const addLocalizeDependency = (): Rule => {
-  return addDependency('@angular/localize', VERSIONS.angularLocalize, {
-    type: DependencyType.Dev,
-    install: InstallBehavior.Auto,
-  });
+  return (tree: Tree) => {
+    // @angular/localize must match the rest of Angular, so it takes the app's
+    // own @angular/core range, as Angular Material's `ng add` does for the
+    // Angular packages it adds. A range written out here would install the
+    // wrong major once the app moves to the next Angular.
+    const pkg = new JSONFile(tree, '/package.json');
+    const coreRange =
+      pkg.get(['dependencies', '@angular/core']) ??
+      pkg.get(['devDependencies', '@angular/core']);
+    if (typeof coreRange !== 'string') {
+      throw new SchematicsException(
+        "package.json doesn't list @angular/core, so add-i18n can't tell which @angular/localize version matches the app's Angular.",
+      );
+    }
+    return addDependency('@angular/localize', coreRange, {
+      type: DependencyType.Dev,
+      install: InstallBehavior.Auto,
+    });
+  };
 };

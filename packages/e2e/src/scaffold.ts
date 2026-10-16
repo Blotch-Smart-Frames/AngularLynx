@@ -85,7 +85,7 @@ export const scaffoldApp = async (
 
   // Step 2: check what the scaffold produced.
   step('Layer 2: check the generated project');
-  checkGeneratedProject(appDir);
+  checkGeneratedProject(appDir, options.version);
 
   // Step 3: check what got installed.
   step('Layer 2: check the installed packages');
@@ -104,13 +104,23 @@ export const scaffoldApp = async (
   useHelloInApp(appDir);
   if (!options.buildOnly) {
     await buildApp(appDir, pm, registry, context, ['lynx']);
-    await addTestingAndRunTests(appDir, pm, exec);
+    await addTestingAndRunTests(appDir, pm, exec, options.version);
   }
 
   // i18n is part of every app the later layers test, so the native tests run
   // the same app as the browser test.
   step('Layer 2: ng generate @blotch/angular-lynx:add-i18n');
   await exec(...pm.exec('ng', ['generate', '@blotch/angular-lynx:add-i18n']));
+  const { dependencies = {}, devDependencies = {} } = readJson<PackageJson>(
+    path.join(appDir, 'package.json'),
+  );
+  const coreRange = dependencies['@angular/core'];
+  const localizeRange =
+    devDependencies['@angular/localize'] ?? dependencies['@angular/localize'];
+  check(
+    localizeRange === coreRange,
+    `add-i18n added @angular/localize@${localizeRange}, but the app's @angular/core is ${coreRange}. It must take the app's Angular range.`,
+  );
   await exec(...pm.install());
 
   // Swap in the fixtures Layer 3 and Layer 6 interact with: the counter
@@ -141,6 +151,7 @@ const addTestingAndRunTests = async (
   appDir: string,
   pm: PackageManagerCommands,
   exec: (command: string, args: string[]) => Promise<{ output: string }>,
+  version: string,
 ) => {
   step(
     'Layer 2: ng generate @blotch/angular-lynx:add-testing, then run the tests',
@@ -168,7 +179,15 @@ const addTestingAndRunTests = async (
   }
   // add-testing adds devDependencies without installing them.
   await exec(...pm.install());
-  const { scripts } = readJson<PackageJson>(path.join(appDir, 'package.json'));
+  const { scripts, devDependencies } = readJson<PackageJson>(
+    path.join(appDir, 'package.json'),
+  );
+  checkOwnRange(
+    devDependencies,
+    '@blotch/angular-lynx-testing-library',
+    version,
+    'add-testing',
+  );
   check(
     scripts?.['test'] === 'ng test',
     `package.json's test script is ${JSON.stringify(scripts?.['test'])}, not "ng test".`,
@@ -381,7 +400,25 @@ type PackageJson = {
 const readJson = <T>(file: string) =>
   JSON.parse(readFileSync(file, 'utf8')) as T;
 
-const checkGeneratedProject = (appDir: string) => {
+/**
+ * Checks that a schematic added one of our packages at the release it shipped
+ * in. checkInstalledPackages can't see a stale range: while this release is
+ * the newest, `^22.2.1` installs it too. The range only goes wrong after the
+ * next release, when an older `ng add` would install newer builders.
+ */
+const checkOwnRange = (
+  devDependencies: Record<string, string> | undefined,
+  name: string,
+  version: string,
+  schematic: string,
+) => {
+  check(
+    devDependencies?.[name] === `^${version}`,
+    `${schematic} added ${name}@${devDependencies?.[name]} to devDependencies, not ^${version}. Our packages must be added at the release the schematic shipped in (ownVersionRange in ng-add/versions.ts).`,
+  );
+};
+
+const checkGeneratedProject = (appDir: string, version: string) => {
   check(
     existsSync(path.join(appDir, 'src/rspeedy-env.d.ts')),
     '`ng add` didn\'t create src/rspeedy-env.d.ts. If it printed "does not provide any `ng add` actions", the schematics failed to load.',
@@ -443,9 +480,11 @@ const checkGeneratedProject = (appDir: string) => {
     Object.values(configurations).every((options) => !('mode' in options)),
     "angular.json's build configurations have a `mode` option, which Angular doesn't know.",
   );
-  check(
-    pkg.devDependencies?.['@blotch/angular-lynx-build'],
-    "`ng add` didn't add @blotch/angular-lynx-build to devDependencies.",
+  checkOwnRange(
+    pkg.devDependencies,
+    '@blotch/angular-lynx-build',
+    version,
+    '`ng add`',
   );
   // The builders bring rspeedy and its plugins, as @angular/build brings
   // esbuild and Vite.

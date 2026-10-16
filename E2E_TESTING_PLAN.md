@@ -423,7 +423,7 @@ npm run e2e -- --ios                   # Also run Layer 6 on the iOS Simulator (
 
 These are cheap to do alongside the E2E work:
 
-- **Derive `@blotch/*` versions in `ng-add/versions.ts` from the runtime's own version at build time,** as the scaffolder now does. That removes a place where versions can drift apart.
+- **Done: derive the `@blotch/*` versions the schematics install from the runtime's own version,** as the scaffolder does. `ownVersionRange` in `ng-add/versions.ts` reads it from the runtime's `package.json` when the schematic runs, and Layer 2 checks the range `ng add` and `add-testing` write.
 - **Share one list of publishable packages** between `publish.yml` and the harness (see above).
 - **Add schematic unit tests with `SchematicTestRunner`.** They give feedback in seconds on template bugs like the missing `LYNX_ELEMENTS` import. They add to Layer 2 but don't replace it, because they don't compile or build the result.
 - **Add `engines` fields** to the published packages once the minimum Node version is decided.

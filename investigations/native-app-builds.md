@@ -133,7 +133,7 @@ ng build --platform ios
    ├─ 1. Bundle      rspeedy (JS API) + pluginAngularLynx  → dist/main.lynx.bundle, lazy bundles, static/
    │
    ├─ 2. Generate    template(packages/native) + angular.json options
-   │                 → .angular-lynx/native/ios   (gitignored, cached by input hash)
+   │                 → .angular/cache/<ng version>/<project>/lynx-native/ios   (gitignored, cached by input hash)
    │
    ├─ 3. Build       xcodebuild archive + export  |  ./gradlew bundleRelease assembleRelease
    │
@@ -164,9 +164,10 @@ Swift and Kotlin source we own, versioned and released with the runtime, pinned 
 
 ### 3. Generator (shared core)
 
-- Copies the template into `.angular-lynx/native/<platform>`, then applies typed modifiers driven by the config:
+- Copies the template into `.angular/cache/<Angular version>/<project>/lynx-native/<platform>`, then applies typed modifiers driven by the config:
   - iOS: `Info.plist`, entitlements, asset catalog (icons and splash generated from the source images), project build settings (bundle ID, version, team).
   - Android: `AndroidManifest.xml`, `build.gradle` (applicationId, versionCode, signing), resources (icons, splash, app name).
+- The generated projects live in Angular's build cache, not a folder of our own at the project root, so the root looks like any Angular app's: `ng new` already gitignores the cache, `ng cache clean` clears it, and `cli.cache.path` moves it. They go inside Angular's version folder because Angular's application and dev-server builders delete every other folder in the cache. Versions up to 22.2.2 used `.angular-lynx/` at the project root; the builder deletes that folder on the next native build.
 - The same inputs always generate the same output. A hash of (template version, Lynx version, options, icon/splash files) decides whether to regenerate; otherwise the cache is reused, so incremental native builds stay fast.
 - The modifiers are internal in v1. They become the public plugin API in a later phase, which native-module libraries use to declare their native setup.
 

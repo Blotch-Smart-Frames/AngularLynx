@@ -52,7 +52,7 @@ export type PreparedProject = {
 
 /**
  * Makes the native project for a platform ready to build: the generated one in
- * `.angular-lynx/native/<platform>`, or the user's ejected folder.
+ * `<workDir>/<platform>`, or the user's ejected folder.
  *
  * Generation is skipped when a hash of every input (this package's version,
  * the template files, the app options and the icon) matches the last run, so
@@ -63,6 +63,7 @@ export const prepareProject = ({
   platform,
   generator,
   projectRoot,
+  workDir,
   app,
   bundleDir,
   packageVersion,
@@ -70,6 +71,8 @@ export const prepareProject = ({
   readonly platform: Platform;
   readonly generator: PlatformGenerator;
   readonly projectRoot: string;
+  /** Where generated projects go (see `BuildNativeAppOptions.workDir`). */
+  readonly workDir: string;
   readonly app: ResolvedApp;
   /** The rspeedy output folder (dist/). */
   readonly bundleDir: string;
@@ -81,8 +84,7 @@ export const prepareProject = ({
     return { dir: ejectedDir, ejected: true, regenerated: false };
   }
 
-  const nativeRoot = path.join(projectRoot, '.angular-lynx');
-  const dir = path.join(nativeRoot, 'native', platform);
+  const dir = path.join(workDir, platform);
   const hash = inputHash({ platform, app, projectRoot, packageVersion });
   const hashFile = path.join(dir, HASH_FILE);
   const upToDate =
@@ -95,12 +97,34 @@ export const prepareProject = ({
     generator.configure(dir, app, projectRoot);
     writeFileSync(hashFile, hash);
   }
-  // Generated projects are build output: keep them out of the user's git
-  // without asking them to edit .gitignore.
-  writeFileSync(path.join(nativeRoot, '.gitignore'), '*\n');
+  // Generated projects are build output. `ng new` already ignores Angular's
+  // cache, but a moved cache (`cli.cache.path`) or an edited .gitignore may
+  // not be: keep them out of the user's git without asking them to edit it.
+  writeFileSync(path.join(workDir, '.gitignore'), '*\n');
 
   copyBundle(bundleDir, generator.bundleDir(dir));
   return { dir, ejected: false, regenerated: !upToDate };
+};
+
+/**
+ * Up to 22.2.2, native builds worked in `.angular-lynx/` at the project root.
+ * They now use Angular's cache, so delete the old folder rather than leave
+ * hundreds of megabytes of stale Xcode and Gradle state in the user's project. Only a
+ * folder with the `.gitignore` those versions wrote is ours to delete.
+ */
+export const removeLegacyWorkDir = (
+  projectRoot: string,
+  log: (message: string) => void,
+): void => {
+  const legacy = path.join(projectRoot, '.angular-lynx');
+  const gitignore = path.join(legacy, '.gitignore');
+  if (!existsSync(gitignore) || readFileSync(gitignore, 'utf8') !== '*\n') {
+    return;
+  }
+  rmSync(legacy, { recursive: true, force: true });
+  log(
+    'Removed .angular-lynx/: native projects are now generated in the Angular cache',
+  );
 };
 
 /**

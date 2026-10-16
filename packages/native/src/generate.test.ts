@@ -8,19 +8,26 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { androidGenerator } from './android/project.ts';
-import { EJECT_MARKER, copyBundle, prepareProject } from './generate.ts';
+import {
+  EJECT_MARKER,
+  copyBundle,
+  prepareProject,
+  removeLegacyWorkDir,
+} from './generate.ts';
 import { iosGenerator } from './ios/project.ts';
 import { resolveAppOptions } from './options.ts';
 
 let root: string;
 let dist: string;
+let workDir: string;
 
 beforeEach(() => {
   root = mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-native-'));
   dist = path.join(root, 'dist');
+  workDir = path.join(root, '.angular/cache/22.2.2/my-app/lynx-native');
   mkdirSync(path.join(dist, 'static/image'), { recursive: true });
   writeFileSync(path.join(dist, 'main.lynx.bundle'), 'bundle');
   writeFileSync(path.join(dist, 'main.web.bundle'), 'web');
@@ -37,6 +44,7 @@ const prepare = (platform: 'ios' | 'android', options = {}) =>
     platform,
     generator: platform === 'ios' ? iosGenerator : androidGenerator,
     projectRoot: root,
+    workDir,
     app: app(options),
     bundleDir: dist,
     packageVersion: '1.0.0',
@@ -46,7 +54,7 @@ describe('prepareProject', () => {
   it('generates the iOS project with the config and the bundle', () => {
     const project = prepare('ios', { appName: 'My App', appId: 'com.a.b' });
     expect(project).toEqual({
-      dir: path.join(root, '.angular-lynx/native/ios'),
+      dir: path.join(workDir, 'ios'),
       ejected: false,
       regenerated: true,
     });
@@ -63,9 +71,7 @@ describe('prepareProject', () => {
       existsSync(path.join(project.dir, 'LynxBundle/static/image/logo.png')),
     ).toBe(true);
     // Generated projects are build output, kept out of the user's git.
-    expect(
-      readFileSync(path.join(root, '.angular-lynx/.gitignore'), 'utf8'),
-    ).toBe('*\n');
+    expect(readFileSync(path.join(workDir, '.gitignore'), 'utf8')).toBe('*\n');
   });
 
   it('generates the Android project with the config and the bundle', () => {
@@ -83,10 +89,7 @@ describe('prepareProject', () => {
 
   it('reuses the generated project until an input changes', () => {
     prepare('ios');
-    const xcconfig = path.join(
-      root,
-      '.angular-lynx/native/ios/Config/App.xcconfig',
-    );
+    const xcconfig = path.join(workDir, 'ios/Config/App.xcconfig');
     writeFileSync(xcconfig, 'edited');
     // Same inputs: the project (and Xcode's incremental state) is kept.
     expect(prepare('ios').regenerated).toBe(false);
@@ -104,7 +107,7 @@ describe('prepareProject', () => {
     prepare('ios');
     expect(
       readFileSync(
-        path.join(root, '.angular-lynx/native/ios/LynxBundle/main.lynx.bundle'),
+        path.join(workDir, 'ios/LynxBundle/main.lynx.bundle'),
         'utf8',
       ),
     ).toBe('bundle 2');
@@ -122,12 +125,38 @@ describe('prepareProject', () => {
     expect(existsSync(path.join(ejected, 'LynxBundle/main.lynx.bundle'))).toBe(
       true,
     );
-    expect(existsSync(path.join(root, '.angular-lynx'))).toBe(false);
+    expect(existsSync(workDir)).toBe(false);
   });
 
   it("doesn't mistake an unrelated ios/ folder for an ejected project", () => {
     mkdirSync(path.join(root, 'ios'));
     expect(prepare('ios').ejected).toBe(false);
+  });
+});
+
+describe('removeLegacyWorkDir', () => {
+  const legacy = () => path.join(root, '.angular-lynx');
+
+  it('removes the folder older versions generated projects into', () => {
+    mkdirSync(path.join(legacy(), 'native/ios'), { recursive: true });
+    writeFileSync(path.join(legacy(), '.gitignore'), '*\n');
+    const log = vi.fn();
+    removeLegacyWorkDir(root, log);
+    expect(existsSync(legacy())).toBe(false);
+    expect(log).toHaveBeenCalledOnce();
+  });
+
+  it("leaves an .angular-lynx/ folder it didn't write", () => {
+    mkdirSync(legacy());
+    writeFileSync(path.join(legacy(), '.gitignore'), 'notes.md\n');
+    removeLegacyWorkDir(root, vi.fn());
+    expect(existsSync(legacy())).toBe(true);
+  });
+
+  it('does nothing without the folder', () => {
+    const log = vi.fn();
+    removeLegacyWorkDir(root, log);
+    expect(log).not.toHaveBeenCalled();
   });
 });
 

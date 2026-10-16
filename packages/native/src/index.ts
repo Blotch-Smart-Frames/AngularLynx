@@ -3,7 +3,11 @@ import path from 'node:path';
 
 import { androidGenerator } from './android/project.ts';
 import { buildAndroid, resolveAndroidSigning } from './android/build.ts';
-import { type Platform, prepareProject } from './generate.ts';
+import {
+  type Platform,
+  prepareProject,
+  removeLegacyWorkDir,
+} from './generate.ts';
 import { buildIos, resolveIosSigning } from './ios/build.ts';
 import { resolveLynxFrameworks } from './ios/frameworks.ts';
 import { iosGenerator } from './ios/project.ts';
@@ -32,6 +36,12 @@ export type BuildNativeAppOptions = {
   readonly platform: Platform;
   /** The Angular project's root folder (where lynx.config.ts is). */
   readonly projectRoot: string;
+  /**
+   * Where the generated native projects, their build state and the build
+   * logs go. The builder passes the project's folder in Angular's cache, so
+   * nothing is added to the project root and `ng cache clean` clears it.
+   */
+  readonly workDir: string;
   /** The project name, the default app name. */
   readonly projectName: string;
   /** The project's package.json version, the default app version. */
@@ -55,7 +65,7 @@ export const buildNativeApp = async (
   readonly artifacts: readonly string[];
   readonly projectDir: string;
 }> => {
-  const { platform, projectRoot, log } = options;
+  const { platform, projectRoot, workDir, log } = options;
   if (platform === 'ios' && process.platform !== 'darwin') {
     throw new Error(
       'Building for iOS needs macOS with Xcode installed: Apple only ships its build tools for macOS.',
@@ -71,7 +81,7 @@ export const buildNativeApp = async (
   const androidSigning =
     platform === 'android' ? resolveAndroidSigning(app) : undefined;
 
-  const workDir = path.join(projectRoot, '.angular-lynx');
+  removeLegacyWorkDir(projectRoot, log);
   const logFile = path.join(workDir, 'logs', `${platform}.log`);
   mkdirSync(path.dirname(logFile), { recursive: true });
   writeFileSync(logFile, '');
@@ -80,6 +90,7 @@ export const buildNativeApp = async (
     platform,
     generator: platform === 'ios' ? iosGenerator : androidGenerator,
     projectRoot,
+    workDir,
     app,
     bundleDir: options.bundleDir,
     packageVersion: PACKAGE_VERSION,

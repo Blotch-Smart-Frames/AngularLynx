@@ -14,6 +14,7 @@ import { createRequire } from 'node:module';
 
 import applicationSchema from './application/schema.json';
 import { runApplication } from './application/index';
+import { nativeCacheDir } from './application/native-cache';
 import { runDevServer } from './dev-server/index';
 import { importFromProject } from './project-import';
 import {
@@ -40,6 +41,18 @@ beforeEach(() => {
   );
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+/**
+ * A stand-in for the project's @angular/build, which only needs a version.
+ */
+const installAngularBuild = (version: string) => {
+  const dir = path.join(root, 'node_modules/@angular/build');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: '@angular/build', version }),
+  );
+};
 
 /**
  * The Angular CLI side of a builder run: the project, and the build target
@@ -254,6 +267,7 @@ describe('application builder', () => {
   });
 
   it('builds only the lynx environment, then each platform, with --platform all', async () => {
+    installAngularBuild('22.2.2');
     const { rspeedy } = fakeRspeedy();
     const buildNativeApp = vi.fn(
       async ({ platform }: { platform: string }) => ({
@@ -283,6 +297,7 @@ describe('application builder', () => {
         expect.objectContaining({
           platform,
           projectRoot: root,
+          workDir: path.join(root, '.angular/cache/22.2.2/my-app/lynx-native'),
           projectName: 'my-app',
           packageVersion: '2.0.0',
           bundleDir: path.join(root, 'dist'),
@@ -292,6 +307,23 @@ describe('application builder', () => {
       ),
     );
     expect(raw.logger.info).toHaveBeenCalledWith('  ✓ dist/ios/app');
+  });
+
+  it('fails before bundling without @angular/build, which names the cache folder', async () => {
+    const { rspeedy } = fakeRspeedy({});
+    const result = await firstOutput(
+      build(
+        { platform: 'ios' },
+        rspeedy,
+        fakeContext().context,
+        async () => ({}) as never,
+      ),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: expect.stringContaining('@angular/build is not installed'),
+    });
+    expect(rspeedy.loadConfig).not.toHaveBeenCalled();
   });
 
   it('turns failures into a failed build with the message', async () => {
@@ -969,6 +1001,40 @@ describe('importFromProject', () => {
     );
     await expect(importFromProject('no-entry', root, '')).rejects.toThrow(
       'no-entry has no ESM entry point.',
+    );
+  });
+});
+
+describe('nativeCacheDir', () => {
+  const cacheDir = (metadata: Record<string, unknown> = {}) =>
+    nativeCacheDir({
+      metadata,
+      workspaceRoot: root,
+      projectRoot: path.join(root, 'projects/app'),
+      projectName: 'app',
+    });
+
+  beforeEach(() => installAngularBuild('22.2.2'));
+
+  it("is the project's folder in Angular's versioned cache", () => {
+    expect(cacheDir()).toBe(
+      path.join(root, '.angular/cache/22.2.2/app/lynx-native'),
+    );
+  });
+
+  it('follows cli.cache.path, relative to the workspace or absolute', () => {
+    expect(cacheDir({ cli: { cache: { path: 'tmp/ng' } } })).toBe(
+      path.join(root, 'tmp/ng/22.2.2/app/lynx-native'),
+    );
+    const absolute = path.join(os.tmpdir(), 'ng-cache');
+    expect(cacheDir({ cli: { cache: { path: absolute } } })).toBe(
+      path.join(absolute, '22.2.2/app/lynx-native'),
+    );
+  });
+
+  it('ignores a cache setting without a path', () => {
+    expect(cacheDir({ cli: { cache: { enabled: false } } })).toBe(
+      path.join(root, '.angular/cache/22.2.2/app/lynx-native'),
     );
   });
 });

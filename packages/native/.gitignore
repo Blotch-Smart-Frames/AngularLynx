@@ -1,6 +1,7 @@
 dist
 coverage
 .lynx-ios-build
-# Rendered by `npm run build` (scripts/generate-ios-project.ts) and shipped in
-# the npm package; APP_PROJECT in that script is the source.
+# Rendered on every build and test run by the iosTemplateProject Vite plugin
+# and shipped in the npm package; APP_PROJECT in
+# scripts/generate-ios-project.ts is the source.
 templates/ios/App.xcodeproj

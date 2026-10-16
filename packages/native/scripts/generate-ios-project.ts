@@ -2,6 +2,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
+import type { Plugin } from 'vitest/config';
+
 import { LYNX_IOS_FRAMEWORKS } from '../src/ios/frameworks.ts';
 import {
   type IosProjectFiles,
@@ -10,10 +12,9 @@ import {
 } from './ios-project.ts';
 
 /**
- * Writes the iOS template's App.xcodeproj, or the frameworks build's
- * throwaway host project:
+ * Writes the iOS template's App.xcodeproj (the iosTemplateProject Vite
+ * plugin), or the frameworks build's throwaway host project:
  *
- *   node scripts/generate-ios-project.ts           # templates/ios/App.xcodeproj
  *   node scripts/generate-ios-project.ts --host <dir>  # <dir>/Host.xcodeproj
  *
  * App.xcodeproj isn't in git: `npm run build` renders it from APP_PROJECT
@@ -69,13 +70,15 @@ export const HOST_PROJECT: IosProjectSpec = {
   },
 };
 
-export const TEMPLATE_PROJECT_DIR = path.join(
+const TEMPLATE_PROJECT_DIR = path.join(
   import.meta.dirname,
   '../templates/ios/App.xcodeproj',
 );
 
-/** Replaces an .xcodeproj folder with freshly rendered files. */
-export const writeIosProject = (dir: string, files: IosProjectFiles) => {
+/**
+ * Replaces an .xcodeproj folder with freshly rendered files.
+ */
+const writeIosProject = (dir: string, files: IosProjectFiles) => {
   rmSync(dir, { recursive: true, force: true });
   for (const [file, contents] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
@@ -83,11 +86,28 @@ export const writeIosProject = (dir: string, files: IosProjectFiles) => {
   }
 };
 
+/**
+ * Renders templates/ios/App.xcodeproj. It runs in configResolved, the one
+ * hook both of its callers reach (Vitest never calls buildStart):
+ *
+ * - `vite build`, the last step of `npm run build`, so the npm package ships
+ *   the project;
+ * - Vitest, because the generator and eject tests copy the real template, and
+ *   a fresh clone's `npm test` would otherwise test one without its project.
+ */
+export const iosTemplateProject = (): Plugin => ({
+  name: 'ios-template-project',
+  configResolved() {
+    writeIosProject(TEMPLATE_PROJECT_DIR, renderIosProject(APP_PROJECT));
+  },
+});
+
 if (import.meta.main) {
   const { values } = parseArgs({ options: { host: { type: 'string' } } });
-  const [spec, dir] = values.host
-    ? [HOST_PROJECT, path.join(path.resolve(values.host), 'Host.xcodeproj')]
-    : [APP_PROJECT, TEMPLATE_PROJECT_DIR];
-  writeIosProject(dir, renderIosProject(spec));
+  if (!values.host) {
+    throw new Error('Usage: node scripts/generate-ios-project.ts --host <dir>');
+  }
+  const dir = path.join(path.resolve(values.host), 'Host.xcodeproj');
+  writeIosProject(dir, renderIosProject(HOST_PROJECT));
   console.log(`Wrote ${dir}`);
 }

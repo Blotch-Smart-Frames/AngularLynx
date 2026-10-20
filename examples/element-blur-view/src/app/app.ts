@@ -132,7 +132,7 @@ type Tab = 'basics' | 'playground';
               <text
                 class="uppercase mb-2.5 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
               >
-                Liquid Glass (iOS 26+)
+                Liquid Glass (iOS 26+ and web)
               </text>
               <view
                 class="h-[160px] items-center rounded-lg flex relative justify-center overflow-hidden"
@@ -141,11 +141,15 @@ type Tab = 'basics' | 'playground';
                   class="h-full w-full absolute left-0 top-0"
                   style="background-image: linear-gradient(135deg, #6366f1, #ec4899, #f97316);"
                 ></view>
-                <!-- Stripes behind the glass so the refraction/blur is visible. -->
+                <!--
+                  Stripes behind the glass so the refraction/blur is visible.
+                  shrink-0 keeps them from being squeezed to nothing: there are
+                  more than fit, and a Lynx flex item's min-width is 0.
+                -->
                 <view class="h-full w-full flex-row flex absolute left-0 top-0">
                   @for (stripe of stripes; track stripe) {
                     <view
-                      class="mr-[18px] h-full w-[14px]"
+                      class="mr-[18px] h-full w-[14px] shrink-0"
                       [class.bg-white]="stripe % 2 === 0"
                       [class.bg-yellow-300]="stripe % 2 === 1"
                     ></view>
@@ -199,7 +203,7 @@ type Tab = 'basics' | 'playground';
 
             <view class="rounded-xl bg-zinc-100 p-3.5">
               <text class="text-[13px] text-zinc-500">
-                Glass attributes only apply on iOS. Android and Harmony fall
+                Glass renders on iOS 26 and on web. Android and Harmony fall
                 back to the blur-radius blur.
               </text>
             </view>

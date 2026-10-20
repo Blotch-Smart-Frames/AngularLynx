@@ -18,6 +18,12 @@ Main thread scripts directly manipulate native elements, **bypassing Angular's s
 | `mainThreadCatchtouchmove`     | touchmove      | Stops       |
 | `mainThreadBindtouchend`       | touchend       | Propagates  |
 | `mainThreadCatchtouchend`      | touchend       | Stops       |
+| `mainThreadBindmousedown`      | mousedown      | Propagates  |
+| `mainThreadCatchmousedown`     | mousedown      | Stops       |
+| `mainThreadBindmousemove`      | mousemove      | Propagates  |
+| `mainThreadCatchmousemove`     | mousemove      | Stops       |
+| `mainThreadBindmouseup`        | mouseup        | Propagates  |
+| `mainThreadCatchmouseup`       | mouseup        | Stops       |
 | `mainThreadBindlongpress`      | longpress      | Propagates  |
 | `mainThreadCatchlongpress`     | longpress      | Stops       |
 | `mainThreadBindscroll`         | scroll         | Propagates  |
@@ -26,6 +32,8 @@ Main thread scripts directly manipulate native elements, **bypassing Angular's s
 | `mainThreadBindanimationend`   | animationend   | Propagates  |
 | `mainThreadBindtransitionend`  | transitionend  | Propagates  |
 | `mainThreadBindlayoutchange`   | layoutchange   | Propagates  |
+
+Desktop browsers running Lynx for Web fire **mouse events, never touch events**. Bind both for a drag that works everywhere. Phones fire touch events, plus a mouse down and up after a tap, which a drag handler can safely ignore.
 
 ## Usage
 

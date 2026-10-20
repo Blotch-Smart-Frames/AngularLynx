@@ -15,16 +15,19 @@ type Point = { x: number; y: number };
 type GlassStyle = 'regular' | 'clear';
 
 /**
- * Where a drag began: the finger that grabbed the blob, and both the finger's
- * and the blob's starting positions.
+ * Where a drag began: the finger that grabbed the blob (or `MOUSE`), and both
+ * the pointer's and the blob's starting positions.
  */
 type Drag = {
-  touchId: number;
+  pointerId: number;
   startX: number;
   startY: number;
   originX: number;
   originY: number;
 };
+
+/** Stands in for a touch identifier while a mouse drags a blob. */
+const MOUSE = -1;
 
 const BLOB_SIZE = 96;
 const START_POSITIONS: readonly Point[] = [
@@ -43,6 +46,12 @@ const drags = createMainThreadRef<(Drag | null)[]>(
   START_POSITIONS.map(() => null),
 );
 const stageSize = createMainThreadRef({ width: 0, height: 0 });
+// The blob a mouse is dragging. Mouse moves are followed on the stage rather
+// than the blob (see onStageMouseMove), so it keeps the blob's element to move.
+const mouseDrag = createMainThreadRef<{
+  index: number;
+  blob: MainThread.Element;
+} | null>(null);
 
 const onStageLayout = mainThreadFn((event: MainThread.LayoutChangeEvent) => {
   stageSize.current = {
@@ -58,8 +67,67 @@ const onStageLayout = mainThreadFn((event: MainThread.LayoutChangeEvent) => {
 const clamp = (value: number, max: number): number =>
   max > 0 ? Math.min(Math.max(value, 0), max - BLOB_SIZE) : value;
 
+const startDrag = (
+  index: number,
+  pointerId: number,
+  pageX: number,
+  pageY: number,
+): void => {
+  const origin = positions.current[index]!;
+  drags.current[index] = {
+    pointerId,
+    startX: pageX,
+    startY: pageY,
+    originX: origin.x,
+    originY: origin.y,
+  };
+};
+
+const dragTo = (
+  index: number,
+  blob: MainThread.Element,
+  pageX: number,
+  pageY: number,
+): void => {
+  const drag = drags.current[index];
+  if (!drag) return;
+  const x = clamp(drag.originX + pageX - drag.startX, stageSize.current.width);
+  const y = clamp(drag.originY + pageY - drag.startY, stageSize.current.height);
+  positions.current[index] = { x, y };
+  // Move with left/top rather than a transform so each blob's native frame
+  // moves with it.
+  blob.setStyleProperties({ left: `${x}px`, top: `${y}px` });
+};
+
+const endMouseDrag = (): void => {
+  const drag = mouseDrag.current;
+  if (!drag) return;
+  drags.current[drag.index] = null;
+  mouseDrag.current = null;
+};
+
 /**
- * Builds the touch handlers for one blob. Each blob tracks the finger that
+ * Follows a mouse drag anywhere on the stage. A desktop browser running Lynx
+ * for Web fires no touch events, and unlike a touch, a fast mouse flick
+ * leaves the blob behind, so its moves only reach the stage.
+ */
+const onStageMouseMove = mainThreadFn((event: MainThread.MouseEvent) => {
+  const drag = mouseDrag.current;
+  if (!drag) return;
+  // The button came up outside the stage, so its mouseup never arrived here.
+  if (!event.buttons) {
+    endMouseDrag();
+    return;
+  }
+  dragTo(drag.index, drag.blob, event.pageX, event.pageY);
+});
+
+const onStageMouseUp = mainThreadFn(() => {
+  endMouseDrag();
+});
+
+/**
+ * Builds the pointer handlers for one blob. Each blob tracks the finger that
  * grabbed it by touch identifier, so two fingers can drag two blobs into each
  * other at once.
  */
@@ -67,38 +135,24 @@ const createBlobDrag = (index: number) => ({
   start: mainThreadFn((event: MainThread.TouchEvent) => {
     const touch = event.changedTouches[0] ?? event.touches[0];
     if (!touch) return;
-    const origin = positions.current[index]!;
-    drags.current[index] = {
-      touchId: touch.identifier,
-      startX: touch.pageX,
-      startY: touch.pageY,
-      originX: origin.x,
-      originY: origin.y,
-    };
+    startDrag(index, touch.identifier, touch.pageX, touch.pageY);
   }),
   move: mainThreadFn((event: MainThread.TouchEvent) => {
     const drag = drags.current[index];
     if (!drag) return;
     const touch =
       event.touches.find(
-        (t: { identifier: number }) => t.identifier === drag.touchId,
+        (t: { identifier: number }) => t.identifier === drag.pointerId,
       ) ?? event.touches[0];
     if (!touch) return;
-    const x = clamp(
-      drag.originX + touch.pageX - drag.startX,
-      stageSize.current.width,
-    );
-    const y = clamp(
-      drag.originY + touch.pageY - drag.startY,
-      stageSize.current.height,
-    );
-    positions.current[index] = { x, y };
-    // Move with left/top rather than a transform so each blob's native frame
-    // moves with it.
-    event.currentTarget.setStyleProperties({ left: `${x}px`, top: `${y}px` });
+    dragTo(index, event.currentTarget, touch.pageX, touch.pageY);
   }),
   end: mainThreadFn(() => {
     drags.current[index] = null;
+  }),
+  mouseDown: mainThreadFn((event: MainThread.MouseEvent) => {
+    startDrag(index, MOUSE, event.pageX, event.pageY);
+    mouseDrag.current = { index, blob: event.currentTarget };
   }),
 });
 
@@ -110,9 +164,10 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
 }));
 
 /**
- * Liquid Glass playground: drag glass blobs over text. On iOS 26 each blob
- * refracts the text behind it, and blobs closer than the merge distance flow
- * together into one shape. Other platforms show frosted circles.
+ * Liquid Glass playground: drag glass blobs over text. On iOS 26 and on web
+ * each blob refracts the text behind it, and blobs closer than the merge
+ * distance flow together into one shape. Android and Harmony show frosted
+ * circles.
  *
  * Like the gesture demo, it deliberately avoids `DemoScreen` and any
  * scroll-view: a vertical drag inside a scroll-view would scroll the page
@@ -136,6 +191,8 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
       <view
         class="flex-1 rounded-xl border border-border bg-card relative overflow-hidden"
         [mainThreadBindlayoutchange]="onStageLayout"
+        [mainThreadBindmousemove]="onStageMouseMove"
+        [mainThreadBindmouseup]="onStageMouseUp"
       >
         <!-- The glass bends and magnifies this text near its edges. -->
         <view class="h-full w-full p-4 absolute left-0 top-0" [flatten]="false">
@@ -184,6 +241,7 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
               [mainThreadBindtouchstart]="blob.drag.start"
               [mainThreadBindtouchmove]="blob.drag.move"
               [mainThreadBindtouchend]="blob.drag.end"
+              [mainThreadBindmousedown]="blob.drag.mouseDown"
             ></blur-view>
           }
         </blur-view>
@@ -227,6 +285,8 @@ export class GlassPlaygroundDemo {
   readonly blobs = BLOBS;
   readonly blobSize = BLOB_SIZE;
   readonly onStageLayout = onStageLayout;
+  readonly onStageMouseMove = onStageMouseMove;
+  readonly onStageMouseUp = onStageMouseUp;
   readonly spacings = [0, 24, 48] as const;
   readonly glassStyles: readonly GlassStyle[] = ['clear', 'regular'];
   readonly words = [

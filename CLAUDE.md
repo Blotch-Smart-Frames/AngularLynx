@@ -17,9 +17,14 @@ Lynx uses a dual-thread model: **main thread** (native UI rendering) and **backg
 - `packages/release` — Release tooling (private): `src/packages.ts` is the single list of published packages, shared with the E2E tests, `publish.yml` and the `consistent-package-versions` lint rule, and the `ng update` package group (`NG_UPDATE_PACKAGE_GROUP`, which each grouped package lists as `ng-update.packageGroup`). `npm run set-version <version>` sets every published package's version before tagging a release; see its README
 - `skills/angular-lynx` — Public [skills.sh](https://skills.sh) skill, installed with `npx skills add Blotch-Smart-Frames/AngularLynx`. It lives at the repo root because the skills CLI only searches root-level skill folders. The dev skills in `.claude/skills` and `.agents/skills` set `metadata.internal: true` so the CLI hides them; any new dev skill needs that flag too, or it gets listed on skills.sh under this repo
 - `examples/kitchen-sink-app` — Kitchen sink Angular app running on Lynx (the `npm run demo` target; consumes `@blotch/dolan` UI components)
-- `references/lynx-stack-main/packages/react` — **React Lynx** (production-proven reference implementation). Always refer to how React Lynx does things — it's battle-tested and used in production. When unsure about renderer design, element handling, or Lynx API usage, check this reference first.
-- `references/lynx-website-main` — **Lynx official documentation website**. Contains API docs, guides, element/CSS/native API compatibility data, and examples. Reference for understanding Lynx platform capabilities, supported elements, CSS properties, and API status across platforms.
-- `references/lynx` — **Lynx core source code**. The actual C++/JS implementation of the Lynx runtime. Check here to understand how native elements, the dual-thread model, and platform APIs are implemented under the hood.
+
+## Upstream Lynx Sources
+
+These aren't vendored in this repo. Read them on GitHub, or clone one outside the repo when you need to search it.
+
+- [`lynx-family/lynx-stack`](https://github.com/lynx-family/lynx-stack), `packages/react` — **React Lynx** (production-proven reference implementation). Always refer to how React Lynx does things — it's battle-tested and used in production. When unsure about renderer design, element handling, or Lynx API usage, check this reference first.
+- [`lynx-family/lynx-website`](https://github.com/lynx-family/lynx-website) — **Lynx official documentation website** ([lynxjs.org](https://lynxjs.org/)). Contains API docs, guides, element/CSS/native API compatibility data, and examples. Reference for understanding Lynx platform capabilities, supported elements, CSS properties, and API status across platforms.
+- [`lynx-family/lynx`](https://github.com/lynx-family/lynx) — **Lynx core source code**. The actual C++/JS implementation of the Lynx runtime. Check here to understand how native elements, the dual-thread model, and platform APIs are implemented under the hood.
 
 ## Goal
 

@@ -26,8 +26,8 @@ export const createListElement = (pageId: number): LynxListElement => {
    *   * The ack MUST be a synchronous flush tagged with the operationID native
    *   * passed us: { triggerLayout: true, operationID, elementID: sign, listID }.
    *   * This mirrors React Lynx's single-item componentAtIndex exactly (see
-   *   * references/.../snapshot/list/list.ts, componentAtChildCtx's
-   *   * `!enableBatchRender` branch). The operationID is the acknowledgment the
+   *   * lynx-stack/packages/react/runtime/src/snapshot/list/list.ts,
+   *   * componentAtChildCtx's `!enableBatchRender` branch). The operationID is the acknowledgment the
    *   * native list waits for to mark this cell's binding COMPLETE — it is the
    *   * whole point of the callback. { asyncFlush: true } (untagged) is only for
    *   * the batch componentAtIndexes path where the engine itself opts in; using

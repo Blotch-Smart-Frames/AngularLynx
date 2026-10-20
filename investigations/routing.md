@@ -43,7 +43,7 @@ Make Angular's native `RouterOutlet` work on Lynx so that `ViewContainerRef.crea
 
 ### React Lynx Reference
 
-React Lynx (at `references/lynx-stack-main/packages/react`) has **no client-side router**. It uses simple state-based conditional rendering (React state + ternary/map). Navigation between "pages" is handled by the native Lynx platform, not client-side routing. This is the production-proven approach.
+React Lynx ([`lynx-stack/packages/react`](https://github.com/lynx-family/lynx-stack/tree/main/packages/react)) has **no client-side router**. It uses simple state-based conditional rendering (React state + ternary/map). Navigation between "pages" is handled by the native Lynx platform, not client-side routing. This is the production-proven approach.
 
 ---
 
@@ -285,7 +285,7 @@ this.navigationTransitions.setupNavigations(this).subscribe({
 
 ### Evidence
 
-- React Lynx (`references/lynx-stack-main/packages/motion/src/polyfill/shim.ts`) polyfills `queueMicrotask`, `performance`, `NodeList`, `HTMLElement`, etc. — confirming Lynx needs polyfills for standard Web APIs.
+- React Lynx ([`lynx-stack/packages/motion/src/polyfill/shim.ts`](https://github.com/lynx-family/lynx-stack/blob/main/packages/motion/src/polyfill/shim.ts)) polyfills `queueMicrotask`, `performance`, `NodeList`, `HTMLElement`, etc. — confirming Lynx needs polyfills for standard Web APIs.
 - `AbortController` is a Web Platform API (not core ECMAScript). Lightweight JS engines like PrimJS typically lack it.
 - React Lynx has no `AbortController` polyfill because it has no client-side router.
 

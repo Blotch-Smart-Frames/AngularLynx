@@ -17,7 +17,7 @@ Ensure `<x-scroll-view>` works correctly in the AngularLynx renderer with proper
 
 ### What the Lynx API actually supports
 
-Referenced `references/lynx-website-main/docs/en/api/elements/built-in/scroll-view-API.mdx` and `references/lynx-website-main/docs/en/guide/ui/scrolling.mdx`.
+Referenced [`lynx-website/docs/en/api/elements/built-in/scroll-view-API.mdx`](https://github.com/lynx-family/lynx-website/blob/main/docs/en/api/elements/built-in/scroll-view-API.mdx) and [`lynx-website/docs/en/guide/ui/scrolling.mdx`](https://github.com/lynx-family/lynx-website/blob/main/docs/en/guide/ui/scrolling.mdx).
 
 **Valid `__SetConfig` properties:** `bounces` only. Other properties are attributes, not config.
 

@@ -172,7 +172,7 @@ The CSS sets `.mini-list { height: 120px }` but list-items only have `padding: 8
 
 ### Round 2 — Root causes from Lynx docs + React Lynx reference
 
-After reading the official Lynx docs (`references/lynx-website-main/docs/en/api/elements/built-in/list.mdx`) and confirming against the React Lynx codebase:
+After reading the official Lynx docs ([`lynx-website/docs/en/api/elements/built-in/list.mdx`](https://github.com/lynx-family/lynx-website/blob/main/docs/en/api/elements/built-in/list.mdx)) and confirming against the React Lynx codebase:
 
 1. **Missing required `scroll-orientation` attribute** — The Lynx docs mark `scroll-orientation` as Required on `<list>`. We only set `list-type` and `span-count`. Added `scroll-orientation: "vertical"` default.
 
@@ -190,9 +190,7 @@ After reading the official Lynx docs (`references/lynx-website-main/docs/en/api/
 
 ## Reference: React Lynx approach (production-proven)
 
-```
-references/lynx-stack-main/packages/react/runtime/src/snapshot/snapshot/list.ts
-```
+[`lynx-stack/packages/react/runtime/src/snapshot/snapshot/list.ts`](https://github.com/lynx-family/lynx-stack/blob/main/packages/react/runtime/src/snapshot/snapshot/list.ts)
 
 React Lynx renders items **lazily inside `componentAtIndex`**:
 

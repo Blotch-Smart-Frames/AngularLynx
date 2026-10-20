@@ -146,7 +146,7 @@ Angular implements a move as **detach-then-reinsert in the same change-detection
 
 This broke `examples/transitions`. Deleting a non-last item reorders every following item (each a `move()`), so their content vanished. Deleting the last item triggers no moves, so it stayed intact — the tell-tale signature.
 
-For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` (`references/lynx/core/renderer/dom/fiber/fiber_element.cc`) only unlinks the node and clears its parent pointer; `InsertNodeBeforeInternal` auto-reparents it on re-insert, exactly as React Lynx moves reused nodes via `__RemoveElement` then `__InsertElementBefore` on the same element (`snapshot.ts`). (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
+For a same-tick move this is completely safe: the element is removed and re-inserted in **one** flush (`is_move=true`), so both its fiber node and its native painting node survive. `RemoveNodeInternal` ([`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) only unlinks the node and clears its parent pointer; `InsertNodeBeforeInternal` auto-reparents it on re-insert, exactly as React Lynx moves reused nodes via `__RemoveElement` then `__InsertElementBefore` on the same element (`snapshot.ts`). (A removal that is **not** re-inserted in the same flush is different — its painting node dies and re-inserting the stale ref renders empty; see the recreate-on-remount entry below.)
 
 ### The fix
 
@@ -182,7 +182,7 @@ Toggle an `@if` off and on and the projected content comes back exactly as it wa
 
 Lynx has **two element layers**, and a removal treats them differently:
 
-- **Fiber layer** — `__RemoveElement` (`FiberElement::RemoveNodeInternal`, `references/lynx/core/renderer/dom/fiber/fiber_element.cc`) is a pure detach: it erases the node from its parent's `scoped_children_` and calls `set_parent(nullptr)`. The node and its whole subtree stay valid JS objects, re-insertable via `__AppendElement`/`__InsertElementBefore`.
+- **Fiber layer** — `__RemoveElement` (`FiberElement::RemoveNodeInternal`, [`lynx/core/renderer/dom/fiber/fiber_element.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/fiber/fiber_element.cc)) is a pure detach: it erases the node from its parent's `scoped_children_` and calls `set_parent(nullptr)`. The node and its whole subtree stay valid JS objects, re-insertable via `__AppendElement`/`__InsertElementBefore`.
 - **Painting layer** — the rendered native view. At flush (`ElementContainer::RemoveSelf` → `PaintingContext::RemovePaintingNode`), a node that was removed and **not** re-inserted in that _same_ flush has `is_move=false` and its painting node is **destroyed**. There is **no** API to re-create a painting node on a later re-insert (`CreateElementContainer` runs once, under `kDirtyCreated`). Re-attaching such a node in a later flush renders an **empty** element.
 
 A same-tick MOVE stays `is_move=true` (removed and re-inserted in one flush), so it keeps its painting node — that's why `@for` reorders work (see the move entry above). But an `@if` toggle spans **two change-detection cycles**: the content is removed on collapse (painting node dies at that flush) and re-inserted on expand (a later flush).
@@ -268,7 +268,7 @@ Create elements at any time — from a router navigation, a dynamic `createCompo
 
 ### What Lynx does
 
-`__FlushElementTree()` is what commits (lays out and paints) element mutations, and the renderer calls it once per CD cycle from `LynxRendererFactory2.end()`. Work done _outside_ a CD cycle never hits that call. Angular's `RouterOutlet` builds a lazy route component **during navigation** — before any `begin()`/`end()` bracket — so its freshly created native elements land in the fiber tree but sit unflushed. The core's `OnPatchFinishForFiber` lays out only when a flush actually runs (`references/lynx/core/renderer/dom/element_manager.cc`), so the content stays invisible until something else triggers a cycle.
+`__FlushElementTree()` is what commits (lays out and paints) element mutations, and the renderer calls it once per CD cycle from `LynxRendererFactory2.end()`. Work done _outside_ a CD cycle never hits that call. Angular's `RouterOutlet` builds a lazy route component **during navigation** — before any `begin()`/`end()` bracket — so its freshly created native elements land in the fiber tree but sit unflushed. The core's `OnPatchFinishForFiber` lays out only when a flush actually runs ([`lynx/core/renderer/dom/element_manager.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/dom/element_manager.cc)), so the content stays invisible until something else triggers a cycle.
 
 The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpdate`'s `queueMicrotask` safety net, whose comment names "lazy-loaded route components on first navigation"); nothing covered non-list content.
 
@@ -2028,7 +2028,7 @@ These global keywords are **not supported** in Lynx. Many individual property do
 
 - **`calc()`** — supported with basic arithmetic (`+`, `-`, `*`, `/`, parentheses). Works with CSS variables via `var()`.
 - **`min()`, `max()`, `clamp()`** — not supported. Calculate responsive bounds in JavaScript and set them via signals or inline styles.
-- **`env()`** — **supported** for safe area insets: `env(safe-area-inset-top|right|bottom|left)` parses as a length, and it also works **inside `calc()`** (e.g. `padding-bottom: calc(1rem + env(safe-area-inset-bottom))`). Verified in the Lynx core CSS engine (`references/lynx/core/renderer/css/css_style_utils.cc` — `GetEnvValue`, and the `calc` parser accepts `env()` tokens).
+- **`env()`** — **supported** for safe area insets: `env(safe-area-inset-top|right|bottom|left)` parses as a length, and it also works **inside `calc()`** (e.g. `padding-bottom: calc(1rem + env(safe-area-inset-bottom))`). Verified in the Lynx core CSS engine ([`lynx/core/renderer/css/css_style_utils.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/css/css_style_utils.cc) — `GetEnvValue`, and the `calc` parser accepts `env()` tokens).
   - **Caveat:** the insets default to `0` until the **native host app** populates them. On a host that doesn't inject inset data (some dev harnesses), `env(...)` resolves to `0`, so styles that depend on it degrade to plain padding rather than erroring — a safe no-op. For a boolean "is this a notch device?" signal that _is_ available in JS, inject `LynxSafeArea` from `@blotch/angular-lynx` (`isNotchScreen()`).
   - The `@blotch/ui` Tailwind plugin ships `*-safe` / `*-safe-<n>` padding utilities built on this (see `packages/ui/src/lib/theme/tailwind-plugin.ts`).
 
@@ -3650,7 +3650,7 @@ A `<textarea>` (or `<input>`) hides its `placeholder` the moment it has a value 
 
 On **iOS**, the native textarea renders the placeholder as a **separate overlay `UITextView`**, not the field's own placeholder. That overlay's visibility is only recomputed inside `textViewDidChange:` (i.e. on user edits). Setting the initial value through the `setValue` UIMethod — which is the only way to set a Lynx textarea/input value (`__SetAttribute("value")` is a no-op; see `LynxTextarea`/`LynxInput` in `packages/runtime/src/lib/lynx-elements/input.ts`) — does not reliably hide that overlay, so the placeholder and the value render stacked on top of each other.
 
-Android (native `EditText` `hint`) and web (native `<textarea>`) hide the placeholder automatically, so the bug is iOS-only. The root cause is in the vendored on-device runtime (`references/lynx/.../input/LynxUITextArea.m`), so it can't be fixed from the Angular side.
+Android (native `EditText` `hint`) and web (native `<textarea>`) hide the placeholder automatically, so the bug is iOS-only. The root cause is in the vendored on-device runtime ([`lynx/platform/darwin/ios/lynx_xelement/input/LynxUITextArea.m`](https://github.com/lynx-family/lynx/blob/develop/platform/darwin/ios/lynx_xelement/input/LynxUITextArea.m)), so it can't be fixed from the Angular side.
 
 ### The fix
 
@@ -3758,7 +3758,7 @@ return sign;
 
 If you instead ack with `{ asyncFlush: true }` (untagged), native never matches an operation completion, leaves every cell perpetually in the "binding" state, and re-runs its layout pass forever — an **infinite `layoutComplete` loop** where `visibleItemAfterUpdate` stays `[]` and nothing is ever displayed (even though `scrollHeight` is computed correctly, so the list "knows" the items exist). `{ asyncFlush: true }` is only for the batch `componentAtIndexes` path, and only when the engine itself passes `asyncFlush: true`.
 
-Despite running from inside the layout pass, the `operationID`-tagged flush is not dangerously re-entrant: native defers the operation's completion via the `operationID` queue rather than recursing back into `TickLayout`. This mirrors React Lynx's single-item `componentAtIndex` exactly (`references/lynx-stack-main/packages/react/runtime/src/snapshot/list/list.ts`, the `!enableBatchRender` branch).
+Despite running from inside the layout pass, the `operationID`-tagged flush is not dangerously re-entrant: native defers the operation's completion via the `operationID` queue rather than recursing back into `TickLayout`. This mirrors React Lynx's single-item `componentAtIndex` exactly ([`lynx-stack/packages/react/runtime/src/snapshot/list/list.ts`](https://github.com/lynx-family/lynx-stack/blob/main/packages/react/runtime/src/snapshot/list/list.ts), the `!enableBatchRender` branch).
 
 ### The fix
 
@@ -3776,7 +3776,7 @@ Resetting an attribute to empty arrays (`{ insertAction: [], removeAction: [], u
 
 `<list>` items are managed by setting the `update-list-info` attribute to a computed diff and flushing. Native consumes that diff **once** during the flush (the list element is no longer dirty for the attribute afterward), so there is no need to "clear" it. Writing an **empty** `update-list-info` and flushing actively corrupts the native list's state: it leaves cells stuck in the "binding" state (the same infinite `layoutComplete` loop as the `asyncFlush` bug above) and causes intermittent crashes on subsequent updates that do carry items.
 
-React Lynx never clears it either — `ListUpdateInfoRecording.flush()` (`.../snapshot/list/listUpdateInfo.ts`) only ever `__SetAttribute`s a computed, non-empty diff.
+React Lynx never clears it either — `ListUpdateInfoRecording.flush()` ([`lynx-stack/packages/react/runtime/src/snapshot/list/listUpdateInfo.ts`](https://github.com/lynx-family/lynx-stack/blob/main/packages/react/runtime/src/snapshot/list/listUpdateInfo.ts)) only ever `__SetAttribute`s a computed, non-empty diff.
 
 ### The fix
 

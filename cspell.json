@@ -68,7 +68,6 @@
     "dist",
     "coverage",
     "**/coverage",
-    "references",
     "package-lock.json",
     "pnpm-lock.yaml",
     "**/*.map",

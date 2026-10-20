@@ -2,7 +2,9 @@
   "import": ["../../cspell.json"],
   "words": [
     "androidx",
+    "animax",
     "apos",
+    "appcompat",
     "APPICON",
     "appiconset",
     "ASSETCATALOG",
@@ -55,6 +57,7 @@
     "SDWEBIMAGE",
     "sideloading",
     "srgb",
+    "subspec",
     "subspecs",
     "Subview",
     "Subviews",
@@ -62,6 +65,8 @@
     "symbolicating",
     "tasm",
     "teardowns",
+    "UISVG",
+    "vectordrawable",
     "WEBP",
     "webpsupport",
     "Werror",
@@ -77,7 +82,8 @@
     "xcuserdata",
     "xcuserstate",
     "xcworkspace",
-    "xcworkspacedata"
+    "xcworkspacedata",
+    "xelement"
   ],
   "ignorePaths": [
     "coverage",

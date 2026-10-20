@@ -3,10 +3,10 @@
 # pods, so this compiles them once per Lynx version instead of on every
 # user's machine.
 #
-# Run it by hand after bumping the versions in
+# Run it by hand after bumping the versions (or BUILD) in
 # packages/native/scripts/build-lynx-ios-frameworks.sh. With `publish`, it
-# attaches the zips to a `lynx-ios-<version>` GitHub release; then pin that
-# zip's URL and SHA-256 (printed in the job summary) in
+# attaches the zips to a `lynx-ios-<version>-<build>` GitHub release; then pin
+# that zip's URL and SHA-256 (printed in the job summary) in
 # packages/native/src/ios/frameworks.ts.
 name: Lynx iOS frameworks
 
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Attach the zips to a lynx-ios-<version> GitHub release
+        description: Attach the zips to a lynx-ios-<version>-<build> GitHub release
         type: boolean
         default: false
 
@@ -46,9 +46,11 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/lynx-ios/out"
           version=$(sed -n 's/^lynx=//p' LynxFrameworks/VERSIONS)
+          build=$(sed -n 's/^build=//p' LynxFrameworks/VERSIONS)
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
           {
-            echo "### Lynx $version for iOS"
+            echo "### Lynx $version for iOS (build $build)"
             echo '```'
             cat LynxFrameworks/VERSIONS
             shasum -a 256 ./*.zip
@@ -64,7 +66,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.summary.outputs.version }}
+          BUILD: ${{ steps.summary.outputs.build }}
         run: >-
-          gh release create "lynx-ios-$VERSION" "$RUNNER_TEMP"/lynx-ios/out/*.zip
-          --title "Lynx $VERSION for iOS (XCFrameworks)"
+          gh release create "lynx-ios-$VERSION-$BUILD" "$RUNNER_TEMP"/lynx-ios/out/*.zip
+          --title "Lynx $VERSION for iOS (XCFrameworks, build $BUILD)"
           --notes "Prebuilt Lynx $VERSION XCFrameworks for ng build --platform ios (@blotch/angular-lynx-build), built by the Lynx iOS frameworks workflow. Not an AngularLynx release."

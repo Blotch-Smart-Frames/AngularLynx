@@ -1,4 +1,4 @@
 {
   "import": ["../../cspell.json"],
-  "words": ["simctl", "xcrun"]
+  "words": ["lynxsdk", "simctl", "xcrun", "xelement"]
 }

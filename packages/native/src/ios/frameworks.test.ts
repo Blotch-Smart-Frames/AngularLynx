@@ -100,7 +100,7 @@ describe('resolveLynxFrameworks', () => {
         path.join(
           dir,
           'cache/angular-lynx/lynx-ios',
-          LYNX_IOS.version,
+          `${LYNX_IOS.version}-${LYNX_IOS.build}`,
           'LynxFrameworks',
         ),
       );

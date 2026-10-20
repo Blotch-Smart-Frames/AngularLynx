@@ -154,6 +154,10 @@ If you already have a native app, embed the bundle in it instead of using the ge
 
 Lynx apps run inside a **native host app** that embeds the Lynx engine. You provide the `.lynx.bundle` files; the host app loads them into a `LynxView`.
 
+:::warning
+`<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>` and `<video>` aren't part of Lynx's core: they come from Lynx's **XElement** library. A host app that doesn't link XElement and register its elements renders nothing for these tags (on Android, the elements after them can disappear too), and nothing on screen says why. On Android, add `org.lynxsdk.lynx:xelement` and call `addBehaviors(XElementBehaviors().create())` on the `LynxViewBuilder`; on iOS, add the `XElement` pod. The apps `ng build --platform` generates already do this, and so does Lynx Explorer.
+:::
+
 ```mermaid
 flowchart LR
     A[ng build] --> B[".lynx.bundle"]

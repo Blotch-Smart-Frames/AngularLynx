@@ -16,18 +16,21 @@ An ejected project (`ios/` or `android/` with a `.angular-lynx-ejected` marker, 
 
 Both are one full-screen `LynxView` running `main.lynx.bundle`; Angular Router does all navigation inside it. Bundles and assets load from inside the app, so RSpeedy's default asset prefix (`/static/...`) works with no configuration. See [`templates/android/README.md`](templates/android/README.md) for the Android shell's details.
 
-|                  | iOS                                             | Android                                                  |
-| ---------------- | ----------------------------------------------- | -------------------------------------------------------- |
-| Language         | Swift, scene lifecycle                          | Kotlin                                                   |
-| Lynx             | 4.1.0, prebuilt XCFrameworks (below)            | 4.1.0 AARs from Maven Central                            |
-| Toolchain        | Xcode 27, iOS 15+                               | AGP 9.4, Gradle 9.6, JDK 17+, SDK 36, minSdk 24          |
-| Generated config | `Config/App.xcconfig`, `App/Info.plist` markers | `angular-lynx.properties`, `AndroidManifest.xml` markers |
+Both link Lynx's XElement library, which holds `<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>` and `<video>`. Lynx's core doesn't include these, and a host that doesn't register them renders nothing for those tags (on Android, nothing after them either). XElement's AnimaX and Markdown elements are left out: the runtime doesn't support them.
+
+|                  | iOS                                                  | Android                                                  |
+| ---------------- | ---------------------------------------------------- | -------------------------------------------------------- |
+| Language         | Swift, scene lifecycle                               | Kotlin                                                   |
+| Lynx             | 4.1.0, prebuilt XCFrameworks (below)                 | 4.1.0 AARs from Maven Central                            |
+| XElement         | Linked and registered (`App/XElementRegistry.swift`) | Linked and registered (`XElementBehaviors`)              |
+| Toolchain        | Xcode 27, iOS 15+                                    | AGP 9.4, Gradle 9.6, JDK 17+, SDK 36, minSdk 24          |
+| Generated config | `Config/App.xcconfig`, `App/Info.plist` markers      | `angular-lynx.properties`, `AndroidManifest.xml` markers |
 
 ## Lynx for iOS
 
-Lynx publishes iOS only as source pods, which take minutes to compile and need CocoaPods (and so Ruby). `scripts/build-lynx-ios-frameworks.sh` compiles them once into XCFrameworks (about 24 MB zipped, with debug symbols in a separate zip). The builder downloads the zip pinned in `src/ios/frameworks.ts` (URL and SHA-256) on first use and caches it in `~/.cache/angular-lynx/lynx-ios/<version>`.
+Lynx publishes iOS only as source pods, which take minutes to compile and need CocoaPods (and so Ruby). `scripts/build-lynx-ios-frameworks.sh` compiles them once into XCFrameworks (about 26 MB zipped, with debug symbols in a separate zip): Lynx, PrimJS, XElement and their dependencies. The builder downloads the zip pinned in `src/ios/frameworks.ts` (URL and SHA-256) on first use and caches it in `~/.cache/angular-lynx/lynx-ios/<version>-<build>`.
 
-The zip for Lynx 4.1.0 is the [`lynx-ios-4.1.0` release](https://github.com/Blotch-Smart-Frames/AngularLynx/releases/tag/lynx-ios-4.1.0). For a new Lynx version, bump the versions in the script, run the **Lynx iOS frameworks** workflow with `publish` (or the script locally), and pin the new zip's URL and SHA-256. To test a locally built folder before publishing it:
+The zip for Lynx 4.1.0 is the [`lynx-ios-4.1.0-2` release](https://github.com/Blotch-Smart-Frames/AngularLynx/releases/tag/lynx-ios-4.1.0-2). The build number counts rebuilds of one Lynx version whose frameworks changed (2 added XElement), and is part of the cache folder, so machines with an older zip download the new one. For a new Lynx version, bump the versions in the script and reset `BUILD` to 1; to change the frameworks of the same version, bump `BUILD` (in the script and in `LYNX_IOS`). Then run the **Lynx iOS frameworks** workflow with `publish` (or the script locally), and pin the new zip's URL and SHA-256. To test a locally built folder before publishing it:
 
 ```sh
 npm run build:lynx-ios-frameworks -w packages/native   # needs Xcode, and Ruby >= 2.7 with Bundler for CocoaPods

@@ -23,8 +23,15 @@ import { run } from '../process.ts';
  */
 export const LYNX_IOS = {
   version: '4.1.0',
-  url: 'https://github.com/Blotch-Smart-Frames/AngularLynx/releases/download/lynx-ios-4.1.0/lynx-ios-4.1.0.zip',
-  sha256: '8f00fbd9eddc885175ea526136197222b5a8bd892c6b4d97e131abf88b9a39f4' as
+  /**
+   * Counts rebuilds of one Lynx version whose frameworks changed (2 added
+   * XElement); BUILD in the script. It's part of the cache folder, so a
+   * machine that cached an older zip downloads the new one instead of
+   * linking frameworks the shell no longer matches.
+   */
+  build: 2,
+  url: 'https://github.com/Blotch-Smart-Frames/AngularLynx/releases/download/lynx-ios-4.1.0-2/lynx-ios-4.1.0-2.zip',
+  sha256: '88d0bbea842da734c3513df2a14e641d85cac645d3f432781af0da7c035e4646' as
     | string
     | undefined,
 } as const;
@@ -43,6 +50,9 @@ export const LYNX_IOS_FRAMEWORKS = [
   'SDWebImage',
   'SDWebImageWebPCoder',
   'libwebp',
+  'XElement',
+  'ServalSVG',
+  'MJRefresh',
 ] as const;
 
 /**
@@ -70,7 +80,7 @@ export const resolveLynxFrameworks = async (
     return path.resolve(override);
   }
 
-  const dir = path.join(cacheRoot(), LYNX_IOS.version);
+  const dir = path.join(cacheRoot(), `${LYNX_IOS.version}-${LYNX_IOS.build}`);
   const frameworks = path.join(dir, 'LynxFrameworks');
   if (existsSync(path.join(dir, '.complete'))) {
     return frameworks;

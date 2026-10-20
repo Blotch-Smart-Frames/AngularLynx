@@ -33,6 +33,15 @@ const INPUT_TO_EVENT: Record<string, [string, string]> = {
   mainThreadCatchtouchmove: ['catchEvent', 'touchmove'],
   mainThreadBindtouchend: ['bindEvent', 'touchend'],
   mainThreadCatchtouchend: ['catchEvent', 'touchend'],
+  // A desktop browser never fires touch events, so on Lynx for Web a mouse
+  // drag needs these. Native Lynx on a phone never fires them, and a mobile
+  // browser only fires them after a tap, so binding both is safe.
+  mainThreadBindmousedown: ['bindEvent', 'mousedown'],
+  mainThreadCatchmousedown: ['catchEvent', 'mousedown'],
+  mainThreadBindmousemove: ['bindEvent', 'mousemove'],
+  mainThreadCatchmousemove: ['catchEvent', 'mousemove'],
+  mainThreadBindmouseup: ['bindEvent', 'mouseup'],
+  mainThreadCatchmouseup: ['catchEvent', 'mouseup'],
   mainThreadBindlongpress: ['bindEvent', 'longpress'],
   mainThreadCatchlongpress: ['catchEvent', 'longpress'],
   mainThreadBindscroll: ['bindEvent', 'scroll'],
@@ -75,6 +84,9 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
     '[mainThreadBindtouchstart],[mainThreadCatchtouchstart],' +
     '[mainThreadBindtouchmove],[mainThreadCatchtouchmove],' +
     '[mainThreadBindtouchend],[mainThreadCatchtouchend],' +
+    '[mainThreadBindmousedown],[mainThreadCatchmousedown],' +
+    '[mainThreadBindmousemove],[mainThreadCatchmousemove],' +
+    '[mainThreadBindmouseup],[mainThreadCatchmouseup],' +
     '[mainThreadBindlongpress],[mainThreadCatchlongpress],' +
     '[mainThreadBindscroll],[mainThreadCatchscroll],' +
     '[mainThreadBindanimationstart],[mainThreadBindanimationend],' +
@@ -89,6 +101,12 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
     'mainThreadCatchtouchmove',
     'mainThreadBindtouchend',
     'mainThreadCatchtouchend',
+    'mainThreadBindmousedown',
+    'mainThreadCatchmousedown',
+    'mainThreadBindmousemove',
+    'mainThreadCatchmousemove',
+    'mainThreadBindmouseup',
+    'mainThreadCatchmouseup',
     'mainThreadBindlongpress',
     'mainThreadCatchlongpress',
     'mainThreadBindscroll',
@@ -111,6 +129,12 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
   mainThreadCatchtouchmove?: MaybeHandle;
   mainThreadBindtouchend?: MaybeHandle;
   mainThreadCatchtouchend?: MaybeHandle;
+  mainThreadBindmousedown?: MaybeHandle;
+  mainThreadCatchmousedown?: MaybeHandle;
+  mainThreadBindmousemove?: MaybeHandle;
+  mainThreadCatchmousemove?: MaybeHandle;
+  mainThreadBindmouseup?: MaybeHandle;
+  mainThreadCatchmouseup?: MaybeHandle;
   mainThreadBindlongpress?: MaybeHandle;
   mainThreadCatchlongpress?: MaybeHandle;
   mainThreadBindscroll?: MaybeHandle;

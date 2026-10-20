@@ -86,6 +86,34 @@ describe('LynxMainThreadEvent', () => {
       );
     });
 
+    it.each([
+      ['mainThreadBindmousedown', 'bindEvent', 'mousedown'],
+      ['mainThreadCatchmousedown', 'catchEvent', 'mousedown'],
+      ['mainThreadBindmousemove', 'bindEvent', 'mousemove'],
+      ['mainThreadCatchmousemove', 'catchEvent', 'mousemove'],
+      ['mainThreadBindmouseup', 'bindEvent', 'mouseup'],
+      ['mainThreadCatchmouseup', 'catchEvent', 'mouseup'],
+    ] as const)(
+      'registers %s as a %s for %s, for mouse drags on web',
+      (input, eventType, eventName) => {
+        const nativeHandle = {};
+        const directive = createDirective({ element: nativeHandle });
+        directive[input] = makeHandle('w-mouse');
+
+        directive.ngOnChanges({ [input]: {} as any });
+
+        expect(addEvent).toHaveBeenCalledWith(
+          nativeHandle,
+          eventType,
+          eventName,
+          {
+            type: 'worklet',
+            value: { _wkltId: 'w-mouse', _workletType: 'main-thread' },
+          },
+        );
+      },
+    );
+
     it('does not register when the input value is a plain function, not a worklet handle', () => {
       // Plain functions are accepted by the input type (pre-compiled worklet
       // build plugin output), but only actual MainThreadFnHandle objects can

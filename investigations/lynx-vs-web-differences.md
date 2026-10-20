@@ -4398,3 +4398,34 @@ open() {
 ```
 
 Until October 2026 this didn't work either: the background thread listened for `runOnBackground` requests on `lynx.getJSContext()` instead of `lynx.getCoreContext()` (see the RuntimeProxy API summary above), so requests never arrived and the promise never settled. The fix is in `packages/runtime/src/lib/global-callbacks.ts`. It was found by running an Angular bundle in a Sparkling app on the iOS Simulator and an Android emulator.
+
+---
+
+## `<blur-view>` Liquid Glass has no web implementation in Lynx for Web; AngularLynx draws it with WebGL
+
+### What you'd expect (parity with iOS 26)
+
+`blur-effect="glass"` refracts and frosts what's behind it, and glass shapes inside a `blur-effect="glass-container"` closer than `spacing` merge into one shape, as on iOS 26.
+
+### What Lynx does
+
+Lynx for Web turns `<blur-view>` into `<x-blur-view>` (`@lynx-js/web-elements`), which implements only `blur-radius`, as `backdrop-filter: blur()`. Every glass attribute (`blur-effect`, `glass-style`, `glass-tint-color`, `glass-interactive`, `spacing`) is ignored, so glass shows at best a frosted circle, and a glass shape without `blur-radius` shows nothing at all.
+
+A browser can't give WebGL the page's pixels, so CSS alone can't refract. `backdrop-filter: url(#svg-filter)` can displace the backdrop, but only in Chromium.
+
+### The fix
+
+The runtime draws the glass itself on web (`packages/runtime/src/lib/web-glass/`). `createBlurViewElement` loads it with a dynamic `import()` behind the `__WEB__` define, so native bundles never contain it. For each visible glass container, or glass element outside one, it:
+
+1. Captures the backdrop: the glass's parent, up to the glass. The subtree is copied with inlined computed styles, shadow roots flattened and slots filled, then rasterized through an SVG `<foreignObject>` (the approach of html-to-image).
+2. Draws every shape in one WebGL pass, into a canvas in the root's shadow root stacked under its children. Shapes are rounded-box SDFs joined by a smooth minimum, so nearby shapes merge. The lens samples outward at the rim and slightly inward in the middle, and `regular` glass mixes in a blurred copy of the backdrop.
+3. Captures again when the backdrop mutates, resizes or scrolls (changes inside the glass don't count), at most every 100 ms.
+
+Things that caught the copy out:
+
+- **Every Lynx for Web element has `border-style: solid`** with `0px` widths. `0px` matches a plain div's default (because a plain div has `border-style: none`), so a copier that only inlines non-default values leaves it out, and the copy draws 3px (`medium`) black borders. Border and outline widths are always inlined.
+- **The main thread runs in an iframe's realm** while its elements belong to the page, so `instanceof HTMLSlotElement` and the like are always false. The code checks `nodeType`/`localName`, and goes through `element.ownerDocument.defaultView` for every DOM API, so its observers, frames and images all belong to the page.
+- **`if (__WEB__)` around a call doesn't remove the code it calls.** A static import of the glass code stayed in the native bundle (32 kB) after the branch was dropped: on the ES2019 main thread, classes with `#private` fields compile to `(x = new WeakMap(), class {…})` sequences, which the minifier can't prove free of side effects. A dynamic `import()` inside the branch works, because the bundler never follows an import in a dead branch.
+- **GLSL ES 1.0 only lets a loop counter index a uniform array.** Indexing one with a function parameter fails to compile in WebGL 1, so the per-shape distance is written out in each loop.
+
+Main-thread touch handlers don't fire for a mouse on desktop web either: a drag needs `mainThreadBindmousedown` / `mainThreadBindmousemove` / `mainThreadBindmouseup` too, which the `LynxMainThreadEvent` directive supports.

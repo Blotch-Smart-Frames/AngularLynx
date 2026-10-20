@@ -12,8 +12,8 @@
     ]
   },
   {
-    "text": "angular-lynx/plugin",
-    "link": "/guide/api/plugin/"
+    "text": "angular-lynx-build",
+    "link": "/guide/api/build/"
   },
   {
     "text": "angular-lynx/testing-library",

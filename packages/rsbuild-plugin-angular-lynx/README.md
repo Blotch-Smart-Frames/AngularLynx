@@ -52,4 +52,4 @@ Media and fonts aren't counted. Under plain `rspeedy dev` budgets are skipped: t
 
 ## Documentation
 
-Full docs at [angularlynx.dev](https://angularlynx.dev).
+Full docs at [angularlynx.js.org](https://angularlynx.js.org).

@@ -25,7 +25,7 @@ Or add to an existing Angular project:
 ng add @blotch/angular-lynx
 ```
 
-Full documentation at [angularlynx.dev](https://angularlynx.dev).
+Full documentation at [angularlynx.js.org](https://angularlynx.js.org).
 
 ## Packages
 

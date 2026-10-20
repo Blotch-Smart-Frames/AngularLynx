@@ -28,7 +28,7 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 
 ## Documentation
 
-Full docs and guides at [angularlynx.dev](https://angularlynx.dev).
+Full docs and guides at [angularlynx.js.org](https://angularlynx.js.org).
 
 ---
 

@@ -1,8 +1,10 @@
 import type { ElementRef } from '../types/lynx';
+import { applyBlurViewLayout } from './blur-view-layout';
 import { GlassManager } from './glass-manager';
 
 /**
- * Gives a `<blur-view>` Liquid Glass on Lynx for Web.
+ * Gives a `<blur-view>` on Lynx for Web what web-elements' `<x-blur-view>`
+ * lacks: a view's layout (see blur-view-layout.ts), and Liquid Glass.
  *
  * On iOS 26, `blur-effect="glass"` and `"glass-container"` render UIKit's
  * glass. Lynx for Web turns `<blur-view>` into an `<x-blur-view>` custom
@@ -17,8 +19,12 @@ import { GlassManager } from './glass-manager';
 export const attachWebGlass = (element: ElementRef): void => {
   const node = element as Partial<HTMLElement>;
   const win = node.ownerDocument?.defaultView;
+  if (!win) return;
+  // Every blur view needs it, glass or not, and before its first paint, which
+  // this microtask after creation still is.
+  applyBlurViewLayout(node as HTMLElement);
   // Only a real element in a browser can host the glass.
-  if (!win?.IntersectionObserver) return;
+  if (!win.IntersectionObserver) return;
   try {
     GlassManager.for(win).register(node as HTMLElement);
   } catch {

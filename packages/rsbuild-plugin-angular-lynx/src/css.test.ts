@@ -325,7 +325,7 @@ describe('applyCSS', () => {
     expect(rulesByName.get('less')!.oneOf).toHaveBeenCalledWith('less-inline');
   });
 
-  it('keeps LightningCSS and skips font inlining on web', async () => {
+  it('keeps LightningCSS and inlines fonts on web', async () => {
     const { api, triggerBundlerChain } = createMockApi();
     const { chain, rulesByName } = createMockChain({
       presentRules: ['css', 'font'],
@@ -344,9 +344,11 @@ describe('applyCSS', () => {
       'lightningcss',
     );
     expect(cssRule.getOneOf('css-inline').uses.delete).not.toHaveBeenCalled();
-    // Environment is web → the font branch short-circuits before the rule is
-    // ever requested from the chain, so no font rule is created.
-    expect(rulesByName.has('font')).toBe(false);
+    // Web bundles get the same `webpack:///` font URLs as Lynx ones, so fonts
+    // are inlined there too.
+    const fontRule = rulesByName.get('font')!;
+    expect(fontRule.oneOfs.clear).toHaveBeenCalled();
+    expect(fontRule.type).toHaveBeenCalledWith('asset/inline');
   });
 
   it('handles lynx with no font rule present', async () => {

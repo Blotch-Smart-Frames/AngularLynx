@@ -55,10 +55,25 @@ export class LynxSessionStorage {
   >();
   #nextId = 0;
 
+  /**
+   * Lynx for Web's background `lynx` declares the session storage methods
+   * (lynx-core is the same script on every platform), but web-core's NativeApp
+   * implements none of the ones they forward to: `getSessionStorageItem` throws
+   * "getNativeApp(...).getSessionStorageItem is not a function" and crashed
+   * the session-storage example in the docs' live preview. So the web uses the
+   * in-memory fallback, like tests and SSR.
+   *
+   * `@lynx-js/types`' `PlatformType` leaves out the `'web'` that web-core
+   * reports, hence the widening to `string`.
+   */
   #hasNativeSessionStorage(): boolean {
     return (
       typeof lynx !== 'undefined' &&
-      typeof (lynx as any).setSessionStorageItem === 'function'
+      typeof (lynx as any).setSessionStorageItem === 'function' &&
+      !(
+        typeof SystemInfo !== 'undefined' &&
+        (SystemInfo.platform as string) === 'web'
+      )
     );
   }
 

@@ -3972,10 +3972,10 @@ That URL is absolute — it carries the `webpack://` scheme — so Lynx never re
 
 ### The fix
 
-Force `@font-face` fonts to inline as Base64 data URIs on the Lynx target (`packages/rsbuild-plugin-angular-lynx/src/css.ts`, in `applyCSS`):
+Force `@font-face` fonts to inline as Base64 data URIs (`packages/rsbuild-plugin-angular-lynx/src/css.ts`, in `applyCSS`):
 
 ```ts
-if (environment.name === 'lynx' && chain.module.rules.has(CHAIN_ID.RULE.FONT)) {
+if (chain.module.rules.has(CHAIN_ID.RULE.FONT)) {
   const fontRule = chain.module.rule(CHAIN_ID.RULE.FONT);
   fontRule.oneOfs.clear();        // drop the asset/resource + ?url/?inline/?raw branches
   fontRule.type('asset/inline');  // inline every matched font, ignoring any css-loader query
@@ -3984,7 +3984,9 @@ if (environment.name === 'lynx' && chain.module.rules.has(CHAIN_ID.RULE.FONT)) {
 
 A data URI is absolute, so it survives the `webpack://` base-URI join untouched. It needs no `publicPath`, no network fetch, and no host font loader — exactly what the [Lynx `@font-face` docs](https://lynxjs.org/api/css/at-rule/font-face) recommend ("Base64-encoded fonts").
 
-The `environment.name === 'lynx'` guard keeps the change Lynx-only. The **web preview bundle keeps the same broken `webpack:///` font URLs**; its ideal fix is a correct `publicPath` serving fonts over HTTP, not inlining, which would bloat the browser bundle. React Lynx never hit this — it has no equivalent global-stylesheet `@font-face` build path.
+It applies to the web bundle too. That bundle goes through the same css-extract child compilation, so it gets the same `webpack:///` URL, and Chrome refuses it ("Cross origin requests are only supported for protocol schemes: … http, https"); every custom font fell back to Times in the docs' live previews. A correct `publicPath` can't fix the web side either: the bundle's CSS is inserted into `<lynx-view>`'s shadow root, where a `url()` resolves against the host page, not the bundle. A relative or root-relative font URL only works if the bundle happens to sit at the host's root, which the docs examples (under `/examples/<name>/dist/`) don't. Inlining costs a third more bytes per font, in exchange for a font that loads wherever the bundle is served.
+
+React Lynx never hit this — it has no equivalent global-stylesheet `@font-face` build path.
 
 ## Indented template text renders with a leading space — Angular collapses whitespace but never trims it, and Lynx has no line-box trimming
 
@@ -4429,3 +4431,69 @@ Things that caught the copy out:
 - **GLSL ES 1.0 only lets a loop counter index a uniform array.** Indexing one with a function parameter fails to compile in WebGL 1, so the per-shape distance is written out in each loop.
 
 Main-thread touch handlers don't fire for a mouse on desktop web either: a drag needs `mainThreadBindmousedown` / `mainThreadBindmousemove` / `mainThreadBindmouseup` too, which the `LynxMainThreadEvent` directive supports.
+
+---
+
+## `rem` is 14px on native Lynx, but Lynx for Web resolves it against the host page (16px), and text inherits the page's font
+
+### What you'd expect (web / native parity)
+
+A Lynx bundle looks the same in `<lynx-view>` as in the iOS app: `h-11` is the same height, `text-base` the same size, in the same font.
+
+### What Lynx does
+
+On iOS, `rem` is relative to Lynx's 14px root font size, which is also the default size of text: `h-11` (`2.75rem`) measures 38.5pt in the simulator. Lynx for Web keeps `rem` as written, so inside `<lynx-view>` it resolves against the **host page's** root font size, usually 16px. Every Tailwind size (heights, padding, gaps, `text-*`) came out a seventh larger than on the phone. Text also inherits the host page's `font-family` and `font-size` through the shadow root: the docs site's Inter, or Times in a bare page, where iOS uses the system font.
+
+web-core can rewrite `rem` to `calc(N * var(--rem-unit))`, but only when the `<lynx-view>` has `transformREM` (attribute `transform-rem`) set before it fetches the bundle, and nothing sets `--rem-unit` by default.
+
+### The fix
+
+The host page configures its `<lynx-view>`: `transformREM = true`, and on the view `--rem-unit: 14px; font-size: 14px; font-family: -apple-system, …, system-ui, …`. The docs site does this for every `<Go>` preview in `packages/website/src/components/go/native-parity.ts`. `<Go>` creates the `<lynx-view>` itself, and a browser reads a custom element's lifecycle callbacks when it's defined, so wrapping `connectedCallback` on the prototype afterwards does nothing: the site registers `<lynx-view>` as a subclass of web-core's element instead.
+
+---
+
+## `<blur-view>` on Lynx for Web ignores `flex-col` and has none of iOS's blur materials
+
+### What you'd expect (parity with iOS)
+
+A `<blur-view>` lays its children out like a `<view>`, and its `blur-effect` (`light` by default, `extra-light`, `dark`) changes how bright the blurred backdrop is.
+
+### What Lynx does
+
+`@lynx-js/web-elements` gives `<x-blur-view>` `display: flex`, but leaves it out of the rules in `linear.css` that turn Lynx's layout variables (the display toggle, the linear orientation, `--flex-direction`) into CSS. `.flex-col` only sets `--flex-direction: column`, so a blur view laid its children out in a row. It also implements only `blur-radius`, so every `blur-effect` looked the same: a plain blur, darker than iOS's `light`.
+
+### The fix
+
+The runtime's web-only `<blur-view>` code (`packages/runtime/src/lib/web-glass/`) adds both through a `<style>` in the element's shadow root. `blur-view-layout.ts` copies web-elements' `x-view` container rules as `:host` rules. `materialCss` in `glass-host-style.ts` approximates the materials, fitted to the iOS simulator's pixels: `light` is `brightness(1.35)` on the backdrop, `extra-light` a 75% white wash, `dark` a 60% black one. `:host` rules lose to anything set from outside the shadow root, so the app's classes and inline styles still win.
+
+---
+
+## Session storage throws on Lynx for Web
+
+### What you'd expect (web)
+
+`lynx.getSessionStorageItem` exists, so it works.
+
+### What Lynx does
+
+lynx-core is the same script on every platform, so the background `lynx` on web has `setSessionStorageItem`, `getSessionStorageItem` and the subscription methods. They forward to the NativeApp, and web-core's NativeApp implements none of them: the first read throws `this.getNativeApp(...).getSessionStorageItem is not a function`.
+
+### The fix
+
+`LynxSessionStorage` checks `SystemInfo.platform === 'web'` (web-core reports `'web'`, which `@lynx-js/types`' `PlatformType` leaves out) and uses its in-memory store there, as it does in tests and SSR.
+
+---
+
+## A `<textarea>` on Lynx for Web draws square corners and grows by its padding
+
+### What you'd expect (parity with `<input>` and iOS)
+
+`<textarea class="rounded-lg px-3.5 py-3">` has rounded corners and keeps the box its classes give it, as an `<input>` with the same classes does.
+
+### What Lynx does
+
+`@lynx-js/web-elements` forwards the host's box to the inner `<textarea>` through `::part(form)` and `::part(textarea)` with `inherit`, but unlike `<x-input>` it doesn't forward `box-sizing` or `border-radius`. The inner textarea is `content-box` with square corners, so it was its padding and border taller than on iOS (103px for 80px). Placeholders in both are web-elements' #808080, much darker than iOS's `placeholderText` (`rgba(60, 60, 67, 0.3)`).
+
+### The fix
+
+Style rules in the `<lynx-view>`'s shadow root (its `injectStyleRules`): `x-textarea::part(form), x-textarea::part(textarea) { box-sizing: inherit; border-radius: inherit; }`, and `--placeholder-color` on both parts. Both parts need the rule, because `inherit` passes through the `<form>`. The docs site adds them in `native-parity.ts`.

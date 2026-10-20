@@ -155,6 +155,45 @@ describe('LynxSessionStorage', () => {
     });
   });
 
+  // Lynx for Web's `lynx` has the methods, but its NativeApp doesn't back
+  // them: getSessionStorageItem throws "is not a function".
+  describe('when lynx is defined with session storage on the web', () => {
+    beforeEach(() => {
+      vi.stubGlobal('SystemInfo', { platform: 'web' });
+      (globalThis as any).lynx = {
+        setSessionStorageItem: vi.fn(),
+        getSessionStorageItem: vi.fn(() => {
+          throw new TypeError(
+            'this.getNativeApp(...).getSessionStorageItem is not a function',
+          );
+        }),
+        subscribeSessionStorage: vi.fn(() => {
+          throw new TypeError(
+            'this.getNativeApp(...).subscribeSessionStorage is not a function',
+          );
+        }),
+      };
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('stores, reads and notifies in memory instead', async () => {
+      const service = new LynxSessionStorage();
+      const { injector } = createMockInjector();
+      const counter = service.watch<number>('counter', { injector });
+
+      service.setItem('counter', 3);
+
+      expect(counter()).toBe(3);
+      await expect(service.getItem('counter')).resolves.toBe(3);
+      expect(
+        (globalThis as any).lynx.setSessionStorageItem,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   describe('when lynx is defined with session storage', () => {
     let setSessionStorageItemMock: ReturnType<typeof vi.fn>;
     let getSessionStorageItemMock: ReturnType<typeof vi.fn>;

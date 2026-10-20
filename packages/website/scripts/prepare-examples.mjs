@@ -216,22 +216,6 @@ const processExample = (exampleName) => {
   );
 };
 
-// Copy pre-built @lynx-js/web-core client assets to docs/public/web-core/
-// so lynx-view works without bundler processing (avoids worker/WASM issues)
-const WEB_CORE_SRC = path.resolve(
-  REPO_ROOT,
-  'node_modules/@lynx-js/web-core/dist/client_prod/static',
-);
-const WEB_CORE_DEST = path.resolve(__dirname, '../docs/public/web-core/static');
-
-if (fs.existsSync(WEB_CORE_SRC)) {
-  if (fs.existsSync(WEB_CORE_DEST)) {
-    fs.rmSync(WEB_CORE_DEST, { recursive: true });
-  }
-  copyDirRecursive(WEB_CORE_SRC, WEB_CORE_DEST);
-  console.info(`Copied web-core static assets to ${WEB_CORE_DEST}`);
-}
-
 // Main
 console.info('Preparing examples...');
 console.info(`Source: ${EXAMPLES_SRC}`);

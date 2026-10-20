@@ -372,36 +372,10 @@ export default defineConfig({
   },
   builderConfig: {
     plugins: [pluginSass()],
-    html: {
-      tags: [
-        {
-          tag: 'link',
-          attrs: {
-            rel: 'stylesheet',
-            href: '/web-core/static/css/client.css',
-          },
-          head: true,
-        },
-        {
-          tag: 'script',
-          attrs: { src: '/web-core/static/js/client.js' },
-          head: true,
-        },
-      ],
-    },
+    // `<Go>` imports Lynx for Web (`@lynx-js/web-core/client`, which brings its
+    // own CSS) when a preview first mounts, and the bundler emits its workers
+    // and WebAssembly like any other chunk.
     source: {
-      alias: {
-        '@comp': path.join(__dirname, 'src/components'),
-        '@lynx-js/web-core/client': path.join(
-          __dirname,
-          'src/web-core-shim.ts',
-        ),
-        '@lynx-js/web-elements/all': path.join(
-          __dirname,
-          'src/web-core-shim.ts',
-        ),
-        '@lynx-js/web-elements': path.join(__dirname, 'src/web-core-shim.ts'),
-      },
       include: [/[\\/]node_modules[\\/]@lynx-js[\\/]go-web[\\/]/],
     },
     server: {

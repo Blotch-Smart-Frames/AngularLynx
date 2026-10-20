@@ -1787,6 +1787,8 @@ Lynx provides a first-class `text-maxline` attribute on `<x-text>` that limits t
 
 The `<inline-truncation>` child element can be used instead of `...` as a fully custom truncation indicator (e.g., a "Read more" button).
 
+On native, `text-maxline` alone only limits the lines used for layout: the text box ends after that many lines on both platforms. What happens to the rest depends on the platform. iOS cuts the text off at the last line, with no ellipsis. Android draws the remaining lines anyway, below the box and over whatever follows it. `text-overflow: ellipsis` (Tailwind's `text-ellipsis`) makes both platforms stop at the last line with "…", so always pair the two. Passing the line count as a number or a string makes no difference (seen on Lynx 4.1, Android API 34 and iOS 27, 2026-10-20).
+
 ---
 
 ## `<x-text>` exposes a `layout` event with per-line geometry
@@ -4497,3 +4499,51 @@ lynx-core is the same script on every platform, so the background `lynx` on web 
 ### The fix
 
 Style rules in the `<lynx-view>`'s shadow root (its `injectStyleRules`): `x-textarea::part(form), x-textarea::part(textarea) { box-sizing: inherit; border-radius: inherit; }`, and `--placeholder-color` on both parts. Both parts need the rule, because `inherit` passes through the `<form>`. The docs site adds them in `native-parity.ts`.
+
+---
+
+## `<input>`, `<overlay>`, `<svg>` and `<blur-view>` render nothing unless the host app registers XElement
+
+### What you'd expect (web)
+
+`<input>` and `<svg>` are part of the platform: every browser renders them.
+
+### What Lynx does
+
+Lynx's core only has the basic elements (`view`, `text`, `image`, `scroll-view`, `list`…). `<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>` and `<video>` are in a separate library, XElement, which the host app has to link and register (Android: the `org.lynxsdk.lynx:xelement` artifact and `addBehaviors(XElementBehaviors().create())`; iOS: the `XElement` pod). What happens to a tag nothing is registered for depends on the platform. iOS leaves an empty box where the element would be and renders the rest of the page. Android throws `No BehaviorController defined for class input` (LynxError 990200, only in logcat), and the elements after it in the same update go missing too: in the E2E fixture on Lynx 4.1, everything below the `<input>` disappeared and Router navigation to a lazy page stopped working. Neither shows anything on screen. Lynx Explorer registers XElement, so a bundle that works in Explorer can still break in another host. Until 2026-10-20, the apps `ng build --platform` generates didn't register it, which blanked every `@blotch/ui` form control, dialog and icon.
+
+### The fix
+
+Both shells in `packages/native/templates` now link and register XElement, without AnimaX and Markdown, which the runtime doesn't support. On iOS that means not using XElement's `Behavior` subspec (it depends on Markdown), so the shell registers the classes itself (`App/XElementRegistry.swift`). The E2E fixture types into an `<input>`, finds an `<svg>` and opens an `<overlay>` in the app's own build (`packages/e2e/native/xelement.yaml`).
+
+---
+
+## A `<blur-view>` inside another `<blur-view>` shows nothing on Android
+
+### What you'd expect (parity with iOS)
+
+A `<blur-view>` blurs whatever is on screen behind it, wherever it sits in the tree: a glass shape inside a `glass-container`, or a frosted button on a frosted panel.
+
+### What Lynx does
+
+Android's blur-view (`LynxUIBlurView` and `BlurView` in xelement-blur-view) isn't a real backdrop blur. Before each frame it redraws one view into an offscreen bitmap and blurs that, and during the redraw every blur-view with a radius skips drawing itself, so it doesn't blur its own output. Which view: the one `android-capture-target` names, or else the nearest ancestor that is `overflow: hidden` or fully contains the blur-view (`getTargetParent()`). For a blur-view inside another one, that ancestor is the outer blur-view, a native view of its own. Redrawing it draws only blur-views, which skip themselves (a `glass-container` has no radius, so it draws its children, which are the glass shapes), so the bitmap is empty and the inner blur-view is invisible. This blanked the glass row and the glass playground in `examples/element-blur-view` on Android, in Lynx Explorer too. A blur-view inside a plain view works, because a plain view is usually flattened, and the redraw then uses its drawing parent.
+
+### The fix
+
+On Android, the runtime gives the page an id (`angular-lynx-page`) and sets `android-capture-target` to it on every `<blur-view>` it creates (`packages/runtime/src/lib/lynx-document/android-blur-capture.ts`). Each blur-view then redraws the page, clipped to its own area, which is what's on screen behind it, and the glass and nested blur-views render. A blur-view in an `<overlay>` now blurs the page below the overlay too. An app's own `android-capture-target` replaces the runtime's, and `""` restores Android's choice. A fix in Lynx itself would be for `getTargetParent()` to skip ancestor blur-views.
+
+---
+
+## The native main thread has no global `SystemInfo`
+
+### What you'd expect (web)
+
+`@lynx-js/types` declares `SystemInfo` as a global, and on Lynx for Web it is one on both threads.
+
+### What Lynx does
+
+On iOS and Android (Lynx 4.1), main-thread code sees `typeof SystemInfo === 'undefined'`. The same object is reachable as `lynx.SystemInfo` there (`lynx.SystemInfo.platform` is `'Android'` or `'iOS'`). The background thread has the global.
+
+### The fix
+
+Main-thread code reads `lynx.SystemInfo` first and falls back to the global (`isAndroid()` in `packages/runtime/src/lib/lynx-document/android-blur-capture.ts`).

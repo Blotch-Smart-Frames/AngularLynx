@@ -21,7 +21,10 @@ import { LynxElementBase } from './base';
 })
 export class LynxText extends LynxElementBase {
   /**
-   * Maximum number of lines before truncation with ellipsis.
+   * Maximum number of lines the text is laid out in. The text box ends after
+   * that many lines, but the ellipsis needs `text-overflow: ellipsis`
+   * (Tailwind's `text-ellipsis`). Without it, iOS cuts the text off at the
+   * last line, and Android draws the remaining lines past the box.
    */
   'text-maxline'?: number;
   /**

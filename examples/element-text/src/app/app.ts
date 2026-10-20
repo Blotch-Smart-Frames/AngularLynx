@@ -34,7 +34,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           >
             Truncation
           </text>
-          <text class="text-sm leading-5 text-zinc-500" [text-maxline]="2">
+          <text
+            class="text-ellipsis text-sm leading-5 text-zinc-500"
+            [text-maxline]="2"
+          >
             This is a long paragraph that demonstrates text truncation with
             text-maxline. When the text exceeds two lines, it will be truncated
             with an ellipsis at the end of the second line.

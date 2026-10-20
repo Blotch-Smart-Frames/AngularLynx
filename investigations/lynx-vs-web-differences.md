@@ -4623,3 +4623,19 @@ On iOS and Android (Lynx 4.1), main-thread code sees `typeof SystemInfo === 'und
 ### The fix
 
 Main-thread code reads `lynx.SystemInfo` first and falls back to the global (`isAndroid()` in `packages/runtime/src/lib/lynx-document/android-blur-capture.ts`).
+
+---
+
+## An `<overlay>` on Lynx for Web covers the whole browser page, not its `<lynx-view>`
+
+### What you'd expect (parity with iOS)
+
+An `<overlay>` covers the app's screen. In a `<lynx-view>` embedded in a bigger page, like the docs' previews, that screen is the view.
+
+### What Lynx does
+
+`@lynx-js/web-elements` opens the overlay's `<dialog>` with `showModal()`, which lifts it into the browser's top layer. Ancestors' transforms, clipping and containment don't apply there, so a sheet, dialog or select in a docs preview covered the whole window at full size, unscaled, and the rest of the page was inert until it closed. The z-index that `@blotch/ui` sets on its `<overlay>` does nothing on web either: web-elements gives `x-overlay-ng` `display: contents`.
+
+### The fix
+
+The docs site replaces `HTMLDialogElement.prototype.showModal` with `show()` for dialogs inside a `<lynx-view>` (`containOverlays` in `packages/website/src/components/go/native-parity.ts`). The non-modal dialog keeps web-elements' `position: fixed`, which the view's `contain: strict` resolves against the view, so the overlay scales and clips with the preview. It then needs `x-overlay-ng::part(dialog) { z-index: 2147483647; }`: every web-elements element is `position: relative`, so the page's later elements otherwise paint over it. An app whose `<lynx-view>` fills the page doesn't need this.

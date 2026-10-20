@@ -40,9 +40,49 @@ const NATIVE_PARITY_RULES = [
   // instead of web-elements' much darker #808080. A `placeholder-color` set by
   // the example still wins: web-elements sets it inline on the same part.
   'x-input::part(input), x-textarea::part(textarea) { --placeholder-color: rgba(60, 60, 67, 0.3); }',
+  // An overlay opens in place instead of in the top layer (see
+  // `containOverlays`), so it needs a z-index to stay above the page as on
+  // native: web-elements makes every element `position: relative`, which
+  // otherwise paints the page's later elements over it. A z-index on the
+  // `<overlay>` itself does nothing, since web-elements gives it
+  // `display: contents`.
+  'x-overlay-ng::part(dialog) { z-index: 2147483647; }',
 ];
 
 const configured = new WeakSet<HTMLElement>();
+
+/**
+ * Whether `node` is in a `<lynx-view>`'s shadow tree. An `<overlay>`'s dialog
+ * is a level deeper, in its `x-overlay-ng`'s own shadow root.
+ */
+const isInLynxView = (node: Node): boolean => {
+  for (
+    let root = node.getRootNode();
+    root instanceof ShadowRoot;
+    root = root.host.getRootNode()
+  ) {
+    if (root.host.localName === 'lynx-view') return true;
+  }
+  return false;
+};
+
+/**
+ * Keeps each `<overlay>` (sheets, dialogs, selects) inside its preview, as it
+ * stays inside the phone's screen on native. web-elements opens an overlay's
+ * `<dialog>` with `showModal()`, which lifts it into the browser's top layer:
+ * it covered the whole docs page, unscaled, and left the rest of the page
+ * inert until it closed. `show()` opens it in place instead, where the
+ * `position: fixed` web-elements gives it resolves against the `<lynx-view>`
+ * (its `contain: strict` makes it the containing block), so the overlay
+ * scales and clips with the preview.
+ */
+const containOverlays = (): void => {
+  const showModal = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    if (isInLynxView(this)) this.show();
+    else showModal.call(this);
+  };
+};
 
 /**
  * Makes every `<lynx-view>` on the site render like Lynx on an iPhone.
@@ -60,6 +100,7 @@ export const applyNativeParity = (): void => {
   // Static site generation renders `<Go>` without a DOM.
   if (typeof customElements === 'undefined') return;
   if (customElements.get('lynx-view')) return;
+  containOverlays();
   const define = customElements.define;
   customElements.define = function (name, constructor, options) {
     if (name !== 'lynx-view') {

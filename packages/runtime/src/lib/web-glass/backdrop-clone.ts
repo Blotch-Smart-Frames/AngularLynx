@@ -1,4 +1,5 @@
 import { parseNormalizedColor, type Rgba } from './css-color';
+import { drawnScale } from './drawn-scale';
 
 /** A rectangle in viewport (client) coordinates. */
 export type Region = {
@@ -211,6 +212,10 @@ export const effectiveBackground = (element: Element): Rgba => {
  * an SVG `<foreignObject>`. The copy is pinned to the top-left of a frame the
  * size of `root`, painted with the color behind it, so transparent areas show
  * what the page shows there instead of nothing.
+ *
+ * The frame is rounded up to whole CSS pixels. The browser paints it in whole
+ * pixels, so a fractional size would leave its last row or column part
+ * transparent, and the glass shows a transparent image edge as a dark band.
  */
 export const cloneBackdrop = (
   root: HTMLElement,
@@ -218,12 +223,18 @@ export const cloneBackdrop = (
 ): HTMLElement => {
   const doc = root.ownerDocument;
   const win = doc.defaultView!;
-  const { width, height } = root.getBoundingClientRect();
+  // The root's size in CSS pixels, which its copied contents lay out in,
+  // rather than its scaled size when the page is drawn scaled.
+  const bounds = root.getBoundingClientRect();
+  const zoom = drawnScale(root);
+  const width = bounds.width / zoom;
+  const height = bounds.height / zoom;
   const [r, g, b, a] = effectiveBackground(root);
   const frame = doc.createElement('div');
   frame.setAttribute(
     'style',
-    `width:${width}px;height:${height}px;overflow:hidden;` +
+    `width:${Math.ceil(width)}px;height:${Math.ceil(height)}px;` +
+      `overflow:hidden;` +
       `background:rgba(${r * 255},${g * 255},${b * 255},${a});`,
   );
   const context = { ...options, doc, win, defaults: defaultStyle(doc, win) };

@@ -91,6 +91,33 @@ describe('snapshotBackdrop', () => {
     expect(svg).toContain('backdrop');
   });
 
+  it('crops in CSS pixels when the page is drawn scaled', async () => {
+    // Laid out 800 CSS pixels wide, drawn 400 wide.
+    const element = root(100, 50, 400, 300);
+    vi.spyOn(element, 'offsetWidth', 'get').mockReturnValue(800);
+    const snapshot = await snapshotBackdrop(element, options(150, 0, 350, 150));
+
+    expect(snapshot).toMatchObject({ x: 100, y: 0, width: 400, height: 200 });
+    expect(snapshot!.image.width).toBe(800);
+    const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
+    expect(svg).toContain('width="800" height="400" viewBox="100 0 400 200"');
+    expect(svg).toContain('<foreignObject width="800" height="600">');
+  });
+
+  it('fills the image to its edges', async () => {
+    const element = root(0, 0, 360, 356.47);
+    await snapshotBackdrop(element, options(0, 0, 360, 356.47, 1.36));
+    const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
+    // 360 × 1.36 and 356.47 × 1.36 round to 490 and 485 pixels, a shape a
+    // little off the viewBox's, so the viewBox is stretched to fit.
+    expect(svg).toContain(
+      'width="490" height="485" viewBox="0 0 360 356.47" ' +
+        'preserveAspectRatio="none"',
+    );
+    // As big as the copy's frame, which is rounded up to whole pixels.
+    expect(svg).toContain('<foreignObject width="360" height="357">');
+  });
+
   it('keeps the image inside the texture size limit', async () => {
     const element = root(0, 0, 8192, 100);
     const snapshot = await snapshotBackdrop(element, options(0, 0, 8192, 100));

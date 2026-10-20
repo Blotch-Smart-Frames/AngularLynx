@@ -4,6 +4,7 @@ import {
   type CloneOptions,
 } from './backdrop-clone';
 import { luminance } from './css-color';
+import { drawnScale } from './drawn-scale';
 
 /** An image of what sits behind a glass group. */
 export type BackdropSnapshot = {
@@ -44,11 +45,16 @@ export const snapshotBackdrop = async (
   const bounds = root.getBoundingClientRect();
   const left = Math.max(options.region.left, bounds.left);
   const top = Math.max(options.region.top, bounds.top);
-  const width = Math.min(options.region.right, bounds.right) - left;
-  const height = Math.min(options.region.bottom, bounds.bottom) - top;
-  if (width <= 0 || height <= 0) return null;
-  const x = left - bounds.left;
-  const y = top - bounds.top;
+  const right = Math.min(options.region.right, bounds.right);
+  const bottom = Math.min(options.region.bottom, bounds.bottom);
+  if (right <= left || bottom <= top) return null;
+  // The region and the root's box are in screen pixels, but the copy lays out
+  // in CSS pixels: the two differ when the page is drawn scaled.
+  const zoom = drawnScale(root);
+  const x = (left - bounds.left) / zoom;
+  const y = (top - bounds.top) / zoom;
+  const width = (right - left) / zoom;
+  const height = (bottom - top) / zoom;
   const scale = Math.min(
     options.scale,
     MAX_IMAGE_SIZE / Math.max(width, height),
@@ -59,10 +65,19 @@ export const snapshotBackdrop = async (
   );
   const pixelWidth = Math.max(1, Math.round(width * scale));
   const pixelHeight = Math.max(1, Math.round(height * scale));
+  // The image's edges must be opaque: the glass clamps to them where its lens
+  // looks past the image, so a transparent row there shows as a dark band.
+  // Rounding the image's width and height separately leaves its shape a
+  // little off the viewBox's, which the default `preserveAspectRatio` would
+  // fit with an empty strip along one edge, so the viewBox is stretched
+  // instead. The <foreignObject> matches the copy's frame, which is rounded up
+  // to whole pixels (see cloneBackdrop).
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${pixelWidth}" ` +
-    `height="${pixelHeight}" viewBox="${x} ${y} ${width} ${height}">` +
-    `<foreignObject width="${bounds.width}" height="${bounds.height}">` +
+    `height="${pixelHeight}" viewBox="${x} ${y} ${width} ${height}" ` +
+    `preserveAspectRatio="none">` +
+    `<foreignObject width="${Math.ceil(bounds.width / zoom)}" ` +
+    `height="${Math.ceil(bounds.height / zoom)}">` +
     `${markup}</foreignObject></svg>`;
   const picture = new win.Image();
   picture.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

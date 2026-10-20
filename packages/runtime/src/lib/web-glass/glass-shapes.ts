@@ -54,25 +54,33 @@ const PRESS_GROWTH = 0.06;
  * Advances its press animation by `elapsed` milliseconds; only containers let
  * a pressed shape `grow`, since a standalone shape's canvas is its own box
  * and Lynx clips anything drawn outside it.
+ *
+ * The shape's box and `origin` are in screen pixels, drawn at `zoom` screen
+ * pixels per CSS pixel (see drawn-scale.ts); the frame is in CSS pixels, like
+ * its corner radius.
  */
 export const readShape = (
   element: HTMLElement,
   origin: DOMRect,
+  zoom: number,
   elapsed: number,
   grow: boolean,
 ): GlassShapeFrame & { press: number } => {
-  const rect = element.getBoundingClientRect();
+  const box = element.getBoundingClientRect();
+  const left = (box.left - origin.left) / zoom;
+  const top = (box.top - origin.top) / zoom;
+  const width = box.width / zoom;
+  const height = box.height / zoom;
   const style = element.ownerDocument.defaultView!.getComputedStyle(element);
   const press = pressOf(element);
   const pressed = press ? stepPress(press, elapsed) : 0;
   const swell = grow ? 1 + PRESS_GROWTH * pressed : 1;
   return {
-    centerX: rect.left - origin.left + rect.width / 2,
-    centerY: rect.top - origin.top + rect.height / 2,
-    halfWidth: (rect.width / 2) * swell,
-    halfHeight: (rect.height / 2) * swell,
-    radius:
-      cornerRadius(style.borderTopLeftRadius, rect.width, rect.height) * swell,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    halfWidth: (width / 2) * swell,
+    halfHeight: (height / 2) * swell,
+    radius: cornerRadius(style.borderTopLeftRadius, width, height) * swell,
     frost: element.getAttribute('glass-style') === 'clear' ? 0 : 1,
     tint: resolveCssColor(
       element.ownerDocument,

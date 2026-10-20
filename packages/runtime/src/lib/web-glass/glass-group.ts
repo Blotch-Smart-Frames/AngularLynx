@@ -1,5 +1,6 @@
 import { observeBackdrop } from './backdrop-observer';
 import { snapshotBackdrop, type BackdropSnapshot } from './backdrop-snapshot';
+import { drawnScale } from './drawn-scale';
 import { GlassRenderer, type GlassFrame } from './glass-renderer';
 import { pressOf } from './glass-press';
 import { containerShapes, readShape } from './glass-shapes';
@@ -90,16 +91,22 @@ export class GlassGroup {
     const renderer = this.#renderer;
     const backdrop = this.#backdrop;
     if (!renderer || !backdrop || this.#failed) return;
+    // Boxes are measured in screen pixels, and the frame is drawn in CSS
+    // pixels, which differ when the page is drawn scaled (see drawn-scale.ts).
     const origin = this.#canvas.getBoundingClientRect();
     const area = backdrop.getBoundingClientRect();
-    if (this.#needsCapture(origin, area)) this.#capture(backdrop, origin);
+    const zoom = drawnScale(backdrop);
+    if (this.#needsCapture(origin, area, zoom)) {
+      this.#capture(backdrop, origin, zoom);
+    }
     const snapshot = this.#snapshot;
     if (!snapshot) return;
 
-    const scale = Math.min(this.#win.devicePixelRatio || 1, MAX_SCALE);
+    // Device pixels per CSS pixel, so the canvas stays sharp at any zoom.
+    const scale = Math.min(this.#win.devicePixelRatio || 1, MAX_SCALE) * zoom;
     const elements = this.shapes;
     const shapes = elements.map((element) =>
-      readShape(element, origin, elapsed, this.container),
+      readShape(element, origin, zoom, elapsed, this.container),
     );
     // The press glow follows whichever shape is pressed the most.
     let pointer: [number, number, number] = [0, 0, 0];
@@ -107,16 +114,16 @@ export class GlassGroup {
       const value = shapes[i]!.press;
       if (value > pointer[2]) {
         const { x, y } = pressOf(element)!;
-        pointer = [x - origin.left, y - origin.top, value];
+        pointer = [(x - origin.left) / zoom, (y - origin.top) / zoom, value];
       }
     });
     const spacing = parseFloat(this.root.getAttribute('spacing') ?? '') || 0;
     const frame: GlassFrame = {
       scale,
-      width: origin.width,
-      height: origin.height,
-      offsetX: origin.left - area.left - snapshot.x,
-      offsetY: origin.top - area.top - snapshot.y,
+      width: origin.width / zoom,
+      height: origin.height / zoom,
+      offsetX: (origin.left - area.left) / zoom - snapshot.x,
+      offsetY: (origin.top - area.top) / zoom - snapshot.y,
       // Twice the spacing: the smooth union only bridges a gap up to half its
       // radius, and iOS merges shapes closer than `spacing`.
       smoothing: this.container ? spacing * 2 : 0,
@@ -129,8 +136,8 @@ export class GlassGroup {
     };
     const key = JSON.stringify(frame);
     if (key === this.#drawn) return;
-    const width = Math.max(1, Math.round(origin.width * scale));
-    const height = Math.max(1, Math.round(origin.height * scale));
+    const width = Math.max(1, Math.round(frame.width * scale));
+    const height = Math.max(1, Math.round(frame.height * scale));
     // Assigning a canvas size reallocates it even when the size is unchanged.
     if (this.#canvas.width !== width) this.#canvas.width = width;
     if (this.#canvas.height !== height) this.#canvas.height = height;
@@ -152,16 +159,16 @@ export class GlassGroup {
     return snapshot.luminance < DARK_LUMINANCE ? 1 : 0;
   }
 
-  #needsCapture(origin: DOMRect, area: DOMRect): boolean {
+  #needsCapture(origin: DOMRect, area: DOMRect, zoom: number): boolean {
     if (this.#capturing) return false;
     const snapshot = this.#snapshot;
     if (snapshot) {
       // Moving the whole group (not just its shapes) past the captured region
       // would refract the image's clamped edge, so capture around it again.
-      const left = Math.max(origin.left, area.left) - area.left;
-      const top = Math.max(origin.top, area.top) - area.top;
-      const right = Math.min(origin.right, area.right) - area.left;
-      const bottom = Math.min(origin.bottom, area.bottom) - area.top;
+      const left = (Math.max(origin.left, area.left) - area.left) / zoom;
+      const top = (Math.max(origin.top, area.top) - area.top) / zoom;
+      const right = (Math.min(origin.right, area.right) - area.left) / zoom;
+      const bottom = (Math.min(origin.bottom, area.bottom) - area.top) / zoom;
       if (
         left < snapshot.x - 1 ||
         top < snapshot.y - 1 ||
@@ -174,7 +181,7 @@ export class GlassGroup {
     return this.#stale && this.#win.performance.now() >= this.#nextCapture;
   }
 
-  #capture(backdrop: HTMLElement, origin: DOMRect): void {
+  #capture(backdrop: HTMLElement, origin: DOMRect, zoom: number): void {
     const win = this.#win;
     this.#capturing = true;
     this.#stale = false;
@@ -189,15 +196,17 @@ export class GlassGroup {
     ) {
       above.add(node);
     }
+    // The region is in screen pixels, and the margin in CSS pixels.
+    const margin = CAPTURE_MARGIN * zoom;
     snapshotBackdrop(backdrop, {
       exclude: (element) => above.has(element),
       region: {
-        left: origin.left - CAPTURE_MARGIN,
-        top: origin.top - CAPTURE_MARGIN,
-        right: origin.right + CAPTURE_MARGIN,
-        bottom: origin.bottom + CAPTURE_MARGIN,
+        left: origin.left - margin,
+        top: origin.top - margin,
+        right: origin.right + margin,
+        bottom: origin.bottom + margin,
       },
-      scale: Math.min(win.devicePixelRatio || 1, MAX_SCALE),
+      scale: Math.min(win.devicePixelRatio || 1, MAX_SCALE) * zoom,
     })
       .then((snapshot) => {
         if (this.#disposed || !snapshot) return;

@@ -100,7 +100,7 @@ describe('readShape', () => {
   };
 
   it('measures the shape relative to the canvas origin', () => {
-    expect(readShape(shape(), rect(10, 20, 300, 300), 16, true)).toEqual({
+    expect(readShape(shape(), rect(10, 20, 300, 300), 1, 16, true)).toEqual({
       centerX: 70,
       centerY: 60,
       halfWidth: 50,
@@ -112,10 +112,26 @@ describe('readShape', () => {
     });
   });
 
+  it('measures in CSS pixels when the page is drawn scaled', () => {
+    // Drawn at half size: the 100×60 shape is 200×120 CSS pixels, 40 and 60
+    // CSS pixels from the canvas, and its 16px radius stays 16px.
+    expect(readShape(shape(), rect(10, 20, 150, 150), 0.5, 16, true)).toEqual({
+      centerX: 140,
+      centerY: 120,
+      halfWidth: 100,
+      halfHeight: 60,
+      radius: 16,
+      frost: 1,
+      tint: TRANSPARENT,
+      press: 0,
+    });
+  });
+
   it('reads clear glass and its tint', () => {
     const result = readShape(
       shape({ 'glass-style': 'clear', 'glass-tint-color': 'red' }),
       rect(0, 0, 300, 300),
+      1,
       16,
       true,
     );
@@ -129,12 +145,12 @@ describe('readShape', () => {
     pressOf(element)!.value = 1;
     pressOf(element)!.target = 1;
 
-    const grown = readShape(element, rect(0, 0, 300, 300), 0, true);
+    const grown = readShape(element, rect(0, 0, 300, 300), 1, 0, true);
     expect(grown.press).toBe(1);
     expect(grown.halfWidth).toBeCloseTo(53);
     expect(grown.radius).toBeCloseTo(16.96);
 
-    const kept = readShape(element, rect(0, 0, 300, 300), 0, false);
+    const kept = readShape(element, rect(0, 0, 300, 300), 1, 0, false);
     expect(kept.halfWidth).toBe(50);
   });
 });

@@ -4639,3 +4639,23 @@ An `<overlay>` covers the app's screen. In a `<lynx-view>` embedded in a bigger 
 ### The fix
 
 The docs site replaces `HTMLDialogElement.prototype.showModal` with `show()` for dialogs inside a `<lynx-view>` (`containOverlays` in `packages/website/src/components/go/native-parity.ts`). The non-modal dialog keeps web-elements' `position: fixed`, which the view's `contain: strict` resolves against the view, so the overlay scales and clips with the preview. It then needs `x-overlay-ng::part(dialog) { z-index: 2147483647; }`: every web-elements element is `position: relative`, so the page's later elements otherwise paint over it. An app whose `<lynx-view>` fills the page doesn't need this.
+
+---
+
+## In a scaled `<lynx-view>`, Lynx for Web reports pointer positions and `layoutchange` boxes in screen pixels
+
+### What you'd expect (parity with iOS)
+
+Touch and mouse positions and `layoutchange` sizes are in the app's own pixels (points on iOS), whatever size the app is drawn at.
+
+### What Lynx does
+
+The docs' `<Go>` previews lay the app out at the phone's size and scale it down to fit their pane with a CSS transform (about 0.68 at the default split). web-core takes pointer positions from the browser's `clientX`/`pageX` and web-elements fills `layoutchange` from `getBoundingClientRect()`, and neither undoes the scale. So `layoutchange` gave the blur-view playground's stage 0.68 of its size, which confined its draggable glass to the stage's top-left, and the glass followed the mouse at 0.68 of its speed.
+
+### The fix
+
+The docs' `<lynx-view>` subclass wraps the listeners web-core adds to the view's shadow root, where it handles every event its elements bind, and hands them the event with its positions and `layoutchange` box mapped into the view's own pixels (`listenInViewSpace` in `packages/website/src/components/go/native-parity.ts`). web-elements and the rest of the page keep the browser's own event, since web-elements pairs some pointer positions with `elementFromPoint()`, which takes screen pixels. web-core's `boundingClientRect` UI method also reads `getBoundingClientRect()` and is still scaled; nothing in the repo calls it. An app whose `<lynx-view>` isn't scaled doesn't need any of this.
+
+The runtime's own web code has to allow for the scale too. The blur-view glass (`packages/runtime/src/lib/web-glass`) measured its shapes and backdrop with `getBoundingClientRect()`, but redraws the backdrop from a copy of the page laid out in CSS pixels, so in a preview it refracted what sat at 0.68 of its position. It now divides boxes by `drawnScale()` (an element's drawn width over its `offsetWidth`) and works in CSS pixels throughout, scaling only the canvas's resolution.
+
+Once the glass could reach the stage's edges, it showed a dark band there: the lens clamps to the backdrop image's edge pixels, and the image's last row was transparent. Rounding the image's width and height separately made its shape differ slightly from the SVG's viewBox, which the default `preserveAspectRatio` letterboxed, and the browser painted the copy's fractional height (356.47px) only to a whole pixel. The SVG sets `preserveAspectRatio="none"`, and the copy's frame is rounded up to whole pixels.

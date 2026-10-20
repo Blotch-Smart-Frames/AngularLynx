@@ -24,7 +24,7 @@ This rewrites your project's entry point, app config, and root component for Lyn
 - Installs `@blotch/angular-lynx-build`, the builders, which bring rspeedy, the AngularLynx rsbuild plugin and the native app builder with them
 - Optionally sets up Tailwind CSS (prompted interactively)
 
-It doesn't create a `lynx.config.ts`: the builders take the entry point from `angular.json`. Add one only to [customize rspeedy](/guide/building-for-production).
+It doesn't create a `lynx.config.ts`: the builders take the entry point from `angular.json`. Add one only to [customize rspeedy](/guide/building-for-production#customize-rspeedy).
 
 **Options:**
 
@@ -177,7 +177,7 @@ Writes the iOS and Android projects that `ng build --platform` generates into `i
 ng generate @blotch/angular-lynx:eject
 ```
 
-`ng build --platform` then builds those folders as they are. This is one-way: `angular.json` app options stop applying to an ejected project, and keeping it current with Lynx, Xcode and Google Play becomes your job. See [Publishing your App](/guide/building-for-production#customizing-the-native-project).
+`ng build --platform` then builds those folders as they are. This is one-way: the app identity options in `angular.json` stop applying to an ejected project, and keeping it current with Lynx, Xcode and Google Play becomes your job. See [Publishing your App](/guide/building-for-production#customize-the-native-project).
 
 | Option       | Type                        | Default         | Description                    |
 | ------------ | --------------------------- | --------------- | ------------------------------ |

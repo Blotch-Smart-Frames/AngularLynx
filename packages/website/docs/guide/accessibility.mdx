@@ -139,22 +139,6 @@ Use `accessibility-exclusive-focus` to trap screen reader focus inside an open m
 </overlay>
 ```
 
-## Enabling Accessibility in Production
+## Accessibility in Production
 
-To include accessibility metadata in your production build, enable it in `lynx.config.ts` (create the file if your app doesn't have one):
-
-```typescript title="lynx.config.ts"
-import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
-
-export default defineConfig({
-  plugins: [
-    pluginAngularLynx({
-      enableA11y: true,
-    }),
-  ],
-});
-```
-
-:::note
-Accessibility metadata increases bundle size. It is disabled by default in production and enabled automatically in development.
-:::
+Accessibility works the same in production builds as in development, so there's nothing to enable. The build plugin's `enableA11y` option, which makes Lynx use Android's own accessibility APIs, is on by default in every build.

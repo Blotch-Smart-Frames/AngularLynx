@@ -246,6 +246,33 @@ describe('cloneBackdrop', () => {
     expect(copy.style.width).toBe('100px');
   });
 
+  it('sizes the frame in CSS pixels when the page is drawn scaled', () => {
+    const root = element('x-view');
+    // Laid out 200 CSS pixels wide, drawn 100 wide.
+    at(root, 40, 60, 100);
+    vi.spyOn(root, 'offsetWidth', 'get').mockReturnValue(200);
+    const frame = cloneBackdrop(root, {
+      exclude: () => false,
+      region: EVERYWHERE,
+    });
+    expect(frame.style.width).toBe('200px');
+    expect(frame.style.height).toBe('200px');
+    expect((frame.firstElementChild as HTMLElement).style.width).toBe('200px');
+  });
+
+  it('rounds the frame up to whole pixels, leaving the copy its size', () => {
+    const root = element('x-view');
+    at(root, 0, 0, 356.47);
+    const frame = cloneBackdrop(root, {
+      exclude: () => false,
+      region: EVERYWHERE,
+    });
+    expect(frame.style.height).toBe('357px');
+    expect((frame.firstElementChild as HTMLElement).style.height).toBe(
+      '356.47px',
+    );
+  });
+
   it('is an empty frame when the root itself is hidden', () => {
     const frame = cloneBackdrop(element('x-view', { display: 'none' }), {
       exclude: () => false,

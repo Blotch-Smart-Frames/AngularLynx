@@ -249,6 +249,45 @@ describe('GlassGroup', () => {
     expect(group.shapes).toHaveLength(1);
   });
 
+  it('draws in CSS pixels when the page is drawn scaled', async () => {
+    const { root, blob } = container();
+    const { backdrop } = scene(root);
+    // The backdrop is laid out 800 CSS pixels wide and drawn 400 wide.
+    vi.spyOn(backdrop, 'offsetWidth', 'get').mockReturnValue(800);
+    trackPress(blob);
+    Object.assign(pressOf(blob)!, { target: 1, value: 1, x: 60, y: 70 });
+    const group = new GlassGroup(root, true);
+
+    group.frame(16);
+    const [, options] = mocks.snapshot.mock.lastCall!;
+    // A 48 CSS pixel margin is 24 screen pixels.
+    expect(options.region).toEqual({
+      left: -14,
+      top: -4,
+      right: 234,
+      bottom: 144,
+    });
+    expect(options.scale).toBe(1);
+
+    pending.resolve(SNAPSHOT);
+    await flush();
+    group.frame(16);
+    expect(lastFrame()).toMatchObject({
+      scale: 1,
+      width: 400,
+      height: 200,
+      offsetX: 20,
+      offsetY: 40,
+      pointer: [100, 100, 1],
+    });
+    expect(lastFrame().shapes[0]).toMatchObject({ centerX: 90, centerY: 90 });
+    // Its 25px radius, swollen by the press.
+    expect(lastFrame().shapes[0]!.radius).toBeCloseTo(26.5);
+    // As many device pixels as when drawn unscaled.
+    const canvas = root.shadowRoot!.querySelector('canvas')!;
+    expect([canvas.width, canvas.height]).toEqual([400, 200]);
+  });
+
   it('redraws only when something changed', async () => {
     const { root } = container();
     scene(root);

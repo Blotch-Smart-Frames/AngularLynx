@@ -138,7 +138,16 @@ const runFlowOnce = (
 const DRIVER_NOT_READY = 'iOS driver not ready in time';
 
 /**
- * {@link runFlowOnce}, run again once if Maestro's iOS driver didn't start.
+ * How many times a flow is run again when Maestro's iOS driver didn't start.
+ * Once wasn't enough: on #35's CI run and the 2026-10-18 nightly (#31) the
+ * driver missed its timeout twice in a row, and on #35's run a third start
+ * succeeded.
+ */
+const DRIVER_RETRIES = 2;
+
+/**
+ * {@link runFlowOnce}, run again (up to {@link DRIVER_RETRIES} times) if
+ * Maestro's iOS driver didn't start.
  *
  * Even with MAESTRO_DRIVER_STARTUP_TIMEOUT at 180s, the driver sometimes
  * isn't up in time on GitHub's macOS runners (the nightly of 2026-10-14 and
@@ -151,12 +160,18 @@ export const runFlow = async (
   flow: Flow,
   options: Parameters<typeof runFlowOnce>[1],
 ): Promise<RunResult> => {
-  const result = await runFlowOnce(flow, options);
-  if (result.code === 0 || !result.output.includes(DRIVER_NOT_READY)) {
-    return result;
+  let result = await runFlowOnce(flow, options);
+  for (
+    let retry = 1;
+    retry <= DRIVER_RETRIES &&
+    result.code !== 0 &&
+    result.output.includes(DRIVER_NOT_READY);
+    retry++
+  ) {
+    console.warn(
+      `! Maestro's iOS driver didn't start in time for native/${flow.file}; running it again (${retry} of ${DRIVER_RETRIES}).`,
+    );
+    result = await runFlowOnce(flow, options);
   }
-  console.warn(
-    `! Maestro's iOS driver didn't start in time for native/${flow.file}; running it again.`,
-  );
-  return runFlowOnce(flow, options);
+  return result;
 };

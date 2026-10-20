@@ -331,6 +331,8 @@ Instead of Explorer, a minimal Swift app could embed the Lynx iOS SDK and load t
 
 **Recommendation:** start with Explorer, and switch if it gets in the way.
 
+**What happened:** `ng build --platform ios|android` now builds such an app for users (`packages/native`), and CI runs the flows in it as well as in Explorer. Explorer alone hid a shell that didn't register XElement's elements ([#34](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/34)), because Explorer registers them itself. Explorer stays for the dev path, where `ng serve` hands it a bundle URL.
+
 ### Unknowns to settle in a short spike
 
 - Whether iOS asks "Open in LynxExplorer?" when opening the link through `simctl`. If it does, the Maestro flow taps the prompt.
@@ -342,7 +344,7 @@ Instead of Explorer, a minimal Swift app could embed the Lynx iOS SDK and load t
 
 GitHub-hosted macOS runners are free for public repositories, but a free account runs at most 5 macOS jobs at once, and they start more slowly. Expect about 8–12 minutes per run, mostly booting the simulator.
 
-iOS and Android run on every pull request, as well as nightly and in the release gate. Bugs that only exist on Lynx's own engine should block a merge rather than surface the next morning. This roughly doubles a PR's wall-clock time (the native jobs start after the Linux fresh-app job).
+iOS and Android run on every pull request, as well as nightly and in the release gate. Bugs that only exist on Lynx's own engine should block a merge rather than surface the next morning. This roughly doubles a PR's wall-clock time. The Android job starts after the Linux `build-app` job, which builds the APK; the iOS job builds its own app, shell included, on the Mac, so it starts as soon as the packages are packed.
 
 ## CI wiring
 

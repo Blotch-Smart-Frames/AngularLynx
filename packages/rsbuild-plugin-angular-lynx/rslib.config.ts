@@ -27,5 +27,8 @@ export default defineConfig({
     // uses __filename which is unavailable in ES module scope. It is loaded at
     // runtime from the installed package instead.
     externals: { typescript: 'typescript' },
+    // Stylesheets the plugin adds to apps' bundles, copied as they are: they
+    // go through the app's own CSS pipeline, not this library's.
+    copy: [{ from: './src/styles', to: 'styles' }],
   },
 });

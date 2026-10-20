@@ -9,6 +9,11 @@ import { devStats } from '../devtools/stats';
 // here would form an import cycle. These two files import only element-creators
 // and types, so this path is cycle-free.
 import { createNativeRefByTag } from '../lynx-document/create-native-ref';
+import {
+  androidBlurMaterialStyle,
+  BLUR_MATERIAL_ATTRIBUTES,
+  usesAndroidBlurMaterials,
+} from '../lynx-document/android-blur-material';
 import { getPageId } from '../lynx-document/page-ref';
 import {
   isFirstRenderPending,
@@ -132,6 +137,13 @@ export class LynxElement implements BaseLynxElement {
   #inlineStyleWhole: string | null = null;
   /** Per-key inline styles set via setStyle ([style.x] bindings). */
   #inlineStyleKeys = new Map<string, unknown>();
+  /**
+   * Inline declarations the runtime adds ahead of the app's own style="...":
+   * the CSS variables of a blur-view's material on Android (see
+   * android-blur-material). Only `__SetInlineStyles` can set a CSS variable;
+   * `__AddInlineStyle` drops any name that isn't a CSS property.
+   */
+  #runtimeStyle = '';
   #listeners: {
     eventType: LynxEventType;
     eventName: string;
@@ -337,6 +349,20 @@ export class LynxElement implements BaseLynxElement {
         this.#rawText = text;
         LynxElement.#enqueueTextNormalization(this);
       }
+      if (this.tagName === 'blur-view' && BLUR_MATERIAL_ATTRIBUTES.has(name)) {
+        this.updateBlurMaterial();
+      }
+    }
+  }
+
+  /**
+   * On Android, gives a blur-view the CSS variables that approximate its iOS
+   * material (see android-blur-material). LynxDocument calls it when it
+   * creates one, and setAttribute whenever an attribute it depends on changes.
+   */
+  updateBlurMaterial(): void {
+    if (usesAndroidBlurMaterials()) {
+      this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs));
     }
   }
 
@@ -357,8 +383,34 @@ export class LynxElement implements BaseLynxElement {
     this.#inlineStyleKeys.delete(key);
   }
   setInlineStyles(inlineStyle: string): void {
-    __SetInlineStyles(this.element, inlineStyle);
+    __SetInlineStyles(this.element, this.#withRuntimeStyle(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
+  }
+
+  /**
+   * The whole inline style to give the native element: the runtime's
+   * declarations first, so the app's own wins where both set the same name.
+   * Without runtime declarations it's the app's value as is.
+   */
+  #withRuntimeStyle(inlineStyle: string | null): string | null {
+    if (!this.#runtimeStyle) return inlineStyle;
+    return inlineStyle
+      ? `${this.#runtimeStyle}; ${inlineStyle}`
+      : this.#runtimeStyle;
+  }
+
+  #setRuntimeStyle(style: string): void {
+    if (style === this.#runtimeStyle) return;
+    this.#runtimeStyle = style;
+    __SetInlineStyles(
+      this.element,
+      this.#withRuntimeStyle(this.#inlineStyleWhole),
+    );
+    // __SetInlineStyles replaces every inline style, including the [style.x]
+    // ones __AddInlineStyle set, which the app didn't ask to drop.
+    for (const [key, value] of this.#inlineStyleKeys) {
+      __AddInlineStyle(this.element, key, value);
+    }
   }
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
@@ -807,8 +859,9 @@ export class LynxElement implements BaseLynxElement {
     if (this.#classes) __SetClasses(fresh, this.#classes);
     // Whole-string styles first, then per-key overrides — same order as the
     // original setAttribute('style') vs [style.x] application.
-    if (this.#inlineStyleWhole != null) {
-      __SetInlineStyles(fresh, this.#inlineStyleWhole);
+    const inlineStyle = this.#withRuntimeStyle(this.#inlineStyleWhole);
+    if (inlineStyle != null) {
+      __SetInlineStyles(fresh, inlineStyle);
     }
     for (const [key, value] of this.#inlineStyleKeys) {
       __AddInlineStyle(fresh, key, value);

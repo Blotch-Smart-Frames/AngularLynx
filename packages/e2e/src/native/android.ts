@@ -36,7 +36,7 @@ export const runOnAndroidEmulator = async ({
   await adb(['logcat', '-c']);
   const logcat = start('adb', ['logcat', '-v', 'time'], {
     cwd: process.cwd(),
-    logFile: path.join(artifactsDir, 'android-logcat.log'),
+    logFile: path.join(artifactsDir, `android-${host.kind}-logcat.log`),
     echo: false,
   });
 
@@ -48,7 +48,7 @@ export const runOnAndroidEmulator = async ({
         device,
         appId,
         host,
-        outputDir: path.join(artifactsDir, 'android'),
+        outputDir: path.join(artifactsDir, `android-${host.kind}`),
         logFile,
       });
       const failure = judgeFlow(flow, 'android', result.code);

@@ -123,10 +123,10 @@ Make the overlay's first child a **full-size backdrop view** (`class="h-full w-f
 Caveats for **non-modal** overlays (e.g. toast): a full-screen first child captures touches for the app behind it, and on iOS this held true no matter what was tried — `pointer-events` errors the build (see above), `events-pass-through`/`custom-layout` are web-platform-only overlay attributes (the native overlay API exposes only `ios-enable-swipe-back`, `level`, `mode`, `visible`), and even the general-purpose `event-through` attribute did not help in practice, despite checking out against the native source on paper:
 
 - **Harmony**: `UIOverlay::OnNodeEvent` (`platform/harmony/lynx_xelement/overlay/ui_overlay.cc`) hit-tests its own subtree, and if the deepest hit element has `EventThrough` set, redispatches the touch to the page root instead of handling it.
-- **iOS**: `LynxOverlayContainer.hitTest:withEvent:` (`platform/darwin/ios/lynx_xelement/overlay/LynxOverlayContainer.m`) does a real hit test and returns `nil` when the hit element has `eventThrough` set, so standard UIKit hit-testing *should* give the touch to whatever's behind it.
-- **Android**: `LynxOverlayDialog` is a genuine separate `Dialog`/window, so passthrough is coarser — `LynxOverlayView.needHandleEvent()` (`LynxOverlayView.kt`) checks the overlay's own `event-through` plus its *direct* children's bounding boxes, not a deep per-descendant hit test. A single full-screen direct-child backdrop may make this always resolve to "handled," swallowing touches meant for nested interactive content. Not yet verified on-device.
+- **iOS**: `LynxOverlayContainer.hitTest:withEvent:` (`platform/darwin/ios/lynx_xelement/overlay/LynxOverlayContainer.m`) does a real hit test and returns `nil` when the hit element has `eventThrough` set, so standard UIKit hit-testing _should_ give the touch to whatever's behind it.
+- **Android**: `LynxOverlayDialog` is a genuine separate `Dialog`/window, so passthrough is coarser — `LynxOverlayView.needHandleEvent()` (`LynxOverlayView.kt`) checks the overlay's own `event-through` plus its _direct_ children's bounding boxes, not a deep per-descendant hit test. A single full-screen direct-child backdrop may make this always resolve to "handled," swallowing touches meant for nested interactive content. Not yet verified on-device.
 
-**Both `event-through` and `mode="page"` were tried on-device for `packages/ui/src/lib/components/toast/toast.ts` and neither fixed it — this is a documented dead end, not a suggestion.** `<overlay>`'s `mode` prop (`LynxUIOverlay.m`) defaults to `LynxOverlayModeWindow` (`LynxOverlayContainer.h`) when left unset — a genuinely separate native `UIWindow`, not a layered sibling view — which was one plausible reason `event-through`'s same-window hit-test redispatch wouldn't reach the app. Setting `mode="page"` (attaching the overlay inside the same view controller/window as the page) was tried on top of `event-through` and *also* made no observable difference: confirmed with an on-screen tap counter (there's no attachable console on-device) showing zero taps registering anywhere in the app — including a header button nowhere near the toast — for as long as any toast was visible, identical before and after both attempted fixes. Why iOS's own hit-test source didn't produce the expected behavior remains unexplained.
+**Both `event-through` and `mode="page"` were tried on-device for `packages/ui/src/lib/components/toast/toast.ts` and neither fixed it — this is a documented dead end, not a suggestion.** `<overlay>`'s `mode` prop (`LynxUIOverlay.m`) defaults to `LynxOverlayModeWindow` (`LynxOverlayContainer.h`) when left unset — a genuinely separate native `UIWindow`, not a layered sibling view — which was one plausible reason `event-through`'s same-window hit-test redispatch wouldn't reach the app. Setting `mode="page"` (attaching the overlay inside the same view controller/window as the page) was tried on top of `event-through` and _also_ made no observable difference: confirmed with an on-screen tap counter (there's no attachable console on-device) showing zero taps registering anywhere in the app — including a header button nowhere near the toast — for as long as any toast was visible, identical before and after both attempted fixes. Why iOS's own hit-test source didn't produce the expected behavior remains unexplained.
 
 ### The actual fix
 
@@ -183,7 +183,7 @@ Toggle an `@if` off and on and the projected content comes back exactly as it wa
 Lynx has **two element layers**, and a removal treats them differently:
 
 - **Fiber layer** — `__RemoveElement` (`FiberElement::RemoveNodeInternal`, `references/lynx/core/renderer/dom/fiber/fiber_element.cc`) is a pure detach: it erases the node from its parent's `scoped_children_` and calls `set_parent(nullptr)`. The node and its whole subtree stay valid JS objects, re-insertable via `__AppendElement`/`__InsertElementBefore`.
-- **Painting layer** — the rendered native view. At flush (`ElementContainer::RemoveSelf` → `PaintingContext::RemovePaintingNode`), a node that was removed and **not** re-inserted in that *same* flush has `is_move=false` and its painting node is **destroyed**. There is **no** API to re-create a painting node on a later re-insert (`CreateElementContainer` runs once, under `kDirtyCreated`). Re-attaching such a node in a later flush renders an **empty** element.
+- **Painting layer** — the rendered native view. At flush (`ElementContainer::RemoveSelf` → `PaintingContext::RemovePaintingNode`), a node that was removed and **not** re-inserted in that _same_ flush has `is_move=false` and its painting node is **destroyed**. There is **no** API to re-create a painting node on a later re-insert (`CreateElementContainer` runs once, under `kDirtyCreated`). Re-attaching such a node in a later flush renders an **empty** element.
 
 A same-tick MOVE stays `is_move=true` (removed and re-inserted in one flush), so it keeps its painting node — that's why `@for` reorders work (see the move entry above). But an `@if` toggle spans **two change-detection cycles**: the content is removed on collapse (painting node dies at that flush) and re-inserted on expand (a later flush).
 
@@ -229,10 +229,10 @@ Detach a node to a scratch location and move it back later, and the browser lays
 
 To keep projected content **rendering** across an `@if` toggle, earlier renderer revisions **"parked"** a removed element's children somewhere live on a genuine destroy, then moved them back on re-insert. Parking was genuinely **load-bearing**: keeping the child attached to a live parent meant it was never left removed across a flush, so its painting node stayed alive (`is_move` never went false) — the real problem the pure-detach fiber layer does NOT solve on its own (see the recreate-on-remount entry above). But parking produced two main-thread **watchdog SIGKILLs** (`0x8BADF00D`, "failed to terminate gracefully after 5.0s"):
 
-1. **Page-root parking → layout livelock on re-show.** Parking onto the live, laid-out page root laid each child out as a direct in-flow child of `<page>`; moving it back out of that position into a deep descendant on re-show drove a *single* layout pass into a non-terminating state. Stack: `setTimeout` → `FiberFlushElementTree` → `LayoutContext::Layout` → stuck in `RemoveAlgorithmRecursive`. Not a cycle: `RemoveAlgorithmRecursive` is a per-relayout cache clear that recurses only to tree depth (~7 frames), and `Layout` calls `CalculateLayout` exactly once with no C++ loop — one pass failing to terminate on a pathological (lattice-shaped) tree, not a stack overflow (a real cycle overflows near-instantly as `EXC_BAD_ACCESS`).
-2. **`display:none`-holder parking → teardown hang.** Moving parking into a `display:none` holder (which layout skips wholesale) fixed the re-show livelock, but children of a *permanently* destroyed element leaked into the holder forever — nothing ever cleaned it. Eventually destroying that ever-growing tree at shell teardown (`LynxShell::Destroy` → `~LayoutContext` → destroying the `unordered_map<int, LayoutNode>`) blew the 5s watchdog on the next reload/startup.
+1. **Page-root parking → layout livelock on re-show.** Parking onto the live, laid-out page root laid each child out as a direct in-flow child of `<page>`; moving it back out of that position into a deep descendant on re-show drove a _single_ layout pass into a non-terminating state. Stack: `setTimeout` → `FiberFlushElementTree` → `LayoutContext::Layout` → stuck in `RemoveAlgorithmRecursive`. Not a cycle: `RemoveAlgorithmRecursive` is a per-relayout cache clear that recurses only to tree depth (~7 frames), and `Layout` calls `CalculateLayout` exactly once with no C++ loop — one pass failing to terminate on a pathological (lattice-shaped) tree, not a stack overflow (a real cycle overflows near-instantly as `EXC_BAD_ACCESS`).
+2. **`display:none`-holder parking → teardown hang.** Moving parking into a `display:none` holder (which layout skips wholesale) fixed the re-show livelock, but children of a _permanently_ destroyed element leaked into the holder forever — nothing ever cleaned it. Eventually destroying that ever-growing tree at shell teardown (`LynxShell::Destroy` → `~LayoutContext` → destroying the `unordered_map<int, LayoutNode>`) blew the 5s watchdog on the next reload/startup.
 
-Also **disproven** along the way, recorded so they aren't re-attempted: a genuine tree cycle (ruled out by the crash signature above); and a "defer the restore to a macrotask" timing fix (the re-show crash was byte-identical after it shipped, proving the restore *timing* was irrelevant).
+Also **disproven** along the way, recorded so they aren't re-attempted: a genuine tree cycle (ruled out by the crash signature above); and a "defer the restore to a macrotask" timing fix (the re-show crash was byte-identical after it shipped, proving the restore _timing_ was irrelevant).
 
 ### The fix
 
@@ -250,7 +250,7 @@ Remove a node during a framework's render pass and it's gone from layout by the 
 
 ### What Lynx does
 
-Element mutations only reach the main thread (and layout) on `__FlushElementTree()`, which the renderer calls once per change-detection cycle in `LynxRendererFactory2.end()`. `remove()` **queues** a genuine removal rather than applying it immediately, so a same-tick re-insert can cancel it (an Angular move — see the postmortem above). The bug: that queue was drained in a `queueMicrotask`, which fires **after** `end()` has already flushed. So the `__RemoveElement` ran too late — the node was gone from the JS element tree but not committed to native until some *later* cycle happened to flush. Until then it kept occupying layout space, often invisibly: a `LynxTransition` panel whose leave animation faded it to `opacity: 0` "hid" but left a gap; an accordion panel collapsed with leftover padding.
+Element mutations only reach the main thread (and layout) on `__FlushElementTree()`, which the renderer calls once per change-detection cycle in `LynxRendererFactory2.end()`. `remove()` **queues** a genuine removal rather than applying it immediately, so a same-tick re-insert can cancel it (an Angular move — see the postmortem above). The bug: that queue was drained in a `queueMicrotask`, which fires **after** `end()` has already flushed. So the `__RemoveElement` ran too late — the node was gone from the JS element tree but not committed to native until some _later_ cycle happened to flush. Until then it kept occupying layout space, often invisibly: a `LynxTransition` panel whose leave animation faded it to `opacity: 0` "hid" but left a gap; an accordion panel collapsed with leftover padding.
 
 ### The fix
 
@@ -268,17 +268,17 @@ Create elements at any time — from a router navigation, a dynamic `createCompo
 
 ### What Lynx does
 
-`__FlushElementTree()` is what commits (lays out and paints) element mutations, and the renderer calls it once per CD cycle from `LynxRendererFactory2.end()`. Work done *outside* a CD cycle never hits that call. Angular's `RouterOutlet` builds a lazy route component **during navigation** — before any `begin()`/`end()` bracket — so its freshly created native elements land in the fiber tree but sit unflushed. The core's `OnPatchFinishForFiber` lays out only when a flush actually runs (`references/lynx/core/renderer/dom/element_manager.cc`), so the content stays invisible until something else triggers a cycle.
+`__FlushElementTree()` is what commits (lays out and paints) element mutations, and the renderer calls it once per CD cycle from `LynxRendererFactory2.end()`. Work done _outside_ a CD cycle never hits that call. Angular's `RouterOutlet` builds a lazy route component **during navigation** — before any `begin()`/`end()` bracket — so its freshly created native elements land in the fiber tree but sit unflushed. The core's `OnPatchFinishForFiber` lays out only when a flush actually runs (`references/lynx/core/renderer/dom/element_manager.cc`), so the content stays invisible until something else triggers a cycle.
 
 The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpdate`'s `queueMicrotask` safety net, whose comment names "lazy-loaded route components on first navigation"); nothing covered non-list content.
 
-**Scope:** this is about content *created* out of cycle. A different bug made `@if`/`@for` content vanish specifically on route **re-entry** — that was a canonical-wrapper mismatch, not a missed flush; see the next entry.
+**Scope:** this is about content _created_ out of cycle. A different bug made `@if`/`@for` content vanish specifically on route **re-entry** — that was a canonical-wrapper mismatch, not a missed flush; see the next entry.
 
 ### The fix
 
 `scheduleSettleFlush()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) schedules ONE coalesced `queueMicrotask` flush whenever native work happens outside a CD cycle. Two call sites arm it:
 
-- `LynxDocument`'s element creators — for content *created* out of cycle (first navigation to a lazy route, a dynamic `createComponent()`).
+- `LynxDocument`'s element creators — for content _created_ out of cycle (first navigation to a lazy route, a dynamic `createComponent()`).
 - `LynxElement.#recreateIfDead()` — recreate-on-remount builds fresh refs via `createNativeRefByTag` directly (bypassing `LynxDocument.createElement`), and a route re-attach runs out of cycle, so the rebuilt subtree needs its own flush.
 
 `LynxRendererFactory2.begin()`/`end()` maintain the in-cycle flag (`setInsideChangeDetection`, `packages/runtime/src/lib/lynx-render-lifecycle.ts`), so in-cycle rendering stays a no-op — its `end()` already flushes. It uses `queueMicrotask`, never `setTimeout` (a macrotask flush crashes the native engine), stands down if a real CD cycle starts first, and is skipped while the first render is pending (native flushes after `renderPage`). Covered by `packages/runtime/src/lib/lynx-element/settle-flush.test.ts`.
@@ -297,13 +297,13 @@ Navigate away from a route and back, and the whole view returns exactly as it wa
 
 `LynxRouteReuseStrategy` **detaches** a route on navigate-away and re-**inserts** the same view on return (to spare the finite native element pool — see the route-reuse entry below). Angular re-attaches a detached view by re-inserting only its **top-level** native node; nested `@if`/`@for` containers ride that node's subtree (`applyNodes` in `@angular/core` walks children only for `ng-container`/projection, not plain elements). On Lynx that subtree's painting nodes were destroyed on detach, so the renderer must rebuild the whole subtree from cache via `#recreateSubtree()`.
 
-That rebuild walks each wrapper's **canonical** `#children` — the wrapper list Angular stores in its LView. The break: `parentNode()`/`nextSibling()/querySelector()` used to mint a **throwaway** `LynxElement` for a native ref (there is no native-ref → wrapper lookup). Angular finds an embedded view's insertion parent via `renderer.parentNode(anchorComment)`, so `@if`/`@for` content was inserted through that throwaway and adopted into *its* `#children`, not the canonical parent's. It rendered fine on first paint (the throwaway drives the same native ref), but was invisible to `#recreateSubtree` — so on route re-entry the containers rebuilt and the embedded content did not.
+That rebuild walks each wrapper's **canonical** `#children` — the wrapper list Angular stores in its LView. The break: `parentNode()`/`nextSibling()/querySelector()` used to mint a **throwaway** `LynxElement` for a native ref (there is no native-ref → wrapper lookup). Angular finds an embedded view's insertion parent via `renderer.parentNode(anchorComment)`, so `@if`/`@for` content was inserted through that throwaway and adopted into _its_ `#children`, not the canonical parent's. It rendered fine on first paint (the throwaway drives the same native ref), but was invisible to `#recreateSubtree` — so on route re-entry the containers rebuilt and the embedded content did not.
 
 Static template content survives because its wrappers are adopted canonically at creation; only embedded-view content routed through `parentNode()` hit the throwaway.
 
 ### The fix
 
-A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and `LynxRenderer.destroyNode` (now non-null) drops the entry when Angular tears the element down. Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a *fresh* embedded view).
+A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and `LynxRenderer.destroyNode` (now non-null) drops the entry when Angular tears the element down. Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a _fresh_ embedded view).
 
 ---
 
@@ -437,7 +437,8 @@ spills over the footer instead of scrolling. The fix has two parts:
 <!-- Header/scroll/footer column: the middle section scrolls -->
 <view class="flex-col flex" style="height: 100vh">
   <view><!-- header --></view>
-  <view class="flex-1 flex-col flex">        <!-- column, claims remaining height -->
+  <view class="flex-1 flex-col flex">
+    <!-- column, claims remaining height -->
     <scroll-view scroll-orientation="vertical" class="h-full w-full">
       <!-- long content scrolls here -->
     </scroll-view>
@@ -464,8 +465,8 @@ This is the pattern the app shell, `demo-screen`, and `ui-nav-drawer-content`
 all use.
 
 **A routed component's host is itself a flex child that must claim the height.**
-Angular's `<router-outlet>` inserts each routed component as a *real Lynx
-element* (`<app-home>`, `<app-motion-demo>`, …) — a sibling of `<router-outlet>`
+Angular's `<router-outlet>` inserts each routed component as a _real Lynx
+element_ (`<app-home>`, `<app-motion-demo>`, …) — a sibling of `<router-outlet>`
 inside the outlet's container. That host arrives unstyled (no flex-grow, no
 height), so it collapses to its content and every `scroll-view` inside the route
 resolves `h-full` against a content-sized ancestor and expands instead of
@@ -839,10 +840,13 @@ Bind the **mouse** press events alongside the touch ones on the same element, po
 
 ```html
 <view
-  (bindtouchstart)="onPressStart()"  (bindmousedown)="onPressStart()"
-  (bindtouchend)="onPressEnd()"      (bindmouseup)="onPressEnd()"
-  (bindtouchcancel)="onPressCancel()" (bindmouseleave)="onPressCancel()"
->
+  (bindtouchstart)="onPressStart()"
+  (bindmousedown)="onPressStart()"
+  (bindtouchend)="onPressEnd()"
+  (bindmouseup)="onPressEnd()"
+  (bindtouchcancel)="onPressCancel()"
+  (bindmouseleave)="onPressCancel()"
+></view>
 ```
 
 `mouseleave` is the `touchcancel` analogue — it restores the scale if the cursor leaves while pressed. Mouse events never fire on touch-only devices, so this is inert on native and touch continues to drive the animation there; the two platforms end up with identical feedback. Lynx has a documented Mouse Event API (`mousedown`/`mouseup`/`mouseenter`/`mouseleave`; see the Lynx docs — note its `button` numbering is non-standard, below), and the renderer's `EVENT_PREFIXES` accepts `bind` + any event name, so no renderer change is needed. Applied to `button`, `toggle`, `card`, `action-sheet`, `nav-drawer`, and `button-group`; the shared rationale lives in the `pressDown`/`pressRelease` JSDoc in `packages/ui/src/lib/utils/animate.ts`.
@@ -1295,7 +1299,7 @@ A z-indexed element is stacked against its nearest stacking-context ancestor, an
 
 ### The fix
 
-Make the nearest ancestor *inside* the scrolling content a stacking context: give it `z-index: 0` (Tailwind `z-0`). The `z-index: 1` then stays local to that wrapper and scrolls with it. Do this in the component that introduces the `z-index` (see the wrappers in `packages/ui`'s `input.ts`/`textarea.ts`) rather than relying on every consumer's scroll-view to set `z-index: 0`.
+Make the nearest ancestor _inside_ the scrolling content a stacking context: give it `z-index: 0` (Tailwind `z-0`). The `z-index: 1` then stays local to that wrapper and scrolls with it. Do this in the component that introduces the `z-index` (see the wrappers in `packages/ui`'s `input.ts`/`textarea.ts`) rather than relying on every consumer's scroll-view to set `z-index: 0`.
 
 ---
 
@@ -2206,7 +2210,7 @@ Set `flatten={false}` on elements that need:
   tool for clipping axis labels or any element deliberately positioned to
   straddle an edge. `UiCartesianChart` originally clipped its out-of-window
   buffer tick labels with a `overflow: hidden` + `z-index: 0` +
-  `[flatten]="false"` container, but that same clip sliced the *legitimate*
+  `[flatten]="false"` container, but that same clip sliced the _legitimate_
   edge labels in half (the top y-label is centered on the top gridline, so its
   box overhangs the container top by half its font height). The container clip
   was reverted in favor of hiding individual out-of-window labels with
@@ -3879,7 +3883,7 @@ Color it with `var(--ring)` / `var(--destructive)`: `var()` resolves in inline s
 
 ### Fading a focus ring: animate opacity, not the shadow
 
-`box-shadow` is `animatable: no` on Lynx, so `transition: box-shadow` is silently ignored and the ring snaps. The docs mark it non-animatable, and the core confirms it: `kBoxShadow` is left out of the transition validator (`IsValueValid()` in `core/animation/css_transition_manager.cc`), so the engine rejects it. `opacity` **is** animatable — so put the shadow on its own overlay layer and transition *that layer's* opacity:
+`box-shadow` is `animatable: no` on Lynx, so `transition: box-shadow` is silently ignored and the ring snaps. The docs mark it non-animatable, and the core confirms it: `kBoxShadow` is left out of the transition validator (`IsValueValid()` in `core/animation/css_transition_manager.cc`), so the engine rejects it. `opacity` **is** animatable — so put the shadow on its own overlay layer and transition _that layer's_ opacity:
 
 ```html
 <view [class]="wrapperClass()">
@@ -3897,7 +3901,7 @@ Color it with `var(--ring)` / `var(--destructive)`: `var()` resolves in inline s
 Three Lynx-specific requirements make this render on-device:
 
 - **A dedicated overlay layer.** Opacity on the wrapper would fade the input too. The shadow rides a separate sibling whose opacity is independent. Keep `ringShadow()` always set (never null) so the shadow stays painted while the layer fades out — drive visibility with opacity alone.
-- **First child = painted behind.** Lynx paints in **source order**; positioned elements do *not* jump above in-flow siblings as on web. So the ring layer placed first stays behind the input, which keeps receiving taps — no `pointer-events` (it **errors the Lynx build**; see that entry). The overlay's outset shadow still shows because it spreads *outside* the wrapper.
+- **First child = painted behind.** Lynx paints in **source order**; positioned elements do _not_ jump above in-flow siblings as on web. So the ring layer placed first stays behind the input, which keeps receiving taps — no `pointer-events` (it **errors the Lynx build**; see that entry). The overlay's outset shadow still shows because it spreads _outside_ the wrapper.
 - **Outset shadow only.** Lynx doesn't render `inset` box-shadows (see the inset entry), so the crisp "border" is an outset `0 0 0 1px` ring hugging the edge, layered under a softer `0 0 0 3px` ring — not a real inset border.
 
 ### Don't mix binding paths on one element
@@ -3916,17 +3920,19 @@ Three Lynx-specific requirements make this render on-device:
 
 Two differences compound:
 
-1. **No `requestIdleCallback`/`cancelIdleCallback`.** Neither exists as a global on any thread — a whole-tree search of the Lynx core returns nothing. Only `setTimeout`/`clearTimeout` are registered (as *global* functions on the main-thread Lepus context via `RegisterGlobalFunction`, and on the `lynx` object on the background thread).
+1. **No `requestIdleCallback`/`cancelIdleCallback`.** Neither exists as a global on any thread — a whole-tree search of the Lynx core returns nothing. Only `setTimeout`/`clearTimeout` are registered (as _global_ functions on the main-thread Lepus context via `RegisterGlobalFunction`, and on the `lynx` object on the background thread).
 
 2. **`setTimeout` passes an empty object to the callback.** The Lepus timed-task dispatcher invokes the stored callback with `Dictionary::Create()` — an empty `{}` — as its single argument (`core/runtime/lepus/tasks/lepus_callback_manager.cc`, `SetTimeTask`: `func->Execute({lepus::Value(lepus::Dictionary::Create())})`). So on Lynx `setTimeout(cb)` effectively calls `cb({})`, not `cb()`.
 
 Together these crash Angular's `@defer (on idle)`. With no `requestIdleCallback`, Angular's `RequestIdleCallbackService` falls back to `cb => setTimeout(cb)`, then its `IdleScheduler` does:
 
 ```js
-const callback = deadline => {
+const callback = (deadline) => {
   for (const cb of bucket.queue) {
-    cb(); this.applicationRef._tick(); /* … */
-    if (deadline && deadline.timeRemaining() === 0 && !deadline.didTimeout) break;
+    cb();
+    this.applicationRef._tick(); /* … */
+    if (deadline && deadline.timeRemaining() === 0 && !deadline.didTimeout)
+      break;
   }
 };
 ```
@@ -3962,13 +3968,13 @@ Code=-1002 "unsupported URL" …
 NSErrorFailingURLStringKey=webpack:///static/font/Roboto-Light.<hash>.ttf
 ```
 
-`NSURLErrorDomain -1002` is **"unsupported URL"**, not a network failure — iOS rejected the URL scheme outright and never made a request. (So this is *not* a firewall/connectivity problem; a blocked network yields a timeout, `-1001`/`-1004`/`-1009`.)
+`NSURLErrorDomain -1002` is **"unsupported URL"**, not a network failure — iOS rejected the URL scheme outright and never made a request. (So this is _not_ a firewall/connectivity problem; a blocked network yields a timeout, `-1001`/`-1004`/`-1009`.)
 
 The culprit is the scheme: `webpack:///static/font/…`. Assets referenced from CSS `url()` are resolved by `@lynx-js/css-extract-webpack-plugin`'s child compilation, which hardcodes `const BASE_URI = 'webpack://'` (`lib/loader.js`) and does **not** inherit the runtime `publicPath`. Every `url()` gets joined against that base, so the extracted CSS bakes in an absolute `webpack:///static/font/<name>.<hash>.ttf`.
 
 That URL is absolute — it carries the `webpack://` scheme — so Lynx never re-resolves it against the bundle origin.
 
-**Images work precisely because they stay relative.** A JS-imported `<image src>` resolves through the *main* compilation as `__webpack_require__.p + "static/image/…"`, producing a root-relative `/static/image/…`. Lynx resolves that against the bundle's loading origin, so it fetches. Fonts never take this path.
+**Images work precisely because they stay relative.** A JS-imported `<image src>` resolves through the _main_ compilation as `__webpack_require__.p + "static/image/…"`, producing a root-relative `/static/image/…`. Lynx resolves that against the bundle's loading origin, so it fetches. Fonts never take this path.
 
 `output.dataUriLimit` does **not** help. The css-loader `url()` request matches the font rule's `?__inline=false` `asset/resource` branch before the size threshold is ever consulted, so raising the limit changes nothing.
 
@@ -3979,8 +3985,8 @@ Force `@font-face` fonts to inline as Base64 data URIs (`packages/rsbuild-plugin
 ```ts
 if (chain.module.rules.has(CHAIN_ID.RULE.FONT)) {
   const fontRule = chain.module.rule(CHAIN_ID.RULE.FONT);
-  fontRule.oneOfs.clear();        // drop the asset/resource + ?url/?inline/?raw branches
-  fontRule.type('asset/inline');  // inline every matched font, ignoring any css-loader query
+  fontRule.oneOfs.clear(); // drop the asset/resource + ?url/?inline/?raw branches
+  fontRule.type('asset/inline'); // inline every matched font, ignoring any css-loader query
 }
 ```
 
@@ -3997,9 +4003,7 @@ React Lynx never hit this — it has no equivalent global-stylesheet `@font-face
 Prose written across indented lines renders flush, with no leading or trailing space:
 
 ```html
-<text>
-  Hello world
-</text>
+<text> Hello world </text>
 ```
 
 renders as `Hello world`.
@@ -4038,13 +4042,13 @@ Because AngularLynx trims, templates can be written naturally (`<text>\n  Hello\
 
 ### What you'd expect (web)
 
-A `pointermove`/drag handler can freely mutate the DOM — add rows, remove nodes, re-render a list — and the browser just repaints. There's no penalty for changing the *number* of elements mid-gesture.
+A `pointermove`/drag handler can freely mutate the DOM — add rows, remove nodes, re-render a list — and the browser just repaints. There's no penalty for changing the _number_ of elements mid-gesture.
 
 ### What Lynx does
 
-Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside a Lynx worklet**. Mutating the element *tree* from that context — inserting or removing native elements — is the same dangerous path that crashes when navigating from a native event callback (see `App.navigateTo()` in `kitchen-sink-app`, which defers router navigation with `setTimeout(…, 0)` for exactly this reason). Changing an element's *style* is fine; changing which elements *exist* is not.
+Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside a Lynx worklet**. Mutating the element _tree_ from that context — inserting or removing native elements — is the same dangerous path that crashes when navigating from a native event callback (see `App.navigateTo()` in `kitchen-sink-app`, which defers router navigation with `setTimeout(…, 0)` for exactly this reason). Changing an element's _style_ is fine; changing which elements _exist_ is not.
 
-This bites charts specifically. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick *values* live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
+This bites charts specifically. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick _values_ live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
 
 ### The fix
 
@@ -4067,9 +4071,9 @@ Registering `onStart`, `onUpdate`, and `onEnd` on a pan is enough — `onStart` 
 - iOS `LynxPanGestureHandler.m`: `onStart:` returns early if `!_isInvokedBegin`; `onEnd:` returns early on the same flag. `_isInvokedBegin` is set **only** inside `onBegin:`, which itself returns early unless `[self onBeginEnabled]` — an enable flag that defaults `NO` and is flipped on only when `onBegin` is in the JS callback list (`handleEnableGestureCallback:`).
 - Android `PanGestureHandler.java` mirrors this exactly: `onStart()` checks `!mIsInvokedBegin` (line 187), `mIsInvokedBegin` is set only in `onBegin()` (line 172), gated by `isOnBeginEnable()`.
 
-So: register `onStart`/`onUpdate`/`onEnd` but not `onBegin`, and on-device **`onStart` and `onEnd` never fire — with no error, no warning, no log.** `onUpdate` fires normally (it has no such gate), so the gesture *looks* alive — it just never announces its start or end.
+So: register `onStart`/`onUpdate`/`onEnd` but not `onBegin`, and on-device **`onStart` and `onEnd` never fire — with no error, no warning, no log.** `onUpdate` fires normally (it has no such gate), so the gesture _looks_ alive — it just never announces its start or end.
 
-**Concrete symptom:** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading *current* state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback. See `UiCartesianChart`'s `#pan` gesture in `cartesian-chart.ts`.
+**Concrete symptom:** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading _current_ state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback. See `UiCartesianChart`'s `#pan` gesture in `cartesian-chart.ts`.
 
 ### The fix
 
@@ -4077,10 +4081,18 @@ Always register `onBegin` on a continuous gesture (`PanGesture`/`PinchGesture`/`
 
 ```ts
 new PanGesture()
-  .onBegin(() => { /* snapshot start-of-gesture state HERE, not onStart */ })
-  .onStart(() => { /* fallback anchor: ??= so it's a no-op if onBegin already ran */ })
-  .onUpdate((event) => { /* apply cumulative event.translationX/Y against the snapshot */ })
-  .onEnd(() => { /* clear the snapshot */ });
+  .onBegin(() => {
+    /* snapshot start-of-gesture state HERE, not onStart */
+  })
+  .onStart(() => {
+    /* fallback anchor: ??= so it's a no-op if onBegin already ran */
+  })
+  .onUpdate((event) => {
+    /* apply cumulative event.translationX/Y against the snapshot */
+  })
+  .onEnd(() => {
+    /* clear the snapshot */
+  });
 ```
 
 Belt-and-suspenders: also anchor defensively on the first `onUpdate` (`snapshot ??= currentValue`) so a platform that somehow skips both `onBegin` and `onStart` still can't compound — it just anchors one frame later.
@@ -4101,19 +4113,31 @@ The renderer polyfills `globalThis.document` / `globalThis.window` at startup (s
 
 ### What Lynx does
 
-**(1) The background bundle's BOM globals are injected as function parameters, which shadow `globalThis`.** `RuntimeWrapperWebpackPlugin` wraps the background-thread script in an AMD module whose signature injects the BOM as *parameters* (`defaultInjectVars`):
+**(1) The background bundle's BOM globals are injected as function parameters, which shadow `globalThis`.** `RuntimeWrapperWebpackPlugin` wraps the background-thread script in an AMD module whose signature injects the BOM as _parameters_ (`defaultInjectVars`):
 
 ```js
-tt.define("main.js", function(require, module, exports, /* … */ window, document, location, navigator, history, /* … */) {
-  // ← the entire app-service.js (polyfills + Angular) runs in here
-});
+tt.define(
+  'main.js',
+  function (
+    require,
+    module,
+    exports,
+    /* … */ window,
+    document,
+    location,
+    navigator,
+    history /* … */,
+  ) {
+    // ← the entire app-service.js (polyfills + Angular) runs in here
+  },
+);
 ```
 
-So inside the bundle a bare `document` resolves to that **parameter**, not `globalThis.document`. On the web background thread (a real Web Worker) the Lynx web runtime passes `undefined` for `document`/`window` — a worker has no DOM. The startup polyfills (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`, plus the defensive copy in `runtime.ts`) run `globalThis.document = { … }` under a `typeof document === 'undefined'` guard. The guard reads the undefined *parameter* (true), so the assignment fires — but it sets a *global property* and never rebinds the shadowing local param. Net result: `globalThis.document` is a stub, while the bare `document` that bundle code sees stays `undefined`.
+So inside the bundle a bare `document` resolves to that **parameter**, not `globalThis.document`. On the web background thread (a real Web Worker) the Lynx web runtime passes `undefined` for `document`/`window` — a worker has no DOM. The startup polyfills (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`, plus the defensive copy in `runtime.ts`) run `globalThis.document = { … }` under a `typeof document === 'undefined'` guard. The guard reads the undefined _parameter_ (true), so the assignment fires — but it sets a _global property_ and never rebinds the shadowing local param. Net result: `globalThis.document` is a stub, while the bare `document` that bundle code sees stays `undefined`.
 
 Angular's **internal** `getDocument()` (`_debug_node-chunk.mjs`) reads the module-level `DOCUMENT` var (unset), then the bare `document` identifier (the undefined param), then throws `NG0210`. This is why the `globalThis.document` shim looks like it should help but can't: most Angular DOM access goes through the DI `DOCUMENT` token (`provideRenderer` supplies `{}`), so it never touches the shadowed global — but a few Angular internals call the raw `getDocument()` instead. (The polyfills' own `catch` comment, "Read-only in Web Worker — document already exists", is doubly wrong: a worker has no `document` at all, and even when the assignment succeeds it targets the wrong binding.)
 
-**(2) `ImagePerformanceWarning.start()` runs on web but early-returns on native.** It's an app-bootstrap listener gated on `typeof PerformanceObserver === 'undefined'`. The native background-thread engine (PrimJS) has no `PerformanceObserver`, so `start()` returns *before* calling `getDocument()` — iOS never crashes. A Web Worker *does* have `PerformanceObserver`, so on web `start()` proceeds into `getDocument()`, hits the undefined `document` param → NG0210 → the bootstrap promise rejects → nothing renders.
+**(2) `ImagePerformanceWarning.start()` runs on web but early-returns on native.** It's an app-bootstrap listener gated on `typeof PerformanceObserver === 'undefined'`. The native background-thread engine (PrimJS) has no `PerformanceObserver`, so `start()` returns _before_ calling `getDocument()` — iOS never crashes. A Web Worker _does_ have `PerformanceObserver`, so on web `start()` proceeds into `getDocument()`, hits the undefined `document` param → NG0210 → the bootstrap promise rejects → nothing renders.
 
 Because iOS and web run the **same** bundle with the **same** undefined `document` param, and iOS works, the only real divergence is that one `PerformanceObserver` gate — nothing on the normal render path reads the bare `document`.
 
@@ -4127,7 +4151,7 @@ Disable `ImagePerformanceWarning` in `provideRenderer()` (`packages/runtime/src/
 
 This makes web's document-access path identical to iOS's (which already never reached `getDocument()`), so it is zero-risk on native — and it's semantically correct: Lynx renders native `<image>`, not HTML `<img>`, and has no LCP, so the diagnostic can never apply. Covered by `providers.test.ts`.
 
-Still-latent hazard: any *other* Angular internal that reads the bare `document`/`window` (instead of the DI `DOCUMENT` token) on the normal path would hit the same shadowed-undefined param on both platforms. None do today. A more general fix would be `ɵsetDocument(stub)` — it sets the module-level `DOCUMENT` var `getDocument()` checks first, bypassing the shadowed global — deliberately avoided for now because it mutates Angular global state on every platform, changing native behavior for no current benefit.
+Still-latent hazard: any _other_ Angular internal that reads the bare `document`/`window` (instead of the DI `DOCUMENT` token) on the normal path would hit the same shadowed-undefined param on both platforms. None do today. A more general fix would be `ɵsetDocument(stub)` — it sets the module-level `DOCUMENT` var `getDocument()` checks first, bypassing the shadowed global — deliberately avoided for now because it mutates Angular global state on every platform, changing native behavior for no current benefit.
 
 ---
 
@@ -4141,16 +4165,16 @@ Whatever the framework renders during bootstrap appears on screen once bootstrap
 
 ### What Lynx does
 
-The renderer **skips the first `__FlushElementTree()`** on purpose. `LynxRendererFactory2.end()` gates it: `if (!isFirstRenderPending()) __FlushElementTree()`. The reasoning (see `lynx-render-lifecycle.ts`) is that every change-detection cycle during bootstrap is still nested inside the native engine's `renderPage()` call, and driving a layout-triggering flush there re-enters a `<list>`'s `componentAtIndex`. Skipping is safe **on native** because *"the native engine performs its own implicit flush once `renderPage()` returns."*
+The renderer **skips the first `__FlushElementTree()`** on purpose. `LynxRendererFactory2.end()` gates it: `if (!isFirstRenderPending()) __FlushElementTree()`. The reasoning (see `lynx-render-lifecycle.ts`) is that every change-detection cycle during bootstrap is still nested inside the native engine's `renderPage()` call, and driving a layout-triggering flush there re-enters a `<list>`'s `componentAtIndex`. Skipping is safe **on native** because _"the native engine performs its own implicit flush once `renderPage()` returns."_
 
-`@lynx-js/web-core` has **no such implicit flush**. Worse, web-core's first-paint side effects live *inside* `__FlushElementTree` — its main-thread `createElementAPI` does, on the first flush where `page && !page.parentNode`:
+`@lynx-js/web-core` has **no such implicit flush**. Worse, web-core's first-paint side effects live _inside_ `__FlushElementTree` — its main-thread `createElementAPI` does, on the first flush where `page && !page.parentNode`:
 
 ```js
-rootDom.appendChild(page);          // attach the page to the DOM
+rootDom.appendChild(page); // attach the page to the DOM
 rootDom.host.style.display = 'flex'; // reveal <lynx-view> (its base CSS is display:none)
 ```
 
-So with the first flush skipped and no implicit web-core flush, the page is never attached and `<lynx-view>` stays `display:none`. Every app renders blank — until some *later* CD cycle (a tap, a signal change) happens to flush and reveal it. Static screens never get that, so they stay blank forever. `<lynx-view>`'s base rule really is `display:none` (revealed only by `[ssr]` in CSS, or by that `style.display='flex'` line at runtime), which is why the whole view — not just its contents — is invisible.
+So with the first flush skipped and no implicit web-core flush, the page is never attached and `<lynx-view>` stays `display:none`. Every app renders blank — until some _later_ CD cycle (a tap, a signal change) happens to flush and reveal it. Static screens never get that, so they stay blank forever. `<lynx-view>`'s base rule really is `display:none` (revealed only by `[ssr]` in CSS, or by that `style.display='flex'` line at runtime), which is why the whole view — not just its contents — is invisible.
 
 ### The fix
 
@@ -4188,11 +4212,14 @@ Uncaught TypeError: crypto.randomUUID is not a function
 
 ### What Lynx does
 
-`kwift.CHROME.js` is Lynx's **prebuilt web engine** — it is *not* in our dependency tree (nothing under `node_modules/@lynx-js/**` references `kwift` or `randomUUID`); web-core fetches it at runtime and evaluates it **inside the background Web Worker** it spawns:
+`kwift.CHROME.js` is Lynx's **prebuilt web engine** — it is _not_ in our dependency tree (nothing under `node_modules/@lynx-js/**` references `kwift` or `randomUUID`); web-core fetches it at runtime and evaluates it **inside the background Web Worker** it spawns:
 
 ```js
 // @lynx-js/web-core/dist/client/mainthread/Background.js
-new Worker(new URL('../background/index.js', import.meta.url), { type: 'module', name: 'lynx-bg' })
+new Worker(new URL('../background/index.js', import.meta.url), {
+  type: 'module',
+  name: 'lynx-bg',
+});
 ```
 
 During handler registration the engine calls `crypto.randomUUID()`. The catch: **`crypto.randomUUID()` is a secure-context-only Web API.** On an insecure origin the `crypto` object still exists (so `crypto.getRandomValues` works) but `crypto.randomUUID` is simply `undefined` — hence "is not a function", not "crypto is undefined". A Web Worker is a secure context **only if the page that created it is** (the worker URL is same-origin here), so opening the "Network" `http://<LAN-IP>:<port>` URL the dev server prints makes the engine crash the moment it inits.
@@ -4201,9 +4228,9 @@ This is the **same root cause** as the `SharedArrayBuffer`/`crossOriginIsolated`
 
 ### The fix
 
-**Open the preview from a secure context.** `http://localhost:<port>` and `http://127.0.0.1:<port>` always qualify; any HTTPS origin does too. Do **not** use the LAN IP URL for the *browser* preview (the QR / on-device flow is unaffected — LynxExplorer loads the native `.lynx.bundle`, not the browser page).
+**Open the preview from a secure context.** `http://localhost:<port>` and `http://127.0.0.1:<port>` always qualify; any HTTPS origin does too. Do **not** use the LAN IP URL for the _browser_ preview (the QR / on-device flow is unaffected — LynxExplorer loads the native `.lynx.bundle`, not the browser page).
 
-There is **no code polyfill** for this: the engine is Lynx's own code, it runs before ours in web-core's worker, and we don't control that worker's entry — so nothing we ship can define `crypto.randomUUID` in time. What we *can* do is fail loudly instead of cryptically. `runtime.ts` emits an actionable, **web-only** (`__WEB__`-gated, DCE'd from native) console error when `globalThis.isSecureContext === false`, pointing the developer at the localhost URL rather than leaving them with a stack trace inside `kwift.CHROME.js`.
+There is **no code polyfill** for this: the engine is Lynx's own code, it runs before ours in web-core's worker, and we don't control that worker's entry — so nothing we ship can define `crypto.randomUUID` in time. What we _can_ do is fail loudly instead of cryptically. `runtime.ts` emits an actionable, **web-only** (`__WEB__`-gated, DCE'd from native) console error when `globalThis.isSecureContext === false`, pointing the developer at the localhost URL rather than leaving them with a stack trace inside `kwift.CHROME.js`.
 
 ---
 
@@ -4211,11 +4238,11 @@ There is **no code polyfill** for this: the engine is Lynx's own code, it runs b
 
 ### What you'd expect (Lynx)
 
-Lynx paints sibling elements in **strict source order**: a later child always paints on top of (and hit-tests before) an earlier child, no matter their `position`. This gives a simple way to layer a decorative overlay *behind* an interactive element. Put the overlay **first** in source order and the interactive element **after** it. The interactive element then sits on top and stays tappable — no `z-index`, and no `pointer-events` (which errors the Lynx build anyway; see above).
+Lynx paints sibling elements in **strict source order**: a later child always paints on top of (and hit-tests before) an earlier child, no matter their `position`. This gives a simple way to layer a decorative overlay _behind_ an interactive element. Put the overlay **first** in source order and the interactive element **after** it. The interactive element then sits on top and stays tappable — no `z-index`, and no `pointer-events` (which errors the Lynx build anyway; see above).
 
 ### What web does
 
-On web this is governed by **CSS stacking rules**, not source order. Within a stacking context the paint groups are, low to high: non-positioned in-flow content → positioned elements with `z-index: auto`/`0` → positive `z-index`. A `position: absolute` sibling (even with no `z-index`) is a *positioned* element, so it paints **above** a *static* (non-positioned) sibling **regardless of source order**.
+On web this is governed by **CSS stacking rules**, not source order. Within a stacking context the paint groups are, low to high: non-positioned in-flow content → positioned elements with `z-index: auto`/`0` → positive `z-index`. A `position: absolute` sibling (even with no `z-index`) is a _positioned_ element, so it paints **above** a _static_ (non-positioned) sibling **regardless of source order**.
 
 So the "overlay first, interactive element after" layout inverts on web. A transparent `position: absolute` overlay placed before a static `<input>` paints **on top of** the input and **swallows every pointer event** — the input never focuses, and you can't type. The symptom: a field that renders and looks fine but is dead to clicks on web, while working perfectly on iOS/Android.
 
@@ -4226,15 +4253,18 @@ This bit the Dolan `ui-input` and `ui-textarea` focus ring: the ring is a transp
 Give the interactive element an explicit stacking elevation so it sits above the overlay on **both** platforms:
 
 ```html
-<view>                                             <!-- wrapper -->
-  <view class="absolute inset-0" .../>             <!-- decorative overlay, first child -->
-  <input style="position: relative; z-index: 1;" ... />  <!-- interactive, elevated -->
+<view>
+  <!-- wrapper -->
+  <view class="absolute inset-0" ... />
+  <!-- decorative overlay, first child -->
+  <input style="position: relative; z-index: 1;" ... />
+  <!-- interactive, elevated -->
 </view>
 ```
 
-`position: relative; z-index: 1` is **redundant on Lynx** (source order already keeps the input on top) but **required on web** (it moves the input into the positive-`z-index` paint group, above the `z-index: auto` overlay). Both properties are needed: `z-index` only applies to a *positioned* element, so `position: relative` is what makes the `z-index` take effect. Lynx's CSS encoder accepts both (unlike `pointer-events`), so the one declaration is safe cross-platform.
+`position: relative; z-index: 1` is **redundant on Lynx** (source order already keeps the input on top) but **required on web** (it moves the input into the positive-`z-index` paint group, above the `z-index: auto` overlay). Both properties are needed: `z-index` only applies to a _positioned_ element, so `position: relative` is what makes the `z-index` take effect. Lynx's CSS encoder accepts both (unlike `pointer-events`), so the one declaration is safe cross-platform.
 
-Do **not** try to fix this by moving the overlay *after* the input in source order — that would put the overlay on top on Lynx (breaking the platform where it currently works) to fix web. Elevate the input instead; it satisfies both painting models at once.
+Do **not** try to fix this by moving the overlay _after_ the input in source order — that would put the overlay on top on Lynx (breaking the platform where it currently works) to fix web. Elevate the input instead; it satisfies both painting models at once.
 
 ---
 
@@ -4248,7 +4278,7 @@ A `position: sticky; top: 0` header pins to the top of a scroll container and st
 
 Sticky positioning itself works: the header pins to the top of the `<scroll-view>` and hands off to the next group's header. But the pinned header paints **behind** the rows scrolling past it, so its label disappears under the content — it looks like sticky is broken.
 
-Lynx web sets `position: relative` on **every** `<view>` (its `linear.css` base rule). That makes the rows *positioned* siblings. Among positioned siblings with `z-index: auto`, paint order is source order, so each row — which follows the header in the DOM — paints over it. This is the same painting-model difference as the section above; every view being `position: relative` is what makes it bite sticky headers specifically.
+Lynx web sets `position: relative` on **every** `<view>` (its `linear.css` base rule). That makes the rows _positioned_ siblings. Among positioned siblings with `z-index: auto`, paint order is source order, so each row — which follows the header in the DOM — paints over it. This is the same painting-model difference as the section above; every view being `position: relative` is what makes it bite sticky headers specifically.
 
 Native is unaffected: the compositor layers the sticky child correctly, and `flatten="false"` (already required for sticky on Android) gives it its own layer.
 
@@ -4259,7 +4289,11 @@ The bug also stays hidden until the list overflows. With little content the `<sc
 Elevate the sticky header with a `z-index` **on web only**, gating it on the `__WEB__` compile-time define:
 
 ```html
-<view class="bg-zinc-100 px-4 py-1.5 sticky top-0" [class.z-10]="isWeb" [flatten]="false">
+<view
+  class="bg-zinc-100 px-4 py-1.5 sticky top-0"
+  [class.z-10]="isWeb"
+  [flatten]="false"
+>
   <text>{{ group.letter }}</text>
 </view>
 ```
@@ -4526,11 +4560,53 @@ A `<blur-view>` blurs whatever is on screen behind it, wherever it sits in the t
 
 ### What Lynx does
 
-Android's blur-view (`LynxUIBlurView` and `BlurView` in xelement-blur-view) isn't a real backdrop blur. Before each frame it redraws one view into an offscreen bitmap and blurs that, and during the redraw every blur-view with a radius skips drawing itself, so it doesn't blur its own output. Which view: the one `android-capture-target` names, or else the nearest ancestor that is `overflow: hidden` or fully contains the blur-view (`getTargetParent()`). For a blur-view inside another one, that ancestor is the outer blur-view, a native view of its own. Redrawing it draws only blur-views, which skip themselves (a `glass-container` has no radius, so it draws its children, which are the glass shapes), so the bitmap is empty and the inner blur-view is invisible. This blanked the glass row and the glass playground in `examples/element-blur-view` on Android, in Lynx Explorer too. A blur-view inside a plain view works, because a plain view is usually flattened, and the redraw then uses its drawing parent.
+Android's blur-view (`LynxUIBlurView` and `BlurView` in xelement-blur-view) isn't a real backdrop blur. Before each frame it redraws one view into an offscreen bitmap and blurs that, and during the redraw every blur-view with a radius skips drawing itself, so it doesn't blur its own output. Which view: the one `android-capture-target` names, or else the nearest ancestor that is `overflow: hidden` or fully contains the blur-view (`getTargetParent()`). For a blur-view inside another one, that ancestor is the outer blur-view, a native view of its own. Redrawing it draws only blur-views, which skip themselves (a `glass-container` has no radius, so it draws its children, which are the glass shapes), so the bitmap is empty and the inner blur-view is invisible. This blanked the glass row and the glass playground in `examples/element-blur-view` on Android, in Lynx Explorer too. A blur-view inside a plain view works, because a plain view is usually flattened, and the redraw then uses its drawing parent. Inside a view with `flatten="false"` it fails the same way: the redraw of a native view holds only its own background and children, not the content behind them. A ReactLynx repro shows the same, so it isn't specific to AngularLynx.
 
 ### The fix
 
 On Android, the runtime gives the page an id (`angular-lynx-page`) and sets `android-capture-target` to it on every `<blur-view>` it creates (`packages/runtime/src/lib/lynx-document/android-blur-capture.ts`). Each blur-view then redraws the page, clipped to its own area, which is what's on screen behind it, and the glass and nested blur-views render. A blur-view in an `<overlay>` now blurs the page below the overlay too. An app's own `android-capture-target` replaces the runtime's, and `""` restores Android's choice. A fix in Lynx itself would be for `getTargetParent()` to skip ancestor blur-views.
+
+---
+
+## Android's `<blur-view>` has no materials or glass
+
+### What you'd expect (parity with iOS)
+
+`blur-effect="light"`, `"extra-light"` and `"dark"` shift what's behind the blur (iOS brightens it, washes it with white or with black), and `blur-effect="glass"` draws a tinted glass shape with a rim, as `glass-style` and `glass-tint-color` say.
+
+### What Lynx does
+
+On Android (Lynx 4.1), `blur-effect`, `glass-style`, `glass-tint-color`, `glass-interactive` and `spacing` do nothing: Lynx implements them on iOS only (`@iOS 4.0` in `@lynx-js/types`' `blur-view.d.ts`). Android's blur-view has `blur-radius`, `blur-sampling`, `enable-auto-blur` and `android-capture-target`, so every `<blur-view>` is a plain Gaussian blur. A glass shape over white shows nothing at all, since a blur of white is white.
+
+### The fix
+
+Android's `BlurView.draw` paints the blurred backdrop first and then the view's own background and children, so a translucent background approximates the materials. It mustn't replace a background the app sets, usually with a class, and the runtime can't set it inline (an inline style beats every class) or tell which classes set one. So the build plugin adds a type-selector rule to the native bundle (`packages/rsbuild-plugin-angular-lynx/src/styles/blur-view.css`), which loses to any class, id or inline style:
+
+```css
+blur-view {
+  background-color: var(--angular-lynx-blur-background, transparent);
+  background-image: var(--angular-lynx-blur-background-image, none);
+  box-shadow: var(--angular-lynx-blur-box-shadow, none);
+}
+```
+
+On Android, the runtime sets the three variables inline on every blur-view, from its attributes (`packages/runtime/src/lib/lynx-document/android-blur-material.ts`): white or black for the materials, and a white sheen with the tint over it and an inset rim for glass. Even a blur-view with no material sets them, to `transparent` and `none`, because CSS variables inherit. iOS sets none, so the fallbacks apply there and its screenshots are unchanged. Web isn't given the rule: it draws its materials in each element's shadow root, and an app-level rule would beat them.
+
+---
+
+## `__AddInlineStyle` can't set a CSS variable
+
+### What you'd expect (web)
+
+`element.style.setProperty('--x', 'red')` sets a custom property, and Angular's `[style.--x]` binding does the same through the renderer's `setStyle`.
+
+### What Lynx does
+
+`__AddInlineStyle(element, '--x', 'red')` looks the name up as a CSS property (`CSSProperty::GetPropertyID`), finds none, and the variable never reaches the element. Only `__SetInlineStyles` sets inline CSS variables: its string form parses `--x: red` declarations when the page config has `enableCSSInlineVariables`, which the build plugin turns on (Lynx 4.1, `FiberElement::ParseRawInlineStyles`). `__SetInlineStyles` replaces every inline style, including those set with `__AddInlineStyle`. Checked on the Android emulator: `style="--probe: red; background-color: var(--probe, blue)"` is red, while `[style.--probe]="'red'"` leaves `var(--probe, blue)` blue. So `[style.--x]` bindings don't work in AngularLynx yet.
+
+### The fix
+
+The runtime's own variables (the blur-view materials above) go in front of the app's `style` string, in one `__SetInlineStyles` call, and the `[style.x]` styles are re-added after it (`#setRuntimeStyle` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). `[style.--x]` bindings still need the same treatment.
 
 ---
 

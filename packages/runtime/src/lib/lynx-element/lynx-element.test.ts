@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 
@@ -136,6 +136,128 @@ describe('LynxElement', () => {
         fakeRef,
         'color: red; font-size: 16px',
       );
+    });
+  });
+
+  describe('blur-view materials on Android', () => {
+    const material = (background: string) =>
+      `--angular-lynx-blur-background: ${background}; ` +
+      '--angular-lynx-blur-background-image: none; ' +
+      '--angular-lynx-blur-box-shadow: none';
+    const NONE = material('transparent');
+    const DARK = material('rgba(0, 0, 0, 0.6)');
+
+    const blurView = () => {
+      const el = new LynxElement(fakeRef);
+      el.tagName = 'blur-view';
+      return el;
+    };
+
+    beforeEach(() => {
+      globalThis.__SetAttribute = vi.fn();
+      globalThis.__SetInlineStyles = vi.fn();
+      globalThis.__AddInlineStyle = vi.fn();
+      vi.stubGlobal('__WEB__', false);
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('sets the material’s CSS variables as its attributes change', () => {
+      element = blurView();
+      element.updateBlurMaterial();
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        NONE,
+      );
+
+      element.setAttribute('blur-effect', 'dark');
+      element.setAttribute('blur-radius', '16px');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        DARK,
+      );
+
+      element.removeAttribute('blur-radius');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        NONE,
+      );
+    });
+
+    it('writes nothing while the material stays the same', () => {
+      element = blurView();
+      element.setAttribute('blur-effect', 'dark');
+      vi.mocked(globalThis.__SetInlineStyles).mockClear();
+      element.setAttribute('blur-effect', 'dark');
+      element.setAttribute('glass-style', 'clear');
+      expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+    });
+
+    it('ignores attributes the material doesn’t depend on', () => {
+      element = blurView();
+      element.setAttribute('blur-sampling', 4);
+      expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+    });
+
+    it('puts the app’s own inline style after its variables', () => {
+      element = blurView();
+      element.setInlineStyles('width: 10px');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        'width: 10px',
+      );
+
+      element.setAttribute('blur-effect', 'dark');
+      element.setAttribute('blur-radius', '16px');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        `${DARK}; width: 10px`,
+      );
+
+      element.setInlineStyles('width: 20px');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        `${DARK}; width: 20px`,
+      );
+
+      // Removing the style attribute keeps the variables.
+      element.setInlineStyles(null as unknown as string);
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        DARK,
+      );
+    });
+
+    it('puts [style.x] styles back after replacing the inline style', () => {
+      element = blurView();
+      element.setStyle('opacity', 0.5);
+      vi.mocked(globalThis.__AddInlineStyle).mockClear();
+
+      element.setAttribute('blur-effect', 'dark');
+
+      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+        fakeRef,
+        'opacity',
+        0.5,
+      );
+    });
+
+    it('leaves iOS’s blur-views alone', () => {
+      vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+      element = blurView();
+      element.updateBlurMaterial();
+      element.setAttribute('blur-effect', 'dark');
+      expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+    });
+
+    it('leaves other elements alone', () => {
+      element = new LynxElement(fakeRef);
+      element.tagName = 'view';
+      element.setAttribute('blur-effect', 'dark');
+      expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
     });
   });
 

@@ -1,18 +1,17 @@
 # Layer 6: the elements that come from Lynx's XElement library rather than its
 # core (fixtures/counter.ts). A host that doesn't link and register XElement
 # renders nothing for these tags, with no error, so each step looks for
-# something only the real element produces: the typed text comes back through
-# the input's bindinput event, the svg is found by its label, and the
-# overlay's content shows only once it is opened.
+# something only the real element produces: the svg is found by its label,
+# the overlay's content shows only once it is opened, and the typed text
+# comes back through the input's bindinput event.
+#
+# Typing comes last, so the keyboard never has to be hidden: Maestro's iOS
+# hideKeyboard is a short swipe at the middle of the screen, which Lynx takes
+# as a tap on whatever is there. In the app's own build, with no Explorer
+# navigation bar above it, that was "Open overlay".
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
-- tapOn: Text field
-- inputText: lynx
-- extendedWaitUntil:
-    visible: 'Typed: lynx'
-    timeout: 10000
-- hideKeyboard
 - assertVisible: SVG circle
 - assertNotVisible: Close overlay
 - tapOn: Open overlay
@@ -23,4 +22,9 @@ appId: ${APP_ID}
 - tapOn: Close overlay
 - extendedWaitUntil:
     notVisible: Close overlay
+    timeout: 10000
+- tapOn: Text field
+- inputText: lynx
+- extendedWaitUntil:
+    visible: 'Typed: lynx'
     timeout: 10000

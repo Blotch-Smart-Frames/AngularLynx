@@ -14,22 +14,29 @@ import { runOnAndroidEmulator } from './android.ts';
 import { prepareIos, runOnIosSimulator } from './ios.ts';
 import type { NativeHost } from './maestro.ts';
 
+type Platform = 'ios' | 'android';
+
 /**
- * Builds the app's own binary with `ng build --platform`, the command users
- * run, and describes it for the Maestro flows. The iOS build needs Lynx's
- * XCFrameworks: published ones, or a local folder in
+ * Describes the app's own binary from `ng build --platform`, the command users
+ * run, for the Maestro flows. It runs the build first unless `prebuilt`: CI
+ * builds the Android app in another job, before the emulator starts, and
+ * hands this one the app's folder with the APK in `dist/android`. The iOS
+ * build needs Lynx's XCFrameworks: published ones, or a local folder in
  * ANGULAR_LYNX_IOS_FRAMEWORKS (see packages/native/README.md).
  */
-const buildShell = async (
-  platform: 'ios' | 'android',
+const shellHost = async (
+  platform: Platform,
   appDir: string,
   logFile: string,
+  prebuilt: boolean,
 ): Promise<NativeHost> => {
-  step(`Layer 6: ng build --platform ${platform}`);
-  await run('npx', ['ng', 'build', '--platform', platform], {
-    cwd: appDir,
-    logFile,
-  });
+  if (!prebuilt) {
+    step(`Layer 6: ng build --platform ${platform}`);
+    await run('npx', ['ng', 'build', '--platform', platform], {
+      cwd: appDir,
+      logFile,
+    });
+  }
   const angularJson = JSON.parse(
     readFileSync(path.join(appDir, 'angular.json'), 'utf8'),
   ) as {
@@ -60,48 +67,38 @@ const buildShell = async (
 };
 
 /**
- * Layer 6: runs an already-built app on a native platform.
- *
- *   node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
- *
- * CI builds the app once on Linux and passes its dist/ to the macOS and
- * Android jobs; `npm run e2e -- --ios` calls runNative() with the app it just
- * built.
+ * Runs the flows in `host` on the platform's simulator or emulator. Returns
+ * the failures.
  */
-export const runNative = async ({
-  platform,
-  distDir,
-  appDir,
-  artifactsDir,
-  port,
-  keepRunning,
-}: {
-  platform: 'ios' | 'android';
-  distDir: string;
-  /**
-   * The app's folder. When set, Layer 6 tests the app's own binary from
-   * `ng build --platform` instead of Lynx Explorer.
-   */
-  appDir?: string;
-  artifactsDir: string;
-  port: number;
-  keepRunning?: boolean;
-}) => {
-  mkdirSync(artifactsDir, { recursive: true });
-  const logFile = path.join(artifactsDir, `${platform}-commands.log`);
-  if (appDir) {
-    const host = await buildShell(platform, appDir, logFile);
-    const failures =
-      platform === 'ios'
-        ? await runOnIosSimulator({ host, artifactsDir, logFile, keepRunning })
-        : await runOnAndroidEmulator({ host, port, artifactsDir, logFile });
-    check(
-      failures.length === 0,
-      `Layer 6 (${platform}) failed:\n  - ${failures.join('\n  - ')}\nScreenshots and logs are in ${artifactsDir}.`,
-    );
-    console.log(`✓ Layer 6 (${platform}, the app's own build) passed`);
-    return;
-  }
+const runFlows = (
+  platform: Platform,
+  host: NativeHost,
+  {
+    artifactsDir,
+    logFile,
+    port,
+    keepRunning,
+  }: {
+    artifactsDir: string;
+    logFile: string;
+    port: number;
+    keepRunning: boolean;
+  },
+) =>
+  platform === 'ios'
+    ? runOnIosSimulator({ host, artifactsDir, logFile, keepRunning })
+    : runOnAndroidEmulator({ host, port, artifactsDir, logFile });
+
+/**
+ * Lynx Explorer opening the app's bundle from a local static server: the dev
+ * path, where `ng serve` hands Explorer a bundle URL. Returns the failures.
+ */
+const runInExplorer = async (
+  platform: Platform,
+  distDir: string,
+  options: Parameters<typeof runFlows>[2],
+): Promise<string[]> => {
+  const { artifactsDir, port } = options;
   // The simulator shares the Mac's network, and the emulator reaches the host
   // through `adb reverse`, so both load the bundle from localhost. Explorer
   // allows plain HTTP.
@@ -123,20 +120,11 @@ export const runNative = async ({
   // re-check when bumping EXPLORER.version.)
   const bundleUrl = `http://127.0.0.1:${port}/main.lynx.bundle`;
   try {
-    const failures =
-      platform === 'ios'
-        ? await runOnIosSimulator({
-            host: { kind: 'explorer', bundleUrl },
-            artifactsDir,
-            logFile,
-            keepRunning,
-          })
-        : await runOnAndroidEmulator({
-            host: { kind: 'explorer', bundleUrl },
-            port,
-            artifactsDir,
-            logFile,
-          });
+    const failures = await runFlows(
+      platform,
+      { kind: 'explorer', bundleUrl },
+      options,
+    );
     // Independent of the flows, which would only report that they couldn't
     // find an element: Explorer must at least have fetched the bundle.
     if (
@@ -146,23 +134,114 @@ export const runNative = async ({
         `Lynx Explorer never fetched ${bundleUrl}; the deep link didn't open it (see ${platform}-requests.log).`,
       );
     }
-    check(
-      failures.length === 0,
-      `Layer 6 (${platform}) failed:\n  - ${failures.join('\n  - ')}\nScreenshots and logs are in ${artifactsDir}.`,
-    );
-    console.log(`✓ Layer 6 (${platform}) passed`);
+    return failures;
   } finally {
     server.close();
   }
+};
+
+const HOST_NAMES = {
+  shell: "the app's own build",
+  explorer: 'Lynx Explorer',
+} as const;
+
+/**
+ * Layer 6: runs an already-built app on a native platform, in the app's own
+ * binary from `ng build --platform` (what users ship), in Lynx Explorer (what
+ * `ng serve` uses), or in both.
+ *
+ *   node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
+ *   node packages/e2e/src/native/run-native.ts --platform ios --app <app> --explorer
+ *
+ * CI's iOS job calls runNative() through `run.ts --ios --shell --explorer`
+ * with the app it just built on the Mac; the Android job runs this script
+ * with the app folder (and APK) the Linux build job made.
+ */
+export const runNative = async ({
+  platform,
+  distDir,
+  appDir,
+  explorer = !appDir,
+  prebuilt = false,
+  artifactsDir,
+  port,
+  keepRunning = false,
+}: {
+  platform: Platform;
+  /** The built app's dist/, which Explorer loads. Defaults to `<appDir>/dist`. */
+  distDir?: string;
+  /**
+   * The app's folder. When set, Layer 6 tests the app's own binary from
+   * `ng build --platform`.
+   */
+  appDir?: string;
+  /** Also (or, without `appDir`, only) test in Lynx Explorer. */
+  explorer?: boolean;
+  /** Use the binary already in `<appDir>/dist/<platform>` instead of building it. */
+  prebuilt?: boolean;
+  artifactsDir: string;
+  port: number;
+  keepRunning?: boolean;
+}) => {
+  mkdirSync(artifactsDir, { recursive: true });
+  const logFile = path.join(artifactsDir, `${platform}-commands.log`);
+  const bundleDir = distDir ?? (appDir && path.join(appDir, 'dist'));
+  // The shell first: it's what users ship, and its build is the step most
+  // likely to break. A failure in one host still lets the other run, so one
+  // CI run reports both.
+  const hosts = [
+    ...(appDir ? (['shell'] as const) : []),
+    ...(explorer ? (['explorer'] as const) : []),
+  ];
+  check(hosts.length > 0, 'Nothing to test: pass --app, --dist or both.');
+  const failures: string[] = [];
+  for (const [index, kind] of hosts.entries()) {
+    const options = {
+      artifactsDir,
+      logFile,
+      port,
+      // The next host reuses the booted simulator instead of booting it again.
+      keepRunning: keepRunning || index < hosts.length - 1,
+    };
+    try {
+      const hostFailures =
+        kind === 'shell'
+          ? await runFlows(
+              platform,
+              await shellHost(platform, appDir!, logFile, prebuilt),
+              options,
+            )
+          : await runInExplorer(platform, bundleDir!, options);
+      failures.push(
+        ...hostFailures.map((failure) => `${HOST_NAMES[kind]}: ${failure}`),
+      );
+    } catch (error) {
+      if (!(error instanceof CheckError)) {
+        throw error;
+      }
+      failures.push(`${HOST_NAMES[kind]}: ${error.message}`);
+    }
+  }
+  const tested = hosts.map((kind) => HOST_NAMES[kind]).join(' and ');
+  check(
+    failures.length === 0,
+    `Layer 6 (${platform}, ${tested}) failed:\n  - ${failures.join('\n  - ')}\nScreenshots and logs are in ${artifactsDir}.`,
+  );
+  console.log(`✓ Layer 6 (${platform}, ${tested}) passed`);
 };
 
 if (import.meta.main) {
   const { values } = parseArgs({
     options: {
       platform: { type: 'string' },
+      // Test in Lynx Explorer, which loads this dist/ from a local server.
       dist: { type: 'string' },
-      // Test the app's own binary (ng build --platform) instead of Explorer.
+      // Test the app's own binary (ng build --platform).
       app: { type: 'string' },
+      // With --app, also test in Explorer, with the app's dist/.
+      explorer: { type: 'boolean', default: false },
+      // With --app, use the binary ng build --platform already wrote.
+      prebuilt: { type: 'boolean', default: false },
       'artifacts-dir': { type: 'string' },
       port: { type: 'string', default: '3210' },
       // Start the simulator booting and download Explorer, then exit. A later
@@ -190,10 +269,16 @@ if (import.meta.main) {
         values.dist || values.app,
         "--dist must point at the built app's dist/ folder, or --app at the app",
       );
+      check(
+        !values.prebuilt || values.app,
+        '--prebuilt needs --app, the folder holding the built app',
+      );
       await runNative({
         platform: values.platform,
-        distDir: values.dist ?? path.join(values.app!, 'dist'),
+        distDir: values.dist,
         appDir: values.app,
+        explorer: !values.app || values.explorer || !!values.dist,
+        prebuilt: values.prebuilt,
         artifactsDir,
         port: Number(values.port),
       });

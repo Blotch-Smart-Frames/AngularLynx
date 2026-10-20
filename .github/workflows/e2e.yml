@@ -249,9 +249,13 @@ jobs:
           name: e2e-artifacts-${{ strategy.job-index }}
           path: ${{ runner.temp }}/e2e-artifacts
 
-  # Builds just the app the native jobs run (scaffold, fixtures, production
-  # build), so they can start without waiting for fresh-app's tests, dev
-  # server and browser checks, which continue in parallel.
+  # Builds the app the Android job runs: scaffold, fixtures, production build,
+  # then `ng build --platform android`, the APK users ship. It runs apart from
+  # fresh-app's tests, dev server and browser checks (which continue in
+  # parallel) so the emulator starts sooner, and the APK builds here rather
+  # than in the Android job so the emulator only boots once there's an app to
+  # run. Gradle needs only what ubuntu-latest already has: JDK 17 (the
+  # default) and the Android SDK with platform 36.
   build-app:
     needs: [setup, package-contract]
     if: >-
@@ -282,22 +286,42 @@ jobs:
           path: ${{ runner.temp }}/verdaccio-storage
           key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
           restore-keys: verdaccio-${{ runner.os }}-
-      - name: Build the app for the native tests
+      # The Android shell's first build downloads Gradle, the Android Gradle
+      # Plugin and every AAR (about 8 minutes on a laptop). The template's
+      # Gradle files pin all of them, so they key the cache.
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/native/templates/android/**/*.kts', 'packages/native/templates/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: Build the app and its Android shell
         env:
           REGISTRY: ${{ needs.setup.outputs.registry }}
           VERSION: ${{ inputs.version }}
+          # One Gradle build per job, so a daemon would only linger, still
+          # able to write to ~/.gradle while actions/cache saves it.
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           args=(--layers 2 --build-only --registry "$REGISTRY"
             --storage "$RUNNER_TEMP/verdaccio-storage"
             --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
-            --export-dist "$RUNNER_TEMP/app-dist")
+            --build-native android
+            --export-app "$RUNNER_TEMP/app")
           if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
           if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
           node packages/e2e/src/run.ts "${args[@]}"
+      # The app without node_modules: angular.json (for the app id), dist/
+      # with the bundle Explorer loads, and the APK. Not the AAB, which is for
+      # Google Play.
       - uses: actions/upload-artifact@v7
         with:
-          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
-          path: ${{ runner.temp }}/app-dist
+          name: e2e-app-${{ needs.setup.outputs.registry }}
+          path: |
+            ${{ runner.temp }}/app
+            !${{ runner.temp }}/app/dist/android/*.aab
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -305,36 +329,52 @@ jobs:
           name: e2e-artifacts-build-app
           path: ${{ runner.temp }}/e2e-artifacts
 
-  # Layer 6: the same app on Lynx's native renderer and JavaScript engine.
+  # Layer 6: the same app on Lynx's native renderer and JavaScript engine,
+  # twice per platform: in the app's own binary from `ng build --platform`
+  # (what users ship), and in Lynx Explorer (what `ng serve` hands a bundle
+  # URL to). Only the app's own binary shows whether our shells register
+  # everything the runtime needs: Explorer registers XElement itself, so CI
+  # in Explorer alone missed shells without it (#34). Explorer stays because
+  # the dev path is just as much what users run, and the second host costs a
+  # few minutes in a job that has already booted the device and installed
+  # Maestro. Each host's flows run even if the other's fail.
   #
-  # The native jobs skip `npm ci`: run-native.ts and everything it imports use
-  # only Node built-ins, and installing the monorepo on the Mac costs minutes.
+  # The iOS job builds its own app: the shell has to be built on macOS, which
+  # needs the app installed with macOS's native dependencies (rspack and
+  # esbuild ship platform binaries, so the Linux job's node_modules won't do).
   ios:
-    needs: [setup, build-app]
-    if: always() && needs.build-app.result == 'success'
-    # Apple silicon, which the prebuilt Lynx Explorer simulator app targets.
-    runs-on: macos-15
+    needs: [setup, package-contract]
+    if: >-
+      always() && needs.setup.outputs.native == 'true'
+      && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
+    # Apple silicon, which the prebuilt Lynx Explorer simulator app targets,
+    # with Xcode 27: the shell's toolchain (packages/native/README.md) and the
+    # Xcode that built the pinned Lynx frameworks (27.1). They hold only
+    # Objective-C and C++ (no Swift modules, which only the same compiler
+    # could import) for iOS 15, so the image's default Xcode 27 links them,
+    # as a user's would. macos-15 and macos-26 default to Xcode 16.4 and 26.6.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          # No `npm ci` here, so don't restore the npm cache that setup-node
-          # would otherwise restore because of package.json's
-          # `packageManager` field.
-          package-manager-cache: false
+          cache: npm
       - name: Cache Lynx Explorer
         uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx-e2e/explorer
           key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
-      # Booting the simulator is the slowest step, so start it first. The
-      # simulator keeps booting while the steps below run; the test step
-      # waits for it to finish.
+      # Booting the simulator is the slowest step, so start it first (run-
+      # native.ts needs only Node). The simulator keeps booting while the
+      # steps below run; the test step waits for it to finish. Its log goes
+      # to its own folder, because run.ts empties the artifacts folder.
       - name: Start the iOS Simulator
         run: >-
           node packages/e2e/src/native/run-native.ts --platform ios --prepare
-          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts-prepare"
+      # For the harness's own dependencies (Verdaccio).
+      - run: npm ci
       - name: Cache Maestro
         id: maestro-cache
         uses: actions/cache@v6
@@ -345,23 +385,53 @@ jobs:
         if: steps.maestro-cache.outputs.cache-hit != 'true'
         run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      # main.lynx.bundle is the same file on every platform, so reuse the one
-      # the Linux job built instead of rebuilding on the slower Mac.
       - uses: actions/download-artifact@v8
+        if: needs.setup.outputs.registry == 'local'
         with:
-          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
-          path: ${{ runner.temp }}/app-dist
+          name: e2e-tarballs
+          path: ${{ runner.temp }}/tarballs
+      - name: Date for the registry cache key
+        id: date
+        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      # Its own key, so it never races fresh-app's macOS entry (full matrix
+      # only) for the same one; that entry's storage is still a good start.
+      - name: Cache Verdaccio storage
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/verdaccio-storage
+          key: verdaccio-ios-${{ steps.date.outputs.date }}
+          restore-keys: |
+            verdaccio-ios-
+            verdaccio-${{ runner.os }}-
+      # The prebuilt Lynx XCFrameworks the shell links, which `ng build
+      # --platform ios` downloads on first use. frameworks.ts pins them.
+      - name: Cache Lynx iOS frameworks
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/angular-lynx/lynx-ios
+          key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
       - name: 'Layer 6: iOS Simulator'
-        run: >-
-          node packages/e2e/src/native/run-native.ts --platform ios
-          --dist "$RUNNER_TEMP/app-dist"
-          --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+        env:
+          REGISTRY: ${{ needs.setup.outputs.registry }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=(--layers 2 --build-only --ios --shell --explorer
+            --registry "$REGISTRY"
+            --storage "$RUNNER_TEMP/verdaccio-storage"
+            --artifacts-dir "$RUNNER_TEMP/e2e-artifacts")
+          if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
+          if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
+          node packages/e2e/src/run.ts "${args[@]}"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-artifacts-ios
-          path: ${{ runner.temp }}/e2e-artifacts
+          path: |
+            ${{ runner.temp }}/e2e-artifacts
+            ${{ runner.temp }}/e2e-artifacts-prepare
 
+  # Runs the APK and the bundle build-app made. It skips `npm ci`:
+  # run-native.ts and everything it imports use only Node built-ins.
   android:
     needs: [setup, build-app]
     if: always() && needs.build-app.result == 'success'
@@ -376,8 +446,8 @@ jobs:
           package-manager-cache: false
       - uses: actions/download-artifact@v8
         with:
-          name: e2e-app-dist-${{ needs.setup.outputs.registry }}
-          path: ${{ runner.temp }}/app-dist
+          name: e2e-app-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app
       - name: Cache Lynx Explorer
         uses: actions/cache@v6
         with:
@@ -405,7 +475,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
-          script: node packages/e2e/src/native/run-native.ts --platform android --dist "$RUNNER_TEMP/app-dist" --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+          script: node packages/e2e/src/native/run-native.ts --platform android --app "$RUNNER_TEMP/app" --prebuilt --explorer --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

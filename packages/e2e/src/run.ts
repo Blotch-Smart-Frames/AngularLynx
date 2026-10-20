@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { checkPackages, loadTarballs, packAll } from './check-packages.ts';
 import { createRunContext, type RunContext } from './context.ts';
 import { publishLocal } from './publish-local.ts';
-import { CheckError, run } from './process.ts';
+import { CheckError, run, step } from './process.ts';
 import {
   startLocalRegistry,
   usePublicRegistry,
@@ -43,11 +43,16 @@ Options:
   --artifacts-dir <dir>  Where to write logs and failure artifacts
   --build-only           Layer 2 only scaffolds the app and builds it for
                          production (CI uses this to feed the native jobs)
-  --export-dist <dir>    Copy the built app's dist/ here (CI reuses it for
-                         the native jobs instead of rebuilding)
+  --build-native <name>  After the production build, also run
+                         \`ng build --platform <name>\` (android or ios; CI
+                         builds the Android app on Linux this way)
+  --export-app <dir>     Copy the app, without node_modules and Angular's
+                         cache, here (CI hands it, with its native build, to
+                         the Android emulator job)
   --ios                  Also run Layer 6 on the iOS Simulator (needs Xcode)
   --shell                With --ios, test the app's own build from
                          \`ng build --platform ios\` instead of Lynx Explorer
+  --explorer             With --ios --shell, test in Lynx Explorer as well
   --help                 Show this help
 `;
 
@@ -67,9 +72,11 @@ const { values: args } = parseArgs({
     rspeedy: { type: 'string' },
     'artifacts-dir': { type: 'string' },
     'build-only': { type: 'boolean', default: false },
-    'export-dist': { type: 'string' },
+    'build-native': { type: 'string' },
+    'export-app': { type: 'string' },
     ios: { type: 'boolean', default: false },
     shell: { type: 'boolean', default: false },
+    explorer: { type: 'boolean', default: false },
     help: { type: 'boolean', default: false },
   },
 });
@@ -90,6 +97,14 @@ if (!['npm', 'pnpm', 'yarn'].includes(packageManager)) {
 if (args.registry !== 'local' && args.registry !== 'public') {
   throw new Error(`--registry must be local or public, not ${args.registry}`);
 }
+const buildNative = args['build-native'];
+if (
+  buildNative !== undefined &&
+  buildNative !== 'android' &&
+  buildNative !== 'ios'
+) {
+  throw new Error(`--build-native must be android or ios, not ${buildNative}`);
+}
 
 // Start from an empty artifacts folder, so CI never uploads a stale log.
 const artifactsDir =
@@ -106,16 +121,29 @@ console.log(`Working in ${context.workDir}`);
  * it: the generated app (minus node_modules) and npm's debug logs. Command
  * output and the Verdaccio log are already in the artifacts folder.
  */
+/**
+ * Copies the generated app without node_modules, which is large and specific
+ * to the OS (rspack and esbuild ship native binaries), or .angular, Angular's
+ * cache, which holds the generated native projects with hundreds of megabytes
+ * of Gradle or Xcode build output. A native build's binaries are in dist/.
+ */
+const copyApp = (appDir: string, destination: string) => {
+  cpSync(appDir, destination, {
+    recursive: true,
+    filter: (source) => {
+      const [first] = path.relative(appDir, source).split(path.sep);
+      return first !== 'node_modules' && first !== '.angular';
+    },
+  });
+};
+
 const collectFailureArtifacts = (
   runContext: RunContext,
   failedApp?: ScaffoldedApp,
 ) => {
   const appDir = failedApp?.dir ?? path.join(runContext.workDir, 'my-app');
   if (existsSync(appDir)) {
-    cpSync(appDir, path.join(runContext.artifactsDir, 'app'), {
-      recursive: true,
-      filter: (source) => !source.includes(`${path.sep}node_modules`),
-    });
+    copyApp(appDir, path.join(runContext.artifactsDir, 'app'));
   }
   const npmLogs = path.join(runContext.workDir, 'npm-cache/_logs');
   if (existsSync(npmLogs)) {
@@ -181,8 +209,16 @@ try {
     );
   }
 
-  if (app && args['export-dist']) {
-    cpSync(app.distDir, args['export-dist'], { recursive: true });
+  if (app && buildNative) {
+    step(`Layer 2: ng build --platform ${buildNative}`);
+    await run('npx', ['ng', 'build', '--platform', buildNative], {
+      cwd: app.dir,
+      logFile: context.logFile,
+    });
+  }
+
+  if (app && args['export-app']) {
+    copyApp(app.dir, args['export-app']);
   }
 
   if (app && layers.has(3)) {
@@ -195,6 +231,7 @@ try {
       platform: 'ios',
       distDir: app.distDir,
       appDir: args.shell ? app.dir : undefined,
+      explorer: !args.shell || args.explorer,
       artifactsDir: context.artifactsDir,
       port: 3210,
     });

@@ -13,6 +13,7 @@ npm run e2e -- --pm pnpm --angular next
 npm run e2e -- --registry public       # Test what is on npm right now
 npm run e2e -- --ios                   # Also run on the iOS Simulator (needs Xcode and Maestro, below)
 npm run e2e -- --ios --shell           # ...testing the app's own build from `ng build --platform ios`
+npm run e2e -- --ios --shell --explorer  # ...testing both, as CI does
 npm run e2e -- --help                  # Every option
 ```
 
@@ -30,7 +31,7 @@ The iOS run creates and reuses its own simulator, "AngularLynx E2E", so your own
 node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
 ```
 
-Add `--app <app>` instead of `--dist` to test the app's own binary from `ng build --platform` rather than Lynx Explorer (the "shell" mode; `--app` builds it). iOS shells need Lynx's XCFrameworks: see [`packages/native/README.md`](../native/README.md#lynx-for-ios) for `ANGULAR_LYNX_IOS_FRAMEWORKS`.
+Add `--app <app>` instead of `--dist` to test the app's own binary from `ng build --platform` rather than Lynx Explorer (the "shell" mode; `--app` builds it, `--prebuilt` uses the one already in `<app>/dist/<platform>`). Add `--explorer` too to test both, one after the other on the same device; a failure in one still lets the other run. iOS shells need Lynx's XCFrameworks: see [`packages/native/README.md`](../native/README.md#lynx-for-ios) for `ANGULAR_LYNX_IOS_FRAMEWORKS`.
 
 ```sh
 node packages/e2e/src/native/run-native.ts --platform android --app <app>
@@ -38,21 +39,23 @@ node packages/e2e/src/native/run-native.ts --platform android --app <app>
 
 Android has no `npm run e2e` flag: boot an emulator first (CI uses API 34 with Google APIs; on Apple silicon, the `arm64-v8a` image), put `adb` on your `PATH`, then run the same command with `--platform android`.
 
+In CI, Layer 6 tests both hosts on both platforms. The Linux `build-app` job scaffolds the app, builds its APK (`--build-native android`) and hands the app folder (`--export-app`) to the `android` job, which runs `run-native.ts --app <app> --prebuilt --explorer` on the emulator. The `ios` job, on GitHub's `xcode-27` image, scaffolds and builds the app itself (the shell can only be built on macOS) with `run.ts --ios --shell --explorer`.
+
 ## What each layer does
 
-| Layer | Where                          | What it checks                                                                                                                                                                                                                |
-| ----- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | `src/check-packages.ts`        | Packs every package and checks the tarball: required files, publint, `attw` type resolution, every schematic loads                                                                                                            |
-| 2     | `src/scaffold.ts`              | Publishes the tarballs to a local Verdaccio, runs `npm create angular-lynx`, every schematic, `npm test`, the dev server, a production build and `ngc`                                                                        |
-| 3     | `playwright/render.test.ts`    | Opens the web bundle in Chromium through Lynx for Web: it renders, a tap updates it, a lazy route loads, no errors                                                                                                            |
-| 6     | `src/native/`, `native/*.yaml` | Opens the native bundle in Lynx Explorer, or runs the app's own build from `ng build --platform` (`--shell`), on the iOS Simulator or an Android emulator and runs the same checks with [Maestro](https://maestro.mobile.dev) |
+| Layer | Where                          | What it checks                                                                                                                                                                                                                      |
+| ----- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `src/check-packages.ts`        | Packs every package and checks the tarball: required files, publint, `attw` type resolution, every schematic loads                                                                                                                  |
+| 2     | `src/scaffold.ts`              | Publishes the tarballs to a local Verdaccio, runs `npm create angular-lynx`, every schematic, `npm test`, the dev server, a production build and `ngc`                                                                              |
+| 3     | `playwright/render.test.ts`    | Opens the web bundle in Chromium through Lynx for Web: it renders, a tap updates it, a lazy route loads, no errors                                                                                                                  |
+| 6     | `src/native/`, `native/*.yaml` | Opens the native bundle in Lynx Explorer, runs the app's own build from `ng build --platform` (`--shell`), or both, on the iOS Simulator or an Android emulator and runs the same checks with [Maestro](https://maestro.mobile.dev) |
 
 Layers 4 (the OS, package manager and version matrix) and 5 (release gates) are CI wiring in `.github/workflows/e2e.yml` and `publish.yml`.
 
 ## Debug a failure
 
 - **Read the last `✗` line.** Every check says what went wrong and where to look.
-- **Look in `artifacts/`** (native runs add `ios-requests.log`, every bundle the app fetched, plus Explorer's log and Maestro screenshots) (in CI, the `e2e-artifacts-*` workflow artifacts): `commands.log` has every command's output, `verdaccio.log` the registry's, `app/` the generated app without `node_modules`, `npm-logs/` npm's debug logs, and `playwright/` screenshots and traces.
+- **Look in `artifacts/`** (native runs add `<platform>-commands.log`, `<platform>-requests.log` with every bundle Explorer fetched, the app's log per host (`ios-shell.log`, `ios-explorer.log`, `android-<host>-logcat.log`) and Maestro's screenshots in `<platform>-<host>/`) (in CI, the `e2e-artifacts-*` workflow artifacts): `commands.log` has every command's output, `verdaccio.log` the registry's, `app/` the generated app without `node_modules`, `npm-logs/` npm's debug logs, and `playwright/` screenshots and traces.
 - **Rerun with `--keep`**, then `cd` into the printed path and run `npm run build` or `npm start` by hand.
 - **Open a Playwright trace** with `npx playwright show-trace artifacts/playwright/<test>/trace.zip`.
 

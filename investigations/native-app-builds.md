@@ -244,7 +244,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 | XCFramework build                                                                                        | `packages/native/scripts/build-lynx-ios-frameworks.sh`, `.github/workflows/lynx-ios-frameworks.yml` |
 | `ng add` switches `build`/`serve` to the builders, adds `@blotch/angular-lynx-build`                     | `packages/runtime/schematics/ng-add/`                                                               |
 | Eject schematic                                                                                          | `packages/runtime/schematics/eject/`                                                                |
-| Layer 6 against the app's own build                                                                      | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`                                         |
+| Layer 6 against the app's own build, in CI next to Explorer                                              | `run-native.ts --app <app>`, `npm run e2e -- --ios --shell`, `.github/workflows/e2e.yml`            |
 
 ### Phase results
 
@@ -253,7 +253,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
   - Both shells render the fixture app.
   - rspeedy's JS API (`loadConfig`, `createRspeedy`, `build`, `startDevServer`, all `@public` in its API report) is enough; `ng serve` keeps the QR code output and live reload.
   - Headless iOS signing is implemented (archive, then `-exportArchive` with the API key flags) but **not yet verified**: it needs an Apple Developer account. An unsigned device archive builds.
-- **Phase 1, done** except moving CI's Layer 6 off Explorer (below). A fresh `npm create angular-lynx` app from the local registry passes the Maestro flows on both platforms through `ng build --platform`. Layers 1–3 pass with the builders in place.
+- **Phase 1, done.** A fresh `npm create angular-lynx` app from the local registry passes the Maestro flows on both platforms through `ng build --platform`. Layers 1–3 pass with the builders in place.
 - **Phase 2, partly.** Permissions, deep links, orientation, version and build numbers, and the iOS icon are generated. Android release signing works with a real keystore. Not done: the Android icon and splash (placeholders now), uploading to TestFlight and Play.
 - **Phase 3, done.** An ejected project builds with the same command, and a native edit in `ios/` appears in the app.
 - **Phases 4–5, not started.**
@@ -284,7 +284,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 ### Next
 
 1. ~~Publish the iOS frameworks zip.~~ Done: the [`lynx-ios-4.1.0` release](https://github.com/Blotch-Smart-Frames/AngularLynx/releases/tag/lynx-ios-4.1.0), pinned in `packages/native/src/ios/frameworks.ts`. Built locally with Xcode 27 by the same script the workflow runs (the workflow can only be dispatched once it is on `master`). A clean machine downloads and verifies it on its first iOS build.
-2. **Move CI's Layer 6 to the shells.** The Android job can build the APK on Linux; the iOS job needs the published frameworks.
+2. ~~Move CI's Layer 6 to the shells.~~ Done ([#36](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/36)): CI runs the Maestro flows in the app's own build and in Explorer, on both platforms. The Linux `build-app` job builds the APK (Gradle cached) and hands it to the emulator job. The iOS job runs on GitHub's `xcode-27` image and scaffolds the app itself, because the shell builds only on macOS and the Linux job's `node_modules` holds Linux binaries; it caches the pinned frameworks zip. Explorer stays for the `ng serve` path.
 3. **Verify headless iOS signing** with an App Store Connect API key, and upload to TestFlight and a Play internal track.
 4. Router-driven Android back navigation in the runtime; Android icon and splash generation; a `doctor` target.
 5. Phase 4 (debug shells loading from the dev server, with Lynx DevTool).

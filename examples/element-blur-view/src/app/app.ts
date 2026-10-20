@@ -105,7 +105,7 @@ type Tab = 'basics' | 'playground';
               </view>
 
               <text class="mb-2 mt-4 text-[13px] text-zinc-500">
-                blur-effect (iOS)
+                blur-effect
               </text>
               <view class="flex-row flex">
                 @for (e of effects; track e) {
@@ -203,8 +203,9 @@ type Tab = 'basics' | 'playground';
 
             <view class="rounded-xl bg-zinc-100 p-3.5">
               <text class="text-[13px] text-zinc-500">
-                Glass renders on iOS 26 and on web. Android and Harmony fall
-                back to the blur-radius blur, without the tint.
+                Glass renders on iOS 26 and on web. Android approximates the
+                materials and glass with a tint over the blur, without the
+                refraction. Harmony shows the blur-radius blur only.
               </text>
             </view>
           </view>

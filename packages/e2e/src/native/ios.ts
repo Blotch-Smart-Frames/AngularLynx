@@ -183,7 +183,7 @@ export const runOnIosSimulator = async ({
         device: udid,
         appId,
         host,
-        outputDir: path.join(artifactsDir, 'ios'),
+        outputDir: path.join(artifactsDir, `ios-${host.kind}`),
         logFile,
       });
       const failure = judgeFlow(flow, 'ios', result.code);
@@ -192,7 +192,12 @@ export const runOnIosSimulator = async ({
       }
     }
     await simctl(
-      ['io', udid, 'screenshot', path.join(artifactsDir, 'ios-final.png')],
+      [
+        'io',
+        udid,
+        'screenshot',
+        path.join(artifactsDir, `ios-${host.kind}-final.png`),
+      ],
       logFile,
     );
   } finally {

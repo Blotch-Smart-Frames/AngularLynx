@@ -204,7 +204,7 @@ type Tab = 'basics' | 'playground';
             <view class="rounded-xl bg-zinc-100 p-3.5">
               <text class="text-[13px] text-zinc-500">
                 Glass renders on iOS 26 and on web. Android and Harmony fall
-                back to the blur-radius blur.
+                back to the blur-radius blur, without the tint.
               </text>
             </view>
           </view>

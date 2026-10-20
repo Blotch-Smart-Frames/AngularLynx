@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachWebGlass } from '../../web-glass/web-glass';
+import { ANDROID_BLUR_CAPTURE_TARGET } from '../android-blur-capture';
 import { createBlurViewElement } from './create-blur-view-element';
 
 vi.mock('../../web-glass/web-glass', () => ({ attachWebGlass: vi.fn() }));
@@ -17,6 +18,7 @@ beforeEach(() => {
     '__CreateElement',
     vi.fn(() => ref),
   );
+  vi.stubGlobal('__SetAttribute', vi.fn());
   vi.stubGlobal('__MAIN_THREAD__', true);
 });
 
@@ -36,6 +38,33 @@ describe('createBlurViewElement', () => {
     createBlurViewElement(3);
     await settle();
     expect(attachWebGlass).not.toHaveBeenCalled();
+  });
+
+  it('blurs the page on Android', () => {
+    vi.stubGlobal('__WEB__', false);
+    vi.stubGlobal('SystemInfo', { platform: 'Android' });
+    createBlurViewElement(3);
+    expect(__SetAttribute).toHaveBeenCalledWith(
+      ref,
+      'android-capture-target',
+      ANDROID_BLUR_CAPTURE_TARGET,
+    );
+  });
+
+  it('leaves the capture to iOS', () => {
+    vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+    vi.stubGlobal('__WEB__', false);
+    createBlurViewElement(3);
+    expect(__SetAttribute).not.toHaveBeenCalled();
+  });
+
+  it('sets no capture target on web', async () => {
+    vi.stubGlobal('SystemInfo', { platform: 'web' });
+    vi.stubGlobal('__WEB__', true);
+    createBlurViewElement(3);
+    // Let the glass attach here, not during the next test.
+    await settle();
+    expect(__SetAttribute).not.toHaveBeenCalled();
   });
 
   it('leaves web’s background thread alone', async () => {

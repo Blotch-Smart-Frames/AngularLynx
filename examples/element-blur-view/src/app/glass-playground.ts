@@ -289,8 +289,8 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
     </view>
 
     <text class="mt-4 text-[12px] text-zinc-400">
-      Merging and refraction need iOS 26 or web. Android and Harmony show
-      frosted circles.
+      Merging and refraction need iOS 26 or web. Android and Harmony show plain
+      blurred circles.
     </text>
   `,
   imports: [LYNX_ELEMENTS, LynxMainThreadEvent],

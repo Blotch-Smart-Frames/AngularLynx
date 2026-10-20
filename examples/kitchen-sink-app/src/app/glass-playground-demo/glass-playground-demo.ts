@@ -166,8 +166,8 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
 /**
  * Liquid Glass playground: drag glass blobs over text. On iOS 26 and on web
  * each blob refracts the text behind it, and blobs closer than the merge
- * distance flow together into one shape. Android and Harmony show frosted
- * circles.
+ * distance flow together into one shape. Android and Harmony show plain
+ * blurred circles.
  *
  * Like the gesture demo, it deliberately avoids `DemoScreen` and any
  * scroll-view: a vertical drag inside a scroll-view would scroll the page

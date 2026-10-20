@@ -16,7 +16,7 @@ const SAFE_AREA_SIDES = {
  * Registers safe-area-aware padding utilities driven by CSS `env(safe-area-inset-*)`.
  *
  * Why `env()` works on Lynx: the native CSS engine parses `env(safe-area-inset-*)`
- * as a length (see references/lynx .../css_style_utils.cc `GetEnvValue`), and its
+ * as a length (see lynx-family/lynx's css_style_utils.cc `GetEnvValue`), and its
  * calc parser accepts `env()` *inside* `calc()` too — so `calc(1rem + env(...))`
  * is valid on device. The inset values default to `0` until the native host app
  * populates them, so every utility here degrades gracefully to plain padding

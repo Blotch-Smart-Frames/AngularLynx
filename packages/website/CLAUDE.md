@@ -6,8 +6,8 @@ Documentation website for AngularLynx, built with [Rspress](https://rspress.dev/
 
 Look at these for inspiration on structure, content, and tone:
 
-- `references/lynx-website-main/` — Official Lynx website (covers React Lynx)
-- `references/vue-lynx-main/website/` — Vue Lynx documentation site
+- [lynxjs.org](https://lynxjs.org/) ([source](https://github.com/lynx-family/lynx-website)) — Official Lynx website (covers React Lynx)
+- [vue.lynxjs.org](https://vue.lynxjs.org/) ([source](https://github.com/Huxpro/vue-lynx/tree/main/website)) — Vue Lynx documentation site
 
 ## Writing Principles
 

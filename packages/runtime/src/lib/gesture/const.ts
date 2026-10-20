@@ -1,6 +1,6 @@
 /**
  * Default gesture config values, mirrored from Lynx's own gesture-runtime
- * (references/lynx-stack-main/packages/lynx/gesture-runtime/src/utils/const.ts).
+ * (https://github.com/lynx-family/lynx-stack/blob/main/packages/lynx/gesture-runtime/src/utils/const.ts).
  *
  * Why these defaults live in the JS gesture classes instead of relying on the
  * native handlers' own defaults: the iOS handlers read each config key with

@@ -12,7 +12,7 @@ import plugin from 'tailwindcss/plugin';
 //
 // Instead, CSS variables store COMPLETE rgba() values (--primary: rgba(24, 24, 27, 1))
 // and Tailwind references them directly. This matches the official React Lynx
-// Tailwind example (references/lynx-stack-main/examples/tailwindcss/).
+// Tailwind example (https://github.com/lynx-family/lynx-stack/tree/main/examples/tailwindcss).
 //
 // Tradeoff: Tailwind opacity modifiers (bg-primary/50) won't work since colors
 // aren't decomposed. Use explicit opacity utilities (opacity-50) instead.

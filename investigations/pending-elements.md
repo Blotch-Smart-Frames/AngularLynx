@@ -4,10 +4,10 @@ Elements from the Lynx platform (official docs + web-platform reference implemen
 
 Sources:
 
-- Official Lynx docs: `references/lynx-website-main/docs/en/api/elements/`
-- Compat data: `references/lynx-website-main/packages/lynx-compat-data/elements/`
-- React Lynx: `references/lynx-stack-main/packages/react/`
-- Web platform elements: `references/lynx-stack-main/packages/web-platform/web-elements/src/elements/`
+- Official Lynx docs: [`lynx-website/docs/en/api/elements/`](https://github.com/lynx-family/lynx-website/tree/main/docs/en/api/elements/)
+- Compat data: [`lynx-website/packages/lynx-compat-data/elements/`](https://github.com/lynx-family/lynx-website/tree/main/packages/lynx-compat-data/elements/)
+- React Lynx: [`lynx-stack/packages/react/`](https://github.com/lynx-family/lynx-stack/tree/main/packages/react/)
+- Web platform elements: [`lynx-stack/packages/web-platform/web-elements/src/elements/`](https://github.com/lynx-family/lynx-stack/tree/main/packages/web-platform/web-elements/src/elements/)
 
 ---
 
@@ -41,7 +41,7 @@ Sources:
 
 **Implementation:** Has a **dedicated `__CreateFrame(pageId)`** function in the snapshot compiler (like `__CreateView`, `__CreateText`, etc. — not the generic `__CreateElement`). We should add `__CreateFrame` to our Lynx type declarations and use it directly.
 
-**Source:** `references/lynx-stack-main/packages/react/transform/crates/swc_plugin_snapshot/lib.rs:416-422`
+**Source:** [`lynx-stack/packages/react/transform/crates/swc_plugin_snapshot/lib.rs`](https://github.com/lynx-family/lynx-stack/blob/main/packages/react/transform/crates/swc_plugin_snapshot/lib.rs) (the `__CreateFrame` entry)
 
 ---
 
@@ -204,7 +204,7 @@ These only make sense in the context of their parent XElements:
 
 ## Pending: Web-Platform Elements (Not Yet in Official Docs)
 
-These elements exist in the Lynx web-platform implementation (`@lynx-js/web-elements`) and are used in production but do **not yet have official documentation pages**. They are mentioned in the [Lynx 2025 roadmap blog post](references/lynx-website-main/docs/en/blog/lynx-open-source-roadmap-2025.mdx) as planned additions.
+These elements exist in the Lynx web-platform implementation (`@lynx-js/web-elements`) and are used in production but do **not yet have official documentation pages**. They are mentioned in the [Lynx 2025 roadmap blog post](https://github.com/lynx-family/lynx-website/blob/main/docs/en/blog/lynx-open-source-roadmap-2025.mdx) as planned additions.
 
 ### `<x-swiper>` (aka `swiper`)
 

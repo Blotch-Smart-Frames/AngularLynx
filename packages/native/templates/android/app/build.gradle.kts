@@ -137,4 +137,22 @@ dependencies {
     implementation("com.facebook.fresco:webpsupport:$frescoVersion")
     implementation("com.facebook.fresco:animated-base:$frescoVersion")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // XElement: <input>, <textarea>, <overlay>, <svg>, <blur-view>,
+    // <viewpager>, <refresh>, the <scroll-coordinator> family, <webview> and
+    // <video>. They aren't in Lynx's core, and without them those tags render
+    // nothing. MainActivity registers them with XElementBehaviors. The
+    // umbrella artifact depends on one module per element; AnimaX and
+    // Markdown are elements the runtime doesn't support, and AnimaX alone
+    // adds about 5 MB of native code per ABI.
+    implementation("org.lynxsdk.lynx:xelement:$lynxVersion") {
+        exclude(group = "org.lynxsdk.lynx", module = "xelement-animax")
+        exclude(group = "org.lynxsdk.lynx", module = "xelement-markdown")
+    }
+    // XElement's modules depend on appcompat and material 1.0.0, which bring
+    // vectordrawable 1.0.0 and vectordrawable-animated 1.0.0. Those two share
+    // the namespace androidx.vectordrawable, and AGP 9's manifest merger
+    // fails the build on that; newer versions give them distinct namespaces.
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.12.0")
 }

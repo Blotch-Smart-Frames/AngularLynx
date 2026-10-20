@@ -42,6 +42,10 @@ export type Flow = {
 export const FLOWS: readonly Flow[] = [
   { file: 'app.yaml', description: 'renders and handles taps' },
   { file: 'lazy-route.yaml', description: 'loads lazy routes' },
+  {
+    file: 'xelement.yaml',
+    description: "renders XElement's input, svg and overlay",
+  },
 ];
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */

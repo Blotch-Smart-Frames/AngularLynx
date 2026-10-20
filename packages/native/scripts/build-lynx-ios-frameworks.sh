@@ -15,9 +15,18 @@
 set -euo pipefail
 
 LYNX_VERSION=4.1.0
+# Counts rebuilds of one Lynx version whose frameworks changed (2 added
+# XElement). It goes into the zip's name, and so into the release tag and
+# the builder's cache folder; bump it with LYNX_IOS.build in
+# src/ios/frameworks.ts, and reset it to 1 for a new Lynx version.
+BUILD=2
 PRIMJS_VERSION=4.1.1
 SDWEBIMAGE_VERSION=5.15.5
 SDWEBIMAGE_WEBP_VERSION=0.11.0
+# XElement's <svg> and <refresh> need these; its podspec gives only a
+# minimum, so pin what was tested.
+SERVAL_SVG_VERSION=0.2.4
+MJ_REFRESH_VERSION=3.7.9
 
 here="$(cd "$(dirname "$0")" && pwd)"
 # Every framework the shell links: LYNX_IOS_FRAMEWORKS, the same list the
@@ -62,6 +71,15 @@ target 'Host' do
   pod 'LynxService', :podspec => '$specs/LynxService/$LYNX_VERSION/LynxService.podspec.json', :subspecs => ['Image', 'Log', 'Http']
   pod 'SDWebImage', '$SDWEBIMAGE_VERSION'
   pod 'SDWebImageWebPCoder', '$SDWEBIMAGE_WEBP_VERSION'
+  # XElement holds <input>, <textarea>, <overlay>, <svg>, <blur-view> and the
+  # other elements the runtime supports outside Lynx's core. Each subspec is
+  # one element. Not 'Behavior', which registers them: it also depends on
+  # Markdown (and so ServalMarkdown), an element the runtime doesn't support,
+  # so the shell's AppDelegate registers the classes itself. Not AnimaX
+  # either, for the same reason.
+  pod 'XElement', :podspec => '$specs/XElement/$LYNX_VERSION/XElement.podspec.json', :subspecs => ['Input', 'Overlay', 'SVG', 'BlurView', 'ViewPager', 'Refresh', 'ScrollCoordinator', 'WebView', 'Video']
+  pod 'ServalSVG', '$SERVAL_SVG_VERSION'
+  pod 'MJRefresh', '$MJ_REFRESH_VERSION'
 end
 
 post_install do |installer|
@@ -110,14 +128,17 @@ done
 
 cat > "$out/VERSIONS" <<EOF
 lynx=$LYNX_VERSION
+build=$BUILD
 primjs=$PRIMJS_VERSION
 sdwebimage=$SDWEBIMAGE_VERSION
 sdwebimage-webp=$SDWEBIMAGE_WEBP_VERSION
+serval-svg=$SERVAL_SVG_VERSION
+mj-refresh=$MJ_REFRESH_VERSION
 xcode=$(xcodebuild -version | head -1 | cut -d' ' -f2)
 EOF
 
-zip_file="$work/out/lynx-ios-$LYNX_VERSION.zip"
-symbols_zip="$work/out/lynx-ios-$LYNX_VERSION-dSYMs.zip"
+zip_file="$work/out/lynx-ios-$LYNX_VERSION-$BUILD.zip"
+symbols_zip="$work/out/lynx-ios-$LYNX_VERSION-$BUILD-dSYMs.zip"
 # --symlinks keeps the framework bundles' internal links intact.
 (cd "$work/out" && zip -qry --symlinks "$zip_file" LynxFrameworks && zip -qry "$symbols_zip" dSYMs)
 shasum -a 256 "$zip_file" "$symbols_zip"

@@ -5,6 +5,10 @@ import { LynxElementBase } from './base';
  * Backdrop blur: blurs the content rendered behind the element, like CSS
  * `backdrop-filter: blur()`. On iOS, `blur-effect="glass"` renders the
  * Liquid Glass material.
+ *
+ * Android only has the plain blur: `blur-effect` and the `glass-*`
+ * attributes do nothing there, so every blur-view is a Gaussian blur of
+ * `blur-radius`, with no tint, material or refraction.
  */
 @Directive({
   selector: 'blur-view',
@@ -37,7 +41,10 @@ export class LynxBlurView extends LynxElementBase {
    */
   'enable-auto-blur'?: boolean;
   /**
-   * Raw id of the view to capture and blur; it must have `flatten="false"` (Android).
+   * Raw id of the view to capture and blur; it must have `flatten="false"`
+   * (Android). The runtime points it at the page, so a blur-view inside
+   * another blur-view still blurs what's behind it; an empty string restores
+   * Android's own choice, the nearest ancestor that clips or contains it.
    */
   'android-capture-target'?: string;
   /**
@@ -46,7 +53,8 @@ export class LynxBlurView extends LynxElementBase {
   'experimental-update-blur-radius'?: boolean;
   /**
    * Blur material (iOS). `glass` renders Liquid Glass; `glass-container`
-   * merges nested glass `<blur-view>`s into one combined effect. @default 'light'
+   * merges nested glass `<blur-view>`s into one combined effect. Android
+   * ignores it. @default 'light'
    */
   'blur-effect'?:
     | 'light'

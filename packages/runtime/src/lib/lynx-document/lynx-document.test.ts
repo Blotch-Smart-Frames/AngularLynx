@@ -1,5 +1,6 @@
 import {
   type MockInstance,
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -9,6 +10,7 @@ import {
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
+import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
 import { LynxDocument } from './lynx-document';
 
 /**
@@ -79,6 +81,9 @@ describe('LynxDocument', () => {
   // ─── createRootElement ────────────────────────────────────────────────────
 
   describe('createRootElement', () => {
+    // Only SystemInfo is stubbed; setupGlobals assigns the PAPI globals.
+    afterEach(() => vi.unstubAllGlobals());
+
     it('calls __CreatePage with componentId "0" and cssId 0', () => {
       const doc = new LynxDocument();
       doc.createRootElement();
@@ -107,6 +112,22 @@ describe('LynxDocument', () => {
       const doc = new LynxDocument();
       doc.createRootElement();
       expect(asMock(globalThis.__GetElementUniqueID)).toHaveBeenCalled();
+    });
+
+    it('names the page on Android, for blur-views to blur', () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const doc = new LynxDocument();
+      const root = doc.createRootElement();
+      expect(asMock(globalThis.__SetID)).toHaveBeenCalledWith(
+        root.element,
+        ANDROID_BLUR_CAPTURE_TARGET,
+      );
+    });
+
+    it('leaves the page unnamed on other platforms', () => {
+      vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+      new LynxDocument().createRootElement();
+      expect(asMock(globalThis.__SetID)).not.toHaveBeenCalled();
     });
   });
 

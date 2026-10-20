@@ -1,4 +1,8 @@
 import type { ElementRef } from '../../types/lynx';
+import {
+  ANDROID_BLUR_CAPTURE_TARGET,
+  isAndroid,
+} from '../android-blur-capture';
 
 /**
  * Native backdrop blur (Lynx 4.0+). Blurs whatever is rendered BEHIND the
@@ -9,9 +13,21 @@ import type { ElementRef } from '../../types/lynx';
  *
  * Lynx for Web's `blur-view` only implements `blur-radius` and doesn't lay its
  * children out like a view, so on web `attachWebGlass` adds both.
+ *
+ * On Android it blurs the page (see ANDROID_BLUR_CAPTURE_TARGET), so a
+ * blur-view inside another one still shows its backdrop. An app's own
+ * `android-capture-target` replaces this, and an empty one restores Android's
+ * own choice.
  */
 export const createBlurViewElement = (pageId: number): ElementRef => {
   const element = __CreateElement('blur-view', pageId);
+  if (!__WEB__ && isAndroid()) {
+    __SetAttribute(
+      element,
+      'android-capture-target',
+      ANDROID_BLUR_CAPTURE_TARGET,
+    );
+  }
   // `__WEB__` is a compile-time define: on native the bundler drops this
   // branch before it follows the import, so none of the WebGL code ships
   // there. A static import wouldn't do: the minifier can't prove the glass

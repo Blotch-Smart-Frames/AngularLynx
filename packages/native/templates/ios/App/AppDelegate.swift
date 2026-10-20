@@ -13,6 +13,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    XElementRegistry.register()
     let config = LynxConfig(provider: BundleResourceFetcher.shared)
     LynxEnv.sharedInstance().prepareConfig(config)
     // LynxService's image service decodes through SDWebImage, which only

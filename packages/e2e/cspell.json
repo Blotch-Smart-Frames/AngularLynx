@@ -10,7 +10,8 @@
     "taskkill",
     "udid",
     "USERCONFIG",
-    "xcrun"
+    "xcrun",
+    "xelement"
   ],
   "ignorePaths": ["artifacts"]
 }

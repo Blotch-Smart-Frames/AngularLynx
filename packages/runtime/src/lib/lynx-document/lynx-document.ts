@@ -4,6 +4,7 @@ import {
   type LynxListElement,
   scheduleSettleFlush,
 } from '../lynx-element';
+import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
 import { setPageElementRef } from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
@@ -33,6 +34,10 @@ export class LynxDocument implements LynxDocumentBase {
     // Prevent Angular from reparenting or removing the root page element
     // during normal component lifecycle (appendChild/remove calls).
     this.page.isRootPageElement = true;
+    if (isAndroid()) {
+      // What every blur-view blurs on Android (see create-blur-view-element).
+      __SetID(pageElement, ANDROID_BLUR_CAPTURE_TARGET);
+    }
     this.#pageId = __GetElementUniqueID(pageElement);
     setPageElementRef(pageElement);
     return this.page;

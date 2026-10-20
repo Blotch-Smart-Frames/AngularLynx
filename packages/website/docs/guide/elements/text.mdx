@@ -36,6 +36,8 @@ Use `text-overflow` and `text-maxline` to control how long text is clipped:
 }
 ```
 
+Always pair `text-maxline` with `text-overflow: ellipsis` (Tailwind's `text-ellipsis`). On its own, `text-maxline` only sizes the text box: iOS cuts the text off at the last line without an ellipsis, and Android draws the remaining lines below the box, over whatever comes next.
+
 ### Custom truncation content
 
 Put an `<inline-truncation>` inside the `<text>` to replace the default ellipsis with your own content. It only appears when the text is actually truncated:
@@ -51,9 +53,9 @@ Put an `<inline-truncation>` inside the `<text>` to replace the default ellipsis
 
 ## Key Attributes
 
-| Attribute      | Type     | Description                                                                                 |
-| -------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `text-maxline` | `number` | Maximum number of visible lines before truncation (Lynx-specific, no CSS equivalent in web) |
+| Attribute      | Type     | Description                                                                                                                   |
+| -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `text-maxline` | `number` | Maximum number of visible lines (Lynx-specific, no CSS equivalent in web). Add `text-overflow: ellipsis` to truncate with "…" |
 
 ## Nesting Rules
 

@@ -14,6 +14,7 @@ import com.lynx.tasm.LynxError
 import com.lynx.tasm.LynxView
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.LynxViewClient
+import com.lynx.xelement.XElementBehaviors
 
 /**
  * The whole app: one full-screen LynxView running the Angular app. Angular
@@ -43,6 +44,10 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
             setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
             setGenericResourceFetcher(AssetGenericResourceFetcher(this@MainActivity))
             registerModule(ShellModule.NAME, ShellModule::class.java, this@MainActivity)
+            // Lynx's core has no <input>, <overlay>, <svg>, <blur-view> etc.;
+            // these come from XElement (see app/build.gradle.kts). Lynx
+            // Explorer registers them the same way.
+            addBehaviors(XElementBehaviors().create())
         }.build(this)
         lynxView.addLynxViewClient(object : LynxViewClient() {
             override fun onReceivedError(error: LynxError?) {

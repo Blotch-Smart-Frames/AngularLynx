@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 // Recognizable plugin stand-ins so `.use(Plugin, [opts])` can be asserted and
@@ -22,7 +23,7 @@ import {
   LynxEncodePlugin,
   WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
-import { applyEntry, getChunks } from './entry';
+import { applyEntry, BLUR_VIEW_STYLESHEET, getChunks } from './entry';
 
 const entryOptions = {
   customCSSInheritanceList: [],
@@ -220,6 +221,45 @@ describe('applyEntry', () => {
     ).toBe(false);
     // Web target never enables HMR even in dev.
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
+  });
+
+  it('adds the blur-view stylesheet first, to the native bundle only', () => {
+    const imports = (name: string) => {
+      const { api, triggerChain } = createMockApi();
+      const { chain, entryBuilders } = createMockChain({
+        entries: { main: { values: () => ['./src/styles.css', './main.ts'] } },
+      });
+      applyEntry(api as never, entryOptions);
+      triggerChain(chain, { name, config: {} }, false);
+      const [background] = entryBuilders['main'].add.mock.calls[0];
+      const [mainThread] = entryBuilders['main__main-thread'].add.mock.calls[0];
+      expect(mainThread.import).toEqual(background.import);
+      return background.import;
+    };
+
+    expect(imports('lynx')).toEqual([
+      BLUR_VIEW_STYLESHEET,
+      './src/styles.css',
+      './main.ts',
+    ]);
+    expect(imports('web')).toEqual(['./src/styles.css', './main.ts']);
+  });
+
+  // The runtime sets the variables and the stylesheet reads them, from two
+  // packages, so only this test notices when one side renames a variable.
+  it('reads exactly the blur-view variables the runtime sets on Android', () => {
+    const variables = (source: string) =>
+      new Set(source.match(/--angular-lynx-blur-[a-z-]+/g));
+    const css = readFileSync(BLUR_VIEW_STYLESHEET, 'utf8');
+    const runtime = readFileSync(
+      new URL(
+        '../../runtime/src/lib/lynx-document/android-blur-material.ts',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    expect(variables(css).size).toBe(3);
+    expect(variables(css)).toEqual(variables(runtime));
   });
 
   it('takes the template filename and intermediate dir from the Lynx config', () => {

@@ -72,6 +72,11 @@ export class LynxDocument implements LynxDocumentBase {
     if (tag === 'raw-text') {
       el.setInitialText(value ?? '');
     }
+    // Before any attribute is set: a blur-view with no attributes must still
+    // set its (empty) material, or it inherits a parent blur-view's.
+    if (tag === 'blur-view') {
+      el.updateBlurMaterial();
+    }
     return el;
   }
   createText(value: string): LynxElement {

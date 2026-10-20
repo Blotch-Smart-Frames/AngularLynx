@@ -1,0 +1,16 @@
+/*
+ * The look of iOS's blur-view materials on Android, where Lynx's blur-view
+ * only blurs. On Android the runtime sets these variables inline on every
+ * blur-view (see android-blur-material.ts in @blotch/angular-lynx); iOS leaves
+ * them unset, so the fallbacks apply there and change nothing.
+ *
+ * The type selector is what lets the app restyle a blur-view: it loses to any
+ * class, id or inline style, so `bg-white/30` or `shadow-none` still wins.
+ * The build adds this file to the native bundle first, so an app's own
+ * `blur-view` rule comes later and wins too. Web draws its materials itself.
+ */
+blur-view {
+  background-color: var(--angular-lynx-blur-background, transparent);
+  background-image: var(--angular-lynx-blur-background-image, none);
+  box-shadow: var(--angular-lynx-blur-box-shadow, none);
+}

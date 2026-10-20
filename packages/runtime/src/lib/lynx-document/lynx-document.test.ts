@@ -355,6 +355,16 @@ describe('LynxDocument', () => {
       },
     );
 
+    it('gives a new blur-view its material on Android', () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const el = doc.createElement('blur-view');
+      expect(asMock(globalThis.__SetInlineStyles)).toHaveBeenCalledWith(
+        el.element,
+        expect.stringContaining('--angular-lynx-blur-background: transparent'),
+      );
+      vi.unstubAllGlobals();
+    });
+
     it('creates a comment element via createCommentElement (__CreateView + display:none)', () => {
       // The 'comment' tag doesn't go through __CreateElement — it uses
       // __CreateView and stamps `display:none` inline. That flow is shared by

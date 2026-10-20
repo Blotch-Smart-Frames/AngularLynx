@@ -3,6 +3,7 @@
 // } from "@rsbuild/core";
 
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { LynxConfig } from '@lynx-js/rsbuild-plugin';
 import type { RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
 import { RuntimeWrapperWebpackPlugin } from '@lynx-js/runtime-wrapper-webpack-plugin';
@@ -25,6 +26,18 @@ export const S_LYNX_CONFIG = Symbol.for('@lynx-js/rsbuild-plugin:config');
 const PLUGIN_NAME_TEMPLATE = 'lynx:template';
 const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';
+
+/**
+ * The `blur-view` rule that approximates iOS's blur materials on Android,
+ * from variables the runtime sets (see the file). Only the native bundle gets
+ * it: web draws the materials itself, in the element's shadow root, and an
+ * app-level rule there would beat them. It goes before every other import, so
+ * the app's own stylesheets come later and win a tie.
+ */
+export const BLUR_VIEW_STYLESHEET = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './styles/blur-view.css',
+);
 
 export const applyEntry = (
   api: RsbuildPluginAPI,
@@ -79,7 +92,13 @@ export const applyEntry = (
     chain.entryPoints.clear();
     const mainThreadChunks: string[] = [];
     for (const [entryName, entryPoint] of Object.entries(entries)) {
-      const { imports } = getChunks(entryName, entryPoint.values());
+      const { imports: entryImports } = getChunks(
+        entryName,
+        entryPoint.values(),
+      );
+      const imports = isLynx
+        ? [BLUR_VIEW_STYLESHEET, ...entryImports]
+        : entryImports;
 
       const templateFilename = lynxConfig.resolveBundleFilename({
         entryName,

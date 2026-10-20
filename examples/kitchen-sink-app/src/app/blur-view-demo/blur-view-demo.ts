@@ -92,7 +92,7 @@ type GlassStyle = 'regular' | 'clear';
             }
           </view>
 
-          <ui-text variant="muted">blur-effect (iOS)</ui-text>
+          <ui-text variant="muted">blur-effect</ui-text>
           <view class="flex-row gap-2 flex">
             @for (e of effects; track e) {
               <ui-button

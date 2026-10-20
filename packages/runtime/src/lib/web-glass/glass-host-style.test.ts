@@ -4,6 +4,7 @@ import {
   applyHostStyle,
   fallbackGlassCss,
   hostStyleCss,
+  materialCss,
 } from './glass-host-style';
 
 const NONE = { fallback: false, rendered: false, hostsCanvas: false };
@@ -37,6 +38,34 @@ describe('fallbackGlassCss', () => {
     );
     expect(css).toContain('blur(20px)');
     expect(css).toContain('background-color:blue');
+  });
+});
+
+describe('materialCss', () => {
+  it('brightens the backdrop for light, the default', () => {
+    expect(materialCss(host({ 'blur-radius': '16px' }))).toBe(
+      ':host{backdrop-filter:blur(16px) brightness(1.35);' +
+        '-webkit-backdrop-filter:blur(16px) brightness(1.35)}',
+    );
+  });
+
+  it('washes extra-light with white and dark with black', () => {
+    expect(
+      materialCss(host({ 'blur-radius': '8px', 'blur-effect': 'extra-light' })),
+    ).toBe(':host{background-color:rgba(255, 255, 255, 0.75)}');
+    expect(
+      materialCss(host({ 'blur-radius': '8px', 'blur-effect': 'dark' })),
+    ).toBe(':host{background-color:rgba(0, 0, 0, 0.6)}');
+  });
+
+  it('leaves glass, and views with no blur, alone', () => {
+    expect(materialCss(host())).toBe('');
+    expect(materialCss(host({ 'blur-radius': '0px' }))).toBe('');
+    for (const effect of ['glass', 'glass-container']) {
+      expect(
+        materialCss(host({ 'blur-radius': '16px', 'blur-effect': effect })),
+      ).toBe('');
+    }
   });
 });
 

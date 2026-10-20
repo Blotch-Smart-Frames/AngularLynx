@@ -34,8 +34,35 @@ export const fallbackGlassCss = (element: Element): string => {
   );
 };
 
+/**
+ * The UIKit blur material a non-glass `<blur-view>` gets on iOS, which
+ * `blur-effect` picks (`light` by default). Besides blurring, each material
+ * shifts what's behind it, while web-elements' `<x-blur-view>` only blurs. So
+ * these approximate them, fitted to the iOS simulator's pixels in the
+ * element-blur-view example: `light` brightens the backdrop by about a third,
+ * `extra-light` washes it with white, and `dark` with black. Like on iOS, a
+ * blur view with no blur radius shows no material. The `light` rule repeats
+ * the blur because it replaces web-elements' own `backdrop-filter`.
+ */
+export const materialCss = (element: Element): string => {
+  const effect = element.getAttribute('blur-effect') ?? 'light';
+  const radius = parseFloat(element.getAttribute('blur-radius') ?? '');
+  if (!radius || effect === 'glass' || effect === 'glass-container') {
+    return '';
+  }
+  if (effect === 'extra-light') {
+    return ':host{background-color:rgba(255, 255, 255, 0.75)}';
+  }
+  if (effect === 'dark') {
+    return ':host{background-color:rgba(0, 0, 0, 0.6)}';
+  }
+  const filter = `blur(${radius}px) brightness(1.35)`;
+  return `:host{backdrop-filter:${filter};-webkit-backdrop-filter:${filter}}`;
+};
+
 export const hostStyleCss = (element: Element, state: HostStyleState): string =>
   [
+    materialCss(element),
     state.hostsCanvas ? ':host{isolation:isolate}' : '',
     state.rendered
       ? ':host{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}'

@@ -7,8 +7,8 @@ import type { ElementRef } from '../../types/lynx';
  * material. It must be a real `blur-view`: the unknown-tag view fallback would
  * silently ignore every blur attribute and render a plain view with no blur.
  *
- * Lynx for Web's `blur-view` only implements `blur-radius`, so on web the
- * glass effects are drawn by `attachWebGlass`.
+ * Lynx for Web's `blur-view` only implements `blur-radius` and doesn't lay its
+ * children out like a view, so on web `attachWebGlass` adds both.
  */
 export const createBlurViewElement = (pageId: number): ElementRef => {
   const element = __CreateElement('blur-view', pageId);

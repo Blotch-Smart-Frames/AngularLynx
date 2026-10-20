@@ -24,6 +24,14 @@ describe('attachWebGlass', () => {
     expect(register).toHaveBeenCalledWith(element);
   });
 
+  it('lays a blur view out like a view, glass or not', () => {
+    vi.stubGlobal('IntersectionObserver', undefined);
+    const element = document.createElement('x-blur-view');
+    const root = element.attachShadow({ mode: 'open' });
+    attachWebGlass(element as unknown as ElementRef);
+    expect(root.querySelector('style')?.textContent).toMatch(/^:host\{/);
+  });
+
   it('ignores refs that are not elements in a page', () => {
     attachWebGlass({} as ElementRef);
     expect(register).not.toHaveBeenCalled();

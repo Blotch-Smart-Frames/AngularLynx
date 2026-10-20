@@ -188,12 +188,14 @@ export const applyCSS = (
     // threshold is ever consulted. Instead, force fonts to inline. Data URIs are
     // absolute, so they survive the `webpack://` base-URI join untouched and
     // need no network fetch or publicPath at all — exactly what the Lynx
-    // `@font-face` docs recommend ("Base64-encoded fonts"). Only the Lynx target
-    // is affected; web keeps normal asset/resource fonts served over HTTP.
-    if (
-      environment.name === 'lynx' &&
-      chain.module.rules.has(CHAIN_ID.RULE.FONT)
-    ) {
+    // `@font-face` docs recommend ("Base64-encoded fonts").
+    //
+    // The web bundle goes through the same css-extract child compilation, so it
+    // gets the same `webpack:///` URL, which a browser refuses to fetch (CORS
+    // only allows http(s)). Its CSS also lands in `<lynx-view>`'s shadow root,
+    // where a relative URL would resolve against the host page rather than the
+    // bundle. So fonts are inlined on every environment.
+    if (chain.module.rules.has(CHAIN_ID.RULE.FONT)) {
       const fontRule = chain.module.rule(CHAIN_ID.RULE.FONT);
       // Drop the oneOf branches (asset/resource plus the `?url`/`?inline`/`?raw`
       // query variants) that would emit a separate font file Lynx can't fetch,

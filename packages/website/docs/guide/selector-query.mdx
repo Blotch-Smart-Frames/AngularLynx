@@ -1,188 +1,130 @@
-# SelectorQuery
+# Call element methods
 
-`lynx.createSelectorQuery()` is Lynx's API for running imperative operations on native elements — measuring layout, calling element methods, and invoking platform commands. It is the Lynx equivalent of `document.querySelector()` combined with the Web Animations API's `Element.requestAnimationFrame`.
+Some element features have no attribute: you scroll a `<scroll-view>` to a position, or play a `<video>`, by calling a method on the element. These are **UI methods**, functions a native element exposes that you call by name (see [Glossary](/guide/glossary#ui-method)).
 
-You rarely call this directly in AngularLynx — most platform operations are wrapped by services (`LynxAccessibility`, element methods on `refresh` and `scroll-coordinator`). This page documents the raw API for cases where no wrapper exists.
+## Call a method from an event handler
 
-## How It Works
-
-`createSelectorQuery` uses a builder pattern: select an element, chain an operation, then call `.exec()` to dispatch it to the main thread.
-
-```typescript
-lynx
-  .createSelectorQuery()
-  .select('#my-element') // select by id, class, or tag
-  .invoke({
-    // call a native element method
-    method: 'methodName',
-    params: {},
-    success: (res) => console.log(res),
-    fail: (res) => console.error(res),
-  })
-  .exec();
-```
-
-## Selectors
-
-| Selector | Example       | Description                                    |
-| -------- | ------------- | ---------------------------------------------- |
-| ID       | `'#my-id'`    | Matches `[attr.name]="'my-id'"` on the element |
-| Class    | `'.my-class'` | Matches `class="my-class"`                     |
-| Tag      | `'view'`      | Matches by element tag name                    |
-
-:::warning
-ID selectors match the `name` attribute, not the HTML `id` attribute. Set `[attr.name]="'my-id'"` on the target element.
-:::
-
-## Calling Element Methods
-
-Several Lynx elements expose imperative methods that must be called through `invoke`. AngularLynx provides typed wrappers for the most common ones, but you can always call them directly:
-
-### `<refresh>` — finishRefresh / autoStartRefresh
-
-The `<refresh>` element's `finishRefresh()` and `autoStartRefresh()` methods must be called via SelectorQuery:
-
-```typescript
-import { Component, inject } from '@angular/core';
-
-@Component({
-  template: `
-    <refresh [attr.name]="'page-refresh'" (bindstartrefresh)="onRefresh()">
-      ...
-    </refresh>
-  `,
-})
-export class Example {
-  onRefresh(): void {
-    this.loadData().then(() => {
-      lynx
-        .createSelectorQuery()
-        .select('#page-refresh')
-        .invoke({ method: 'finishRefresh', params: {} })
-        .exec();
-    });
-  }
-}
-```
-
-### `<scroll-coordinator>` — setFoldExpanded
-
-```typescript
-lynx
-  .createSelectorQuery()
-  .select('#my-coordinator')
-  .invoke({
-    method: 'setFoldExpanded',
-    // offset is the header's scroll offset: '0px' fully expands the header.
-    params: { offset: '0px', smooth: true },
-    success: () => console.log('Expanded'),
-  })
-  .exec();
-```
-
-### Accessibility Focus
-
-`LynxAccessibility.requestFocus()` wraps this pattern:
-
-```typescript
-lynx
-  .createSelectorQuery()
-  .select('#confirmation-message')
-  .invoke({
-    method: 'requestAccessibilityFocus',
-    params: {},
-    success: () => resolve(),
-    fail: (res) => reject(new Error(`Failed: ${res.code}`)),
-  })
-  .exec();
-```
-
-## Layout Measurement
-
-Use `.boundingClientRect()` to measure an element's size and position:
-
-```typescript
-lynx
-  .createSelectorQuery()
-  .select('#my-element')
-  .boundingClientRect((rect) => {
-    console.log(rect.width, rect.height, rect.top, rect.left);
-  })
-  .exec();
-```
-
-## Wrapping in a Promise
-
-The callback-based API is easier to use as a Promise:
-
-```typescript
-function invokeElement(
-  selector: string,
-  method: string,
-  params = {},
-): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    lynx
-      .createSelectorQuery()
-      .select(selector)
-      .invoke({
-        method,
-        params,
-        success: resolve,
-        fail: (res) => reject(new Error(`${method} failed (code ${res.code})`)),
-      })
-      .exec();
-  });
-}
-
-// Usage
-await invokeElement('#page-refresh', 'finishRefresh', {});
-```
-
-## Angular Integration Pattern
-
-Access the element's `name` attribute via a template variable, then call into SelectorQuery on demand:
-
-```typescript
-import { Component, signal } from '@angular/core';
+```typescript title="src/app/app.ts"
+import { Component, ElementRef, viewChild } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <refresh [attr.name]="refreshId" (bindstartrefresh)="onRefresh()">
-      <refresh-header>
-        <text>{{ refreshing() ? 'Loading...' : 'Pull to refresh' }}</text>
-      </refresh-header>
-      <scroll-view scroll-orientation="vertical" style="height: 100%;">
-        @for (item of items(); track item.id) {
-          <view style="padding: 16px;">
-            <text>{{ item.name }}</text>
-          </view>
-        }
-      </scroll-view>
-    </refresh>
+    <scroll-view #list scroll-orientation="vertical" style="height: 300px;">
+      @for (n of rows; track n) {
+        <view style="height: 48px;">
+          <text>Row {{ n }}</text>
+        </view>
+      }
+    </scroll-view>
+    <view (bindtap)="backToTop()">
+      <text>Back to top</text>
+    </view>
   `,
 })
-export class Example {
-  readonly refreshId = 'main-refresh';
-  refreshing = signal(false);
-  items = signal<Item[]>([]);
+export class App {
+  readonly rows = Array.from({ length: 50 }, (_, i) => i + 1);
+  readonly list = viewChild.required('list', { read: ElementRef });
 
-  async onRefresh(): Promise<void> {
-    this.refreshing.set(true);
-    this.items.set(await this.api.loadItems());
-    this.refreshing.set(false);
-
-    lynx
-      .createSelectorQuery()
-      .select(`#${this.refreshId}`)
-      .invoke({ method: 'finishRefresh', params: {} })
-      .exec();
+  backToTop(): void {
+    this.list().nativeElement.invoke?.('scrollTo', { offset: 0, smooth: true });
   }
 }
 ```
 
-## Reference
+- **`viewChild(…, { read: ElementRef })`** gives you the element. **`nativeElement.invoke(method, params)`** calls a UI method on it.
+- **It's fire-and-forget.** `invoke()` returns nothing, and a failed call isn't reported.
+- **The `?.` matters outside handlers.** Your app's [background thread](/guide/glossary#background-thread) copy has no native elements, so its `nativeElement` has no `invoke`. Handlers run only on the [main thread](/guide/glossary#main-thread), but `?.` keeps the same call safe in a constructor or `ngOnInit`, which run on both.
 
-Full `SelectorQuery` API documentation: [lynxjs.org — NodesRef.invoke](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html)
+Each element's methods and their parameters are on its API page, such as [`<video>`](/api/elements/video). Lynx's [element reference](https://lynxjs.org/api/elements/built-in/scroll-view.html) lists more, such as `<scroll-view>`'s `scrollTo` and `autoScroll`.
+
+## Get a method's result
+
+To read a result, such as an element's size and position, call `invoke()` in a [main-thread script](/guide/main-thread/). There it returns a Promise:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxMainThreadEvent,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
+
+type Rect = { left: number; top: number; width: number; height: number };
+
+const logSize = mainThreadFn((event: MainThread.TouchEvent) => {
+  event.currentTarget
+    .invoke('boundingClientRect')
+    .then((rect: Rect) => console.log(`${rect.width} × ${rect.height}`));
+});
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <view [mainThreadBindtap]="logSize" style="padding: 24px;">
+      <text>Tap to log my size</text>
+    </view>
+  `,
+})
+export class App {
+  readonly logSize = logSize;
+}
+```
+
+- **`boundingClientRect`** returns the element's size and position. `left` and `top` are measured from the top-left corner of the [LynxView](/guide/glossary#lynxview) that shows your app.
+- **The Promise rejects** if the method fails.
+- **`console.log`** output shows in [Lynx DevTool](/guide/glossary#lynx-devtool) (see [Debugging](/guide/debugging)).
+
+## Select an element with `lynx.createSelectorQuery()`
+
+Lynx's own API finds an element by selector and calls a method on it, and Lynx's documentation uses it for every UI method. It exists only on the background thread. Template handlers run on the main thread, where calling it throws `lynx.createSelectorQuery is not a function`.
+
+So wrap the query in a `backgroundFn()`, and call it from a handler with [`runOnBackground()`](/guide/main-thread/#call-the-background-thread):
+
+```typescript
+import { backgroundFn } from '@blotch/angular-lynx';
+
+// Runs on the background thread, where createSelectorQuery() exists.
+const pause = backgroundFn((id: string) => {
+  lynx
+    .createSelectorQuery()
+    .select(`#${id}`)
+    .invoke({
+      method: 'pause',
+      success: (result) => console.log('paused', result),
+      fail: (res) => console.error(`pause failed, code ${res.code}`),
+    })
+    .exec();
+});
+
+// In a template handler:
+// runOnBackground(pause, 'player');
+```
+
+- **`#player` matches the element's `id`**, as in `<video id="player">`. A class (`.name`) or a tag name (`video`) also works.
+- **`exec()` sends the query.** Nothing runs until you call it.
+- **`success`** receives the method's result. It runs later, so the result can't come back through `runOnBackground()`. To use a result, call `invoke()` in a main-thread script, as shown above.
+- **`fail`** receives `{ code, data }`. Without a `fail` callback, a failed call shows an error screen.
+
+| `code` | Meaning                                   |
+| ------ | ----------------------------------------- |
+| `1`    | Unknown error                             |
+| `2`    | No element matches the selector           |
+| `3`    | The element has no method with that name  |
+| `4`    | The parameters aren't valid               |
+| `5`    | The selector isn't supported              |
+| `6`    | The element has no native view to call it |
+
+`LynxAccessibility.requestFocus()` calls the `requestAccessibilityFocus` method through `createSelectorQuery()`, so the same thread rule applies to it.
+
+## Related
+
+- [Main-thread scripts](/guide/main-thread/)
+- [`<video>` element](/api/elements/video)
+- [`<scroll-view>` element](/api/elements/scroll-view)
+- [Accessibility](/guide/accessibility)
+- [NodesRef.invoke on lynxjs.org](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html)

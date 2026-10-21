@@ -1,156 +1,200 @@
-# Main Thread Scripts
+# Main-thread scripts
 
-AngularLynx lets you run JavaScript directly on the **main thread** — the same thread that handles native rendering and touch input. This eliminates the cross-thread round trip that normally occurs when event handlers run on the background thread, enabling instant UI responses to user interactions.
-
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to using `ElementRef.nativeElement` for direct DOM manipulation on the web — something Angular's own documentation [explicitly discourages](https://angular.dev/api/core/ElementRef): _"Use this API as the last resort when direct access to DOM is needed. Use templating and data-binding provided by Angular instead."_
-
-**Only use main thread scripts when the cross-thread round trip creates perceptible latency** — typically gesture-tracking animations that must run at 60fps. For simple tap handlers, state updates, or any logic that can tolerate a frame or two of delay, use standard Angular event bindings (`(bindtap)`, `(bindscroll)`, etc.) and let Angular's change detection handle the UI update.
-
-Try the standard background-thread approach first. Only reach for main thread scripts when you've measured and confirmed the latency is unacceptable for your use case.
-:::
+A **main-thread script** restyles an element on every touch or scroll event without running Angular's change detection. Use one for drags, scroll-linked effects and other work that must keep up with a finger. It's a function that runs on the [main thread](/guide/glossary#main-thread) with a direct handle to the native element (see [Glossary](/guide/glossary#main-thread-script)).
 
 <Go example="main-thread" defaultFile="src/app/app.ts" />
 
-## Overview
+## What they add
 
-Lynx uses a dual-thread architecture:
+Your template event handlers, such as `(bindtap)`, already run on the main thread, inside the native event (see [Threads](/guide/concepts/threads)). So a main-thread script doesn't save a trip between threads. It gives you four other things:
 
-```mermaid
-flowchart LR
-    subgraph MT["Main Thread"]
-        direction TB
-        A[Native Rendering]
-        B[Touch Input]
-        C[Main Thread Scripts]
-    end
-    subgraph BG["Background Thread"]
-        direction TB
-        D[Angular App]
-        E[Business Logic]
-        F[State Management]
-    end
-    MT <-->|"async message passing"| BG
-```
+- **No change detection per event.** A `(bindtouchmove)` handler marks its component for checking, so Angular runs change detection after every move. A main-thread script changes the element itself, and Angular does no work.
+- **An element handle.** In a main-thread script, `event.currentTarget` and `event.target` are `MainThread.Element` objects with `setStyleProperty()`, `setAttribute()`, `querySelector()`, `animate()` and `invoke()`. In a template handler, `$event.currentTarget` is plain data.
+- **Results from element methods.** `invoke()` calls a [UI method](/guide/glossary#ui-method) and returns a Promise of its result, such as the element's size and position.
+- **A way to the background thread.** `runOnBackground()` calls a function on the [background thread](/guide/glossary#background-thread), which has APIs the main thread lacks.
 
-| Thread         | Responsibilities                                 | Latency                                |
-| -------------- | ------------------------------------------------ | -------------------------------------- |
-| **Main**       | Native rendering, touch/gesture dispatch, layout | Instant — same thread as the UI        |
-| **Background** | Angular components, signals, routing, HTTP       | Round trip — serialized across threads |
+## Bind a script to an event
 
-Main thread scripts are ideal for:
-
-- **Touch-driven visual feedback** (color changes, opacity, transforms on drag)
-- **Gesture-based animations** that must track finger position at 60fps
-- **Direct element manipulation** without waiting for the background thread
-
-## Main Thread vs Background Thread
-
-|                 | Main Thread                                           | Background Thread                            |
-| --------------- | ----------------------------------------------------- | -------------------------------------------- |
-| **Access to**   | Native elements, touch events, layout info            | Angular state, signals, services, DI         |
-| **Latency**     | Zero — same thread as rendering                       | Round trip — serialized message passing      |
-| **Best for**    | Visual feedback, animations, direct manipulation      | Business logic, state management, routing    |
-| **Limitations** | No Angular DI, no signals, no closures over app state | Delayed UI updates, no direct element access |
-
-:::tip
-Use main thread scripts for **visual feedback** that must feel instant (color, opacity, transforms). Keep **business logic** (state updates, navigation, HTTP) on the background thread where Angular's full DI and reactivity system is available.
-:::
-
-:::warning
-Main thread functions cannot capture closures over component state. They can only access their arguments, `MainThreadRef` values, and the global `lynx` API. If you need to communicate results back to Angular, use `LynxMainThread.runOnMainThread()` which returns a `Promise`.
-:::
-
-## Complete Example
-
-```typescript title="src/app/main-thread-demo.ts"
-import { Component, signal } from '@angular/core';
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
 import {
   LYNX_ELEMENTS,
   LynxMainThreadEvent,
   mainThreadFn,
-  createMainThreadRef,
+  type MainThread,
 } from '@blotch/angular-lynx';
-import type { MainThread } from '@blotch/angular-lynx';
 
-// Shared state across main thread calls
-const tapCount = createMainThreadRef(0);
-
-// Changes color instantly on tap — no cross-thread round trip
-const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
-  const el = event.currentTarget;
-  tapCount.current++;
-
-  const colors = ['#6200ee', '#03dac6', '#ff5722', '#4caf50', '#ff9800'];
-  const color = colors[tapCount.current % colors.length]!;
-  el.setStyleProperty('background-color', color);
+// Fades the card as the finger moves right, on every touchmove.
+const fade = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0];
+  if (!touch) return;
+  const opacity = Math.max(0.3, Math.min(1, touch.clientX / 300));
+  event.currentTarget.setStyleProperty('opacity', String(opacity));
 });
 
-// Tracks finger position and adjusts opacity in real time
-const handleTouchMove = mainThreadFn((event: MainThread.TouchEvent) => {
-  const el = event.currentTarget;
-  const rect = el.getBoundingClientRect();
-  const relativeX = (event.touches[0]!.clientX - rect.left) / rect.width;
-  const opacity = Math.max(0.3, Math.min(1, relativeX));
-  el.setStyleProperty('opacity', String(opacity));
-});
-
-const handleTouchEnd = mainThreadFn((event: MainThread.TouchEvent) => {
+const reset = mainThreadFn((event: MainThread.TouchEvent) => {
   event.currentTarget.setStyleProperty('opacity', '1');
 });
 
 @Component({
+  selector: 'app-root',
   imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
   template: `
-    <view>
-      <!-- Main thread: instant color change -->
-      <view
-        [mainThreadBindtap]="handleTap"
-        style="height: 100px; background-color: #6200ee; border-radius: 12px;
-               justify-content: center; align-items: center;"
-      >
-        <text style="color: white; font-size: 18px;">Tap to change color</text>
-      </view>
-
-      <!-- Main thread: real-time opacity tracking -->
-      <view
-        [mainThreadBindtouchmove]="handleTouchMove"
-        [mainThreadBindtouchend]="handleTouchEnd"
-        style="height: 100px; background-color: #1976d2; border-radius: 12px;
-               margin-top: 16px; justify-content: center; align-items: center;"
-      >
-        <text style="color: white; font-size: 18px;"
-          >Drag to change opacity</text
-        >
-      </view>
-
-      <!-- Background thread comparison -->
-      <view
-        (bindtap)="onBgTap()"
-        style="height: 80px; background-color: #757575; border-radius: 12px;
-               margin-top: 16px; justify-content: center; align-items: center;"
-      >
-        <text style="color: white;">BG taps: {{ bgTapCount() }}</text>
-      </view>
+    <view
+      [mainThreadBindtouchmove]="fade"
+      [mainThreadBindtouchend]="reset"
+      style="height: 120px; background-color: #3b82f6;"
+    >
+      <text style="color: white;">Drag across me</text>
     </view>
   `,
 })
-export class MainThreadDemo {
-  readonly handleTap = handleTap;
-  readonly handleTouchMove = handleTouchMove;
-  readonly handleTouchEnd = handleTouchEnd;
-  readonly bgTapCount = signal(0);
+export class App {
+  readonly fade = fade;
+  readonly reset = reset;
+}
+```
 
-  onBgTap(): void {
-    this.bgTapCount.update((v) => v + 1);
+- **`mainThreadFn()`** registers the function on the main thread and returns a handle.
+- **`LynxMainThreadEvent`** provides the `mainThreadBind*` and `mainThreadCatch*` inputs. Bind them with square brackets: you pass the handle in, you don't listen with `( )`.
+- **`catch` instead of `bind`** stops the event bubbling, as with template events (see [Handling taps and events](/guide/elements/event-handling)).
+- **Style changes are batched.** AngularLynx draws them once, after your function returns. Property names are kebab-case and values are strings.
+
+The inputs cover `tap`, `touchstart`, `touchmove`, `touchend`, `mousedown`, `mousemove`, `mouseup`, `longpress` and `scroll`. `animationstart`, `animationend`, `transitionend` and `layoutchange` have a `bind` form only. The [`LynxMainThreadEvent` reference](/api/main-thread/main-thread-event) lists them all.
+
+A desktop browser fires mouse events, not touch events. To drag in the [web preview](/guide/glossary#web-preview), bind `mainThreadBindmousemove` as well. Phones never fire it, so binding both is safe.
+
+## Use the `'main thread'` directive
+
+Instead of calling `mainThreadFn()`, make `'main thread'` the first statement of the function:
+
+```typescript
+import type { MainThread } from '@blotch/angular-lynx';
+
+const reset = (event: MainThread.TouchEvent) => {
+  'main thread';
+  event.currentTarget.setStyleProperty('opacity', '1');
+};
+```
+
+The build wraps the function in `mainThreadFn()` and adds the import. Both forms behave the same.
+
+- **Arrow functions and function expressions** with a block body are wrapped. `'main-thread'` works too.
+- **Function declarations and class methods** aren't. Write `const name = () => { 'main thread'; … }` instead.
+
+## Define scripts at module level
+
+Put main-thread scripts at the top level of a file, as above. A script is registered once, when its file loads. Both copies of your app load files in the same order, so the script gets the same ID on both threads. A call from the background thread needs that ID.
+
+A class property, such as `readonly fade = (event) => { 'main thread'; … }`, works for a `[mainThreadBind*]` input and can read `this`. Avoid it anyway: every component instance registers a new function that's never released, so a component you create many times stays in memory. Its ID can also differ between the threads.
+
+A script runs in the main-thread copy of your file. It reads that copy's module-level variables. Data from the background thread reaches it only as copied JSON arguments.
+
+## Keep state between events
+
+A **`MainThreadRef`** holds a value that your scripts keep between events, such as where a drag started:
+
+```typescript
+import {
+  createMainThreadRef,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
+
+const startX = createMainThreadRef(0);
+
+const dragStart = mainThreadFn((event: MainThread.TouchEvent) => {
+  startX.current = event.touches[0]?.clientX ?? 0;
+});
+
+const dragMove = mainThreadFn((event: MainThread.TouchEvent) => {
+  const dx = (event.touches[0]?.clientX ?? 0) - startX.current;
+  event.currentTarget.setStyleProperty('transform', `translateX(${dx}px)`);
+});
+```
+
+Each thread has its own copy of a ref, and the copies aren't synced. On the main thread, a ref works like a module-level variable that's labeled as script state.
+
+## Call the background thread
+
+`runOnBackground()` runs a **`backgroundFn()`** on the background thread and returns a Promise of its result:
+
+```typescript
+import {
+  backgroundFn,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
+
+// Runs on the background thread, which has APIs such as
+// lynx.createSelectorQuery() that the main thread doesn't.
+const describe = backgroundFn((label: string) => `${label} (background)`);
+
+const onTap = mainThreadFn((event: MainThread.TouchEvent) => {
+  runOnBackground(describe, 'tapped').then((text) => console.log(text));
+});
+```
+
+- **`runOnBackground()` is a global.** Call it from main-thread code: a main-thread script, or a template handler. It doesn't exist on the background thread, so don't call it from a constructor or `ngOnInit`, which run on both.
+- **Define `backgroundFn()` at module level**, for the same ID reason as main-thread scripts.
+- **Arguments and the return value are copied as JSON.**
+- **Return a value, not a Promise.** A returned Promise arrives as `{}`. So you can't fetch data this way yet (see [Network requests](/guide/concepts/javascript-environment#network-requests)).
+
+[Call element methods](/guide/selector-query) uses this to reach `lynx.createSelectorQuery()`.
+
+## Call a script from your code
+
+`LynxMainThread.runOnMainThread(handle, ...args)` calls a main-thread script and returns a Promise of its result:
+
+```typescript
+import { Component, inject } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxMainThread,
+  mainThreadFn,
+} from '@blotch/angular-lynx';
+
+const double = mainThreadFn((n: number) => n * 2);
+
+@Component({
+  selector: 'app-double',
+  imports: [LYNX_ELEMENTS],
+  template: `<view (bindtap)="run()"><text>Double 21</text></view>`,
+})
+export class Double {
+  readonly #mainThread = inject(LynxMainThread);
+
+  run(): void {
+    this.#mainThread.runOnMainThread(double, 21).then((n) => console.log(n));
   }
 }
 ```
 
-## API Reference
+- **From a template handler**, which is already on the main thread, the script runs right away.
+- **From the background thread**, the call crosses threads and the arguments are copied as JSON.
+- **Not from code that runs on both threads.** A call in a constructor, `ngOnInit` or `effect()` runs the script twice: once from each copy of your app.
 
-- [`mainThreadFn`](/api/main-thread/main-thread-fn) — registers a function to run on the main thread
-- [`LynxMainThreadEvent`](/api/main-thread/main-thread-event) — binds main-thread functions to native events
-- [`MainThreadRef`](/api/main-thread/main-thread-ref) — shares a value between both threads
-- [`LynxMainThread`](/api/main-thread/main-thread-service) — calls a main-thread function from Angular code
-- [`backgroundFn`](/api/main-thread/background-fn) — calls back into Angular from the main thread
+To get from the main thread to the background thread, use `runOnBackground()`, not `runOnMainThread()`.
+
+:::warning Angular doesn't see these changes
+A main-thread script changes native elements behind Angular's back.
+
+- A later binding update to the same property, such as `[style.opacity]`, overwrites your change.
+- When an element is removed and shown again, by an `@if` or by leaving and returning to a route, AngularLynx rebuilds it from Angular's state. Your changes are gone.
+
+Use scripts for visual effects that follow a gesture. Keep anything that must last in signals.
+:::
+
+## Limitations
+
+- **No dependency injection.** A module-level script has no injection context, so `inject()` doesn't work in it.
+- **A `MainThreadRef` doesn't cross threads.** Passed to `runOnMainThread()` from the background thread, it arrives as a plain `{ _wvid }` object, not as the ref.
+- **Measure with `invoke('boundingClientRect')`.** Elements also have an untyped `getBoundingClientRect()`, but its `left` and `top` aren't the element's position.
+
+## Related
+
+- [`mainThreadFn`](/api/main-thread/main-thread-fn) and [`LynxMainThreadEvent`](/api/main-thread/main-thread-event)
+- [`MainThreadRef`](/api/main-thread/main-thread-ref), [`LynxMainThread`](/api/main-thread/main-thread-service) and [`backgroundFn`](/api/main-thread/background-fn)
+- [Threads: where your code runs](/guide/concepts/threads)
+- [Gestures](/guide/gestures/), for pan, pinch and other gesture recognizers
+- [Main-thread example](/examples/main-thread)

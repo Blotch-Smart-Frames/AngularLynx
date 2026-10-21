@@ -1,49 +1,182 @@
 # Gestures
 
-Handle touch interactions — tap, pan, fling, long press, pinch, and rotation — with a declarative gesture system. Create a gesture, configure callbacks, and attach it to any element via a directive.
+Gestures recognize drags, swipes, taps and long presses on an element, and decide which one wins when several could match. Reach for them when a plain `(bindtap)` isn't enough.
+
+:::info Try gestures on a phone
+Gestures run only on iOS and Android. The [web preview](/guide/glossary#web-preview) ignores them, and so does the live preview below. Scan its QR code with [Lynx Explorer](/guide/glossary#lynx-explorer) to try them.
+:::
 
 <Go example="gestures" defaultFile="src/app/app.ts" />
 
-## Setup
+## When to use a gesture
 
-Import `LynxGestureDetector` and the gesture classes you need:
+| You want                             | Use                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| A button or a tappable row           | `(bindtap)`. See [Handling taps and events](/guide/elements/event-handling) |
+| To drag something with a finger      | `PanGesture`                                                                |
+| A quick swipe in one direction       | `FlingGesture`                                                              |
+| A press and hold with its own timing | `LongPressGesture`                                                          |
+| A tap and a drag on the same element | `TapGesture` and `PanGesture`, combined with `Gesture.Exclusive`            |
 
-```typescript title="src/app/my.ts"
+A gesture adds rules that events don't have: how far a finger must move, how long it must hold, and which gesture gets priority.
+
+## Attach a gesture
+
+```typescript title="src/app/like-button.ts"
 import { Component, signal } from '@angular/core';
 import {
-  LynxGestureDetector, // [!code highlight]
-  PanGesture, // [!code highlight]
-  TapGesture, // [!code highlight]
   LYNX_ELEMENTS,
+  LynxGestureDetector,
+  TapGesture,
 } from '@blotch/angular-lynx';
 
 @Component({
-  imports: [LYNX_ELEMENTS, LynxGestureDetector], // [!code highlight]
-  template: `...`,
+  selector: 'app-like-button',
+  imports: [LYNX_ELEMENTS, LynxGestureDetector],
+  template: `
+    <view [lynxGesture]="tap" class="rounded-lg bg-primary p-4">
+      <text class="text-primary-foreground">Likes: {{ likes() }}</text>
+    </view>
+  `,
 })
-export class Example {}
-```
+export class LikeButton {
+  readonly likes = signal(0);
 
-## Basic Usage
-
-Create a gesture instance with the builder pattern, then attach it to an element via `[lynxGesture]`:
-
-```typescript
-export class Example {
-  readonly tapGesture = new TapGesture().onEnd((event) => {
-    this.tapped.set(true);
-  });
-
-  readonly tapped = signal(false);
+  readonly tap = new TapGesture()
+    .maxDistance(10)
+    .onEnd(() => this.likes.update((n) => n + 1));
 }
 ```
 
-```angular-html
-<view [lynxGesture]="tapGesture">
-  <text>Tap me</text>
-</view>
+- **Import `LynxGestureDetector`** next to `LYNX_ELEMENTS`. It provides the `[lynxGesture]` directive.
+- **Build each gesture with chained calls.** `new TapGesture()` creates it, an option such as `.maxDistance(10)` sets a rule, and a callback such as `.onEnd()` reacts. Each call returns the same gesture.
+- **Create each gesture once, as a `readonly` field.** The directive registers its gestures again whenever its input changes.
+- **Callbacks run on the [main thread](/guide/glossary#main-thread)**, inside the native gesture. Changing signals there is safe.
+- **Keep the number of elements fixed while a gesture runs.** Restyle elements from a callback, but don't add or remove them: that can crash the app. Defer it with `setTimeout`, as [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) explains.
+
+## Follow the gesture's lifecycle
+
+A gesture calls you back at each stage:
+
+| Callback   | Fires when                                                                  |
+| ---------- | --------------------------------------------------------------------------- |
+| `onBegin`  | A finger touches down, before the gesture is recognized                     |
+| `onStart`  | The gesture is recognized: the finger moved far enough, or held long enough |
+| `onUpdate` | The finger moves while the gesture is active. Pan and fling only            |
+| `onEnd`    | The gesture finishes                                                        |
+
+- **On a tap or long press, `onEnd` means success.** Lynx also calls `onEnd` when these gestures fail, for example when a tap turns into a drag. AngularLynx drops that call for you.
+- **On a pan or fling, register `onBegin` whenever you use `onStart` or `onEnd`.** An empty callback is enough. Without it, Lynx never calls `onStart` or `onEnd`, and doesn't warn you.
+- **Every callback also gets a state manager** as its second argument. It can end or fail the gesture from code. See [Gesture lifecycle](/api/gestures/lifecycle).
+
+## Combine gestures
+
+```typescript
+import { Gesture, PanGesture, TapGesture } from '@blotch/angular-lynx';
+
+export class DragOrTap {
+  readonly #pan = new PanGesture().minDistance(10).onBegin(() => {});
+  readonly #tap = new TapGesture().onEnd(() => {});
+
+  // Bind this one with [lynxGesture]="gesture".
+  // The pan gets the first claim, so a drag never also counts as a tap.
+  readonly gesture = Gesture.Exclusive(this.#pan, this.#tap);
+}
 ```
 
-:::info
-Gesture callbacks run on the [background thread](/guide/introduction#the-dual-thread-model) (where Angular executes). Signal updates inside callbacks trigger change detection automatically — no `setTimeout` needed for simple state updates.
-:::
+An element can carry several gestures. By default, only one can be active at a time. The `Gesture` helpers set how they share the element:
+
+| Helper                       | Rule                                                                        | Use it for                                                              |
+| ---------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `Gesture.Exclusive(a, b, c)` | Priority order. `b` waits until `a` fails, and `c` waits until both fail    | A tap and a drag on one element: list the drag first                    |
+| `Gesture.Simultaneous(a, b)` | All of them can be active at once                                           | Gestures that should run together, such as a drag and a long press      |
+| `Gesture.Race(a, b)`         | No priority. Whichever is recognized first wins, and the others can't start | Gestures that can't be confused, such as a fling left and a fling right |
+
+- **Order matters in `Exclusive`.** List the gesture that should win first. With the drag before the tap, a finger that moves becomes a drag, never a tap.
+- **The helpers change the gestures you pass.** Use each gesture in only one helper call.
+- **For finer control**, call `waitFor()`, `simultaneousWith()` or `continueWith()` on a single gesture. See [the gestures API](/api/gestures/).
+
+## Complete example: a sticker you can drag or tap
+
+```typescript title="src/app/sticker.ts"
+import { Component, computed, signal } from '@angular/core';
+import {
+  Gesture,
+  LYNX_ELEMENTS,
+  LynxGestureDetector,
+  PanGesture,
+  TapGesture,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-sticker',
+  imports: [LYNX_ELEMENTS, LynxGestureDetector],
+  template: `
+    <view class="h-full w-full bg-background p-6">
+      <view
+        [lynxGesture]="gesture"
+        [style.transform]="transform()"
+        class="flex h-[120px] w-[120px] items-center justify-center rounded-2xl bg-primary"
+      >
+        <text class="text-primary-foreground">Taps: {{ taps() }}</text>
+      </view>
+      <text class="mt-4 text-muted-foreground">{{ status() }}</text>
+    </view>
+  `,
+})
+export class Sticker {
+  readonly taps = signal(0);
+  readonly status = signal('Drag or tap the sticker');
+  readonly #x = signal(0);
+  readonly #y = signal(0);
+  readonly transform = computed(
+    () => `translate(${this.#x()}px, ${this.#y()}px)`,
+  );
+
+  // Where the sticker rests between drags.
+  #restX = 0;
+  #restY = 0;
+
+  readonly #pan = new PanGesture()
+    .minDistance(10)
+    // Empty, but required: without it, Lynx never calls onEnd.
+    .onBegin(() => {})
+    .onUpdate((event) => {
+      // translationX/Y is the distance from where the finger went down.
+      this.#x.set(this.#restX + event.translationX);
+      this.#y.set(this.#restY + event.translationY);
+      this.status.set('Dragging');
+    })
+    .onEnd(() => {
+      this.#restX = this.#x();
+      this.#restY = this.#y();
+      this.status.set('Dropped');
+    });
+
+  readonly #tap = new TapGesture().onEnd(() => {
+    this.taps.update((n) => n + 1);
+    this.status.set('Tapped');
+  });
+
+  // The pan gets the first claim, so a drag never also counts as a tap.
+  readonly gesture = Gesture.Exclusive(this.#pan, this.#tap);
+}
+```
+
+- **The pan moves the sticker** by updating two signals that feed a `transform`. Restyling the same element on every frame is safe.
+- **`onEnd` saves where the sticker stopped**, so the next drag starts from there instead of snapping back.
+- **The tap only fires when the pan fails**, which happens when the finger lifts before moving 10 pixels.
+
+## Limitations
+
+- **Pinch and rotation never fire.** `PinchGesture` and `RotationGesture` exist, but no Lynx platform recognizes them yet. Drive zoom from a pan or from on-screen buttons.
+- **`numberOfTaps(2)` doesn't make a double tap.** No Lynx platform counts taps, so it fires on the first one. Compare the times of successive taps in `onEnd` yourself.
+- **If no gesture in the app fires on a device**, check that your `lynx.config.ts` doesn't set `enableNewGesture` to `false`. AngularLynx turns it on by default, and Lynx ignores every gesture without it. See [If no gesture fires](/api/gestures/gesture-types#if-no-gesture-fires).
+
+## Related
+
+- [Gestures API](/api/gestures/): `[lynxGesture]` and the `Gesture` helpers
+- [Gesture types](/api/gestures/gesture-types): every gesture's options and event fields
+- [Gesture lifecycle](/api/gestures/lifecycle): states, callbacks and the state manager
+- [Main-thread scripts](/guide/main-thread/): move elements on every frame with no lag
+- [Gestures example](/examples/gestures)

@@ -1,144 +1,141 @@
 # Accessibility
 
-AngularLynx provides first-class accessibility support through element attributes and the `LynxAccessibility`. These map to the native platform's accessibility APIs (VoiceOver on iOS, TalkBack on Android).
+Screen readers read your app aloud and let people move through it by touch: **VoiceOver** on iPhone and **TalkBack** on Android. [Lynx](/guide/glossary#lynx) elements take attributes that tell the screen reader what each element is and what to say.
 
-## Element Attributes
+## `id`, `a11y-id` and `name`
 
-All Lynx element directives accept the following accessibility attributes. They are available on `<view>`, `<text>`, `<image>`, `<scroll-view>`, and every other element in `LYNX_ELEMENTS`.
+Three attributes name an element, and they're often confused:
 
-### Basic Labeling
+| Attribute | What it's for                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `id`      | The element's unique name on the page. `accessibility-elements` and `requestFocus('#id')` use it                          |
+| `a11y-id` | A second name that only accessibility uses. `accessibility-elements-a11y` lists these, and several elements can share one |
+| `name`    | Lets native code in the [host app](/guide/glossary#host-app) find the view. Accessibility doesn't use it                  |
 
-```angular-html
-<view
-  accessibility-element="true"
-  accessibility-label="Profile photo"
-  accessibility-trait="image"
->
-  <image
-    src="avatar.png"
-    style="width: 48px; height: 48px; border-radius: 24px;"
-  />
-</view>
-```
+Use `id` unless you have a reason not to.
 
-| Attribute               | Type                                      | Description                                                                                    |
-| ----------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `accessibility-element` | `boolean`                                 | Marks the element as an accessibility node. Screen readers will focus and read it.             |
-| `accessibility-label`   | `string`                                  | The text read aloud by screen readers. Required when the element has no readable text content. |
-| `accessibility-trait`   | `'none' \| 'button' \| 'image' \| 'text'` | Semantic role hint for screen readers.                                                         |
-| `a11y-id`               | `string`                                  | Accessibility identifier (separate from `name`). Used for programmatic focus and test queries. |
-
-### Focus Order and Grouping
-
-```angular-html
-<!-- Screen reader visits these in the order listed, not DOM order -->
-<view accessibility-element="true" accessibility-elements="submitBtn,cancelBtn">
-  <view
-    name="cancelBtn"
-    accessibility-element="true"
-    accessibility-label="Cancel"
-  />
-  <view
-    name="submitBtn"
-    accessibility-element="true"
-    accessibility-label="Submit"
-  />
-</view>
-```
-
-| Attribute                       | Type      | Description                                                                                     |
-| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| `accessibility-elements`        | `string`  | Comma-separated `name` values of child elements — controls the order screen readers visit them. |
-| `accessibility-elements-hidden` | `boolean` | Hides all child elements from the accessibility tree.                                           |
-| `accessibility-exclusive-focus` | `boolean` | Traps accessibility focus within this element (useful for modals).                              |
-
-## LynxAccessibility
-
-Import and inject `LynxAccessibility` for programmatic screen reader control.
-
-```typescript
-import { Component, inject } from '@angular/core';
-import { LynxAccessibility } from '@blotch/angular-lynx';
-
-@Component({ ... })
-export class Checkout {
-  readonly #a11y = inject(LynxAccessibility);
-
-  async addToCart(item: Item): Promise<void> {
-    await this.cartService.add(item);
-    // Notify screen reader users without moving visual focus
-    await this.#a11y.announce(`${item.name} added to cart`);
-  }
-}
-```
-
-### `announce(content)`
-
-Makes the screen reader speak a string without moving focus. Use for status updates, background results, or live counter changes that aren't reflected by a focus movement.
-
-```typescript
-await a11y.announce('3 items in cart');
-await a11y.announce('Upload complete');
-```
-
-### `requestFocus(selector)`
-
-Moves the screen reader cursor (accessibility focus) to the element matching the selector. The target element should have `accessibility-element="true"`.
-
-```typescript
-// Move focus to the confirmation message after a form submission
-await a11y.requestFocus('#confirmation-message');
-```
-
-Only **ID selectors** (`#id`) are reliably supported. The `id` attribute used here corresponds to the `a11y-id` attribute on the element directive — not the native `id`.
+## Label an element
 
 ```angular-html
 <view
-  [attr.a11y-id]="'confirmation-message'"
-  accessibility-element="true"
-  accessibility-label="Your order has been placed"
+  [accessibility-element]="true"
+  accessibility-traits="button"
+  accessibility-label="Add to favorites"
+  (bindtap)="favorite()"
 >
-  <text>Order confirmed!</text>
+  <image src="assets/heart.png" class="h-6 w-6" />
 </view>
 ```
 
-## Modal Focus Trap
+- **`<text>` and `<image>` are read by default.** A `<text>` reads its own text, so most text needs nothing extra.
+- **`[accessibility-element]="true"` makes an element one stop** for the screen reader. Use it on a `<view>` that acts as a button or groups related content.
+- **Bind true/false attributes with brackets.** A plain `accessibility-element="true"` passes the string `"true"`, which Angular's strict template checks reject.
+- **`accessibility-label` is what gets read.** Give one to anything without readable text, such as an icon button.
+- **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`.
 
-Use `accessibility-exclusive-focus` to trap screen reader focus inside an open modal:
+## Set the reading order
 
 ```angular-html
-<overlay [attr.visible]="showModal()">
+<view accessibility-elements="title,price,buy">
+  <text id="price" [accessibility-element]="true">$12</text>
+  <text id="title" [accessibility-element]="true">Blue mug</text>
   <view
-    class="modal"
-    accessibility-element="true"
-    accessibility-exclusive-focus="true"
-    accessibility-elements="closeBtn,confirmBtn"
-  >
-    <text
-      class="modal-title"
-      accessibility-element="true"
-      accessibility-label="Confirm deletion"
+    id="buy"
+    [accessibility-element]="true"
+    accessibility-traits="button"
+    accessibility-label="Buy"
+    (bindtap)="buy()"
+  ></view>
+</view>
+```
+
+- **Screen readers go top to bottom, then left to right,** by default.
+- **`accessibility-elements` lists child `id`s, separated by commas,** in the order to read them. The example reads the title before the price.
+- **Children not in the list can't be focused** once a parent sets it.
+- **`accessibility-elements-a11y`** does the same with `a11y-id`s.
+
+## Hide decoration
+
+```angular-html
+<view [accessibility-elements-hidden]="true">
+  <image src="assets/confetti.png" class="h-24 w-full" />
+</view>
+```
+
+`[accessibility-elements-hidden]="true"` hides an element and everything inside it from the screen reader.
+
+## Keep focus inside a dialog
+
+```angular-html
+<overlay [attr.visible]="open()">
+  <view class="flex h-full w-full items-center justify-center bg-black/50">
+    <view
+      class="w-4/5 rounded-lg bg-background p-6"
+      [accessibility-exclusive-focus]="true"
     >
-      Delete item?
-    </text>
-    <view
-      name="closeBtn"
-      accessibility-element="true"
-      accessibility-trait="button"
-      accessibility-label="Cancel"
-      (bindtap)="closeModal()"
-    />
-    <view
-      name="confirmBtn"
-      accessibility-element="true"
-      accessibility-trait="button"
-      accessibility-label="Delete"
-      (bindtap)="deleteItem()"
-    />
+      <text class="text-lg text-foreground">Delete this item?</text>
+      <view
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        accessibility-label="Cancel"
+        (bindtap)="open.set(false)"
+      >
+        <text>Cancel</text>
+      </view>
+    </view>
   </view>
 </overlay>
 ```
 
-## Accessibility in Production
+With `[accessibility-exclusive-focus]="true"`, the screen reader moves only between the elements inside it. People can't swipe out of the dialog to the page behind. See [Dialogs and overlays](/guide/overlays).
 
-Accessibility works the same in production builds as in development, so there's nothing to enable. The build plugin's `enableA11y` option, which makes Lynx use Android's own accessibility APIs, is on by default in every build.
+## Announce changes and move focus from code
+
+`LynxAccessibility` has two methods for this, but **neither works from an event handler yet**:
+
+- **`announce(text)`** is meant to make the screen reader speak, for changes that don't move focus, such as "3 items in cart".
+- **`requestFocus('#id')`** is meant to move the screen reader to the element with that `id`.
+
+Both wrap Lynx APIs that exist only on the [background thread](/guide/glossary#background-thread). Event handlers run on the [main thread](/guide/glossary#main-thread), so a call from `(bindtap)` rejects with "not available in this environment". See [Threads](/guide/concepts/threads).
+
+Until that's fixed, rely on the attributes above. The signatures are in the [API reference](/api/angular-lynx/accessibility).
+
+## Test with a screen reader
+
+**On an iPhone:**
+
+1. Open **Settings → Accessibility → VoiceOver** and turn it on.
+2. Swipe right or left to move between elements. Double-tap anywhere to tap the selected one.
+3. To toggle it quickly, set **Settings → Accessibility → Accessibility Shortcut** to VoiceOver, then triple-click the side button.
+
+VoiceOver doesn't run in the iOS [Simulator](/guide/glossary#simulator), the virtual iPhone on your Mac. Instead, open **Accessibility Inspector** from Xcode's **Xcode → Open Developer Tool** menu and point it at the Simulator. It shows the label and traits of each element you hover.
+
+**On Android:**
+
+1. Open **Settings → Accessibility → TalkBack** and turn it on. On some phones, it's under **Installed apps** or **Downloaded apps** in that menu.
+2. Swipe right or left to move between elements. Double-tap to tap the selected one.
+
+TalkBack also runs in the Android [emulator](/guide/glossary#emulator), the virtual Android phone on your computer. Drag with the mouse to swipe. If its Settings has no TalkBack, install **Android Accessibility Suite** from the Play Store, which needs an emulator image with Google Play.
+
+You can test either way in [Lynx Explorer](/guide/glossary#lynx-explorer) or in your own app. AngularLynx turns on Lynx's accessibility support in every build, so there's nothing to enable.
+
+## Common attributes
+
+| Attribute                       | Value                        | Effect                                                            |
+| ------------------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `accessibility-element`         | `true` / `false`             | Makes the element one stop for the screen reader                  |
+| `accessibility-label`           | text                         | What the screen reader reads                                      |
+| `accessibility-traits`          | `button`, `image`, `link`, … | What kind of element it is                                        |
+| `accessibility-value`           | text                         | A current value read after the label, such as a slider's position |
+| `accessibility-elements`        | comma-separated `id`s        | Reading order of the children                                     |
+| `accessibility-elements-a11y`   | comma-separated `a11y-id`s   | The same, by `a11y-id`                                            |
+| `accessibility-elements-hidden` | `true` / `false`             | Hides the element and its children                                |
+| `accessibility-exclusive-focus` | `true` / `false`             | Keeps focus inside the element                                    |
+
+The full list, with platform support, is in the [accessibility API reference](/api/angular-lynx/accessibility).
+
+## Related
+
+- [`LynxAccessibility` and attributes](/api/angular-lynx/accessibility)
+- [Dialogs and overlays](/guide/overlays)
+- [Lynx's accessibility guide](https://lynxjs.org/guide/inclusion/accessibility.html)

@@ -3,11 +3,12 @@ import type { GlobalData } from './data-flow.types';
 
 @Injectable({ providedIn: 'root' })
 export class LynxGlobalData {
-  // Seeded from lynx.__globalProps at construction time; updated via onGlobalPropsChanged.
+  // Seeded from lynx.__globalProps at construction time; updated via
+  // onGlobalPropsChanged. A host that never sets global props leaves
+  // __globalProps undefined, so fall back to an empty object: readers like
+  // LynxTheme index into it.
   readonly globalData = signal<GlobalData>(
-    typeof lynx !== 'undefined'
-      ? (lynx.__globalProps as GlobalData)
-      : ({} as GlobalData),
+    ((typeof lynx !== 'undefined' && lynx.__globalProps) || {}) as GlobalData,
   );
 
   constructor() {
@@ -24,7 +25,7 @@ export class LynxGlobalData {
     const emitter = lynx.getJSModule('GlobalEventEmitter');
     if (!emitter?.addListener) return;
     emitter.addListener('onGlobalPropsChanged', (...args: unknown[]) =>
-      this.globalData.set(args[0] as GlobalData),
+      this.globalData.set((args[0] ?? {}) as GlobalData),
     );
   }
 }

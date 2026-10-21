@@ -18,6 +18,30 @@ describe('LynxGlobalData', () => {
     });
   });
 
+  describe('when the host sets no global props', () => {
+    it('starts from an empty object, so readers can index into it', () => {
+      (globalThis as any).lynx = {};
+      expect(new LynxGlobalData().globalData()).toEqual({});
+    });
+
+    it('treats an empty props update as an empty object', () => {
+      let listener: (...args: unknown[]) => void = () => {};
+      (globalThis as any).lynx = {
+        getJSModule: () => ({
+          addListener: (_name: string, cb: typeof listener) => (listener = cb),
+        }),
+      };
+      vi.stubGlobal('__MAIN_THREAD__', false);
+      try {
+        const service = new LynxGlobalData();
+        listener();
+        expect(service.globalData()).toEqual({});
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   describe('when lynx exists but getJSModule is not available (web preview)', () => {
     beforeEach(() => {
       (globalThis as any).lynx = { __globalProps: { theme: 'dark' } };

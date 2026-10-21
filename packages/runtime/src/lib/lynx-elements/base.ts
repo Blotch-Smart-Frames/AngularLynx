@@ -41,6 +41,11 @@ import type { BaseLynxElement } from '../lynx-element/types';
     'name',
     'accessibility-element',
     'accessibility-label',
+    // The current value a screen reader reads after the label (a slider's
+    // position, a chart's focused point), and custom actions it offers
+    // (string[]; the chosen one arrives as the accessibility action event's detail.name).
+    'accessibility-value',
+    'accessibility-actions',
     'accessibility-trait',
     'accessibility-elements',
     'accessibility-elements-hidden',

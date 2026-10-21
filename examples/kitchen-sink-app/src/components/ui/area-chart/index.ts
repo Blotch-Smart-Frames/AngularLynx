@@ -1,6 +1,5 @@
 export {
+  type AreaChartOptions,
   UiAreaChart,
-  UiAreaSeries,
-  computeAreaColumns,
-  type AreaColumn,
+  areaChartDefinition,
 } from './area-chart';

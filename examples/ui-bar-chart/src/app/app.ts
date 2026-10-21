@@ -1,22 +1,25 @@
 import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { UiBarChart, UiBarSeries } from '../components/ui/bar-chart';
-import {
-  type ChartPoint,
-  UiCartesianChart,
-} from '../components/ui/cartesian-chart';
+import { barY, defineChart, ruleY } from '@tanstack/charts/universal';
+import { scaleLinear } from '@tanstack/charts/scales/linear';
+import { type BarDatum, UiBarChart } from '../components/ui/bar-chart';
+import { UiChart, tooltip } from '../components/ui/chart';
+
+type Point = {
+  readonly x: number;
+  readonly y: number;
+};
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, UiBarChart, UiBarSeries, UiCartesianChart],
+  imports: [LYNX_ELEMENTS, UiBarChart, UiChart],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
       <view class="flex-col gap-6 p-6 flex">
         <text class="text-2xl font-bold text-foreground">Bar Chart</text>
         <text class="text-sm text-muted-foreground">
-          A bar chart drawn entirely from Lynx views — one rectangle per value,
-          no SVG or canvas. Built on the same BaseCartesianChart as the line,
-          area, and candlestick charts.
+          A bar chart preset built on TanStack Charts. Touch a chart to see a
+          bar's value; tap to pin the tooltip.
         </text>
 
         <!-- Basic single-series chart via the convenience wrapper -->
@@ -25,7 +28,7 @@ import {
             Revenue (basic)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-bar-chart [data]="revenue" [width]="280" [height]="200" />
+            <ui-bar-chart [data]="revenue" [height]="200" />
           </view>
         </view>
 
@@ -37,7 +40,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-bar-chart
               [data]="revenue"
-              [width]="280"
               [height]="200"
               [colors]="palette"
               [radius]="4"
@@ -53,7 +55,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-bar-chart
               [data]="profit"
-              [width]="280"
               [height]="200"
               [colors]="profitColors()"
               [showXGrid]="false"
@@ -69,7 +70,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-bar-chart
               [data]="revenue"
-              [width]="280"
               [height]="200"
               xAxisLabel="Month"
               yAxisLabel="Revenue ($k)"
@@ -78,23 +78,20 @@ import {
           </view>
         </view>
 
-        <!-- Full control over the axes via the base component directly -->
+        <!--
+          Past the preset: compose TanStack marks yourself and render the
+          definition with <ui-chart>. Here, bars plus a dashed average line.
+        -->
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">
-            Explicit axes (base component)
+            Bars with an average line (ui-chart)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-cartesian-chart
-              [xDomain]="[0, 7]"
-              [yDomain]="[0, 100]"
-              [xTicks]="[1, 2, 3, 4, 5, 6]"
-              [yTicks]="[0, 25, 50, 75, 100]"
-              [width]="280"
+            <ui-chart
+              [definition]="withAverage"
               [height]="200"
-              [padding]="{ left: 0.09, right: 0.09 }"
-            >
-              <ui-bar-series [data]="revenue" [radius]="2" />
-            </ui-cartesian-chart>
+              label="Revenue with its average"
+            />
           </view>
         </view>
 
@@ -104,7 +101,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-bar-chart
               [data]="revenue"
-              [width]="280"
               [height]="200"
               (barTap)="onBarTap($event)"
             />
@@ -121,7 +117,7 @@ import {
 })
 export class App {
   // Month index → revenue ($k). x is the month; a plain positive series.
-  readonly revenue: ChartPoint[] = [
+  readonly revenue: Point[] = [
     { x: 1, y: 42 },
     { x: 2, y: 58 },
     { x: 3, y: 71 },
@@ -131,7 +127,7 @@ export class App {
   ];
 
   // A mix of gains and losses to show bars growing both ways from the baseline.
-  readonly profit: ChartPoint[] = [
+  readonly profit: Point[] = [
     { x: 1, y: 18 },
     { x: 2, y: -12 },
     { x: 3, y: 25 },
@@ -158,7 +154,24 @@ export class App {
     ),
   );
 
-  readonly #tapped = signal<ChartPoint | null>(null);
+  // Bars and a dashed rule at the mean, sharing the scales. Declared after
+  // the data, which class fields initialize in order.
+  readonly withAverage = defineChart({
+    marks: [
+      barY(this.revenue, { x: 'x', y: 'y', fill: 'var(--primary)', radius: 2 }),
+      ruleY(
+        [this.revenue.reduce((sum, p) => sum + p.y, 0) / this.revenue.length],
+        { stroke: 'var(--chart-1)', strokeWidth: 2, strokeDasharray: '4 3' },
+      ),
+    ],
+    scales: {
+      x: { scale: scaleLinear().domain([0.5, 6.5]) },
+      y: { scale: scaleLinear().domain([0, 100]), grid: true },
+    },
+    tooltip,
+  });
+
+  readonly #tapped = signal<BarDatum | null>(null);
 
   protected readonly tappedLabel = computed(() => {
     const bar = this.#tapped();
@@ -167,7 +180,7 @@ export class App {
       : 'Tap any bar on the chart above.';
   });
 
-  protected onBarTap(bar: ChartPoint): void {
+  protected onBarTap(bar: BarDatum): void {
     this.#tapped.set(bar);
   }
 }

@@ -1,25 +1,30 @@
 import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
-  UiScatterChart,
-  UiScatterSeries,
-} from '../components/ui/scatter-chart';
-import {
-  type ChartPoint,
-  UiCartesianChart,
-} from '../components/ui/cartesian-chart';
+  defineChart,
+  dot,
+  linearRegressionY,
+} from '@tanstack/charts/universal';
+import { scaleLinear } from '@tanstack/charts/scales/linear';
+import { UiChart, tooltip } from '../components/ui/chart';
+import { UiScatterChart } from '../components/ui/scatter-chart';
+
+type Point = {
+  readonly x: number;
+  readonly y: number;
+};
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, UiScatterChart, UiScatterSeries, UiCartesianChart],
+  imports: [LYNX_ELEMENTS, UiChart, UiScatterChart],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
       <view class="flex-col gap-6 p-6 flex">
         <text class="text-2xl font-bold text-foreground">Scatter Chart</text>
         <text class="text-sm text-muted-foreground">
-          A scatter plot drawn entirely from Lynx views — one dot per point, no
-          SVG or canvas. Built on the same BaseCartesianChart as the line, area,
-          bar, and candlestick charts.
+          A scatter chart preset built on TanStack Charts, for points and
+          bubbles. Touch a chart to see a point's values; tap to pin the
+          tooltip.
         </text>
 
         <!-- Basic single-series chart via the convenience wrapper -->
@@ -28,11 +33,7 @@ import {
             Measurements (basic)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-scatter-chart
-              [data]="measurements"
-              [width]="280"
-              [height]="200"
-            />
+            <ui-scatter-chart [data]="measurements" [height]="200" />
           </view>
         </view>
 
@@ -44,7 +45,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-scatter-chart
               [data]="clusters"
-              [width]="280"
               [height]="200"
               [colors]="clusterColors"
               [radius]="5"
@@ -60,7 +60,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-scatter-chart
               [data]="measurements"
-              [width]="280"
               [height]="200"
               [sizes]="bubbleSizes"
             />
@@ -75,7 +74,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-scatter-chart
               [data]="measurements"
-              [width]="280"
               [height]="200"
               xAxisLabel="Dose"
               yAxisLabel="Response"
@@ -84,22 +82,20 @@ import {
           </view>
         </view>
 
-        <!-- Full control over the axes via the base component directly -->
+        <!--
+          Past the preset: compose TanStack marks yourself and render the
+          definition with <ui-chart>. Here, the points plus a fitted trend line.
+        -->
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">
-            Explicit axes (base component)
+            Points with a trend line (ui-chart)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-cartesian-chart
-              [xDomain]="[0, 11]"
-              [yDomain]="[0, 14]"
-              [xTicks]="[0, 2, 4, 6, 8, 10]"
-              [yTicks]="[0, 4, 8, 12]"
-              [width]="280"
+            <ui-chart
+              [definition]="withTrend"
               [height]="200"
-            >
-              <ui-scatter-series [data]="measurements" [radius]="4" />
-            </ui-cartesian-chart>
+              label="Measurements with a trend line"
+            />
           </view>
         </view>
 
@@ -109,7 +105,6 @@ import {
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-scatter-chart
               [data]="measurements"
-              [width]="280"
               [height]="200"
               [radius]="6"
               (pointTap)="onPointTap($event)"
@@ -127,7 +122,7 @@ import {
 })
 export class App {
   // A positively-correlated cloud — dose vs response.
-  readonly measurements: ChartPoint[] = [
+  readonly measurements: Point[] = [
     { x: 1, y: 3 },
     { x: 2, y: 4 },
     { x: 3, y: 4 },
@@ -141,7 +136,7 @@ export class App {
   ];
 
   // Two visually-separate groups; the first five points are group A, the rest B.
-  readonly clusters: ChartPoint[] = [
+  readonly clusters: Point[] = [
     { x: 1, y: 2 },
     { x: 2, y: 3 },
     { x: 1.5, y: 2.5 },
@@ -173,7 +168,25 @@ export class App {
   // Per-point radii (px) — a bubble chart. Indexed 1:1 with `measurements`.
   readonly bubbleSizes = [4, 6, 5, 9, 7, 12, 8, 14, 10, 16];
 
-  readonly #tapped = signal<ChartPoint | null>(null);
+  // The dots plus TanStack's least-squares regression line over the same
+  // data. Declared after the data, which class fields initialize in order.
+  readonly withTrend = defineChart({
+    marks: [
+      dot(this.measurements, { x: 'x', y: 'y', r: 4, fill: 'var(--primary)' }),
+      linearRegressionY(this.measurements, {
+        x: 'x',
+        y: 'y',
+        stroke: 'var(--chart-1)',
+      }),
+    ],
+    scales: {
+      x: { scale: scaleLinear().domain([0, 11]) },
+      y: { scale: scaleLinear().domain([0, 14]), grid: true },
+    },
+    tooltip,
+  });
+
+  readonly #tapped = signal<Point | null>(null);
 
   protected readonly tappedLabel = computed(() => {
     const point = this.#tapped();
@@ -182,7 +195,7 @@ export class App {
       : 'Tap any point on the chart above.';
   });
 
-  protected onPointTap(point: ChartPoint): void {
+  protected onPointTap(point: Point): void {
     this.#tapped.set(point);
   }
 }

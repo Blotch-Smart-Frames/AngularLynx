@@ -1,74 +1,118 @@
+import { createChartRuntime } from '@tanstack/charts/runtime';
+import { createChartTooltipContent } from '@tanstack/charts/tooltip/model';
+import type {
+  ChartDefinition,
+  ChartTooltipOptions,
+  SceneNode,
+} from '@tanstack/charts/types';
 import { describe, expect, it } from 'vitest';
-import { computeCandles } from './candlestick-chart';
+import { candlestickChartDefinition } from './candlestick-chart';
 
-// A rising candle centered at cx=50. Screen y grows downward, so the projected
-// highY (top of the wick) is the smallest pixel value and lowY the largest.
-// close is above open (up), so closeY < openY in pixels.
-const upCandle = {
-  cx: 50,
-  highY: 10, // high price → top of plot
-  lowY: 90, // low price → bottom of plot
-  openY: 70,
-  closeY: 30,
-  up: true,
+const data = [
+  { x: 0, open: 100, high: 104, low: 98, close: 102 },
+  { x: 1, open: 102, high: 103, low: 97, close: 99 },
+];
+
+const render2 = (definition: ChartDefinition<any, any, any>) => {
+  const scene = createChartRuntime().render(definition, {
+    width: 300,
+    height: 200,
+  });
+  const found: SceneNode[] = [];
+  const walk = (nodes: readonly SceneNode[]) => {
+    for (const node of nodes) {
+      if (node.kind === 'group') {
+        if (!node.focus) walk(node.children);
+      } else if (node.kind !== 'label') found.push(node);
+    }
+  };
+  walk(scene.nodes);
+  return { scene, found };
 };
 
-describe('computeCandles', () => {
-  it('draws the wick spanning high to low, centered on cx', () => {
-    const [shape] = computeCandles([upCandle], 12);
-    expect(shape.wick.top).toBe(10); // min(highY, lowY)
-    expect(shape.wick.height).toBe(80); // |lowY - highY|
-    expect(shape.wick.width).toBe(1); // default wickWidth
-    // Centered: left = cx - wickWidth/2.
-    expect(shape.wick.left).toBe(50 - 0.5);
+describe('candlestickChartDefinition', () => {
+  it('draws a wick and a body per candle, colored by direction', () => {
+    const { scene, found } = render2(candlestickChartDefinition({ data }));
+    const bodies = found.filter((n) => n.kind === 'rect');
+    expect(bodies.map((body) => body.style?.fill)).toEqual([
+      'rgba(34, 197, 94, 1)',
+      'rgba(239, 68, 68, 1)',
+    ]);
+    // The y axis spans the lows and highs.
+    expect(scene.scales['y']!.domain[0]).toBeLessThanOrEqual(97);
+    expect(scene.scales['y']!.domain[1]).toBeGreaterThanOrEqual(104);
+    expect(found.some((n) => n.kind === 'rule' || n.kind === 'polyline')).toBe(
+      true,
+    );
   });
 
-  it('draws the body between open and close, centered on cx', () => {
-    const [shape] = computeCandles([upCandle], 12);
-    expect(shape.body.top).toBe(30); // min(openY, closeY) — the higher price
-    expect(shape.body.height).toBe(40); // |closeY - openY|
-    expect(shape.body.width).toBe(12);
-    expect(shape.body.left).toBe(50 - 6); // cx - bodyWidth/2
-    expect(shape.up).toBe(true);
-  });
-
-  it('marks a falling candle as down and still tops the body at the higher price', () => {
-    // close below open: closeY (pixels) is BELOW openY, i.e. larger.
-    const downCandle = {
-      cx: 20,
-      highY: 5,
-      lowY: 95,
-      openY: 30,
-      closeY: 60,
-      up: false,
+  it('lists all four prices in the tooltip', () => {
+    const definition = candlestickChartDefinition({
+      data,
+      upColor: 'green',
+      downColor: 'red',
+    });
+    const { scene } = render2(definition);
+    const point = scene.points.find((p) => (p.datum as { x: number }).x === 1)!;
+    const content = createChartTooltipContent(
+      [point],
+      scene,
+      false,
+      definition.tooltip as unknown as ChartTooltipOptions,
+      point,
+    );
+    expect(content).toEqual({
+      title: '1',
+      color: 'red',
+      rows: [
+        { label: 'Open', value: '102' },
+        { label: 'High', value: '103' },
+        { label: 'Low', value: '97' },
+        { label: 'Close', value: '99' },
+      ],
+    });
+    const custom = (
+      definition.tooltip as unknown as Required<ChartTooltipOptions>
+    ).content;
+    const context = {
+      pinned: false,
+      xLabel: 'x',
+      yLabel: 'y',
+      formatX: (v: unknown) => `x${v}`,
+      formatY: (v: unknown) => `y${v}`,
     };
-    const [shape] = computeCandles([downCandle], 10);
-    expect(shape.up).toBe(false);
-    expect(shape.body.top).toBe(30); // min(openY, closeY) = openY here
-    expect(shape.body.height).toBe(30);
+    expect(custom([], context)).toEqual({ title: undefined, rows: [] });
+    // Points of other marks (say, a moving average added on top) get x/y rows.
+    expect(
+      custom(
+        [{ datum: { x: 1, y: 2 }, xValue: 1, yValue: 2 } as never],
+        context,
+      ),
+    ).toEqual({ title: 'x1', rows: [{ label: 'y', value: 'y2' }] });
+    expect(
+      custom([{ datum: null, xValue: 3, yValue: 4 } as never], context),
+    ).toMatchObject({
+      title: 'x3',
+    });
+    const up = scene.points.find((p) => (p.datum as { x: number }).x === 0)!;
+    expect(
+      createChartTooltipContent(
+        [up],
+        scene,
+        false,
+        definition.tooltip as unknown as ChartTooltipOptions,
+        up,
+      ),
+    ).toMatchObject({ color: 'green' });
   });
 
-  it('clamps a doji (open === close) to the minimum body height', () => {
-    const doji = {
-      cx: 0,
-      highY: 0,
-      lowY: 100,
-      openY: 50,
-      closeY: 50,
-      up: true,
-    };
-    // Zero-height body would be invisible; the floor keeps it a thin line.
-    expect(computeCandles([doji], 12)[0].body.height).toBe(1);
-    expect(computeCandles([doji], 12, 1, 3)[0].body.height).toBe(3);
-  });
-
-  it('honors a custom wick width', () => {
-    const [shape] = computeCandles([upCandle], 12, 3);
-    expect(shape.wick.width).toBe(3);
-    expect(shape.wick.left).toBe(50 - 1.5);
-  });
-
-  it('returns an empty array for no candles', () => {
-    expect(computeCandles([], 12)).toEqual([]);
+  it('can drop the tooltip, and clamps the body ratio', () => {
+    const definition = candlestickChartDefinition({
+      data,
+      tooltip: false,
+      bodyWidthRatio: 5,
+    });
+    expect(definition.tooltip).toBe(false);
+    expect(render2(definition).found.length).toBeGreaterThan(0);
   });
 });

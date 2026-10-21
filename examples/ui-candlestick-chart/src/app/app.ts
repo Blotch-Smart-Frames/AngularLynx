@@ -1,20 +1,16 @@
 import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { defineChart, lineY } from '@tanstack/charts/universal';
 import {
-  type CandlestickPoint,
+  type CandlestickDatum,
   UiCandlestickChart,
-  UiCandlestickSeries,
+  candlestickChartDefinition,
 } from '../components/ui/candlestick-chart';
-import { UiCartesianChart } from '../components/ui/cartesian-chart';
+import { UiChart } from '../components/ui/chart';
 
 @Component({
   selector: 'app-root',
-  imports: [
-    LYNX_ELEMENTS,
-    UiCandlestickChart,
-    UiCandlestickSeries,
-    UiCartesianChart,
-  ],
+  imports: [LYNX_ELEMENTS, UiCandlestickChart, UiChart],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
       <view class="flex-col gap-6 p-6 flex">
@@ -22,9 +18,8 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           Candlestick Chart
         </text>
         <text class="text-sm text-muted-foreground">
-          An OHLC candlestick chart drawn entirely from Lynx views — each candle
-          is a thin wick and a body rectangle, no SVG or canvas. Built on the
-          same BaseCartesianChart as the line and area charts.
+          A candlestick (OHLC) chart preset built on TanStack Charts. Touch a
+          candle to see its prices; tap to pin the tooltip.
         </text>
 
         <!-- Basic single-series chart via the convenience wrapper -->
@@ -33,11 +28,7 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
             Prices (basic)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-candlestick-chart
-              [data]="prices"
-              [width]="280"
-              [height]="200"
-            />
+            <ui-candlestick-chart [data]="prices" [height]="200" />
           </view>
         </view>
 
@@ -47,7 +38,6 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-candlestick-chart
               [data]="prices"
-              [width]="280"
               [height]="200"
               [upColor]="teal"
               [downColor]="rose"
@@ -63,7 +53,6 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-candlestick-chart
               [data]="prices"
-              [width]="280"
               [height]="200"
               xAxisLabel="Session"
               yAxisLabel="Price ($)"
@@ -80,7 +69,6 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-candlestick-chart
               [data]="prices"
-              [width]="280"
               [height]="200"
               [yMin]="90"
               [yMax]="120"
@@ -88,23 +76,21 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           </view>
         </view>
 
-        <!-- Full control over the axes via the base component directly -->
+        <!--
+          Past the preset: start from its definition, add TanStack marks and
+          render the result with <ui-chart>. Here, a moving average over the
+          candles.
+        -->
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">
-            Explicit axes (base component)
+            Candles with a moving average (ui-chart)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-cartesian-chart
-              [xDomain]="[0, 9]"
-              [yDomain]="[90, 120]"
-              [xTicks]="[1, 3, 5, 7]"
-              [yTicks]="[90, 100, 110, 120]"
-              [width]="280"
+            <ui-chart
+              [definition]="withAverage"
               [height]="200"
-              [padding]="{ left: 0.06, right: 0.06 }"
-            >
-              <ui-candlestick-series [data]="prices" />
-            </ui-cartesian-chart>
+              label="Prices with a three-day moving average"
+            />
           </view>
         </view>
 
@@ -114,7 +100,6 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-candlestick-chart
               [data]="prices"
-              [width]="280"
               [height]="200"
               (candleTap)="onCandleTap($event)"
             />
@@ -132,7 +117,7 @@ import { UiCartesianChart } from '../components/ui/cartesian-chart';
 export class App {
   // Session → OHLC data. x is the session index; a mix of rising and falling
   // candles so up/down coloring is visible.
-  readonly prices: CandlestickPoint[] = [
+  readonly prices: CandlestickDatum[] = [
     { x: 1, open: 100, high: 108, low: 98, close: 106 },
     { x: 2, open: 106, high: 110, low: 103, close: 104 },
     { x: 3, open: 104, high: 105, low: 96, close: 98 },
@@ -148,7 +133,32 @@ export class App {
   readonly teal = 'rgba(20, 184, 166, 1)';
   readonly rose = 'rgba(244, 63, 94, 1)';
 
-  readonly #tapped = signal<CandlestickPoint | null>(null);
+  // The preset's own definition plus a line through each day's three-day
+  // average close. Declared after the data, which class fields initialize in
+  // order.
+  readonly withAverage = (() => {
+    const base = candlestickChartDefinition({ data: this.prices });
+    const average = this.prices.slice(2).map((candle, i) => ({
+      x: candle.x,
+      y:
+        this.prices.slice(i, i + 3).reduce((sum, day) => sum + day.close, 0) /
+        3,
+    }));
+    return defineChart({
+      ...base,
+      marks: [
+        ...base.marks,
+        lineY(average, {
+          x: 'x',
+          y: 'y',
+          stroke: 'var(--chart-4)',
+          strokeWidth: 2,
+        }),
+      ],
+    });
+  })();
+
+  readonly #tapped = signal<CandlestickDatum | null>(null);
 
   protected readonly tappedLabel = computed(() => {
     const c = this.#tapped();
@@ -157,7 +167,7 @@ export class App {
       : 'Tap any candle on the chart above.';
   });
 
-  protected onCandleTap(candle: CandlestickPoint): void {
+  protected onCandleTap(candle: CandlestickDatum): void {
     this.#tapped.set(candle);
   }
 }

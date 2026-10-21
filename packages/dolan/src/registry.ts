@@ -1,48 +1,53 @@
 export type RegistryEntry = {
   name: string;
+  /** Other registry components this one imports. */
   dependencies: string[];
+  /**
+   * npm packages its code imports, as install specs (`name@range`).
+   * Installed into the project when the component is added or updated.
+   */
+  packages?: string[];
 };
+
+/**
+ * TanStack Charts and the d3 curves the presets draw with. Kept in step with
+ * packages/ui/package.json by a test.
+ */
+const CHART_PACKAGES = ['@tanstack/charts@^1.1.0', 'd3-shape@^3.2.0'];
 
 export const registry: RegistryEntry[] = [
   { name: 'action-sheet', dependencies: [] },
   { name: 'accordion', dependencies: [] },
   { name: 'alert', dependencies: [] },
   { name: 'alert-dialog', dependencies: [] },
-  // Area chart = a filled line chart, so it reuses <ui-line-series> from
-  // line-chart (which in turn builds on the cartesian-chart base).
-  { name: 'area-chart', dependencies: ['cartesian-chart', 'line-chart'] },
+  // The chart presets are TanStack Charts definitions drawn by <ui-chart>.
+  { name: 'area-chart', dependencies: ['chart'] },
   { name: 'aspect-ratio', dependencies: [] },
   { name: 'avatar', dependencies: ['skeleton'] },
   { name: 'badge', dependencies: [] },
-  // Bar chart draws its own rectangle marks straight onto the cartesian-chart
-  // base — like candlestick, and unlike area-chart, it does not reuse line-series.
-  { name: 'bar-chart', dependencies: ['cartesian-chart'] },
+  { name: 'bar-chart', dependencies: ['chart'] },
   { name: 'bottom-sheet', dependencies: [] },
   { name: 'button', dependencies: ['spinner'] },
   { name: 'button-group', dependencies: [] },
-  // Candlestick (OHLC) chart draws its own wick/body marks straight onto the
-  // cartesian-chart base — unlike area-chart it does not reuse line-series.
-  { name: 'candlestick-chart', dependencies: ['cartesian-chart'] },
+  { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
-  // Reusable foundation for cartesian charts (line, bar, …); has no example/docs
-  // of its own, like bottom-sheet — it's consumed by chart components.
-  { name: 'cartesian-chart', dependencies: [] },
+  // Renders any TanStack Charts definition with Lynx elements; the presets
+  // below build on it.
+  { name: 'chart', dependencies: [], packages: CHART_PACKAGES },
   { name: 'checkbox', dependencies: [] },
   { name: 'collapsible', dependencies: [] },
   { name: 'dialog', dependencies: [] },
   { name: 'empty-state', dependencies: ['icon'] },
   { name: 'input', dependencies: [] },
   { name: 'label', dependencies: [] },
-  { name: 'line-chart', dependencies: ['cartesian-chart'] },
+  { name: 'line-chart', dependencies: ['chart'] },
   { name: 'list', dependencies: [] },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
   { name: 'pagination', dependencies: [] },
   { name: 'progress', dependencies: [] },
   { name: 'radio-group', dependencies: [] },
-  // Scatter chart draws its own dot marks straight onto the cartesian-chart
-  // base — like bar and candlestick, and unlike area-chart, no line-series reuse.
-  { name: 'scatter-chart', dependencies: ['cartesian-chart'] },
+  { name: 'scatter-chart', dependencies: ['chart'] },
   { name: 'scroll-area', dependencies: [] },
   { name: 'select', dependencies: ['bottom-sheet'] },
   { name: 'separator', dependencies: [] },
@@ -72,6 +77,11 @@ export const getEntry = (name: string): RegistryEntry | undefined => {
  * the output is [..., spinner, button] — correct installation order.
  * The Set deduplicates components shared by multiple selections.
  */
+/** The npm packages the given components need, deduplicated. */
+export const resolvePackages = (names: string[]): string[] => [
+  ...new Set(names.flatMap((name) => getEntry(name)?.packages ?? [])),
+];
+
 export const resolveDependencies = (names: string[]): string[] => {
   const resolved = new Set<string>();
 

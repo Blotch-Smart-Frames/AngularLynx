@@ -37,6 +37,13 @@ vi.mock('../utils/resolve-paths.js', () => ({
   rewriteImports: (content: string) => content,
 }));
 
+// The install step runs the project's package manager; record calls instead.
+const installComponentPackages = vi.fn();
+vi.mock('./install-packages.js', () => ({
+  installComponentPackages: (...args: unknown[]) =>
+    installComponentPackages(...args),
+}));
+
 beforeEach(() => {
   // The @clack/prompts mock above is a module-level vi.fn() object shared by
   // every test in this file (vi.restoreAllMocks() in afterEach only restores
@@ -60,6 +67,25 @@ const readInstalledFile = (dir: string, component: string, file: string) =>
   );
 
 describe('addCommand', () => {
+  it('installs the packages of everything it added, dependencies included', async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      uiSource: {
+        chart: { 'chart.ts': 'export const UiChart = {};' },
+        'line-chart': { 'line-chart.ts': 'export const UiLineChart = {};' },
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { addCommand } = await import('./add');
+    await addCommand(['line-chart']);
+
+    expect(installComponentPackages).toHaveBeenCalledWith(fixture.dir, [
+      'chart',
+      'line-chart',
+    ]);
+  });
+
   it('exits with error when no config exists', async () => {
     fixture = createFixture({});
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);

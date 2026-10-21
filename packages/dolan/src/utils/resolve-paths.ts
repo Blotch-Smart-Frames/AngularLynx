@@ -12,9 +12,17 @@ export const getComponentSourceDir = (componentName: string): string => {
   return join(getUiSourceDir(), 'components', componentName);
 };
 
+/**
+ * The files a component ships: its `.ts` sources and `<name>.test.ts`.
+ * `*-render.test.ts` stays behind: those render the component through the
+ * library's own JIT test harness and repo-only helpers (`test-utils`), so in
+ * an app they wouldn't compile and would break its `ng test`.
+ */
 export const getComponentFiles = (componentName: string): string[] => {
   const dir = getComponentSourceDir(componentName);
-  return readdirSync(dir).filter((f) => f.endsWith('.ts'));
+  return readdirSync(dir).filter(
+    (f) => f.endsWith('.ts') && !f.endsWith('-render.test.ts'),
+  );
 };
 
 /**

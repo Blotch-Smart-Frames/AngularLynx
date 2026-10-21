@@ -139,6 +139,7 @@ export class App {
           label: 'Content Projection',
           icon: 'layout-grid',
         },
+        { path: 'chart-demo', label: 'Chart', icon: 'layout-dashboard' },
         { path: 'line-chart-demo', label: 'Line Chart', icon: 'chart-line' },
         { path: 'area-chart-demo', label: 'Area Chart', icon: 'activity' },
         {

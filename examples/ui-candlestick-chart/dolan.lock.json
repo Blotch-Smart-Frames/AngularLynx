@@ -1,38 +1,65 @@
 {
   "version": 1,
   "components": {
-    "cartesian-chart": {
-      "cartesian-chart.test.ts": {
-        "hash": "053128f985c0e7da"
-      },
-      "cartesian-chart.ts": {
-        "hash": "4730b10d76855b54"
-      },
-      "index.ts": {
-        "hash": "fe2cc9f8e98674de"
-      }
-    },
     "candlestick-chart": {
       "candlestick-chart.test.ts": {
-        "hash": "a248bf53187a417c"
+        "hash": "c66917501fbf51c7"
       },
       "candlestick-chart.ts": {
-        "hash": "32d55d08e2b3486e"
+        "hash": "5efb59210f5d4f80"
       },
       "index.ts": {
-        "hash": "1e5f6600a9abd48d"
+        "hash": "fddbac619fc56df3"
+      }
+    },
+    "chart": {
+      "chart-focus.test.ts": {
+        "hash": "aa4d2cce4e7b7a9b"
+      },
+      "chart-focus.ts": {
+        "hash": "69e77412118ba37a"
+      },
+      "chart-presets.test.ts": {
+        "hash": "e6b286bbfd701143"
+      },
+      "chart-presets.ts": {
+        "hash": "e515d01d66cda37f"
+      },
+      "chart-scene.test.ts": {
+        "hash": "63f0d15f661950de"
+      },
+      "chart-scene.ts": {
+        "hash": "b82929c15404ae26"
+      },
+      "chart-theme.test.ts": {
+        "hash": "a7521f9e5b721e38"
+      },
+      "chart-theme.ts": {
+        "hash": "ea0dcd5f67db2759"
+      },
+      "chart-zoom.test.ts": {
+        "hash": "40bcfd258e5b35f7"
+      },
+      "chart-zoom.ts": {
+        "hash": "eefe6ccf227aaf91"
+      },
+      "chart.ts": {
+        "hash": "db82e0652fed917e"
+      },
+      "index.ts": {
+        "hash": "72992b309321929f"
       }
     }
   },
   "theme": {
     "default.css": {
-      "hash": "6010e930f4314a61"
+      "hash": "1fd6a85ec25194af"
     },
     "dark.css": {
-      "hash": "73345d8f2179fd64"
+      "hash": "9501105e2a3f44cb"
     },
     "tailwind-plugin.ts": {
-      "hash": "876a158a2aca3afa"
+      "hash": "4ac232eeeb7056ea"
     }
   }
 }

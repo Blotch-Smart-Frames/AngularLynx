@@ -1,14 +1,16 @@
-import { Component, computed, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  signal,
+} from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { scaleLinear } from '@tanstack/charts/scales/linear';
 import {
-  UiScatterChart,
-  UiScatterSeries,
-} from '../../components/ui/scatter-chart';
-import {
-  type ChartPoint,
-  UiCartesianChart,
-} from '../../components/ui/cartesian-chart';
-import { UiLineSeries } from '../../components/ui/line-chart';
+  defineChart,
+  dot,
+  linearRegressionY,
+} from '@tanstack/charts/universal';
 import {
   UiCard,
   UiCardContent,
@@ -16,27 +18,28 @@ import {
   UiCardHeader,
   UiCardTitle,
 } from '../../components/ui/card';
+import { UiChart, type XYDatum, tooltip } from '../../components/ui/chart';
 import { UiIcon } from '../../components/ui/icon';
+import { UiScatterChart } from '../../components/ui/scatter-chart';
 import { DemoScreen } from '../demo-screen/demo-screen';
 import { ScreenHost } from '../screen-host';
 
 /**
  * Scatter Chart demo.
  *
- * A scatter mark is a single dot (a `<view>` with a 50% border-radius) at each
- * (x, y) — the simplest chart mark of all, so dots draw straight onto the
- * reusable `UiCartesianChart`. `UiScatterChart` is the single-series wrapper; the
- * regression card drops to the base `UiCartesianChart` and layers a
- * `UiLineSeries` under a `UiScatterSeries`, both reading the same shared scales.
- * Per-point `colors` make a categorical scatter and per-point `sizes` a bubble
- * chart.
+ * `<ui-scatter-chart>` is a preset over TanStack's `dot` mark: per-point
+ * `colors` make a categorical scatter and per-point `sizes` a bubble chart. The
+ * regression card composes `dot` with `linearRegressionY` on `<ui-chart>`,
+ * which fits the line (and its confidence band) from the same rows, so there
+ * are no hand-computed endpoints to keep in sync with the data.
  *
- * 280px fits inside a card on every current iPhone: screen p-4 (32px) +
- * card-content p-4 (32px) leaves ~311px on the narrowest 375px device.
+ * The charts fill the card's width and only set a height, so they fit any
+ * screen without per-device pixel math.
  */
 @Component({
   selector: 'app-scatter-chart-demo',
   hostDirectives: [ScreenHost],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LYNX_ELEMENTS,
     DemoScreen,
@@ -46,18 +49,16 @@ import { ScreenHost } from '../screen-host';
     UiCardDescription,
     UiCardContent,
     UiIcon,
+    UiChart,
     UiScatterChart,
-    UiScatterSeries,
-    UiCartesianChart,
-    UiLineSeries,
   ],
   template: `
     <app-demo-screen
       heading="Scatter Chart"
       category="Components"
-      description="A scatter plot drawn entirely from Lynx views — one dot per point, on the reusable BaseCartesianChart."
+      description="A scatter plot preset built on TanStack Charts: one dot per point, with per-point colors and sizes."
     >
-      <!-- ── Basic: single series via the convenience wrapper ── -->
+      <!-- ── Basic: single series via the preset ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center gap-2 flex">
@@ -72,8 +73,8 @@ import { ScreenHost } from '../screen-host';
         <ui-card-content class="p-4 pt-0">
           <ui-scatter-chart
             [data]="measurements"
-            [width]="280"
             [height]="200"
+            label="Response by dose"
           />
         </ui-card-content>
       </ui-card>
@@ -93,10 +94,10 @@ import { ScreenHost } from '../screen-host';
         <ui-card-content class="p-4 pt-0">
           <ui-scatter-chart
             [data]="clusters"
-            [width]="280"
             [height]="200"
             [colors]="clusterColors"
             [radius]="5"
+            label="Two clusters of points"
           />
         </ui-card-content>
       </ui-card>
@@ -110,55 +111,48 @@ import { ScreenHost } from '../screen-host';
           </view>
           <ui-card-description>
             sizes gives each dot its own radius, encoding a third value as the
-            bubble's area.
+            bubble's size.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="p-4 pt-0">
           <ui-scatter-chart
             [data]="measurements"
-            [width]="280"
             [height]="200"
             [sizes]="bubbleSizes"
+            color="var(--chart-2)"
+            label="Response by dose, sized by sample count"
           />
         </ui-card-content>
       </ui-card>
 
-      <!-- ── Scatter + regression line, on the base component ── -->
+      <!-- ── Scatter + regression line, composed on <ui-chart> ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center gap-2 flex">
-            <ui-icon name="settings" size="sm" />
+            <ui-icon name="trending-up" size="sm" />
             <ui-card-title class="text-lg">Regression line</ui-card-title>
           </view>
           <ui-card-description>
-            Drop to the base &lt;ui-cartesian-chart&gt; and layer a
-            &lt;ui-line-series&gt; under the dots — both share the same axes.
+            Compose dot with linearRegressionY and render them with
+            &lt;ui-chart&gt;: it fits a least-squares line and its 95%
+            confidence band from the same points.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
-          <ui-cartesian-chart
-            [xDomain]="[0, 11]"
-            [yDomain]="[0, 14]"
-            [xTicks]="[0, 2, 4, 6, 8, 10]"
-            [yTicks]="[0, 4, 8, 12]"
-            [width]="280"
+          <ui-chart
+            [definition]="withRegression"
             [height]="200"
-          >
-            <ui-line-series
-              [data]="regression"
-              [color]="amber"
-              [strokeWidth]="2"
-              [showDots]="false"
-            />
-            <ui-scatter-series [data]="measurements" [radius]="4" />
-          </ui-cartesian-chart>
-          <!-- Legend. Data hues are fixed (not theme chrome), so raw rgba(). -->
+            label="Response by dose with a least-squares fit"
+          />
+          <!-- A hand-made legend: the swatch classes use the same theme
+               tokens as the marks, so both switch together in dark mode. -->
           <view class="flex-row gap-4 flex">
             <view class="flex-row items-center gap-1.5 flex">
-              <view
-                class="h-2.5 w-2.5 rounded-full"
-                [style]="'background-color: ' + amber"
-              />
+              <view class="h-2.5 w-2.5 rounded-full bg-primary"></view>
+              <text class="text-xs text-muted-foreground">Measurements</text>
+            </view>
+            <view class="flex-row items-center gap-1.5 flex">
+              <view class="h-0.5 w-3 rounded-full bg-chart-1"></view>
               <text class="text-xs text-muted-foreground">
                 Least-squares fit
               </text>
@@ -175,15 +169,15 @@ import { ScreenHost } from '../screen-host';
             <ui-card-title class="text-lg">Tap a point</ui-card-title>
           </view>
           <ui-card-description>
-            Each dot is tappable; pointTap emits the x/y point that was hit.
+            pointTap emits the x/y point nearest the tap.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
           <ui-scatter-chart
             [data]="measurements"
-            [width]="280"
             [height]="200"
             [radius]="6"
+            label="Response by dose"
             (pointTap)="onPointTap($event)"
           />
           <view class="rounded-md bg-muted p-3 flex">
@@ -198,7 +192,7 @@ import { ScreenHost } from '../screen-host';
 })
 export class ScatterChartDemo {
   // A positively-correlated cloud — dose vs response, good for a regression line.
-  readonly measurements: ChartPoint[] = [
+  readonly measurements: readonly XYDatum[] = [
     { x: 1, y: 3 },
     { x: 2, y: 4 },
     { x: 3, y: 4 },
@@ -212,7 +206,7 @@ export class ScatterChartDemo {
   ];
 
   // Two visually-separate groups; the first five points are group A, the rest B.
-  readonly clusters: ChartPoint[] = [
+  readonly clusters: readonly XYDatum[] = [
     { x: 1, y: 2 },
     { x: 2, y: 3 },
     { x: 1.5, y: 2.5 },
@@ -225,47 +219,45 @@ export class ScatterChartDemo {
     { x: 7, y: 9 },
   ];
 
-  // One color per point, indexed to group membership (blue = A, orange = B).
-  // Data hues stay fixed across light/dark mode (they encode a group, not theme
-  // chrome), so raw rgba() is the right call.
+  // One color per point, indexed to group membership. Theme tokens, so each
+  // group keeps a distinct hue from the dark palette in dark mode.
   readonly clusterColors = [
-    'rgba(59, 130, 246, 1)',
-    'rgba(59, 130, 246, 1)',
-    'rgba(59, 130, 246, 1)',
-    'rgba(59, 130, 246, 1)',
-    'rgba(59, 130, 246, 1)',
-    'rgba(249, 115, 22, 1)',
-    'rgba(249, 115, 22, 1)',
-    'rgba(249, 115, 22, 1)',
-    'rgba(249, 115, 22, 1)',
-    'rgba(249, 115, 22, 1)',
+    ...Array<string>(5).fill('var(--chart-1)'),
+    ...Array<string>(5).fill('var(--chart-2)'),
   ];
 
   // Per-point radii (px) — a bubble chart. Indexed 1:1 with `measurements`.
   readonly bubbleSizes = [4, 6, 5, 9, 7, 12, 8, 14, 10, 16];
 
-  readonly amber = 'rgba(245, 158, 11, 1)';
+  /**
+   * The dots plus a fitted line. `linearRegressionY` draws the 95% band and
+   * the line from the measurements themselves; only the line's samples take
+   * focus, so touching it shows the fitted value at that dose. The dots are
+   * listed last so they paint over the band and win a touch on a dot.
+   */
+  readonly withRegression = defineChart({
+    marks: [
+      linearRegressionY(this.measurements, {
+        x: 'x',
+        y: 'y',
+        stroke: 'var(--chart-1)',
+        strokeWidth: 2,
+      }),
+      dot(this.measurements, { x: 'x', y: 'y', r: 4, fill: 'var(--primary)' }),
+    ],
+    scales: {
+      x: { scale: scaleLinear, nice: true, axis: { label: 'Dose' } },
+      y: {
+        scale: scaleLinear,
+        nice: true,
+        grid: true,
+        axis: { label: 'Response' },
+      },
+    },
+    tooltip,
+  });
 
-  // Least-squares fit of the measurements, as two endpoints spanning the x-range.
-  readonly regression: ChartPoint[] = (() => {
-    const pts = this.measurements;
-    const n = pts.length;
-    const sx = pts.reduce((s, p) => s + p.x, 0);
-    const sy = pts.reduce((s, p) => s + p.y, 0);
-    const sxy = pts.reduce((s, p) => s + p.x * p.y, 0);
-    const sxx = pts.reduce((s, p) => s + p.x * p.x, 0);
-    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
-    const intercept = (sy - slope * sx) / n;
-    const xs = pts.map((p) => p.x);
-    const lo = Math.min(...xs);
-    const hi = Math.max(...xs);
-    return [
-      { x: lo, y: slope * lo + intercept },
-      { x: hi, y: slope * hi + intercept },
-    ];
-  })();
-
-  readonly #tapped = signal<ChartPoint | null>(null);
+  readonly #tapped = signal<XYDatum | null>(null);
 
   protected readonly tappedLabel = computed(() => {
     const point = this.#tapped();
@@ -274,7 +266,7 @@ export class ScatterChartDemo {
       : 'Tap any point on the chart above.';
   });
 
-  protected onPointTap(point: ChartPoint): void {
+  protected onPointTap(point: XYDatum): void {
     this.#tapped.set(point);
   }
 }

@@ -1,22 +1,26 @@
 import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import {
-  type ChartPoint,
-  UiCartesianChart,
-} from '../components/ui/cartesian-chart';
-import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
+import { areaY, defineChart, lineY } from '@tanstack/charts/universal';
+import { scaleLinear } from '@tanstack/charts/scales/linear';
+import { UiAreaChart } from '../components/ui/area-chart';
+import { UiChart, tooltip } from '../components/ui/chart';
+
+type Point = {
+  readonly x: number;
+  readonly y: number;
+};
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, UiAreaChart, UiCartesianChart, UiAreaSeries],
+  imports: [LYNX_ELEMENTS, UiAreaChart, UiChart],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
       <view class="flex-col gap-6 p-6 flex">
         <text class="text-2xl font-bold text-foreground">Area Chart</text>
         <text class="text-sm text-muted-foreground">
-          A line chart with the region down to a baseline filled in — drawn from
-          Lynx views only. It reuses the line series on top of a translucent
-          fill, both on the same BaseCartesianChart.
+          An area chart preset built on TanStack Charts: a filled region down to
+          a baseline under the line. Touch a chart to see a point's values; tap
+          to pin the tooltip.
         </text>
 
         <!-- Basic single-series area via the convenience wrapper -->
@@ -25,7 +29,7 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
             Revenue (basic)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-area-chart [data]="revenue" [width]="280" [height]="180" />
+            <ui-area-chart [data]="revenue" [height]="180" />
           </view>
         </view>
 
@@ -37,7 +41,6 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-area-chart
               [data]="downloads"
-              [width]="280"
               [height]="180"
               [color]="blue"
               [fillOpacity]="0.25"
@@ -49,12 +52,7 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">Smooth curve</text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-area-chart
-              [data]="revenue"
-              [width]="280"
-              [height]="180"
-              [smooth]="true"
-            />
+            <ui-area-chart [data]="revenue" [height]="180" [smooth]="true" />
           </view>
         </view>
 
@@ -66,7 +64,6 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-area-chart
               [data]="delta"
-              [width]="280"
               [height]="180"
               [color]="green"
               [baseline]="0"
@@ -85,7 +82,6 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-area-chart
               [data]="revenue"
-              [width]="280"
               [height]="180"
               xAxisLabel="Month"
               yAxisLabel="Revenue ($k)"
@@ -95,23 +91,20 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
           </view>
         </view>
 
-        <!-- Multiple series overlaid via the base component -->
+        <!--
+          Several series: past the preset, compose TanStack marks yourself and
+          render the definition with <ui-chart>.
+        -->
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">
-            Two series (base component)
+            Two series (ui-chart)
           </text>
           <view class="rounded-lg border border-border bg-card p-4">
-            <ui-cartesian-chart
-              [xDomain]="[1, 6]"
-              [yDomain]="[0, 40]"
-              [xTicks]="[1, 2, 3, 4, 5, 6]"
-              [yTicks]="[0, 10, 20, 30, 40]"
-              [width]="280"
+            <ui-chart
+              [definition]="twoSeries"
               [height]="180"
-            >
-              <ui-area-series [data]="revenue" [color]="blue" />
-              <ui-area-series [data]="lastYear" [color]="green" />
-            </ui-cartesian-chart>
+              label="Revenue, this year and last"
+            />
           </view>
           <view class="flex-row gap-4 flex">
             <view class="flex-row items-center gap-1.5 flex">
@@ -137,7 +130,6 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
           <view class="rounded-lg border border-border bg-card p-4">
             <ui-area-chart
               [data]="revenue"
-              [width]="280"
               [height]="180"
               [dotRadius]="5"
               (pointTap)="onPointTap($event)"
@@ -155,7 +147,7 @@ import { UiAreaChart, UiAreaSeries } from '../components/ui/area-chart';
 })
 export class App {
   // Month → value data. x is the month index; y is the metric.
-  readonly revenue: ChartPoint[] = [
+  readonly revenue: Point[] = [
     { x: 1, y: 12 },
     { x: 2, y: 19 },
     { x: 3, y: 15 },
@@ -164,7 +156,7 @@ export class App {
     { x: 6, y: 30 },
   ];
 
-  readonly lastYear: ChartPoint[] = [
+  readonly lastYear: Point[] = [
     { x: 1, y: 8 },
     { x: 2, y: 11 },
     { x: 3, y: 14 },
@@ -173,7 +165,7 @@ export class App {
     { x: 6, y: 20 },
   ];
 
-  readonly downloads: ChartPoint[] = [
+  readonly downloads: Point[] = [
     { x: 1, y: 40 },
     { x: 2, y: 33 },
     { x: 3, y: 52 },
@@ -183,7 +175,7 @@ export class App {
   ];
 
   // A series that dips below zero, to show the fill straddling the baseline.
-  readonly delta: ChartPoint[] = [
+  readonly delta: Point[] = [
     { x: 1, y: -5 },
     { x: 2, y: 3 },
     { x: 3, y: -2 },
@@ -197,7 +189,43 @@ export class App {
   readonly blue = 'rgba(59, 130, 246, 1)';
   readonly green = 'rgba(34, 197, 94, 1)';
 
-  readonly #tapped = signal<ChartPoint | null>(null);
+  // A translucent fill and a line per series, on shared scales. Declared
+  // after the data and colors, which class fields initialize in order.
+  readonly twoSeries = defineChart({
+    marks: [
+      areaY(this.revenue, {
+        x: 'x',
+        y: 'y',
+        fill: this.blue,
+        fillOpacity: 0.2,
+      }),
+      lineY(this.revenue, {
+        x: 'x',
+        y: 'y',
+        stroke: this.blue,
+        strokeWidth: 2,
+      }),
+      areaY(this.lastYear, {
+        x: 'x',
+        y: 'y',
+        fill: this.green,
+        fillOpacity: 0.2,
+      }),
+      lineY(this.lastYear, {
+        x: 'x',
+        y: 'y',
+        stroke: this.green,
+        strokeWidth: 2,
+      }),
+    ],
+    scales: {
+      x: { scale: scaleLinear().domain([1, 6]) },
+      y: { scale: scaleLinear().domain([0, 40]), grid: true },
+    },
+    tooltip,
+  });
+
+  readonly #tapped = signal<Point | null>(null);
 
   protected readonly tappedLabel = computed(() => {
     const point = this.#tapped();
@@ -206,7 +234,7 @@ export class App {
       : 'Tap any point on the chart above.';
   });
 
-  protected onPointTap(point: ChartPoint): void {
+  protected onPointTap(point: Point): void {
     this.#tapped.set(point);
   }
 }

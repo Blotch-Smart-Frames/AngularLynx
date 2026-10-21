@@ -99,6 +99,11 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'chart-demo',
+    loadComponent: () =>
+      import('./chart-demo/chart-demo').then((m) => m.ChartDemo),
+  },
+  {
     path: 'line-chart-demo',
     loadComponent: () =>
       import('./line-chart-demo/line-chart-demo').then((m) => m.LineChartDemo),

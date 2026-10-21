@@ -1,7 +1,6 @@
 export {
+  type CandlestickChartOptions,
+  type CandlestickDatum,
   UiCandlestickChart,
-  UiCandlestickSeries,
-  computeCandles,
-  type CandlestickPoint,
-  type CandleShape,
+  candlestickChartDefinition,
 } from './candlestick-chart';

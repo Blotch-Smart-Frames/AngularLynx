@@ -139,6 +139,47 @@ describe('LynxElement', () => {
     });
   });
 
+  describe('svg content', () => {
+    const svg = () => {
+      const el = new LynxElement(fakeRef);
+      el.tagName = 'svg';
+      return el;
+    };
+    const HANGS = '<svg><rect stroke-dasharray="none"/></svg>';
+
+    beforeEach(() => {
+      globalThis.__SetAttribute = vi.fn();
+    });
+
+    it('drops a stroke-dasharray the native SVG engine would hang on', () => {
+      svg().setAttribute('content', HANGS);
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        fakeRef,
+        'content',
+        '<svg><rect/></svg>',
+      );
+    });
+
+    it('passes other svg attributes and other elements through', () => {
+      svg().setAttribute('src', HANGS);
+      const view = new LynxElement(fakeRef);
+      view.tagName = 'view';
+      view.setAttribute('content', HANGS);
+      expect(globalThis.__SetAttribute).toHaveBeenNthCalledWith(
+        1,
+        fakeRef,
+        'src',
+        HANGS,
+      );
+      expect(globalThis.__SetAttribute).toHaveBeenNthCalledWith(
+        2,
+        fakeRef,
+        'content',
+        HANGS,
+      );
+    });
+  });
+
   describe('blur-view materials on Android', () => {
     const material = (background: string) =>
       `--angular-lynx-blur-background: ${background}; ` +

@@ -42,7 +42,7 @@ import preset from '@lynx-js/tailwind-preset';
 import { blotchPlugin } from './src/styles/tailwind-plugin'; // [!code highlight]
 
 const config: Config = {
-  content: ['./src/**/*.ts'],
+  content: ['./src/**/*.{html,ts}'],
   presets: [preset],
   plugins: [blotchPlugin], // [!code highlight]
 };

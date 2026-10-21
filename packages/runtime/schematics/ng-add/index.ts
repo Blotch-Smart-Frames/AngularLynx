@@ -525,7 +525,7 @@ const addTailwindConfig = (projectRoot: string): Rule => {
 import preset from '@lynx-js/tailwind-preset';
 
 const config: Config = {
-  content: ['./src/**/*.ts'],
+  content: ['./src/**/*.{html,ts}'],
   presets: [preset],
 };
 

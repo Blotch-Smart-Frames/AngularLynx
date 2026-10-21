@@ -55,3 +55,19 @@ test('the generated app loads lazy routes', async ({ page }) => {
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
+
+// The build handed Tailwind the modules it bundled in place of `content`, and
+// Angular's compiler reads an `.html` template without importing it, so classes
+// used only in one got no CSS (issue #52).
+test('Tailwind styles classes in .html templates', async ({ page }) => {
+  test.skip(!process.env['E2E_APP_TAILWIND'], 'the app has no Tailwind');
+  const errors = collectErrors(page);
+  await page.goto('/');
+
+  // tailwind-card.html's `text-[#0a7b5c]`.
+  await expect(
+    page.getByText('Styled from an .html template', { exact: true }),
+  ).toHaveCSS('color', 'rgb(10, 123, 92)');
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});

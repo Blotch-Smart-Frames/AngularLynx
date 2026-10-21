@@ -51,6 +51,8 @@ export type ScaffoldedApp = {
   readonly dir: string;
   readonly name: string;
   readonly distDir: string;
+  /** Whether the app was made with Tailwind. */
+  readonly tailwind: boolean;
 };
 
 const APP_NAME = 'my-app';
@@ -144,7 +146,12 @@ export const scaffoldApp = async (
     await typeCheck(appDir, pm, registry, context);
   }
 
-  return { dir: appDir, name: APP_NAME, distDir: path.join(appDir, 'dist') };
+  return {
+    dir: appDir,
+    name: APP_NAME,
+    distDir: path.join(appDir, 'dist'),
+    tailwind: options.tailwind,
+  };
 };
 
 const addTestingAndRunTests = async (
@@ -652,6 +659,12 @@ const applyFixtures = (appDir: string) => {
     path.join(FIXTURES_DIR, 'counter.ts'),
     path.join(appDir, 'src/app/hello/hello.ts'),
   );
+  for (const file of ['tailwind-card.ts', 'tailwind-card.html']) {
+    copyFileSync(
+      path.join(FIXTURES_DIR, file),
+      path.join(appDir, 'src/app/hello', file),
+    );
+  }
   copyFileSync(
     path.join(FIXTURES_DIR, 'lazy-route.ts'),
     path.join(appDir, 'src/app/lazy-route.ts'),

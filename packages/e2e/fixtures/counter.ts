@@ -2,6 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
+import { TailwindCard } from './tailwind-card';
+
 /**
  * E2E fixture that replaces the `hello` component the component schematic
  * generates. Tapping "Increment" proves the round trip from a native event,
@@ -24,10 +26,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * either), with no error on screen, so native/xelement.yaml types into the
  * input, finds the svg and opens the overlay. Lynx Explorer bundles XElement;
  * the shells from `ng build --platform` have to as well.
+ *
+ * The last element is a component with an `.html` template styled by Tailwind
+ * (tailwind-card.ts).
  */
 @Component({
   selector: 'app-hello',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, TailwindCard],
   template: `
     <view style="margin-top: 16px; align-items: center;">
       <text flatten="false" style="font-size: 18px;">Count: {{ count() }}</text>
@@ -90,6 +95,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           </view>
         </view>
       </overlay>
+      <app-tailwind-card />
     </view>
   `,
 })

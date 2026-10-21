@@ -63,15 +63,14 @@ export default (options: Schema): Rule =>
 const addTailwindConfig = (projectRoot: string): Rule => {
   return (tree: Tree) => {
     const configPath = `${projectRoot ? projectRoot + '/' : ''}tailwind.config.ts`;
-    // content: ['./src/**/*.ts'] scans only .ts files — AngularLynx components
-    // inline their templates (no .html template files), so all class names
-    // live in TypeScript source. Including .html in the glob would just slow
-    // the watcher down without finding anything.
+    // The build runs Tailwind with this `content`, so it has to take in both
+    // inline templates (.ts) and the .html templates `ng generate component`
+    // writes by default, as in Angular's own Tailwind setup.
     const content = `import type { Config } from 'tailwindcss';
 import preset from '@lynx-js/tailwind-preset';
 
 const config: Config = {
-  content: ['./src/**/*.ts'],
+  content: ['./src/**/*.{html,ts}'],
   presets: [preset],
 };
 

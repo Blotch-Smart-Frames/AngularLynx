@@ -1,4 +1,5 @@
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { callOnBackground } from '../background-call';
 import { globalExposureBatches } from './global-exposure-bridge';
 import type {
   GlobalExposureEvent,
@@ -36,18 +37,42 @@ export class LynxGlobalExposure {
    */
   stopExposure(options?: { sendEvent: boolean }): void {
     if (typeof lynx === 'undefined') return;
-    lynx.stopExposure(options);
+    if (typeof lynx.stopExposure === 'function') {
+      lynx.stopExposure(options);
+    } else {
+      this.#relay(callOnBackground('stopExposure', options));
+    }
     this.active.set(false);
   }
 
   resumeExposure(): void {
     if (typeof lynx === 'undefined') return;
-    lynx.resumeExposure();
+    if (typeof lynx.resumeExposure === 'function') {
+      lynx.resumeExposure();
+    } else {
+      this.#relay(callOnBackground('resumeExposure'));
+    }
     this.active.set(true);
   }
 
-  setObserverFrameRate(options?: ObserverFrameRateOptions): void {
-    if (typeof lynx === 'undefined') return;
-    lynx.setObserverFrameRate(options);
+  /**
+   * Sets how often Lynx checks for exposure. Only the background thread's
+   * `lynx` has setObserverFrameRate, so a call from an event handler, which
+   * runs on the main thread, goes through the background thread (see
+   * background-call.ts). Resolves once it's applied.
+   */
+  setObserverFrameRate(options?: ObserverFrameRateOptions): Promise<void> {
+    if (typeof lynx === 'undefined') return Promise.resolve();
+    return callOnBackground('setObserverFrameRate', options);
+  }
+
+  /**
+   * Web-core's main thread has no stopExposure or resumeExposure, so there the
+   * call goes through the background thread (see background-call.ts). These
+   * methods return nothing, so report a failed relay rather than leave an
+   * unhandled rejection.
+   */
+  #relay(call: Promise<void>): void {
+    call.catch((error: unknown) => console.error(error));
   }
 }

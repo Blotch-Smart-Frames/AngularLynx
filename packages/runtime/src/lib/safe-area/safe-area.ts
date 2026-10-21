@@ -1,4 +1,4 @@
-import { computed, inject, Injectable } from '@angular/core';
+import { computed, inject, Injectable, Injector } from '@angular/core';
 import { LynxGlobalData } from '../data-flow/global-data';
 import { LynxSystemInfo } from '../system-info/system-info';
 
@@ -48,7 +48,9 @@ export const SAFE_AREA_INSET_RIGHT = 'env(safe-area-inset-right)';
 @Injectable({ providedIn: 'root' })
 export class LynxSafeArea {
   readonly #globalData = inject(LynxGlobalData);
-  readonly #systemInfo = inject(LynxSystemInfo);
+  // LynxSystemInfo throws where there's no SystemInfo, such as in unit tests,
+  // and only `platform` needs it, so it's looked up when that's read.
+  readonly #injector = inject(Injector);
 
   /**
    * Whether the device has a display notch or cutout. Reactive — updates when global props change.
@@ -64,6 +66,6 @@ export class LynxSafeArea {
    * The current platform (`'iOS'`, `'Android'`, `'Harmony'`, etc.).
    */
   get platform() {
-    return this.#systemInfo.platform;
+    return this.#injector.get(LynxSystemInfo).platform;
   }
 }

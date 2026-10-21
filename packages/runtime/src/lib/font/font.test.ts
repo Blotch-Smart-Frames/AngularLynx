@@ -164,4 +164,42 @@ describe('LynxFont', () => {
       expect(service.getStatus('Y')).toBe('loaded');
     });
   });
+
+  describe('when addFont fails before Lynx answers', () => {
+    it('marks the font as failed instead of leaving it loading', async () => {
+      vi.stubGlobal('lynx', {});
+      const service = new LynxFont();
+
+      await expect(
+        service.addFont({ fontFamily: 'Test', src: '/font.ttf' }),
+      ).rejects.toThrow('lynx.addFont is not available');
+      expect(service.getStatus('Test')).toBe('error');
+    });
+
+    it('tries again on the next call', async () => {
+      const lynx: Record<string, unknown> = {};
+      vi.stubGlobal('lynx', lynx);
+      const service = new LynxFont();
+      await service
+        .addFont({ fontFamily: 'Test', src: '/font.ttf' })
+        .catch(() => {});
+
+      lynx['addFont'] = (_font: unknown, done: () => void) => done();
+      await service.addFont({ fontFamily: 'Test', src: '/font.ttf' });
+
+      expect(service.getStatus('Test')).toBe('loaded');
+    });
+
+    it('wraps a failure that is not an Error', async () => {
+      vi.stubGlobal('lynx', {
+        addFont: (_font: unknown, done: (e: unknown) => void) => done('nope'),
+      });
+      const service = new LynxFont();
+
+      await expect(
+        service.addFont({ fontFamily: 'Test', src: '/font.ttf' }),
+      ).rejects.toThrow('nope');
+      expect(service.fonts().get('Test')?.error).toBeInstanceOf(Error);
+    });
+  });
 });

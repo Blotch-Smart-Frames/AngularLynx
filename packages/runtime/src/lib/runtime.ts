@@ -6,12 +6,13 @@ import { markFirstRenderComplete } from './lynx-render-lifecycle';
 // Side-effect imports install the runtime's global environment before bootstrap.
 // Order mirrors the original monolithic runtime.ts: crash diagnostics first, then
 // the browser-shaped environment polyfills, then the Lynx lifecycle/worklet
-// callbacks and the global exposure bridge. `pageReady` and `__workletMap` are the only values bootstrap itself
+// callbacks, the global exposure bridge and the background call relay. `pageReady` and `__workletMap` are the only values bootstrap itself
 // needs to reference (renderPage readiness + HMR worklet reset).
 import './error-reporting';
 import './polyfills';
 import { pageReady } from './global-callbacks';
 import './exposure/global-exposure-bridge';
+import './background-call';
 import { __workletMap } from './worklet-bridge';
 import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
 

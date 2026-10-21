@@ -86,14 +86,12 @@ watch<T = unknown>(
 ): WritableSignal<T | undefined>;
 ```
 
-Returns a signal that holds the key's value. It starts as `undefined`, fills in with the stored value, then follows later writes, with the limit below.
+Returns a signal that holds the key's value. It starts as `undefined`, fills in with the stored value, then follows later writes from any page.
 
 - **Injection context:** call it in a constructor or field initializer, or pass `options.injector`. The subscription ends when that injector is destroyed.
 - **Read it, don't set it.** Setting the signal doesn't write to storage. Use `setItem()`.
 
-:::warning Other pages' writes don't reach the screen
-On a device, Lynx notifies subscribers about other pages' writes only on the [background thread](/guide/glossary#background-thread). On the main thread, which draws the UI, `subscribe()` and `watch()` see only this page's own `setItem()` calls, so `watch()` doesn't show another page's later writes. See [Threads](/guide/concepts/threads).
-:::
+Lynx notifies subscribers only on the [background thread](/guide/glossary#background-thread). On the main thread, which draws the UI, `subscribe()` and `watch()` subscribe through the background thread, so they hear about other pages' writes too. So a write from this page reaches its own subscribers twice: right away, and again when Lynx's notification arrives.
 
 ## Types
 

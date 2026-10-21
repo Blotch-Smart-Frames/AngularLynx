@@ -68,7 +68,7 @@ Measurement uses the platform's built-in fonts only.
 
 `measure()` needs Lynx's text engine. Outside a device or [Lynx Explorer](/guide/glossary#lynx-explorer), it throws:
 
-- **In the [web preview](/guide/glossary#web-preview)**, it throws `lynx.getTextInfo is not a function`.
+- **In the [web preview](/guide/glossary#web-preview)**, it throws `lynx.getTextInfo is not available in this environment`.
 - **In unit tests**, it throws too. Mock `LynxTextMeasure` with a provider.
 
 If a component must also render in the web preview, catch the error and fall back to an estimate:

@@ -52,9 +52,7 @@ class LynxAccessibility {}
 
 Imperative screen reader control, for changes that the attributes below can't express.
 
-:::warning Background thread only
-Lynx provides both methods only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers, both promises reject. See [Threads](/guide/concepts/threads).
-:::
+Both methods work from event handlers.
 
 ### `LynxAccessibility.announce()`
 
@@ -65,7 +63,8 @@ announce(content: string): Promise<void>;
 Makes the screen reader speak `content` without moving focus. Use it for results that don't move focus, such as "Saved" or a finished upload.
 
 - **Resolves** once Lynx accepts the announcement.
-- **Rejects** when Lynx's announce API isn't available.
+- **Rejects** when Lynx's announce API isn't available, such as in the web preview.
+- **From an event handler,** the call runs on the [background thread](/guide/glossary#background-thread), the only one with Lynx's announce API. AngularLynx sends it there for you.
 
 ### `LynxAccessibility.requestFocus()`
 
@@ -76,7 +75,7 @@ requestFocus(selector: string): Promise<void>;
 Moves the screen reader's focus to the element that matches `selector`. Give that element `accessibility-element="true"`.
 
 - **`selector`:** use an ID selector such as `'#confirmation'`, which matches the element's `id`. Other selectors aren't reliable.
-- **Rejects** with the Lynx error code when the element can't take focus, or when selector queries aren't available.
+- **Rejects** when no element matches, or with the Lynx error code when the element can't take focus.
 
 ## Attributes
 

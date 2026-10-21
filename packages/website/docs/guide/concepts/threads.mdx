@@ -91,12 +91,12 @@ Template changes driven by signals, such as `@if`, `@for` and class bindings, ne
 
 ## APIs that live on one thread
 
-| You want to                                 | Thread it needs | What to do                                                                                                                   |
-| ------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Update the UI                               | Main            | Change signals. Angular does the rest                                                                                        |
-| Make network requests                       | Background      | Not supported from components yet. See [Network requests](/guide/concepts/javascript-environment#network-requests)           |
-| Move an element on every frame, e.g. a drag | Main            | Use a [main-thread script](/guide/main-thread/)                                                                              |
-| Load a font at runtime                      | Background      | Call `LynxFont.addFont()` from a constructor, not a handler. See [Custom fonts](/guide/custom-fonts/#load-a-font-at-runtime) |
+| You want to                                 | Thread it needs | What to do                                                                                                                                              |
+| ------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Update the UI                               | Main            | Change signals. Angular does the rest                                                                                                                   |
+| Make network requests                       | Background      | Not supported from components yet. See [Network requests](/guide/concepts/javascript-environment#network-requests)                                      |
+| Move an element on every frame, e.g. a drag | Main            | Use a [main-thread script](/guide/main-thread/)                                                                                                         |
+| Load a font at runtime                      | Background      | Call `LynxFont.addFont()` from anywhere. AngularLynx sends it to the background thread. See [Custom fonts](/guide/custom-fonts/#load-a-font-at-runtime) |
 
 ## Related
 

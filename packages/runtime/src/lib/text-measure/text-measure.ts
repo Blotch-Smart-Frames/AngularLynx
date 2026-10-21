@@ -25,7 +25,12 @@ import type { TextInfo, TextMetrics } from '@lynx-js/types';
 @Injectable({ providedIn: 'root' })
 export class LynxTextMeasure {
   measure(text: string, options: TextInfo): TextMetrics {
-    if (typeof lynx === 'undefined') {
+    // The web preview's main-thread lynx has no getTextInfo. Native has it on
+    // both threads.
+    if (
+      typeof lynx === 'undefined' ||
+      typeof (lynx as any).getTextInfo !== 'function'
+    ) {
       throw new Error('lynx.getTextInfo is not available in this environment');
     }
 

@@ -98,21 +98,20 @@ export class Greeting {
         src: 'url("https://example.com/fonts/Lobster-Regular.ttf")',
       })
       .catch(() => {
-        // Only one of your app's two copies can add fonts. See below.
+        // The web preview can't load fonts at runtime. See below.
       });
   }
 }
 ```
 
-- **Call it from a constructor or `ngOnInit`.** Lynx accepts `addFont()` only from the [background thread](/guide/glossary#background-thread). A constructor runs on both threads, so the background copy of your app adds the font. On the main thread the call rejects, which the `catch` ignores.
+- **Call it from anywhere,** including a tap handler. Lynx accepts `addFont()` only on the [background thread](/guide/glossary#background-thread), so AngularLynx sends calls from the main thread there.
 - **Text switches when the font arrives.** Until then, text that names the family shows the system font.
 - **Write `src` as a CSS `url()`**, the same value you'd put in `@font-face`.
 - **Repeat calls are safe.** A second call for the same family returns the same promise.
 
 ### Limitations of runtime fonts
 
-- **Not from a tap handler.** Event handlers run on the [main thread](/guide/concepts/threads), where `addFont()` doesn't exist. Wrapping the call in `setTimeout` doesn't help, because the timer runs on the main thread too. Load the fonts you might need when the app starts.
-- **Don't show the loading status in templates yet.** `getStatus()` and `isLoaded()` track the copy of your app that made the call. In the main-thread copy, which draws your UI, they stay at `'loading'`.
+- **Status is per copy of your app.** `getStatus()` and `isLoaded()` track the calls each copy made. A constructor runs in both copies, so both track it. See [Threads](/guide/concepts/threads).
 - **Not in the web preview.** Lynx's web renderer doesn't load fonts at runtime. Test them on a phone.
 
 ## Limitations

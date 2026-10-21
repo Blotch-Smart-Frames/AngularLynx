@@ -85,4 +85,26 @@ describe('LynxSystemInfo', () => {
       expect(service.theme).toBeUndefined();
     });
   });
+
+  describe('on the native main thread, which has only lynx.SystemInfo', () => {
+    it('reads lynx.SystemInfo', () => {
+      vi.stubGlobal('lynx', { SystemInfo: { platform: 'Android' } });
+
+      expect(new LynxSystemInfo().platform).toBe('Android');
+    });
+
+    it('prefers lynx.SystemInfo over the global', () => {
+      vi.stubGlobal('lynx', { SystemInfo: { platform: 'Android' } });
+      vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+
+      expect(new LynxSystemInfo().platform).toBe('Android');
+    });
+
+    it('falls back to the global when lynx has no SystemInfo', () => {
+      vi.stubGlobal('lynx', {});
+      vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+
+      expect(new LynxSystemInfo().platform).toBe('iOS');
+    });
+  });
 });

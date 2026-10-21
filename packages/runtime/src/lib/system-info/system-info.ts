@@ -8,6 +8,10 @@ import type { SystemInfo, PlatformType } from '@lynx-js/types';
  * `SystemInfo` is populated once when the Lynx view initializes and
  * is read-only for the lifetime of the app — the values never change.
  *
+ * On iOS and Android (Lynx 4.1), the main thread has no global `SystemInfo`,
+ * only `lynx.SystemInfo`, so that's read first. The background thread and the
+ * web have the global.
+ *
  * @usageNotes
  * ```typescript
  * const systemInfo = inject(LynxSystemInfo);
@@ -30,10 +34,15 @@ export class LynxSystemInfo {
   readonly #info: SystemInfo;
 
   constructor() {
-    if (typeof SystemInfo === 'undefined') {
+    const info =
+      (typeof lynx !== 'undefined'
+        ? (lynx as { SystemInfo?: SystemInfo }).SystemInfo
+        : undefined) ??
+      (typeof SystemInfo !== 'undefined' ? SystemInfo : undefined);
+    if (!info) {
       throw new Error('SystemInfo is not available in this environment');
     }
-    this.#info = SystemInfo;
+    this.#info = info;
   }
 
   /**

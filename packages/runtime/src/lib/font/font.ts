@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import { callOnBackground } from '../background-call';
 import type {
   LynxFontEntry,
   LynxFontFaceConfig,
@@ -7,6 +8,9 @@ import type {
 
 /**
  * Wraps `lynx.addFont()` with a Promise-based API and reactive signal state.
+ * Only the background thread's `lynx` has addFont, so a call from an event
+ * handler, which runs on the main thread, goes through the background thread
+ * (see background-call.ts).
  *
  * Use CSS `@font-face` in stylesheets for fonts known at build time (the
  * standard Angular approach). Use this service only for fonts that must be
@@ -64,31 +68,25 @@ export class LynxFont {
 
     this.#updateEntry(fontFamily, { fontFamily, src, status: 'loading' });
 
-    const promise = new Promise<void>((resolve, reject) => {
-      (lynx as any).addFont(
-        { 'font-family': fontFamily, src },
-        (err?: Error) => {
-          if (err) {
-            this.#updateEntry(fontFamily, {
-              fontFamily,
-              src,
-              status: 'error',
-              error: err,
-            });
-            this.#pending.delete(fontFamily);
-            reject(err);
-          } else {
-            this.#updateEntry(fontFamily, {
-              fontFamily,
-              src,
-              status: 'loaded',
-            });
-            this.#pending.delete(fontFamily);
-            resolve();
-          }
-        },
-      );
-    });
+    // Any failure, including addFont itself being missing, must leave the
+    // 'loading' state and the pending cache, so a later call can try again.
+    const promise = callOnBackground('addFont', fontFamily, src).then(
+      () => {
+        this.#updateEntry(fontFamily, { fontFamily, src, status: 'loaded' });
+        this.#pending.delete(fontFamily);
+      },
+      (err: unknown) => {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.#updateEntry(fontFamily, {
+          fontFamily,
+          src,
+          status: 'error',
+          error,
+        });
+        this.#pending.delete(fontFamily);
+        throw error;
+      },
+    );
 
     this.#pending.set(fontFamily, promise);
     return promise;

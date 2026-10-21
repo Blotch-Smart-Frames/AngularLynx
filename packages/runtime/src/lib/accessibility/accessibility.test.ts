@@ -186,4 +186,56 @@ describe('LynxAccessibility', () => {
       );
     });
   });
+
+  describe('requestFocus on the main thread', () => {
+    // Event handlers run here, where lynx has no createSelectorQuery, so the
+    // element is found and called through the element APIs instead.
+    let invokeUIMethod: ReturnType<typeof vi.fn>;
+    let querySelector: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      invokeUIMethod = vi.fn();
+      querySelector = vi.fn().mockReturnValue({ id: 'target' });
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('__GetPageElement', () => ({ id: 'page' }));
+      vi.stubGlobal('__QuerySelector', querySelector);
+      vi.stubGlobal('__InvokeUIMethod', invokeUIMethod);
+      vi.stubGlobal('__FlushElementTree', vi.fn());
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('invokes requestAccessibilityFocus on the matching element', async () => {
+      const focus = new LynxAccessibility().requestFocus('#done');
+      invokeUIMethod.mock.calls[0][3]({ code: 0, data: null });
+
+      await expect(focus).resolves.toBeUndefined();
+      expect(querySelector).toHaveBeenCalledWith({ id: 'page' }, '#done', {});
+      expect(invokeUIMethod).toHaveBeenCalledWith(
+        { id: 'target' },
+        'requestAccessibilityFocus',
+        {},
+        expect.any(Function),
+      );
+    });
+
+    it('rejects when no element matches', async () => {
+      querySelector.mockReturnValue(null);
+
+      await expect(
+        new LynxAccessibility().requestFocus('#missing'),
+      ).rejects.toThrow(
+        'requestAccessibilityFocus: no element matches #missing',
+      );
+    });
+
+    it('rejects when the element reports a failure', async () => {
+      const focus = new LynxAccessibility().requestFocus('#done');
+      invokeUIMethod.mock.calls[0][3]({ code: 3 });
+
+      await expect(focus).rejects.toThrow('UI method invoke');
+    });
+  });
 });

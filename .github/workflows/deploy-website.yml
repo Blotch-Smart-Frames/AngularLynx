@@ -4,6 +4,14 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  # Each run deploys to production, so whichever run finishes last wins.
+  # Without this, two merges a minute apart race: the older commit's slower
+  # build can finish second and replace the newer deploy (#74 overwrote #75 this
+  # way). Cancelling the older run makes the newest commit the one that ships.
+  group: deploy-website
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

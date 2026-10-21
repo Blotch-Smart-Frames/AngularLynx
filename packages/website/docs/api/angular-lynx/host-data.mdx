@@ -35,16 +35,12 @@ import { LYNX_ELEMENTS, LynxInitData } from '@blotch/angular-lynx';
 })
 export class Profile {
   readonly #initData = inject(LynxInitData);
-  // initData() can be undefined on a device today. See the limitations below.
-  readonly userId = computed(
-    () => this.#initData.initData()?.userId ?? 'guest',
-  );
+  // initData() is {} when the host sends nothing, as in Lynx Explorer.
+  readonly userId = computed(() => this.#initData.initData().userId ?? 'guest');
 }
 ```
 
 ## API
-
-**Known limitation:** InitData from native code doesn't reach your app yet. See [Limitations](/guide/embedding/host-data#limitations).
 
 **Known limitation:** both signals subscribe to new data from the host only on the [background thread](/guide/glossary#background-thread). Changes after startup may not reach the main-thread copy of your app, which draws the UI. This hasn't been verified on a device. See [Threads](/guide/concepts/threads).
 
@@ -63,7 +59,7 @@ The page's InitData as a signal.
 readonly initData: WritableSignal<InitData>;
 ```
 
-Starts with `lynx.__initData`, the InitData Lynx exposes at launch, or `{}` outside Lynx. Today AngularLynx doesn't fill in `lynx.__initData`, so on a device the value is `undefined`, although the type says `InitData`. Guard your reads. On the background thread, it's set again each time the host sends new data.
+Starts with the InitData the host passed when it opened the page, after your [default data processor](#registerdataprocessors) has run on it. It's `{}` when the host passes none, and outside Lynx. AngularLynx also keeps the value as `lynx.__initData`, as React Lynx does. On the background thread, it's set again each time the host sends new data.
 
 ### `LynxGlobalData`
 

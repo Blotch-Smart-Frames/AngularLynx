@@ -45,9 +45,9 @@ The final `.lynx.bundle` is a binary template format containing both sections. A
 ## Boot Sequence
 
 1. Main thread loads `main-thread.js` bytecode
-2. Lynx native calls `globalThis.renderPage()` → signals page is ready
+2. Lynx native calls `globalThis.renderPage(initData)` → stores the InitData as `lynx.__initData`, signals page is ready
 3. Angular on the **main thread** awaits this callback before bootstrapping (`runtime.ts:200`)
-4. Background thread loads `background-thread.js` independently and bootstraps immediately
+4. Background thread loads `background-thread.js` independently, copies the InitData from `lynx.getApp()._params` into `lynx.__initData`, and bootstraps immediately
 
 Both threads bootstrap the full Angular application. `__MAIN_THREAD__` being a compile-time define means each bundle only contains the code for its own thread.
 
@@ -90,9 +90,9 @@ Both implement the same `Renderer2` interface, so Angular component code is unaw
 
 `runtime.ts` registers these on `globalThis` so Lynx can call into Angular:
 
-| Callback        | Purpose                                                    |
-| --------------- | ---------------------------------------------------------- |
-| `renderPage()`  | Signals the page is ready — unblocks main-thread bootstrap |
-| `updatePage()`  | Incremental update hook (no-op currently)                  |
-| `processData()` | Data-processing hook (no-op currently)                     |
-| `runWorklet()`  | Executes a main-thread worklet function with parameters    |
+| Callback           | Purpose                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `renderPage(data)` | Stores the InitData as `lynx.__initData`, then signals the page is ready — unblocks main-thread bootstrap |
+| `updatePage()`     | Incremental update hook (no-op currently)                                                                 |
+| `processData()`    | Data-processing hook. Returns the data unchanged unless `registerDataProcessors()` replaces it            |
+| `runWorklet()`     | Executes a main-thread worklet function with parameters                                                   |

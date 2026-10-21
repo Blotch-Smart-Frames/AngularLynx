@@ -70,8 +70,86 @@ describe('global-callbacks', () => {
       expect(() => (globalThis as any).updatePage()).not.toThrow();
     });
 
-    it('processData is a no-op that does not throw', () => {
-      expect(() => (globalThis as any).processData()).not.toThrow();
+    it('processData returns the data unchanged by default', () => {
+      // The engine passes this return value on to renderPage, so a default
+      // that returned undefined would drop the InitData.
+      const data = { userId: 'abc' };
+      expect((globalThis as any).processData(data)).toBe(data);
+    });
+  });
+
+  describe('InitData', () => {
+    it('renderPage stores its data as lynx.__initData', async () => {
+      const lynx: Record<string, unknown> = {};
+      await load({ mainThread: true, lynx });
+
+      (globalThis as any).renderPage({ userId: 'abc' });
+
+      expect(lynx['__initData']).toEqual({ userId: 'abc' });
+    });
+
+    it('renderPage stores an empty object when it gets no data', async () => {
+      const lynx: Record<string, unknown> = {};
+      await load({ mainThread: true, lynx });
+
+      (globalThis as any).renderPage();
+
+      expect(lynx['__initData']).toEqual({});
+    });
+
+    it('renderPage stores the data before firing pageReady', async () => {
+      const lynx: Record<string, unknown> = {};
+      const mod = await load({ mainThread: true, lynx });
+      let seen: unknown;
+      mod.pageReady.subscribe(() => {
+        seen = lynx['__initData'];
+      });
+
+      (globalThis as any).renderPage({ userId: 'abc' });
+
+      expect(seen).toEqual({ userId: 'abc' });
+    });
+
+    it('seeds lynx.__initData from the loadCard params on the background thread', async () => {
+      const lynx: Record<string, unknown> = {
+        getApp: () => ({
+          _params: {
+            initData: { userId: 'abc', theme: 'light' },
+            updateData: { theme: 'dark' },
+          },
+        }),
+      };
+
+      await load({ mainThread: false, lynx });
+
+      // updateData arrived after initData, so its keys win.
+      expect(lynx['__initData']).toEqual({ userId: 'abc', theme: 'dark' });
+    });
+
+    it('seeds an empty object when the app has no params', async () => {
+      const lynx: Record<string, unknown> = {
+        getApp: () => ({ _params: null }),
+      };
+
+      await load({ mainThread: false, lynx });
+
+      expect(lynx['__initData']).toEqual({});
+    });
+
+    it('leaves lynx.__initData alone when lynx has no getApp', async () => {
+      const lynx: Record<string, unknown> = { __initData: { userId: 'abc' } };
+
+      await load({ mainThread: false, lynx });
+
+      expect(lynx['__initData']).toEqual({ userId: 'abc' });
+    });
+
+    it('does not read the loadCard params on the main thread', async () => {
+      const getApp = vi.fn();
+
+      await load({ mainThread: true, lynx: { getApp } });
+
+      expect(getApp).not.toHaveBeenCalled();
     });
   });
 

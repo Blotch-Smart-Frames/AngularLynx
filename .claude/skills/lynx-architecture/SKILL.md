@@ -36,8 +36,8 @@ Lazy chunks follow the same pattern (each chunk gets both variants).
 ## Boot Sequence
 
 1. Main thread loads `main-thread.js` bytecode
-2. Lynx calls `globalThis.renderPage()` → unblocks main-thread bootstrap
-3. Background thread loads `background-thread.js` and bootstraps immediately
+2. Lynx calls `globalThis.renderPage(initData)` → stores it as `lynx.__initData`, unblocks main-thread bootstrap
+3. Background thread loads `background-thread.js`, copies the InitData from `lynx.getApp()._params`, and bootstraps immediately
 
 See: `packages/runtime/src/lib/runtime.ts:200`
 

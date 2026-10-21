@@ -8,8 +8,9 @@ import type {
  * Register data processor functions that the native Lynx runtime calls before
  * delivering init data to the app. Maps to the global `processData` callback.
  *
- * Call this before bootstrapApplication so that native data is transformed
- * before LynxInitData receives the first onDataChanged event.
+ * Call this before bootstrapApplication. The engine runs the default processor
+ * on the InitData before passing it to renderPage, so its result is what
+ * LynxInitData starts with.
  *
  * @example
  * registerDataProcessors({

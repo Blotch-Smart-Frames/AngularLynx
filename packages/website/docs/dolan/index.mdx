@@ -52,7 +52,7 @@ Import the theme in your global styles:
 npx @blotch/dolan add button card
 ```
 
-Components are copied to `src/components/ui/` by default. Dependencies are resolved automatically — for example, adding `button` also adds `spinner`.
+Components are copied to `src/components/ui/` by default. Dependencies are resolved automatically — for example, adding `button` also adds `spinner`. `dolan add` also installs any npm packages a component imports, with your project's package manager: adding `chart` installs `@tanstack/charts` and `d3-shape`.
 
 ### 4. Use components
 

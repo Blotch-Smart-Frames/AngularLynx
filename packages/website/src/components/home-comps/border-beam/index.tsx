@@ -4,9 +4,15 @@ import styles from './index.module.scss';
 type BorderBeamProps = {
   size?: number;
   duration?: number;
+  // Matches the host's corner radius, which clips the beam at the corners.
+  radius?: number;
 };
 
-const BorderBeam: FC<BorderBeamProps> = ({ size = 2, duration = 3 }) => {
+const BorderBeam: FC<BorderBeamProps> = ({
+  size = 2,
+  duration = 3,
+  radius = 24,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -140,7 +146,11 @@ const BorderBeam: FC<BorderBeamProps> = ({ size = 2, duration = 3 }) => {
   }, [size, duration]);
 
   return (
-    <div ref={containerRef} className={styles['border-beam-frame']}>
+    <div
+      ref={containerRef}
+      className={styles['border-beam-frame']}
+      style={{ borderRadius: radius }}
+    >
       <canvas
         ref={canvasRef}
         style={{

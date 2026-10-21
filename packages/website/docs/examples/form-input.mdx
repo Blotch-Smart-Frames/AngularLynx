@@ -1,13 +1,18 @@
 # Form Input
 
-Handling `<input>` and `<textarea>` with Lynx events — focus, blur, input, and confirm.
+A profile form built from plain `<input>` and `<textarea>` elements, with focus styling and validation kept in signals. Use it to see the native input events without a forms library.
 
 <Go example="form-input" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`(bindinput)`** — Fires on every keystroke; the new value is at `$event.detail.value`
-- **`(bindfocus)` / `(bindblur)`** — Track which field is focused for styling
-- **`confirm-type`** — Controls the keyboard return key label (`next`, `done`, `go`, `search`, `send`)
-- **`input-type`** — Sets the keyboard type (`text`, `email`, `number`, `password`)
-- **`<textarea>`** — Multiline input; works identically to `<input>` for events
+- **`(bindinput)`** — fires on every keystroke, with the new value in `$event.detail.value`. See [`<input>`](/api/elements/input).
+- **`(bindfocus)` and `(bindblur)`** — track the focused field so its border can change color.
+- **`confirm-type`** — sets the label of the on-screen keyboard's return key, here `next`.
+- **`<textarea>`** — multi-line input with the same events. See [`<textarea>`](/api/elements/textarea).
+- **Validation with `computed()`** — `validEmail` checks the address, and errors appear only after you tap Save Profile.
+
+## Related
+
+- [Forms](/guide/forms)
+- [Signal Forms](/examples/forms)

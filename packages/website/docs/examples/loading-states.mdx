@@ -1,12 +1,19 @@
 # Loading States
 
-A file manager demonstrating progress bars for uploads, skeleton placeholders for pending content, and spinners for indeterminate operations.
+A file manager that shows each kind of loading feedback: progress bars, skeleton rows, spinners and a toast when everything finishes.
+
+Built with the [UI components](/dolan/): [Progress](/dolan/progress), [Skeleton](/dolan/skeleton), [Spinner](/dolan/spinner), [Toast](/dolan/toast), [Card](/dolan/card), [Badge](/dolan/badge), [Separator](/dolan/separator) and [Button](/dolan/button).
 
 <Go example="loading-states" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Progress bars for measurable operations** — `UiProgress` shows upload percentage for each file, updating in real-time as bytes transfer
-- **Skeleton for placeholder content** — `UiSkeleton` renders shimmering rectangles matching the shape of content that hasn't loaded yet
-- **Spinner for indeterminate waits** — `UiSpinner` indicates an operation is happening (like syncing) when you can't predict how long it will take
-- **Toast for completion feedback** — `toast()` fires when uploads complete or sync finishes, giving non-blocking confirmation
+- **Progress for known amounts** — each upload's Progress bar advances on a `setInterval`, and a Badge marks it done.
+- **Skeletons while content loads** — Skeleton rows stand in for Recent Files for 1.5 seconds at startup, and again after Reload.
+- **Spinners for unknown waits** — a Spinner appears next to "Syncing..." and inside the disabled upload Button.
+- **A toast on completion** — `toast()` reports when every upload has finished.
+
+## Related
+
+- [Notification Center](/examples/notification-center)
+- [Defer Blocks](/examples/defer)

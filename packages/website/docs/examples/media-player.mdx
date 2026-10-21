@@ -1,12 +1,20 @@
 # Media Player
 
-A music player with playback controls, track progress, toggle buttons for shuffle/repeat, volume indicator, and a collapsible queue.
+A music player screen with playback controls, a position bar, shuffle and repeat toggles and a collapsible "Up Next" queue. It's UI only, so no audio plays.
+
+Built with the [UI components](/dolan/): [Avatar](/dolan/avatar), [Progress](/dolan/progress), [Toggle](/dolan/toggle), [Collapsible](/dolan/collapsible), [Separator](/dolan/separator) and [Button](/dolan/button).
 
 <Go example="media-player" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Toggle for stateful controls** — `UiToggle` with `[(pressed)]` binding handles shuffle and repeat buttons that stay active when enabled
-- **Progress for track position** — `UiProgress` shows current playback position; a `computed()` derives the timestamp display from the percentage
-- **Collapsible for the queue** — `UiCollapsible` reveals or hides the "Up Next" track list, keeping the interface clean when not needed
-- **Avatar for album art** — `UiAvatar` with a fallback character serves as a placeholder for album artwork at multiple sizes
+- **Toggle buttons** — Toggle with `[(pressed)]` keeps shuffle and repeat on or off.
+- **Derived time** — `computed()` turns the position percentage into the elapsed time under the Progress bar.
+- **Icon buttons** — Button with `variant="ghost"` and `size="icon"` holds the previous and next symbols.
+- **A collapsible queue** — a Collapsible hides Up Next, and tapping a track there jumps to it.
+- **Avatar as artwork** — an Avatar with a `fallback` character stands in for album art.
+
+## Related
+
+- [User Profile](/examples/user-profile)
+- [Gestures](/examples/gestures)

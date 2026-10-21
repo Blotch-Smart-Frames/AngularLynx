@@ -1,12 +1,25 @@
-# Multi Page
+# Multi-Page
 
-Configure multiple entry points in a single Lynx project using `source.entry` in `lynx.config.ts`.
+Build several pages into separate [bundles](/guide/glossary#bundle), set up two ways: as entries in `lynx.config.ts`, or as one Angular project per page in `angular.json`.
 
-<Go example="multi-page" defaultFile="src/app/app.ts" />
+## Entries in `lynx.config.ts`
 
-## Key concepts
+<Go example="multi-page" defaultFile="lynx.config.ts" />
 
-- **`source.entry`** — defines multiple entry points in `lynx.config.ts`, where each key (e.g., `main`, `settings`) produces a separate `.lynx.bundle`
-- **Separate bootstrap files** — each page has its own `main.ts` that calls `bootstrapApplication()` with its own root component and config
-- **Independent pages** — each entry is a fully standalone Angular app with its own component tree, not connected via routing
-- **Multi-bundle output** — the Rsbuild build produces one bundle per entry, allowing the native host to load different pages independently
+- **`source.entry`** — each key, `main` and `settings`, becomes its own bundle: `main.lynx.bundle` and `settings.lynx.bundle`.
+- **A bootstrap file per page** — `src/main.ts` and `src/pages/settings/main.ts` each call `bootstrapApplication()` with their own root component and config.
+- **Independent apps** — the pages share no router or state. The **host app** ([Glossary](/guide/glossary#host-app)) opens each bundle on its own.
+
+## Projects in `angular.json`
+
+<Go example="multi-page-workspace" defaultFile="lynx.config.ts" />
+
+- **A project per page** — `angular.json` defines `home` and `settings` application projects, each with its own `browser` entry file.
+- **`pages: 'all'`** — `pluginAngularLynx({ pages: 'all' })` builds every application project as a page, with its bundle named after the project. Pass `pages: ['home', 'settings']` to pick specific ones.
+- **One build for every page** — `ng build home` builds both pages.
+
+## Related
+
+- [Multi-page apps](/guide/multi-page)
+- [Session Storage](/examples/session-storage), to share state between pages
+- [`@blotch/angular-lynx-build`](/api/build/)

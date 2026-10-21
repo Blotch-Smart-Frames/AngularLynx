@@ -1,12 +1,20 @@
 # Contact List
 
-A scrollable contact list with search, alphabet grouping, avatar thumbnails, an "Add Contact" dialog, and delete confirmation.
+A searchable contact list grouped by first letter, with sticky letter headers, a contact dialog, an "Add Contact" form and a delete confirmation.
+
+Built with the [UI components](/dolan/): [Avatar](/dolan/avatar), [Input](/dolan/input), [Dialog](/dolan/dialog), [Alert Dialog](/dolan/alert-dialog), [Empty State](/dolan/empty-state), [Separator](/dolan/separator), [Label](/dolan/label) and [Button](/dolan/button).
 
 <Go example="contact-list" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Search filtering with computed** — `filteredContacts()` derives a filtered list from the search query signal, updating the view reactively
-- **Alphabet section headers** — Contacts are grouped by first letter using `computed()` signals, with `UiSeparator` between groups
-- **Dialog for CRUD** — `UiDialog` holds the "Add Contact" form; `UiAlertDialog` confirms destructive delete operations
-- **Avatar with initials** — `UiAvatar` with a `fallback` derived from the contact's name provides consistent visual identification
+- **Search and grouping with `computed()`** — `filtered()` applies the query, and `grouped()` sorts the result and splits it by first letter.
+- **Sticky section headers** — each letter header uses `sticky top-0` and is a direct child of the `<scroll-view>`. [Lynx](/guide/glossary#lynx) applies `position: sticky` only there. See [`<scroll-view>`](/api/elements/scroll-view).
+- **Initials avatars** — an Avatar shows the initials from `initials()` when there's no photo.
+- **Dialogs to view, add and delete** — tapping a contact opens a Dialog. Its Delete button hands off to an Alert Dialog to confirm.
+- **An empty state** — an Empty State shows when no contacts match.
+
+## Related
+
+- [CSS on Lynx](/guide/styling)
+- [FAQ / Help Center](/examples/faq-help-center)

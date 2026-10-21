@@ -1,12 +1,17 @@
 # Hello World
 
-A minimal Angular app running on Lynx with a signal-based counter and tap interaction.
+The smallest AngularLynx app: one signal, one tap handler and three [Lynx](/guide/glossary#lynx) elements. Start here to see what a template looks like.
 
 <Go example="hello-world" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`LYNX_ELEMENTS`** — imports all Lynx native element directives (`view`, `text`, `scroll-view`, etc.) into the component
-- **`signal()`** — creates reactive state that automatically triggers re-renders when updated
-- **`(bindtap)`** — Lynx's tap event binding, equivalent to `(click)` on the web
-- **Lynx native elements** — templates use `<view>`, `<text>`, and `<scroll-view>` instead of HTML `<div>`, `<span>`, and overflow scrolling
+- **Lynx elements** — the template uses `<view>`, `<text>` and `<scroll-view>` instead of HTML, and text renders only inside `<text>`. See [Elements and layout](/guide/elements/).
+- **`LYNX_ELEMENTS`** — the component imports it so the template type-checks. See [Elements](/api/angular-lynx/elements).
+- **`(bindtap)`** — the tap event, the Lynx counterpart of `(click)`. See [Handling taps and events](/guide/elements/event-handling).
+- **`signal()`** — the handler updates `count`, and the screen follows. See [Signals and change detection](/guide/concepts/signals).
+
+## Related
+
+- [Quick Start](/guide/quick-start)
+- [Counter](/examples/counter)

@@ -1,76 +1,102 @@
 # Examples
 
-Self-contained examples you can copy into your project. Each one demonstrates a single AngularLynx feature with a complete, runnable component.
+Small, complete AngularLynx apps, each focused on one feature or screen. Every example page runs the app live next to its source code.
+
+## Using the previews
+
+Each page embeds a live preview, which shows the code and the running app side by side:
+
+- **Code** — the example's source, opened at its main file. Open **Files** to browse every file in the project.
+- **Web** — runs the example in your browser through the web renderer of [Lynx](/guide/glossary#lynx). It's close to a phone, but not identical.
+- **QR Code** — scan it with **Lynx Explorer** (Lynx's dev app for phones, see [Glossary](/guide/glossary#lynx-explorer)) to run the example on a real device.
+
+The preview's footer names the example's folder, and its GitHub button opens that folder in the repository.
+
+## Run an example locally
+
+Every example is an Angular project in the repository's [`examples/`](https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/examples) folder. You need Node.js 22.12 or newer. Clone the repository, then start an example by its folder name:
+
+```bash
+git clone https://github.com/Blotch-Smart-Frames/AngularLynx.git
+cd AngularLynx
+npm install
+npx turbo run start --filter=@angular-lynx-example/hello-world
+```
+
+- **Pick an example** — replace `hello-world` with the folder name from the preview's footer.
+- **What the command does** — it builds the AngularLynx packages the example needs, then runs `ng serve`.
+- **Open it** — `ng serve` prints a QR code for Lynx Explorer and a link to the **web preview** ([Glossary](/guide/glossary#web-preview)). See [Quick Start](/guide/quick-start).
 
 ## Getting Started
 
-| Example                      | What it covers                                 |
-| ---------------------------- | ---------------------------------------------- |
-| [Hello World](./hello-world) | Minimal counter with signals and event binding |
-| [Counter](./counter)         | Signals, event binding, computed state         |
-| [Todo List](./todo-list)     | `@for` control flow, dynamic lists, text input |
-| [Form Input](./form-input)   | `<input>` / `<textarea>` with Lynx events      |
-| [Forms](./forms)             | Reactive forms with validation                 |
+| Example                      | What it shows                                         |
+| ---------------------------- | ----------------------------------------------------- |
+| [Hello World](./hello-world) | Lynx elements, a signal and a tap handler             |
+| [Counter](./counter)         | `computed()` state and the Button and Card components |
+| [Todo List](./todo-list)     | `@for`, text input and `(catchtap)`                   |
+| [Form Input](./form-input)   | `<input>` and `<textarea>` events                     |
+| [Signal Forms](./forms)      | Angular signal forms with validation                  |
 
 ## App Patterns
 
-| Example                                      | What it covers                                               |
-| -------------------------------------------- | ------------------------------------------------------------ |
-| [Settings Page](./settings-page)             | Switch, select, radio group, separator, alert dialog         |
-| [User Profile](./user-profile)               | Avatar, badge, card, sheet, input, textarea                  |
-| [Notification Center](./notification-center) | Badge, card, toast, action sheet, empty state                |
-| [Checkout Form](./checkout-form)             | Multi-step form, progress, input, select, radio, checkbox    |
-| [FAQ / Help Center](./faq-help-center)       | Accordion, collapsible, search input, dialog                 |
-| [Loading States](./loading-states)           | Progress, skeleton, spinner, toast                           |
-| [Task Manager](./task-manager)               | Checkbox, tabs, badge, sheet, action sheet, empty state      |
-| [Media Player](./media-player)               | Progress, toggle, card, collapsible, avatar                  |
-| [Onboarding Wizard](./onboarding-wizard)     | Progress, radio group, checkbox cards, summary card          |
-| [Contact List](./contact-list)               | Avatar, search, separator, dialog, alert dialog, empty state |
+Full screens built from the [UI components](/dolan/).
+
+| Example                                      | What it shows                                          |
+| -------------------------------------------- | ------------------------------------------------------ |
+| [Settings Page](./settings-page)             | Switches, a select, a radio group and a confirm dialog |
+| [User Profile](./user-profile)               | Avatar, badge, card and an edit sheet                  |
+| [Notification Center](./notification-center) | Long-press actions, toasts and an empty state          |
+| [Checkout Form](./checkout-form)             | A multi-step form with a progress bar                  |
+| [FAQ / Help Center](./faq-help-center)       | Search, collapsible groups, an accordion and a dialog  |
+| [Loading States](./loading-states)           | Progress bars, skeletons, spinners and toasts          |
+| [Task Manager](./task-manager)               | Filtered tabs, checkboxes, a sheet and an action sheet |
+| [Media Player](./media-player)               | Toggles, a progress bar and a collapsible queue        |
+| [Onboarding Wizard](./onboarding-wizard)     | Steps, a radio group and selectable cards              |
+| [Contact List](./contact-list)               | Search, sticky headers, dialogs and an alert dialog    |
 
 ## Layout & Scrolling
 
-| Example                              | What it covers                                       |
-| ------------------------------------ | ---------------------------------------------------- |
-| [Infinite Scroll](./infinite-scroll) | `<list>` virtualization, `list-item`, scroll events  |
-| [Pull to Refresh](./pull-to-refresh) | `<refresh>` / `<refresh-header>`, async data loading |
+| Example                              | What it shows                           |
+| ------------------------------------ | --------------------------------------- |
+| [Infinite Scroll](./infinite-scroll) | `<list>` loading more rows near the end |
+| [Pull to Refresh](./pull-to-refresh) | `<refresh>` and `<refresh-header>`      |
 
 ## Interaction
 
-| Example                                    | What it covers                                         |
-| ------------------------------------------ | ------------------------------------------------------ |
-| [Gesture Playground](./gesture-playground) | Tap, pan, long press, gesture composition              |
-| [Gestures](./gestures)                     | Pan/tap gesture recognition with `LynxGestureDetector` |
-| [Modal Dialog](./modal-dialog)             | `<overlay>` element, backdrop dismiss                  |
+| Example                              | What it shows                                         |
+| ------------------------------------ | ----------------------------------------------------- |
+| [Gestures](./gestures)               | Pan, tap and exclusive gestures with `[lynxGesture]`  |
+| [Modal Dialog](./modal-dialog)       | `<overlay>` with a tap-to-close backdrop              |
+| [Main-Thread Scripts](./main-thread) | `mainThreadFn()` handlers that restyle on every touch |
 
 ## Animation
 
-| Example                                  | What it covers                                          |
-| ---------------------------------------- | ------------------------------------------------------- |
-| [Animated Cards](./animated-cards)       | CSS transitions, `@keyframes`, JS `animate()` API       |
-| [Animations](./animations)               | CSS transitions, keyframes, and JS animate API          |
-| [Enter/Leave Transitions](./enter-leave) | `LynxTransition` component for mount/unmount animations |
-| [Transitions](./transitions)             | `LynxTransition` and `LynxTransitionGroup`              |
+| Example                                      | What it shows                                 |
+| -------------------------------------------- | --------------------------------------------- |
+| [Animations](./animations)                   | CSS transitions, `@keyframes` and `animate()` |
+| [Enter and Leave Transitions](./transitions) | `LynxTransition` and `LynxTransitionGroup`    |
 
 ## Styling
 
-| Example                        | What it covers                         |
-| ------------------------------ | -------------------------------------- |
-| [CSS Modules](./css-modules)   | Scoped styling with hashed class names |
-| [Custom Fonts](./custom-fonts) | Custom font loading via `@font-face`   |
+| Example                        | What it shows                       |
+| ------------------------------ | ----------------------------------- |
+| [CSS Modules](./css-modules)   | Hashed, scoped class names          |
+| [Custom Fonts](./custom-fonts) | Font files loaded with `@font-face` |
+
+## Data & State
+
+| Example                              | What it shows                                  |
+| ------------------------------------ | ---------------------------------------------- |
+| [Host Data](./data-flow)             | `LynxInitData` and `LynxGlobalData` as signals |
+| [Session Storage](./session-storage) | `LynxSessionStorage` with a reactive `watch()` |
 
 ## Platform
 
-| Example                                        | What it covers                                    |
-| ---------------------------------------------- | ------------------------------------------------- |
-| [Dark Mode](./dark-mode)                       | `LynxTheme`, reactive theme switching             |
-| [Data Dashboard](./data-dashboard)             | `LynxInitData`, `LynxGlobalData`                  |
-| [Data Flow](./data-flow)                       | Lynx platform data access via injectable services |
-| [Defer](./defer)                               | `@defer` blocks with signal and timer triggers    |
-| [Error Handling](./error-handling)             | Runtime error catching with `__lynxLastError`     |
-| [Internationalization](./i18n)                 | `$localize`, `LynxLocale`, `provideLocale()`      |
-| [Main Thread](./main-thread)                   | `mainThreadFn()` for zero-latency event handlers  |
-| [Session Storage](./session-storage)           | `LynxSessionStorage` with reactive `.watch()`     |
-| [SSR](./ssr)                                   | Server-side rendering and hydration diagnostics   |
-| [Tab Navigation](./tab-navigation)             | Router setup, lazy-loaded routes, navigation      |
-| [Multi-Page](./multi-page)                     | Multiple entry points via `source.entry`          |
-| [Multi-Page Workspace](./multi-page-workspace) | Workspace-driven multi-page with `pages: 'all'`   |
+| Example                            | What it shows                                            |
+| ---------------------------------- | -------------------------------------------------------- |
+| [Defer Blocks](./defer)            | `@defer` with signal and timer triggers                  |
+| [Error Boundary](./error-boundary) | `@boundary`, `$reset` and per-error fallbacks            |
+| [Error Handling](./error-handling) | Catching an error and showing it on screen               |
+| [Internationalization](./i18n)     | `i18n`, `$localize` and `LynxLocale`                     |
+| [SSR](./ssr)                       | Snapshot encoding with `ssrEncode()`                     |
+| [Multi-Page](./multi-page)         | Separate bundles from `lynx.config.ts` or `angular.json` |

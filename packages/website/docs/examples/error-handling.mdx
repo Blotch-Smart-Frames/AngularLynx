@@ -1,12 +1,16 @@
 # Error Handling
 
-Catch and display runtime errors using Lynx's global error reporting mechanism.
+Catch an error in a tap handler and show its message and stack on screen. On-screen errors help when no debugger is connected to the phone.
 
 <Go example="error-handling" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`__lynxLastError`** — a global variable on the Lynx runtime used to surface the most recent error for debugging
-- **On-screen debugging** — since Lynx runs on-device without a browser console, errors are rendered directly into `<text>` elements
-- **`try/catch` in event handlers** — errors are caught manually and stored in a signal so the UI updates reactively
-- **`setTimeout` wrapping** — defers the error-throwing code to avoid blocking the synchronous event handler on the main thread
+- **`try`/`catch` in a handler** — the error is caught, and its name, message and stack go into a signal.
+- **`__lynxLastError`** — a global where AngularLynx's error handler writes the last uncaught error. The example writes its caught error there too. See [`LynxErrorHandler`](/api/angular-lynx/errors-and-logging).
+- **Errors in a `<text>`** — the screen shows the saved text, or "(none)". See [Debugging](/guide/debugging).
+
+## Related
+
+- [Handling errors](/guide/error-handling)
+- [Error Boundary](/examples/error-boundary)

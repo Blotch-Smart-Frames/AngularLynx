@@ -1,12 +1,19 @@
 # Notification Center
 
-A notification feed with unread badges, swipe actions via action sheet, toast feedback, and an empty state when all notifications are cleared.
+A notification feed with an unread count, long-press actions, toast confirmations and an empty state once everything is cleared.
+
+Built with the [UI components](/dolan/): [Badge](/dolan/badge), [Card](/dolan/card), [Action Sheet](/dolan/action-sheet), [Toast](/dolan/toast), [Empty State](/dolan/empty-state) and [Button](/dolan/button).
 
 <Go example="notification-center" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Badge for unread count** — `UiBadge` in the header shows how many notifications are unread, disappearing when all are read
-- **Action Sheet for contextual actions** — Long-pressing a notification opens `UiActionSheet` with "Mark as Read" and "Delete" options
-- **Toast for feedback** — After an action (delete, clear all), a `toast()` confirms what happened without blocking the UI
-- **Empty State** — When all notifications are cleared, `UiEmptyState` provides a friendly message instead of a blank screen
+- **Long press** — `(bindlongpress)` on each card opens an Action Sheet with Mark as Read and Delete. Event names need the `bind` or `catch` prefix; an unprefixed `(longpress)` is silently ignored. See [Handling taps and events](/guide/elements/event-handling).
+- **Derived unread count** — `computed()` counts unread notifications for the header Badge, which hides at zero.
+- **Toasts** — `toast({ title })` confirms each action, and one `<ui-toaster />` in the template displays them.
+- **Empty state** — an Empty State replaces the list once it's empty.
+
+## Related
+
+- [Task Manager](/examples/task-manager)
+- [Loading States](/examples/loading-states)

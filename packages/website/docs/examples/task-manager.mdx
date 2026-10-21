@@ -1,12 +1,20 @@
 # Task Manager
 
-A task board with checkable items, priority badges, tabs for filtering, a sheet for creating new tasks, and an action sheet for task options.
+A task list with All, Active and Done tabs, priority badges, a sheet for adding tasks and a long-press menu for deleting them.
+
+Built with the [UI components](/dolan/): [Tabs](/dolan/tabs), [Checkbox](/dolan/checkbox), [Badge](/dolan/badge), [Sheet](/dolan/sheet), [Input](/dolan/input), [Select](/dolan/select), [Action Sheet](/dolan/action-sheet), [Empty State](/dolan/empty-state), [Label](/dolan/label) and [Button](/dolan/button).
 
 <Go example="task-manager" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Tabs for filtered views** — `UiTabs` switches between All, Active, and Done views without re-fetching data; `computed()` derives each filtered list
-- **Checkbox for completion** — `UiCheckbox` toggles task state with `(checkedChange)`, applying strike-through styling via conditional classes
-- **Badge for priority levels** — `UiBadge` with variant mapping (high → destructive, medium → default, low → secondary) provides visual priority indicators
-- **Sheet for creation, Action Sheet for options** — `UiSheet` holds the "New Task" form; `UiActionSheet` provides Edit/Delete actions on existing tasks
+- **Filtered tabs** — Tabs switch between three `computed()` lists derived from one `tasks` signal. Each tab trigger shows its count in a Badge.
+- **One template, three lists** — a single `<ng-template #taskList>` renders every tab's list through `*ngTemplateOutlet`.
+- **Completing a task** — the Checkbox's `(checkedChange)` flips `done`, and class bindings strike the title through.
+- **Priority badges** — `priorityVariant()` maps high, medium and low to the Badge's `destructive`, `default` and `secondary` variants.
+- **Adding and deleting** — + New opens a Sheet with an Input and a Select. A long press, `(bindlongpress)`, opens an Action Sheet with Delete.
+
+## Related
+
+- [Notification Center](/examples/notification-center)
+- [Todo List](/examples/todo-list)

@@ -1,12 +1,17 @@
-# Data Flow
+# Host Data
 
-Access Lynx platform data (InitData and GlobalData) via injectable services.
+Read the data your **host app** (the native iOS or Android app that runs your code, see [Glossary](/guide/glossary#host-app)) passes in, as signals. The example prints both kinds as JSON.
 
 <Go example="data-flow" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`LynxInitData`** — injectable service providing the data passed to the Lynx card at initialization time, accessed as a signal via `.initData()`
-- **`LynxGlobalData`** — injectable service providing global data shared across the Lynx runtime, accessed as a signal via `.globalData()`
-- **`inject()`** — Angular's functional injection pattern, used here with ES private fields (`#initData`, `#globalData`) for encapsulation
-- **Signal-based data access** — both services expose their data as signals, so the template automatically re-renders when the underlying data changes
+- **`LynxInitData`** — `initData()` holds the **InitData** ([Glossary](/guide/glossary#initdata)): what the host app passes when it opens your [bundle](/guide/glossary#bundle), such as a user ID or a page parameter.
+- **`LynxGlobalData`** — `globalData()` holds the **GlobalData** ([Glossary](/guide/glossary#globaldata)): what the host app shares with every bundle, such as the theme. The host app can change it while the app runs.
+- **Services injected into private fields** — `inject()` stores both services in `#initData` and `#globalData`.
+- **Signals read from the template** — `initDataJson()` and `globalDataJson()` read the signals, so the view updates when the data changes.
+
+## Related
+
+- [Pass data from your native app](/guide/embedding/host-data)
+- [Host data API](/api/angular-lynx/host-data)

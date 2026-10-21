@@ -1,13 +1,18 @@
-# Transitions
+# Enter and Leave Transitions
 
-Animate elements entering and leaving the DOM using `LynxTransition` and `LynxTransitionGroup`.
+Animate elements as they appear and disappear: a single panel with `LynxTransition`, and a list with `LynxTransitionGroup`.
 
 <Go example="transitions" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`LynxTransition`** — wraps a single element and animates it on enter/leave using CSS transition classes (`name-enter-from`, `name-enter-active`, `name-leave-to`, `name-leave-active`)
-- **`LynxTransitionGroup`** — animates a dynamic list of items, applying enter/leave transitions as items are added or removed
-- **`[trackBy]`** — identity function for `LynxTransitionGroup` to correctly track which items were added, removed, or moved
-- **CSS class naming convention** — the `name` input (e.g., `"fade"`) generates class pairs like `.fade-enter-from` / `.fade-leave-to` for styling transitions
-- **`setTimeout` wrapping** — Lynx event handlers run synchronously on the main thread, so state updates are deferred to avoid blocking the UI
+- **`<lynx-transition>`** — `[show]` mounts and unmounts its child. With `name="fade"`, it adds `fade-enter` on mount and `fade-leave` before removal. See [Enter and leave transitions](/guide/animations/enter-leave).
+- **A `@keyframes` animation per phase** — `.fade-enter` and `.fade-leave` each run a 300 ms animation. `[duration]` must match it, because the element is removed on a timer.
+- **`<lynx-transition-group>`** — animates items as they're added to or removed from `[each]`. Each item is rendered from an `<ng-template let-item>`.
+- **`[trackBy]`** — tells the group which items are new and which were removed.
+- **`(afterEnter)` and `(afterLeave)`** — fire when each animation ends. The example counts them on screen. See [Animation API](/api/angular-lynx/animation).
+
+## Related
+
+- [Animations](/examples/animations)
+- [Animations guide](/guide/animations/)

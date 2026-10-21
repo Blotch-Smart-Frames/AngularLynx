@@ -1,13 +1,16 @@
 # SSR
 
-Inspect Lynx's instant first-frame rendering (SSR) with snapshot encoding and hydration diagnostics.
+A diagnostic screen for Lynx's snapshot SSR, which AngularLynx calls instant first-frame rendering. It checks that SSR is on and shows the snapshot your page produces.
 
 <Go example="ssr" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **SSR on Lynx** — Lynx's SSR captures the initial render as a snapshot of opcodes, allowing the main thread to display UI instantly before background JS finishes executing
-- **`ssrEncode()`** — a global function registered by the renderer that serializes the current UI tree into a JSON snapshot with opcodes
-- **`ssrHydrate()`** — the counterpart that rehydrates a snapshot, connecting the static UI to live Angular components
-- **First-frame rendering** — static content appears immediately from the snapshot; dynamic interactions (like adding items) only work after hydration completes
-- **Diagnostic panel** — checking `typeof globalThis.ssrEncode === 'function'` confirms whether SSR support is correctly registered in the runtime
+- **`enableSSR`** — `lynx.config.ts` turns it on with `pluginAngularLynx({ enableSSR: true })`. See [`@blotch/angular-lynx-build`](/api/build/).
+- **Two global callbacks** — with SSR on, AngularLynx registers `ssrEncode()` and `ssrHydrate()`. [Lynx](/guide/glossary#lynx) calls the first to save the first render as a snapshot, and the second to reuse it on a later load. The status card checks that both exist.
+- **A snapshot** — Run ssrEncode() turns the current element tree into JSON and shows its opcode count, its size and its first 500 characters.
+- **Updates after hydration** — items you add later are created as usual. The snapshot covers only the first render.
+
+## Related
+
+- [Renderer internals](/guide/renderer-architecture)

@@ -29,20 +29,22 @@ export class Card {}
 
 ## HTML to Lynx Mapping
 
-| HTML                             | Lynx                               | Notes                       |
-| -------------------------------- | ---------------------------------- | --------------------------- |
-| `<div>`                          | `<view>`                           | Generic container           |
-| `<span>`, `<p>`, `<h1>`...`<h6>` | `<text>`                           | All text content            |
-| `<img>`                          | `<image>`                          | Different attribute names   |
-| `<div style="overflow:auto">`    | `<scroll-view>`                    | Dedicated scrolling element |
-| `<ul>` / virtual scroll          | `<list>` + `<list-item>`           | Native virtualization       |
-| `<input>`                        | `<input>`                          | Events use `bindinput`      |
-| `<textarea>`                     | `<textarea>`                       | Events use `bindinput`      |
-| `<button>`                       | `<view>` + `(bindtap)`             | No native button element    |
-| `<a>`                            | `<view>` + `(bindtap)`             | No native link element      |
-| Modal / Dialog                   | `<overlay>`                        | Native floating layer       |
-| Swipeable page carousel          | `<viewpager>` + `<viewpager-item>` | Native horizontal paging    |
-| `<iframe>`                       | `<frame>`                          | Loads Lynx bundles          |
-| `<iframe>` (web content)         | `<webview>`                        | Loads URLs or HTML          |
-| `<video>`                        | `<video>`                          | Controlled via UI methods   |
-| `backdrop-filter: blur()`        | `<blur-view>`                      | Also Liquid Glass           |
+| HTML                             | Lynx                                                          | Notes                       |
+| -------------------------------- | ------------------------------------------------------------- | --------------------------- |
+| `<div>`                          | [`<view>`](/api/elements/view)                                | Generic container           |
+| `<span>`, `<p>`, `<h1>`...`<h6>` | [`<text>`](/api/elements/text)                                | All text content            |
+| `<img>`                          | [`<image>`](/api/elements/image)                              | Different attribute names   |
+| `<div style="overflow:auto">`    | [`<scroll-view>`](/api/elements/scroll-view)                  | Dedicated scrolling element |
+| `<ul>` / virtual scroll          | [`<list>`](/api/elements/list) + `<list-item>`                | Native virtualization       |
+| `<input>`                        | [`<input>`](/api/elements/input)                              | Events use `bindinput`      |
+| `<textarea>`                     | [`<textarea>`](/api/elements/textarea)                        | Events use `bindinput`      |
+| `<button>`                       | `<view>` + `(bindtap)`                                        | No native button element    |
+| `<a>`                            | `<view>` + `(bindtap)`                                        | No native link element      |
+| Modal / Dialog                   | [`<overlay>`](/api/elements/overlay)                          | Native floating layer       |
+| Swipeable page carousel          | [`<viewpager>`](/api/elements/viewpager) + `<viewpager-item>` | Native horizontal paging    |
+| `<iframe>`                       | [`<frame>`](/api/elements/frame)                              | Loads Lynx bundles          |
+| `<iframe>` (web content)         | [`<webview>`](/api/elements/webview)                          | Loads URLs or HTML          |
+| `<video>`                        | [`<video>`](/api/elements/video)                              | Controlled via UI methods   |
+| `backdrop-filter: blur()`        | [`<blur-view>`](/api/elements/blur-view)                      | Also Liquid Glass           |
+
+Every element, including the ones with no HTML equivalent, has a reference page under [API → Elements](/api/#elements).

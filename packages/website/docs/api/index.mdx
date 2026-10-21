@@ -1,0 +1,49 @@
+# API Reference
+
+Look up exact exports, attributes and options here. New to AngularLynx? Start with the [Guide](/guide/quick-start) instead.
+
+## Packages
+
+| Package                                                         | What it covers                                                              |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [`@blotch/angular-lynx`](/api/angular-lynx/)                    | The runtime: bootstrap, routing, element directives, animation and services |
+| [`@blotch/angular-lynx-build`](/api/build/)                     | The Angular CLI builders behind `ng build`, `ng serve` and `ng test`        |
+| [`@blotch/angular-lynx-testing-library`](/api/testing-library/) | `render()`, `fireEvent` and DOM queries for testing components on Lynx      |
+
+## Elements
+
+The native elements your templates use instead of HTML. For how they map to HTML, see [Lynx Elements](/guide/elements/).
+
+| Element                                                    | Use it for                                          |
+| ---------------------------------------------------------- | --------------------------------------------------- |
+| [`<view>`](/api/elements/view)                             | Layout and grouping, like `<div>`                   |
+| [`<text>`](/api/elements/text)                             | All visible text                                    |
+| [`<image>`](/api/elements/image)                           | Local and remote images                             |
+| [`<scroll-view>`](/api/elements/scroll-view)               | A scrollable area                                   |
+| [`<refresh>`](/api/elements/refresh)                       | Pull-to-refresh                                     |
+| [`<scroll-coordinator>`](/api/elements/scroll-coordinator) | Folding headers and sticky toolbars                 |
+| [`<list>`](/api/elements/list)                             | Long, virtualized lists                             |
+| [`<input>`](/api/elements/input)                           | Single-line text input                              |
+| [`<textarea>`](/api/elements/textarea)                     | Multi-line text input                               |
+| [`<overlay>`](/api/elements/overlay)                       | Modals and popups above the page                    |
+| [`<viewpager>`](/api/elements/viewpager)                   | Swipeable pages                                     |
+| [`<frame>`](/api/elements/frame)                           | Embedding another Lynx bundle                       |
+| [`<block>`](/api/elements/block)                           | Grouping without layout, like `<ng-container>`      |
+| [`<svg>`](/api/elements/svg)                               | SVG graphics from a string                          |
+| [`<blur-view>`](/api/elements/blur-view)                   | Frosted backgrounds and Liquid Glass                |
+| [`<video>`](/api/elements/video)                           | Video playback                                      |
+| [`<webview>`](/api/elements/webview)                       | Web pages and inline HTML                           |
+| [`<title-bar-view>`](/api/elements/title-bar-view)         | The draggable area of a frameless desktop window    |
+| [`<cover-view>`](/api/elements/cover-view)                 | Content that must paint above a desktop `<webview>` |
+
+## Main Thread
+
+Low-level APIs that run code on the native UI thread. Read [Main Thread Scripts](/guide/main-thread/) first: they bypass Angular's change detection.
+
+| Export                                                      | What it does                                   |
+| ----------------------------------------------------------- | ---------------------------------------------- |
+| [`mainThreadFn`](/api/main-thread/main-thread-fn)           | Registers a function to run on the main thread |
+| [`LynxMainThreadEvent`](/api/main-thread/main-thread-event) | Binds main-thread functions to native events   |
+| [`MainThreadRef`](/api/main-thread/main-thread-ref)         | Shares a value between both threads            |
+| [`LynxMainThread`](/api/main-thread/main-thread-service)    | Calls a main-thread function from Angular code |
+| [`backgroundFn`](/api/main-thread/background-fn)            | Calls back into Angular from the main thread   |

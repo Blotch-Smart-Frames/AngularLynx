@@ -4,7 +4,7 @@
 Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
 :::
 
-Embeds a native web view that loads a URL or an inline HTML string. Use it for web content such as help articles, terms of service, or OAuth pages. To embed another Lynx bundle, use [`<frame>`](/guide/elements/frame) instead.
+Embeds a native web view that loads a URL or an inline HTML string. Use it for web content such as help articles, terms of service, or OAuth pages. To embed another Lynx bundle, use [`<frame>`](/api/elements/frame) instead.
 
 <Go example="element-webview" defaultFile="src/app/app.ts" />
 
@@ -66,5 +66,5 @@ Invoke these with `lynx.createSelectorQuery().select('#id').invoke({ method, par
 | Web Lynx | Yes       |
 
 :::info
-On Clay desktop, a `<webview>` paints above regular Lynx content regardless of order or `z-index`. Wrap anything that must appear on top of it in [`<cover-view>`](/guide/elements/cover-view).
+On Clay desktop, a `<webview>` paints above regular Lynx content regardless of order or `z-index`. Wrap anything that must appear on top of it in [`<cover-view>`](/api/elements/cover-view).
 :::

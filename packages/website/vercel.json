@@ -5,7 +5,27 @@
   "redirects": [
     {
       "source": "/guide/api/plugin/:path*",
-      "destination": "/guide/api/build/",
+      "destination": "/api/build/",
+      "permanent": true
+    },
+    {
+      "source": "/guide/api/:path*",
+      "destination": "/api/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/guide/elements/:element(block|blur-view|cover-view|frame|image|input|list|overlay|refresh|scroll-coordinator|scroll-view|svg|text|textarea|title-bar-view|video|view|viewpager|webview)",
+      "destination": "/api/elements/:element",
+      "permanent": true
+    },
+    {
+      "source": "/guide/main-thread/:page(main-thread-fn|main-thread-event|main-thread-ref|main-thread-service|background-fn)",
+      "destination": "/api/main-thread/:page",
+      "permanent": true
+    },
+    {
+      "source": "/guide/testing/event-reference",
+      "destination": "/api/testing-library/event-reference",
       "permanent": true
     }
   ]

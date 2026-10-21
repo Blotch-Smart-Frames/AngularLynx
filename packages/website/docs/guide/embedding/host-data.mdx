@@ -26,13 +26,13 @@ import { LYNX_ELEMENTS, LynxInitData } from '@blotch/angular-lynx';
 export class App {
   readonly #initData = inject(LynxInitData);
   readonly userId = computed(
-    () => this.#initData.initData()?.['userId'] ?? 'guest',
+    () => this.#initData.initData()['userId'] ?? 'guest',
   );
 }
 ```
 
 - **`initData()`** is a signal holding the whole object.
-- **Guard the read with `?.`.** The object can be missing, e.g. when no native app sent any. See [Limitations](#limitations).
+- **Give each field a fallback.** `initData()` is `{}` when no native app sent any, such as in Lynx Explorer or the web preview.
 - **No setup.** `LynxInitData` is provided in the root injector.
 
 ## Read GlobalData
@@ -118,27 +118,36 @@ bootstrapApplication(App, appConfig);
 
 ## Fake the data while developing
 
-While you develop in Lynx Explorer or the web preview, nothing sends your app its data. Set it yourself in `main.ts`, before `bootstrapApplication()`:
+While you develop in Lynx Explorer or the web preview, no native app sends your app its data. Fill in sample values yourself in `main.ts`, before `bootstrapApplication()`:
 
 ```typescript title="src/main.ts"
 import { isDevMode } from '@angular/core';
-import { bootstrapApplication } from '@blotch/angular-lynx';
+import {
+  bootstrapApplication,
+  registerDataProcessors,
+} from '@blotch/angular-lynx';
 import { App } from './app/app';
 import { appConfig } from './app/app.config';
 
+// InitData: start from sample values, and let real ones win.
+registerDataProcessors({
+  defaultDataProcessor: (raw) =>
+    isDevMode() ? { userId: 'user_42', ...raw } : raw,
+});
+
+// GlobalData: LynxGlobalData reads it when it's created.
 if (isDevMode() && typeof lynx !== 'undefined') {
   const host = lynx as any;
-  host.__initData = { userId: 'user_42', ...host.__initData };
   host.__globalProps = { theme: 'Dark', ...host.__globalProps };
 }
 
 bootstrapApplication(App, appConfig);
 ```
 
-- **Before bootstrapping,** because `LynxInitData` and `LynxGlobalData` read the data when they're created.
+- **Fake InitData in a data processor.** Lynx hands your app its InitData as the page starts, which replaces anything you set on `lynx`. The processor runs on that data first.
+- **Set GlobalData before bootstrapping,** because `LynxGlobalData` reads it when it's created.
 - **`isDevMode()` is `false` in production builds,** so the fake values never ship.
 - **The spread keeps real values,** if a native app does send some.
-- **Data processors don't run** on values you set this way.
 
 The [data-flow example](/examples/data-flow) sets fake values the same way, in its `src/main.ts`.
 
@@ -192,7 +201,6 @@ Now `initData().userId` is a `string`, with no casting.
 
 AngularLynx is a work-in-progress proof of concept, and host data has gaps:
 
-- **InitData from native code doesn't reach your components yet.** On a device, `initData()` starts out with no value. Guard your reads, and use [faked values](#fake-the-data-while-developing) while you develop.
 - **Changes after startup may not reach the screen.** The services pick up `updateData` and `updateGlobalProps` only in the background-thread copy of your app, and that copy doesn't draw. See [Threads](/guide/concepts/threads).
 
 ## Related

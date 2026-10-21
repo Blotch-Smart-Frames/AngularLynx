@@ -26,22 +26,50 @@ export const pageReady = new Subject<void>();
 
 /**
  * Lynx lifecycle callbacks. The engine calls these globals at specific points:
- * - renderPage: called once when the page is ready to render. On the main thread,
- *   bootstrapApplication() awaits this before calling Angular's bootstrap.
+ * - renderPage: called once when the page is ready to render, with the page's
+ *   InitData. On the main thread, bootstrapApplication() awaits this before
+ *   calling Angular's bootstrap.
  * - updatePage: called when the host app sends updated data. No-op for now —
  *   Angular's change detection handles reactivity via LynxInitData/LynxGlobalData.
  * - processData: called before data delivery for transformation. Overridden by
  *   registerDataProcessors() if the app needs custom data processing.
+ *
+ * Lynx stores InitData nowhere the app can read it, so the runtime keeps it as
+ * `lynx.__initData`, where React Lynx keeps it and LynxInitData seeds from.
+ * Each thread receives it differently: the main thread through renderPage(data)
+ * (below), the background thread through the loadCard params (further down).
  */
 // @ts-expect-error
-globalThis.renderPage = () => {
+globalThis.renderPage = (data?: Record<string, unknown>) => {
+  if (typeof lynx !== 'undefined') {
+    (lynx as any).__initData = data ?? {};
+  }
   pageReady.next();
 };
 
 // @ts-expect-error
 globalThis.updatePage = () => {};
+// The engine hands processData's return value to renderPage and to the
+// background thread, so the default must pass the data through unchanged, as
+// React Lynx's default processor does. Native Lynx falls back to the original
+// data when the result isn't an object, but @lynx-js/web-core doesn't, so a
+// no-op that returned undefined dropped every app's InitData on the web.
 // @ts-expect-error
-globalThis.processData = () => {};
+globalThis.processData = (data?: Record<string, unknown>) => data;
+
+// The background thread gets no renderPage call. lynx-core keeps the params it
+// loaded the page with on the app instead: `initData`, plus any `updateData`
+// the host sent before the page loaded, which wins. React Lynx merges them the
+// same way. `getApp` is checked because it's missing outside a real Lynx
+// host, such as in unit tests.
+if (
+  !__MAIN_THREAD__ &&
+  typeof lynx !== 'undefined' &&
+  typeof (lynx as any).getApp === 'function'
+) {
+  const params = (lynx as any).getApp()._params;
+  (lynx as any).__initData = { ...params?.initData, ...params?.updateData };
+}
 
 // SSR (Instant First-Frame Rendering) callbacks — called by the Lynx engine
 // to snapshot the element tree after the first render (encode) and to reconnect

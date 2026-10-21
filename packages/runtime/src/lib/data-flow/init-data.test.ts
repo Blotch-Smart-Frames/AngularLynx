@@ -104,7 +104,7 @@ describe('LynxInitData', () => {
 
       const service = new LynxInitData();
 
-      expect(service.initData()).toEqual(undefined);
+      expect(service.initData()).toEqual({});
     });
   });
 

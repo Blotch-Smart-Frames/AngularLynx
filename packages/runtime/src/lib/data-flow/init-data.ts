@@ -4,11 +4,14 @@ import type { InitData } from './data-flow.types';
 @Injectable({ providedIn: 'root' })
 export class LynxInitData {
   // Seeded from lynx.__initData at construction time; updated reactively via onDataChanged.
-  // __initData is not declared in @lynx-js/types, so we access it via any.
+  // The runtime sets __initData from renderPage on the main thread and from the
+  // loadCard params on the background thread (see global-callbacks.ts). Outside
+  // Lynx, or before either has run, fall back to an empty object so reads like
+  // initData().userId don't throw. __initData is not declared in @lynx-js/types,
+  // so we access it via any.
   readonly initData = signal<InitData>(
-    typeof lynx !== 'undefined'
-      ? ((lynx as any).__initData as InitData)
-      : ({} as InitData),
+    ((typeof lynx !== 'undefined' && (lynx as any).__initData) ||
+      {}) as InitData,
   );
 
   constructor() {

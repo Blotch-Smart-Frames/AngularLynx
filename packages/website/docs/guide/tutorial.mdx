@@ -1,0 +1,308 @@
+# Tutorial: Build a todo app
+
+Build a todo list that runs in the web preview and on your phone. You'll add tasks, tick them off, delete them and scroll through them.
+
+<Go example="todo-list" defaultFile="src/app/app.ts" />
+
+This is the finished app. You'll build it in seven steps and check the result after each one.
+
+## What you'll learn
+
+- How to build a screen from Lynx elements such as `<view>`, `<text>` and `<input>`
+- Where Tailwind and CSS layout differ on Lynx
+- How to render a list from a signal with `@for` and `@empty`
+- How to handle taps and typing with `(bindtap)`, `(catchtap)` and `(bindinput)`
+- How to make a long list scroll with `<scroll-view>`
+
+## Before you start
+
+You need the app from [Quick Start](/guide/quick-start), created with Tailwind. Keep `npm start` running and the [web preview](/guide/glossary#web-preview) open. If you set up [Lynx Explorer](/guide/glossary#lynx-explorer), keep it open too. Each save reloads both.
+
+You'll edit one file: `src/app/app.ts`. If you said no to Tailwind, add it with `npx ng generate @blotch/angular-lynx:add-tailwind`, then restart `npm start`.
+
+## 1. Show a title
+
+Replace everything in `src/app/app.ts` with this:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>Todos</text>
+      <text>2 remaining</text>
+    </view>
+  `,
+})
+export class App {}
+```
+
+A [Lynx](/guide/glossary#lynx) app has no HTML. Its templates use Lynx [**elements**](/guide/glossary#element) instead, and on a phone each one becomes a native UI control.
+
+- A `<view>` is a box, like a `<div>`. A `<text>` holds text, like a `<span>`.
+- **Text renders only inside `<text>`.** Text placed directly in a `<view>` doesn't show up, and you get no error.
+- `imports: [LYNX_ELEMENTS]` lets Angular type-check Lynx elements and their attributes. Every component that uses them needs it.
+
+The starter's `<router-outlet>` and `<scroll-view>` are gone. This app has one screen, and `<scroll-view>` comes back in step 7. See [Elements and layout](/guide/elements/) for every element.
+
+**You should see:** two lines of plain text, "Todos" above "2 remaining".
+
+## 2. Style it with Tailwind
+
+Replace the template with this:
+
+```angular-html
+<view class="h-screen bg-zinc-50 p-6">
+  <text class="mb-1 text-[28px] font-bold text-zinc-900">Todos</text>
+  <text class="mb-5 text-[13px] text-zinc-500">2 remaining</text>
+
+  <view
+    class="mb-2 flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
+  >
+    <view
+      class="mr-3 h-[22px] w-[22px] items-center rounded-[6px] border-2 border-zinc-200 justify-center"
+    ></view>
+    <text class="flex-1 text-[15px] text-zinc-900">Learn AngularLynx</text>
+    <view class="px-2 py-1">
+      <text class="text-base text-red-500">✕</text>
+    </view>
+  </view>
+</view>
+```
+
+Tailwind classes work as on the web. The Lynx preset in `tailwind.config.ts` limits them to the CSS that Lynx supports. See [Tailwind CSS](/guide/tailwindcss).
+
+Layout is where Lynx differs from the browser:
+
+- **A `<view>` stacks its children vertically by default.** Lynx's default `display` is `linear`, and there's no `block` or `inline`. Children stretch to the full width.
+- **A row needs `flex`.** The card has both `flex` and `flex-row`. `flex-row` alone does nothing, because it only sets `flex-direction`, which linear layout ignores.
+- `flex-1` lets the label fill the space between the square and the ✕.
+
+[CSS on Lynx](/guide/styling) lists every difference from browser CSS.
+
+**You should see:** a bold "Todos" heading, a gray count and a white card. The card holds an empty square, "Learn AngularLynx" and a red ✕, side by side.
+
+## 3. List the todos from a signal
+
+At the top of the file, import `signal` and add a `Todo` type:
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+type Todo = { id: number; text: string; done: boolean };
+```
+
+Give the class a `todos` signal:
+
+```typescript
+export class App {
+  readonly todos = signal<Todo[]>([
+    { id: 1, text: 'Learn AngularLynx', done: false },
+    { id: 2, text: 'Build an app', done: false },
+  ]);
+}
+```
+
+In the template, replace the card with a `@for` loop over `todos()`:
+
+```angular-html
+@for (todo of todos(); track todo.id) {
+  <view
+    class="mb-2 flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
+  >
+    <view
+      class="mr-3 h-[22px] w-[22px] items-center rounded-[6px] border-2 border-zinc-200 justify-center"
+    ></view>
+    <text class="flex-1 text-[15px] text-zinc-900">{{ todo.text }}</text>
+    <view class="px-2 py-1">
+      <text class="text-base text-red-500">✕</text>
+    </view>
+  </view>
+} @empty {
+  <view class="items-center rounded-xl border border-zinc-200 bg-white p-10">
+    <text class="mb-2 text-[32px]">🎉</text>
+    <text class="text-base text-zinc-400">All done!</text>
+  </view>
+}
+```
+
+`@for` and `@empty` work as in web Angular. The template reads the signal with `todos()`, so Angular re-renders the list whenever the signal changes. The field is `readonly` because it always holds the same signal, even as the signal's value changes.
+
+**You should see:** two cards, "Learn AngularLynx" and "Build an app". To check the empty state, change the array to `[]`, and you'll see 🎉 "All done!". Put the two todos back before you continue. The count is still fixed text until step 6.
+
+## 4. Toggle and delete with taps
+
+Replace the card inside `@for` with this one:
+
+```angular-html
+<view
+  class="mb-2 flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
+  (bindtap)="toggle(todo.id)"
+>
+  <view
+    class="mr-3 h-[22px] w-[22px] items-center rounded-[6px] border-2 border-zinc-200 justify-center"
+    [class.bg-indigo-500]="todo.done"
+    [class.border-indigo-500]="todo.done"
+  >
+    @if (todo.done) {
+      <text class="text-[13px] font-bold text-white">✓</text>
+    }
+  </view>
+  <text
+    class="flex-1 text-[15px] text-zinc-900"
+    [class.text-zinc-400]="todo.done"
+    [class.line-through]="todo.done"
+  >
+    {{ todo.text }}
+  </text>
+  <view class="px-2 py-1" (catchtap)="remove(todo.id)">
+    <text class="text-base text-red-500">✕</text>
+  </view>
+</view>
+```
+
+Add two methods to the class, below `todos`:
+
+```typescript
+  toggle(id: number): void {
+    this.todos.update((list) =>
+      list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+    );
+  }
+
+  remove(id: number): void {
+    this.todos.update((list) => list.filter((t) => t.id !== id));
+  }
+```
+
+Lynx calls a click a **tap**, and its event names start with `bind` or `catch`:
+
+- `bindtap` **bubbles**: the tap also reaches the parent elements, as DOM events do.
+- `catchtap` stops the tap at this element, like calling `stopPropagation()`.
+
+The ✕ sits inside the card, and the card toggles on tap. With `catchtap`, tapping ✕ deletes the todo without also running the card's `toggle()`. See [Handling taps and events](/guide/elements/event-handling).
+
+`update()` returns a new array instead of changing the old one, so the signal sees a new value. These handlers only change signals, which is always safe. Some work, such as router navigation, has to wait until the handler ends: see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+
+**You should see:** tapping a card turns its square indigo with a ✓ and strikes through the label. Tap again to undo. Tap ✕ to delete a todo, and delete both to see "All done!".
+
+## 5. Add todos from a text field
+
+Add this row to the template, between the count and `@for`:
+
+```angular-html
+<view class="mb-4 flex-row gap-2 flex">
+  <input
+    class="flex-1 rounded-[10px] border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
+    placeholder="What needs to be done?"
+    [value]="draft()"
+    (bindinput)="onInput($event)"
+  />
+  <view
+    class="items-center rounded-[10px] bg-indigo-500 px-5 py-3 justify-center"
+    (bindtap)="addTodo()"
+  >
+    <text class="text-[15px] font-semibold text-white">Add</text>
+  </view>
+</view>
+```
+
+Then add `draft`, `#nextId`, `onInput()` and `addTodo()` to the class, around `todos`:
+
+```typescript
+  readonly draft = signal('');
+  readonly todos = signal<Todo[]>([
+    // the two todos from step 3
+  ]);
+  #nextId = 3;
+
+  onInput(event: Event): void {
+    this.draft.set((event as CustomEvent<{ value: string }>).detail.value);
+  }
+
+  addTodo(): void {
+    const text = this.draft().trim();
+    if (!text) return;
+    this.todos.update((list) => [
+      ...list,
+      { id: this.#nextId++, text, done: false },
+    ]);
+    this.draft.set('');
+  }
+```
+
+`<input>` is Lynx's text field. It fires `bindinput` on every keystroke, instead of the DOM `input` event.
+
+- **The text is in `event.detail.value`**, not `event.target.value`. Angular types `$event` as a plain `Event`, so `onInput()` casts it to `CustomEvent<{ value: string }>` to read `detail`.
+- `[value]="draft()"` writes the signal back into the field. That's how `addTodo()` clears it.
+- `#nextId` is an ES private field. It's plain state that the template never reads, so it doesn't need to be a signal.
+
+For validation and larger forms, use Angular's reactive forms instead. See [Forms](/guide/forms).
+
+**You should see:** a text field and an indigo "Add" button side by side. Type a task and tap "Add": it joins the bottom of the list, and the field clears.
+
+## 6. Count what's left
+
+Add `computed` to the `@angular/core` import:
+
+```typescript
+import { Component, computed, signal } from '@angular/core';
+```
+
+Add a `remaining` signal to the class, below `#nextId`:
+
+```typescript
+  readonly remaining = computed(
+    () => this.todos().filter((t) => !t.done).length,
+  );
+```
+
+Replace the fixed "2 remaining" text with it:
+
+```angular-html
+<text class="mb-5 text-[13px] text-zinc-500">
+  {{ remaining() }} remaining
+</text>
+```
+
+`computed()` makes a signal from other signals. It recalculates when `todos` changes, and Angular re-renders the count. AngularLynx apps are zoneless, so signals are what tell Angular to update the screen. See [Signals and change detection](/guide/concepts/signals).
+
+**You should see:** the count drop when you tick a todo, and rise when you add one.
+
+## 7. Scroll a long list
+
+Add a dozen todos. The ones past the bottom of the screen are out of reach, because the `<view>` doesn't scroll.
+
+Replace the outer `<view>` with a `<scroll-view>`, and wrap the content in a `<view>` that keeps the padding:
+
+```angular-html
+<scroll-view class="h-screen bg-zinc-50" scroll-orientation="vertical">
+  <view class="p-6">
+    <!-- the title, count, input row and @for list, unchanged -->
+  </view>
+</scroll-view>
+```
+
+- **Only `<scroll-view>` and `<list>` scroll.** Lynx draws each element as a native UI control. On iOS and Android, only dedicated scroll controls scroll, and a `<view>` isn't one. That's why `overflow: scroll` does nothing.
+- **A `<scroll-view>` needs a fixed height**, here `h-screen`. Without one, it grows to fit its content and has nothing to scroll.
+- `scroll-orientation="vertical"` sets the direction.
+
+For hundreds of rows, use [`<list>`](/api/elements/list) instead. It reuses rows as they scroll out of view. See [`<scroll-view>`](/api/elements/scroll-view) for its other attributes.
+
+**You should see:** the same app, with a list that scrolls. Drag it on the phone, or scroll it with your mouse in the web preview.
+
+Your `src/app/app.ts` now matches the file in the preview at the top of this page. If something looks wrong, compare the two.
+
+## Next steps
+
+You've built a complete Lynx screen with Angular. Where to go from here:
+
+- [Coming from web Angular](/guide/coming-from-web): what else differs from a browser app, and which Angular features work.
+- [Routing and navigation](/guide/routing): add more screens and move between them.
+- [UI Components](/dolan/): ready-made buttons, inputs, dialogs and more, copied into your app by the `@blotch/dolan` CLI.
+- [Run on iOS and Android](/guide/native-apps): turn your app into a real iOS or Android app.

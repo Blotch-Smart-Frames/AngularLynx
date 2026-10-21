@@ -1,0 +1,84 @@
+# The JavaScript environment
+
+Your app's JavaScript runs in Lynx's engine, not in a browser. Standard JavaScript works, but browser APIs mostly don't. This page lists what's there, what's missing, and what to use instead.
+
+## What AngularLynx adds for you
+
+Lynx doesn't provide some APIs that Angular relies on. AngularLynx adds them before your app starts:
+
+- `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`
+- `requestAnimationFrame`, `requestIdleCallback`
+- `queueMicrotask`, `AbortController`
+- `URL`, `URLSearchParams`
+
+It also adds small `document`, `window` and `navigator` objects, with only what Angular reads internally. They are not a DOM: `document.querySelector()` always returns `null`.
+
+## What's missing, and what to use instead
+
+| Browser API                                                  | On Lynx                                                                                       |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| The DOM: `querySelector`, `createElement`, `innerHTML`       | Use templates, `viewChild()` and signals                                                      |
+| `getBoundingClientRect()`, `getComputedStyle()`              | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
+| `IntersectionObserver`                                       | [Detect when elements are visible](/guide/exposure)                                           |
+| `window.addEventListener('resize')`, `matchMedia`            | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
+| `navigator.userAgent`, `navigator.language`                  | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
+| `localStorage`, `sessionStorage`                             | See [Storage](#storage)                                                                       |
+| `fetch`, `XMLHttpRequest`, `WebSocket`                       | See [Network requests](#network-requests)                                                     |
+| `Intl`                                                       | See [Intl](#intl)                                                                             |
+| `performance.now()`                                          | `Date.now()`. To trace performance, see [Profiling](/guide/profiling)                         |
+| `TextEncoder`, `TextDecoder`                                 | Not available                                                                                 |
+| `<canvas>`, Web Audio, Web Workers, clipboard, drag and drop | Not available                                                                                 |
+
+Code that calls a missing API throws when it runs. That includes code inside libraries. Before adding an npm package, check that it doesn't use the DOM.
+
+## Network requests
+
+Lynx provides `fetch` only on the [background thread](/guide/concepts/threads). Your components draw the UI and handle events on the main thread, which has no network access.
+
+As a result, **HTTP requests from Angular code aren't supported yet.** That covers `HttpClient`, `httpResource` and calling `fetch` directly. Lynx itself has no `XMLHttpRequest` or `WebSocket`.
+
+Two ways to load data today:
+
+- **Ship data in the app.** Import JSON files, and they're built into the bundle.
+- **Call your native code.** A host app you control can expose a networking module. Call it with [`LynxNativeModule`](/api/angular-lynx/native-module).
+
+## Timers
+
+`setTimeout` and the other timer functions work. When the user switches to another app, Lynx pauses JavaScript, so a timer can fire late after the app comes back. Don't use timers to measure elapsed time; compare `Date.now()` values instead.
+
+## Storage
+
+There's no `localStorage`. To share values between the pages of your app while it runs, use [`LynxSessionStorage`](/guide/session-storage). To keep data after the app closes, store it in the host app and reach it through a [native module](/api/angular-lynx/native-module).
+
+## Intl
+
+Lynx has no `Intl` object. Libraries that call `Intl.DateTimeFormat`, `Intl.NumberFormat` or `Intl.PluralRules` throw on Lynx. Add the [FormatJS polyfills](https://formatjs.github.io/docs/polyfills) for the parts you use. [Internationalization](/guide/i18n) shows the setup.
+
+Angular's own pipes, such as `DatePipe` and `CurrencyPipe`, use Angular's locale data instead of `Intl`, so they work.
+
+## URL
+
+`URL` and `URLSearchParams` work, because AngularLynx provides them. There's no `window.location` and no address bar: the router keeps its URL in memory. See [Routing](/guide/routing).
+
+## JavaScript language level
+
+Write modern TypeScript as usual. The build compiles new syntax, such as `?.` and `??`, down to what Lynx supports.
+
+The build doesn't add missing built-in methods. The main thread supports ES2019, so these newer methods are missing there:
+
+| Missing method               | Use instead                                           |
+| ---------------------------- | ----------------------------------------------------- |
+| `'a-b'.replaceAll('-', ' ')` | `'a-b'.split('-').join(' ')`, or `replace(/-/g, ' ')` |
+| `array.at(-1)`               | `array[array.length - 1]`                             |
+| `structuredClone(value)`     | `JSON.parse(JSON.stringify(value))` for plain data    |
+| `Object.hasOwn(obj, key)`    | `Object.prototype.hasOwnProperty.call(obj, key)`      |
+
+:::warning A missing method can blank the whole screen
+If a template or a `computed()` calls a missing method, the render fails, and nothing on screen updates. The error is "not a function". It's not about signals.
+:::
+
+## Related
+
+- [Coming from web Angular](/guide/coming-from-web)
+- [Threads: where your code runs](/guide/concepts/threads)
+- [Debugging](/guide/debugging): how to see errors like these.

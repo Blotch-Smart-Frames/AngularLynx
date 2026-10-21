@@ -79,7 +79,7 @@ export class App {
   );
 
   onInput(event: Event): void {
-    this.draft.set((event as any).detail.value);
+    this.draft.set((event as CustomEvent<{ value: string }>).detail.value);
   }
 
   addTodo(): void {

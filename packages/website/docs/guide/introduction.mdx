@@ -1,144 +1,72 @@
-<img
-  src="/logo.png"
-  alt="AngularLynx Logo"
-  width="200"
-  style={{ display: 'block', margin: '0 auto 2rem' }}
-/>
-
 # What is AngularLynx?
 
-AngularLynx is an Angular renderer for [Lynx](https://lynxjs.org/), the cross-platform native UI framework by ByteDance. It lets you write Angular components with the APIs you already know — standalone components, signals, `@if`/`@for` control flow, dependency injection — and render them to native mobile UI via the Lynx engine.
+**AngularLynx lets you build iOS and Android apps with Angular.** You write components, signals and templates as usual. Your app renders as real native mobile UI, not as a web page inside an app.
 
-If you know Angular and are familiar with Lynx, you already know how to use AngularLynx.
-
-## Features
-
-- **Familiar Angular API** — Standalone components, signals, `@if`/`@for`/`@switch`, dependency injection, pipes, and more
-- **Cross-platform native rendering** — iOS, Android, and Web via the Lynx rendering engine
-- **Zoneless change detection** — Uses `provideZonelessChangeDetection()` with signals as the primary reactivity model
-- **Full Angular Router** — In-memory routing adapted for Lynx's native runtime
-- **Tailwind CSS** — Utility-first styling via `@lynx-js/tailwind-preset`
-- **Testing utilities** — `@blotch/angular-lynx-testing-library` bootstraps the full Lynx pipeline in jsdom with `@testing-library/dom` queries, `fireEvent`, and snapshot support
-
-## Try It
-
-A simple counter built with Angular signals and Lynx elements:
+Tap the button below. This is an AngularLynx app running in your browser:
 
 <Go example="hello-world" defaultFile="src/app/app.ts" />
 
-## For Angular Web Developers
+## What is Lynx?
 
-If you've built Angular apps for the web, most of your knowledge transfers directly. Here are the key differences:
+[**Lynx**](https://lynxjs.org/) is an open-source engine for building mobile apps with JavaScript and CSS. ByteDance built it, uses it in TikTok, and open-sourced it in 2025.
 
-### Different bootstrap
+Lynx turns a tree of **elements** into the phone's own UI controls, the same ones a Swift or Kotlin app uses. You style those elements with CSS. Lynx draws them on iOS, Android and the web from one codebase.
 
-```typescript
-// Web Angular
-import { bootstrapApplication } from '@angular/platform-browser';
-bootstrapApplication(App, appConfig);
+Lynx doesn't decide how you write your app. A **framework** sits on top and creates the elements. Lynx's own framework is React-based. AngularLynx is the Angular one.
 
-// AngularLynx
-import { bootstrapApplication } from '@blotch/angular-lynx'; // [!code highlight]
-bootstrapApplication(App, appConfig); // [!code highlight]
-```
+## What AngularLynx gives you
 
-### Different elements
+- **Angular on Lynx.** Standalone components, signals, dependency injection, the router, forms, pipes, `@if`/`@for` and `@defer` all work. Templates use Lynx elements such as `<view>` and `<text>` instead of HTML.
+- **The Angular CLI.** `ng serve` previews your app in the browser and on your phone. `ng build --platform ios` or `--platform android` builds an app you can install or upload. `ng test` runs your tests, and `ng generate component` makes Lynx components.
+- **UI components.** [Buttons, dialogs, forms, charts and more](/dolan/) that you copy into your project and own.
+- **A testing library** that renders your components in Vitest.
 
-Lynx provides native UI elements instead of HTML. Your templates use `<view>`, `<text>`, and `<image>` instead of `<div>`, `<span>`, and `<img>`:
+## What you need to know
 
-```angular-html
-<!-- Web Angular -->
-<div class="card">
-  <span>{{ message() }}</span>
-  <img [src]="logo" />
-</div>
+| You need                                      | You don't need                               |
+| --------------------------------------------- | -------------------------------------------- |
+| TypeScript and CSS                            | Swift, Kotlin, Objective-C or Java           |
+| Some Angular (components, signals, templates) | To create or edit an Xcode or Gradle project |
+| Node.js on your computer                      | A Mac, unless you build the iOS app          |
 
-<!-- AngularLynx -->
-<view class="card">
-  // [!code highlight] <text>{{ message() }}</text> // [!code highlight]
-  <image [src]="logo" /> // [!code highlight]
-</view>
-// [!code highlight]
-```
+To build installable apps, you do install Apple's and Google's build tools: Xcode for iOS and Android Studio for Android. AngularLynx drives them for you. [Run on iOS and Android](/guide/native-apps) shows how.
 
-:::info
-Text content must always be wrapped in `<text>`. Lynx does not support bare text nodes inside `<view>` — unlike HTML where text can appear anywhere.
+## How it compares
+
+Several tools let web developers build mobile apps. They differ mostly in what ends up on screen.
+
+| Tool                  | You write                      | On screen                                                 |
+| --------------------- | ------------------------------ | --------------------------------------------------------- |
+| **Ionic + Capacitor** | Angular, React or Vue          | HTML and CSS in a browser view (a WebView) inside the app |
+| **NativeScript**      | Angular, Vue, React and others | Native controls, styled with a subset of CSS              |
+| **React Native**      | React                          | Native controls, styled with JavaScript objects           |
+| **AngularLynx**       | Angular                        | Native controls drawn by Lynx, styled with CSS            |
+
+**Choose a WebView tool** if you need the full browser: the DOM, every web library and every CSS feature.
+
+**Choose a native-controls tool** if you want the app to look and feel like other apps on the phone. AngularLynx is for Angular developers in that second group.
+
+## How it's different from Angular on the web
+
+Most of your Angular knowledge carries over. Four things change:
+
+1. **No HTML.** Use `<view>` instead of `<div>` and `<text>` instead of `<span>`. Text only shows inside `<text>`.
+2. **Different events.** `(bindtap)` replaces `(click)`.
+3. **A different CSS engine.** Most layout CSS works, but some features don't, such as `:hover` and `@media`.
+4. **No browser.** There's no `document`, `window` or DOM API, so libraries that touch the DOM don't work.
+
+[Coming from web Angular](/guide/coming-from-web) lists every difference, with a table of which Angular features work.
+
+## Project status
+
+:::warning Work in progress
+AngularLynx is an early proof of concept. Real apps are possible: components, signals, routing, forms, gestures, animations and native app builds work. Some APIs are missing, and APIs may change between releases.
 :::
 
-### Different events
+AngularLynx targets Angular 22. Report problems on [GitHub](https://github.com/Blotch-Smart-Frames/AngularLynx/issues).
 
-Lynx uses its own event system with `bind` and `catch` prefixes instead of standard DOM events:
+## Next steps
 
-```angular-html
-<!-- Web Angular -->
-<button (click)="handleClick()">Click me</button>
-
-<!-- AngularLynx -->
-<view (bindtap)="handleTap()">
-  // [!code highlight]
-  <text>Tap me</text>
-</view>
-```
-
-- `(bindtap)` — Handles tap events (bubbles up to parents)
-- `(catchtap)` — Handles tap events and stops propagation
-
-### No `document` or `window`
-
-Lynx is a native runtime, not a browser. There is no `document`, `window`, or DOM API. Libraries that depend on browser APIs will not work without adaptation. Lynx provides its own runtime globals via the `lynx` object.
-
-## The Dual-Thread Model
-
-Lynx uses a dual-thread architecture that separates concerns between two execution contexts:
-
-```mermaid
-flowchart TB
-    subgraph BG["Background Thread"]
-        direction TB
-        B1["Angular runtime"]
-        B2["Change detection"]
-        B3["Signal updates"]
-        B4["Router navigation"]
-        B5["Event handler logic"]
-    end
-
-    subgraph MT["Main Thread"]
-        direction TB
-        M1["Native UI rendering"]
-        M2["Gesture handling"]
-        M3["Layout calculation"]
-        M4["Element tree management"]
-    end
-
-    BG -->|"element operations"| MT
-    MT -->|"events"| BG
-```
-
-- **Background thread** — Where Angular runs. Your components, change detection, signals, and event handler logic all execute here.
-- **Main thread** — Where native UI lives. Element creation, layout, and rendering happen here. Events originate from the main thread and are dispatched to the background thread.
-
-At the end of each change detection cycle, all pending element operations are committed atomically to the native UI via `__FlushElementTree()`. This batched approach means changes appear on screen as a single, consistent update rather than incrementally.
-
-:::tip
-This model is similar to how React Native works — JavaScript runs on a separate thread from the native UI. The key difference is that Lynx's background thread handles layout calculation, not just JS execution.
-:::
-
-## Ecosystem
-
-AngularLynx is part of a family of framework renderers for the Lynx platform:
-
-| Framework   | Package                                                                      | Status               |
-| ----------- | ---------------------------------------------------------------------------- | -------------------- |
-| React       | [`@lynx-js/react`](https://github.com/lynx-family/lynx-stack)                | Production-ready     |
-| Vue         | [`vue-lynx`](https://github.com/Huxpro/vue-lynx)                             | Production-ready     |
-| **Angular** | [`@blotch/angular-lynx`](https://github.com/Blotch-Smart-Frames/AngularLynx) | **Work in progress** |
-
-:::warning Work in Progress
-AngularLynx is an early proof of concept. It supports the core Angular APIs needed to build real applications — standalone components, signals, routing, control flow, dependency injection — but some features are not yet implemented. API surfaces may change as the project matures.
-:::
-
-## Next Steps
-
-- [Quick Start](/guide/quick-start) — Set up your first AngularLynx project
-- [Lynx Elements](/guide/elements/) — Learn about native UI elements
-- [Renderer Architecture](/guide/renderer-architecture) — Understand how Angular connects to Lynx
+- [Quick Start](/guide/quick-start): create an app and run it on your phone in about five minutes.
+- [Tutorial](/guide/tutorial): build a small todo app step by step.
+- [How a Lynx app runs](/guide/concepts/how-it-runs): what happens between `ng serve` and your phone.

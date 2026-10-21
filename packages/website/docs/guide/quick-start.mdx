@@ -1,118 +1,146 @@
+import { Tab, Tabs } from '@theme';
+
 # Quick Start
 
-This guide walks you through creating an AngularLynx app and running it on your device.
+Create an AngularLynx app, open it in your browser, then run it on a phone. This takes about five minutes.
 
-## Prerequisites
+## What you need
 
-- [Node.js](https://nodejs.org/) v18.19 or later
-- [Angular CLI](https://angular.dev/tools/cli) v21+
+- [**Node.js**](https://nodejs.org/) 22.12 or newer. Check with `node --version`.
+- **Optional:** a phone (iPhone or Android) or a simulator, to see the app as a real native app.
 
-```bash
-npm install -g @angular/cli
-```
+You don't need the Angular CLI installed globally. The project brings its own copy.
 
-## Create a New Project
-
-### Option A: Standalone CLI (recommended)
+## 1. Create the app
 
 ```bash
-npm create angular-lynx my-lynx-app
-cd my-lynx-app
-npm install
+npm create angular-lynx my-app
 ```
 
-This scaffolds a ready-to-run AngularLynx project with a counter demo app, RSpeedy config, and all dependencies pre-configured.
+When it asks **"Would you like to add Tailwind CSS with Lynx preset?"**, answer **Yes**. The tutorial and the examples use Tailwind.
 
-### Option B: Add to an existing Angular project
+The command takes a minute or two. It runs three steps for you:
+
+1. `ng new` creates a standard Angular project.
+2. `ng add @blotch/angular-lynx` converts that project into a Lynx app.
+3. `npm install` installs the dependencies.
+
+## 2. Start the dev server
 
 ```bash
-ng new my-lynx-app
-cd my-lynx-app
-ng add @blotch/angular-lynx
+cd my-app
+npm start
 ```
 
-`ng add` transforms your Angular project into a Lynx-native application — rewrites entry point and root component, installs the build tooling, and points `ng build`, `ng serve`, `ng test` and `ng generate component` at AngularLynx. The build config stays in `angular.json`. You'll be prompted whether to add Tailwind CSS.
+`npm start` runs `ng serve`. After the first build, the terminal shows a large **QR code** and a few links:
 
-See the [Schematics](/guide/schematics) page for the full list of what `ng add` does.
+```text
+  Lynx       http://192.168.1.20:3000/main.lynx.bundle
+  Web        http://192.168.1.20:3000/main.web.bundle
+  ∟ Preview  http://192.168.1.20:3000/__web_preview?casename=main.web.bundle
+```
 
-:::tip
-After scaffolding, your root component's template uses Lynx native elements (`<view>`, `<text>`) instead of HTML. Open `src/app/app.ts` to see the generated code.
+Your addresses will differ. Leave the server running.
+
+## 3. Open it in your browser
+
+Open the **Preview** link, but replace the IP address with `localhost`:
+
+```text
+http://localhost:3000/__web_preview?casename=main.web.bundle
+```
+
+You should see your project's name and the line "Edit src/app/app.ts to get started".
+
+This is the [**web preview**](/guide/glossary#web-preview): Lynx's web renderer drawing your app in the browser. It's the fastest way to work, and its layout matches the phone closely.
+
+:::warning Use localhost for the web preview
+The preview only runs on a secure origin, and `localhost` is one. On an `http://192.168…` address it fails with "crypto.randomUUID is not a function".
 :::
 
-## Run the Dev Server
+## 4. Open it on a phone
 
-```bash
-ng serve
-```
+To run your app as a native app, install [**Lynx Explorer**](/guide/glossary#lynx-explorer). It's Lynx's development app: it downloads your app from the dev server and runs it.
 
-The terminal will display several URLs:
+<Tabs>
+<Tab label="Android phone">
 
-- **Web Preview** — Open this in your browser to see the app rendered as a web page
-- **Lynx Bundle** — URL for loading in Lynx Explorer on a native device
-- **QR Code** — Scan with Lynx Explorer to load the app on your phone
+1. Install **Lynx Go** from [Google Play](https://play.google.com/store/apps/details?id=com.funcs.io.lynx.go). It's a community build of Lynx Explorer. Or install the official APK from [Lynx's releases](https://github.com/lynx-family/lynx/releases).
+2. Connect the phone to the same Wi-Fi as your computer.
+3. In the app, scan the QR code in your terminal.
 
-## Preview on a Native Device
+</Tab>
+<Tab label="iPhone">
 
-To see your app running as a true native experience, use [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html#setting-up-the-development-environment):
+1. Install **Lynx Go Dev Explorer** from the [App Store](https://apps.apple.com/us/app/lynx-go-dev-explorer/id6743227790). It's a community build of Lynx Explorer. There's no official iPhone build.
+2. Connect the phone to the same Wi-Fi as your computer.
+3. In the app, scan the QR code in your terminal.
 
-1. **iOS Simulator** — Download the Lynx Explorer app for your Mac's architecture from the [Lynx releases](https://github.com/lynx-family/lynx/releases)
-2. **Android** — Download the APK from the same releases page and install on your device or emulator
-3. Scan the QR code shown in the terminal, or enter the bundle URL manually
+</Tab>
+<Tab label="iOS Simulator (Mac)">
 
-:::info Turn on Lynx DevTool for live reload
-In Lynx Explorer, open the settings tab and turn on **Lynx DevTool**. When you save a file, the dev server reloads the app through DevTool. With DevTool off, the rebuild succeeds but the app keeps showing the old code until you reopen the bundle URL.
+The [**iOS Simulator**](/guide/glossary#simulator) is a virtual iPhone on your Mac. It comes with [Xcode](https://apps.apple.com/app/xcode/id497799835), Apple's free developer tools.
+
+1. Download `LynxExplorer-arm64.app.tar.gz` (Apple silicon) or `LynxExplorer-x86_64.app.tar.gz` (Intel) from [Lynx's releases](https://github.com/lynx-family/lynx/releases).
+2. Unpack it: `tar -zxf LynxExplorer-arm64.app.tar.gz`.
+3. Open the Simulator (`open -a Simulator`), then drag `LynxExplorer-arm64.app` onto it.
+4. In Lynx Explorer, paste the **Lynx** link into **Enter Card URL** and tap **Go**.
+
+</Tab>
+<Tab label="Android emulator">
+
+The [**Android emulator**](/guide/glossary#emulator) is a virtual Android phone. It comes with [Android Studio](https://developer.android.com/studio), Google's free developer tools.
+
+1. In Android Studio, open **Device Manager** and start a virtual device.
+2. Download the Lynx Explorer APK from [Lynx's releases](https://github.com/lynx-family/lynx/releases), then drag it onto the emulator to install it.
+3. In Lynx Explorer, paste the **Lynx** link into **Enter Card URL** and tap **Go**.
+
+</Tab>
+</Tabs>
+
+You should see the same screen as in the browser, drawn by the phone's own UI controls.
+
+## 5. Make a change
+
+1. In Lynx Explorer, open **Settings** and turn on **Lynx DevTool**. This lets the dev server reload the app when you save.
+2. Open `src/app/app.ts` and change the line "Edit src/app/app.ts to get started".
+3. Save the file.
+
+The browser and the phone both update within a second or two.
+
+:::tip If the phone doesn't update
+Check that Lynx DevTool is on in Lynx Explorer's settings. Without it, the app keeps showing the old code until you open the link again.
 :::
 
-## Generate Components
+## What's in the project
 
-Generate components the way you would in any Angular app:
+`ng add` changed only a few files from a standard `ng new` project:
 
-```bash
-ng generate component my-feature
+```text
+my-app/
+├── angular.json              # build, serve and test use the AngularLynx builders
+├── tailwind.config.ts        # Tailwind with the Lynx preset
+└── src/
+    ├── main.ts               # bootstrapApplication from @blotch/angular-lynx
+    ├── rspeedy-env.d.ts      # types for importing images, fonts and CSS modules
+    └── app/
+        ├── app.config.ts     # zoneless change detection, the Lynx renderer, the router
+        ├── app.routes.ts     # your routes
+        └── app.ts            # the root component, written with Lynx elements
 ```
 
-`ng add` makes this run the AngularLynx component schematic: Angular's component, with a template of Lynx elements (`<view>`/`<text>`) and `LYNX_ELEMENTS` imported. `ng generate service`, `pipe` and the rest are Angular's own. See [Schematics](/guide/schematics#component--generate-components) for all options.
+These are the commands you'll use most. Prefix them with `npx` (`npx ng build`), or install the CLI globally with `npm install -g @angular/cli`:
 
-## Run the Tests
+| Command                        | What it does                                                |
+| ------------------------------ | ----------------------------------------------------------- |
+| `ng serve`                     | Starts the dev server for the web preview and Lynx Explorer |
+| `ng generate component <name>` | Creates a component that uses Lynx elements                 |
+| `ng test`                      | Runs your unit tests                                        |
+| `ng build`                     | Builds the app's bundle into `dist/`                        |
+| `ng build --platform ios`      | Builds an iOS app ([details](/guide/native-apps))           |
 
-```bash
-ng test
-```
+## Next steps
 
-`ng test` runs Angular's unit-test builder (Vitest), set up for Lynx. See [Testing](/guide/testing).
-
-## Project Structure
-
-After running `ng add`, your project looks like this:
-
-```
-my-lynx-app/
-  angular.json                 # Build, serve and test targets (AngularLynx builders)
-  tailwind.config.ts           # Tailwind CSS config (if selected)
-  src/
-    main.ts                    # Entry point (bootstrapApplication)
-    rspeedy-env.d.ts           # Types for asset and CSS module imports
-    app/
-      app.config.ts            # Providers (zoneless CD, renderer, router)
-      app.ts         # Root component with Lynx elements
-      app.routes.ts            # Route definitions
-```
-
-## What's Different from Web Angular?
-
-| Concept          | Web Angular                | AngularLynx                   |
-| ---------------- | -------------------------- | ----------------------------- |
-| Bootstrap        | `bootstrapApplication()`   | `bootstrapApplication()`      |
-| Renderer         | Browser DOM                | Lynx native elements          |
-| Elements         | `<div>`, `<span>`, `<img>` | `<view>`, `<text>`, `<image>` |
-| Events           | `(click)`, `(input)`       | `(bindtap)`, `(bindinput)`    |
-| Change detection | Zone.js or zoneless        | Zoneless only                 |
-| Router           | URL-based                  | In-memory                     |
-| Build tool       | Angular CLI / esbuild      | Angular CLI / RSpeedy         |
-
-## Next Steps
-
-- [Schematics](/guide/schematics) — Generate components, add Tailwind CSS or testing
-- [Lynx Elements](/guide/elements/) — Learn what native elements (`<view>`, `<text>`, `<image>`, etc.) are available
-- [Change Detection](/guide/change-detection) — Understand zoneless CD and signals
-- [Routing](/guide/routing) — Set up navigation between views
+- [Tutorial: Build a todo app](/guide/tutorial): learn elements, styling, events and signals step by step.
+- [Coming from web Angular](/guide/coming-from-web): what's different, and which Angular features work.
+- [How a Lynx app runs](/guide/concepts/how-it-runs): what the QR code, the bundle and Lynx Explorer are.

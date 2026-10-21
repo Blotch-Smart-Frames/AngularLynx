@@ -20,7 +20,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const cleanup = vi.fn();
 
-/** Re-imports index.ts, with a stub ./render.js, after the globals are set. */
+/**
+ * Re-imports index.ts, with a stub ./render.js, after the globals are set.
+ */
 const importIndex = async (): Promise<unknown> => {
   vi.resetModules();
   vi.doMock('./render.js', () => ({

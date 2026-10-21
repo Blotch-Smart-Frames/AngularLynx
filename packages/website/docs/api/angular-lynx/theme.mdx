@@ -1,0 +1,62 @@
+# LynxTheme
+
+The device's light or dark appearance as a signal. `import { LynxTheme } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [class.dark]="theme.isDarkMode()">
+      <text>The theme is {{ theme.theme() }}</text>
+    </view>
+  `,
+})
+export class App {
+  readonly theme = inject(LynxTheme);
+}
+```
+
+## API
+
+### `LynxTheme`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxTheme {}
+```
+
+Reads the `theme` value that the [host app](/guide/glossary#host-app) sets in its global data. The host usually sets it from the operating system's appearance setting.
+
+**Known limitation:** it subscribes to host changes only on the background thread, through `LynxGlobalData`. Changes after startup may not reach the main thread, which draws the UI. See [Host data](/api/angular-lynx/host-data#api).
+
+### `LynxTheme.theme`
+
+```typescript
+readonly theme: Signal<'Light' | 'Dark'>;
+```
+
+The current theme. `'Light'` when the host sets none.
+
+### `LynxTheme.isDarkMode`
+
+```typescript
+readonly isDarkMode: Signal<boolean>;
+```
+
+`true` when `theme()` is `'Dark'`.
+
+## Types
+
+None of its own.
+
+## Related
+
+- [Dark mode](/guide/dark-mode): switch your styles with the theme.
+- [Host data](/api/angular-lynx/host-data): `LynxGlobalData`, where the value comes from.
+- [System info](/api/angular-lynx/system-info)

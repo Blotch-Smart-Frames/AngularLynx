@@ -1,57 +1,84 @@
 # `LynxMainThread`
 
-An injectable service for invoking main thread functions from the background thread. Unlike `LynxMainThreadEvent` (which binds to native events), this lets you programmatically trigger main thread execution — useful for animations, timers, or responding to state changes.
+A service that calls one of your [main-thread scripts](/guide/glossary#main-thread-script) from Angular code, and gives you its return value. `import { LynxMainThread } from '@blotch/angular-lynx';`
 
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::info
+Template handlers such as `(bindtap)` already run on the main thread. [Main-thread scripts](/guide/main-thread/) explains when you need this API instead.
 :::
 
 ## Usage
 
-```typescript title="src/app/my.ts"
-import { Component, inject } from '@angular/core';
+```typescript title="src/app/app.ts"
+import { Component, inject, signal } from '@angular/core';
 import {
-  mainThreadFn,
-  LynxMainThread, // [!code highlight]
+  createMainThreadRef,
   LYNX_ELEMENTS,
+  LynxMainThread,
+  LynxMainThreadEvent,
+  mainThreadFn,
 } from '@blotch/angular-lynx';
 
-const flashElement = mainThreadFn(() => {
-  const el = lynx.querySelector('#flash-target');
-  if (el) {
-    el.setStyleProperty('background-color', '#ff0000');
-    setTimeout(() => {
-      el.setStyleProperty('background-color', '#ffffff');
-    }, 200);
-  }
+const taps = createMainThreadRef(0);
+const countTap = mainThreadFn(() => {
+  taps.current++;
 });
+const readTaps = mainThreadFn(() => taps.current);
 
 @Component({
-  imports: [LYNX_ELEMENTS],
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
   template: `
-    <view id="flash-target" (bindtap)="flash()">
-      <text>Tap to flash</text>
+    <view [mainThreadBindtap]="countTap">
+      <text>Tap me</text>
+    </view>
+    <view (bindtap)="showTaps()">
+      <text>Taps so far: {{ shown() }}</text>
     </view>
   `,
 })
-export class Example {
-  readonly #mts = inject(LynxMainThread); // [!code highlight]
+export class App {
+  readonly #mainThread = inject(LynxMainThread);
+  readonly countTap = countTap;
+  readonly shown = signal(0);
 
-  flash(): void {
-    this.#mts.runOnMainThread(flashElement); // [!code highlight]
+  async showTaps(): Promise<void> {
+    this.shown.set(await this.#mainThread.runOnMainThread(readTaps));
   }
 }
 ```
 
+`LynxMainThread` is provided in root, so `inject()` it anywhere.
+
 ## API
 
+### `runOnMainThread(handle, ...args)`
+
 ```typescript
-runOnMainThread<TArgs, TReturn>(
+runOnMainThread<TArgs extends unknown[], TReturn>(
   handle: MainThreadFnHandle<TArgs, TReturn>,
   ...args: TArgs
-): Promise<TReturn>
+): Promise<TReturn>;
 ```
 
-- **Must be called from the background thread** — throws if called on the main thread
-- **Arguments must be JSON-serializable** — they are sent across the thread boundary
-- Returns a `Promise` that resolves when the main thread function completes
+- **`handle`**: a function from [`mainThreadFn()`](/api/main-thread/main-thread-fn).
+- **`args`**: its arguments, checked against its parameter types.
+- **Returns** a promise of the function's return value. It rejects if the function throws.
+
+Where you call it changes what happens:
+
+| Called from                                    | What happens                                                                             |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| The main thread, such as a `(bindtap)` handler | Runs the function right away. Arguments aren't copied, and a returned promise is awaited |
+| The background thread                          | Sends the call to the main thread. Arguments and the return value are copied as JSON     |
+
+## Constraints
+
+- **Code that runs on both threads calls it twice.** A constructor, `ngOnInit` or `effect()` runs in both copies of your app (see [Threads](/guide/concepts/threads)), so the function runs once from each. Call it from an event handler instead.
+- **From the background thread, define the function at module scope.** The call finds the function by an ID, which matches on both threads only for module-level functions.
+- **From the background thread, use JSON-safe arguments and return values.** A development build throws on arguments that can't be serialized. A returned promise isn't awaited.
+
+## Related
+
+- [Main-thread scripts guide](/guide/main-thread/)
+- [`mainThreadFn`](/api/main-thread/main-thread-fn)
+- [`backgroundFn`](/api/main-thread/background-fn): the other direction

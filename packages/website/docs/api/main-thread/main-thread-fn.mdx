@@ -1,47 +1,93 @@
 # `mainThreadFn`
 
-Defines a function that will be registered and executed on the main thread. Call it at module scope — the ID is assigned deterministically so both thread bundles agree on which function is which.
+Registers a function as a [**main-thread script**](/guide/glossary#main-thread-script): it gets native elements directly and changes them without a change-detection pass. `import { mainThreadFn } from '@blotch/angular-lynx';`
 
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::info
+Template handlers such as `(bindtap)` already run on the main thread. [Main-thread scripts](/guide/main-thread/) explains when you need this API instead.
 :::
 
-## Setup
+## Usage
 
-```typescript title="src/app/my.ts"
+```typescript title="src/app/app.ts"
 import { Component } from '@angular/core';
 import {
-  mainThreadFn, // [!code highlight]
-  LynxMainThreadEvent, // [!code highlight]
   LYNX_ELEMENTS,
+  LynxMainThreadEvent,
+  mainThreadFn,
+  type MainThread,
 } from '@blotch/angular-lynx';
-import type { MainThread } from '@blotch/angular-lynx';
 
-const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
-  // [!code highlight]
-  const el = event.currentTarget;
-  el.setStyleProperty('background-color', '#ff5722');
+const highlight = mainThreadFn((event: MainThread.TouchEvent) => {
+  event.currentTarget.setStyleProperty('background-color', '#ff5722');
 });
 
 @Component({
-  imports: [LYNX_ELEMENTS, LynxMainThreadEvent], // [!code highlight]
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
   template: `
-    <view [mainThreadBindtap]="handleTap">
+    <view [mainThreadBindtap]="highlight">
       <text>Tap me</text>
     </view>
   `,
 })
-export class Example {
-  readonly handleTap = handleTap;
+export class App {
+  readonly highlight = highlight;
 }
 ```
 
-## Rules
+Bind the result with a [`LynxMainThreadEvent`](/api/main-thread/main-thread-event) input, or call it with [`LynxMainThread.runOnMainThread()`](/api/main-thread/main-thread-service).
 
-1. **Module-level only** — `mainThreadFn` must be called at module scope (not inside a class or function). Both the main thread and background thread bundles evaluate the same modules in the same order, generating matching IDs.
-2. **No closures over component state** — the function runs on the main thread, which has no access to Angular signals, services, or component instances.
-3. **Native element access** — the `event.currentTarget` is a `MainThread.Element` with methods like `setStyleProperty()`, `getBoundingClientRect()`, and `invoke()`.
+## API
 
-## Return Type
+### `mainThreadFn(fn)`
 
-`mainThreadFn` returns a `MainThreadFnHandle` — a serializable token containing the worklet ID. Pass it to the `LynxMainThreadEvent` directive or to `LynxMainThread.runOnMainThread()`.
+```typescript
+function mainThreadFn<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => TReturn,
+): MainThreadFnHandle<TArgs, TReturn>;
+```
+
+- **`fn`**: the function to run on the main thread. As an event handler, it receives the event.
+- **Returns** a handle. The handle's type keeps `fn`'s argument and return types, so `runOnMainThread()` checks them.
+
+### `'main thread'` directive
+
+```typescript
+const highlight = (event: MainThread.TouchEvent) => {
+  'main thread';
+  event.currentTarget.setStyleProperty('background-color', '#ff5722');
+};
+```
+
+The build wraps any function whose first statement is `'main thread'` (or `'main-thread'`) in `mainThreadFn()`, and adds the import. The result is the same as calling `mainThreadFn()` yourself.
+
+- **Arrow functions and function expressions** with a block body are transformed, wherever they appear.
+- **Function declarations and class methods** aren't. Write `const name = () => { 'main thread'; … }` instead.
+
+## Constraints
+
+- **Define it at module scope.** Both copies of your app then give it the same ID, which a call from the background thread needs. A class property also works for a `[mainThreadBind*]` input, but each new instance registers another function that's never released.
+- **It runs in the main-thread copy of your module.** Module-level variables it reads are that copy's, not the background thread's.
+- **Keep state between calls in a [`MainThreadRef`](/api/main-thread/main-thread-ref).**
+- **Arguments and return values from the background thread are copied as JSON.**
+
+## Types
+
+```typescript
+// An opaque handle. Its fields are internal.
+type MainThreadFnHandle<
+  TArgs extends unknown[] = unknown[],
+  TReturn = unknown,
+> = {
+  /* internal */
+};
+```
+
+`MainThread.TouchEvent` and the other event types are on [`LynxMainThreadEvent`](/api/main-thread/main-thread-event#types).
+
+## Related
+
+- [Main-thread scripts guide](/guide/main-thread/)
+- [`LynxMainThreadEvent`](/api/main-thread/main-thread-event)
+- [`LynxMainThread`](/api/main-thread/main-thread-service)
+- [Main-thread example](/examples/main-thread)

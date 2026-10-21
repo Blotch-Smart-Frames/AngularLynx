@@ -1,100 +1,113 @@
-# &lt;viewpager&gt;
+# `<viewpager>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
+Full-width pages the user swipes between horizontally, like a carousel or an onboarding flow.
 
-A horizontally swipeable paging container. Each page is a `<viewpager-item>` child. The native gesture recognizer handles swipe navigation.
+## Usage
 
-```angular-html
-<viewpager
-  [attr.initial-select-index]="0"
-  (bindchange)="onPageChange($event)"
-  style="width: 100%; height: 300px;"
->
-  <viewpager-item style="align-items: center; justify-content: center;">
-    <text style="font-size: 24px;">Page 1</text>
-  </viewpager-item>
-  <viewpager-item style="align-items: center; justify-content: center;">
-    <text style="font-size: 24px;">Page 2</text>
-  </viewpager-item>
-  <viewpager-item style="align-items: center; justify-content: center;">
-    <text style="font-size: 24px;">Page 3</text>
-  </viewpager-item>
-</viewpager>
+```typescript title="src/app/onboarding.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-onboarding',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <viewpager
+      style="width: 100%; height: 300px;"
+      (bindchange)="onChange($event)"
+    >
+      @for (page of pages; track page) {
+        <viewpager-item>
+          <text>{{ page }}</text>
+        </viewpager-item>
+      }
+    </viewpager>
+    <text>Page {{ current() + 1 }} of {{ pages.length }}</text>
+  `,
+})
+export class Onboarding {
+  readonly pages = ['Welcome', 'Sync', 'Done'];
+  readonly current = signal(0);
+
+  onChange(event: Event): void {
+    this.current.set((event as CustomEvent<{ index: number }>).detail.index);
+  }
+}
 ```
 
-## Key Attributes
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-- `initial-select-index` — (number, default `0`) Page index to display on first render
-- `enable-scroll` — (boolean, default `true`) Whether the horizontal swipe gesture is enabled
-- `bounces` — (boolean, default `true`) Whether the pager bounces past the edge pages (iOS/Harmony/Clay)
-- `keep-item-view` — (boolean, default `false`) Keep all page views in memory; disables lazy creation
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
+:::
 
-### Platform-specific
+## Attributes
 
-- `android-always-overscroll` — (boolean, default `false`) Enable bounce at edges on Android
-- `android-force-can-scroll` — (boolean, default `false`) Block gesture pass-through to parent on Android
-- `ios-gesture-direction` — (boolean, default `false`) Allow outer container swipe at edge pages on iOS
-- `ios-gesture-offset` — (number, default `0`) Left-edge exclusion zone (px) for swipe gesture on iOS
-- `ios-recognized-gesture-class` — (`string`) UIGestureRecognizer class name for simultaneous recognition on iOS
-- `ios-recognized-view-tag` — (number, default `0`) UIView tag for simultaneous gesture recognition on iOS
+| Attribute                      | Type      | Default | Description                                                                                                                                 |
+| ------------------------------ | --------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initial-select-index`         | `number`  | `0`     | Page shown first.                                                                                                                           |
+| `enable-scroll`                | `boolean` | `true`  | Whether the user can swipe between pages.                                                                                                   |
+| `bounces`                      | `boolean` | `true`  | iOS only. Bounce past the first and last pages.                                                                                             |
+| `keep-item-view`               | `boolean` | `false` | iOS and Android. Keeps the views of off-screen pages attached instead of releasing them.                                                    |
+| `android-always-overscroll`    | `boolean` | `false` | Android only. Bounce past the first and last pages.                                                                                         |
+| `android-force-can-scroll`     | `boolean` | `false` | Android only. At the first and last pages, keeps the swipe from passing to a parent.                                                        |
+| `ios-gesture-direction`        | `boolean` | `false` | iOS only. At the first and last pages, lets an outer horizontal scroll view take the swipe.                                                 |
+| `ios-gesture-offset`           | `number`  | `0`     | iOS only. Width in px of a strip at the left edge where the pager ignores swipes, so the system swipe-back gesture works there.             |
+| `ios-recognized-gesture-class` | `string`  | —       | iOS only. Class name of a native gesture recognizer in the [host app](/guide/glossary#host-app) that may run at the same time as the pager. |
+| `ios-recognized-view-tag`      | `number`  | `0`     | iOS only. Tag of the native view that owns that gesture recognizer.                                                                         |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-- `(bindchange)` — Fired after the page settles on a new index. Detail: `{ current: number }`
-- `(bindoffsetchange)` — Fired continuously during a swipe. Detail: `{ offset: number }` (fractional page offset)
-- `(bindwillchange)` — Fired before a page transition starts. Detail: `{ current: number, target: number }`
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event              | `detail`                                | Description                                                                                      |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `bindchange`       | `{ index: number; isDragged: boolean }` | The pager settled on page `index`. `isDragged` is `true` when the user swiped there.             |
+| `bindwillchange`   | `{ index: number; isDragged: boolean }` | The pager is about to move to page `index`.                                                      |
+| `bindoffsetchange` | `{ offset: number }`                    | Fires during a swipe. `offset` is the position in pages: `0.5` is halfway between pages 0 and 1. |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+This **UI method** ([Glossary](/guide/glossary#ui-method)) changes the page from code. Call it with `invoke()` on the element (see [Call element methods](/guide/selector-query)).
+
+| Method      | Parameters                            | Description                                                    |
+| ----------- | ------------------------------------- | -------------------------------------------------------------- |
+| `selectTab` | `{ index: number; smooth?: boolean }` | Moves to page `index`. It animates unless `smooth` is `false`. |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-slides',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <viewpager #pager style="width: 100%; height: 300px;">
+      <viewpager-item><text>One</text></viewpager-item>
+      <viewpager-item><text>Two</text></viewpager-item>
+    </viewpager>
+    <view (bindtap)="next()"><text>Next</text></view>
+  `,
+})
+export class Slides {
+  readonly pager = viewChild.required('pager', { read: ElementRef });
+
+  next(): void {
+    this.pager().nativeElement.invoke?.('selectTab', { index: 1 });
+  }
+}
+```
 
 ## Children
 
-**`<viewpager-item>`** — Each direct child must be a `<viewpager-item>`. Content inside is laid out at 100% width and 100% height of the pager.
+Wrap each page in a **`<viewpager-item>`**. Every direct child must be one.
 
-## Dynamic Pages with `@for`
+## Related
 
-```angular-html
-<viewpager
-  [attr.initial-select-index]="currentPage()"
-  (bindchange)="currentPage.set($event.detail.current)"
-  style="width: 100%; height: 100%;"
->
-  @for (slide of slides(); track slide.id) {
-    <viewpager-item>
-      <image [attr.src]="slide.imageUrl" style="width: 100%; height: 100%;" />
-    </viewpager-item>
-  }
-</viewpager>
-```
-
-## Page Indicator
-
-Combine `(bindchange)` with a signal to drive a custom dot indicator:
-
-```typescript
-currentPage = signal(0);
-```
-
-```angular-html
-<view style="flex-direction: column; flex: 1;">
-  <viewpager
-    (bindchange)="currentPage.set($event.detail.current)"
-    style="flex: 1;"
-  >
-    @for (slide of slides(); track slide.id) {
-      <viewpager-item>
-        <text>{{ slide.title }}</text>
-      </viewpager-item>
-    }
-  </viewpager>
-
-  <!-- Dot indicator -->
-  <view style="flex-direction: row; justify-content: center; padding: 8px;">
-    @for (slide of slides(); track slide.id; let i = $index) {
-      <view
-        style="width: 8px; height: 8px; border-radius: 4px; margin: 4px;"
-        [style.background-color]="i === currentPage() ? '#333' : '#ccc'"
-      />
-    }
-  </view>
-</view>
-```
+- [`<scroll-coordinator>`](/api/elements/scroll-coordinator): tabs of lists under a collapsing header
+- [Tabs](/dolan/tabs): a UI component for switching views
+- [Call element methods](/guide/selector-query)

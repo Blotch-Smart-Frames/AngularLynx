@@ -1,9 +1,6 @@
 # Bootstrap
 
-| Export                 | Kind     | Description                                                                                                                                                              |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bootstrapApplication` | Function | Bootstraps an Angular standalone component in the Lynx runtime. Wraps Angular's `bootstrapApplication` with Lynx-specific error handling and polyfills.                  |
-| `provideRenderer`      | Function | Returns `EnvironmentProviders` that register `LynxRendererFactory2`, `LynxDocument`, and the Lynx-compatible `DOCUMENT` token. Required in every AngularLynx app config. |
+Start an Angular app on Lynx and register the renderer that draws it. `import { bootstrapApplication, provideRenderer, loadLazyBundle } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -23,9 +20,90 @@ import {
 import { provideRenderer } from '@blotch/angular-lynx';
 
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideZonelessChangeDetection(),
-    provideRenderer(), // Required — registers the Lynx renderer
-  ],
+  providers: [provideZonelessChangeDetection(), provideRenderer()],
 };
 ```
+
+`ng add @blotch/angular-lynx` writes both files for you.
+
+## API
+
+### `bootstrapApplication()`
+
+```typescript
+function bootstrapApplication(
+  rootComponent: Type<unknown>,
+  options?: ApplicationConfig,
+): Promise<ApplicationRef>;
+```
+
+Starts your app on Lynx. Use it instead of the `bootstrapApplication` from `@angular/platform-browser`, which needs a browser DOM.
+
+- **Runs twice.** Your bundle starts the app on both the [main thread](/guide/glossary#main-thread) and the [background thread](/guide/glossary#background-thread). See [Threads](/guide/concepts/threads).
+- **Waits for Lynx.** On the main thread, it waits until Lynx is ready to render the page.
+- **Hot reload.** Calling it again destroys the running app first, then starts the new one.
+- **Returns** the `ApplicationRef`, as Angular's version does.
+
+### `provideRenderer()`
+
+```typescript
+function provideRenderer(): EnvironmentProviders;
+```
+
+Registers the renderer that turns your templates into Lynx [elements](/guide/glossary#element). Every app needs it, together with `provideZonelessChangeDetection()`.
+
+It also provides these Angular tokens:
+
+| Token           | Value                                                                  | What it means for you                                                                                                                                                      |
+| --------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ErrorHandler`  | `LynxErrorHandler`                                                     | Uncaught errors go to Lynx. See [Errors and logging](/api/angular-lynx/errors-and-logging). To replace it, add your own `ErrorHandler` provider after `provideRenderer()`. |
+| `DOCUMENT`      | A stub whose only method, `getElementById()`, returns `null`           | There's no DOM document. Don't query elements through `inject(DOCUMENT)`.                                                                                                  |
+| `APP_BASE_HREF` | `'/'`                                                                  | The router's base path.                                                                                                                                                    |
+| `IMAGE_CONFIG`  | `{ disableImageSizeWarning: true, disableImageLazyLoadWarning: true }` | Angular's image warnings scan the DOM and stop the app from starting. If you provide your own `IMAGE_CONFIG`, keep both flags `true`.                                      |
+
+### `loadLazyBundle()`
+
+```typescript
+function loadLazyBundle(source: string): Promise<Type<unknown>>;
+```
+
+Loads a component from a separately built Lynx [bundle](/guide/glossary#bundle) at runtime.
+
+| Parameter | Type     | Description                     |
+| --------- | -------- | ------------------------------- |
+| `source`  | `string` | URL of the `.lynx.bundle` file. |
+
+- **Resolves** with the bundle's default export, or with all its exports when it has no default.
+- **Caches** by `source`: repeat calls return the same promise.
+- **On the background thread**, it rejects when the bundle fails to load or run.
+- **On the main thread**, it loads synchronously. If loading fails, the promise never settles and the component doesn't appear.
+- **Rejects** when Lynx's bundle loader isn't available, such as in unit tests.
+
+```typescript title="src/app/app.routes.ts"
+import type { Routes } from '@angular/router';
+import { loadLazyBundle } from '@blotch/angular-lynx';
+
+export const routes: Routes = [
+  {
+    path: 'profile',
+    loadComponent: () =>
+      loadLazyBundle('https://example.com/profile.lynx.bundle'),
+  },
+];
+```
+
+:::warning Experimental
+Lazy routes with `import()` and `@defer` blocks don't need `loadLazyBundle()`. The build includes their code for you. These docs don't yet cover how to build a standalone component bundle.
+:::
+
+## Types
+
+This page uses only Angular types: `ApplicationConfig`, `ApplicationRef`, `EnvironmentProviders` and `Type` from `@angular/core`.
+
+## Related
+
+- [Quick Start](/guide/quick-start): create an app that already has this setup.
+- [How a Lynx app runs](/guide/concepts/how-it-runs)
+- [Signals and change detection](/guide/concepts/signals): why the app must be zoneless.
+- [Routing](/api/angular-lynx/routing): add `provideRouter()` next to `provideRenderer()`.
+- [Errors and logging](/api/angular-lynx/errors-and-logging)

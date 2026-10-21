@@ -1,65 +1,153 @@
 # @blotch/angular-lynx-testing-library
 
-API reference for AngularLynx Testing Library — a testing utility that bootstraps Angular standalone components through the full Lynx dual-thread pipeline and provides `@testing-library/dom` queries.
+Renders a component through the Lynx renderer in a unit test, then finds and taps its elements with Testing Library queries. `import { render } from '@blotch/angular-lynx-testing-library';`
 
-## Rendering
+## Usage
 
-| Export          | Kind     | Description                                                                                                                                         |
-| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `render`        | Function | Bootstraps a standalone component through the Lynx pipeline and returns a container with bound queries. Accepts an optional `RenderOptions` object. |
-| `cleanup`       | Function | Destroys the current rendered Angular app. Called automatically after each test via `afterEach` (opt out with `ATL_SKIP_AUTO_CLEANUP=true`).        |
-| `waitForUpdate` | Function | Waits for all pending Angular reactive updates to flush. Call after programmatic signal changes that happen outside event handlers.                 |
+```typescript title="src/app/counter/counter.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-### render()
+@Component({
+  selector: 'app-counter',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="increment()">
+      <text>Taps: {{ taps() }}</text>
+    </view>
+  `,
+})
+export class Counter {
+  readonly taps = signal(0);
 
-```typescript
-const result = await render(My, {
-  providers: [provideRouter(routes)],
+  increment(): void {
+    this.taps.update((n) => n + 1);
+  }
+}
+```
+
+```typescript title="src/app/counter/counter.test.ts"
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+import { describe, expect, it } from 'vitest';
+
+import { Counter } from './counter';
+
+describe('Counter', () => {
+  it('counts taps', async () => {
+    const { container, getByText } = await render(Counter);
+
+    fireEvent.tap(container.querySelector('view')!);
+    await waitForUpdate();
+
+    expect(getByText('Taps: 1')).toBeTruthy();
+  });
 });
 ```
 
-**Returns:** `RenderResult` with the following properties:
+Add the library with [`ng generate @blotch/angular-lynx:add-testing`](/api/schematics#add-testing), and run tests with `ng test`. The [unit-test builder](/api/build/#unit-test) loads the library's setup, so there's no setup file to write.
 
-| Property       | Type                                             | Description                                                                                                                                                                              |
-| -------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `container`    | `Element`                                        | The JSDOM root element (`<page>`) containing all rendered children.                                                                                                                      |
-| `componentRef` | `ComponentRef<unknown>`                          | The Angular `ComponentRef` for the bootstrapped root component. Use `componentRef.injector.get(Token)` to retrieve services or `componentRef.instance.someSignal.set(v)` to drive state. |
-| `unmount`      | `() => void`                                     | Unmount the current Angular app.                                                                                                                                                         |
-| `rerender`     | `(component, options?) => Promise<RenderResult>` | Re-render a different component into the same position without manual cleanup.                                                                                                           |
-| `asFragment`   | `() => DocumentFragment`                         | Returns a `DocumentFragment` snapshot of the container for snapshot testing.                                                                                                             |
+## API
 
-Plus all `@testing-library/dom` query methods (`getByText`, `queryByRole`, etc.) bound to the container.
+### `render(component, options?)`
 
-### RenderOptions
+```typescript
+function render<Q extends Queries = typeof queries>(
+  component: Type<unknown>,
+  options?: RenderOptions<Q>,
+): Promise<RenderResult<Q>>;
+```
 
-| Property    | Type                                   | Description                                                                     |
-| ----------- | -------------------------------------- | ------------------------------------------------------------------------------- |
-| `providers` | `(Provider \| EnvironmentProviders)[]` | Additional providers for the test app (e.g., `provideRouter(routes)`).          |
-| `queries`   | `Queries`                              | Custom query helpers to merge with the standard `@testing-library/dom` queries. |
+Bootstraps `component` as a Lynx app, renders it into the test's DOM, and resolves once the first render is done.
 
-## Events
+- It first destroys the app a previous `render()` left, and clears `document.body`.
+- The app gets `provideZonelessChangeDetection()`, `provideRenderer()` and your `options.providers`.
+- Elements render under a `<page>` element, the result's `container`.
 
-| Export      | Kind     | Description                                                                                                   |
-| ----------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `fireEvent` | Function | Dispatches Lynx events through the pipeline. Call as `fireEvent.tap(element)` or `fireEvent(element, event)`. |
-| `eventMap`  | Object   | Map of all supported Lynx event names and their default init values.                                          |
+### `cleanup()`
 
-### Supported Events
+```typescript
+function cleanup(): void;
+```
 
-| Category               | Events                                                                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Touch / gesture        | `tap`, `longtap`, `touchstart`, `touchmove`, `touchcancel`, `touchend`, `longpress`                                                            |
-| Keyboard               | `keydown`, `keyup`                                                                                                                             |
-| Mouse                  | `mousedown`, `mouseup`, `mousemove`, `mouseclick`, `mousedblclick`, `mouselongpress`, `wheel`                                                  |
-| Scroll / viewport      | `scroll`, `scrollend`, `scrolltoupper`, `scrolltolower`, `contentsizechanged`, `scrolltoupperedge`, `scrolltoloweredge`, `scrolltonormalstate` |
-| Form / focus           | `focus`, `blur`, `input`, `confirm`                                                                                                            |
-| Layout / image         | `layoutchange`, `bgload`, `bgerror`                                                                                                            |
-| Transition / animation | `transitionstart`, `transitionend`, `transitioncancel`, `animationend`                                                                         |
+Destroys the rendered app. It runs after every test, so you rarely call it. To turn that off, set the environment variable `ATL_SKIP_AUTO_CLEANUP=true`.
 
-## Re-exports from @testing-library/dom
+### `waitForUpdate()`
 
-| Export                 | Description                                    |
-| ---------------------- | ---------------------------------------------- |
-| `screen`               | Global queries bound to `document.body`.       |
-| `within`               | Scope queries to a specific container element. |
-| `getQueriesForElement` | Bind query functions to any DOM element.       |
+```typescript
+function waitForUpdate(): Promise<void>;
+```
+
+Waits one task (a `setTimeout` of 0), so the change detection Angular scheduled can run, then runs change detection once more. Await it after `fireEvent` or after setting a signal, before you check the rendered output.
+
+### `fireEvent(element, event)`
+
+```typescript
+fireEvent(element: Element, event: Event): boolean;
+fireEvent.tap(element: Element, init?: Record<string, unknown>): boolean;
+// … one method per event in the Event reference
+```
+
+Fires a Lynx event at `element`, which runs the matching template handler, such as `(bindtap)`. The methods and their bindings are in the [Event reference](/api/testing-library/event-reference).
+
+- **`init`**: properties to set on the event. `{ detail: { value: 'hi' } }` arrives as `$event.detail.value`.
+- **`init.eventType`**: the binding to reach. `'bindEvent'` (the default) reaches `(bind*)` handlers. Use `'catchEvent'` for `(catch*)` handlers.
+
+**`fireEvent` doesn't render.** The handler runs before `fireEvent` returns, so a spy or a signal you read directly already shows the change. Angular renders the result in a change detection it schedules for after the current task. Await `waitForUpdate()` before checking the rendered output.
+
+### `eventMap`
+
+```typescript
+const eventMap: Record<string, { defaultInit: {} }>;
+```
+
+The events that `fireEvent` has a method for, keyed by event name.
+
+## Types
+
+### `RenderOptions`
+
+```typescript
+type RenderOptions<Q extends Queries = typeof queries> = {
+  providers?: (Provider | EnvironmentProviders)[];
+  queries?: Q;
+};
+```
+
+| Property    | Description                                                                             |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `providers` | Extra providers for the test app, such as `provideRouter(routes)`                       |
+| `queries`   | Custom queries to bind to `container`, next to the standard `@testing-library/dom` ones |
+
+### `RenderResult`
+
+| Property       | Type                                             | Description                                                                          |
+| -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `container`    | `Element`                                        | The `<page>` element that holds everything rendered                                  |
+| `componentRef` | `ComponentRef<unknown>`                          | The root component. Use `componentRef.injector.get(Token)` to reach a service        |
+| `unmount`      | `() => void`                                     | Destroys the app, like `cleanup()`                                                   |
+| `rerender`     | `(component, options?) => Promise<RenderResult>` | Renders another component in its place                                               |
+| `asFragment`   | `() => DocumentFragment`                         | A copy of `container`, for snapshot tests                                            |
+| `getByText`, … | Query functions                                  | Every `@testing-library/dom` query, bound to `container`, plus your custom `queries` |
+
+`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, it can't see signal inputs. Set a writable signal on `componentRef.instance` instead.
+
+## Re-exports
+
+| Export                 | From                   | Description                          |
+| ---------------------- | ---------------------- | ------------------------------------ |
+| `screen`               | `@testing-library/dom` | Queries bound to `document.body`     |
+| `within`               | `@testing-library/dom` | Queries bound to an element you pass |
+| `getQueriesForElement` | `@testing-library/dom` | The same as `within`                 |
+| `ComponentRef`         | `@angular/core` (type) | The type of `componentRef`           |
+
+The package also has a `@blotch/angular-lynx-testing-library/setup` entry, which prepares the Lynx test environment. `ng test` loads it for you.
+
+## Related
+
+- [Testing](/guide/testing/)
+- [Testing patterns](/guide/testing/patterns)
+- [Event reference](/api/testing-library/event-reference)

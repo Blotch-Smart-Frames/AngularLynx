@@ -1,0 +1,116 @@
+# Errors and logging
+
+The error handler that reports uncaught errors to Lynx, and a logger that prints device logs in your terminal. `import { LynxErrorHandler, LynxLogger } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/cart.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxLogger } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-cart',
+  imports: [LYNX_ELEMENTS],
+  template: `<view (bindtap)="checkout()"><text>Checkout</text></view>`,
+})
+export class Cart {
+  readonly #logger = inject(LynxLogger);
+
+  checkout(): void {
+    this.#logger.info('Checkout tapped', JSON.stringify({ items: 3 }));
+  }
+}
+```
+
+The message appears in the terminal that runs `ng serve`.
+
+## API
+
+### `LynxErrorHandler`
+
+```typescript
+@Injectable()
+class LynxErrorHandler implements ErrorHandler {}
+```
+
+Angular's `ErrorHandler` for Lynx. `provideRenderer()` provides it, so you don't add it yourself.
+
+To add your own handling, extend it and provide your class after `provideRenderer()`:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  ErrorHandler,
+  Injectable,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { LynxErrorHandler, provideRenderer } from '@blotch/angular-lynx';
+
+@Injectable()
+class AppErrorHandler extends LynxErrorHandler {
+  override handleError(error: unknown): void {
+    // Send the error to your own service here.
+    super.handleError(error);
+  }
+}
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    { provide: ErrorHandler, useClass: AppErrorHandler },
+  ],
+};
+```
+
+### `LynxErrorHandler.handleError()`
+
+```typescript
+handleError(error: unknown): void;
+```
+
+Reports an uncaught error to Lynx as a fatal error, which can show Lynx's red error overlay on a device. A value that isn't an `Error` is wrapped in one. Unlike Angular's default handler, it doesn't call `console.error`.
+
+### `LynxErrorHandler.onViewError()`
+
+```typescript
+onViewError(error: Error, details: ErrorDetails): void;
+```
+
+Angular calls this for a rendering error that an `@boundary` block caught. It reports the error to Lynx as a warning, not a crash, because the boundary already shows its `@error` content.
+
+### `LynxLogger`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxLogger {}
+```
+
+Sends log messages from the device to the dev server, which prints them in your terminal. There's no browser console on a phone, so this is how you see logs from Lynx Explorer.
+
+- **Development builds only.** In a production build, every method does nothing.
+- **Works from both threads.** Event handlers on the main thread can log too.
+- **Strings only.** Each argument goes through `String()`, so an object prints as `[object Object]`. Pass `JSON.stringify(value)` instead.
+- **Twice from shared code.** Code that runs on both threads, such as a constructor, logs once from each.
+
+### `LynxLogger.log()`, `info()`, `warn()`, `error()` and `debug()`
+
+```typescript
+log(...args: unknown[]): void;
+info(...args: unknown[]): void;
+warn(...args: unknown[]): void;
+error(...args: unknown[]): void;
+debug(...args: unknown[]): void;
+```
+
+Send one log entry at that level, with each argument converted to a string.
+
+## Types
+
+None of its own. `ErrorHandler` and `ErrorDetails` come from `@angular/core`.
+
+## Related
+
+- [Handling errors](/guide/error-handling): `@boundary` and error states.
+- [Debugging](/guide/debugging): Lynx DevTool, logs and on-screen errors.
+- [Bootstrap](/api/angular-lynx/bootstrap): what `provideRenderer()` provides.

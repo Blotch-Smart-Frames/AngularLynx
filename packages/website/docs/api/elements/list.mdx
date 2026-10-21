@@ -1,45 +1,142 @@
-# &lt;list&gt;
+# `<list>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-A high-performance virtualized list for rendering large datasets. Only visible items are rendered, similar to Android's `RecyclerView` or iOS `UITableView`.
+A virtualized scrolling list for long or growing data. Only items near the screen are drawn, and their views are reused as you scroll.
 
 <Go example="element-list" defaultFile="src/app/app.ts" />
 
-```angular-html
-<list list-type="single" scroll-orientation="vertical" style="height: 400px;">
-  @for (item of items(); track item.id) {
-    <list-item [attr.item-key]="item.id">
-      <view class="list-row">
-        <text>{{ item.name }}</text>
-      </view>
-    </list-item>
-  }
-</list>
+## Usage
+
+```typescript title="src/app/contacts.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-contacts',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <list list-type="single" style="height: 100vh;">
+      @for (contact of contacts(); track contact.id) {
+        <list-item [attr.item-key]="contact.id">
+          <text>{{ contact.name }}</text>
+        </list-item>
+      }
+    </list>
+  `,
+})
+export class Contacts {
+  readonly contacts = signal([{ id: '1', name: 'Ada Lovelace' }]);
+}
 ```
 
-:::info
-Use `<list>` for large collections (100+ items). For shorter content, `<scroll-view>` is simpler and sufficient.
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::danger
+Every `<list-item>` needs a unique `item-key`, or the app crashes. Use the same value as your `@for` `track` expression.
 :::
 
-## Key Attributes
+## Attributes
 
-On `<list>`:
+| Attribute                                 | Type                                                        | Default                     | Description                                                                                                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list-type`                               | `'single' \| 'flow' \| 'waterfall'`                         | `'single'`                  | Layout: one column, a grid with aligned rows, or a masonry grid where each item goes into the shortest column.                                                   |
+| `span-count`                              | `number`                                                    | `1`                         | Columns (or rows, when horizontal) for `flow` and `waterfall`.                                                                                                   |
+| `scroll-orientation`                      | `'vertical' \| 'horizontal'`                                | `'vertical'`                | Scroll and layout direction.                                                                                                                                     |
+| `enable-scroll`                           | `boolean`                                                   | `true`                      | Whether the user can scroll it.                                                                                                                                  |
+| `enable-nested-scroll`                    | `boolean`                                                   | `false`                     | iOS and Android. Lets it scroll inside another scroll container: the inner one scrolls first.                                                                    |
+| `bounces`                                 | `boolean`                                                   | `true`                      | iOS only. Bounce at the edges.                                                                                                                                   |
+| `scroll-bar-enable`                       | `boolean`                                                   | `true`                      | iOS only. Shows the scroll bar.                                                                                                                                  |
+| `initial-scroll-index`                    | `number`                                                    | `0`                         | Item to scroll to after the first render.                                                                                                                        |
+| `upper-threshold-item-count`              | `number`                                                    | `0`                         | `bindscrolltoupper` fires when fewer than this many items remain above the screen.                                                                               |
+| `lower-threshold-item-count`              | `number`                                                    | `0`                         | `bindscrolltolower` fires when fewer than this many items remain below the screen. Use it to load more.                                                          |
+| `scroll-event-throttle`                   | `number`                                                    | `200`                       | Minimum milliseconds between `bindscroll` events.                                                                                                                |
+| `need-visible-item-info`                  | `boolean`                                                   | `false`                     | Adds `attachedCells`, the items on screen, to the scroll events.                                                                                                 |
+| `need-layout-complete-info`               | `boolean`                                                   | `false`                     | iOS and Android. Adds item positions and the update's diff to `bindlayoutcomplete`.                                                                              |
+| `layout-id`                               | `number`                                                    | `-1`                        | iOS and Android. An id you set with each data update. `bindlayoutcomplete` reports it back.                                                                      |
+| `preload-buffer-count`                    | `number`                                                    | `0`                         | iOS and Android. Items to render ahead, outside the screen, so they don't pop in.                                                                                |
+| `item-snap`                               | `{ factor: number; offset: number; maxSnapCount?: number }` | —                           | Paging: after each scroll, an item stops at `factor` (`0` top, `1` bottom) plus `offset` px. `single` lists only.                                                |
+| `sticky`                                  | `boolean`                                                   | `false`                     | Allows items with `sticky-top` or `sticky-bottom` to pin.                                                                                                        |
+| `sticky-offset`                           | `number`                                                    | `0`                         | Distance in px from the edge at which sticky items pin.                                                                                                          |
+| `update-animation`                        | `'default' \| 'none'`                                       | —                           | `'default'` animates inserted and removed items. `single` and `flow` lists only.                                                                                 |
+| `enable-async-list`                       | `boolean`                                                   | `true` (set by AngularLynx) | Required for items to render with AngularLynx's two threads. Leave it on.                                                                                        |
+| `enable-insert-platform-view-operation`   | `boolean`                                                   | `false`                     | iOS (Lynx 4.0 and later) and Android. Inserts item views through the native list's own operations.                                                               |
+| `experimental-search-ref-anchor-strategy` | `0 \| 1 \| 2`                                               | `0`                         | Experimental, Lynx 4.0 and later. How the list keeps its place when on-screen items are removed: `0` doesn't, `1` searches toward the start, `2` toward the end. |
 
-- `list-type` — `"single"` (standard), `"flow"` (multi-column), `"waterfall"` (masonry layout)
-- `span-count` — Number of columns (for `flow` and `waterfall` types)
-- `scroll-orientation` — `"vertical"` or `"horizontal"`
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
-On `<list-item>`:
-
-- `item-key` — Unique identifier for the item (required for recycling)
+Item gaps are CSS properties that only `<list>` understands, not attributes. Set `list-main-axis-gap` and `list-cross-axis-gap` in `style`, e.g. `style="list-main-axis-gap: 8px;"`.
 
 ## Events
 
-| Event               | Description                                                                                   |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `bindscrolltoupper` | Fires when the list scrolls to the top (or left for horizontal). Useful for "load newer"      |
-| `bindscrolltolower` | Fires when the list scrolls to the bottom (or right). Useful for infinite scroll / pagination |
-| `bindscroll`        | Fires continuously during scrolling with scroll position details                              |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                   | `detail`                                                                                                                                                                                                     | Description                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `bindscroll`            | `{ scrollTop: number; scrollLeft: number; scrollHeight: number; scrollWidth: number; deltaX: number; deltaY: number; listWidth: number; listHeight: number; eventSource: number; attachedCells?: object[] }` | Fires while it scrolls, at most every `scroll-event-throttle` ms. `attachedCells` needs `need-visible-item-info`. |
+| `bindscrolltoupper`     | Same as `bindscroll`                                                                                                                                                                                         | Near the start, by `upper-threshold-item-count`.                                                                  |
+| `bindscrolltolower`     | Same as `bindscroll`                                                                                                                                                                                         | Near the end, by `lower-threshold-item-count`. Use it to load more.                                               |
+| `bindscrollstatechange` | `{ state: 1 \| 2 \| 3 \| 4 }`                                                                                                                                                                                | iOS and Android. Scroll state: `1` stopped, `2` dragging, `3` slowing down, `4` animating.                        |
+| `bindlayoutcomplete`    | `{ 'layout-id': number; scrollInfo: object; diffResult?: object; visibleItemBeforeUpdate?: object[]; visibleItemAfterUpdate?: object[] }`                                                                    | Layout finished, after the first render or an update. The optional fields need `need-layout-complete-info`.       |
+| `bindsnap`              | `{ position: number; currentScrollTop: number; currentScrollLeft: number; targetScrollTop: number; targetScrollLeft: number }`                                                                               | With `item-snap`: about to snap to the item at `position`.                                                        |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) scroll it from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.
+
+| Method             | Parameters                                                                                                        | Description                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `scrollToPosition` | `{ index: number; alignTo?: 'top' \| 'middle' \| 'bottom'; offset?: number; itemKey?: string; smooth?: boolean }` | Scrolls to the item at `index`, or the one with `itemKey`. It aligns the item's top unless you set `alignTo`. |
+| `scrollBy`         | `{ offset: number }`                                                                                              | Scrolls by `offset` px.                                                                                       |
+| `autoScroll`       | `{ rate: string; start?: boolean; autoStop?: boolean }`                                                           | Scrolls continuously at `rate` per second, e.g. `'60px'`. It stops at the end unless `autoStop` is `false`.   |
+| `getVisibleCells`  | —                                                                                                                 | Returns the items on screen.                                                                                  |
+| `getScrollInfo`    | —                                                                                                                 | Returns `{ scrollX, scrollY, maxScrollOffset }` in px.                                                        |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-inbox',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <list #inbox list-type="single" style="height: 400px;">
+      <list-item item-key="welcome"><text>Welcome</text></list-item>
+    </list>
+    <view (bindtap)="toTop()"><text>Back to top</text></view>
+  `,
+})
+export class Inbox {
+  readonly inbox = viewChild.required('inbox', { read: ElementRef });
+
+  toTop(): void {
+    this.inbox().nativeElement.invoke?.('scrollToPosition', {
+      index: 0,
+      smooth: true,
+    });
+  }
+}
+```
+
+## Children
+
+Every direct child must be a `<list-item>`. Don't set `z-index` on a `<list-item>`, because it breaks view reuse: set it on the content inside.
+
+### `<list-item>`
+
+| Attribute                     | Type      | Default | Description                                                                                                                |
+| ----------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `item-key`                    | `string`  | —       | **Required.** A unique, stable key for the item.                                                                           |
+| `full-span`                   | `boolean` | `false` | Takes a whole row (or column) in a `flow` or `waterfall` list.                                                             |
+| `sticky-top`                  | `boolean` | `false` | Pins to the top while it scrolls. Needs `sticky` on the list.                                                              |
+| `sticky-bottom`               | `boolean` | `false` | Pins to the bottom. Needs `sticky` on the list.                                                                            |
+| `recyclable`                  | `boolean` | `true`  | `false` keeps the item alive off screen, so it isn't rendered again when it comes back.                                    |
+| `reuse-identifier`            | `string`  | —       | Only items with the same value share reused views. Give items with very different layouts different values.                |
+| `estimated-main-axis-size-px` | `number`  | `-1`    | Expected size in px along the scroll direction, used until the item renders. The closer it is, the less the list flickers. |
+
+## Related
+
+- [`<scroll-view>`](/api/elements/scroll-view): for a short, fixed set of children
+- [List](/dolan/list): the UI component built on it
+- [CSS on Lynx](/guide/styling)
+- [Call element methods](/guide/selector-query)

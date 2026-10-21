@@ -1,81 +1,90 @@
-# Event Reference
+# Event reference
 
-All events supported by `fireEvent` in `@blotch/angular-lynx-testing-library`. Each event maps to a `(bindEvent)` template binding.
+Every event [`fireEvent`](/api/testing-library/#fireeventelement-event) has a method for, and the template binding each one runs.
 
-## Touch / Gesture
-
-| Event         | Template binding    |
-| ------------- | ------------------- |
-| `tap`         | `(bindtap)`         |
-| `longtap`     | `(bindlongtap)`     |
-| `touchstart`  | `(bindtouchstart)`  |
-| `touchmove`   | `(bindtouchmove)`   |
-| `touchcancel` | `(bindtouchcancel)` |
-| `touchend`    | `(bindtouchend)`    |
-| `longpress`   | `(bindlongpress)`   |
-
-## Keyboard
-
-| Event     | Template binding |
-| --------- | ---------------- |
-| `keydown` | `(bindkeydown)`  |
-| `keyup`   | `(bindkeyup)`    |
-
-## Mouse
-
-| Event            | Template binding       |
-| ---------------- | ---------------------- |
-| `mousedown`      | `(bindmousedown)`      |
-| `mouseup`        | `(bindmouseup)`        |
-| `mousemove`      | `(bindmousemove)`      |
-| `mouseclick`     | `(bindmouseclick)`     |
-| `mousedblclick`  | `(bindmousedblclick)`  |
-| `mouselongpress` | `(bindmouselongpress)` |
-| `wheel`          | `(bindwheel)`          |
-
-## Scroll / Viewport
-
-| Event                 | Template binding            |
-| --------------------- | --------------------------- |
-| `scroll`              | `(bindscroll)`              |
-| `scrollend`           | `(bindscrollend)`           |
-| `scrolltoupper`       | `(bindscrolltoupper)`       |
-| `scrolltolower`       | `(bindscrolltolower)`       |
-| `contentsizechanged`  | `(bindcontentsizechanged)`  |
-| `scrolltoupperedge`   | `(bindscrolltoupperedge)`   |
-| `scrolltoloweredge`   | `(bindscrolltoloweredge)`   |
-| `scrolltonormalstate` | `(bindscrolltonormalstate)` |
-
-## Form / Focus
-
-| Event     | Template binding |
-| --------- | ---------------- |
-| `focus`   | `(bindfocus)`    |
-| `blur`    | `(bindblur)`     |
-| `input`   | `(bindinput)`    |
-| `confirm` | `(bindconfirm)`  |
-
-## Layout / Image
-
-| Event          | Template binding     |
-| -------------- | -------------------- |
-| `layoutchange` | `(bindlayoutchange)` |
-| `bgload`       | `(bindbgload)`       |
-| `bgerror`      | `(bindbgerror)`      |
-
-## Transition / Animation
-
-| Event              | Template binding         |
-| ------------------ | ------------------------ |
-| `transitionstart`  | `(bindtransitionstart)`  |
-| `transitionend`    | `(bindtransitionend)`    |
-| `transitioncancel` | `(bindtransitioncancel)` |
-| `animationend`     | `(bindanimationend)`     |
-
-## Raw Event Dispatch
-
-For events not in the table, dispatch directly:
-
-```ts
-fireEvent(element, new Event('bindEvent:myCustomEvent'));
+```typescript
+fireEvent.tap(element); // runs (bindtap)
+fireEvent.tap(element, { eventType: 'catchEvent' }); // runs (catchtap)
+fireEvent.input(element, { detail: { value: 'hello' } }); // $event.detail.value
 ```
+
+Each method takes the element and an optional `init` object. To reach a `(catch*)` handler instead of a `(bind*)` one, pass `{ eventType: 'catchEvent' }`.
+
+## Touch
+
+| Method                  | Binding             |
+| ----------------------- | ------------------- |
+| `fireEvent.tap`         | `(bindtap)`         |
+| `fireEvent.longpress`   | `(bindlongpress)`   |
+| `fireEvent.longtap`     | `(bindlongtap)`     |
+| `fireEvent.touchstart`  | `(bindtouchstart)`  |
+| `fireEvent.touchmove`   | `(bindtouchmove)`   |
+| `fireEvent.touchend`    | `(bindtouchend)`    |
+| `fireEvent.touchcancel` | `(bindtouchcancel)` |
+
+## Mouse and keyboard
+
+| Method                     | Binding                |
+| -------------------------- | ---------------------- |
+| `fireEvent.mousedown`      | `(bindmousedown)`      |
+| `fireEvent.mouseup`        | `(bindmouseup)`        |
+| `fireEvent.mousemove`      | `(bindmousemove)`      |
+| `fireEvent.mouseclick`     | `(bindmouseclick)`     |
+| `fireEvent.mousedblclick`  | `(bindmousedblclick)`  |
+| `fireEvent.mouselongpress` | `(bindmouselongpress)` |
+| `fireEvent.wheel`          | `(bindwheel)`          |
+| `fireEvent.keydown`        | `(bindkeydown)`        |
+| `fireEvent.keyup`          | `(bindkeyup)`          |
+
+## Scrolling
+
+| Method                          | Binding                     |
+| ------------------------------- | --------------------------- |
+| `fireEvent.scroll`              | `(bindscroll)`              |
+| `fireEvent.scrollend`           | `(bindscrollend)`           |
+| `fireEvent.scrolltoupper`       | `(bindscrolltoupper)`       |
+| `fireEvent.scrolltolower`       | `(bindscrolltolower)`       |
+| `fireEvent.scrolltoupperedge`   | `(bindscrolltoupperedge)`   |
+| `fireEvent.scrolltoloweredge`   | `(bindscrolltoloweredge)`   |
+| `fireEvent.scrolltonormalstate` | `(bindscrolltonormalstate)` |
+| `fireEvent.contentsizechanged`  | `(bindcontentsizechanged)`  |
+
+## Forms and focus
+
+| Method              | Binding         |
+| ------------------- | --------------- |
+| `fireEvent.input`   | `(bindinput)`   |
+| `fireEvent.confirm` | `(bindconfirm)` |
+| `fireEvent.focus`   | `(bindfocus)`   |
+| `fireEvent.blur`    | `(bindblur)`    |
+
+## Layout and images
+
+| Method                   | Binding              |
+| ------------------------ | -------------------- |
+| `fireEvent.layoutchange` | `(bindlayoutchange)` |
+| `fireEvent.bgload`       | `(bindbgload)`       |
+| `fireEvent.bgerror`      | `(bindbgerror)`      |
+
+## Animations and transitions
+
+| Method                       | Binding                  |
+| ---------------------------- | ------------------------ |
+| `fireEvent.transitionstart`  | `(bindtransitionstart)`  |
+| `fireEvent.transitionend`    | `(bindtransitionend)`    |
+| `fireEvent.transitioncancel` | `(bindtransitioncancel)` |
+| `fireEvent.animationend`     | `(bindanimationend)`     |
+
+## Other events
+
+For an event without a method, create it yourself. Its type is the binding's event type and the event name, joined by a colon:
+
+```typescript
+fireEvent(element, new Event('bindEvent:change')); // runs (bindchange)
+```
+
+## Related
+
+- [`@blotch/angular-lynx-testing-library`](/api/testing-library/)
+- [Testing patterns](/guide/testing/patterns)
+- [Handling taps and events](/guide/elements/event-handling)

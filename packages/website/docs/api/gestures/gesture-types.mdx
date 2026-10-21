@@ -1,0 +1,223 @@
+# Gesture types
+
+The six gesture classes, their options, the callbacks each supports and the event each passes. `import { PanGesture, TapGesture } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript
+readonly pan = new PanGesture()
+  .minDistance(10) // options
+  .onBegin(() => {}) // callbacks
+  .onUpdate((event) => this.offset.set(event.translationX));
+```
+
+Create a gesture with `new`, chain its options and callbacks, then bind it with [`[lynxGesture]`](/api/gestures/). Every option and callback returns the gesture.
+
+## Common to every gesture
+
+| Option           | Type      | Default | Description                  |
+| ---------------- | --------- | ------- | ---------------------------- |
+| `enabled(value)` | `boolean` | `true`  | Turns the gesture off and on |
+
+| Callback        | Tap, LongPress | Pan, Fling, Pinch, Rotation |
+| --------------- | -------------- | --------------------------- |
+| `onBegin`       | Yes            | Yes                         |
+| `onStart`       | Yes            | Yes                         |
+| `onUpdate`      | No             | Yes                         |
+| `onEnd`         | Yes            | Yes                         |
+| `onTouchesDown` | Yes            | Yes                         |
+| `onTouchesUp`   | Yes            | Yes                         |
+
+When each one fires is on [Lifecycle](/api/gestures/lifecycle#callbacks). A `—` default below means AngularLynx doesn't send the option, so Lynx uses its own default.
+
+### Positions: `x` and `absoluteX`
+
+- **`x`, `y`**: the finger's position from the top-left corner of the element that has the gesture.
+- **`absoluteX`, `absoluteY`**: the finger's position from the top-left corner of the [`page`](/guide/glossary#page), the root of your app.
+- **`translationX`, `translationY`** (pan only): how far the finger has moved since the gesture began. AngularLynx works it out from `absoluteX` and `absoluteY`, because Lynx reports only positions.
+
+## TapGesture
+
+Recognizes a quick touch and release.
+
+```typescript
+readonly tap = new TapGesture().maxDistance(20).onEnd((event) => this.select(event.x));
+```
+
+| Option            | Type     | Default | Description                                                |
+| ----------------- | -------- | ------- | ---------------------------------------------------------- |
+| `maxDuration(ms)` | `number` | `500`   | The longest the finger can stay down. A longer touch fails |
+| `maxDistance(px)` | `number` | `10`    | How far the finger can move. Moving further fails the tap  |
+| `numberOfTaps(n)` | `number` | —       | Does nothing on a device yet (see below)                   |
+
+**Callbacks:** `onBegin`, `onStart`, `onEnd`, `onTouchesDown`, `onTouchesUp`. `onEnd` fires only when the tap succeeded.
+
+```typescript
+interface TapGestureEvent extends GestureEvent {
+  x: number;
+  y: number;
+}
+```
+
+:::info Double taps
+No Lynx platform counts taps, so `numberOfTaps(2)` still fires on the first tap. To detect a double tap, compare the times of successive `onEnd` calls yourself.
+:::
+
+## PanGesture
+
+Tracks a finger dragging across the element. `onUpdate` fires on every move.
+
+```typescript
+readonly pan = new PanGesture()
+  .activeOffsetX(20)
+  .failOffsetY(10)
+  .onBegin(() => {})
+  .onUpdate((event) => this.offset.set(event.translationX))
+  .onEnd(() => this.settle());
+```
+
+A **pointer** is one finger touching the screen. `minPointers(2)` means the gesture needs two fingers.
+
+| Option                  | Type                         | Default | Description                                                                   |
+| ----------------------- | ---------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `minDistance(px)`       | `number`                     | `0`     | How far the finger moves before the pan activates. `0` activates at once      |
+| `activeOffsetX(offset)` | `number \| [number, number]` | —       | Activate after this much horizontal movement. A number means either direction |
+| `activeOffsetY(offset)` | `number \| [number, number]` | —       | The same, vertically                                                          |
+| `failOffsetX(offset)`   | `number \| [number, number]` | —       | Fail after this much horizontal movement before activating                    |
+| `failOffsetY(offset)`   | `number \| [number, number]` | —       | Fail after this much vertical movement. Lets a vertical scroll take over      |
+| `minPointers(n)`        | `number`                     | —       | The fewest fingers the pan needs                                              |
+| `maxPointers(n)`        | `number`                     | —       | The most fingers the pan allows                                               |
+
+**Callbacks:** all six.
+
+**Register `onBegin`, even an empty one**, whenever you use `onStart` or `onEnd`. Lynx fires those two only after `onBegin` has fired, and it fires `onBegin` only when you register it. AngularLynx also resets `translationX` and `translationY` when `onEnd` fires.
+
+```typescript
+interface PanGestureEvent extends GestureEvent {
+  translationX: number;
+  translationY: number;
+  velocityX: number;
+  velocityY: number;
+}
+```
+
+`translationX` is measured from where `onBegin` fired. If you register `onStart`, it's measured from where the pan activated instead.
+
+## FlingGesture
+
+Recognizes a quick swipe in a direction.
+
+```typescript
+import { FlingDirection, FlingGesture } from '@blotch/angular-lynx';
+
+readonly swipe = new FlingGesture()
+  .direction(FlingDirection.LEFT | FlingDirection.RIGHT)
+  .onBegin(() => {})
+  .onEnd(() => this.next());
+```
+
+| Option                | Type             | Default | Description                                         |
+| --------------------- | ---------------- | ------- | --------------------------------------------------- |
+| `direction(dir)`      | `FlingDirection` | —       | The directions to recognize. Combine them with `\|` |
+| `numberOfPointers(n)` | `number`         | —       | The exact number of fingers the fling needs         |
+
+**Callbacks:** all six. Register `onBegin` with `onStart` or `onEnd`, as for a pan.
+
+```typescript
+interface FlingGestureEvent extends GestureEvent {
+  velocityX: number;
+  velocityY: number;
+}
+```
+
+## LongPressGesture
+
+Recognizes a finger held still on the element.
+
+```typescript
+readonly hold = new LongPressGesture().minDuration(800).onStart(() => this.openMenu());
+```
+
+| Option            | Type     | Default | Description                                                     |
+| ----------------- | -------- | ------- | --------------------------------------------------------------- |
+| `minDuration(ms)` | `number` | `500`   | How long the finger must stay down before the gesture activates |
+| `maxDistance(px)` | `number` | `10`    | How far the finger can drift. Drifting further fails it         |
+
+**Callbacks:** `onBegin`, `onStart`, `onEnd`, `onTouchesDown`, `onTouchesUp`. `onStart` fires once the hold is long enough. `onEnd` fires when the finger lifts after a successful long press.
+
+```typescript
+interface LongPressGestureEvent extends GestureEvent {
+  x: number;
+  y: number;
+  duration: number;
+}
+```
+
+## PinchGesture and RotationGesture
+
+Two-finger zoom and rotate. Neither class has options.
+
+:::warning These don't fire yet
+No Lynx platform has a native pinch or rotation handler, so these gestures never fire on a device. You can still compose them, for example `Gesture.Simultaneous(pan, pinch)`, but drive zoom from a pan or on-screen buttons for now.
+:::
+
+**Callbacks:** all six.
+
+```typescript
+interface PinchGestureEvent extends GestureEvent {
+  scale: number; // 1 means unchanged
+  velocity: number;
+}
+
+interface RotationGestureEvent extends GestureEvent {
+  rotation: number;
+  velocity: number;
+}
+```
+
+## Why the defaults are sent
+
+Once a gesture sends any option, Lynx reads every option it leaves out as `0`. Without the defaults, a tap that set only `numberOfTaps` would get a `maxDuration` of 0 and fail the instant a finger lands. So `TapGesture`, `LongPressGesture` and `PanGesture` always send their full default set, shown above. You don't need to set them yourself.
+
+## If no gesture fires
+
+Lynx ignores every gesture, with no error, unless the bundle was built with `enableNewGesture: true`. AngularLynx turns it on by default. If you pass [plugin options](/api/build/#plugin-options) in `lynx.config.ts`, don't set it to `false`.
+
+If a pan's `onStart` or `onEnd` never fires, register `onBegin` (see [PanGesture](#pangesture)).
+
+## Types
+
+```typescript
+interface GestureEvent {
+  state?: GestureState; // usually absent: the callback tells you the phase
+  absoluteX?: number;
+  absoluteY?: number;
+  params?: Record<string, unknown>; // Lynx's raw event fields
+}
+
+enum FlingDirection {
+  RIGHT = 1,
+  LEFT = 2,
+  UP = 4,
+  DOWN = 8,
+}
+
+enum GestureType {
+  PAN = 0,
+  FLING = 1,
+  DEFAULT = 2,
+  TAP = 3,
+  LONGPRESS = 4,
+  ROTATION = 5,
+  PINCH = 6,
+  NATIVE = 7,
+}
+```
+
+Every event also has Lynx's raw fields as properties, such as `pageX` and `clientX`. `params` holds the same fields. `GestureState` is on [Lifecycle](/api/gestures/lifecycle#types).
+
+## Related
+
+- [Gestures guide](/guide/gestures/)
+- [`[lynxGesture]` and composition](/api/gestures/)
+- [Gesture lifecycle](/api/gestures/lifecycle)

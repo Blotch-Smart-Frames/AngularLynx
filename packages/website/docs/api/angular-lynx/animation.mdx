@@ -1,53 +1,246 @@
 # Animation
 
-## Programmatic API
+Animate an element from code with `animate()`, or animate content in and out with `<lynx-transition>` and `<lynx-transition-group>`. `import { LynxAnimation, LynxTransition, LynxTransitionGroup, type LynxAnimationOptions, type BaseLynxAnimation } from '@blotch/angular-lynx';`
 
-| Export                 | Kind  | Description                                                          |
-| ---------------------- | ----- | -------------------------------------------------------------------- |
-| `LynxAnimation`        | Class | A running animation. Provides `play()`, `pause()`, and `cancel()`.   |
-| `LynxAnimationOptions` | Type  | Timing options: `duration`, `delay`, `easing`, `iterations`, `fill`. |
+## Usage
 
-```typescript
-import { Component, viewChild, type ElementRef } from '@angular/core';
-import { type LynxAnimation } from '@blotch/angular-lynx';
+```typescript title="src/app/pulse.ts"
+import { Component, type ElementRef, viewChild } from '@angular/core';
+import { type BaseLynxAnimation, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-pulse',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <view #box class="box" (bindtap)="animate()">
+    <view #box class="box" (bindtap)="pulse()">
       <text>Tap me</text>
     </view>
   `,
 })
-export class AnimatedBox {
-  boxRef = viewChild<ElementRef>('box');
-  #animation: LynxAnimation | null = null;
+export class Pulse {
+  readonly box = viewChild.required<ElementRef>('box');
+  #animation: BaseLynxAnimation | null = null;
 
-  animate(): void {
+  pulse(): void {
+    // Start animations outside the native event (see the setTimeout rule).
     setTimeout(() => {
       this.#animation?.cancel();
-      this.#animation = this.boxRef()!.nativeElement.animate(
+      this.#animation = this.box().nativeElement.animate(
         [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }],
         { duration: 400, easing: 'ease-in-out' },
       );
-    }, 0);
+    });
   }
 }
 ```
 
-## Enter/Leave Transitions
+```typescript title="src/app/panel.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTransition } from '@blotch/angular-lynx';
 
-| Export                | Kind      | Description                                                                                              |
-| --------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `LynxTransition`      | Component | Animates content entering/leaving with CSS transition classes (same convention as Vue's `<Transition>`). |
-| `LynxTransitionGroup` | Component | Animates list items entering/leaving. Manages views via `ViewContainerRef`.                              |
-
-```angular-html
-<!-- Show/hide with fade animation -->
-<lynx-transition [show]="visible()" name="fade" [duration]="300">
-  <view class="modal">
-    <text>I fade in and out</text>
-  </view>
-</lynx-transition>
+@Component({
+  selector: 'app-panel',
+  imports: [LYNX_ELEMENTS, LynxTransition],
+  template: `
+    <view (bindtap)="open.set(!open())"><text>Toggle</text></view>
+    <lynx-transition [show]="open()" name="fade" [duration]="300">
+      <view class="panel"><text>Hello</text></view>
+    </lynx-transition>
+  `,
+  styles: `
+    @keyframes fade-enter {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    @keyframes fade-leave {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+    .fade-enter {
+      animation: fade-enter 300ms ease both;
+    }
+    .fade-leave {
+      animation: fade-leave 300ms ease both;
+    }
+  `,
+})
+export class Panel {
+  readonly open = signal(false);
+}
 ```
 
-See the [Animations guide](/guide/animations/) for CSS transition classes and full examples.
+## API
+
+### `animate()`
+
+```typescript
+// A method of ElementRef.nativeElement
+animate(
+  keyframes: Record<string, string | number>[],
+  options?: number | LynxAnimationOptions,
+): BaseLynxAnimation;
+```
+
+A method on every element's `nativeElement`, which you get from `viewChild()` or an `ElementRef`. It starts the animation at once. A number for `options` is shorthand for `{ duration }`.
+
+- **From an event handler,** call it inside `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **On the background thread,** it returns an animation whose methods do nothing.
+- **Removing the element** cancels its running animations.
+
+### `LynxAnimation`
+
+```typescript
+class LynxAnimation implements BaseLynxAnimation {}
+```
+
+What `animate()` returns on the main thread. Don't construct it yourself.
+
+### `LynxAnimation.id`
+
+```typescript
+readonly id: string;
+```
+
+A unique ID that AngularLynx generates for the animation.
+
+### `LynxAnimation.play()`
+
+```typescript
+play(): void;
+```
+
+Resumes a paused animation.
+
+### `LynxAnimation.pause()`
+
+```typescript
+pause(): void;
+```
+
+Pauses the animation at its current frame.
+
+### `LynxAnimation.cancel()`
+
+```typescript
+cancel(): void;
+```
+
+Stops the animation and removes its effect.
+
+### `LynxTransition`
+
+```typescript
+@Component({ selector: 'lynx-transition' })
+class LynxTransition {}
+```
+
+Mounts its projected content when `show` turns `true`, and unmounts it `duration` milliseconds after `show` turns `false`. Meanwhile it adds a class to the `<lynx-transition>` element itself: `{name}-enter` on enter and `{name}-leave` on leave.
+
+- **Use CSS `@keyframes`,** not `transition`, in those classes. The class is applied in the same render that mounts the content, so there's no earlier frame to transition from.
+- **Match `duration`** to your CSS animation's length. Completion is timed, not read from the animation.
+- **The first render doesn't animate.** Content that starts visible appears without an enter animation.
+
+| Input      | Type      | Default | Description                                                |
+| ---------- | --------- | ------- | ---------------------------------------------------------- |
+| `show`     | `boolean` | `false` | Whether the content is shown.                              |
+| `name`     | `string`  | `'v'`   | Prefix for the classes: `{name}-enter` and `{name}-leave`. |
+| `duration` | `number`  | `300`   | Length of the enter and leave animations, in milliseconds. |
+
+| Output       | Payload | Emits                                          |
+| ------------ | ------- | ---------------------------------------------- |
+| `afterEnter` | `void`  | `duration` milliseconds after entering starts. |
+| `afterLeave` | `void`  | Right after the content is removed.            |
+
+| Property       | Type                      | Description                                            |
+| -------------- | ------------------------- | ------------------------------------------------------ |
+| `shouldRender` | `WritableSignal<boolean>` | Whether the content is mounted. Read it; don't set it. |
+
+### `LynxTransitionGroup`
+
+```typescript
+@Component({ selector: 'lynx-transition-group' })
+class LynxTransitionGroup<T> {}
+```
+
+Renders a list from a child `<ng-template let-item>` and animates items as they're added and removed. It puts `{name}-enter` or `{name}-leave` on each item's root element.
+
+- **The first render doesn't animate.** Only later changes to `each` do.
+- **Removed items stay in place** while they leave, and the others reorder around them.
+- **An item that comes back** while leaving keeps its view and loses the leave class.
+
+```angular-html
+<lynx-transition-group [each]="todos()" [trackBy]="byId" name="list">
+  <ng-template let-todo>
+    <view class="row"
+      ><text>{{ todo.title }}</text></view
+    >
+  </ng-template>
+</lynx-transition-group>
+```
+
+| Input      | Type                   | Default        | Description                                                |
+| ---------- | ---------------------- | -------------- | ---------------------------------------------------------- |
+| `each`     | `T[]`                  | `[]`           | The items to render.                                       |
+| `trackBy`  | `(item: T) => unknown` | `item => item` | Returns each item's identity, like `track` in `@for`.      |
+| `name`     | `string`               | `'v'`          | Prefix for the classes: `{name}-enter` and `{name}-leave`. |
+| `duration` | `number`               | `300`          | Length of the enter and leave animations, in milliseconds. |
+
+| Output       | Payload | Emits                                         |
+| ------------ | ------- | --------------------------------------------- |
+| `afterEnter` | `T`     | `duration` milliseconds after an item enters. |
+| `afterLeave` | `T`     | Right after a leaving item is removed.        |
+
+| Property       | Type                                        | Description                           |
+| -------------- | ------------------------------------------- | ------------------------------------- |
+| `itemTemplate` | `Signal<TemplateRef<unknown> \| undefined>` | The child `<ng-template>` it renders. |
+
+## Types
+
+### `LynxAnimationOptions`
+
+```typescript
+type LynxAnimationOptions = AnimationOptions & {
+  iterationCount?: number | string;
+  fillMode?: string;
+  timingFunction?: string;
+};
+```
+
+`AnimationOptions` comes from `@lynx-js/types`. Together they accept:
+
+| Option           | Type                                                          | Default     | Description                                                                                                                     |
+| ---------------- | ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `duration`       | `number`                                                      | `0`         | Length of one iteration, in milliseconds.                                                                                       |
+| `delay`          | `number`                                                      | `0`         | Wait before starting, in milliseconds.                                                                                          |
+| `iterations`     | `number`                                                      | `1`         | How many times to run. `Infinity` loops forever.                                                                                |
+| `direction`      | `'normal' \| 'reverse' \| 'alternate' \| 'alternate-reverse'` | `'normal'`  | Playback direction for each iteration.                                                                                          |
+| `easing`         | `string`                                                      | `'linear'`  | A timing function, such as `'ease-in'` or `'cubic-bezier(…)'`.                                                                  |
+| `fill`           | `'none' \| 'forwards' \| 'backwards' \| 'both'`               | `'none'`    | Whether the first or last frame applies before or after playing.                                                                |
+| `name`           | `string`                                                      | Generated   | A name that animation events report. Setting it currently stops `play()`, `pause()` and `cancel()` from reaching the animation. |
+| `play-state`     | `'running' \| 'paused'`                                       | `'running'` | Starts the animation running or paused.                                                                                         |
+| `iterationCount` | `number \| string`                                            |             | CSS-style alias for `iterations`, such as `'infinite'`.                                                                         |
+| `fillMode`       | `string`                                                      |             | CSS-style alias for `fill`.                                                                                                     |
+| `timingFunction` | `string`                                                      |             | CSS-style alias for `easing`.                                                                                                   |
+
+### `BaseLynxAnimation`
+
+```typescript
+type BaseLynxAnimation = Pick<Animation, 'id' | 'cancel' | 'pause' | 'play'>;
+```
+
+What `animate()` returns on either thread: an `id` plus `play()`, `pause()` and `cancel()`. `Animation` comes from `@lynx-js/types`.
+
+## Related
+
+- [Animations](/guide/animations/): CSS transitions and keyframes.
+- [Animate from code](/guide/animations/programmatic)
+- [Enter and leave transitions](/guide/animations/enter-leave)
+- [Threads](/guide/concepts/threads#the-settimeout-rule)

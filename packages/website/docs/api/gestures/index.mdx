@@ -1,0 +1,174 @@
+# Gestures
+
+Attach native gestures to an element, and control how several gestures on one element compete. `import { Gesture, LynxGestureDetector } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxGestureDetector,
+  TapGesture,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxGestureDetector],
+  template: `
+    <view [lynxGesture]="tap">
+      <text>Tapped {{ taps() }} times</text>
+    </view>
+  `,
+})
+export class App {
+  readonly taps = signal(0);
+  readonly tap = new TapGesture().onEnd(() => this.taps.update((n) => n + 1));
+}
+```
+
+- Import `LynxGestureDetector` in your component, next to `LYNX_ELEMENTS` (see [Elements](/api/angular-lynx/elements)).
+- Build each gesture once, as a `readonly` field. The directive re-registers every gesture when the input changes, so a getter that returns a new gesture each time re-registers on every render.
+- Each gesture class and its options are on [Gesture types](/api/gestures/gesture-types). The callbacks are on [Lifecycle](/api/gestures/lifecycle).
+
+## API
+
+### `[lynxGesture]`
+
+```typescript
+class LynxGestureDetector {
+  lynxGesture: BaseGesture | BaseGesture[] | ComposedGesture;
+}
+```
+
+The directive's selector is `[lynxGesture]`. It takes one of:
+
+| Value                | Effect                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| A gesture            | Registers that gesture on the element                                                     |
+| An array of gestures | Registers each one, with only the relations you set on them. `[lynxGesture]="[tap, pan]"` |
+| A `ComposedGesture`  | Registers the gestures inside it, with the relations the `Gesture` helper set             |
+
+An array can't hold a `ComposedGesture`, and the helpers don't nest. When the element is destroyed, its gestures are removed.
+
+### `Gesture.Exclusive(...gestures)`
+
+```typescript
+Gesture.Exclusive(...gestures: BaseGesture[]): ComposedGesture;
+```
+
+Tries the gestures in order. Each one waits until every gesture before it has failed, so the first one listed wins ties.
+
+```typescript
+// The tap fires only when the finger didn't drag.
+readonly gesture = Gesture.Exclusive(this.pan, this.tap);
+```
+
+### `Gesture.Simultaneous(...gestures)`
+
+```typescript
+Gesture.Simultaneous(...gestures: BaseGesture[]): ComposedGesture;
+```
+
+Lets every gesture be active at the same time. Without it, only one gesture on an element is active at once.
+
+```typescript
+readonly gesture = Gesture.Simultaneous(this.pan, this.longPress);
+```
+
+### `Gesture.Race(...gestures)`
+
+```typescript
+Gesture.Race(...gestures: BaseGesture[]): ComposedGesture;
+```
+
+Sets no relations: the first gesture to be recognized wins. It behaves like passing the same gestures as an array.
+
+```typescript
+readonly gesture = Gesture.Race(this.swipeLeft, this.swipeRight);
+```
+
+### `waitFor(...gestures)`
+
+```typescript
+waitFor(...gestures: BaseGesture[]): TSelf;
+```
+
+Holds this gesture back until all the listed gestures have failed. `Gesture.Exclusive` sets this for you.
+
+```typescript
+readonly tap = new TapGesture().waitFor(this.longPress).onEnd(() => this.select());
+```
+
+### `simultaneousWith(...gestures)`
+
+```typescript
+simultaneousWith(...gestures: BaseGesture[]): TSelf;
+```
+
+Lets this gesture be active at the same time as the listed gestures. `Gesture.Simultaneous` sets this on every pair.
+
+```typescript
+readonly pan = new PanGesture().simultaneousWith(this.longPress);
+```
+
+### `continueWith(...gestures)`
+
+```typescript
+continueWith(...gestures: BaseGesture[]): TSelf;
+```
+
+Lets this gesture activate after the listed gestures end successfully, such as a drag that follows a long press.
+
+```typescript
+readonly drag = new PanGesture().continueWith(this.longPress);
+```
+
+### `enabled(value)`
+
+```typescript
+enabled(value: boolean): TSelf;
+```
+
+Turns the gesture on or off. Gestures start enabled.
+
+These four methods are on every gesture class. `TSelf` is the gesture's own class, so calls chain. They change the gesture they're called on, as `Gesture.Exclusive` and `Gesture.Simultaneous` do.
+
+## Constraints
+
+- **Callbacks run on the [main thread](/guide/glossary#main-thread)**, inside the native gesture. Changing signals there is safe.
+- **Keep the element count fixed during a gesture.** Adding or removing elements from a callback can crash the app. Defer it with `setTimeout`, as the [`setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) explains.
+- **Gestures need the `enableNewGesture` build option**, which is on by default. See [Gesture types](/api/gestures/gesture-types#if-no-gesture-fires).
+
+## Types
+
+```typescript
+class ComposedGesture {
+  readonly gestures: BaseGesture[];
+  readonly compositionType: 'simultaneous' | 'exclusive' | 'race';
+}
+
+// The base class of every gesture. TEvent is its event payload.
+abstract class BaseGesture<
+  TEvent extends GestureEvent = GestureEvent,
+  TSelf = any,
+> {
+  readonly id: number;
+  readonly type: GestureType;
+}
+
+// The base class of Pan, Fling, Pinch and Rotation. Adds onUpdate().
+abstract class ContinuousGesture<TEvent, TSelf> extends BaseGesture<
+  TEvent,
+  TSelf
+> {}
+```
+
+`GestureEvent` and `GestureType` are on [Gesture types](/api/gestures/gesture-types#types).
+
+## Related
+
+- [Gestures guide](/guide/gestures/)
+- [Gesture types](/api/gestures/gesture-types)
+- [Gesture lifecycle](/api/gestures/lifecycle)
+- [Gestures example](/examples/gestures)

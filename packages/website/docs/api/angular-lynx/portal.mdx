@@ -1,0 +1,151 @@
+# Portal
+
+Open a component or template above the whole page from code, inside a native `<overlay>`. `import { LynxPortal, PortalRef, type PortalConfig } from '@blotch/angular-lynx';`
+
+For an overlay you can write in a template, use [`<overlay>`](/api/elements/overlay) directly.
+
+## Usage
+
+```typescript title="src/app/delete-button.ts"
+import { Component, inject, input, output } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxPortal,
+  type PortalRef,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-confirm-dialog',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="dialog" (bindtap)="closed.emit()">
+      <text>{{ title() }}</text>
+    </view>
+  `,
+})
+export class ConfirmDialog {
+  readonly title = input('');
+  readonly closed = output();
+}
+
+@Component({
+  selector: 'app-delete-button',
+  imports: [LYNX_ELEMENTS],
+  template: `<view (bindtap)="confirm()"><text>Delete</text></view>`,
+})
+export class DeleteButton {
+  readonly #portal = inject(LynxPortal);
+  #dialog: PortalRef<ConfirmDialog> | null = null;
+
+  confirm(): void {
+    // Opening and closing create and destroy views, so both run outside the native event.
+    setTimeout(() => {
+      this.#dialog = this.#portal.open(ConfirmDialog, {
+        inputs: { title: 'Delete this item?' },
+      });
+      this.#dialog.instance?.closed.subscribe(() =>
+        setTimeout(() => this.#close()),
+      );
+    });
+  }
+
+  #close(): void {
+    this.#dialog?.destroy();
+    this.#dialog = null;
+  }
+}
+```
+
+## API
+
+### `LynxPortal`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxPortal {}
+```
+
+Creates native overlays and renders Angular content into them. Each call adds a new `<overlay>` as a direct child of the page, so it draws above all other content.
+
+### `LynxPortal.open()`
+
+```typescript
+open<T>(component: Type<T>, config?: PortalConfig): PortalRef<T>;
+```
+
+Creates the component inside a new overlay and returns its handle.
+
+- The component takes part in change detection, and gets dependency injection and lifecycle hooks as usual.
+- `config.inputs` sets its inputs once, after creation.
+- From an event handler, call it inside `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+
+### `LynxPortal.openTemplate()`
+
+```typescript
+openTemplate<C>(
+  template: TemplateRef<C>,
+  config?: PortalConfig & { context?: C },
+): PortalRef<null>;
+```
+
+Renders a `TemplateRef`, such as one from `viewChild()`, inside a new overlay.
+
+- `config.context` becomes the template's context. It defaults to `{}`.
+- `config.inputs` is ignored.
+- The same `setTimeout` rule applies.
+
+### `PortalRef`
+
+```typescript
+class PortalRef<T> {}
+```
+
+The handle that `open()` and `openTemplate()` return. Keep it to update or close the overlay. Don't construct it yourself.
+
+### `PortalRef.instance`
+
+```typescript
+get instance(): T | null;
+```
+
+The component instance. `null` for template portals.
+
+### `PortalRef.setInput()`
+
+```typescript
+setInput(name: string, value: unknown): void;
+```
+
+Sets one input on the component. Does nothing for template portals.
+
+### `PortalRef.destroy()`
+
+```typescript
+destroy(): void;
+```
+
+Destroys the component or template view, detaches it from change detection, and removes the overlay. From an event handler, call it inside `setTimeout`.
+
+## Types
+
+### `PortalConfig`
+
+```typescript
+type PortalConfig = {
+  level?: number;
+  injector?: EnvironmentInjector;
+  inputs?: Record<string, unknown>;
+};
+```
+
+| Field      | Type                      | Description                                                                     |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------- |
+| `level`    | `number`                  | The overlay's stacking level, from 1 to 4. Higher levels draw above lower ones. |
+| `injector` | `EnvironmentInjector`     | The injector for the content. Defaults to the app's root injector.              |
+| `inputs`   | `Record<string, unknown>` | Initial input values. Component portals only.                                   |
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays): when to use a portal, `<overlay>` or a UI component.
+- [`<overlay>`](/api/elements/overlay)
+- [Threads](/guide/concepts/threads#the-settimeout-rule)

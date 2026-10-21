@@ -1,68 +1,134 @@
-# &lt;scroll-coordinator&gt;
+# `<scroll-coordinator>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
+A header that folds away as the list below it scrolls, as on a profile page. It hands scrolling between the header and the list, which nested scroll views can't do.
 
-A nested scroll coordination container that synchronizes a foldable header, sticky toolbar, and scrollable content. Commonly used for sticky-header page layouts where the header folds away as content scrolls.
+## Usage
 
-```angular-html
-<scroll-coordinator
-  style="width: 100%; height: 100%; display: flex; flex-direction: column;"
->
-  <scroll-coordinator-header style="position: absolute; width: 100%;">
-    <image src="banner.png" style="width: 100%; height: 200px;" />
-  </scroll-coordinator-header>
-  <scroll-coordinator-toolbar
-    style="display: flex; width: 100%; position: sticky; top: 0;"
-  >
-    <text style="font-size: 18px; padding: 12px;">Sticky Tab Bar</text>
-  </scroll-coordinator-toolbar>
-  <scroll-coordinator-slot
-    style="width: 100%; flex: 1; flex-direction: column;"
-  >
-    <list>
-      @for (item of items(); track item.id) {
-        <list-item>
-          <view style="padding: 16px;">
-            <text>{{ item.name }}</text>
-          </view>
-        </list-item>
-      }
-    </list>
-  </scroll-coordinator-slot>
-</scroll-coordinator>
+```typescript title="src/app/profile.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-profile',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-coordinator
+      style="height: 100vh; display: flex; flex-direction: column;"
+    >
+      <scroll-coordinator-header
+        style="position: absolute; width: 100%; height: 200px;"
+      >
+        <text>Profile</text>
+      </scroll-coordinator-header>
+      <scroll-coordinator-slot style="width: 100%; flex: 1;">
+        <list style="height: 100%;">
+          @for (post of posts(); track post.id) {
+            <list-item [attr.item-key]="post.id">
+              <text>{{ post.title }}</text>
+            </list-item>
+          }
+        </list>
+      </scroll-coordinator-slot>
+    </scroll-coordinator>
+  `,
+})
+export class Profile {
+  readonly posts = signal([{ id: '1', title: 'First post' }]);
+}
 ```
 
-When the outer layer scrolls to the bottom of the header, scroll control automatically hands off to the inner scrollable content. When the inner content scrolls back to its top, control returns to the outer layer.
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
 :::warning
-The coordinator's height must equal the slot height plus the toolbar height. The header uses `position: absolute` and is removed from the normal layout flow.
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
 :::
 
-## Key Attributes
+## Attributes
 
-- `enable-scroll` — (boolean, default `true`) Whether the coordinator can scroll vertically
-- `bounces` — Enable/disable bounce effect at scroll boundaries (iOS/Harmony)
-- `granularity` — (number, default `0.01`) Event response granularity for `bindoffset`
-- `header-over-slot` — (boolean, default `false`) Whether header appears over the slot when overflowing
-- `refresh-mode` — `"none"` (default), `"page"`, or `"fold"` (iOS)
-- `enable-scroll-bar` — Show/hide scrollbar (iOS/Harmony)
-- `android-adapt-to-empty-slot` — (boolean, default `false`) Adjust the fold offset when the active slot is empty or too short to scroll (Android)
+| Attribute                        | Type                         | Default  | Description                                                                                                                    |
+| -------------------------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `enable-scroll`                  | `boolean`                    | `true`   | Whether it scrolls vertically.                                                                                                 |
+| `bounces`                        | `boolean`                    | `true`   | iOS only. Bounce at the edges.                                                                                                 |
+| `enable-scroll-bar`              | `boolean`                    | `false`  | iOS only. Shows the scroll bar while it scrolls.                                                                               |
+| `granularity`                    | `number`                     | `0.01`   | How often `bindoffset` fires, as a fraction of the distance the header can scroll. It can fire less often.                     |
+| `header-over-slot`               | `boolean`                    | `false`  | Draws the header above the slot where they overlap, instead of below it. Set it before the first render.                       |
+| `refresh-mode`                   | `'none' \| 'page' \| 'fold'` | `'none'` | iOS only. Pull-to-refresh inside a [`<refresh>`](/api/elements/refresh): off, per tab (`page`) or for the whole page (`fold`). |
+| `ios-scrolls-to-top`             | `boolean`                    | `false`  | iOS only. Tapping the status bar scrolls back to the top.                                                                      |
+| `ios-force-scroll-detach`        | `boolean`                    | `false`  | iOS only. Turns off the hand-off between the header and the slot.                                                              |
+| `android-nested-scroll-as-child` | `boolean`                    | `false`  | Android only. Lets the coordinator itself scroll inside another scrolling container.                                           |
+| `android-adapt-to-empty-slot`    | `boolean`                    | `false`  | Android only. Limits folding when the active slot is empty or too short to scroll.                                             |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-- `(bindoffset)` — Fired on scroll. Detail: `{ height: number, offset: number }` where `height` is the total scrollable distance and `offset` is the current header scroll offset in px
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event        | `detail`                             | Description                                                                                                                    |
+| ------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `bindoffset` | `{ offset: number; height: number }` | The header folded or unfolded. `offset` is how far it has scrolled, and `height` how far it can (header minus toolbar), in px. |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
 ## Methods
 
-Invoked via the [SelectorQuery](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html) API:
+This **UI method** ([Glossary](/guide/glossary#ui-method)) folds the header from code. Call it with `invoke()` on the element (see [Call element methods](/guide/selector-query)).
 
-- `setFoldExpanded({ offset, smooth })` — Programmatically set the fold position
+| Method            | Parameters                             | Description                                                                      |
+| ----------------- | -------------------------------------- | -------------------------------------------------------------------------------- |
+| `setFoldExpanded` | `{ offset: string; smooth?: boolean }` | Scrolls the header to `offset`, in `px` or `rpx`. `'0px'` unfolds it completely. |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-folding',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-coordinator
+      #profile
+      style="height: 100vh; display: flex; flex-direction: column;"
+    >
+      <scroll-coordinator-header
+        style="position: absolute; width: 100%; height: 200px;"
+      />
+      <scroll-coordinator-slot style="flex: 1;" />
+    </scroll-coordinator>
+    <view (bindtap)="expand()"><text>Show the header</text></view>
+  `,
+})
+export class Folding {
+  readonly profile = viewChild.required('profile', { read: ElementRef });
+
+  expand(): void {
+    this.profile().nativeElement.invoke?.('setFoldExpanded', {
+      offset: '0px',
+      smooth: true,
+    });
+  }
+}
+```
 
 ## Children
 
-- **`<scroll-coordinator-header>`** — Header content that scrolls out of view. Uses `position: absolute`.
-- **`<scroll-coordinator-toolbar>`** — Sticky toolbar that remains visible at the top. Uses `position: sticky; top: 0`.
-- **`<scroll-coordinator-slot>`** — Container for scrollable content. Typically contains a `<list>`. Uses `flex: 1`.
-- **`<scroll-coordinator-slot-drag>`** — A slot whose content can be dragged up and down to fold and unfold the header. Toggle the gesture with `enable-drag` (boolean, default `true`).
+Use these elements as direct children, and make the coordinator a column (`display: flex; flex-direction: column`). Its height must equal the slot's height plus the toolbar's.
+
+| Child                            | Role                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `<scroll-coordinator-header>`    | The header that folds away. Give it `position: absolute`.                                                     |
+| `<scroll-coordinator-toolbar>`   | A bar, such as tabs, that stays on screen once the header has folded.                                         |
+| `<scroll-coordinator-slot>`      | The scrolling content: a `<list>`, or a [`<viewpager>`](/api/elements/viewpager) of lists. Give it `flex: 1`. |
+| `<scroll-coordinator-slot-drag>` | A slot whose content the user can drag up and down to fold and unfold the header.                             |
+
+### `<scroll-coordinator-slot-drag>`
+
+| Attribute     | Type      | Default | Description                                             |
+| ------------- | --------- | ------- | ------------------------------------------------------- |
+| `enable-drag` | `boolean` | `true`  | Whether dragging the slot folds and unfolds the header. |
+
+## Related
+
+- [`<list>`](/api/elements/list) and [`<viewpager>`](/api/elements/viewpager): what usually goes in the slot
+- [`<refresh>`](/api/elements/refresh): pull-to-refresh around the whole page
+- [Call element methods](/guide/selector-query)

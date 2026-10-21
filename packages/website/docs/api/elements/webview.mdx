@@ -1,70 +1,110 @@
-# &lt;webview&gt;
+# `<webview>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Embeds a native web view that loads a URL or an inline HTML string. Use it for web content such as help articles, terms of service, or OAuth pages. To embed another Lynx bundle, use [`<frame>`](/api/elements/frame) instead.
+Shows a website or an HTML string inside your app, like an `<iframe>`. Use it for help pages, terms of service or sign-in pages. To embed another Lynx bundle, use [`<frame>`](/api/elements/frame).
 
 <Go example="element-webview" defaultFile="src/app/app.ts" />
 
-```angular-html
-<!-- Load a URL; changing src reloads the page -->
-<webview
-  [src]="url()"
-  (bindload)="loading.set(false)"
-  (binderror)="onError($event)"
-  style="width: 100%; height: 400px;"
-></webview>
+## Usage
 
-<!-- Or render inline HTML (ignored when src is set) -->
-<webview
-  html="<h1>Hello from HTML</h1>"
-  style="width: 100%; height: 200px;"
-></webview>
+```typescript title="src/app/help.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-help',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @if (loading()) {
+      <text>Loading…</text>
+    }
+    <webview
+      src="https://angular.dev"
+      style="width: 100%; height: 400px;"
+      (bindload)="loading.set(false)"
+    ></webview>
+  `,
+})
+export class Help {
+  readonly loading = signal(true);
+}
 ```
+
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
+:::
 
 ## Attributes
 
-| Attribute           | Type      | Default     | Description                                                      |
-| ------------------- | --------- | ----------- | ---------------------------------------------------------------- |
-| `src`               | `string`  | —           | URL to load. Changing it reloads the page                        |
-| `html`              | `string`  | —           | Inline HTML to load. Lower priority than `src`                   |
-| `bounces`           | `boolean` | `false`     | Bounce effect (iOS)                                              |
-| `scroll-bar-enable` | `boolean` | `false`     | Show the scroll bar (iOS)                                        |
-| `enable-debug`      | `boolean` | `false`     | Allow remote debugging in Chrome DevTools / Safari Web Inspector |
-| `webview-type`      | `string`  | `'default'` | Use a custom web view implementation injected via `LynxService`  |
-| `params`            | `object`  | —           | Params for a custom web view implementation (Android/iOS)        |
-| `initjs`            | `string`  | —           | JavaScript run when the document is ready (Clay desktop)         |
-| `cookies`           | `array`   | —           | Cookies set before loading (Clay)                                |
-| `use-osr`           | `boolean` | `false`     | Off-screen rendering (Clay)                                      |
+**Clay** is a separate Lynx renderer used by Lynx's desktop apps. AngularLynx's iOS, Android and web builds don't use it, so you can ignore the Clay-only rows.
+
+| Attribute           | Type       | Default     | Description                                                                                                                                                                                                      |
+| ------------------- | ---------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src`               | `string`   | —           | URL to load. Changing it reloads the page. In the [web preview](/guide/glossary#web-preview), most sites show a broken page while `bindload` still fires: check URLs on a device, and use `html` in the browser. |
+| `html`              | `string`   | —           | HTML to load. Ignored when `src` is set.                                                                                                                                                                         |
+| `bounces`           | `boolean`  | `false`     | iOS only. Bounce at the edges.                                                                                                                                                                                   |
+| `scroll-bar-enable` | `boolean`  | `false`     | iOS only. Shows the scroll bar.                                                                                                                                                                                  |
+| `enable-debug`      | `boolean`  | `false`     | Lets you inspect the page with Chrome DevTools (Android) or Safari Web Inspector (iOS).                                                                                                                          |
+| `webview-type`      | `string`   | `'default'` | iOS and Android. Picks a custom web view that the [host app](/guide/glossary#host-app) provides.                                                                                                                 |
+| `params`            | `object`   | —           | iOS and Android. Options for that custom web view.                                                                                                                                                               |
+| `initjs`            | `string`   | —           | Desktop (Clay) only. Script to run when the document is ready.                                                                                                                                                   |
+| `cookies`           | `object[]` | —           | Clay only. Cookies to set before loading, each `{ name, value, domain?, path?, secure?, httpOnly?, sameSite }`.                                                                                                  |
+| `use-osr`           | `boolean`  | `false`     | Clay only. Renders the page off screen.                                                                                                                                                                          |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event         | Detail                    | Description                       |
-| ------------- | ------------------------- | --------------------------------- |
-| `bindload`    | —                         | Page finished loading             |
-| `binderror`   | `{ errorCode, errorMsg }` | Page failed to load               |
-| `bindmessage` | `{ msg }`                 | The page posted a message to Lynx |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                | `detail`                                  | Description                                 |
+| -------------------- | ----------------------------------------- | ------------------------------------------- |
+| `bindload`           | —                                         | The page finished loading.                  |
+| `binderror`          | `{ errorCode: number; errorMsg: string }` | The page failed to load.                    |
+| `bindmessage`        | `{ msg: string }`                         | The page sent a message to your app.        |
+| `bindopenwindow`     | `{ url: string }`                         | Clay only. The page tried to open a window. |
+| `bindlocationchange` | `{ url: string }`                         | Clay only. The page navigated to `url`.     |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
 ## Methods
 
-Invoke these with `lynx.createSelectorQuery().select('#id').invoke({ method, params }).exec()`:
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) control the page. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)).
 
-| Method   | Params             | Description                                        |
-| -------- | ------------------ | -------------------------------------------------- |
-| `reload` | —                  | Reload the current page                            |
-| `eval`   | `{ func: string }` | Call a JavaScript function, e.g. `'greet("Lynx")'` |
+| Method                                                               | Parameters         | Description                                                     |
+| -------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------- |
+| `reload`                                                             | —                  | Reloads the page.                                               |
+| `eval`                                                               | `{ func: string }` | Calls a JavaScript function in the page, e.g. `'greet("Ada")'`. |
+| `cookies.get`, `cookies.set`, `cookies.remove`, `cookies.flushStore` | Varies             | Clay only. Read and change the web view's cookies.              |
 
-## Platform Support
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-| Platform | Supported |
-| -------- | --------- |
-| iOS      | 4.0+      |
-| Android  | 4.0+      |
-| Harmony  | 4.0+      |
-| Web Lynx | Yes       |
+@Component({
+  selector: 'app-help-page',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <webview
+      #help
+      src="https://angular.dev"
+      style="width: 100%; height: 400px;"
+    ></webview>
+    <view (bindtap)="reload()"><text>Reload</text></view>
+  `,
+})
+export class HelpPage {
+  readonly help = viewChild.required('help', { read: ElementRef });
 
-:::info
-On Clay desktop, a `<webview>` paints above regular Lynx content regardless of order or `z-index`. Wrap anything that must appear on top of it in [`<cover-view>`](/api/elements/cover-view).
-:::
+  reload(): void {
+    this.help().nativeElement.invoke?.('reload');
+  }
+}
+```
+
+## Related
+
+- [`<frame>`](/api/elements/frame): embed another Lynx bundle
+- [`<cover-view>`](/api/elements/cover-view): draw Lynx content above a web view on desktop
+- [Call element methods](/guide/selector-query)

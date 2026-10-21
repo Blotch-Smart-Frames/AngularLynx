@@ -1,0 +1,142 @@
+# LynxResourcePrefetch
+
+Download images and videos into the native cache before they're shown, so they appear without a delay. `import { LynxResourcePrefetch, type PrefetchRequest, type PrefetchPriority, type PrefetchCacheTarget, type PrefetchResultDetail } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/gallery.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxResourcePrefetch } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-gallery',
+  imports: [LYNX_ELEMENTS],
+  template: `<image src="https://example.com/hero.jpg" />`,
+})
+export class Gallery {
+  readonly #prefetch = inject(LynxResourcePrefetch);
+
+  constructor() {
+    this.#prefetch
+      .request([
+        {
+          uri: 'https://example.com/next.jpg',
+          type: 'image',
+          priority: 'high',
+        },
+        {
+          uri: 'https://example.com/intro.mp4',
+          type: 'video',
+          priority: 'low',
+        },
+      ])
+      .catch(() => {
+        // Not available on this thread or platform.
+      });
+  }
+}
+```
+
+## API
+
+### `LynxResourcePrefetch`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxResourcePrefetch {}
+```
+
+Asks Lynx to fetch resources into its image and video caches.
+
+:::warning Background thread only
+Lynx provides prefetching only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers, both methods reject. A constructor runs on both threads, so the call in Usage reaches Lynx from the background copy. See [Threads](/guide/concepts/threads).
+:::
+
+### `LynxResourcePrefetch.request()`
+
+```typescript
+request(resources: PrefetchRequest[]): Promise<ResourcePrefetchResult>;
+```
+
+Starts prefetching. Resolves when Lynx accepts the request, which can be before the downloads finish. Rejects when prefetching isn't available.
+
+### `LynxResourcePrefetch.cancel()`
+
+```typescript
+cancel(resources: PrefetchRequest[]): Promise<ResourcePrefetchResult>;
+```
+
+Cancels prefetches that are still running, for example when the user leaves the screen. Rejects when prefetching isn't available.
+
+## Types
+
+### `PrefetchRequest`
+
+```typescript
+type PrefetchRequest = {
+  uri: string;
+  type: 'image' | 'video';
+  priority?: PrefetchPriority;
+  cacheTarget?: PrefetchCacheTarget;
+  preloadKey?: string;
+  size?: number;
+};
+```
+
+| Field         | Description                                                   |
+| ------------- | ------------------------------------------------------------- |
+| `uri`         | The resource's URL.                                           |
+| `type`        | `'image'` or `'video'`. Lynx handles each type differently.   |
+| `priority`    | How soon to fetch it. Lynx picks one when you leave it out.   |
+| `cacheTarget` | Where to keep it. See `PrefetchCacheTarget`.                  |
+| `preloadKey`  | Your own cache key, for managing the cache yourself.          |
+| `size`        | The expected size in bytes, which helps Lynx allocate memory. |
+
+### `PrefetchPriority`
+
+```typescript
+type PrefetchPriority = 'high' | 'medium' | 'low';
+```
+
+### `PrefetchCacheTarget`
+
+```typescript
+type PrefetchCacheTarget = 'disk' | 'bitmap';
+```
+
+| Value      | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `'disk'`   | Saved to disk and kept across app sessions. For larger resources. |
+| `'bitmap'` | Decoded into memory, ready to show at once. For images.           |
+
+### `PrefetchResultDetail`
+
+```typescript
+type PrefetchResultDetail = {
+  code: number;
+  msg: string;
+  uri: string;
+  type: 'image' | 'video';
+};
+```
+
+The result for one resource.
+
+### `ResourcePrefetchResult`
+
+```typescript
+// From @lynx-js/types. @blotch/angular-lynx doesn't re-export it.
+interface ResourcePrefetchResult {
+  code: number;
+  msg: string;
+  details: PrefetchResultDetail[];
+}
+```
+
+The overall result, with one `details` entry for each resource.
+
+## Related
+
+- [`<image>`](/api/elements/image)
+- [`<video>`](/api/elements/video)
+- [Threads](/guide/concepts/threads)

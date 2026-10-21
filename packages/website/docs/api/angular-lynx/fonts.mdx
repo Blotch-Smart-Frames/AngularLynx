@@ -1,0 +1,135 @@
+# LynxFont
+
+Load a font at runtime and track its loading state with signals. `import { LynxFont, type LynxFontFaceConfig, type LynxFontStatus, type LynxFontEntry } from '@blotch/angular-lynx';`
+
+For fonts you know at build time, use CSS `@font-face` instead. See [Custom fonts](/guide/custom-fonts/).
+
+## Usage
+
+```typescript title="src/app/headline.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxFont } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-headline',
+  imports: [LYNX_ELEMENTS],
+  template: `<text style="font-family: Brand">Welcome</text>`,
+})
+export class Headline {
+  readonly #fonts = inject(LynxFont);
+
+  constructor() {
+    this.#fonts
+      .addFont({
+        fontFamily: 'Brand',
+        src: 'url("https://example.com/brand.ttf")',
+      })
+      .catch(() => {
+        // Not available on this thread, or the download failed.
+      });
+  }
+}
+```
+
+## API
+
+### `LynxFont`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxFont {}
+```
+
+A registry of the fonts you add at runtime.
+
+:::warning Background thread only
+Lynx adds fonts only from the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers and draws the UI, `addFont()` rejects and the signals below don't change. A constructor runs on both threads, so the call in Usage reaches Lynx from the background copy. See [Threads](/guide/concepts/threads).
+:::
+
+### `LynxFont.addFont()`
+
+```typescript
+addFont(config: LynxFontFaceConfig): Promise<void>;
+```
+
+Registers a font family with Lynx and resolves when it has loaded.
+
+- **Already loaded:** resolves at once.
+- **Already loading:** returns the same promise, so Lynx loads it only once.
+- **Failed:** rejects and sets the family's status to `'error'`. Calling again retries.
+- **Outside Lynx:** rejects, such as in unit tests.
+
+### `LynxFont.fonts`
+
+```typescript
+readonly fonts: Signal<ReadonlyMap<string, LynxFontEntry>>;
+```
+
+Every family you've added, keyed by family name.
+
+### `LynxFont.loadedFamilies`
+
+```typescript
+readonly loadedFamilies: Signal<ReadonlySet<string>>;
+```
+
+The names of the families that have loaded.
+
+### `LynxFont.isLoaded()`
+
+```typescript
+isLoaded(fontFamily: string): boolean;
+```
+
+Returns `true` when the family has loaded. It reads `fonts`, so it's reactive in templates and `computed()`.
+
+### `LynxFont.getStatus()`
+
+```typescript
+getStatus(fontFamily: string): LynxFontStatus;
+```
+
+Returns the family's status, or `'idle'` when you haven't added it.
+
+## Types
+
+### `LynxFontFaceConfig`
+
+```typescript
+type LynxFontFaceConfig = {
+  fontFamily: string;
+  src: string;
+};
+```
+
+| Field        | Description                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `fontFamily` | The name to use in CSS `font-family`.                                                             |
+| `src`        | Where to load the font from, passed to Lynx as a font face `src`. Lynx's own docs use `url("…")`. |
+
+Android accepts TTF, OTF and TTC files. iOS accepts TTF, OTF, WOFF and WOFF2.
+
+### `LynxFontStatus`
+
+```typescript
+type LynxFontStatus = 'idle' | 'loading' | 'loaded' | 'error';
+```
+
+### `LynxFontEntry`
+
+```typescript
+type LynxFontEntry = {
+  fontFamily: string;
+  src: string;
+  status: LynxFontStatus;
+  error?: Error;
+};
+```
+
+`error` is set when `status` is `'error'`.
+
+## Related
+
+- [Custom fonts](/guide/custom-fonts/): `@font-face` and runtime loading.
+- [Text measurement](/api/angular-lynx/text-measure): measuring ignores custom fonts.
+- [Threads](/guide/concepts/threads)

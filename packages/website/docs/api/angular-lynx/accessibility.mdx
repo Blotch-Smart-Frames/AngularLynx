@@ -1,0 +1,111 @@
+# Accessibility
+
+`LynxAccessibility` speaks to screen readers from code, and the `accessibility-*` attributes describe elements to them. `import { LynxAccessibility } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/cart-button.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxAccessibility } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-cart-button',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      accessibility-element="true"
+      accessibility-label="Add to cart"
+      accessibility-traits="button"
+      (bindtap)="add()"
+    >
+      <text>+</text>
+    </view>
+  `,
+})
+export class CartButton {
+  readonly #a11y = inject(LynxAccessibility);
+
+  add(): void {
+    // Add the item here.
+  }
+
+  async notify(message: string): Promise<void> {
+    try {
+      await this.#a11y.announce(message);
+    } catch {
+      // Announcements aren't available on this thread or platform.
+    }
+  }
+}
+```
+
+The screen reader is VoiceOver on iOS and TalkBack on Android.
+
+## API
+
+### `LynxAccessibility`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxAccessibility {}
+```
+
+Imperative screen reader control, for changes that the attributes below can't express.
+
+:::warning Background thread only
+Lynx provides both methods only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers, both promises reject. See [Threads](/guide/concepts/threads).
+:::
+
+### `LynxAccessibility.announce()`
+
+```typescript
+announce(content: string): Promise<void>;
+```
+
+Makes the screen reader speak `content` without moving focus. Use it for results that don't move focus, such as "Saved" or a finished upload.
+
+- **Resolves** once Lynx accepts the announcement.
+- **Rejects** when Lynx's announce API isn't available.
+
+### `LynxAccessibility.requestFocus()`
+
+```typescript
+requestFocus(selector: string): Promise<void>;
+```
+
+Moves the screen reader's focus to the element that matches `selector`. Give that element `accessibility-element="true"`.
+
+- **`selector`:** use an ID selector such as `'#confirmation'`, which matches the element's `id`. Other selectors aren't reliable.
+- **Rejects** with the Lynx error code when the element can't take focus, or when selector queries aren't available.
+
+## Attributes
+
+Every Lynx element accepts these attributes. Set them as static attributes, or bind them with `[attr.accessibility-label]="label()"`.
+
+| Attribute                       | Type       | Default  | Description                                                                                                                |
+| ------------------------------- | ---------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `accessibility-element`         | `boolean`  |          | Makes the element a stop for the screen reader.                                                                            |
+| `accessibility-label`           | `string`   |          | The text the screen reader reads. Required when the element has no readable text.                                          |
+| `accessibility-traits`          | See below  | `'none'` | The element's role, such as `'button'` or `'image'`.                                                                       |
+| `accessibility-value`           | `string`   |          | A current value read after the label, such as a slider's position.                                                         |
+| `accessibility-actions`         | `string[]` |          | Custom actions the screen reader offers for the element.                                                                   |
+| `accessibility-elements`        | `string`   |          | Comma-separated `id`s of child elements, in the order the screen reader visits them. Children not listed can't take focus. |
+| `accessibility-elements-hidden` | `boolean`  | `false`  | Hides the element and everything inside it from the screen reader.                                                         |
+| `accessibility-exclusive-focus` | `boolean`  | `false`  | Keeps the screen reader's focus inside this element, for example in a modal.                                               |
+| `a11y-id`                       | `string`   |          | An accessibility identifier, separate from `id`. Lynx's `accessibility-elements-a11y` attribute orders children by it.     |
+
+`accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`.
+
+:::info Write `accessibility-traits`, plural
+`LYNX_ELEMENTS` currently declares the input as `accessibility-trait`, singular, but Lynx reads only `accessibility-traits`. Use the plural as a static attribute or with `[attr.accessibility-traits]`.
+:::
+
+## Types
+
+None of its own.
+
+## Related
+
+- [Accessibility](/guide/accessibility): labeling, grouping and focus traps.
+- [Elements](/api/angular-lynx/elements#attributes-on-every-element): the other attributes every element accepts.
+- [Lynx accessibility docs](https://lynxjs.org/guide/inclusion/accessibility.html)

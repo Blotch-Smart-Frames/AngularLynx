@@ -1,11 +1,6 @@
 # Routing
 
-| Export                   | Kind     | Description                                                                                                 |
-| ------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `provideRouter`          | Function | Provides Angular Router configured for Lynx — in-memory routing, route reuse, and crash-safe navigation.    |
-| `LynxLocationStrategy`   | Class    | In-memory `LocationStrategy`. Lynx has no URL bar or History API, so URL state is tracked in memory.        |
-| `LynxPlatformLocation`   | Class    | In-memory `PlatformLocation`. Replaces Angular's `BrowserPlatformLocation` (requires `window.location`).    |
-| `LynxRouteReuseStrategy` | Class    | Detaches route components instead of destroying them. Prevents element pool exhaustion (~256 native slots). |
+Router providers and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -14,6 +9,7 @@ import {
   type ApplicationConfig,
   provideZonelessChangeDetection,
 } from '@angular/core';
+import { withComponentInputBinding } from '@angular/router';
 import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
 import { routes } from './app.routes';
 
@@ -21,9 +17,259 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideZonelessChangeDetection(),
     provideRenderer(),
-    provideRouter(routes),
+    provideRouter(routes, withComponentInputBinding()),
   ],
 };
 ```
 
-See the [Routing guide](/guide/routing) for full usage, lazy loading, and navigation patterns.
+Import `provideRouter` from `@blotch/angular-lynx`, not `@angular/router`. Everything else, such as `RouterOutlet`, `RouterLink`, `Router` and `ActivatedRoute`, still comes from `@angular/router`.
+
+## API
+
+### `provideRouter()`
+
+```typescript
+function provideRouter(
+  routes: Routes,
+  ...features: RouterFeatures[]
+): EnvironmentProviders;
+```
+
+Calls Angular's `provideRouter()` with your routes and features, and adds the Lynx pieces:
+
+| Provides             | As                                                            | Why                                         |
+| -------------------- | ------------------------------------------------------------- | ------------------------------------------- |
+| `PlatformLocation`   | `LynxPlatformLocation`                                        | Lynx has no URL bar and no browser history. |
+| `LocationStrategy`   | `LynxLocationStrategy`                                        | History lives in memory instead.            |
+| `RouteReuseStrategy` | `LynxRouteReuseStrategy`                                      | Keeps route views alive. See below.         |
+| Router config        | `withRouterConfig({ resolveNavigationPromiseOnError: true })` | A failed navigation can't crash the thread. |
+
+- **Failed navigations** resolve to `false` instead of rejecting. Watch `Router.events` for `NavigationError` to detect them.
+- **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
+- **From an event handler,** wrap `router.navigate()` in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+
+### `LynxRouteReuseStrategy`
+
+```typescript
+@Injectable()
+class LynxRouteReuseStrategy implements RouteReuseStrategy {}
+```
+
+Keeps each route's component alive when you navigate away, and reattaches it when you come back. Lynx holds only a limited number of native elements (its [element pool](/guide/glossary#element-pool)), so recreating route views on every navigation crashes the app after a few round trips.
+
+- `ngOnDestroy` doesn't run when you leave a route, and component state survives.
+- Views are stored by route path, so `/user/1` and `/user/2` share one stored view.
+
+### `LynxRouteReuseStrategy.shouldDetach()`
+
+```typescript
+shouldDetach(route: ActivatedRouteSnapshot): boolean;
+```
+
+Always returns `true`.
+
+### `LynxRouteReuseStrategy.store()`
+
+```typescript
+store(route: ActivatedRouteSnapshot, handle: DetachedRouteHandle | null): void;
+```
+
+Stores the view under the route's path, or forgets it when `handle` is `null`.
+
+### `LynxRouteReuseStrategy.shouldAttach()`
+
+```typescript
+shouldAttach(route: ActivatedRouteSnapshot): boolean;
+```
+
+Returns `true` when a view is stored for the route's path.
+
+### `LynxRouteReuseStrategy.retrieve()`
+
+```typescript
+retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle | null;
+```
+
+Returns the stored view, or `null`.
+
+### `LynxRouteReuseStrategy.shouldReuseRoute()`
+
+```typescript
+shouldReuseRoute(future: ActivatedRouteSnapshot, curr: ActivatedRouteSnapshot): boolean;
+```
+
+Returns `true` when both snapshots come from the same route config, as Angular's default does.
+
+### `LynxLocationStrategy`
+
+```typescript
+@Injectable()
+class LynxLocationStrategy extends LocationStrategy {}
+```
+
+A `LocationStrategy` that keeps a history stack in memory, starting at `/`. Angular's `Location` service calls it, so you rarely call it yourself.
+
+### `LynxLocationStrategy.path()`
+
+```typescript
+path(): string;
+```
+
+Returns the current URL, including its query string.
+
+### `LynxLocationStrategy.prepareExternalUrl()`
+
+```typescript
+prepareExternalUrl(internal: string): string;
+```
+
+Returns `internal` unchanged.
+
+### `LynxLocationStrategy.getBaseHref()`
+
+```typescript
+getBaseHref(): string;
+```
+
+Always returns `'/'`.
+
+### `LynxLocationStrategy.getState()`
+
+```typescript
+getState(): unknown;
+```
+
+Returns the current entry's state, or `null`.
+
+### `LynxLocationStrategy.pushState()`
+
+```typescript
+pushState(state: unknown, title: string, url: string, queryParams: string): void;
+```
+
+Adds a history entry and drops any forward entries.
+
+### `LynxLocationStrategy.replaceState()`
+
+```typescript
+replaceState(state: unknown, title: string, url: string, queryParams: string): void;
+```
+
+Replaces the current history entry.
+
+### `LynxLocationStrategy.back()` and `forward()`
+
+```typescript
+back(): void;
+forward(): void;
+```
+
+Same as `historyGo(-1)` and `historyGo(1)`.
+
+### `LynxLocationStrategy.historyGo()`
+
+```typescript
+historyGo(relativePosition?: number): void;
+```
+
+Moves through history and notifies `popstate` listeners. A move past either end does nothing.
+
+### `LynxLocationStrategy.onPopState()`
+
+```typescript
+onPopState(fn: LocationChangeListener): VoidFunction;
+```
+
+Adds a `popstate` listener. Call the returned function to remove it.
+
+### `LynxPlatformLocation`
+
+```typescript
+@Injectable()
+class LynxPlatformLocation extends PlatformLocation {}
+```
+
+A `PlatformLocation` with its own in-memory history. It parses URLs by hand, because the Lynx JavaScript environment has no `URL` class.
+
+### `LynxPlatformLocation.href`
+
+```typescript
+get href(): string;
+```
+
+The current URL as `lynx://app` followed by its path, query string and fragment.
+
+### `LynxPlatformLocation.protocol`, `hostname` and `port`
+
+```typescript
+get protocol(): string; // 'lynx:'
+get hostname(): string; // 'app'
+get port(): string; // ''
+```
+
+Fixed values, because there's no real server.
+
+### `LynxPlatformLocation.pathname`, `search` and `hash`
+
+```typescript
+get pathname(): string;
+get search(): string;
+get hash(): string;
+```
+
+Parts of the current URL. `pathname` is `'/'` when empty. `search` keeps its `?` and `hash` keeps its `#`, or each is `''`.
+
+### `LynxPlatformLocation.getBaseHrefFromDOM()`
+
+```typescript
+getBaseHrefFromDOM(): string;
+```
+
+Always returns `'/'`.
+
+### `LynxPlatformLocation.getState()`
+
+```typescript
+getState(): unknown;
+```
+
+Returns the current entry's state.
+
+### `LynxPlatformLocation.pushState()` and `replaceState()`
+
+```typescript
+pushState(state: unknown, title: string, url: string): void;
+replaceState(state: unknown, title: string, url: string): void;
+```
+
+Adds an entry, dropping forward entries, or replaces the current one.
+
+### `LynxPlatformLocation.back()`, `forward()` and `historyGo()`
+
+```typescript
+back(): void;
+forward(): void;
+historyGo(relativePosition?: number): void;
+```
+
+Move through history and notify `popstate` listeners. A move past either end does nothing.
+
+### `LynxPlatformLocation.onPopState()` and `onHashChange()`
+
+```typescript
+onPopState(fn: LocationChangeListener): VoidFunction;
+onHashChange(fn: LocationChangeListener): VoidFunction;
+```
+
+`onPopState` adds a listener and returns its remover. `onHashChange` does nothing, because hash changes arrive as `popstate`.
+
+## Types
+
+This page uses only Angular types: `Routes`, `RouterFeatures`, `ActivatedRouteSnapshot` and `DetachedRouteHandle` from `@angular/router`, and `LocationChangeListener` from `@angular/common`.
+
+## Related
+
+- [Routing and navigation](/guide/routing): routes, lazy loading and navigating from a tap.
+- [Threads](/guide/concepts/threads#the-settimeout-rule): why navigation from a handler needs `setTimeout`.
+- [Bootstrap](/api/angular-lynx/bootstrap)
+- [Angular Router](https://angular.dev/guide/routing)

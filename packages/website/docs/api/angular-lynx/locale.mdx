@@ -1,0 +1,91 @@
+# Locale
+
+The app's locale from the host app, as a signal and as Angular's `LOCALE_ID`. `import { LynxLocale, provideLocale, getLynxAppLocale } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideLocale, provideRenderer } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideLocale(),
+  ],
+};
+```
+
+`ng generate @blotch/angular-lynx:add-i18n` adds `provideLocale()` for you.
+
+## API
+
+### `provideLocale()`
+
+```typescript
+function provideLocale(): EnvironmentProviders;
+```
+
+Provides Angular's `LOCALE_ID` from `LynxLocale.locale()`, so pipes such as `DatePipe` and `CurrencyPipe` format for that locale.
+
+- **Read once.** `LOCALE_ID` takes the locale when the app starts. A later change doesn't reformat pipes.
+
+### `getLynxAppLocale()`
+
+```typescript
+function getLynxAppLocale(): string | undefined;
+```
+
+Returns the host's `appLocale` value without Angular. Use it in `main.ts` before `bootstrapApplication()`, where no injector exists yet. For example, choose which translations to load.
+
+- **Returns `undefined`** outside Lynx, or when the host sets no locale.
+
+```typescript title="src/main.ts"
+import { loadTranslations } from '@angular/localize';
+import { bootstrapApplication, getLynxAppLocale } from '@blotch/angular-lynx';
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+if (getLynxAppLocale()?.startsWith('fr')) {
+  loadTranslations({ greeting: 'Bonjour !' });
+}
+
+bootstrapApplication(App, appConfig);
+```
+
+### `LynxLocale`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxLocale {}
+```
+
+The current locale as a signal.
+
+### `LynxLocale.locale`
+
+```typescript
+readonly locale: Signal<string>;
+```
+
+The locale, chosen in this order:
+
+1. The `appLocale` global value the [host app](/guide/glossary#host-app) sets, such as `'fr-FR'`.
+2. The `i18n.sourceLocale` from your `angular.json`.
+3. `'en-US'`.
+
+**Known limitation:** it subscribes to host changes only on the background thread, through `LynxGlobalData`. Changes after startup may not reach the main thread, which draws the UI. See [Host data](/api/angular-lynx/host-data#api).
+
+## Types
+
+None of its own.
+
+## Related
+
+- [Internationalization](/guide/i18n): translations and locale-aware formatting.
+- [Host data](/api/angular-lynx/host-data)
+- [Angular i18n](https://angular.dev/guide/i18n)

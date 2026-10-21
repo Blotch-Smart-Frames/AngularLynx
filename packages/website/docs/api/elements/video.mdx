@@ -1,19 +1,13 @@
-# &lt;video&gt;
+# `<video>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-:::warning Experimental
-`<video>` is experimental in Lynx 4.1 and its API may change.
-:::
-
-Plays a video from a network URL. Attributes configure the player, but they don't start or stop playback. You control playback by calling the element's UI methods (`play`, `pause`, `stop`, `seek`) through [SelectorQuery](/guide/selector-query). There is no `autoplay` attribute.
+Plays a video from a network URL, like a `<video>`. It's experimental in Lynx 4.1. Attributes set up the player, and its methods start and stop playback: there's no `autoplay`.
 
 <Go example="element-video" defaultFile="src/app/app.ts" />
 
-```typescript
-import { Component, signal } from '@angular/core';
+## Usage
+
+```typescript title="src/app/player.ts"
+import { Component, ElementRef, viewChild } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
@@ -21,79 +15,83 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   imports: [LYNX_ELEMENTS],
   template: `
     <video
-      id="player"
+      #player
       src="https://example.com/clip.mp4"
       object-fit="cover"
-      [muted]="muted()"
-      (bindtimeupdate)="onTime($event)"
-      (bindended)="playing.set(false)"
       style="width: 100%; height: 220px;"
     ></video>
-    <view (bindtap)="toggle()">
-      <text>{{ playing() ? 'Pause' : 'Play' }}</text>
-    </view>
+    <view (bindtap)="play()"><text>Play</text></view>
   `,
 })
 export class Player {
-  readonly playing = signal(false);
-  readonly muted = signal(true);
-  readonly current = signal(0);
+  readonly player = viewChild.required('player', { read: ElementRef });
 
-  toggle(): void {
-    const method = this.playing() ? 'pause' : 'play';
-    lynx.createSelectorQuery().select('#player').invoke({ method }).exec();
-    this.playing.set(!this.playing());
-  }
-
-  onTime(event: Event): void {
-    const { current } = (event as CustomEvent<{ current: number }>).detail;
-    this.current.set(current);
+  // <video> has no autoplay: playback starts only through its play method.
+  play(): void {
+    this.player().nativeElement.invoke?.('play');
   }
 }
 ```
 
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
+:::
+
 ## Attributes
 
-| Attribute             | Type                              | Default     | Description                                     |
-| --------------------- | --------------------------------- | ----------- | ----------------------------------------------- |
-| `src`                 | `string`                          | —           | Video URL. Only network URLs are supported      |
-| `loop`                | `boolean`                         | `false`     | Loop playback                                   |
-| `muted`               | `boolean`                         | `false`     | Mute audio                                      |
-| `volume`              | `number`                          | `1`         | Volume from 0 to 1 (Android/iOS)                |
-| `speed`               | `number`                          | `1`         | Playback rate from 0.1 to 2.0                   |
-| `object-fit`          | `'contain' \| 'cover' \| 'fill'`  | `'contain'` | How the video is scaled into the element        |
-| `mode`                | `'queue' \| 'direct' \| 'latest'` | `'queue'`   | How queued UI method calls are executed         |
-| `timeupdate-interval` | `number`                          | `0.33`      | Minimum seconds between `bindtimeupdate` events |
+| Attribute             | Type                              | Default     | Description                                                                                                                                                                      |
+| --------------------- | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src`                 | `string`                          | —           | Video URL. Only network URLs work.                                                                                                                                               |
+| `loop`                | `boolean`                         | `false`     | Starts again at the end.                                                                                                                                                         |
+| `muted`               | `boolean`                         | `false`     | Mutes the sound.                                                                                                                                                                 |
+| `volume`              | `number`                          | `1`         | iOS and Android. Volume, from `0` to `1`.                                                                                                                                        |
+| `speed`               | `number`                          | `1`         | iOS and Android. Playback rate, from `0.1` to `2`.                                                                                                                               |
+| `object-fit`          | `'contain' \| 'cover' \| 'fill'`  | `'contain'` | iOS and Android. How the video fills the element. It's an attribute here, not the CSS property.                                                                                  |
+| `mode`                | `'queue' \| 'direct' \| 'latest'` | `'queue'`   | iOS and Android. How method calls run. `'queue'` waits for each call to finish before the next, `'direct'` runs each at once, and `'latest'` keeps only the newest waiting call. |
+| `timeupdate-interval` | `number`                          | `0.33`      | iOS and Android. Minimum seconds between `bindtimeupdate` events.                                                                                                                |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event            | Detail                    | Description                                |
-| ---------------- | ------------------------- | ------------------------------------------ |
-| `bindfirstframe` | `{ duration }`            | First frame loaded                         |
-| `bindplaying`    | —                         | Playback started or resumed                |
-| `bindpaused`     | —                         | Playback paused                            |
-| `bindstopped`    | —                         | Playback stopped via the `stop` method     |
-| `bindtimeupdate` | `{ current, duration }`   | Playback position changed (seconds)        |
-| `bindbuffering`  | `{ buffering }`           | Buffering; `buffering` is the buffered end |
-| `bindended`      | —                         | Playback reached the end                   |
-| `bindlooped`     | —                         | One loop iteration finished                |
-| `binderror`      | `{ errorCode, errorMsg }` | Playback failed                            |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event            | `detail`                                  | Description                                                               |
+| ---------------- | ----------------------------------------- | ------------------------------------------------------------------------- |
+| `bindfirstframe` | `{ duration: number }`                    | The first frame loaded. `duration` is in seconds.                         |
+| `bindplaying`    | —                                         | Playback started or resumed.                                              |
+| `bindpaused`     | —                                         | Playback paused.                                                          |
+| `bindstopped`    | —                                         | The `stop` method stopped playback.                                       |
+| `bindtimeupdate` | `{ current: number; duration: number }`   | The playback position changed, in seconds.                                |
+| `bindbuffering`  | `{ buffering: number }`                   | The video is buffering. `buffering` is how far it has loaded, in seconds. |
+| `bindended`      | —                                         | Playback reached the end.                                                 |
+| `bindlooped`     | —                                         | One loop finished, with `loop` on.                                        |
+| `binderror`      | `{ errorCode: number; errorMsg: string }` | Playback failed.                                                          |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
 ## Methods
 
-Invoke these with `lynx.createSelectorQuery().select('#id').invoke({ method, params }).exec()`:
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) control playback. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)), as the [Usage](#usage) example does with `play`.
 
-| Method  | Params                 | Description                    |
-| ------- | ---------------------- | ------------------------------ |
-| `play`  | —                      | Start or resume playback       |
-| `pause` | —                      | Pause playback                 |
-| `stop`  | —                      | Stop playback                  |
-| `seek`  | `{ position: number }` | Jump to a position, in seconds |
+| Method  | Parameters             | Description                                   |
+| ------- | ---------------------- | --------------------------------------------- |
+| `play`  | —                      | Starts or resumes playback.                   |
+| `pause` | —                      | Pauses playback.                              |
+| `stop`  | —                      | iOS and Android. Stops playback.              |
+| `seek`  | `{ position: number }` | iOS and Android. Jumps to `position` seconds. |
 
-## Platform Support
+## Platform support
 
-| Platform | Supported |
-| -------- | --------- |
-| iOS      | 4.1+      |
-| Android  | 4.1+      |
-| Harmony  | 4.1+      |
+| Platform | Support                                                                                                                                   |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS      | Lynx 4.1 and later.                                                                                                                       |
+| Android  | Lynx 4.1 and later.                                                                                                                       |
+| Web      | Partial: Lynx lists `src`, `loop`, `muted`, `play`, `pause`, and the `bindplaying`, `bindtimeupdate`, `bindended` and `binderror` events. |
+
+## Related
+
+- [Call element methods](/guide/selector-query)
+- [`<webview>`](/api/elements/webview): show web content, such as an embedded player

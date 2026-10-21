@@ -1,50 +1,130 @@
-# `LynxMainThreadEvent` Directive
+# `LynxMainThreadEvent`
 
-Binds main thread functions to native events on an element. Supports both `bind` (propagating) and `catch` (non-propagating) event types.
+A directive that binds [main-thread scripts](/guide/glossary#main-thread-script) to an element's native events, and passes them elements they can change directly. `import { LynxMainThreadEvent } from '@blotch/angular-lynx';`
 
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::info
+Template handlers such as `(bindtap)` already run on the main thread. [Main-thread scripts](/guide/main-thread/) explains when you need this API instead.
 :::
-
-## Supported Events
-
-| Input                          | Event          | Propagation |
-| ------------------------------ | -------------- | ----------- |
-| `mainThreadBindtap`            | tap            | Propagates  |
-| `mainThreadCatchtap`           | tap            | Stops       |
-| `mainThreadBindtouchstart`     | touchstart     | Propagates  |
-| `mainThreadCatchtouchstart`    | touchstart     | Stops       |
-| `mainThreadBindtouchmove`      | touchmove      | Propagates  |
-| `mainThreadCatchtouchmove`     | touchmove      | Stops       |
-| `mainThreadBindtouchend`       | touchend       | Propagates  |
-| `mainThreadCatchtouchend`      | touchend       | Stops       |
-| `mainThreadBindmousedown`      | mousedown      | Propagates  |
-| `mainThreadCatchmousedown`     | mousedown      | Stops       |
-| `mainThreadBindmousemove`      | mousemove      | Propagates  |
-| `mainThreadCatchmousemove`     | mousemove      | Stops       |
-| `mainThreadBindmouseup`        | mouseup        | Propagates  |
-| `mainThreadCatchmouseup`       | mouseup        | Stops       |
-| `mainThreadBindlongpress`      | longpress      | Propagates  |
-| `mainThreadCatchlongpress`     | longpress      | Stops       |
-| `mainThreadBindscroll`         | scroll         | Propagates  |
-| `mainThreadCatchscroll`        | scroll         | Stops       |
-| `mainThreadBindanimationstart` | animationstart | Propagates  |
-| `mainThreadBindanimationend`   | animationend   | Propagates  |
-| `mainThreadBindtransitionend`  | transitionend  | Propagates  |
-| `mainThreadBindlayoutchange`   | layoutchange   | Propagates  |
-
-Desktop browsers running Lynx for Web fire **mouse events, never touch events**. Bind both for a drag that works everywhere. Phones fire touch events, plus a mouse down and up after a tap, which a drag handler can safely ignore.
 
 ## Usage
 
-```angular-html
-<view
-  [mainThreadBindtap]="handleTap"
-  [mainThreadBindtouchmove]="handleMove"
-  [mainThreadCatchtouchend]="handleEnd"
->
-  <text>Interactive area</text>
-</view>
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxMainThreadEvent,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
+
+const follow = mainThreadFn((event: MainThread.TouchEvent) => {
+  const touch = event.touches[0];
+  if (!touch) return;
+  event.currentTarget.setStyleProperty('opacity', String(touch.clientX / 300));
+});
+
+const reset = mainThreadFn((event: MainThread.TouchEvent) => {
+  event.currentTarget.setStyleProperty('opacity', '1');
+});
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <view [mainThreadBindtouchmove]="follow" [mainThreadBindtouchend]="reset">
+      <text>Drag across me</text>
+    </view>
+  `,
+})
+export class App {
+  readonly follow = follow;
+  readonly reset = reset;
+}
 ```
 
-The directive registers the worklet with the native element via `__AddEvent`. When the native event fires, the function executes immediately on the main thread — no message passing involved.
+## API
+
+### Inputs
+
+```typescript
+class LynxMainThreadEvent {
+  mainThreadBindtap?: MainThreadFnHandle | null;
+  mainThreadCatchtap?: MainThreadFnHandle | null;
+  // … one input per cell in the table below
+}
+```
+
+Each input takes a handle from [`mainThreadFn()`](/api/main-thread/main-thread-fn), or a function with the `'main thread'` directive. `Bind` inputs let the event bubble to ancestors. `Catch` inputs stop it at this element.
+
+| Event            | Bubbles                        | Stops bubbling              | Handler's event type           |
+| ---------------- | ------------------------------ | --------------------------- | ------------------------------ |
+| `tap`            | `mainThreadBindtap`            | `mainThreadCatchtap`        | `MainThread.TouchEvent`        |
+| `longpress`      | `mainThreadBindlongpress`      | `mainThreadCatchlongpress`  | `MainThread.TouchEvent`        |
+| `touchstart`     | `mainThreadBindtouchstart`     | `mainThreadCatchtouchstart` | `MainThread.TouchEvent`        |
+| `touchmove`      | `mainThreadBindtouchmove`      | `mainThreadCatchtouchmove`  | `MainThread.TouchEvent`        |
+| `touchend`       | `mainThreadBindtouchend`       | `mainThreadCatchtouchend`   | `MainThread.TouchEvent`        |
+| `mousedown`      | `mainThreadBindmousedown`      | `mainThreadCatchmousedown`  | `MainThread.MouseEvent`        |
+| `mousemove`      | `mainThreadBindmousemove`      | `mainThreadCatchmousemove`  | `MainThread.MouseEvent`        |
+| `mouseup`        | `mainThreadBindmouseup`        | `mainThreadCatchmouseup`    | `MainThread.MouseEvent`        |
+| `scroll`         | `mainThreadBindscroll`         | `mainThreadCatchscroll`     | No `MainThread` type           |
+| `animationstart` | `mainThreadBindanimationstart` | —                           | `MainThread.AnimationEvent`    |
+| `animationend`   | `mainThreadBindanimationend`   | —                           | `MainThread.AnimationEvent`    |
+| `transitionend`  | `mainThreadBindtransitionend`  | —                           | `MainThread.TransitionEvent`   |
+| `layoutchange`   | `mainThreadBindlayoutchange`   | —                           | `MainThread.LayoutChangeEvent` |
+
+In the handler, `event.target` and `event.currentTarget` are [`MainThread.Element`](#types) objects. When the element is destroyed, its handlers are removed.
+
+## Constraints
+
+- **The web preview fires mouse events, not touch events.** A desktop browser never fires touch events, so bind the `mouse*` inputs too for a drag that works there. Phones fire touch events, plus a `mousedown` and `mouseup` after a tap.
+- **A handler doesn't run change detection.** Change the element directly, through `event.currentTarget`.
+- **Each input takes one handler.** Binding a new one replaces the old one.
+
+## Types
+
+```typescript
+import type { MainThread } from '@blotch/angular-lynx';
+```
+
+`MainThread` is a namespace of the types from `@lynx-js/types/main-thread`:
+
+| Type                           | What it is                                                              |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `MainThread.Element`           | An element you can change directly (methods below)                      |
+| `MainThread.TouchEvent`        | `tap`, `longpress` and `touch*` events. Has `touches`, `changedTouches` |
+| `MainThread.MouseEvent`        | `mouse*` events                                                         |
+| `MainThread.WheelEvent`        | Wheel events                                                            |
+| `MainThread.KeyEvent`          | Key events                                                              |
+| `MainThread.AnimationEvent`    | `animationstart`, `animationend`                                        |
+| `MainThread.TransitionEvent`   | `transitionend`                                                         |
+| `MainThread.LayoutChangeEvent` | `layoutchange`                                                          |
+| `MainThread.UIAppearanceEvent` | Appear and disappear events                                             |
+
+```typescript
+// MainThread.Element
+interface Element {
+  getAttribute(name: string): any;
+  getAttributeNames(): string[];
+  setAttribute(name: string, value: any): void;
+  setStyleProperty(name: string, value: string): void;
+  setStyleProperties(styles: Record<string, string>): void;
+  querySelector(selector: string): Element | null;
+  querySelectorAll(selector: string): Element[];
+  invoke(methodName: string, params?: Record<string, any>): Promise<any>;
+  animate(
+    keyframes: Record<string, number | string>[],
+    options?: number | AnimationOptions,
+  ): Animation;
+}
+```
+
+- **`setStyleProperty()` and `setAttribute()`** batch their changes, and Lynx applies them together after your handler returns.
+- **`invoke()`** calls one of the element's [UI methods](/guide/glossary#ui-method), such as `scrollTo` on a `<scroll-view>`, and resolves with its result.
+- **`getBoundingClientRect()`** also exists at runtime (AngularLynx's `MainThreadElement` class adds it), but isn't on the type. It returns `{ left, top, right, bottom, width, height }` built from the computed `width`, `height`, `left` and `top` styles. So `left` and `top` are the CSS values, often `0`, not the element's position on screen.
+
+## Related
+
+- [Main-thread scripts guide](/guide/main-thread/)
+- [`mainThreadFn`](/api/main-thread/main-thread-fn)
+- [`MainThreadRef`](/api/main-thread/main-thread-ref)
+- [Handling taps and events](/guide/elements/event-handling)

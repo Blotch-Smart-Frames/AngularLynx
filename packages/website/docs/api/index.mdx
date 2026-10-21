@@ -1,49 +1,83 @@
 # API Reference
 
-Look up exact exports, attributes and options here. New to AngularLynx? Start with the [Guide](/guide/quick-start) instead.
+Exact signatures, attributes and options for every AngularLynx package and element. To learn a feature step by step, start with the [Guide](/guide/quick-start).
 
 ## Packages
 
-| Package                                                         | What it covers                                                              |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [`@blotch/angular-lynx`](/api/angular-lynx/)                    | The runtime: bootstrap, routing, element directives, animation and services |
-| [`@blotch/angular-lynx-build`](/api/build/)                     | The Angular CLI builders behind `ng build`, `ng serve` and `ng test`        |
-| [`@blotch/angular-lynx-testing-library`](/api/testing-library/) | `render()`, `fireEvent` and DOM queries for testing components on Lynx      |
+| Package                                | Reference                                               | What it covers                                                    |
+| -------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
+| `@blotch/angular-lynx`                 | [Package overview](/api/angular-lynx/)                  | The runtime: bootstrap, routing, elements, animation and services |
+| `@blotch/angular-lynx`                 | [Schematics](/api/schematics)                           | `ng add`, `ng generate component` and the other schematics        |
+| `@blotch/angular-lynx-build`           | [Builders](/api/build/)                                 | The builders behind `ng build`, `ng serve` and `ng test`          |
+| `@blotch/angular-lynx-testing-library` | [Testing library](/api/testing-library/)                | `render()`, events and queries for component tests                |
+| `@blotch/angular-lynx-testing-library` | [Event reference](/api/testing-library/event-reference) | Every `fireEvent` method and the template binding it runs         |
+
+## Runtime
+
+| Page                                                       | What it covers                                                       |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Bootstrap](/api/angular-lynx/bootstrap)                   | `bootstrapApplication`, `provideRenderer`, `loadLazyBundle`          |
+| [Routing](/api/angular-lynx/routing)                       | `provideRouter` and the in-memory location classes                   |
+| [Elements](/api/angular-lynx/elements)                     | `LYNX_ELEMENTS`, every element directive, form value accessors       |
+| [Animation](/api/angular-lynx/animation)                   | `animate()`, `<lynx-transition>`, `<lynx-transition-group>`          |
+| [Accessibility](/api/angular-lynx/accessibility)           | `LynxAccessibility` and the `accessibility-*` attributes             |
+| [Theme](/api/angular-lynx/theme)                           | `LynxTheme`: light or dark appearance                                |
+| [Safe area](/api/angular-lynx/safe-area)                   | `LynxSafeArea` and the `SAFE_AREA_INSET_*` constants                 |
+| [Locale](/api/angular-lynx/locale)                         | `LynxLocale`, `provideLocale`, `getLynxAppLocale`                    |
+| [Fonts](/api/angular-lynx/fonts)                           | `LynxFont`: load fonts at runtime                                    |
+| [Portal](/api/angular-lynx/portal)                         | `LynxPortal`: open overlays from code                                |
+| [Exposure](/api/angular-lynx/exposure)                     | `LynxExposure`, `LynxGlobalExposure` and the `exposure-*` attributes |
+| [Host data](/api/angular-lynx/host-data)                   | `LynxInitData`, `LynxGlobalData`, `registerDataProcessors`           |
+| [Session storage](/api/angular-lynx/session-storage)       | `LynxSessionStorage`: state shared between pages                     |
+| [Text measure](/api/angular-lynx/text-measure)             | `LynxTextMeasure`: text width and line breaks                        |
+| [System info](/api/angular-lynx/system-info)               | `LynxSystemInfo`: platform and screen size                           |
+| [Resource prefetch](/api/angular-lynx/resource-prefetch)   | `LynxResourcePrefetch`: preload images and videos                    |
+| [Native module](/api/angular-lynx/native-module)           | `LynxNativeModule`: call the host app's native code                  |
+| [Errors and logging](/api/angular-lynx/errors-and-logging) | `LynxErrorHandler`, `LynxLogger`                                     |
+| [DevTools](/api/angular-lynx/devtools)                     | `LynxDevTools`, `LynxPerformance`                                    |
+
+## Gestures
+
+| Page                                         | What it covers                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| [Gestures](/api/gestures/)                   | The `[lynxGesture]` directive and composing gestures                |
+| [Gesture types](/api/gestures/gesture-types) | Tap, pan, fling, long press, pinch and rotation: options and events |
+| [Gesture lifecycle](/api/gestures/lifecycle) | Gesture states, callbacks and `GestureStateManager`                 |
+
+## Main-thread scripts
+
+Code that runs on the [main thread](/guide/glossary#main-thread), right inside native events. Read [Main-thread scripts](/guide/main-thread/) first.
+
+| Page                                                        | What it covers                                   |
+| ----------------------------------------------------------- | ------------------------------------------------ |
+| [`mainThreadFn`](/api/main-thread/main-thread-fn)           | Define a function that runs on the main thread   |
+| [`LynxMainThreadEvent`](/api/main-thread/main-thread-event) | Bind main-thread functions to native events      |
+| [`MainThreadRef`](/api/main-thread/main-thread-ref)         | Keep a value between main-thread script calls    |
+| [`LynxMainThread`](/api/main-thread/main-thread-service)    | Call a main-thread function from Angular code    |
+| [`backgroundFn`](/api/main-thread/background-fn)            | Call background-thread code from the main thread |
 
 ## Elements
 
-The native elements your templates use instead of HTML. For how they map to HTML, see [Lynx Elements](/guide/elements/).
+The native elements your templates use instead of HTML. See [Elements and layout](/guide/elements/) for how they compare with HTML.
 
-| Element                                                    | Use it for                                          |
-| ---------------------------------------------------------- | --------------------------------------------------- |
-| [`<view>`](/api/elements/view)                             | Layout and grouping, like `<div>`                   |
-| [`<text>`](/api/elements/text)                             | All visible text                                    |
-| [`<image>`](/api/elements/image)                           | Local and remote images                             |
-| [`<scroll-view>`](/api/elements/scroll-view)               | A scrollable area                                   |
-| [`<refresh>`](/api/elements/refresh)                       | Pull-to-refresh                                     |
-| [`<scroll-coordinator>`](/api/elements/scroll-coordinator) | Folding headers and sticky toolbars                 |
-| [`<list>`](/api/elements/list)                             | Long, virtualized lists                             |
-| [`<input>`](/api/elements/input)                           | Single-line text input                              |
-| [`<textarea>`](/api/elements/textarea)                     | Multi-line text input                               |
-| [`<overlay>`](/api/elements/overlay)                       | Modals and popups above the page                    |
-| [`<viewpager>`](/api/elements/viewpager)                   | Swipeable pages                                     |
-| [`<frame>`](/api/elements/frame)                           | Embedding another Lynx bundle                       |
-| [`<block>`](/api/elements/block)                           | Grouping without layout, like `<ng-container>`      |
-| [`<svg>`](/api/elements/svg)                               | SVG graphics from a string                          |
-| [`<blur-view>`](/api/elements/blur-view)                   | Frosted backgrounds and Liquid Glass                |
-| [`<video>`](/api/elements/video)                           | Video playback                                      |
-| [`<webview>`](/api/elements/webview)                       | Web pages and inline HTML                           |
-| [`<title-bar-view>`](/api/elements/title-bar-view)         | The draggable area of a frameless desktop window    |
-| [`<cover-view>`](/api/elements/cover-view)                 | Content that must paint above a desktop `<webview>` |
-
-## Main Thread
-
-Low-level APIs that run code on the native UI thread. Read [Main Thread Scripts](/guide/main-thread/) first: they bypass Angular's change detection.
-
-| Export                                                      | What it does                                   |
-| ----------------------------------------------------------- | ---------------------------------------------- |
-| [`mainThreadFn`](/api/main-thread/main-thread-fn)           | Registers a function to run on the main thread |
-| [`LynxMainThreadEvent`](/api/main-thread/main-thread-event) | Binds main-thread functions to native events   |
-| [`MainThreadRef`](/api/main-thread/main-thread-ref)         | Shares a value between both threads            |
-| [`LynxMainThread`](/api/main-thread/main-thread-service)    | Calls a main-thread function from Angular code |
-| [`backgroundFn`](/api/main-thread/background-fn)            | Calls back into Angular from the main thread   |
+| Element                                                    | Use it for                                           |
+| ---------------------------------------------------------- | ---------------------------------------------------- |
+| [`<view>`](/api/elements/view)                             | Layout and grouping, like `<div>`                    |
+| [`<text>`](/api/elements/text)                             | All visible text                                     |
+| [`<image>`](/api/elements/image)                           | Local and remote images                              |
+| [`<scroll-view>`](/api/elements/scroll-view)               | A scrolling area                                     |
+| [`<list>`](/api/elements/list)                             | Long lists that render only the visible rows         |
+| [`<refresh>`](/api/elements/refresh)                       | Pull to refresh                                      |
+| [`<scroll-coordinator>`](/api/elements/scroll-coordinator) | Collapsing headers and sticky toolbars               |
+| [`<viewpager>`](/api/elements/viewpager)                   | Pages you swipe between                              |
+| [`<input>`](/api/elements/input)                           | Single-line text input                               |
+| [`<textarea>`](/api/elements/textarea)                     | Multi-line text input                                |
+| [`<overlay>`](/api/elements/overlay)                       | Content above the page, such as dialogs              |
+| [`<frame>`](/api/elements/frame)                           | Another Lynx bundle inside this page                 |
+| [`<block>`](/api/elements/block)                           | Grouping without a layout box, like `<ng-container>` |
+| [`<svg>`](/api/elements/svg)                               | SVG graphics                                         |
+| [`<blur-view>`](/api/elements/blur-view)                   | Frosted, blurred backgrounds                         |
+| [`<video>`](/api/elements/video)                           | Video playback                                       |
+| [`<webview>`](/api/elements/webview)                       | Web pages inside your app                            |
+| [`<title-bar-view>`](/api/elements/title-bar-view)         | The draggable area of a desktop window's title bar   |
+| [`<cover-view>`](/api/elements/cover-view)                 | Content that draws above a desktop `<webview>`       |

@@ -1,28 +1,46 @@
-# &lt;block&gt;
+# `<block>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-An invisible container that produces no visual output. Useful for grouping elements without adding layout cost — similar to `<ng-container>` in web Angular.
+An invisible grouping element with no box of its own, like an element with `display: contents`. Its children lay out as if they were children of its parent.
 
 <Go example="element-block" defaultFile="src/app/app.ts" />
 
-## When to Use
+## Usage
 
-Use `<block>` instead of `<view>` when you need a logical grouping container but don't want an extra layout node. It has zero rendering cost — no box model, no background, no events.
+```typescript title="src/app/contact.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-```angular-html
-<view>
-  @if (showDetails()) {
-    <block>
-      <text>Name: {{ name() }}</text>
-      <text>Email: {{ email() }}</text>
-    </block>
-  }
-</view>
+@Component({
+  selector: 'app-contact',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="row">
+      <block>
+        <text>{{ name() }}</text>
+        <text>{{ email() }}</text>
+      </block>
+    </view>
+  `,
+})
+export class Contact {
+  readonly name = signal('Ada');
+  readonly email = signal('ada@example.com');
+}
 ```
 
-:::info
-In most cases, Angular's `@if` and `@for` control flow already handle conditional and repeated rendering without needing a wrapper element. Use `<block>` when you need to group siblings for other reasons (e.g., applying a shared directive).
-:::
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+Angular's `<ng-container>` also groups elements, and creates no element at all. Use `<block>` when you need a real element in the tree, such as a host for a directive.
+
+## Attributes
+
+None of its own. Layout and visual styles have no effect, because it has no box.
+
+## Events
+
+None.
+
+## Related
+
+- [`<view>`](/api/elements/view): a grouping element with a box
+- [Elements and layout](/guide/elements/)

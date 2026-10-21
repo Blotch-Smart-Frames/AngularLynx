@@ -1,40 +1,114 @@
-# &lt;scroll-view&gt;
+# `<scroll-view>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-A scrollable area for content. Set `scroll-orientation` to control the scroll direction.
+A container that scrolls, like a `<div>` with `overflow: auto`. It renders all its children at once, so use [`<list>`](/api/elements/list) for long lists.
 
 <Go example="element-scroll-view" defaultFile="src/app/app.ts" />
 
-```angular-html
-<scroll-view scroll-orientation="vertical" style="height: 100vh;">
-  @for (item of items(); track item.id) {
-    <view class="item">
-      <text>{{ item.name }}</text>
-    </view>
-  }
-</scroll-view>
+## Usage
+
+```typescript title="src/app/feed.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view
+      scroll-orientation="vertical"
+      style="height: 100vh;"
+      (bindscrolltolower)="loadMore()"
+    >
+      @for (post of posts(); track post.id) {
+        <text>{{ post.title }}</text>
+      }
+    </scroll-view>
+  `,
+})
+export class Feed {
+  readonly posts = signal([{ id: 1, title: 'First post' }]);
+  loadMore(): void {}
+}
 ```
 
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
 :::warning
-`<scroll-view>` requires an explicit height. Without a height constraint, it expands to fit all content and never scrolls.
+A `<scroll-view>` without a fixed height grows to fit its content and never scrolls. `flex: 1` on it isn't enough: put `flex: 1` on a parent column and give the scroll view `height: 100%`.
 :::
 
-## Key Attributes
+## Attributes
 
-| Attribute            | Type      | Description                                       |
-| -------------------- | --------- | ------------------------------------------------- |
-| `scroll-orientation` | `string`  | `"vertical"` (default) or `"horizontal"`          |
-| `bounces`            | `boolean` | Enable/disable bounce effect at scroll boundaries |
-| `scroll-bar-enable`  | `boolean` | Show/hide the scrollbar                           |
+| Attribute                                  | Type                         | Default      | Description                                                                                                  |
+| ------------------------------------------ | ---------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `scroll-orientation`                       | `'vertical' \| 'horizontal'` | `'vertical'` | Scroll direction. It replaces the old `scroll-x` and `scroll-y` attributes.                                  |
+| `enable-scroll`                            | `boolean`                    | `true`       | Whether the user can scroll it by dragging.                                                                  |
+| `bounces`                                  | `boolean`                    | `true`       | iOS only. Rubber-band bounce at the edges. This is Lynx's default: AngularLynx doesn't change it.            |
+| `scroll-bar-enable`                        | `boolean`                    | `true`       | Shows the scroll bar.                                                                                        |
+| `upper-threshold`                          | `number`                     | `0`          | Distance in px from the top (or left) edge at which `bindscrolltoupper` fires.                               |
+| `lower-threshold`                          | `number`                     | `0`          | Distance in px from the bottom (or right) edge at which `bindscrolltolower` fires.                           |
+| `initial-scroll-offset`                    | `number`                     | `0`          | Starting scroll position in px. It applies once.                                                             |
+| `initial-scroll-to-index`                  | `number`                     | `0`          | Starts scrolled to the child at this index. It applies once, and every direct child needs `flatten="false"`. |
+| `experimental-android-enable-new-overflow` | `boolean`                    | `true`       | Android only, Lynx 4.2 and later. Experimental clipping implementation.                                      |
+| `enable-nested-scroll`                     | `boolean`                    | `false`      | iOS and Android. Lets it scroll inside another scroll container: the inner one scrolls first.                |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event                    | Description                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------- |
-| `bindscroll`             | Fires continuously during scrolling. `event.detail` contains `scrollTop` and `scrollLeft` |
-| `bindscrolltoupper`      | Fires when scrolling reaches the top (or left edge for horizontal)                        |
-| `bindscrolltolower`      | Fires when scrolling reaches the bottom (or right edge). Useful for infinite scroll       |
-| `bindcontentsizechanged` | Fires when the scrollable content size changes                                            |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                     | `detail`                                                                                                               | Description                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `bindscroll`              | `{ scrollTop: number; scrollLeft: number; scrollHeight: number; scrollWidth: number; deltaX: number; deltaY: number }` | Fires while it scrolls. Positions are in px; `deltaX`/`deltaY` are the change since the last event. |
+| `bindscrollend`           | Same as `bindscroll`                                                                                                   | Scrolling, including momentum, has stopped.                                                         |
+| `bindscrolltoupper`       | Same as `bindscroll`                                                                                                   | Scrolled to within `upper-threshold` of the top (or left) edge.                                     |
+| `bindscrolltolower`       | Same as `bindscroll`                                                                                                   | Scrolled to within `lower-threshold` of the bottom (or right) edge. Use it to load more.            |
+| `bindscrolltoupperedge`   | Same as `bindscroll`                                                                                                   | iOS and Android. Reached the very top (or left) edge.                                               |
+| `bindscrolltoloweredge`   | Same as `bindscroll`                                                                                                   | iOS and Android. Reached the very bottom (or right) edge.                                           |
+| `bindscrolltonormalstate` | Same as `bindscroll`                                                                                                   | iOS and Android. Moved away from an edge.                                                           |
+| `bindcontentsizechanged`  | Same as `bindscroll`                                                                                                   | iOS (Lynx 4.1 and later) and Android. The content's size changed.                                   |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) scroll it from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead. To bring one child into view, call [`scrollIntoView`](/api/elements/view#methods) on that child.
+
+| Method                  | Parameters                                              | Description                                                                                                                                 |
+| ----------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scrollTo`              | `{ offset?: number; index?: number; smooth?: boolean }` | Scrolls to the child at `index` (default `0`), plus `offset` px. `smooth` animates it.                                                      |
+| `scrollBy`              | `{ offset: number }`                                    | Scrolls by `offset` px.                                                                                                                     |
+| `autoScroll`            | `{ rate: number; start: boolean }`                      | `start: true` scrolls continuously at `rate` px per second (negative scrolls back); `start: false` stops.                                   |
+| `getScrollInfo`         | —                                                       | iOS and Android. Returns `{ scrollX, scrollY, scrollRange }` in px.                                                                         |
+| `takeContentScreenshot` | `{ format?: 'jpeg' \| 'png'; scale?: number }`          | iOS (Lynx 4.1 and later) and Android. Captures all the content, not only the visible part, as `{ data, width, height }` with base64 `data`. |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <scroll-view #feed scroll-orientation="vertical" style="height: 400px;">
+      <text>Long content</text>
+    </scroll-view>
+    <view (bindtap)="toTop()"><text>Back to top</text></view>
+  `,
+})
+export class Feed {
+  readonly feed = viewChild.required('feed', { read: ElementRef });
+
+  toTop(): void {
+    this.feed().nativeElement.invoke?.('scrollTo', { offset: 0, smooth: true });
+  }
+}
+```
+
+## Related
+
+- [`<list>`](/api/elements/list): virtualized scrolling for long lists
+- [`<scroll-coordinator>`](/api/elements/scroll-coordinator): a list under a collapsing header. Nested scroll views don't hand scrolling to each other.
+- [CSS on Lynx](/guide/styling): heights, `position: sticky` and `z-index` inside a scroll view
+- [Scroll Area](/dolan/scroll-area): the UI component built on it

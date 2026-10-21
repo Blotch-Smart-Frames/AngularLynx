@@ -16,7 +16,7 @@ It does three things:
 - Writes `tailwind.config.ts` with the Lynx preset.
 - **Replaces** `src/styles.css` (or `src/styles.scss`) with Tailwind's directives. Copy out any global styles you want to keep first.
 
-There's nothing to add to `angular.json`. The build turns Tailwind on when it finds a `tailwind.config.ts`.
+There's nothing to add to `angular.json`, and no `postcss.config.js` to write. The build turns Tailwind on when it finds a `tailwind.config.ts`.
 
 ### Set it up by hand
 
@@ -87,37 +87,12 @@ export class Counter {
 - **Rows need `flex flex-row`.** Elements stack in a column by default, and `flex-row` alone does nothing.
 - **Sizes run 12.5% smaller than on the web.** Tailwind's scale uses `rem`, which is 14px on Lynx. For an exact size, use an arbitrary `px` value such as `w-[44px]`.
 
-## Write classes in inline templates
+## Where Tailwind finds classes
 
-:::warning Classes in `.html` templates
-Tailwind only finds classes written in inline templates (`template:`) for now. Classes that appear only in a separate `.html` template get no CSS.
-:::
+Tailwind generates CSS only for the classes it finds in the files `content` lists. The schematic writes `./src/**/*.{html,ts}`, which covers inline templates and `.html` templates alike.
 
-During `ng build` and `ng serve`, AngularLynx hands Tailwind the files your app bundles, in place of `content`. Those are your `.ts` files. An `.html` template is read by the Angular compiler, so Tailwind never sees it.
-
-`ng generate component` makes an `.html` template by default. For components styled with Tailwind, generate an inline one:
-
-```bash
-ng generate component card --inline-template
-```
-
-To make that the default, set it in `angular.json`:
-
-```json title="angular.json"
-{
-  "projects": {
-    "my-app": {
-      "schematics": {
-        "@schematics/angular:component": {
-          "inlineTemplate": true
-        }
-      }
-    }
-  }
-}
-```
-
-The schematic writes `content: ['./src/**/*.ts']`. Change it to `./src/**/*.{html,ts}`, as in the manual setup, so editor tools that read `content` see your `.html` templates too.
+- **Components outside `src`**, such as a library in your workspace, need their folder added to `content`.
+- **Apps made with an older version** have `content: ['./src/**/*.ts']`, which misses `.html` templates. `ng update @blotch/angular-lynx` adds `.html` to it.
 
 ## Mix with component styles
 

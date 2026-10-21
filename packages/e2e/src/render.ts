@@ -32,6 +32,7 @@ export const renderInBrowser = async (
         ...process.env,
         E2E_APP_DIST: app.distDir,
         E2E_APP_NAME: app.name,
+        E2E_APP_TAILWIND: app.tailwind ? 'true' : '',
         E2E_ARTIFACTS_DIR: context.artifactsDir,
       },
       logFile: context.logFile,

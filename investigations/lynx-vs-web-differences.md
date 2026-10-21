@@ -3405,19 +3405,23 @@ This is the same mechanism React Lynx uses internally for `runOnBackground()`. S
 
 ### Setup
 
-Use `rsbuild-plugin-tailwindcss` (not a bare `postcss.config.js`). Add `pluginTailwindCSS()` after `pluginAngularLynx()` in `lynx.config.ts`. No changes to the CSS pipeline (`css.ts`) are needed — Tailwind's PostCSS step runs upstream of the CSS extractor.
+The rsbuild plugin finds `tailwind.config.*` and adds Tailwind as a PostCSS plugin (`src/tailwind.ts`), the setup in Lynx's own Tailwind guide and in Angular CLI. Apps need no `postcss.config.js`; one that already runs Tailwind is left as it is. Tailwind's PostCSS step runs upstream of the CSS extractor, so `css.ts` needs no changes.
+
+Don't go back to `rsbuild-plugin-tailwindcss`. It replaces Tailwind's `content` with the modules each entry bundles, and an Angular `.html` template is never a module: the compiler reads it and compiles it into the component's `.ts` module. Classes used only in `.html` templates got no CSS (issue #52). The plugin has no option to add files to the list.
 
 **Always use `@lynx-js/tailwind-preset`** — it strips every Tailwind plugin that generates CSS Lynx cannot parse: `hover:*`, `focus:*`, `@media`, `::before`/`::after`, `pointer-events`, `calc()`, etc.
 
 **Tailwind v3 only** — `tailwindcss@^3`. Tailwind v4 (`@tailwindcss/postcss`, `@tailwindcss/vite`) is incompatible with `@lynx-js/tailwind-preset`.
 
-### `content:` must target `.ts` files, not `.html`
+### `content:` must take in `.html` and `.ts` files
 
-Angular templates in this project are inline TypeScript string literals — there are no `.html` template files. Use:
+Tailwind generates CSS only for classes in the files `content` matches. Components can use inline templates (in `.ts`) or `.html` templates, so use:
 
 ```ts
-content: ['./src/**/*.ts'],
+content: ['./src/**/*.{html,ts}'],
 ```
+
+Tailwind reports the folders it scans to rspack (PostCSS `dir-dependency` messages), so editing an `.html` template under `ng serve` regenerates the CSS.
 
 ### Text color classes must go on `<text>` elements directly
 

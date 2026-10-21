@@ -224,19 +224,18 @@ const checkRequiredFiles = async ({ pkg, files }: PackedPackage) => {
 };
 
 /**
- * The compiled factory of every schematic in the runtime's collection.json.
+ * The compiled factory of every schematic in the runtime's collection.json,
+ * and of every `ng update` migration in its migrations.json.
  */
-const schematicFactoryFiles = (pkg: PublishablePackage) => {
-  const collection = JSON.parse(
-    readFileSync(
-      path.join(REPO_ROOT, pkg.dir, 'schematics/collection.json'),
-      'utf8',
-    ),
-  ) as SchematicCollection;
-  return Object.values(collection.schematics).map(
-    ({ factory }) => `${path.posix.join('schematics', factory)}.js`,
-  );
-};
+const schematicFactoryFiles = (pkg: PublishablePackage) =>
+  ['collection.json', 'migrations.json'].flatMap((file) => {
+    const collection = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, pkg.dir, 'schematics', file), 'utf8'),
+    ) as SchematicCollection;
+    return Object.values(collection.schematics).map(
+      ({ factory }) => `${path.posix.join('schematics', factory)}.js`,
+    );
+  });
 
 const runPublint = async ({ tarball }: PackedPackage) => {
   // publint reads the tarball itself, so it judges exactly what users install.

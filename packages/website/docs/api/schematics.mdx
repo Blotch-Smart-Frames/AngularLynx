@@ -93,7 +93,7 @@ Use it if you skipped Tailwind during `ng add`. See [Tailwind CSS](/guide/tailwi
 
 **What it changes:**
 
-- **`tailwind.config.ts`**: created, or replaced, with `@lynx-js/tailwind-preset` and `content: ['./src/**/*.ts']`.
+- **`tailwind.config.ts`**: created, or replaced, with `@lynx-js/tailwind-preset` and `content: ['./src/**/*.{html,ts}']`.
 - **`src/styles.css`** (or `styles.scss` if it exists): its contents are replaced with `@tailwind base;` and `@tailwind utilities;`.
 - **`package.json`**: adds `tailwindcss` (3.x) and `@lynx-js/tailwind-preset` as dev dependencies.
 
@@ -166,6 +166,10 @@ ng update @blotch/angular-lynx
 ```
 
 Updates `@blotch/angular-lynx`, `@blotch/angular-lynx-build`, `@blotch/angular-lynx-testing-library` and the packages they use together, so their versions stay in step.
+
+It also updates your app for changes that need one:
+
+- **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS.
 
 ## Related
 

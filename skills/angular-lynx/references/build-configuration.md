@@ -164,4 +164,4 @@ npm run demo              # Runs ng serve for the kitchen-sink-app
 
 ## Tailwind CSS
 
-If a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin auto-configures Tailwind processing. No additional setup needed.
+If a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin runs Tailwind as a PostCSS plugin. No `postcss.config.js` or other setup is needed. Tailwind generates CSS for the classes in the files its `content` globs match, so keep `./src/**/*.{html,ts}` there: classes in an `.html` template the glob misses get no CSS.

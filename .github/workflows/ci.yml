@@ -172,7 +172,7 @@ jobs:
       # CODECOV_TOKEN repo secret; without it these steps simply no-op.
       - name: Upload runtime coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/runtime/coverage/lcov.info
@@ -181,7 +181,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload rsbuild-plugin coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/rsbuild-plugin-angular-lynx/coverage/lcov.info
@@ -190,7 +190,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload testing-library coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/testing-library/coverage/lcov.info
@@ -199,7 +199,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload ui coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/ui/coverage/lcov.info
@@ -208,7 +208,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload dolan coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/dolan/coverage/lcov.info
@@ -217,7 +217,7 @@ jobs:
           fail_ci_if_error: false
       - name: Upload oxlint-plugin coverage to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: packages/oxlint-plugin/coverage/lcov.info

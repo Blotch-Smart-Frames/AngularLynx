@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { type BadgeVariant, UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -72,7 +67,6 @@ const PREVIEW_CAP = 18;
     UiSeparator,
     UiText,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './ssr-demo.html',
 })
 export class SsrDemo {

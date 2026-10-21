@@ -41,6 +41,13 @@ describe('getComponentFiles', () => {
       expect(file.endsWith('.ts')).toBe(true);
     }
   });
+
+  it("leaves the library's render tests behind", () => {
+    // line-chart has both: line-chart.test.ts ships, the render test doesn't.
+    const files = getComponentFiles('line-chart');
+    expect(files).toContain('line-chart.test.ts');
+    expect(files).not.toContain('line-chart-render.test.ts');
+  });
 });
 
 describe('rewriteImports', () => {

@@ -1,5 +1,4 @@
 import {
-  ChangeDetectionStrategy,
   Component,
   computed,
   effect,
@@ -43,7 +42,6 @@ type FeedItem = {
     UiCard,
     UiCardContent,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './exposure-demo.html',
 })
 export class ExposureDemo {

@@ -14,7 +14,6 @@ Create standalone components for Angular v20+. Components are standalone by defa
 ```typescript
 import {
   Component,
-  ChangeDetectionStrategy,
   input,
   output,
   computed,
@@ -22,7 +21,6 @@ import {
 
 @Component({
   selector: 'app-user-card',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'user-card',
     '[class.active]': 'isActive()',

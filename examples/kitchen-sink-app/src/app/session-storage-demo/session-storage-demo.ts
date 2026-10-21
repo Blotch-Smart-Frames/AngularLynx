@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { LYNX_ELEMENTS, LynxSessionStorage } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -47,7 +42,6 @@ type Activity = {
     UiSeparator,
     UiText,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './session-storage-demo.html',
 })
 export class SessionStorageDemo {

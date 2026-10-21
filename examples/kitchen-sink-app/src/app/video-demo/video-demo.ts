@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiButton } from '../../components/ui/button';
 import {
@@ -34,7 +29,6 @@ type VideoErrorDetail = { errorCode: number; errorMsg: string };
 @Component({
   selector: 'app-video-demo',
   hostDirectives: [ScreenHost],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LYNX_ELEMENTS,
     DemoScreen,

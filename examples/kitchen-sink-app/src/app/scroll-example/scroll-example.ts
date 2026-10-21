@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import type { ScrollEvent } from '@lynx-js/types';
 import { UiBadge } from '../../components/ui/badge';
@@ -149,7 +149,6 @@ const ACTIVITIES: readonly Activity[] = [
   hostDirectives: [ScreenHost],
   standalone: true,
   imports: [LYNX_ELEMENTS, UiText, UiBadge, UiCard, UiIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view class="h-full w-full flex-col bg-background flex">
       <!-- ── Pinned header ── -->

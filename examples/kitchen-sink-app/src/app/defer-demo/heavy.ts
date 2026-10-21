@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiIcon } from '../../components/ui/icon';
@@ -28,7 +28,6 @@ import { UiSeparator } from '../../components/ui/separator';
 @Component({
   selector: 'app-heavy',
   imports: [LYNX_ELEMENTS, UiBadge, UiIcon, UiSeparator],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (compact()) {
       <view

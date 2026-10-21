@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -60,7 +60,6 @@ const MANUAL_LOADING_MS = 900;
 @Component({
   selector: 'app-defer-demo',
   hostDirectives: [ScreenHost],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LYNX_ELEMENTS,
     DemoScreen,

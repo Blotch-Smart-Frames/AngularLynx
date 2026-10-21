@@ -36,7 +36,15 @@ vi.mock('../utils/resolve-paths.js', () => ({
   rewriteImports: (content: string) => content,
 }));
 
+// The install step runs the project's package manager; record calls instead.
+const installComponentPackages = vi.fn();
+vi.mock('./install-packages.js', () => ({
+  installComponentPackages: (...args: unknown[]) =>
+    installComponentPackages(...args),
+}));
+
 beforeEach(() => {
+  installComponentPackages.mockClear();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -1595,5 +1603,44 @@ describe('updateCommand — selective review of shared theme files', () => {
 
     const lockfile = readLockfile(fixture.dir);
     expect(lockfile.theme['default.css'].hash).toBe(hashContent(upstream));
+  });
+});
+
+describe('updateCommand dependencies', () => {
+  it("adds a dependency a component's new version needs, and its packages", async () => {
+    // line-chart used to stand alone; upstream it now builds on chart, which
+    // the project doesn't have yet.
+    const lineChart = "import { UiChart } from '../chart/chart';";
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          'line-chart': { 'line-chart.ts': { hash: hashContent('old') } },
+        },
+        utils: {},
+        theme: {},
+      },
+      components: { 'line-chart': { 'line-chart.ts': 'old' } },
+      uiSource: {
+        'line-chart': { 'line-chart.ts': lineChart },
+        chart: { 'chart.ts': 'export const UiChart = {};' },
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true });
+
+    expect(readInstalledFile(fixture.dir, 'chart', 'chart.ts')).toBe(
+      'export const UiChart = {};',
+    );
+    expect(readInstalledFile(fixture.dir, 'line-chart', 'line-chart.ts')).toBe(
+      lineChart,
+    );
+    expect(installComponentPackages).toHaveBeenCalledWith(fixture.dir, [
+      'chart',
+      'line-chart',
+    ]);
   });
 });

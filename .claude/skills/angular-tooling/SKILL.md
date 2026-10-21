@@ -58,7 +58,7 @@ ng g c features/user-profile  # Short form
 # With options
 ng g c shared/button --inline-template --inline-style
 ng g c features/dashboard --skip-tests
-ng g c features/settings --change-detection=OnPush
+ng g c features/settings --change-detection=Eager  # OnPush is the default
 
 # Flat (no folder)
 ng g c shared/icon --flat

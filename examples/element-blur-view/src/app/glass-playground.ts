@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import {
   createMainThreadRef,
   LYNX_ELEMENTS,
@@ -161,7 +161,6 @@ const BLOBS = START_POSITIONS.map((position, index) => ({
 
 @Component({
   selector: 'app-glass-playground',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-1 flex-col px-6 pb-6' },
   template: `
     <view

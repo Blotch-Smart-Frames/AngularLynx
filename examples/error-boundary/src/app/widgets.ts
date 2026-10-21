@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 /** Thrown when the (simulated) network is down, so `when` can match on it. */
@@ -23,7 +23,6 @@ export class OfflineError extends Error {
     </view>
   `,
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PriceTile {
   readonly symbol = input.required<string>();
@@ -61,7 +60,6 @@ export type ProfileFailure = 'none' | 'offline' | 'bug';
     </view>
   `,
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfileCard {
   readonly failure = input<ProfileFailure>('none');

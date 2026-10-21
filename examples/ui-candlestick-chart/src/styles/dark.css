@@ -37,5 +37,13 @@ page.dark {
   /* Translucent variant of --ring for a softer focus outline (see default.css). */
   --ring-subtle: rgba(212, 212, 216, 0.4);
 
+  /* Series palette for charts (bg-chart-1, and chart-theme.ts in the chart
+     component, which mirrors these values for SVG). */
+  --chart-1: rgba(38, 98, 217, 1);
+  --chart-2: rgba(46, 184, 138, 1);
+  --chart-3: rgba(232, 140, 48, 1);
+  --chart-4: rgba(175, 87, 219, 1);
+  --chart-5: rgba(226, 54, 112, 1);
+
   --radius: 8px;
 }

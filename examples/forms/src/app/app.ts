@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import {
   form,
   FormField,
@@ -19,7 +14,6 @@ import { UiTextarea } from '../components/ui/textarea';
 
 @Component({
   selector: 'app-root',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LYNX_ELEMENTS, FormField, UiButton, UiInput, UiTextarea],
   template: `
     <scroll-view class="h-screen bg-background" scroll-orientation="vertical">

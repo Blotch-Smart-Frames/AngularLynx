@@ -1,6 +1,6 @@
 # Line Chart
 
-Plot a series of points as a connected line — drawn entirely from Lynx views, with no SVG or canvas. Built on a reusable **cartesian chart base**, so bar and area charts can share the same axes.
+Plot one series of points as a line, with a dot at each point. It's a preset of [`<ui-chart>`](/dolan/chart): it builds a [TanStack Charts](https://tanstack.com/charts) definition from its inputs, so it has the same touch tooltip, screen reader support, pan and zoom, and dark mode.
 
 <Go example="ui-line-chart" defaultFile="src/app/app.ts" />
 
@@ -11,7 +11,7 @@ npx @blotch/dolan add line-chart
 ```
 
 :::tip
-The base **`cartesian-chart`** (axes, gridlines, scales) is a dependency and installs automatically.
+The line chart depends on [`chart`](/dolan/chart), which is added automatically, along with the npm packages it imports: `@tanstack/charts` and `d3-shape`.
 :::
 
 ```typescript
@@ -20,10 +20,10 @@ import { UiLineChart } from '@/components/ui/line-chart';
 
 ## Usage
 
-Pass an array of `{ x, y }` points. The wrapper picks rounded axis ranges for you.
+Pass an array of `{ x, y }` points, both numbers. The chart fits rounded axis ranges to the data.
 
 ```angular-html
-<ui-line-chart [data]="revenue" [width]="280" [height]="180" />
+<ui-line-chart [data]="revenue" label="Monthly revenue" />
 ```
 
 ```typescript
@@ -35,32 +35,36 @@ revenue = [
 ];
 ```
 
+Touch the chart to see a point's values in a tooltip, and tap to pin it. Set `label` so a screen reader can say what the chart shows.
+
 ### Color and thickness
 
-`color` accepts any CSS color. It sets both the line and the dots.
+`color` sets the line and the dots. A theme color such as `var(--chart-2)` switches with [dark mode](/dolan/chart#dark-mode); a fixed color such as `rgba(59, 130, 246, 1)` stays the same.
 
 ```angular-html
 <ui-line-chart
   [data]="downloads"
-  [color]="'rgba(59, 130, 246, 1)'"
+  color="var(--chart-2)"
   [strokeWidth]="3"
   [dotRadius]="4"
 />
 ```
 
+Set `showDots` to `false` for a line without dots.
+
 ### Smooth curve
 
-Set `smooth` to draw a curved line through the points instead of straight segments. Dots still sit on the raw data.
+Set `smooth` to draw a curve through the points instead of straight segments. The dots stay on the data.
 
 ```angular-html
 <ui-line-chart [data]="revenue" [smooth]="true" />
 ```
 
-The curve is a **monotone cubic** (like D3's `curveMonotoneX`): it never overshoots the data, so the line stays inside the plotted values.
+The curve is monotone (d3's `curveMonotoneX`): it never overshoots the data, so the line stays within the values it passes through.
 
 ### Label the axes
 
-Set `xAxisLabel` / `yAxisLabel` for axis titles. `showXGrid` adds vertical gridlines (horizontal ones are on by default).
+`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default; `showGrid` turns them off and `showXGrid` adds vertical ones.
 
 ```angular-html
 <ui-line-chart
@@ -71,9 +75,22 @@ Set `xAxisLabel` / `yAxisLabel` for axis titles. `showXGrid` adds vertical gridl
 />
 ```
 
+### Format the ticks
+
+`xTickFormat` and `yTickFormat` turn tick values into labels. `tickCount` sets roughly how many ticks each axis gets; the axis picks round values near it.
+
+```angular-html
+<ui-line-chart [data]="revenue" [xTickFormat]="monthName" />
+```
+
+```typescript
+readonly months = ['Jan', 'Feb', 'Mar', 'Apr'];
+readonly monthName = (value: number) => this.months[value - 1] ?? '';
+```
+
 ### Fix the axis range
 
-By default the axes fit the data. Pass `yMin` / `yMax` (or `xMin` / `xMax`) to pin a bound — most often `yMin={0}` to anchor the baseline at zero.
+By default the axes fit the data. Pass `yMin` and `yMax` (or `xMin` and `xMax`) to fix a bound, most often `yMin` of `0` to start the axis at zero.
 
 ```angular-html
 <ui-line-chart [data]="revenue" [yMin]="0" />
@@ -81,15 +98,23 @@ By default the axes fit the data. Pass `yMin` / `yMax` (or `xMin` / `xMax`) to p
 
 ### Pad the plot edges
 
-`padding` insets the plotted area, each side a fraction (`0`–`1`) of the plot size. Use it to keep the first and last dots off the axes.
+`padding` insets the plot, each side as a fraction (`0` to `1`) of its size. Use it to keep the first and last dots off the frame.
 
 ```angular-html
 <ui-line-chart [data]="revenue" [padding]="{ left: 0.05, right: 0.05 }" />
 ```
 
+### Size
+
+The chart fills its container's width and is 200px tall. Set `height` for a different height, and `width` for a fixed width, both in px.
+
+```angular-html
+<ui-line-chart [data]="revenue" [height]="160" />
+```
+
 ### Handle taps
 
-`pointTap` emits the tapped `{ x, y }` point.
+`pointTap` emits the tapped `{ x, y }` point. Set `tooltip` to `false` to turn the tooltip off.
 
 ```angular-html
 <ui-line-chart [data]="revenue" (pointTap)="onPointTap($event)" />
@@ -97,129 +122,83 @@ By default the axes fit the data. Pass `yMin` / `yMax` (or `xMin` / `xMax`) to p
 
 ### Pan and zoom
 
-Set `zoomable` to let users **pinch to zoom** and **drag to pan**, with on-screen `+` / `−` / `1:1` controls. The axes, gridlines, and mark widths update live as you zoom. It's off by default, so charts stay static inside scroll views.
+Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons.
 
 ```angular-html
-<ui-line-chart [data]="revenue" [zoomable]="true" />
+<ui-line-chart [data]="revenue" [zoomable]="true" zoomAxes="x" />
 ```
 
-Lock one axis with `zoomAxes` (`'x'`, `'y'`, or `'xy'`), and bound the range with `minZoom` / `maxZoom`. Every chart forwards these to the base [`UiCartesianChart`](#uicartesianchart), so they work the same on bar, candlestick, area, and scatter charts. On bar and candlestick charts, zooming in stretches the bars and candles apart.
+See [Pan and zoom](/dolan/chart#pan-and-zoom) on the Chart page for how it behaves. To zoom from your own controls, call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component.
 
-To drive zoom from your own buttons, call `zoomIn()`, `zoomOut()`, or `resetZoom()` on a `UiCartesianChart` reference.
+## Several series, overlays and other marks
 
-### Multiple series
+The preset draws one series. For several lines, a target line, or any other mark, build a definition and render it with [`<ui-chart>`](/dolan/chart#several-series). You can start from this preset's definition to keep its axes and styling:
 
-For more than one line, use the base `<ui-cartesian-chart>` with one `<ui-line-series>` per line. The series read the shared axes from the chart, so they line up automatically.
+```typescript
+import { defineChart, ruleY } from '@tanstack/charts/universal';
+import { lineChartDefinition } from '@/components/ui/line-chart';
+
+const base = lineChartDefinition({ data: revenue, smooth: true, yMin: 0 });
+
+const withTarget = defineChart({
+  ...base,
+  marks: [...base.marks, ruleY([20], { stroke: 'var(--muted-foreground)' })],
+});
+```
 
 ```angular-html
-<ui-cartesian-chart
-  [xDomain]="[1, 6]"
-  [yDomain]="[0, 40]"
-  [xTicks]="[1, 2, 3, 4, 5, 6]"
-  [yTicks]="[0, 10, 20, 30, 40]"
-  [width]="280"
-  [height]="180"
->
-  <ui-line-series [data]="thisYear" [color]="'rgba(59, 130, 246, 1)'" />
-  <ui-line-series [data]="lastYear" [color]="'rgba(34, 197, 94, 1)'" />
-</ui-cartesian-chart>
+<ui-chart [definition]="withTarget" label="Revenue against target" />
 ```
-
-:::info Why explicit `width` and `height`?
-Lynx has no `<line>`, so each segment is a rotated view. Computing the rotation needs **pixel** sizes — hence the explicit `width`/`height` instead of stretch-to-fit.
-:::
 
 ## API
 
 ### UiLineChart
 
-The single-series convenience wrapper. Auto-computes the axes from `data`.
+| Input              | Type                            | Default                    | Description                                                   |
+| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------------- |
+| `data`             | `XYDatum[]`                     | _required_                 | Points to plot, each `{ x, y }`                               |
+| `color`            | `string`                        | `'var(--primary)'`         | Line and dot color (any CSS color)                            |
+| `strokeWidth`      | `number`                        | `2`                        | Line thickness in px                                          |
+| `dotRadius`        | `number`                        | `3`                        | Dot radius in px                                              |
+| `showDots`         | `boolean`                       | `true`                     | Draw a dot at each point                                      |
+| `smooth`           | `boolean`                       | `false`                    | Draw a monotone curve instead of straight segments            |
+| `width`            | `number`                        | _fills container_          | Fixed width in px                                             |
+| `height`           | `number`                        | `200`                      | Height in px                                                  |
+| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis                               |
+| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks                           |
+| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks                             |
+| `xAxisLabel`       | `string`                        | `''`                       | X-axis title                                                  |
+| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title                                                  |
+| `padding`          | `ChartPadding`                  | `{}`                       | Inner inset, each side a `0`–`1` fraction of the plot         |
+| `xMin`             | `number`                        | _auto_                     | Fixed x-axis lower bound                                      |
+| `xMax`             | `number`                        | _auto_                     | Fixed x-axis upper bound                                      |
+| `yMin`             | `number`                        | _auto_                     | Fixed y-axis lower bound                                      |
+| `yMax`             | `number`                        | _auto_                     | Fixed y-axis upper bound                                      |
+| `xTickFormat`      | `(value: number) => string`     | _auto_                     | Formats x-axis tick labels                                    |
+| `yTickFormat`      | `(value: number) => string`     | _auto_                     | Formats y-axis tick labels                                    |
+| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched point; a tap pins it           |
+| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart                  |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Light or dark colors; see [Dark mode](/dolan/chart#dark-mode) |
+| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons                                |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom                                       |
+| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable                        |
+| `minZoom`          | `number`                        | `1`                        | Smallest zoom; `1` shows all the data                         |
+| `maxZoom`          | `number`                        | `8`                        | Largest zoom                                                  |
+| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press                                  |
+| `class`            | `string`                        | `''`                       | Additional CSS classes                                        |
 
-| Input              | Type                        | Default              | Description                               |
-| ------------------ | --------------------------- | -------------------- | ----------------------------------------- |
-| `data`             | `ChartPoint[]`              | _required_           | Points to plot, each `{ x, y }`           |
-| `color`            | `string`                    | `'var(--primary)'`   | Line and dot color (any CSS color)        |
-| `width`            | `number`                    | `320`                | Chart width in px                         |
-| `height`           | `number`                    | `200`                | Chart height in px                        |
-| `tickCount`        | `number`                    | `5`                  | Target number of axis ticks               |
-| `strokeWidth`      | `number`                    | `2`                  | Line thickness in px                      |
-| `dotRadius`        | `number`                    | `3`                  | Data point radius in px                   |
-| `showDots`         | `boolean`                   | `true`               | Draw a dot at each point                  |
-| `smooth`           | `boolean`                   | `false`              | Draw a smooth monotone-cubic curve        |
-| `showXGrid`        | `boolean`                   | `false`              | Draw vertical gridlines at x ticks        |
-| `xAxisLabel`       | `string`                    | `''`                 | X-axis title                              |
-| `yAxisLabel`       | `string`                    | `''`                 | Y-axis title                              |
-| `padding`          | `ChartPadding`              | `{}`                 | Inner inset, each side a `0`–`1` fraction |
-| `xMin`             | `number`                    | _auto_               | Force x-axis lower bound                  |
-| `xMax`             | `number`                    | _auto_               | Force x-axis upper bound                  |
-| `yMin`             | `number`                    | _auto_               | Force y-axis lower bound                  |
-| `yMax`             | `number`                    | _auto_               | Force y-axis upper bound                  |
-| `xTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats x-axis labels                     |
-| `yTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats y-axis labels                     |
-| `zoomable`         | `boolean`                   | `false`              | Enable pinch/drag zoom + controls         |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`               | Which axes zoom/pan affect                |
-| `showZoomControls` | `boolean`                   | `true`               | Show the +/−/1:1 controls when zoomable   |
-| `minZoom`          | `number`                    | `1`                  | Lower zoom bound (1 = fit all data)       |
-| `maxZoom`          | `number`                    | `8`                  | Upper zoom bound                          |
-| `zoomStep`         | `number`                    | `1.4`                | Zoom factor per +/− control press         |
-| `class`            | `string`                    | `''`                 | Additional CSS classes                    |
+| Output     | Type      | Description                     |
+| ---------- | --------- | ------------------------------- |
+| `pointTap` | `XYDatum` | Emits the point that was tapped |
 
-| Output     | Type         | Description                          |
-| ---------- | ------------ | ------------------------------------ |
-| `pointTap` | `ChartPoint` | Emits the point when a dot is tapped |
+| Method        | Description              |
+| ------------- | ------------------------ |
+| `zoomIn()`    | Zooms in by `zoomStep`   |
+| `zoomOut()`   | Zooms out by `zoomStep`  |
+| `resetZoom()` | Shows all the data again |
 
-### UiCartesianChart
+`XYDatum` is `{ x: number; y: number }` and `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size, with omitted sides `0`. Both are exported from `@/components/ui/chart`.
 
-The reusable base: draws gridlines and axis labels, and shares its scales with any series inside it.
+### lineChartDefinition
 
-| Input              | Type                        | Default              | Description                                 |
-| ------------------ | --------------------------- | -------------------- | ------------------------------------------- |
-| `xDomain`          | `[number, number]`          | `[0, 1]`             | X value range                               |
-| `yDomain`          | `[number, number]`          | `[0, 1]`             | Y value range                               |
-| `xTicks`           | `number[]`                  | _auto_               | Explicit x tick values (else evenly spaced) |
-| `yTicks`           | `number[]`                  | _auto_               | Explicit y tick values (else evenly spaced) |
-| `width`            | `number`                    | `320`                | Chart width in px                           |
-| `height`           | `number`                    | `200`                | Chart height in px                          |
-| `yAxisWidth`       | `number`                    | `32`                 | Left gutter width for y labels (px)         |
-| `xAxisHeight`      | `number`                    | `20`                 | Bottom gutter height for x labels (px)      |
-| `tickCount`        | `number`                    | `5`                  | Target number of ticks when auto-generating |
-| `showGrid`         | `boolean`                   | `true`               | Draw horizontal gridlines at y ticks        |
-| `showXGrid`        | `boolean`                   | `false`              | Draw vertical gridlines at x ticks          |
-| `xAxisLabel`       | `string`                    | `''`                 | X-axis title (centered below tick labels)   |
-| `yAxisLabel`       | `string`                    | `''`                 | Y-axis title (rotated in the left gutter)   |
-| `padding`          | `ChartPadding`              | `{}`                 | Inner inset, each side a `0`–`1` fraction   |
-| `xTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats x-axis labels                       |
-| `yTickFormat`      | `(value: number) => string` | rounds to 2 decimals | Formats y-axis labels                       |
-| `zoomable`         | `boolean`                   | `false`              | Enable pinch/drag zoom + on-screen controls |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`        | `'xy'`               | Which axes zoom/pan affect                  |
-| `showZoomControls` | `boolean`                   | `true`               | Show the +/−/1:1 controls when zoomable     |
-| `minZoom`          | `number`                    | `1`                  | Lower zoom bound (1 = fit all data)         |
-| `maxZoom`          | `number`                    | `8`                  | Upper zoom bound (max shrink of the view)   |
-| `zoomStep`         | `number`                    | `1.4`                | Zoom factor per +/− control press           |
-| `class`            | `string`                    | `''`                 | Additional CSS classes                      |
-
-| Method        | Description                         |
-| ------------- | ----------------------------------- |
-| `zoomIn()`    | Zoom in one `zoomStep`, centered    |
-| `zoomOut()`   | Zoom out one `zoomStep`, centered   |
-| `resetZoom()` | Return to the fully zoomed-out view |
-
-`ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot size; omitted sides default to `0`.
-
-### UiLineSeries
-
-One line inside a `<ui-cartesian-chart>`.
-
-| Input         | Type           | Default            | Description                        |
-| ------------- | -------------- | ------------------ | ---------------------------------- |
-| `data`        | `ChartPoint[]` | _required_         | Points to plot, each `{ x, y }`    |
-| `color`       | `string`       | `'var(--primary)'` | Line and dot color                 |
-| `strokeWidth` | `number`       | `2`                | Line thickness in px               |
-| `dotRadius`   | `number`       | `3`                | Data point radius in px            |
-| `showDots`    | `boolean`      | `true`             | Draw a dot at each point           |
-| `smooth`      | `boolean`      | `false`            | Draw a smooth monotone-cubic curve |
-| `class`       | `string`       | `''`               | Additional CSS classes             |
-
-| Output     | Type         | Description                          |
-| ---------- | ------------ | ------------------------------------ |
-| `pointTap` | `ChartPoint` | Emits the point when a dot is tapped |
+`lineChartDefinition(options: LineChartOptions)` returns the TanStack definition `<ui-line-chart>` renders. The options are the inputs that shape the chart, with the same defaults: `data`, `color`, `strokeWidth`, `dotRadius`, `showDots`, `smooth`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label and zoom are inputs of `<ui-chart>` instead.

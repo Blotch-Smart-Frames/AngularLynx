@@ -1,6 +1,5 @@
 export {
+  type ScatterChartOptions,
   UiScatterChart,
-  UiScatterSeries,
-  computeDots,
-  type DotShape,
+  scatterChartDefinition,
 } from './scatter-chart';

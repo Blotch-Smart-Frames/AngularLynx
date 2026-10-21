@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
@@ -33,7 +28,6 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 @Component({
   selector: 'app-hello',
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view style="margin-top: 16px; align-items: center;">
       <text flatten="false" style="font-size: 18px;">Count: {{ count() }}</text>

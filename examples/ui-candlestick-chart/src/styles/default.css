@@ -52,5 +52,13 @@ page {
      apply to the opaque --ring, and Lynx can't inject alpha into it either. */
   --ring-subtle: rgba(24, 24, 27, 0.4);
 
+  /* Series palette for charts (bg-chart-1, and chart-theme.ts in the chart
+     component, which mirrors these values for SVG). */
+  --chart-1: rgba(231, 110, 80, 1);
+  --chart-2: rgba(42, 157, 144, 1);
+  --chart-3: rgba(39, 71, 84, 1);
+  --chart-4: rgba(232, 196, 104, 1);
+  --chart-5: rgba(244, 164, 98, 1);
+
   --radius: 8px;
 }

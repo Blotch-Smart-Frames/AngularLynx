@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { GlassPlayground } from './glass-playground';
 
@@ -8,7 +8,6 @@ type Tab = 'basics' | 'playground';
 
 @Component({
   selector: 'app-root',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view class="h-full flex-col bg-zinc-50 flex">
       <view class="px-6 pt-6">

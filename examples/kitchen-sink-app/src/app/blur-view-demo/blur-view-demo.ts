@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiButton } from '../../components/ui/button';
 import {
@@ -27,7 +27,6 @@ type GlassStyle = 'regular' | 'clear';
 @Component({
   selector: 'app-blur-view-demo',
   hostDirectives: [ScreenHost],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LYNX_ELEMENTS,
     DemoScreen,

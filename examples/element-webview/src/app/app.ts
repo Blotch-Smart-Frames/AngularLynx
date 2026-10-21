@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 type Source = 'url' | 'html';
@@ -20,7 +20,6 @@ const SAMPLE_HTML = `
 
 @Component({
   selector: 'app-root',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view class="h-full flex-col bg-zinc-50 flex">
       <view class="p-6 pb-3">

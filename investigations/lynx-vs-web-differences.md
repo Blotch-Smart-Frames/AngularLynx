@@ -616,7 +616,7 @@ Lynx treats `min-content` as `0px`. Flex items **can** shrink below their conten
 
 ---
 
-## SVG is not supported
+## SVG files can't be images
 
 ### What you'd expect (web)
 
@@ -624,7 +624,7 @@ SVG is a first-class format — rendered via `<svg>` elements or loaded as `<img
 
 ### What Lynx does
 
-Lynx has **no `<svg>` element** and the `<image>` element does not support SVG files. Supported image formats are: `png`, `jpg`, `jpeg`, `bmp`, `gif`, `webp`. Use PNG/WebP for icons and illustrations, or implement a custom component if vector graphics are required.
+The `<image>` element does not support SVG files. Supported image formats are: `png`, `jpg`, `jpeg`, `bmp`, `gif`, `webp`. Inline SVG works through Lynx's own `<svg>` element (an XElement, with `content` or `src`); see "Inline `<svg>` elements are partially supported" below. An earlier version of this entry said Lynx had no `<svg>` element at all, which is why the first chart components drew lines from rotated `<view>`s.
 
 ---
 
@@ -2196,8 +2196,8 @@ Set `flatten={false}` on elements that need:
   can clip inconsistently on Android — the clip boundary appears to shift
   depending on unrelated state changes, and some edges may not clip at all —
   because a flattened view has no dedicated native View to own the clip
-  region. Observed in `UiCartesianChart`
-  (`packages/ui/src/lib/components/cartesian-chart/cartesian-chart.ts`): the
+  region. Observed in `UiCartesianChart` (the view-based chart base, since
+  replaced by `<ui-chart>`, which clips inside its `<svg>`): the
   plot's inner `overflow: hidden` clipped its (also absolutely-positioned)
   series marks and gridlines correctly, because that view is already forced
   non-flatten by the gesture directive (see `LynxGestureDetector`); but adding
@@ -4052,7 +4052,9 @@ This bites charts specifically. `UiCartesianChart` draws gridlines and axis labe
 
 ### The fix
 
-When zoom is enabled, generate a **fixed** number of ticks (`generateTicks(visibleDomain, tickCount)` returns exactly `tickCount` values) so the gridline/label `@for` length never changes during a gesture — every zoom frame only restyles the existing nodes (new `top`/`left`/label text), never adds or removes them. The trade-off is that a zoomable chart's ticks are evenly spaced rather than "nice round" numbers; a non-zoomable chart keeps the original nice-tick behavior. See `#resolvedXTicks`/`#resolvedYTicks` in `packages/ui/src/lib/components/cartesian-chart/cartesian-chart.ts`.
+When zoom is enabled, generate a **fixed** number of ticks (`generateTicks(visibleDomain, tickCount)` returns exactly `tickCount` values) so the gridline/label `@for` length never changes during a gesture — every zoom frame only restyles the existing nodes (new `top`/`left`/label text), never adds or removes them. The trade-off is that a zoomable chart's ticks are evenly spaced rather than "nice round" numbers; a non-zoomable chart keeps the original nice-tick behavior.
+
+`<ui-chart>`, which replaced `UiCartesianChart`, keeps TanStack's nice ticks while panning instead: its labels are a pool of `<text>` slots whose length is frozen for the length of a pan (extra labels wait, spare slots hide with `display: none`), released on a timer after the gesture ends. See `labelSlots` in `packages/ui/src/lib/components/chart/chart.ts`.
 
 The same principle applies to the pan/zoom transform itself: it only ever writes the visible-window signals, which drive the scales and thus restyle existing gridlines, labels, and series marks — the marks re-project (and bars/candles stretch, since their width comes from projected pixel spacing) without any node being created or destroyed.
 
@@ -4073,7 +4075,7 @@ Registering `onStart`, `onUpdate`, and `onEnd` on a pan is enough — `onStart` 
 
 So: register `onStart`/`onUpdate`/`onEnd` but not `onBegin`, and on-device **`onStart` and `onEnd` never fire — with no error, no warning, no log.** `onUpdate` fires normally (it has no such gate), so the gesture _looks_ alive — it just never announces its start or end.
 
-**Concrete symptom:** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading _current_ state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback. See `UiCartesianChart`'s `#pan` gesture in `cartesian-chart.ts`.
+**Concrete symptom:** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading _current_ state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback. `<ui-chart>`'s `panGesture` (`packages/ui/src/lib/components/chart/chart.ts`) registers `onBegin` for this reason.
 
 ### The fix
 
@@ -4659,3 +4661,53 @@ The docs' `<lynx-view>` subclass wraps the listeners web-core adds to the view's
 The runtime's own web code has to allow for the scale too. The blur-view glass (`packages/runtime/src/lib/web-glass`) measured its shapes and backdrop with `getBoundingClientRect()`, but redraws the backdrop from a copy of the page laid out in CSS pixels, so in a preview it refracted what sat at 0.68 of its position. It now divides boxes by `drawnScale()` (an element's drawn width over its `offsetWidth`) and works in CSS pixels throughout, scaling only the canvas's resolution.
 
 Once the glass could reach the stage's edges, it showed a dark band there: the lens clamps to the backdrop image's edge pixels, and the image's last row was transparent. Rounding the image's width and height separately made its shape differ slightly from the SVG's viewBox, which the default `preserveAspectRatio` letterboxed, and the browser painted the copy's fractional height (356.47px) only to a whole pixel. The SVG sets `preserveAspectRatio="none"`, and the copy's frame is rounded up to whole pixels.
+
+---
+
+## One `stroke-dasharray` ServalSVG can't parse blanks every `<svg>` in the app on iOS
+
+### What you'd expect (web)
+
+A browser treats `stroke-dasharray="none"` as no dashes, and ignores a value it can't parse. Either way, one odd attribute affects one shape.
+
+### What Lynx does
+
+ServalSVG, the engine behind `<svg>` on iOS, parses the dash array with a loop that only moves forward while it's reading a number (`SrSVGNode::ParseStrokeDashArray` in ServalSVG 0.2.4). Any other token, `none` included, or a unit like `4px`, leaves it stuck on the same character forever. The parse runs on `LynxUI`'s async display queue, which is serial and shared by every `<svg>` in the process. So that one attribute hangs the queue, and from then on **no** `<svg>` paints: icons, spinners and charts on every page are blank, with no error or log. It lasts until the app is killed; in Lynx Explorer, bundles opened afterwards in the same process are blank too.
+
+Found when TanStack Charts' SVG output (`stroke-dasharray="none"` on every bar) went into an `<svg>`: `lldb` on the Simulator showed the `com.lynx.asyncDisplay.displayQueue` thread spinning in `ParseNumber(s="none")`. On Android the SVG with the attribute drew nothing, but the other SVGs on the page still did.
+
+### The fix
+
+`LynxElement.setAttribute` rewrites an `<svg>`'s `content` before it reaches native (`packages/runtime/src/lib/lynx-element/svg-content.ts`): dash arrays of plain numbers stay, `px` lengths become numbers (they're user units in SVG anyway), and anything else (`none`, `%`, `em`, `inherit`) is dropped, as attribute or inline-style declaration. The upstream bug is still worth reporting to Lynx.
+
+---
+
+## The main thread lacks newer built-ins: `.at()`, `findLast`, `replaceAll`, and `Intl`
+
+### What you'd expect (web)
+
+Every current browser has the ES2021–2023 methods `Array.prototype.at`, `String.prototype.at`, `%TypedArray%.prototype.at`, `Array.prototype.findLast`/`findLastIndex` and `String.prototype.replaceAll`, and `Intl`, so `(1234.5).toLocaleString()` is `"1,234.5"`.
+
+### What Lynx does
+
+PrimJS on the main thread (iOS and Android, Lynx 4.1) has none of them; a probe there also found no `performance.now` or `structuredClone`. Libraries that call them throw "not a function" on the main thread, which renders the first screen: TanStack Charts' scene compiler uses `.at(-1)` and `replaceAll`. Without `Intl`, `toLocaleString()` is plain `String(n)`, so a value shown with it reads `21.232271760105846`.
+
+### The fix
+
+The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`, which already filled `Object.hasOwn` and `Promise.allSettled`) defines the missing methods, non-enumerable like the built-ins, and, only when `Intl` is missing, a `Number.prototype.toLocaleString` that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`). Apps that need real localization still load an Intl polyfill.
+
+---
+
+## `<svg>` content can't use CSS variables, and JS can't read their values
+
+### What you'd expect (web)
+
+Inline SVG inherits the page's CSS: `fill="var(--primary)"` or `currentColor` follow the theme, dark mode included. Failing that, `getComputedStyle` reads a variable's value.
+
+### What Lynx does
+
+`<svg content>` is a string the native engine parses on its own, with no access to the page's styles, and Lynx has no computed-style API to read a variable from JS. (`current-color` sets `currentColor` from an attribute, so it doesn't help either.)
+
+### The fix
+
+`<ui-chart>` keeps CSS-shaped paints in its scene and resolves `var(--token)` against TypeScript copies of the theme (`chart-theme.ts`, checked against `default.css`/`dark.css` by a test) right before it writes the SVG. Which copy depends on the chart's color scheme, which defaults to light because the ui theme's dark mode is opt-in (`.dark` class); apps that toggle it set `'system'` or their own function. Text that must follow the theme exactly is native `<text>`, which reads the variables.

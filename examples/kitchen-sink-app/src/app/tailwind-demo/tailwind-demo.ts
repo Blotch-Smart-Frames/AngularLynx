@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -49,7 +49,6 @@ type Spacing = { readonly class: string; readonly label: string };
 @Component({
   selector: 'app-tailwind-demo',
   standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
   // ScreenHost must live on THIS routed host (not only on DemoScreen): the
   // app-tailwind-demo element is the real flex child of the app body, and it
   // arrives unstyled, so without flex-1 it collapses to content height. Then

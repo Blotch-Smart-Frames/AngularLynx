@@ -20,6 +20,7 @@ import {
   isInsideChangeDetection,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import { sanitizeSvgContent } from './svg-content';
 import {
   type BaseLynxElement,
   EVENT_PREFIXES,
@@ -329,6 +330,17 @@ export class LynxElement implements BaseLynxElement {
       __SetDataset(this.element, data);
       this.#dataset[key] = value;
     } else {
+      // A stroke-dasharray the engine can't parse hangs Lynx's native SVG engine and
+      // blanks every <svg> in the app (see svg-content.ts), so it's rewritten
+      // before it leaves JS. The cleaned value is also what's mirrored below,
+      // so a recreated element gets it too.
+      if (
+        this.tagName === 'svg' &&
+        name === 'content' &&
+        typeof value === 'string'
+      ) {
+        value = sanitizeSvgContent(value);
+      }
       __SetAttribute(this.element, name, value);
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text

@@ -201,7 +201,7 @@ it('uses the injected value', async () => {
 Define the signal outside the component so both the component and the test can access it:
 
 ```ts
-import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 
@@ -211,7 +211,6 @@ const count = signal(0);
   selector: 'test-counter',
   imports: [LYNX_ELEMENTS],
   template: `<text>{{ count() }}</text>`,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class CounterComponent {
   count = count;
@@ -233,7 +232,7 @@ it('updates when the signal changes', async () => {
 AngularLynx event bindings use Lynx prefixes: `(bindtap)`, `(catchtap)`, `(bindinput)`, etc.
 
 ```ts
-import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
   render,
@@ -249,7 +248,6 @@ import {
       <text>{{ count() }}</text>
     </view>
   `,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class ButtonComponent {
   count = signal(0);
@@ -280,7 +278,6 @@ it('shows content conditionally', async () => {
     template: `@if (visible()) {
       <text>Hello</text>
     }`,
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class IfComponent {
     visible = visible;
@@ -307,7 +304,6 @@ it('renders a dynamic list', async () => {
     template: `@for (item of items(); track item) {
       <text>{{ item }}</text>
     }`,
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class ListComponent {
     items = items;

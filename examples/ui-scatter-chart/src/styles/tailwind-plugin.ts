@@ -139,6 +139,15 @@ export const blotchPlugin = plugin(
             DEFAULT: 'var(--card)',
             foreground: 'var(--card-foreground)',
           },
+          // Chart series colors, e.g. bg-chart-1 for a legend swatch that
+          // matches the first series.
+          chart: {
+            1: 'var(--chart-1)',
+            2: 'var(--chart-2)',
+            3: 'var(--chart-3)',
+            4: 'var(--chart-4)',
+            5: 'var(--chart-5)',
+          },
         },
         borderRadius: {
           lg: 'var(--radius)',

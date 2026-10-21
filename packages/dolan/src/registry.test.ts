@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { getComponentNames, getEntry, resolveDependencies } from './registry';
+import { readFileSync } from 'node:fs';
+import {
+  getComponentNames,
+  getEntry,
+  resolveDependencies,
+  resolvePackages,
+} from './registry';
 
 describe('getComponentNames', () => {
   it('returns all component names', () => {
@@ -58,44 +64,14 @@ describe('resolveDependencies', () => {
     expect(resolveDependencies(['sheet'])).toEqual(['bottom-sheet', 'sheet']);
   });
 
-  it('resolves line-chart with its cartesian-chart dependency', () => {
-    expect(resolveDependencies(['line-chart'])).toEqual([
-      'cartesian-chart',
-      'line-chart',
-    ]);
-  });
-
-  it('resolves bar-chart with its cartesian-chart dependency', () => {
-    // Bar chart draws straight onto the base — the base must land first.
-    expect(resolveDependencies(['bar-chart'])).toEqual([
-      'cartesian-chart',
-      'bar-chart',
-    ]);
-  });
-
-  it('resolves scatter-chart with its cartesian-chart dependency', () => {
-    // Scatter draws straight onto the base — the base must land first.
-    expect(resolveDependencies(['scatter-chart'])).toEqual([
-      'cartesian-chart',
-      'scatter-chart',
-    ]);
-  });
-
-  it('resolves candlestick-chart with its cartesian-chart dependency', () => {
-    // Candlestick draws straight onto the base — the base must land first.
-    expect(resolveDependencies(['candlestick-chart'])).toEqual([
-      'cartesian-chart',
-      'candlestick-chart',
-    ]);
-  });
-
-  it('resolves area-chart with its transitive chart dependencies in order', () => {
-    // area-chart → line-chart → cartesian-chart; the base must land first.
-    expect(resolveDependencies(['area-chart'])).toEqual([
-      'cartesian-chart',
-      'line-chart',
-      'area-chart',
-    ]);
+  it.each([
+    'line-chart',
+    'area-chart',
+    'bar-chart',
+    'scatter-chart',
+    'candlestick-chart',
+  ])('resolves %s with the chart it builds on first', (preset) => {
+    expect(resolveDependencies([preset])).toEqual(['chart', preset]);
   });
 
   it('deduplicates bottom-sheet when both select and sheet are selected', () => {
@@ -108,5 +84,26 @@ describe('resolveDependencies', () => {
 
   it('skips unknown component names', () => {
     expect(resolveDependencies(['nonexistent'])).toEqual([]);
+  });
+});
+
+describe('resolvePackages', () => {
+  it('collects the npm packages of the given components, once each', () => {
+    const packages = resolvePackages(['chart', 'line-chart', 'card']);
+    expect(packages.map((spec) => spec.replace(/@[^@]*$/, ''))).toEqual([
+      '@tanstack/charts',
+      'd3-shape',
+    ]);
+    expect(resolvePackages(['card', 'nonexistent'])).toEqual([]);
+  });
+
+  it('asks for the versions packages/ui builds against', () => {
+    const ui = JSON.parse(
+      readFileSync(new URL('../../ui/package.json', import.meta.url), 'utf-8'),
+    ) as { dependencies: Record<string, string> };
+    for (const spec of getEntry('chart')!.packages!) {
+      const at = spec.lastIndexOf('@');
+      expect(ui.dependencies[spec.slice(0, at)]).toBe(spec.slice(at + 1));
+    }
   });
 });

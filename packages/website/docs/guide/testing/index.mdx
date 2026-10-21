@@ -32,7 +32,7 @@ npm install --save-dev @blotch/angular-lynx-testing-library
 `render()` bootstraps a standalone component through the full Lynx pipeline and returns `@testing-library/dom` queries:
 
 ```ts
-import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render } from '@blotch/angular-lynx-testing-library';
 
@@ -40,7 +40,6 @@ import { render } from '@blotch/angular-lynx-testing-library';
   selector: 'my-greeting',
   imports: [LYNX_ELEMENTS],
   template: `<text>Hello {{ name() }}</text>`,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class Greeting {
   name = signal('World');

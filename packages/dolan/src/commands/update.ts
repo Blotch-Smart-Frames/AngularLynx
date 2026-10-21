@@ -9,7 +9,7 @@ import {
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
-import { getComponentNames } from '../registry.js';
+import { getComponentNames, resolveDependencies } from '../registry.js';
 import {
   getComponentFiles,
   getComponentSourceDir,
@@ -17,6 +17,7 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { installComponentPackages } from './install-packages.js';
 import {
   getOrCreateLockfile,
   hashContent,
@@ -316,12 +317,15 @@ export const updateCommand = async (options: {
   // via createFixture. The `[]` branch only fires in production when the app
   // deletes the components/ tree by hand.
   /* v8 ignore next 6 */
-  const installed = existsSync(componentsDir)
+  const onDisk = existsSync(componentsDir)
     ? readdirSync(componentsDir, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && allKnown.has(entry.name))
         .map((entry) => entry.name)
-        .sort()
     : [];
+  // A component's new version can depend on one the project doesn't have yet
+  // (the chart presets now build on `chart`). Bring those along, as `add`
+  // would: their files all show up as new, so they're simply written.
+  const installed = resolveDependencies(onDisk).sort();
 
   const lockfile = getOrCreateLockfile(cwd);
 
@@ -400,6 +404,8 @@ export const updateCommand = async (options: {
   }
 
   s.stop('Analysis complete.');
+
+  installComponentPackages(cwd, installed);
 
   // --- Display summary ---
   if (componentAnalyses.length > 0) {

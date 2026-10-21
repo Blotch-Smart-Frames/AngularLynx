@@ -1,6 +1,6 @@
 export {
+  type BarChartOptions,
+  type BarDatum,
   UiBarChart,
-  UiBarSeries,
-  computeBars,
-  type BarShape,
+  barChartDefinition,
 } from './bar-chart';

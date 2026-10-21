@@ -14,6 +14,7 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { installComponentPackages } from './install-packages.js';
 import {
   getOrCreateLockfile,
   hashContent,
@@ -40,6 +41,8 @@ import {
  *   3. For each component: copy every file, rewrite cross-component imports
  *      to use the user's alias config, hash the rewritten content, and record
  *      it in the lockfile.
+ *   4. Install any npm packages the components import that the project
+ *      doesn't depend on yet (the charts need `@tanstack/charts`).
  */
 export const addCommand = async (components: string[]) => {
   const cwd = process.cwd();
@@ -165,6 +168,8 @@ export const addCommand = async (components: string[]) => {
   writeLockfile(cwd, lockfile);
 
   s.stop('Done!');
+
+  installComponentPackages(cwd, resolved);
 
   p.log.success(
     `Added ${resolved.length} component(s): ${resolved.map((c) => pc.green(c)).join(', ')}`,

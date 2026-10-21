@@ -73,7 +73,7 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 - Signals for state; `computed()` for derived state; no `mutate` (use `update`/`set`)
 - **Never use legacy Angular decorators** — always use their modern signal-based/metadata replacements. This is enforced by the `no-legacy-decorators` lint rule (`oxlint --fix` auto-migrates). Specifically: `@Input()` → `input()`/`input.required()`, `@Output()` → `output()`, `@ViewChild()` → `viewChild()`/`viewChild.required()`, `@ViewChildren()` → `viewChildren()`, `@ContentChild()` → `contentChild()`/`contentChild.required()`, `@ContentChildren()` → `contentChildren()`, `@HostBinding()`/`@HostListener()` → `host` metadata property.
 - Angular signal props (`input`, `output`, `viewChild`, `viewChildren`, `contentChild`, `contentChildren`, `model`) must be public `readonly` — no ES private (`#`) or TypeScript `private`/`protected`
-- `changeDetection: ChangeDetectionStrategy.OnPush`
+- Don't set `changeDetection: ChangeDetectionStrategy.OnPush`: it's the default since Angular 22. The `no-redundant-on-push` lint rule flags it (`oxlint --fix` removes it)
 - `inject()` instead of constructor injection
 - `providedIn: 'root'` for singleton services
 - Host bindings in `host` object, not `@HostBinding`/`@HostListener`

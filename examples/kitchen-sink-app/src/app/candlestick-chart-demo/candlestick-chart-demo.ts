@@ -1,15 +1,17 @@
 import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
-  type ChartPoint,
-  UiCartesianChart,
-} from '../../components/ui/cartesian-chart';
+  d3Curve,
+  defineChart,
+  lineY,
+  rollingWindow,
+} from '@tanstack/charts/universal';
+import { curveMonotoneX } from 'd3-shape';
 import {
-  type CandlestickPoint,
+  type CandlestickDatum,
   UiCandlestickChart,
-  UiCandlestickSeries,
+  candlestickChartDefinition,
 } from '../../components/ui/candlestick-chart';
-import { UiLineSeries } from '../../components/ui/line-chart';
 import {
   UiCard,
   UiCardContent,
@@ -17,6 +19,7 @@ import {
   UiCardHeader,
   UiCardTitle,
 } from '../../components/ui/card';
+import { UiChart } from '../../components/ui/chart';
 import { UiIcon } from '../../components/ui/icon';
 import { DemoScreen } from '../demo-screen/demo-screen';
 import { ScreenHost } from '../screen-host';
@@ -24,16 +27,14 @@ import { ScreenHost } from '../screen-host';
 /**
  * Candlestick Chart demo.
  *
- * An OHLC candle is two axis-aligned rectangles: a thin wick (high→low) and a
- * body (open↔close), colored green when the period rose and red when it fell.
- * No rotation or fill rasterization is needed (unlike the line/area charts), so
- * candles draw straight onto the reusable `UiCartesianChart`. `UiCandlestickChart`
- * is the single-series wrapper; the moving-average card drops to the base
- * `UiCartesianChart` and layers a `UiLineSeries` over a `UiCandlestickSeries`,
- * both reading the same shared scales.
+ * An OHLC candle is a TanStack `link` (the high–low wick) and a `rect` (the
+ * open–close body), colored green when the period rose and red when it fell.
+ * `<ui-candlestick-chart>` is that preset; the moving-average card starts from
+ * its definition via `candlestickChartDefinition()` and adds a `lineY`, so the
+ * line reuses the preset's axes, colors and OHLC tooltip as they are.
  *
- * 280px fits inside a card on every current iPhone: screen p-4 (32px) +
- * card-content p-4 (32px) leaves ~311px on the narrowest 375px device.
+ * The charts fill the card's width and only set a height, so they fit any
+ * screen without per-device pixel math.
  */
 @Component({
   selector: 'app-candlestick-chart-demo',
@@ -48,17 +49,15 @@ import { ScreenHost } from '../screen-host';
     UiCardContent,
     UiIcon,
     UiCandlestickChart,
-    UiCandlestickSeries,
-    UiCartesianChart,
-    UiLineSeries,
+    UiChart,
   ],
   template: `
     <app-demo-screen
       heading="Candlestick Chart"
       category="Components"
-      description="An OHLC candlestick chart drawn entirely from Lynx views — a wick and a body rectangle per period, on the reusable BaseCartesianChart."
+      description="An OHLC candlestick chart preset built on TanStack Charts: a wick and a body per period. Touch a candle to read its open, high, low and close."
     >
-      <!-- ── Basic: single series via the convenience wrapper ── -->
+      <!-- ── Basic: single series via the preset ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center gap-2 flex">
@@ -71,7 +70,11 @@ import { ScreenHost } from '../screen-host';
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="p-4 pt-0">
-          <ui-candlestick-chart [data]="prices" [width]="280" [height]="200" />
+          <ui-candlestick-chart
+            [data]="prices"
+            [height]="200"
+            label="Price by session"
+          />
         </ui-card-content>
       </ui-card>
 
@@ -83,16 +86,17 @@ import { ScreenHost } from '../screen-host';
             <ui-card-title class="text-lg">Custom colors</ui-card-title>
           </view>
           <ui-card-description>
-            upColor and downColor set the fill for rising and falling candles.
+            upColor and downColor set the wick and body for rising and falling
+            candles.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="p-4 pt-0">
           <ui-candlestick-chart
             [data]="prices"
-            [width]="280"
             [height]="200"
             [upColor]="teal"
             [downColor]="rose"
+            label="Price by session"
           />
         </ui-card-content>
       </ui-card>
@@ -108,59 +112,45 @@ import { ScreenHost } from '../screen-host';
           </view>
           <ui-card-description>
             xAxisLabel / yAxisLabel add titles; showXGrid draws vertical
-            gridlines at each session.
+            gridlines at the session ticks.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="p-4 pt-0">
           <ui-candlestick-chart
             [data]="prices"
-            [width]="280"
             [height]="200"
             xAxisLabel="Session"
             yAxisLabel="Price ($)"
             [showXGrid]="true"
+            label="Price by session"
           />
         </ui-card-content>
       </ui-card>
 
-      <!-- ── Candles + moving-average line, on the base component ── -->
+      <!-- ── Candles + moving average: the preset's definition + a lineY ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center gap-2 flex">
-            <ui-icon name="star" size="sm" />
+            <ui-icon name="activity" size="sm" />
             <ui-card-title class="text-lg">Moving average</ui-card-title>
           </view>
           <ui-card-description>
-            Drop to the base &lt;ui-cartesian-chart&gt; and layer a
-            &lt;ui-line-series&gt; over the candles — both share the same axes.
+            Start from candlestickChartDefinition() and add a lineY, rendered
+            with &lt;ui-chart&gt;. rollingWindow() averages the last three
+            closes; the line shares the preset's axes.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
-          <ui-cartesian-chart
-            [xDomain]="[0, 9]"
-            [yDomain]="[90, 120]"
-            [xTicks]="[1, 3, 5, 7]"
-            [yTicks]="[90, 100, 110, 120]"
-            [width]="280"
+          <ui-chart
+            [definition]="withMovingAverage"
             [height]="200"
-            [padding]="{ left: 0.06, right: 0.06 }"
-          >
-            <ui-candlestick-series [data]="prices" />
-            <ui-line-series
-              [data]="movingAverage"
-              [color]="amber"
-              [strokeWidth]="2"
-              [showDots]="false"
-              [smooth]="true"
-            />
-          </ui-cartesian-chart>
-          <!-- Legend. Data hues are fixed (not theme chrome), so raw rgba(). -->
+            label="Price by session with a 3-session moving average"
+          />
+          <!-- A hand-made legend: the swatch class uses the same --chart-3
+               token as the line, so both switch together in dark mode. -->
           <view class="flex-row gap-4 flex">
             <view class="flex-row items-center gap-1.5 flex">
-              <view
-                class="h-2.5 w-2.5 rounded-full"
-                [style]="'background-color: ' + amber"
-              />
+              <view class="h-0.5 w-3 rounded-full bg-chart-3"></view>
               <text class="text-xs text-muted-foreground">3-session MA</text>
             </view>
           </view>
@@ -175,15 +165,14 @@ import { ScreenHost } from '../screen-host';
             <ui-card-title class="text-lg">Tap a candle</ui-card-title>
           </view>
           <ui-card-description>
-            Each candle body is tappable; candleTap emits the OHLC point that
-            was hit.
+            candleTap emits the OHLC point of the candle nearest the tap.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
           <ui-candlestick-chart
             [data]="prices"
-            [width]="280"
             [height]="200"
+            label="Price by session"
             (candleTap)="onCandleTap($event)"
           />
           <view class="rounded-md bg-muted p-3 flex">
@@ -199,7 +188,7 @@ import { ScreenHost } from '../screen-host';
 export class CandlestickChartDemo {
   // Session → OHLC data. x is the session index; a mix of rising and falling
   // candles so up/down coloring is visible.
-  readonly prices: CandlestickPoint[] = [
+  readonly prices: readonly CandlestickDatum[] = [
     { x: 1, open: 100, high: 108, low: 98, close: 106 },
     { x: 2, open: 106, high: 110, low: 103, close: 104 },
     { x: 3, open: 104, high: 105, low: 96, close: 98 },
@@ -210,35 +199,53 @@ export class CandlestickChartDemo {
     { x: 8, open: 103, high: 107, low: 101, close: 107 },
   ];
 
-  // Trailing 3-session average of the closes, plotted as an overlay line. The
-  // first two sessions have no full window, so the line starts at session 3.
-  readonly movingAverage: ChartPoint[] = this.prices
-    .map((_, i, all) =>
-      i < 2
-        ? null
-        : {
-            x: all[i].x,
-            y: (all[i].close + all[i - 1].close + all[i - 2].close) / 3,
-          },
-    )
-    .filter((point): point is ChartPoint => point !== null);
-
-  // Fixed data hues — deliberately raw rgba() so they stay constant across
-  // light/dark mode (they encode direction / a series, not theme chrome).
+  // Fixed hues rather than theme tokens: up/down must keep its meaning (and
+  // stay distinguishable from each other) in both light and dark mode.
   readonly teal = 'rgba(20, 184, 166, 1)';
   readonly rose = 'rgba(244, 63, 94, 1)';
-  readonly amber = 'rgba(245, 158, 11, 1)';
 
-  readonly #tapped = signal<CandlestickPoint | null>(null);
+  /**
+   * The preset's candles plus a trailing 3-session average of the closes.
+   * `rollingWindow` with `partial: false` leaves out the first two sessions
+   * (no full window), so the line starts at session 3. Its rows keep the
+   * source candle's fields, which is why the preset's OHLC tooltip still
+   * reads correctly when a touch lands on the line. The average always lies
+   * between the lows and highs, so the preset's y axis already fits it.
+   */
+  readonly withMovingAverage = (() => {
+    const base = candlestickChartDefinition({ data: this.prices });
+    return defineChart({
+      ...base,
+      marks: [
+        ...base.marks,
+        lineY(
+          rollingWindow(this.prices, {
+            size: 3,
+            partial: false,
+            outputs: { average: { value: 'close', reduce: 'mean' } },
+          }),
+          {
+            x: 'x',
+            y: 'average',
+            stroke: 'var(--chart-3)',
+            strokeWidth: 2,
+            curve: d3Curve(curveMonotoneX),
+          },
+        ),
+      ],
+    });
+  })();
+
+  readonly #tapped = signal<CandlestickDatum | null>(null);
 
   protected readonly tappedLabel = computed(() => {
-    const c = this.#tapped();
-    return c
-      ? `Last tapped: session ${c.x} — O ${c.open} H ${c.high} L ${c.low} C ${c.close}`
+    const candle = this.#tapped();
+    return candle
+      ? `Last tapped: session ${candle.x} — O ${candle.open} H ${candle.high} L ${candle.low} C ${candle.close}`
       : 'Tap any candle on the chart above.';
   });
 
-  protected onCandleTap(candle: CandlestickPoint): void {
+  protected onCandleTap(candle: CandlestickDatum): void {
     this.#tapped.set(candle);
   }
 }

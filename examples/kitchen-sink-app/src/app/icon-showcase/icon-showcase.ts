@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -328,7 +323,6 @@ const TOTAL_ICON_COUNT = ICON_CATEGORIES.reduce(
     UiInput,
     UiText,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-demo-screen
       heading="Icons"

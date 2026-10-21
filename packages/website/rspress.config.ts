@@ -87,6 +87,7 @@ export default defineConfig({
         { sectionHeaderText: 'Data Display' },
         { text: 'Avatar', link: '/dolan/avatar' },
         { text: 'Badge', link: '/dolan/badge' },
+        { text: 'Chart', link: '/dolan/chart' },
         { text: 'Line Chart', link: '/dolan/line-chart' },
         { text: 'Area Chart', link: '/dolan/area-chart' },
         { text: 'Bar Chart', link: '/dolan/bar-chart' },

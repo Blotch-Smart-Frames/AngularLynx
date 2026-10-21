@@ -1,11 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-  resource,
-  signal,
-  untracked,
-} from '@angular/core';
+import { Component, inject, resource, signal, untracked } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { BoundaryLog } from './boundary-log';
 import {
@@ -208,7 +201,6 @@ const delay = (ms: number): Promise<void> =>
     </scroll-view>
   `,
   imports: [LYNX_ELEMENTS, PriceTile, ProfileCard],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
   readonly log = inject(BoundaryLog);

@@ -1,6 +1,5 @@
 export {
+  type LineChartOptions,
   UiLineChart,
-  UiLineSeries,
-  computeLineSegments,
-  type LineSegment,
+  lineChartDefinition,
 } from './line-chart';

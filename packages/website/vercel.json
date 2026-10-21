@@ -1,5 +1,12 @@
 {
   "buildCommand": "npm run build:ci",
   "outputDirectory": "doc_build",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/guide/api/plugin/:path*",
+      "destination": "/guide/api/build/",
+      "permanent": true
+    }
+  ]
 }

@@ -1,0 +1,179 @@
+# @blotch/angular-lynx-build
+
+The Angular CLI builders behind `ng build`, `ng serve` and `ng test` on Lynx. It's the only build dependency your app needs, just as `@angular/build` is for a web app. RSpeedy, the AngularLynx plugin and the native app builder come with it.
+
+`ng add @blotch/angular-lynx` installs it and points your `angular.json` targets at it:
+
+```json title="angular.json"
+"architect": {
+  "build": {
+    "builder": "@blotch/angular-lynx-build:application",
+    "options": {
+      "browser": "src/main.ts",
+      "tsConfig": "tsconfig.app.json"
+    }
+  },
+  "serve": {
+    "builder": "@blotch/angular-lynx-build:dev-server"
+  },
+  "test": {
+    "builder": "@blotch/angular-lynx-build:unit-test"
+  }
+}
+```
+
+## Builders
+
+| Builder       | Command    | What it does                                                                                         |
+| ------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| `application` | `ng build` | Builds the Lynx bundles into `dist/`, and with `--platform`, the iOS and Android apps                |
+| `dev-server`  | `ng serve` | Serves the app to Lynx Explorer and the web preview, and prints the QR code that Lynx Explorer scans |
+| `unit-test`   | `ng test`  | Runs your unit tests with Angular's own unit-test builder, set up for Lynx                           |
+
+They work like Angular's builders:
+
+- **Configurations and flags override options**, so `-c development` and `--source-map` work.
+- **`optimization` picks the build.** A build that optimizes scripts is a production build. Any other build is a development build, with dev mode on. There's no `mode` option.
+
+## application
+
+`ng build` compiles your app into **Lynx bundles**, the files the Lynx engine runs. For a walkthrough, see [Publishing your App](/guide/building-for-production).
+
+### Build options
+
+| Option        | Type                              | Default                        | Description                                                                                                                      |
+| ------------- | --------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `platform`    | `"ios"` \| `"android"` \| `"all"` | —                              | Also build the native apps into `dist/<platform>/`. Builds only the `lynx` environment                                           |
+| `watch`       | `boolean`                         | `false`                        | Rebuild the bundles when a file changes. Can't be combined with `platform`                                                       |
+| `config`      | `string`                          | `lynx.config.ts`, if it exists | The RSpeedy config file, relative to the project root. See [lynx.config.ts](#lynxconfigts)                                       |
+| `environment` | `string[]`                        | All                            | Only build these RSpeedy environments, e.g. `["lynx"]`. RSpeedy builds `lynx` for iOS and Android, and `web` for the web preview |
+
+### Angular options
+
+These are Angular's own `application` builder options, and they work as they do in a web app:
+
+`browser`, `tsConfig`, `polyfills`, `styles`, `inlineStyleLanguage`, `fileReplacements`, `aot`, `sourceMap`, `outputHashing`, `i18nMissingTranslation`
+
+A few work differently on Lynx:
+
+| Option                     | On Lynx                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `browser`                  | The entry point, and RSpeedy's `source.entry` unless `lynx.config.ts` sets one                                                                               |
+| `optimization`             | Also picks a production build (scripts optimized, the default) or a development build                                                                        |
+| `budgets`                  | Checked against each entry's Lynx bundle and each component stylesheet. The web preview isn't checked. See [Budgets](/guide/building-for-production#budgets) |
+| `outputPath`               | Defaults to `dist/`                                                                                                                                          |
+| `assets`, `scripts`        | Only `ng test` uses them. Bundles load assets through `import`s                                                                                              |
+| `index`, `extractLicenses` | Accepted so `ng new`'s config stays valid. They do nothing                                                                                                   |
+
+### Native app options
+
+`ng build --platform` reads these. [Publishing your App](/guide/building-for-production) explains how to set them.
+
+| Option            | Type                                     | Description                                                                                                            |
+| ----------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `appName`         | `string`                                 | The name under the icon. Defaults to the project name                                                                  |
+| `appId`           | `string`                                 | The iOS bundle ID and Android application ID, e.g. `com.example.myapp`                                                 |
+| `version`         | `string`                                 | The version users see, e.g. `1.2.0`. Defaults to `package.json`'s version                                              |
+| `buildNumber`     | `integer`                                | The store build number. Must increase with every upload                                                                |
+| `orientation`     | `"portrait"` \| `"landscape"` \| `"all"` | The screen orientations the app supports. Defaults to `"portrait"`                                                     |
+| `icon`            | `string`                                 | A 1024×1024 PNG without transparency, relative to the project root                                                     |
+| `permissions`     | `object`                                 | The reason for each permission the app uses: `camera`, `microphone`, `location`, `photos`, `contacts`, `notifications` |
+| `deepLinkSchemes` | `string[]`                               | URL schemes that open the app, e.g. `["myapp"]`                                                                        |
+| `ios`             | `object`                                 | `teamId`, and `signing`: the environment variables holding an App Store Connect API key                                |
+| `android`         | `object`                                 | `signing`: the upload key's `keyAlias`, and the environment variables holding its keystore and passwords               |
+
+## dev-server
+
+`ng serve` runs RSpeedy's dev server. Lynx Explorer and the web preview load your app from it.
+
+| Option        | Type       | Default                           | Description                                                                                     |
+| ------------- | ---------- | --------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `buildTarget` | `string`   | The project's `build:development` | The build target to serve, as `project:target[:configuration]`. Its options configure the build |
+| `port`        | `number`   | RSpeedy's                         | The port to serve on. Overrides `server.port` in `lynx.config.ts`                               |
+| `host`        | `string`   | RSpeedy's                         | The host to listen on. Overrides `server.host` in `lynx.config.ts`                              |
+| `environment` | `string[]` | The build target's, or all        | Only build these RSpeedy environments                                                           |
+
+## unit-test
+
+`ng test` runs Angular's `@angular/build:unit-test` builder with Vitest. It takes the same options (`include`, `watch`, `coverage`, `setupFiles`, `providersFile`, ...) and finds both `*.spec.ts` and `*.test.ts` files.
+
+For Lynx, it also:
+
+- defines the compile-time flags the AngularLynx runtime reads, such as `__DEV__` and `__MAIN_THREAD__`;
+- loads the setup of `@blotch/angular-lynx-testing-library` when your project has it, so `render()` works without a setup file;
+- loads imported images, fonts and media as file URLs, as RSpeedy does in the app.
+
+It runs your project's own `@angular/build`, which must match your Angular version. See [Testing](/guide/testing) for writing tests.
+
+## lynx.config.ts
+
+**Your app doesn't need one.** Without it, the builders configure RSpeedy from `angular.json`:
+
+| RSpeedy setting | Comes from                                                                  |
+| --------------- | --------------------------------------------------------------------------- |
+| `source.entry`  | The build target's `browser` option                                         |
+| `environments`  | `lynx` (iOS and Android) and `web` (the web preview)                        |
+| `mode`          | The build target's `optimization`                                           |
+| `plugins`       | `pluginAngularLynx()`, plus the Lynx Explorer QR code plugin for `ng serve` |
+
+Add a `lynx.config.ts` to the project root to change anything else RSpeedy supports, or to pass the AngularLynx plugin options. Your settings replace the defaults above, except `mode`, which always follows `optimization`.
+
+Import `defineConfig` and `pluginAngularLynx` from `@blotch/angular-lynx-build`:
+
+```typescript title="lynx.config.ts"
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
+
+export default defineConfig({
+  plugins: [pluginAngularLynx({ enableSSR: true })],
+});
+```
+
+The builders use the plugin you list instead of adding their own. Don't import from `@lynx-js/rspeedy` or `@blotch/rsbuild-plugin-angular-lynx`: they're dependencies of `@blotch/angular-lynx-build`, not of your app, so strict package managers (pnpm, Yarn PnP) can't resolve them.
+
+### Plugin options
+
+`pluginAngularLynx()` compiles Angular for Lynx. All of its options are optional.
+
+**Build**
+
+| Option                      | Type                  | Default | Description                                                                                                                                                           |
+| --------------------------- | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pages`                     | `string[]` \| `'all'` | —       | Build these `angular.json` projects as separate pages, each with its own bundle. `'all'` builds every `application` project. See [Multi-Page Apps](/guide/multi-page) |
+| `enableSSR`                 | `boolean`             | `false` | Support Lynx's snapshot SSR: the runtime registers `ssrEncode()` and `ssrHydrate()`. See the [SSR example](/examples/ssr)                                             |
+| `targetSdkVersion`          | `string`              | `'3.2'` | The oldest Lynx engine version the bundle runs on                                                                                                                     |
+| `experimental_isLazyBundle` | `boolean`             | `false` | Experimental. Emit each lazy route and `@defer` block as its own lazy bundle, loaded at runtime. By default, they're built into the main bundle                       |
+| `debugInfoOutside`          | `boolean`             | `true`  | Write debug info to a separate file instead of into the bundle, which keeps the bundle smaller                                                                        |
+
+**CSS**
+
+| Option                          | Type       | Default | Description                                                                                                                                                          |
+| ------------------------------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enableCSSSelector`             | `boolean`  | `true`  | Match CSS selectors in the Lynx engine. Component styles need it                                                                                                     |
+| `enableCSSInheritance`          | `boolean`  | `false` | Let text properties (`color`, `font-size`, `line-height`, ...) inherit from parent elements, as on the web. Lynx doesn't inherit them by default                     |
+| `customCSSInheritanceList`      | `string[]` | —       | Inherit only these properties. Needs `enableCSSInheritance`                                                                                                          |
+| `enableCSSInvalidation`         | `boolean`  | `false` | Re-match combinator selectors such as `.dark .title` when a class changes at runtime. Without it, they only match when classes are first set. Costs some performance |
+| `defaultDisplayLinear`          | `boolean`  | `true`  | Give elements Lynx's `display: linear` unless they set `display`. With `false`, `flex` is the default                                                                |
+| `enableRemoveCSSScope`          | `boolean`  | `false` | Stop scoping CSS to the components that import it, so every rule applies app-wide                                                                                    |
+| `removeDescendantSelectorScope` | `boolean`  | `false` | Let descendant selectors match across CSS scopes                                                                                                                     |
+
+**Gestures and accessibility**
+
+| Option                       | Type      | Default | Description                                                                                                                                              |
+| ---------------------------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enableNewGesture`           | `boolean` | `true`  | Turn on Lynx's gesture system. [Gestures](/guide/gestures) don't fire without it                                                                         |
+| `enableA11y`                 | `boolean` | `true`  | Use Android's own accessibility views while a screen reader is on. Set it to `false` so UI test tools such as Maestro and Appium always see the elements |
+| `enableAccessibilityElement` | `boolean` | `false` | Make every element an accessibility element by default, as if it set `accessibility-element`                                                             |
+
+### Without the Angular CLI
+
+To run RSpeedy yourself, install `@blotch/rsbuild-plugin-angular-lynx` and import the plugin from there. Nothing adds it for you, so list it in `lynx.config.ts` and set `source.entry`.
+
+## Exports
+
+| Export                     | Kind     | Description                                                                                                      |
+| -------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| `pluginAngularLynx`        | Function | Creates the AngularLynx plugin. Takes the [plugin options](#plugin-options)                                      |
+| `PluginAngularLynxOptions` | Type     | The plugin options                                                                                               |
+| `defineConfig`             | Function | RSpeedy's config helper, for `lynx.config.ts`                                                                    |
+| `Config`                   | Type     | RSpeedy's config type                                                                                            |
+| `/client`                  | Types    | Types for asset and CSS module imports and `import.meta.env`. `ng add` references them in `src/rspeedy-env.d.ts` |

@@ -23,11 +23,30 @@ User-friendliness, readability, and short attention spans are the top priority. 
 - **No jargon without context.** If you must use a Lynx-specific term (main thread, background thread, element pool), link or briefly define it inline.
 - **Keep pages short.** If a page exceeds ~300 lines, split it into sub-pages or move details into a collapsed section.
 
+## Guide vs API
+
+The docs are split like [lynxjs.org](https://lynxjs.org/api/): each half has its own navbar link and sidebar.
+
+- **`docs/guide/`** — Pages that teach: tutorials, how-tos and explanations of a concept
+- **`docs/api/`** — Reference: one page per named thing (an element, an export, a builder option) listing its attributes, events, signatures or options
+
+If a page documents a single element or export, it goes in `docs/api/`. Link guide pages to the matching API pages, and API pages back to the guide that explains them.
+
+Moving or renaming a page changes its URL. Add a redirect for the old URL to `vercel.json`.
+
 ## Sidebar Sections
+
+Guide sidebar (`/guide/` in `rspress.config.ts`):
 
 - **Learn AngularLynx** — Core concepts and everyday features a new user needs to build their first app
 - **Advanced** — Power-user topics: internal architecture, low-level APIs, niche platform integrations. Move docs here if a typical user won't need them in their first week.
 - **Ecosystem** — Third-party packages that require separate installation (e.g. Tailwind CSS, testing library)
+
+API sidebar (`/api/`):
+
+- **Packages** — Each published package's exports or options
+- **Elements** — One page per Lynx element
+- **Main Thread** — The main-thread script exports
 
 ## Diagrams
 

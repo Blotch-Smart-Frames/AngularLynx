@@ -103,7 +103,7 @@ const onTouchMove = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 ```
 
-- **Drag on the main thread.** [Main-thread touch handlers](/guide/main-thread/main-thread-event) move the blob on the same frame as the finger. Angular event bindings would add a round trip to the background thread on every move.
+- **Drag on the main thread.** [Main-thread touch handlers](/api/main-thread/main-thread-event) move the blob on the same frame as the finger. Angular event bindings would add a round trip to the background thread on every move.
 - **Move with `left`/`top`**, not `transform`, so each blob's native frame moves with it.
 - **Keep it out of `<scroll-view>`.** The scroll view's own pan gesture competes for the same touches, so a vertical drag scrolls the page instead.
 - **Add mouse handlers for desktop web.** Desktop browsers fire mouse events, never touch events. The example binds `mainThreadBindmousedown` on each blob and follows `mainThreadBindmousemove` on the stage, since a quick mouse flick leaves the blob behind.

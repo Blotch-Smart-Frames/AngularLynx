@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig } from '@rspress/core';
 import { pluginSass } from '@rsbuild/plugin-sass';
@@ -8,10 +7,6 @@ import {
   transformerNotationHighlight,
 } from '@shikijs/transformers';
 import mermaid from 'rspress-plugin-mermaid';
-
-const apiSidebar = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'api-sidebar.json'), 'utf-8'),
-);
 
 export default defineConfig({
   plugins: [mermaid()],
@@ -53,6 +48,9 @@ export default defineConfig({
       {
         text: 'Guide',
         link: '/guide/quick-start',
+        // Highlight Guide on every guide page, as API is on every API page,
+        // so readers can tell which half of the docs they're in.
+        activeMatch: '^/guide/',
       },
       {
         text: '@blotch/dolan',
@@ -60,7 +58,7 @@ export default defineConfig({
       },
       {
         text: 'API',
-        link: '/guide/api/angular-lynx/',
+        link: '/api/',
       },
       {
         text: 'Examples',
@@ -136,36 +134,13 @@ export default defineConfig({
         },
         { text: 'Content Projection', link: '/guide/content-projection' },
         { text: 'Accessibility', link: '/guide/accessibility' },
+        // Each element's own page is reference, so it lives in the API
+        // sidebar. The Guide keeps only the pages that teach the concepts.
         {
           text: 'Lynx Elements',
           collapsed: false,
           items: [
             { text: 'Overview', link: '/guide/elements/' },
-            { text: '<view>', link: '/guide/elements/view' },
-            { text: '<text>', link: '/guide/elements/text' },
-            { text: '<image>', link: '/guide/elements/image' },
-            { text: '<scroll-view>', link: '/guide/elements/scroll-view' },
-            { text: '<refresh>', link: '/guide/elements/refresh' },
-            {
-              text: '<scroll-coordinator>',
-              link: '/guide/elements/scroll-coordinator',
-            },
-            { text: '<list>', link: '/guide/elements/list' },
-            { text: '<input>', link: '/guide/elements/input' },
-            { text: '<textarea>', link: '/guide/elements/textarea' },
-            { text: '<overlay>', link: '/guide/elements/overlay' },
-            { text: '<viewpager>', link: '/guide/elements/viewpager' },
-            { text: '<frame>', link: '/guide/elements/frame' },
-            { text: '<block>', link: '/guide/elements/block' },
-            { text: '<svg>', link: '/guide/elements/svg' },
-            { text: '<blur-view>', link: '/guide/elements/blur-view' },
-            { text: '<video>', link: '/guide/elements/video' },
-            { text: '<webview>', link: '/guide/elements/webview' },
-            {
-              text: '<title-bar-view>',
-              link: '/guide/elements/title-bar-view',
-            },
-            { text: '<cover-view>', link: '/guide/elements/cover-view' },
             { text: 'Event Handling', link: '/guide/elements/event-handling' },
           ],
         },
@@ -261,20 +236,6 @@ export default defineConfig({
           collapsed: true,
           items: [
             { text: 'Overview', link: '/guide/main-thread/' },
-            { text: 'mainThreadFn', link: '/guide/main-thread/main-thread-fn' },
-            {
-              text: 'LynxMainThreadEvent',
-              link: '/guide/main-thread/main-thread-event',
-            },
-            {
-              text: 'MainThreadRef',
-              link: '/guide/main-thread/main-thread-ref',
-            },
-            {
-              text: 'LynxMainThread',
-              link: '/guide/main-thread/main-thread-service',
-            },
-            { text: 'backgroundFn', link: '/guide/main-thread/background-fn' },
             {
               text: 'Worklet Transform',
               link: '/guide/main-thread/worklet-transform',
@@ -295,19 +256,76 @@ export default defineConfig({
           items: [
             { text: 'Getting Started', link: '/guide/testing/' },
             { text: 'Testing Patterns', link: '/guide/testing/patterns' },
+          ],
+        },
+      ],
+      // The API reference has its own sidebar, as on lynxjs.org, so the Guide
+      // sidebar stays short enough to scan.
+      '/api/': [
+        { text: 'Overview', link: '/api/' },
+        { dividerType: 'solid' },
+        { sectionHeaderText: 'Packages' },
+        {
+          text: '@blotch/angular-lynx',
+          link: '/api/angular-lynx/',
+          collapsed: false,
+          items: [
+            { text: 'Bootstrap', link: '/api/angular-lynx/bootstrap' },
+            { text: 'Routing', link: '/api/angular-lynx/routing' },
+            { text: 'Elements', link: '/api/angular-lynx/elements' },
+            { text: 'Animation', link: '/api/angular-lynx/animation' },
+            { text: 'Services', link: '/api/angular-lynx/services' },
+          ],
+        },
+        { text: '@blotch/angular-lynx-build', link: '/api/build/' },
+        {
+          text: '@blotch/angular-lynx-testing-library',
+          link: '/api/testing-library/',
+          collapsed: false,
+          items: [
             {
               text: 'Event Reference',
-              link: '/guide/testing/event-reference',
+              link: '/api/testing-library/event-reference',
             },
           ],
         },
+        { dividerType: 'solid' },
+        { sectionHeaderText: 'Elements' },
+        { text: '<view>', link: '/api/elements/view' },
+        { text: '<text>', link: '/api/elements/text' },
+        { text: '<image>', link: '/api/elements/image' },
+        { text: '<scroll-view>', link: '/api/elements/scroll-view' },
+        { text: '<refresh>', link: '/api/elements/refresh' },
         {
-          dividerType: 'solid',
+          text: '<scroll-coordinator>',
+          link: '/api/elements/scroll-coordinator',
         },
+        { text: '<list>', link: '/api/elements/list' },
+        { text: '<input>', link: '/api/elements/input' },
+        { text: '<textarea>', link: '/api/elements/textarea' },
+        { text: '<overlay>', link: '/api/elements/overlay' },
+        { text: '<viewpager>', link: '/api/elements/viewpager' },
+        { text: '<frame>', link: '/api/elements/frame' },
+        { text: '<block>', link: '/api/elements/block' },
+        { text: '<svg>', link: '/api/elements/svg' },
+        { text: '<blur-view>', link: '/api/elements/blur-view' },
+        { text: '<video>', link: '/api/elements/video' },
+        { text: '<webview>', link: '/api/elements/webview' },
+        { text: '<title-bar-view>', link: '/api/elements/title-bar-view' },
+        { text: '<cover-view>', link: '/api/elements/cover-view' },
+        { dividerType: 'solid' },
+        { sectionHeaderText: 'Main Thread' },
+        { text: 'mainThreadFn', link: '/api/main-thread/main-thread-fn' },
         {
-          sectionHeaderText: 'API Reference',
+          text: 'LynxMainThreadEvent',
+          link: '/api/main-thread/main-thread-event',
         },
-        ...apiSidebar,
+        { text: 'MainThreadRef', link: '/api/main-thread/main-thread-ref' },
+        {
+          text: 'LynxMainThread',
+          link: '/api/main-thread/main-thread-service',
+        },
+        { text: 'backgroundFn', link: '/api/main-thread/background-fn' },
       ],
       '/examples/': [
         { text: 'Overview', link: '/examples/' },

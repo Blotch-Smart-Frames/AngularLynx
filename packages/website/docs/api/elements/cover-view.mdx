@@ -8,7 +8,7 @@ Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for
 `<cover-view>` is only available on **Clay Windows** and **Clay macOS**. It has no effect on Android, iOS, or web.
 :::
 
-Renders its children into a platform overlay surface above Clay's main rendering surface. On Clay, embedded native views such as a [`<webview>`](/guide/elements/webview) paint over regular Lynx content, whatever their order or `z-index`. Children of `<cover-view>` paint on top of them.
+Renders its children into a platform overlay surface above Clay's main rendering surface. On Clay, embedded native views such as a [`<webview>`](/api/elements/webview) paint over regular Lynx content, whatever their order or `z-index`. Children of `<cover-view>` paint on top of them.
 
 If you only need to cover other Lynx content, use a regular `<view>` with `position: fixed` instead.
 

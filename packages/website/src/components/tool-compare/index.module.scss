@@ -1,0 +1,635 @@
+// Ease-out-expo: rows land quickly, then settle.
+$ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+.compare {
+  // The layout follows the component's own width, not the viewport's: the
+  // home page gives it 960px, a docs page between its sidebars much less.
+  container-type: inline-size;
+  width: 100%;
+  margin: 24px 0;
+
+  --wire: rgba(17, 17, 19, 0.16);
+  --pulse: rgba(17, 17, 19, 0.55);
+  --pulse-duration: 2.6s;
+  // The grid layouts' columns. They're set here because a container query
+  // can only style the container's descendants, not the container itself.
+  --cols-3: minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1.5fr);
+  --cols-4: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 0.95fr) minmax(0, 1.5fr);
+  // Each stage after the first starts with a wire this wide.
+  --wire-gap: 64px;
+  --streak-x: linear-gradient(90deg, transparent, var(--pulse));
+  --streak-y: linear-gradient(180deg, transparent, var(--pulse));
+  --chip-border: rgba(17, 17, 19, 0.12);
+  --phone-stroke: rgba(17, 17, 19, 0.4);
+  --phone-fill: rgba(17, 17, 19, 0.14);
+  --text: var(--home-title-color);
+  --muted: var(--home-features-item-desc-color);
+  --hero-wash:
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--major-brand-color) 9%, transparent),
+      color-mix(in srgb, var(--second-brand-color) 6%, transparent)
+    ),
+    rgba(255, 255, 255, 0.6);
+  --hero-border: color-mix(in srgb, var(--major-brand-color) 28%, transparent);
+  --hero-shadow: 0 22px 44px -26px rgba(221, 0, 49, 0.55);
+  --spot: color-mix(in srgb, var(--major-brand-color) 16%, transparent);
+
+  // Higher specificity than the docs' own `ul`, `li`, `dl` and `img` rules,
+  // which would otherwise add bullets, indents and margins.
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .row {
+    margin: 0;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--chip-border);
+    transition: filter 0.3s ease;
+  }
+
+  // Pointing at a tool fades the others, so one row can be read on its own.
+  @media (hover: hover) {
+    .rows:hover .row:not(:hover) {
+      filter: opacity(0.4) saturate(0.4);
+    }
+  }
+
+  dl,
+  dt,
+  dd {
+    margin: 0;
+    padding: 0;
+  }
+
+  .logo {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    margin: 0 8px 0 0;
+    vertical-align: -5px;
+    border-radius: 6px;
+  }
+}
+
+:global(.dark) .compare {
+  --wire: rgba(255, 255, 255, 0.14);
+  --pulse: rgba(255, 255, 255, 0.75);
+  --chip-border: rgba(255, 255, 255, 0.1);
+  --phone-stroke: rgba(255, 255, 255, 0.45);
+  --phone-fill: rgba(255, 255, 255, 0.16);
+  --hero-wash:
+    linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--major-brand-color) 14%, transparent),
+      color-mix(in srgb, var(--second-brand-color) 10%, transparent)
+    ),
+    rgba(255, 255, 255, 0.02);
+  --hero-shadow: 0 22px 48px -24px rgba(255, 80, 110, 0.4);
+  --spot: color-mix(in srgb, var(--major-brand-color) 22%, transparent);
+}
+
+// ======== Shared pieces =========
+
+.labels {
+  display: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0 20px 12px;
+  border-bottom: 1px solid var(--chip-border);
+}
+
+.name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.stage {
+  position: relative;
+
+  dt {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+}
+
+.languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+
+  i {
+    color: var(--muted);
+    font-size: 12px;
+  }
+}
+
+// "and others" isn't a language, so it reads as a note, not a chip.
+.chip-more {
+  border-color: transparent;
+  padding: 0 2px;
+  color: var(--muted);
+}
+
+.renderer {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.screen {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.screen-title {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.screen-detail {
+  display: block;
+  // Avoids a lone last word in a narrow column.
+  text-wrap: pretty;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+// ======== Phone sketch =========
+
+.phone {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 26px;
+  height: 44px;
+  padding: 5px 4px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--phone-stroke);
+  border-radius: 6px;
+
+  > span {
+    display: block;
+    border-radius: 2px;
+  }
+}
+
+.phone-address {
+  height: 3px;
+  background: var(--phone-fill);
+}
+
+// A page inside the app's own frame: the dashed edge is the browser view.
+.phone-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px dashed var(--phone-stroke);
+
+  > span {
+    display: block;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--phone-fill);
+
+    &:nth-child(2) {
+      width: 70%;
+    }
+  }
+}
+
+.phone-nav {
+  height: 4px;
+  background: var(--phone-fill);
+}
+
+.phone-switch {
+  align-self: flex-end;
+  position: relative;
+  width: 10px;
+  height: 6px !important;
+  border-radius: 3px !important;
+  background: var(--phone-stroke);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #fff;
+  }
+}
+
+.phone-row {
+  height: 4px;
+  background: var(--phone-fill);
+}
+
+// ======== AngularLynx row =========
+
+.compare .hero {
+  position: relative;
+  // Keeps the beam's and spotlight's negative z-index inside the row.
+  isolation: isolate;
+  overflow: hidden;
+  margin-top: 14px;
+  padding: 22px 20px;
+  border: 1px solid var(--hero-border);
+  border-radius: 20px;
+  background: var(--hero-wash);
+  box-shadow: var(--hero-shadow);
+  transition:
+    box-shadow 0.4s ease,
+    filter 0.3s ease;
+
+  --pulse-duration: 1.5s;
+  --wire: var(--hero-border);
+  --pulse: var(--major-brand-color);
+  // The brand's red to blue, as in the hero title and the border beam.
+  --streak-x: linear-gradient(
+    90deg,
+    transparent,
+    var(--major-brand-color) 60%,
+    var(--second-brand-color)
+  );
+  --streak-y: linear-gradient(
+    180deg,
+    transparent,
+    var(--major-brand-color) 60%,
+    var(--second-brand-color)
+  );
+  --phone-stroke: var(--major-brand-color);
+  --phone-fill: color-mix(in srgb, var(--major-brand-color) 30%, transparent);
+
+  // The spotlight follows the cursor across the row.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      280px circle at var(--spot-x, 75%) var(--spot-y, 50%),
+      var(--spot),
+      transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+
+  .name {
+    color: var(--major-brand-color);
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .chip {
+    border-color: var(--hero-border);
+    background: color-mix(in srgb, var(--major-brand-color) 8%, transparent);
+
+    i {
+      color: var(--major-brand-color);
+    }
+  }
+
+  .renderer {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--major-brand-color) 12%, transparent);
+    color: var(--major-brand-color);
+    font-weight: 700;
+  }
+
+  // The switch flips now and then: these are live controls, not a picture.
+  .phone-switch {
+    background: var(--major-brand-color);
+    animation: switch-track 3.2s $ease-out infinite;
+
+    &::after {
+      animation: switch-knob 3.2s $ease-out infinite;
+    }
+  }
+
+  .screen-title {
+    font-size: 15px;
+  }
+}
+
+@keyframes switch-track {
+  0%,
+  45% {
+    background: var(--major-brand-color);
+  }
+  50%,
+  95% {
+    background: var(--phone-fill);
+  }
+}
+
+@keyframes switch-knob {
+  0%,
+  45% {
+    transform: none;
+  }
+  50%,
+  95% {
+    transform: translateX(-4px);
+  }
+}
+
+// ======== Wires and pulses =========
+
+// Each wire is one pseudo-element with three backgrounds: the moving
+// pulse, the line, and the dot where it meets the next stage. Only the first
+// background's position animates.
+@keyframes flow-x {
+  from {
+    background-position:
+      -70% 50%,
+      0 50%,
+      100% 50%;
+  }
+  to {
+    background-position:
+      170% 50%,
+      0 50%,
+      100% 50%;
+  }
+}
+
+@keyframes flow-y {
+  from {
+    background-position:
+      50% -30%,
+      0 0;
+  }
+  to {
+    background-position:
+      50% 130%,
+      0 0;
+  }
+}
+
+// ======== Grid layouts =========
+
+// Medium, such as a docs page between its sidebars: the tool's name sits
+// above its three stages.
+@container (min-width: 560px) {
+  .labels,
+  .row {
+    display: grid;
+    grid-template-columns: var(--cols-3);
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .labels > span:first-child {
+    display: none;
+  }
+
+  .labels > span:nth-child(3),
+  .labels > span:nth-child(4) {
+    padding-left: var(--wire-gap);
+  }
+
+  .name {
+    grid-column: 1 / -1;
+    margin-bottom: 12px;
+  }
+
+  .pipeline {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+  }
+
+  // The column labels name the stages here, so each row's are hidden.
+  .stage dt {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .stage + .stage {
+    padding-left: var(--wire-gap);
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 50%;
+      width: calc(var(--wire-gap) - 16px);
+      height: 6px;
+      margin-top: -3px;
+      background:
+        var(--streak-x) -70% 50% / 22px 2px no-repeat,
+        linear-gradient(var(--wire), var(--wire)) 0 50% / calc(100% - 3px) 1px
+          no-repeat,
+        radial-gradient(circle, var(--wire) 2px, transparent 2.5px) 100% 50% /
+          6px 6px no-repeat;
+      animation: flow-x var(--pulse-duration) cubic-bezier(0.45, 0, 0.55, 1)
+        infinite;
+      // Rows fire one after another, and each row's second wire follows its
+      // first, so the light reads as moving from code to screen.
+      animation-delay: calc(var(--i, 0) * 0.35s);
+    }
+
+    + .stage::before {
+      animation-delay: calc(var(--i, 0) * 0.35s + var(--pulse-duration) / 2);
+    }
+  }
+
+  .compare .hero {
+    padding: 24px 20px;
+  }
+
+  .hero .stage + .stage::before {
+    filter: drop-shadow(0 0 3px var(--major-brand-color));
+  }
+}
+
+// Wide, such as the home page: one line per tool.
+@container (min-width: 820px) {
+  .labels,
+  .row {
+    grid-template-columns: var(--cols-4);
+  }
+
+  .labels > span:first-child {
+    display: block;
+  }
+
+  .name {
+    grid-column: auto;
+    margin-bottom: 0;
+  }
+
+  .pipeline {
+    grid-column: 2 / -1;
+  }
+}
+
+// ======== Narrow layout: each tool stacks, like a timeline =========
+
+@container (max-width: 559.98px) {
+  .compare .row {
+    padding: 18px 4px;
+  }
+
+  .compare .hero {
+    padding: 20px 18px;
+  }
+
+  .name {
+    margin-bottom: 14px;
+  }
+
+  // `.compare` outranks the docs' reset of `dl` padding above.
+  .compare .pipeline {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-left: 22px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      // From the first stage's node to the last's.
+      left: 4px;
+      top: 12px;
+      bottom: 22px;
+      width: 2px;
+      background:
+        var(--streak-y) 50% -30% / 2px 28px no-repeat,
+        linear-gradient(var(--wire), var(--wire)) 50% 0 / 1px 100% no-repeat;
+      animation: flow-y calc(var(--pulse-duration) * 1.4)
+        cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      animation-delay: calc(var(--i, 0) * 0.35s);
+    }
+  }
+
+  // Each stage's label sits beside its value, keeping a tool to a few lines.
+  .stage {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 8px;
+    min-height: 24px;
+
+    dt {
+      margin-bottom: 0;
+    }
+  }
+
+  // A node on the line for each stage.
+  .stage::before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 50%;
+    margin-top: -3.5px;
+    width: 7px;
+    height: 7px;
+    box-sizing: border-box;
+    border: 1.5px solid var(--wire);
+    border-radius: 50%;
+    background: var(--rp-c-bg);
+  }
+
+  .hero .stage::before {
+    border-color: var(--major-brand-color);
+  }
+}
+
+// ======== Entrance =========
+
+// `armed` is only set from JavaScript, once the rows are known to be off
+// screen, so nobody is left looking at hidden rows.
+.armed .row {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.armed .hero {
+  transform: translateY(14px) scale(0.98);
+  box-shadow: none;
+}
+
+.armed.shown .row {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.6s $ease-out,
+    transform 0.8s $ease-out,
+    filter 0.3s ease;
+  transition-delay: calc(var(--i) * 90ms), calc(var(--i) * 90ms), 0s;
+}
+
+// The AngularLynx row lands last, then its glow comes up.
+.armed.shown .hero {
+  box-shadow: var(--hero-shadow);
+  transition:
+    opacity 0.6s $ease-out,
+    transform 0.9s $ease-out,
+    box-shadow 1.2s $ease-out,
+    filter 0.3s ease;
+  transition-delay: 300ms, 300ms, 700ms, 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .compare .stage::before,
+  .compare .pipeline::before,
+  .compare .phone-switch,
+  .compare .phone-switch::after {
+    animation: none;
+  }
+
+  .compare .hero::before {
+    transition: none;
+  }
+}

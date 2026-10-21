@@ -1,3 +1,5 @@
+import { ToolCompare } from '../../src/components/tool-compare';
+
 # What is AngularLynx?
 
 **AngularLynx lets you build iOS and Android apps with Angular.** You write components, signals and templates as usual. Your app renders as real native mobile UI, not as a web page inside an app.
@@ -35,12 +37,7 @@ To build installable apps, you do install Apple's and Google's build tools: Xcod
 
 Several tools let web developers build mobile apps. They differ mostly in what ends up on screen.
 
-| Tool                  | You write                      | On screen                                                 |
-| --------------------- | ------------------------------ | --------------------------------------------------------- |
-| **Ionic + Capacitor** | Angular, React or Vue          | HTML and CSS in a browser view (a WebView) inside the app |
-| **NativeScript**      | Angular, Vue, React and others | Native controls, styled with a subset of CSS              |
-| **React Native**      | React                          | Native controls, styled with JavaScript objects           |
-| **AngularLynx**       | Angular                        | Native controls drawn by Lynx, styled with CSS            |
+<ToolCompare />
 
 **Choose a WebView tool** if you need the full browser: the DOM, every web library and every CSS feature.
 

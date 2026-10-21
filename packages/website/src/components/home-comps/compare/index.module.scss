@@ -20,62 +20,7 @@
     text-align: center;
     font-size: 16px;
     line-height: 1.6;
-    margin-bottom: 40px;
-  }
-
-  // The table scrolls sideways on its own on a narrow phone, so the page
-  // itself never does.
-  .table-wrap {
-    width: 100%;
-    overflow-x: auto;
-    border-radius: 16px;
-    border: var(--home-features-item-bg-border);
-    background: var(--home-features-item-bg);
-  }
-
-  .table {
-    width: 100%;
-    min-width: 560px;
-    border-collapse: collapse;
-    font-size: 14px;
-    line-height: 1.5;
-
-    th,
-    td {
-      padding: 14px 20px;
-      text-align: left;
-      vertical-align: top;
-      border: none;
-      border-bottom: var(--home-features-item-bg-border);
-    }
-
-    thead th {
-      color: var(--home-features-item-desc-color);
-      font-weight: 500;
-    }
-
-    tbody th {
-      color: var(--home-title-color);
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    td {
-      color: var(--home-features-item-desc-color);
-    }
-
-    tbody tr:last-child th,
-    tbody tr:last-child td {
-      border-bottom: none;
-    }
-
-    .highlight th {
-      color: var(--rp-c-brand);
-    }
-
-    .highlight td {
-      color: var(--home-title-color);
-    }
+    margin-bottom: 16px;
   }
 
   .link {

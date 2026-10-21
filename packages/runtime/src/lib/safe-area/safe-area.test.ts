@@ -65,4 +65,19 @@ describe('LynxSafeArea', () => {
 
     expect(safeArea.platform).toBe('Android');
   });
+
+  it("works where there's no SystemInfo until platform is read", () => {
+    const injector = Injector.create({
+      providers: [
+        { provide: LynxGlobalData, useValue: { globalData: signal({}) } },
+        // The real service, which throws without SystemInfo.
+        { provide: LynxSystemInfo, useFactory: () => new LynxSystemInfo() },
+      ],
+    });
+
+    const safeArea = runInInjectionContext(injector, () => new LynxSafeArea());
+
+    expect(safeArea.isNotchScreen()).toBe(false);
+    expect(() => safeArea.platform).toThrow('SystemInfo is not available');
+  });
 });

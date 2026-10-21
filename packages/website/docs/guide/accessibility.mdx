@@ -91,14 +91,43 @@ With `[accessibility-exclusive-focus]="true"`, the screen reader moves only betw
 
 ## Announce changes and move focus from code
 
-`LynxAccessibility` has two methods for this, but **neither works from an event handler yet**:
+Some changes don't move the screen reader, such as a cart count going up. Tell people about them with `LynxAccessibility`:
 
-- **`announce(text)`** is meant to make the screen reader speak, for changes that don't move focus, such as "3 items in cart".
-- **`requestFocus('#id')`** is meant to move the screen reader to the element with that `id`.
+```typescript title="src/app/cart.ts"
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxAccessibility } from '@blotch/angular-lynx';
 
-Both wrap Lynx APIs that exist only on the [background thread](/guide/glossary#background-thread). Event handlers run on the [main thread](/guide/glossary#main-thread), so a call from `(bindtap)` rejects with "not available in this environment". See [Threads](/guide/concepts/threads).
+@Component({
+  selector: 'app-cart',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      [accessibility-element]="true"
+      accessibility-traits="button"
+      accessibility-label="Add to cart"
+      (bindtap)="add()"
+    >
+      <text>Add to cart</text>
+    </view>
+    <text id="total">{{ count() }} items</text>
+  `,
+})
+export class Cart {
+  readonly #a11y = inject(LynxAccessibility);
+  readonly count = signal(0);
 
-Until that's fixed, rely on the attributes above. The signatures are in the [API reference](/api/angular-lynx/accessibility).
+  add(): void {
+    this.count.update((n) => n + 1);
+    this.#a11y.announce(`${this.count()} items in cart`).catch(() => {});
+  }
+}
+```
+
+- **`announce(text)`** makes the screen reader speak, without moving focus.
+- **`requestFocus('#id')`** moves the screen reader to the element with that `id`, such as `requestFocus('#total')`.
+- **Both return a Promise** that rejects where Lynx can't do it, such as in the [web preview](/guide/glossary#web-preview). The `catch` keeps that quiet.
+
+The signatures are in the [API reference](/api/angular-lynx/accessibility).
 
 ## Test with a screen reader
 

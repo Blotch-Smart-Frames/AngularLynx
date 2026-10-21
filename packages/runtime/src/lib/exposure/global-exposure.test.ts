@@ -144,4 +144,63 @@ describe('LynxGlobalExposure', () => {
       });
     });
   });
+
+  describe("where this thread's lynx has no stopExposure, as on web-core's main thread", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    const stubMainThread = (lynx: Record<string, unknown>) => {
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('lynx', lynx);
+    };
+
+    it('sends stopExposure and resumeExposure to the background thread', () => {
+      const dispatchEvent = vi.fn();
+      stubMainThread({ getJSContext: () => ({ dispatchEvent }) });
+      const { service } = create();
+
+      service.stopExposure({ sendEvent: false });
+      expect(service.active()).toBe(false);
+      service.resumeExposure();
+      expect(service.active()).toBe(true);
+
+      expect(
+        dispatchEvent.mock.calls.map(([event]) => JSON.parse(event.data)),
+      ).toEqual([
+        expect.objectContaining({
+          name: 'stopExposure',
+          args: [{ sendEvent: false }],
+        }),
+        expect.objectContaining({ name: 'resumeExposure', args: [] }),
+      ]);
+    });
+
+    it('reports a relay that fails', async () => {
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      stubMainThread({});
+
+      create().service.stopExposure();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Can't reach the background thread"),
+        }),
+      );
+    });
+  });
+
+  it('setObserverFrameRate resolves once Lynx has applied it', async () => {
+    const setObserverFrameRate = vi.fn();
+    (globalThis as any).lynx = { setObserverFrameRate };
+
+    await expect(
+      create().service.setObserverFrameRate({ forPageRect: 5 }),
+    ).resolves.toBeUndefined();
+    expect(setObserverFrameRate).toHaveBeenCalledWith({ forPageRect: 5 });
+  });
 });

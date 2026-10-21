@@ -4761,3 +4761,19 @@ Inline SVG inherits the page's CSS: `fill="var(--primary)"` or `currentColor` fo
 ### The fix
 
 `<ui-chart>` keeps CSS-shaped paints in its scene and resolves `var(--token)` against TypeScript copies of the theme (`chart-theme.ts`, checked against `default.css`/`dark.css` by a test) right before it writes the SVG. Which copy depends on the chart's color scheme, which defaults to light because the ui theme's dark mode is opt-in (`.dark` class); apps that toggle it set `'system'` or their own function. Text that must follow the theme exactly is native `<text>`, which reads the variables.
+
+---
+
+## The main thread's `lynx` has only a few of the `lynx` APIs
+
+### What you'd expect (web)
+
+One global object offers the same APIs wherever your code runs.
+
+### What Lynx does
+
+Template event handlers run on the main thread, whose `lynx` (`Utils::CreateLynx` in Lynx core's `core/runtime/lepusng/bindings/renderer_ng.cc`) has only `getTextInfo`, timers, the thread contexts (`getJSContext`, `getCoreContext`, `getEngine`), `setSessionStorageItem`/`getSessionStorageItem`, `stopExposure`/`resumeExposure`, `reportError` and a few loaders. It has no `accessibilityAnnounce`, `addFont`, `setObserverFrameRate`, `subscribeSessionStorage`, `createSelectorQuery`, `getJSModule` or `fetch`. Web-core's main-thread `lynx` has even less: no `stopExposure`, `resumeExposure` or `getTextInfo`. A service that called these directly threw "not a function" from a tap handler. `setTimeout` doesn't help: the timer runs on the main thread too.
+
+### The fix
+
+`packages/runtime/src/lib/background-call.ts` relays the call to the background thread over the cross-thread event channel and resolves with its result: the main thread dispatches on `getJSContext()`, and the background thread replies on `getCoreContext()`. `LynxAccessibility.announce()`, `LynxFont.addFont()`, `LynxGlobalExposure.setObserverFrameRate()` and, on web, `stopExposure()`/`resumeExposure()` use it. A main-thread `LynxSessionStorage.subscribe()` subscribes through it and gets each change sent back. `LynxAccessibility.requestFocus()` finds the element with `__QuerySelector` on the page and calls `__InvokeUIMethod` instead, because the main thread owns the native elements.

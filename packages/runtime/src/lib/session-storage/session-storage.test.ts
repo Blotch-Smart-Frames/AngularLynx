@@ -255,8 +255,23 @@ describe('LynxSessionStorage', () => {
       const callback = vi.fn();
 
       service.subscribe('key', callback);
+      subscribeSessionStorageMock.mock.calls[0][1]({ mode: 'dark' });
 
-      expect(subscribeSessionStorageMock).toHaveBeenCalledWith('key', callback);
+      expect(subscribeSessionStorageMock).toHaveBeenCalledWith(
+        'key',
+        expect.any(Function),
+      );
+      expect(callback).toHaveBeenCalledWith({ mode: 'dark' });
+    });
+
+    it('subscribe unwraps a primitive the main thread stored', () => {
+      const service = new LynxSessionStorage();
+      const callback = vi.fn();
+
+      service.subscribe('key', callback);
+      subscribeSessionStorageMock.mock.calls[0][1]({ __data: 7 });
+
+      expect(callback).toHaveBeenCalledWith(7);
     });
 
     it('subscribe returns a subscription with the listener ID', () => {
@@ -494,5 +509,79 @@ describe('LynxSessionStorage', () => {
       service.setItem('counter', 2);
       expect(counter()).toBe(2);
     });
+  });
+
+  describe("other LynxViews' writes on the main thread", () => {
+    // The main thread can't subscribe natively, so watch() subscribes through
+    // the background thread, which sends each change back.
+    type Listener = (event: { data: string }) => void;
+
+    const loadMainThread = async () => {
+      const listeners: Record<string, Listener> = {};
+      const sent: Array<{ id: number; name: string; args: unknown[] }> = [];
+      vi.resetModules();
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('lynx', {
+        setSessionStorageItem: vi.fn(),
+        getSessionStorageItem: vi.fn(),
+        getJSContext: () => ({
+          addEventListener: (type: string, fn: Listener) =>
+            (listeners[type] = fn),
+          dispatchEvent: (event: { data: string }) =>
+            sent.push(JSON.parse(event.data)),
+        }),
+      });
+      const { LynxSessionStorage: Service } = await import('./session-storage');
+      const change = (relayId: number, value: unknown) =>
+        listeners['AngularLynx.SessionStorageChange']!({
+          data: JSON.stringify({ relayId, value }),
+        });
+      return { service: new Service(), sent, change };
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('subscribes through the background thread and delivers its changes', async () => {
+      const { service, sent, change } = await loadMainThread();
+      const callback = vi.fn();
+
+      service.subscribe('counter', callback);
+      const [request] = sent;
+      change(request!.args[1] as number, { __data: 3 });
+
+      expect(request).toMatchObject({
+        name: 'subscribeSessionStorage',
+        args: ['counter', expect.any(Number)],
+      });
+      expect(callback).toHaveBeenCalledWith(3);
+    });
+
+    it('unsubscribes through the background thread', async () => {
+      const { service, sent } = await loadMainThread();
+      const subscription = service.subscribe('counter', vi.fn());
+
+      service.unsubscribe(subscription);
+      service.unsubscribe(subscription);
+
+      expect(sent.map((m) => m.name)).toEqual([
+        'subscribeSessionStorage',
+        'unsubscribeSessionStorage',
+      ]);
+      expect(sent[1]!.args).toEqual([sent[0]!.args[1]]);
+    });
+  });
+
+  it('getItem on the background thread unwraps a primitive the main thread stored', async () => {
+    (globalThis as any).lynx = {
+      setSessionStorageItem: vi.fn(),
+      getSessionStorageItem: (_key: string, cb: (v: unknown) => void) =>
+        cb({ __data: 'dark' }),
+    };
+
+    await expect(new LynxSessionStorage().getItem('theme')).resolves.toBe(
+      'dark',
+    );
   });
 });

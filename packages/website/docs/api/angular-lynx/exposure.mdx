@@ -97,10 +97,10 @@ Restarts page-wide detection.
 ### `LynxGlobalExposure.setObserverFrameRate()`
 
 ```typescript
-setObserverFrameRate(options?: ObserverFrameRateOptions): void;
+setObserverFrameRate(options?: ObserverFrameRateOptions): Promise<void>;
 ```
 
-Sets how often Lynx checks for exposure. Lynx provides it only on the background thread, so a call from an event handler throws.
+Sets how often Lynx checks for exposure, and resolves once it's applied. Lynx provides it only on the [background thread](/guide/glossary#background-thread), so a call from an event handler is sent there for you.
 
 ## Attributes
 

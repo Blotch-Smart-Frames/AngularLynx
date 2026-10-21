@@ -5,6 +5,10 @@ import {
   Injectable,
   signal,
 } from '@angular/core';
+import {
+  subscribeSessionStorageFromMainThread,
+  unsubscribeSessionStorageFromMainThread,
+} from '../background-call';
 import type { SessionStorageSubscription } from './session-storage.types';
 
 /**
@@ -28,7 +32,8 @@ import type { SessionStorageSubscription } from './session-storage.types';
  *   subscribe/unsubscribe at all — and `getSessionStorageItem` is
  *   *synchronous*, taking just the key and returning the value directly.
  *   Calling it with a callback (the background-thread shape) throws a native
- *   "GetSessionStorageItem param size should be 1" fatal error.
+ *   "GetSessionStorageItem param size should be 1" fatal error. Subscriptions
+ *   made there go through the background thread (see background-call.ts).
  *
  * @usageNotes
  * ```typescript
@@ -54,6 +59,8 @@ export class LynxSessionStorage {
     Map<number, (value: unknown) => void>
   >();
   #nextId = 0;
+  /** Background-thread subscriptions made for main-thread listeners, by listener ID. */
+  readonly #relayIds = new Map<number, number>();
 
   /**
    * Lynx for Web's background `lynx` declares the session storage methods
@@ -80,13 +87,36 @@ export class LynxSessionStorage {
   /**
    * The main thread's `lynx` global never registers subscribe/unsubscribe
    * (only setSessionStorageItem/getSessionStorageItem exist there), so pub/sub
-   * must always fall back to the local listener map on that thread.
+   * there uses the local listener map, plus a subscription made through the
+   * background thread (see {@link subscribe}).
    */
   #hasNativeSubscription(): boolean {
+    return this.#hasNativeSessionStorage() && !this.#isMainThread();
+  }
+
+  #isMainThread(): boolean {
+    return typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__;
+  }
+
+  /**
+   * Undoes setItem's main-thread wrapping of primitives, so callers get back
+   * exactly what they stored. Applies wherever a value written on the main
+   * thread can come back: main-thread reads, and background-thread reads and
+   * notifications. The `Object.keys(raw).length === 1` guard keeps this from
+   * mangling genuine user objects: a real payload that happens to have a
+   * `__data` key (e.g. `{ __data, other }`) has more than one key and is
+   * returned untouched, so only our own single-key wrapper { __data } is
+   * unwrapped.
+   */
+  #unwrap<T>(raw: unknown): T {
     return (
-      this.#hasNativeSessionStorage() &&
-      !(typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__)
-    );
+      raw != null &&
+      typeof raw === 'object' &&
+      '__data' in raw &&
+      Object.keys(raw).length === 1
+        ? raw.__data
+        : raw
+    ) as T;
   }
 
   /**
@@ -138,7 +168,7 @@ export class LynxSessionStorage {
   setItem<T = unknown>(key: string, value: T): void {
     if (this.#hasNativeSessionStorage()) {
       // Main thread requires values to be objects; wrap primitives.
-      if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
+      if (this.#isMainThread()) {
         const wrapped =
           typeof value === 'object' && value !== null
             ? value
@@ -171,26 +201,16 @@ export class LynxSessionStorage {
   getItem<T = unknown>(key: string): Promise<T> {
     if (this.#hasNativeSessionStorage()) {
       // Main thread: synchronous, single-arg — see the class-level doc comment.
-      if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
-        const raw = (lynx as any).getSessionStorageItem(key);
-        // Undo setItem's primitive wrapping so callers get back exactly what
-        // they stored. The `Object.keys(raw).length === 1` guard is what keeps
-        // this from mangling genuine user objects: a real payload that happens
-        // to have a `__data` key (e.g. `{ __data, other }`) has more than one
-        // key and is returned untouched, so only our own single-key wrapper
-        // { __data } is unwrapped.
-        const unwrapped =
-          raw != null &&
-          typeof raw === 'object' &&
-          '__data' in raw &&
-          Object.keys(raw).length === 1
-            ? (raw.__data as T)
-            : (raw as T);
-        return Promise.resolve(unwrapped);
+      if (this.#isMainThread()) {
+        return Promise.resolve(
+          this.#unwrap<T>((lynx as any).getSessionStorageItem(key)),
+        );
       }
 
       return new Promise<T>((resolve) => {
-        (lynx as any).getSessionStorageItem(key, (value: T) => resolve(value));
+        (lynx as any).getSessionStorageItem(key, (value: unknown) =>
+          resolve(this.#unwrap<T>(value)),
+        );
       });
     }
 
@@ -210,7 +230,7 @@ export class LynxSessionStorage {
     if (this.#hasNativeSubscription()) {
       const listenerId: number = (lynx as any).subscribeSessionStorage(
         key,
-        callback,
+        (value: unknown) => callback(this.#unwrap<T>(value)),
       );
       return { key, listenerId };
     }
@@ -222,6 +242,18 @@ export class LynxSessionStorage {
       this.#listeners.set(key, keyListeners);
     }
     keyListeners.set(id, callback as (value: unknown) => void);
+
+    // The local map only sees this thread's own writes. On the main thread,
+    // another LynxView's writes reach only a native subscription, which only
+    // the background thread can make, so subscribe there too.
+    if (this.#isMainThread() && this.#hasNativeSessionStorage()) {
+      this.#relayIds.set(
+        id,
+        subscribeSessionStorageFromMainThread(key, (value) =>
+          callback(this.#unwrap<T>(value)),
+        ),
+      );
+    }
     return { key, listenerId: id };
   }
 
@@ -238,6 +270,11 @@ export class LynxSessionStorage {
     }
 
     this.#listeners.get(subscription.key)?.delete(subscription.listenerId);
+    const relayId = this.#relayIds.get(subscription.listenerId);
+    if (relayId !== undefined) {
+      this.#relayIds.delete(subscription.listenerId);
+      unsubscribeSessionStorageFromMainThread(relayId);
+    }
   }
 
   /**

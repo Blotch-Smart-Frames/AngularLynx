@@ -1,4 +1,6 @@
 import { Injectable } from '@angular/core';
+import { callOnBackground } from '../background-call';
+import { MainThreadElement } from '../main-thread/main-thread-element';
 
 /**
  * Programmatic accessibility control for screen readers on Lynx.
@@ -27,23 +29,12 @@ export class LynxAccessibility {
    * operation results that aren't reflected by focus movement alone
    * (e.g. toast messages, background task completion, live counters).
    *
-   * Wraps `lynx.accessibilityAnnounce()`.
+   * Wraps `lynx.accessibilityAnnounce()`. Only the background thread's `lynx`
+   * has it, and event handlers run on the main thread, so the call goes
+   * through the background thread (see background-call.ts).
    */
   announce(content: string): Promise<void> {
-    if (
-      typeof lynx === 'undefined' ||
-      typeof (lynx as any).accessibilityAnnounce !== 'function'
-    ) {
-      return Promise.reject(
-        new Error(
-          'lynx.accessibilityAnnounce is not available in this environment',
-        ),
-      );
-    }
-
-    return new Promise<void>((resolve) => {
-      (lynx as any).accessibilityAnnounce({ content }, () => resolve());
-    });
+    return callOnBackground('accessibilityAnnounce', content);
   }
 
   /**
@@ -54,8 +45,25 @@ export class LynxAccessibility {
    * Only ID selectors are reliably supported (e.g. `'#myElement'`).
    *
    * Wraps `lynx.createSelectorQuery().select(selector).invoke({ method: 'requestAccessibilityFocus' }).exec()`.
+   * The main thread's `lynx` has no createSelectorQuery, but it's where event
+   * handlers run and where the native elements live, so there the element is
+   * found and called directly.
    */
   requestFocus(selector: string): Promise<void> {
+    if (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__) {
+      const element = new MainThreadElement(__GetPageElement()).querySelector(
+        selector,
+      );
+      if (!element) {
+        return Promise.reject(
+          new Error(
+            `requestAccessibilityFocus: no element matches ${selector}`,
+          ),
+        );
+      }
+      return element.invoke('requestAccessibilityFocus').then(() => undefined);
+    }
+
     if (typeof lynx === 'undefined' || !lynx.createSelectorQuery) {
       return Promise.reject(
         new Error(

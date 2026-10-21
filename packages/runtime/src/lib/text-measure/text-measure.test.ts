@@ -108,4 +108,12 @@ describe('LynxTextMeasure', () => {
       expect(result.content).toBeUndefined();
     });
   });
+
+  it("throws its own error where lynx has no getTextInfo, as in the web preview's main thread", () => {
+    vi.stubGlobal('lynx', {});
+
+    expect(() =>
+      new LynxTextMeasure().measure('hello', { fontSize: '14px' }),
+    ).toThrow('lynx.getTextInfo is not available in this environment');
+  });
 });

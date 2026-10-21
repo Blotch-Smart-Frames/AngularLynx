@@ -51,13 +51,10 @@ const count = await this.#sessionStorage.getItem<number>('count');
 
 ## When another page's changes appear
 
-On a phone, the copy of your app that draws the UI runs on the [main thread](/guide/glossary#main-thread). Lynx doesn't send change notifications there. So a `watch()` signal:
+A `watch()` signal updates when any page writes the key:
 
-- **updates right away** when the same page calls `setItem()`
-- **picks up other pages' values** when the signal is created
-- **doesn't update** when another page writes the key later
-
-To see a newer value from another page, call `getItem()` again.
+- **Right away** when the same page calls `setItem()`.
+- **Shortly after** another page writes it. Lynx sends change notifications only to the [background thread](/guide/glossary#background-thread), so AngularLynx passes them on to the copy of your app that draws the UI.
 
 ## Subscribe with a callback
 
@@ -72,7 +69,7 @@ const subscription = this.#sessionStorage.subscribe<number>('count', (value) =>
 this.#sessionStorage.unsubscribe(subscription);
 ```
 
-Unsubscribe yourself: unlike `watch()`, a subscription doesn't end with the component. The same rule about other pages' changes applies.
+Unsubscribe yourself: unlike `watch()`, a subscription doesn't end with the component.
 
 ## Related
 

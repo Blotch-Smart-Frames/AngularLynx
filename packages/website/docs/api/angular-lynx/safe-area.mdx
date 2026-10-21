@@ -60,7 +60,7 @@ The CSS `env()` value for each inset, for style bindings in TypeScript.
 class LynxSafeArea {}
 ```
 
-Device facts for layouts that adapt to the safe area. Creating it throws outside Lynx, such as in unit tests, because it reads `LynxSystemInfo`.
+Device facts for layouts that adapt to the safe area. Reading `platform` throws outside Lynx, such as in unit tests, because it reads `LynxSystemInfo`.
 
 ### `LynxSafeArea.isNotchScreen`
 

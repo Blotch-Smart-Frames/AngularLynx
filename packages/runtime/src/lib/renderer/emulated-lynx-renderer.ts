@@ -1,34 +1,52 @@
 import type { LynxDocumentBase } from '../lynx-document';
+import type { BaseLynxElement } from '../lynx-element';
 import { LynxRenderer } from './renderer';
 
 /**
  * Angular creates one EmulatedLynxRenderer per component type (keyed by
  * RendererType2.id). This renderer is used when ViewEncapsulation.Emulated
- * is active (the default) and handles adding scope classes for CSS isolation.
+ * is active (the default) and marks elements so the component's scoped CSS
+ * matches only them.
  *
- * In a browser, Angular's EmulatedEncapsulationDomRenderer2 adds _ngcontent-xxx
- * attributes to every element. In Lynx, the template plugin handles per-component
- * CSS scoping natively, so we only need the _nghost class on the host element
- * (for :host selectors). Child elements get no scope classes at all.
+ * On the web, Angular's EmulatedEncapsulationDomRenderer2 gives every element
+ * the component creates a `_ngcontent-<id>` attribute, and each host element a
+ * `_nghost-<id>` attribute, and the compiler scopes the component's selectors
+ * with them. Lynx's CSS engine can't match attribute selectors, so the build
+ * plugin turns them into class selectors (toLynxScopedCss in the plugin's
+ * component-styles.ts), and this renderer adds classes instead. The plugin
+ * sets ɵcmp.id, which is `id` here, to the scope ID the CSS was compiled with.
  */
 export class EmulatedLynxRenderer extends LynxRenderer {
-  #componentScopeId: string;
+  readonly #contentClass: string;
+  readonly #hostClass: string;
 
   constructor(document: LynxDocumentBase, componentId: string) {
     super(document);
-    this.#componentScopeId = componentId;
+    this.#contentClass = `_ngcontent-${componentId}`;
+    this.#hostClass = `_nghost-${componentId}`;
   }
 
   /**
-   * Note: we no longer add scope classes to child elements. The Lynx template
-   * embeds the component scope ID separately from element class lists, so plain
-   * class selectors in CSS are matched by the native CSS engine without needing
-   * a conjunction scope class on every element.
+   * Marks a host element of this component type, for `:host` selectors.
+   * LynxRendererFactory2 calls it for each component instance, as Angular's
+   * DomRendererFactory2 does.
    */
+  applyToHost(element: BaseLynxElement): void {
+    element.addScopeClass(this.#hostClass);
+  }
+
+  override createElement(
+    name: string,
+    namespace?: string | null,
+  ): BaseLynxElement {
+    const element = super.createElement(name, namespace);
+    element.addScopeClass(this.#contentClass);
+    return element;
+  }
+
   override selectRootElement() {
     const el = super.selectRootElement();
-    // Keep scope class on the host element for potential :host CSS rules.
-    el.addClass(`_nghost-${this.#componentScopeId}`);
+    this.applyToHost(el);
     return el;
   }
 }

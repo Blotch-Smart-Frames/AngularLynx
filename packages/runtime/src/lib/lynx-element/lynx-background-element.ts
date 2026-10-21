@@ -103,6 +103,12 @@ export class LynxBackgroundElement implements BaseLynxElement {
   addClass(name: string): void {
     this.#classes.add(name);
   }
+  /**
+   * The background tree is never drawn, so a scope class is just a class.
+   */
+  addScopeClass(name: string): void {
+    this.addClass(name);
+  }
   removeClass(name: string): void {
     this.#classes.delete(name);
   }

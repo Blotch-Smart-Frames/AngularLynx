@@ -7,9 +7,11 @@ import { createHash } from 'node:crypto';
  * (for "Lynx") differentiates these from Angular's default 'ng' prefix IDs,
  * preventing collisions if browser-Angular scope IDs leak into shared code.
  * This ID appears in:
- *   - CSS filenames: `...__scoped_l<hash>.css`
- *   - ɵcmp.id: patched at the end of angular.ts transform
- *   - _nghost-l<hash> class: added by EmulatedLynxRenderer.selectRootElement()
+ *   - the component's compiled CSS: `.title._ngcontent-l<hash>`,
+ *     `._nghost-l<hash>` (see component-styles.ts)
+ *   - ɵcmp.id: set by the loader (see transform-module.ts)
+ *   - the `_ngcontent-l<hash>` and `_nghost-l<hash>` classes that
+ *     EmulatedLynxRenderer adds to the component's elements
  */
 export const generateComponentScopeId = (
   className: string,

@@ -9,18 +9,23 @@ import {
 import { applyBudgets } from './budgets-plugin.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
-  type ComponentScopeInfo,
-  type ComponentStylesEntry,
   createTransformStylesheet,
   forgetComponentStyleSizes,
 } from './component-styles-cache.js';
+import {
+  extractComponentStyles,
+  writeModuleStylesheets,
+} from './component-styles.js';
 import {
   type AngularDiagnostics,
   filterAngularDiagnostics,
   toAngularDiagnosticError,
 } from './angular-diagnostics.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
-import { buildTransformedCode } from './transform-module.js';
+import {
+  buildTransformedCode,
+  type ModuleStylesheets,
+} from './transform-module.js';
 import { transformWorklets } from './worklet-transform.js';
 import { getAngularCliContext } from './angular-cli-context.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
@@ -138,31 +143,28 @@ export const applyAngularRules = async (
   // including template compilation, component metadata generation, and DI
   // ɵfac wiring, none of which a plain TS transpile would reproduce.
   const typeScriptFileCache = new Map<string, string | Uint8Array>();
-  // Write scoped CSS to a cache directory instead of next to source files.
+  // Write component CSS to a cache directory instead of next to source files.
   // The bundler resolves them via relative imports computed by path.relative().
   // Using node_modules/.cache means the files are gitignored by default and
   // cleared on `npm install` if cache invalidation is needed.
-  const scopedCssCacheDir = path.join(
+  const componentCssCacheDir = path.join(
     basePath,
     'node_modules',
     '.cache',
     'angular-lynx-css',
   );
-  fs.mkdirSync(scopedCssCacheDir, { recursive: true });
+  fs.mkdirSync(componentCssCacheDir, { recursive: true });
 
-  // Tracks every stylesheet emitted by Angular's transformStylesheet callback
-  // for a given component source file (see component-styles-cache.ts).
-  const componentStylesCache = new Map<string, ComponentStylesEntry>();
-  // Maps component source file → { className, scopeId } so the loader can emit
-  // the `Component.ɵcmp.id = '<scopeId>'` assignment that ties the CSS files
-  // (whose filenames carry the same scope ID) to the runtime component instance.
-  const componentScopeIds = new Map<string, ComponentScopeInfo>();
+  // The CSS files extracted from each compiled module's components, and their
+  // scope IDs, keyed by source file (see component-styles.ts). The loader
+  // imports the files and ties the scope IDs to the components.
+  const moduleStylesheets = new Map<string, ModuleStylesheets>();
   // Template and stylesheet files each component reads, keyed by the
   // component's source file. The loader registers them as dependencies so
   // rspack watches them: editing an external template must rebuild the
   // component that uses it.
   let componentResourceDependencies = new Map<string, readonly string[]>();
-  // Scoped CSS files rewritten during the current compile. They change after
+  // Component CSS files rewritten during the current compile. They change after
   // rspack's watcher collected the edit, so they're reported as changed
   // outputs to make rspack pick them up in the same rebuild.
   const writtenStylesheets = new Set<string>();
@@ -176,10 +178,6 @@ export const applyAngularRules = async (
 
   const transformStylesheet = createTransformStylesheet({
     basePath,
-    scopedCssCacheDir,
-    componentStylesCache,
-    componentScopeIds,
-    onStylesheetWritten: (filePath) => writtenStylesheets.add(filePath),
     componentStyleSizes,
   });
 
@@ -301,10 +299,30 @@ export const applyAngularRules = async (
         // additive and survives across builds, which is what makes dev-mode
         // rebuilds fast.
         const file = path.normalize(filename);
-        if (typeScriptFileCache.get(file) !== contents) {
+        // Lynx can't add CSS at runtime, so each component's styles leave the
+        // compiled code here and ship as CSS files the module imports.
+        const { code, components } = extractComponentStyles(
+          typeof contents === 'string'
+            ? contents
+            : Buffer.from(contents).toString(),
+          file,
+        );
+        const stylesheets = writeModuleStylesheets({
+          basePath,
+          cacheDir: componentCssCacheDir,
+          fileName: file,
+          components,
+          onWritten: (filePath) => writtenStylesheets.add(filePath),
+        });
+        if (stylesheets) {
+          moduleStylesheets.set(file, stylesheets);
+        } else {
+          moduleStylesheets.delete(file);
+        }
+        if (typeScriptFileCache.get(file) !== code) {
           changedOutputs.add(file);
         }
-        typeScriptFileCache.set(file, contents);
+        typeScriptFileCache.set(file, code);
       }
     } catch (error) {
       // Same rationale as initialize(): emitAffectedFiles also runs on the
@@ -328,6 +346,7 @@ export const applyAngularRules = async (
       // diagnostics for code that no longer exists.
       if (!fs.existsSync(file)) {
         typeScriptFileCache.delete(file);
+        moduleStylesheets.delete(file);
         forgetComponentStyleSizes(componentStyleSizes, file);
       }
     }
@@ -492,8 +511,7 @@ export const applyAngularRules = async (
         code: buildTransformedCode({
           code,
           resourcePath: context.resourcePath,
-          componentStyles: componentStylesCache.get(context.resourcePath),
-          scopeInfo: componentScopeIds.get(context.resourcePath),
+          stylesheets: moduleStylesheets.get(context.resourcePath),
         }),
       };
     },

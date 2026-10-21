@@ -1,5 +1,9 @@
-/* Positioned host so the absolute backdrop resolves against the screen area. */
-.home {
+/*
+ * Positioned host so the absolute backdrop resolves against the screen area.
+ * `:host`, not a class on the host: the component's styles are scoped to its
+ * own template, and the host element belongs to the parent's.
+ */
+:host {
   position: relative;
 }
 

@@ -1,10 +1,17 @@
 // cspell:words ɵcmp
 import path from 'node:path';
 import { transformWorklets } from './worklet-transform.js';
-import type {
-  ComponentScopeInfo,
-  ComponentStylesEntry,
-} from './component-styles-cache.js';
+
+/**
+ * The stylesheets extracted from one module's components (see
+ * component-styles.ts), written as CSS files.
+ */
+export type ModuleStylesheets = {
+  /** The CSS files, in the order the module's components declare them. */
+  imports: string[];
+  /** Each Emulated component's class name and the scope ID its CSS uses. */
+  scopes: Array<{ className: string; scopeId: string }>;
+};
 
 /**
  * Transforms the Angular-compiled JS for a single component module before rspack
@@ -13,10 +20,11 @@ import type {
  * string→string function (no rspack loader context, no compilation cache).
  *
  * It applies, in order:
- *   1. Prepends `import "<scoped.css>"` statements for the component's scoped
- *      stylesheets (resolved relative to the component file).
- *   2. Appends the `Component.ɵcmp.id = '<scopeId>'` assignment that ties the CSS
- *      files (whose filenames carry the same scope ID) to the runtime component.
+ *   1. Prepends `import "<component.css>"` statements for the stylesheets
+ *      extracted from the module's components (resolved relative to the
+ *      component file).
+ *   2. Appends a `Component.ɵcmp.id = '<scopeId>'` assignment for each
+ *      Emulated component, which ties its scoped CSS to its renderer.
  *   3. Runs the worklet ("main thread" directive) transform over the result.
  *
  * It deliberately does NOT make the bootstrap entry accept its own hot
@@ -33,14 +41,13 @@ import type {
 export const buildTransformedCode = (params: {
   code: string;
   resourcePath: string;
-  componentStyles: Pick<ComponentStylesEntry, 'imports'> | undefined;
-  scopeInfo: ComponentScopeInfo | undefined;
+  stylesheets: ModuleStylesheets | undefined;
 }): string => {
-  const { resourcePath, componentStyles, scopeInfo } = params;
+  const { resourcePath, stylesheets } = params;
   let code = params.code;
 
-  if (componentStyles) {
-    const { imports } = componentStyles;
+  if (stylesheets) {
+    const { imports } = stylesheets;
     let importsString = '';
     for (let i = 0; i < imports.length; ++i) {
       // Stylesheets live in node_modules/.cache/angular-lynx-css/, so
@@ -61,14 +68,13 @@ export const buildTransformedCode = (params: {
     // ordering Angular itself produces in its standard build.
     code = importsString + code;
   }
-  // Patch the component's ɵcmp.id to match the scope ID derived from the
-  // component's class name + file path. Angular normally generates this via
-  // encapsulateStyle, but we bypass Angular's style encapsulation entirely
-  // (Lynx's template engine handles scoping). This ID connects CSS files
-  // (which use the scope ID in their filename) to the component's renderer
-  // (EmulatedLynxRenderer adds _nghost-{id} to the host element).
-  if (scopeInfo) {
-    code += `\n;${scopeInfo.className}.ɵcmp.id = '${scopeInfo.scopeId}';\n`;
+  // Angular's runtime fills the %COMP% in an Emulated component's scoped
+  // styles with ɵcmp.id. The CSS was compiled ahead of time with a scope ID
+  // derived from the class name and file path, so set ɵcmp.id to the same ID:
+  // EmulatedLynxRenderer builds its _ngcontent-<id> and _nghost-<id> classes
+  // from it.
+  for (const { className, scopeId } of stylesheets?.scopes ?? []) {
+    code += `\n;${className}.ɵcmp.id = '${scopeId}';\n`;
   }
   return transformWorklets(code, resourcePath);
 };

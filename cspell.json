@@ -178,6 +178,8 @@
     "Catchscroll",
     "catchtap",
     "catchmousedown",
+    "catchmouseenter",
+    "catchmouseleave",
     "catchmousemove",
     "catchmouseup",
     "catchtouchcancel",

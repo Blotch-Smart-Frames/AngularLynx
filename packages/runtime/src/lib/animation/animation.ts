@@ -51,6 +51,8 @@ export class LynxAnimation implements Pick<
 
   readonly id: string;
   readonly #element: ElementRef;
+  // The DOM Animation web-core started, on web only (see the constructor).
+  readonly #webAnimation?: Animation;
 
   constructor(
     element: ElementRef,
@@ -83,6 +85,25 @@ export class LynxAnimation implements Pick<
       keyframes,
       wireOptions,
     ]);
+
+    // web-core's __ElementAnimate forgets an animation the moment it finishes
+    // (its `onfinish` drops it from the map it looks names up in), so a later
+    // ANIMATION_CANCEL finds nothing and does nothing. On native, cancel still
+    // clears a finished animation. The difference shows with fill:'forwards':
+    // on web the final frame then pins the property for good, and every
+    // inline style set on it afterwards is hidden (a bottom sheet's drag
+    // transform, for one). On web the element is a real DOM element and
+    // web-core starts the animation with element.animate(), so keep that
+    // Animation and cancel it directly. getAnimations() lists an element's
+    // script animations in the order they were created, so the last one is
+    // the animation just started.
+    if (__WEB__) {
+      this.#webAnimation = (
+        this.#element as unknown as Partial<Pick<Element, 'getAnimations'>>
+      )
+        .getAnimations?.()
+        .at(-1);
+    }
   }
 
   play(): void {
@@ -95,5 +116,8 @@ export class LynxAnimation implements Pick<
 
   cancel(): void {
     __ElementAnimate(this.#element, [ANIMATION_CANCEL, this.id]);
+    // Reaches the animation even after it finished (see the constructor).
+    // Canceling an animation web-core already canceled is a no-op.
+    this.#webAnimation?.cancel();
   }
 }

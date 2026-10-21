@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxAnimation } from './animation';
 
@@ -145,6 +145,50 @@ describe('LynxAnimation', () => {
         3, // ANIMATION_CANCEL
         anim.id,
       ]);
+    });
+
+    describe('on web', () => {
+      beforeEach(() => vi.stubGlobal('__WEB__', true));
+      afterEach(() => vi.unstubAllGlobals());
+
+      // web-core drops a finished animation from its name map, so its own
+      // cancel is a no-op by then: the DOM Animation has to be canceled too.
+      it('cancels the DOM animation web-core started, even once finished', () => {
+        const earlier = { cancel: vi.fn() };
+        const started = { cancel: vi.fn() };
+        const element = { getAnimations: () => [earlier, started] };
+        const anim = new LynxAnimation(element as unknown as ElementRef, [], {
+          fill: 'forwards',
+        });
+
+        anim.cancel();
+
+        expect(started.cancel).toHaveBeenCalledOnce();
+        expect(earlier.cancel).not.toHaveBeenCalled();
+      });
+
+      it('cancels through web-core alone when the element has no animations to read', () => {
+        const anim = new LynxAnimation(fakeRef, [], {});
+
+        expect(() => anim.cancel()).not.toThrow();
+        expect(globalThis.__ElementAnimate).toHaveBeenLastCalledWith(fakeRef, [
+          3, // ANIMATION_CANCEL
+          anim.id,
+        ]);
+      });
+    });
+
+    it('leaves native elements to __ElementAnimate', () => {
+      const getAnimations = vi.fn();
+      const anim = new LynxAnimation(
+        { getAnimations } as unknown as ElementRef,
+        [],
+        {},
+      );
+
+      anim.cancel();
+
+      expect(getAnimations).not.toHaveBeenCalled();
     });
   });
 });

@@ -11,39 +11,6 @@ import './index.scss';
 
 const cyclingWords = ['Build', 'Ship', 'Render'];
 
-const CopyIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-  >
-    <path
-      fill="currentColor"
-      d="M20 8v12H8V8zm0-2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2"
-    />
-    <path fill="currentColor" d="M4 16H2V4a2 2 0 0 1 2-2h12v2H4Z" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-  >
-    <path
-      d="M4 12.5L9.5 18L20 6"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const HeroCommandBox = () => {
   const [copied, setCopied] = useState(false);
 
@@ -65,7 +32,7 @@ const HeroCommandBox = () => {
         <span className="prompt">$</span>
         <span className="text">npm create angular-lynx my-app</span>
         <span className="icon" aria-hidden="true">
-          {copied ? <CheckIcon /> : <CopyIcon />}
+          <i className={`fa-light ${copied ? 'fa-check' : 'fa-copy'}`} />
         </span>
       </button>
     </div>
@@ -203,5 +170,38 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
 };
 
 export { HomeLayout };
+
+// Font Awesome replacements for Rspress's icons. They must be named exports:
+// a named export shadows the same name in the `export *` below, whereas a
+// second `export *` would make each name ambiguous and export neither.
+export {
+  IconArrowDown,
+  IconArrowRight,
+  IconClose,
+  IconCopy,
+  IconDeprecated,
+  IconDown,
+  IconEdit,
+  IconEmpty,
+  IconExperimental,
+  IconExternalLink,
+  IconFile,
+  IconGithub,
+  IconGitlab,
+  IconHeader,
+  IconJump,
+  IconLink,
+  IconLoading,
+  IconMenu,
+  IconMoon,
+  IconScrollToTop,
+  IconSearch,
+  IconSmallMenu,
+  IconSuccess,
+  IconSun,
+  IconTitle,
+  IconWrap,
+  IconWrapped,
+} from './icons';
 
 export * from '@rspress/core/theme-original';

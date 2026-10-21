@@ -51,7 +51,8 @@ export const ShowCase: React.FC = () => {
             <div className={styles['item-title']}>{item.title}</div>
             <div className={styles['item-desc']}>{item.desc}</div>
             <a href={item.link} className={styles['item-link']}>
-              Learn more &rarr;
+              Learn more{' '}
+              <i className="fa-light fa-arrow-right" aria-hidden="true" />
             </a>
           </li>
         ))}

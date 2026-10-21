@@ -34,19 +34,43 @@ If a page documents a single element or export, it goes in `docs/api/`. Link gui
 
 Moving or renaming a page changes its URL. Add a redirect for the old URL to `vercel.json`.
 
+## Reader
+
+Write for a web developer who knows TypeScript and CSS, and maybe some Angular, but not Lynx or native mobile development (Swift, Kotlin, Xcode, Gradle, signing, app stores). Define every Lynx or native term where it first appears, and link it to its entry in `docs/guide/glossary.mdx`. Add new terms to the glossary.
+
+- Explain implementation internals (`__CreateElement`, `__FlushElementTree`, PrimJS, `LynxRendererFactory2`) only on the Renderer Internals page.
+- Don't explain anything by comparison with React Lynx or Vue Lynx.
+- Threads: AngularLynx starts the app on both threads. The main-thread copy draws the UI and runs template event handlers. Link to `/guide/concepts/threads`, and its `setTimeout` rule section, rather than re-explaining it.
+
+## Page Types
+
+Each page does one job, following the [four documentation types](https://diataxis.fr/):
+
+- **Tutorial** — Quick Start and the Tutorial only: numbered steps that end in a visible result
+- **How-to** — most Guide pages: a task, the smallest working code first, then options, limitations and related links
+- **Explanation** — Core Concepts: why things work the way they do
+- **Reference** — the API section and the UI components' API tables: complete, consistent tables and signatures, no teaching
+
+API element pages share one heading order: Usage, Attributes, Events, Methods, Children, Platform support, Related. Attribute tables have the columns Attribute | Type | Default | Description, and event tables Event | `detail` | Description. UI component pages share: Installation, Usage (variants as H3s), API, Accessibility, Related.
+
 ## Sidebar Sections
 
-Guide sidebar (`/guide/` in `rspress.config.ts`):
+Guide sidebar (`/guide/` in `rspress.config.ts`), in reading order:
 
-- **Learn AngularLynx** — Core concepts and everyday features a new user needs to build their first app
-- **Advanced** — Power-user topics: internal architecture, low-level APIs, niche platform integrations. Move docs here if a typical user won't need them in their first week.
-- **Ecosystem** — Third-party packages that require separate installation (e.g. Tailwind CSS, testing library)
+- **Get Started** — What is AngularLynx, Quick Start, the Tutorial, Coming from Web Angular
+- **Core Concepts** — How a Lynx app runs, threads, signals, the JavaScript environment, the glossary
+- **Build the UI** — Elements, events, gestures, overlays, forms, accessibility
+- **Style** — CSS on Lynx, Tailwind, CSS Modules, dark mode, fonts, safe area, animations
+- **App Features** — Routing, `@defer`, visibility detection, i18n
+- **Debug & Test** — Debugging, errors, profiling, testing
+- **Ship** — Building, running on iOS and Android, publishing, embedding in a native app
+- **Advanced** — Power-user topics: main-thread scripts, multi-page apps, low-level APIs, renderer internals. Move docs here if a typical user won't need them in their first week.
 
 API sidebar (`/api/`):
 
-- **Packages** — Each published package's exports or options
+- **@blotch/angular-lynx** — One page per export or small group of exports, grouped as App Setup, Device and Host, UI Services, Debugging, Gestures and Main Thread, plus Schematics
+- **Tooling** — The build and testing-library packages
 - **Elements** — One page per Lynx element
-- **Main Thread** — The main-thread script exports
 
 ## Diagrams
 

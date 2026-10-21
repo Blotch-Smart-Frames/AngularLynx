@@ -3,7 +3,7 @@
  * work correctly when user-defined components project Lynx elements.
  */
 
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitForUpdate } from './index.js';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
@@ -28,7 +28,6 @@ describe('content projection — single slot', () => {
       selector: 'card-wrapper',
       template: `<view class="card"><ng-content /></view>`,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class CardWrapperComponent {}
 
@@ -40,7 +39,6 @@ describe('content projection — single slot', () => {
         </card-wrapper>
       `,
       imports: [CardWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class BasicProjectionHost {}
 
@@ -59,7 +57,6 @@ describe('content projection — single slot', () => {
       selector: 'box-wrapper',
       template: `<view class="box"><ng-content /></view>`,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class BoxWrapperComponent {}
 
@@ -73,7 +70,6 @@ describe('content projection — single slot', () => {
         </box-wrapper>
       `,
       imports: [BoxWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class MultiChildrenHost {}
 
@@ -103,7 +99,6 @@ describe('content projection — multi-slot', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Panel {}
 
@@ -116,7 +111,6 @@ describe('content projection — multi-slot', () => {
         </panel-component>
       `,
       imports: [Panel, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class MultiSlotHost {}
 
@@ -141,7 +135,6 @@ describe('content projection — multi-slot', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class LayoutComponent {}
 
@@ -154,7 +147,6 @@ describe('content projection — multi-slot', () => {
         </layout-component>
       `,
       imports: [LayoutComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ClassSlotHost {}
 
@@ -182,7 +174,6 @@ describe('content projection — contentChild()', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class QueryWrapperComponent {}
 
@@ -194,7 +185,6 @@ describe('content projection — contentChild()', () => {
         </query-wrapper>
       `,
       imports: [QueryWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ContentChildHost {}
 
@@ -219,7 +209,6 @@ describe('content projection — contentChildren()', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class MultiQueryWrapperComponent {}
 
@@ -233,7 +222,6 @@ describe('content projection — contentChildren()', () => {
         </multi-query-wrapper>
       `,
       imports: [MultiQueryWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ContentChildrenHost {}
 
@@ -264,7 +252,6 @@ describe('content projection — conditional', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ConditionalSlotComponent {
       showContent = showContent;
@@ -278,7 +265,6 @@ describe('content projection — conditional', () => {
         </conditional-slot>
       `,
       imports: [ConditionalSlotComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ConditionalProjectionHost {}
 
@@ -310,7 +296,6 @@ describe('content projection — nested', () => {
       selector: 'outer-wrapper',
       template: `<view class="outer"><ng-content /></view>`,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class OuterWrapperComponent {}
 
@@ -318,7 +303,6 @@ describe('content projection — nested', () => {
       selector: 'inner-wrapper',
       template: `<view class="inner"><ng-content /></view>`,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class InnerWrapperComponent {}
 
@@ -332,7 +316,6 @@ describe('content projection — nested', () => {
         </outer-wrapper>
       `,
       imports: [OuterWrapperComponent, InnerWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class NestedProjectionHost {}
 
@@ -350,7 +333,6 @@ describe('content projection — with Lynx element directives', () => {
       selector: 'slot-wrapper',
       template: `<view class="wrapper"><ng-content /></view>`,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class SlotWrapperComponent {}
 
@@ -365,7 +347,6 @@ describe('content projection — with Lynx element directives', () => {
         </slot-wrapper>
       `,
       imports: [SlotWrapperComponent, LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class LynxDirectiveProjectionHost {}
 

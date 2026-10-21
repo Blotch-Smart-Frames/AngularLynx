@@ -10,7 +10,6 @@
  */
 
 import {
-  ChangeDetectionStrategy,
   Component,
   ErrorHandler,
   type ErrorDetails,
@@ -62,7 +61,6 @@ const texts = (container: Element): string[] =>
   selector: 'crash-on-create',
   template: `<text>never rendered</text>`,
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class CrashOnCreate {
   constructor() {
@@ -91,7 +89,6 @@ class NetworkError extends Error {
     ><text>{{ label() }}</text></view
   >`,
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class FragileWidget {
   readonly #failure = inject(FailureSwitch);
@@ -120,7 +117,6 @@ describe('@boundary — creation errors', () => {
         </view>
       `,
       imports: [LYNX_ELEMENTS, CrashOnCreate],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Host {}
 
@@ -166,7 +162,6 @@ describe('@boundary — update errors and reset', () => {
       </view>
     `,
     imports: [LYNX_ELEMENTS, FragileWidget],
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class UpdateHost {}
 
@@ -242,7 +237,6 @@ describe('@boundary — reset from inside the fallback', () => {
         }
       `,
       imports: [LYNX_ELEMENTS, FragileWidget],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class TapResetHost {
       readonly #failure = inject(FailureSwitch);
@@ -284,7 +278,6 @@ describe('@boundary — conditional @error blocks', () => {
       }
     `,
     imports: [LYNX_ELEMENTS, FragileWidget],
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class WhenHost {
     isNetwork(err: unknown): boolean {
@@ -331,7 +324,6 @@ describe('@boundary — nesting', () => {
         }
       `,
       imports: [LYNX_ELEMENTS, CrashOnCreate],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class NestedHost {}
 
@@ -363,7 +355,6 @@ describe('@boundary — resource() in the error state', () => {
         }
       `,
       imports: [LYNX_ELEMENTS],
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ResourceHost {
       // resource() injects TransferState on construction, whose factory reads

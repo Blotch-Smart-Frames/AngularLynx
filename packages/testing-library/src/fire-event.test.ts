@@ -2,7 +2,7 @@
  * fireEvent tests — verify Lynx events reach Angular event handlers.
  */
 
-import { Component, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { describe, it, expect } from 'vitest';
 import { render, fireEvent, eventMap, waitForUpdate } from './index.js';
 
@@ -13,7 +13,6 @@ describe('fireEvent', () => {
       template: `<view (bindtap)="onTap()"
         ><text>{{ count() }}</text></view
       >`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class TapComponent {
       count = signal(0);
@@ -65,7 +64,6 @@ describe('fireEvent', () => {
     @Component({
       selector: 'test-raw',
       template: `<view (bindtap)="onTap()"></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class RawEventComponent {
       onTap() {
@@ -87,7 +85,6 @@ describe('fireEvent', () => {
     @Component({
       selector: 'test-longtap',
       template: `<view (bindlongtap)="onLongtap()"></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class LongtapComponent {
       onLongtap() {
@@ -106,7 +103,6 @@ describe('fireEvent', () => {
     @Component({
       selector: 'test-input-props',
       template: `<view (bindinput)="onInput($event)"></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class InputPropsComponent {
       onInput(event: any) {

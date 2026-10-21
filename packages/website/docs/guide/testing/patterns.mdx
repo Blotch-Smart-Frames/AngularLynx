@@ -15,7 +15,6 @@ it('reflects signal changes in the DOM', async () => {
   @Component({
     selector: 'test-label',
     template: `<text>{{ label() }}</text>`,
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class Label {
     label = label;
@@ -52,7 +51,6 @@ it('increments count on tap', async () => {
     template: `<view (bindtap)="increment()"
       ><text>{{ count() }}</text></view
     >`,
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class Counter {
     count = signal(0);
@@ -127,7 +125,6 @@ it('conditionally renders content', async () => {
     template: `@if (show()) {
       <text>Visible</text>
     }`,
-    changeDetection: ChangeDetectionStrategy.OnPush,
   })
   class ConditionalView {
     show = show;

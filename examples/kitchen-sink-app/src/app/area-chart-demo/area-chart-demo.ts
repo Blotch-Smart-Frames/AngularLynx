@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  signal,
-} from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { scaleLinear } from '@tanstack/charts/scales/linear';
 import { areaY, defineChart, lineY } from '@tanstack/charts/universal';
@@ -34,7 +29,6 @@ import { ScreenHost } from '../screen-host';
 @Component({
   selector: 'app-area-chart-demo',
   hostDirectives: [ScreenHost],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LYNX_ELEMENTS,
     DemoScreen,

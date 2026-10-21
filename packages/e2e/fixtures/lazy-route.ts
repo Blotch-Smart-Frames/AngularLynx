@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { Component } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 /**
@@ -10,7 +10,6 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 @Component({
   selector: 'app-lazy-route',
   imports: [LYNX_ELEMENTS],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<text flatten="false" style="margin-top: 16px;"
     >Lazy page loaded</text
   >`,

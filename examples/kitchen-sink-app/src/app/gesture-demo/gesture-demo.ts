@@ -1,5 +1,4 @@
 import {
-  ChangeDetectionStrategy,
   Component,
   computed,
   type ElementRef,
@@ -42,7 +41,6 @@ const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
   selector: 'app-gesture-demo',
   hostDirectives: [ScreenHost],
   imports: [LYNX_ELEMENTS, LynxGestureDetector, UiText, UiBadge, UiIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view class="h-full w-full flex-col gap-3 bg-background p-4 flex">
       <!-- Header -->

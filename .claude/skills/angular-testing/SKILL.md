@@ -174,11 +174,10 @@ describe('TodoList', () => {
 
 ## Testing OnPush Components
 
-OnPush components require explicit change detection:
+Components are OnPush by default since Angular 22 (don't set `changeDetection`), so they need explicit change detection:
 
 ```typescript
 @Component({
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<span>{{ data().name }}</span>`,
 })
 export class OnPushCmpt {

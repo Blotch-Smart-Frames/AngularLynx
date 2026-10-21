@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { type BarDatum, UiBarChart } from '../../components/ui/bar-chart';
@@ -32,7 +32,6 @@ type ChartType = 'candles' | 'bar';
   selector: 'app-chart-zoom-demo',
   hostDirectives: [ScreenHost],
   imports: [LYNX_ELEMENTS, UiText, UiBadge, UiBarChart, UiCandlestickChart],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <view class="h-full w-full flex-col gap-3 bg-background p-4 flex">
       <!-- Header -->

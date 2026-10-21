@@ -12,6 +12,7 @@
     "@blotch/oxlint-plugin/multiline-comment-style": "error",
     "@blotch/oxlint-plugin/no-legacy-decorators": "error",
     "@blotch/oxlint-plugin/no-private-keyword": "error",
+    "@blotch/oxlint-plugin/no-redundant-on-push": "error",
     "typescript/no-non-null-assertion": "off",
     "eslint/no-param-reassign": "off",
     "typescript/consistent-type-imports": "error",

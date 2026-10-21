@@ -3,27 +3,19 @@
  * Angular component → LynxRenderer → PAPI → JSDOM
  */
 
-import {
-  Component,
-  InjectionToken,
-  inject,
-  signal,
-  ChangeDetectionStrategy,
-} from '@angular/core';
+import { Component, InjectionToken, inject, signal } from '@angular/core';
 import { describe, it, expect } from 'vitest';
 import { render, cleanup, waitForUpdate } from './index.js';
 
 @Component({
   selector: 'test-view',
   template: `<view></view>`,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class SingleView {}
 
 @Component({
   selector: 'test-text',
   template: `<text>Hello Lynx</text>`,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class TextDisplay {}
 
@@ -35,7 +27,6 @@ class TextDisplay {}
       <text>Second</text>
     </view>
   `,
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 class Nested {}
 
@@ -100,14 +91,12 @@ describe('render', () => {
     @Component({
       selector: 'test-first',
       template: `<text>First render</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class First {}
 
     @Component({
       selector: 'test-second',
       template: `<text>Second render</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Second {}
 
@@ -126,7 +115,6 @@ describe('render', () => {
     @Component({
       selector: 'test-signal-update',
       template: `<text>{{ label() }}</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class SignalUpdate {
       label = label;
@@ -173,7 +161,6 @@ describe('@if control flow', () => {
           <text>Visible</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ConditionalIf {
       show = signal(true);
@@ -207,7 +194,6 @@ describe('@for control flow', () => {
           <text>{{ item }}</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ForLoop {
       items = signal(['Alpha', 'Beta', 'Gamma']);
@@ -249,7 +235,6 @@ describe('@for control flow', () => {
           <text>{{ item }}</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ForEmpty {
       items = signal<string[]>([]);
@@ -280,7 +265,6 @@ describe('@for control flow', () => {
           <text>{{ item }}</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ForUpdate {
       items = items;
@@ -341,7 +325,6 @@ describe('@if control flow — reactive toggle', () => {
           <text>Conditional</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class IfFalse {
       show = show;
@@ -372,7 +355,6 @@ describe('@if control flow — reactive toggle', () => {
           <text>Conditional</text>
         }
       `,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class IfToggle {
       show = show;
@@ -450,14 +432,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-a',
       template: `<text>Component A</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class RerenderA {}
 
     @Component({
       selector: 'test-rerender-b',
       template: `<text>Component B</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class RerenderB {}
 
@@ -496,14 +476,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-cleanup-a',
       template: `<text>Old</text><text>Also old</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Old {}
 
     @Component({
       selector: 'test-rerender-cleanup-b',
       template: `<text>New</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class New {}
 
@@ -521,7 +499,6 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-provider',
       template: `<text>{{ value }}</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class WithToken {
       value = inject(TOKEN);
@@ -530,7 +507,6 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-provider-initial',
       template: `<text>initial</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Initial {}
 
@@ -546,14 +522,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-queries-a',
       template: `<text>Before</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class Before {}
 
     @Component({
       selector: 'test-rerender-queries-b',
       template: `<text>After</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class After {}
 
@@ -568,14 +542,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-fragment-a',
       template: `<view></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class FragmentBefore {}
 
     @Component({
       selector: 'test-rerender-fragment-b',
       template: `<text>Fragment content</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class FragmentAfter {}
 
@@ -593,14 +565,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-component-ref-a',
       template: `<view></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ComponentRefBefore {}
 
     @Component({
       selector: 'test-rerender-component-ref-b',
       template: `<view></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class ComponentRefAfter {}
 
@@ -620,14 +590,12 @@ describe('rerender', () => {
     @Component({
       selector: 'test-rerender-custom-q-a',
       template: `<view></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class CustomQBefore {}
 
     @Component({
       selector: 'test-rerender-custom-q-b',
       template: `<text>Custom</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class CustomQAfter {}
 
@@ -674,7 +642,6 @@ describe('asFragment', () => {
     @Component({
       selector: 'test-fragment-signal',
       template: `<text>{{ label() }}</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class FragmentSignal {
       label = label;
@@ -697,7 +664,6 @@ describe('options.providers', () => {
     @Component({
       selector: 'test-with-provider',
       template: `<text>{{ value }}</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class WithProvider {
       value = inject(TOKEN);
@@ -737,7 +703,6 @@ describe('componentRef', () => {
     @Component({
       selector: 'test-component-ref-injector',
       template: `<view></view>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class InjectorTest {}
 
@@ -759,7 +724,6 @@ describe('componentRef', () => {
     @Component({
       selector: 'test-component-ref-signal',
       template: `<text>{{ label() }}</text>`,
-      changeDetection: ChangeDetectionStrategy.OnPush,
     })
     class InstanceSignal {
       label = signal('initial');

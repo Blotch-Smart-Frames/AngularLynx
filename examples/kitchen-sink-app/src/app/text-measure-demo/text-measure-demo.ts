@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { LYNX_ELEMENTS, LynxTextMeasure } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -37,7 +31,6 @@ import { ScreenHost } from '../screen-host';
     UiInput,
     UiText,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-demo-screen
       heading="Text Measure"

@@ -4,6 +4,7 @@ import multilineCommentStyle from './rules/multiline-comment-style.mjs';
 import noFunctionDeclaration from './rules/no-function-declaration.mjs';
 import noLegacyDecorators from './rules/no-legacy-decorators.mjs';
 import noPrivateKeyword from './rules/no-private-keyword.mjs';
+import noRedundantOnPush from './rules/no-redundant-on-push.mjs';
 
 export default {
   meta: { name: '@blotch/oxlint-plugin' },
@@ -14,5 +15,6 @@ export default {
     'no-function-declaration': noFunctionDeclaration,
     'no-legacy-decorators': noLegacyDecorators,
     'no-private-keyword': noPrivateKeyword,
+    'no-redundant-on-push': noRedundantOnPush,
   },
 };

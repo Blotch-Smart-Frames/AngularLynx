@@ -1,20 +1,21 @@
-# Enter/Leave Transitions
+# Enter and leave transitions
 
-The `LynxTransition` component animates content as it enters and leaves the screen. It manages CSS transition classes automatically, following the same convention as Vue's `<Transition>`.
+`LynxTransition` plays one CSS animation when content appears and another when it disappears. It keeps the content on screen until the leave animation ends. `LynxTransitionGroup` does the same for each item in a list.
 
-## Basic Usage
+<Go example="transitions" defaultFile="src/app/app.ts" />
 
-Wrap your content in `<lynx-transition>` and control visibility with the `show` input:
+## Animate content in and out
 
 ```typescript title="src/app/fade-panel.ts"
 import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS, LynxTransition } from '@blotch/angular-lynx'; // [!code highlight]
 
 @Component({
+  selector: 'app-fade-panel',
   imports: [LYNX_ELEMENTS, LynxTransition], // [!code highlight]
   template: `
     <view (bindtap)="toggle()">
-      <text>Toggle</text>
+      <text>{{ visible() ? 'Hide' : 'Show' }}</text>
     </view>
 
     <lynx-transition [show]="visible()" name="fade" [duration]="300">
@@ -23,137 +24,103 @@ import { LYNX_ELEMENTS, LynxTransition } from '@blotch/angular-lynx'; // [!code 
       </view>
     </lynx-transition>
   `,
-  styles: [
-    `
-      .fade-enter-active,
-      .fade-leave-active {
-        transition-property: opacity;
-        transition-duration: 300ms;
-      }
-      .fade-enter-from,
-      .fade-leave-to {
+  styles: `
+    @keyframes fade-enter {
+      from {
         opacity: 0;
+        transform: translateY(-16px);
       }
-    `,
-  ],
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    @keyframes fade-leave {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-16px);
+      }
+    }
+    .fade-enter {
+      animation: fade-enter 300ms ease both;
+    }
+    .fade-leave {
+      animation: fade-leave 300ms ease both;
+    }
+  `,
 })
 export class FadePanel {
   readonly visible = signal(false);
 
-  toggle() {
+  toggle(): void {
     this.visible.update((v) => !v);
   }
 }
 ```
 
-## How It Works
+- **`[show]`** controls whether the content is rendered.
+- **When `show` turns `true`**, AngularLynx renders the content and adds the `fade-enter` class.
+- **When `show` turns `false`**, it swaps `fade-enter` for `fade-leave`, waits `duration` milliseconds, then removes the content.
+- **The classes go on the `<lynx-transition>` element**, which wraps your content. Write the styles in the component that uses it.
+- **No animation on the first render.** If `show` starts as `true`, the content appears without playing `fade-enter`.
 
-`LynxTransition` applies CSS classes to its host element in a specific sequence, giving the Lynx layout engine two frames to interpolate between the start and end state.
+## The class names
 
-### Enter (show: false → true)
+`name` sets the prefix of the two classes. With `name="fade"`:
 
-```mermaid
-sequenceDiagram
-    participant App
-    participant LynxTransition
-    participant Lynx Engine
+| Class        | Added when             | Removed when                |
+| ------------ | ---------------------- | --------------------------- |
+| `fade-enter` | `show` becomes `true`  | `show` becomes `false`      |
+| `fade-leave` | `show` becomes `false` | `show` becomes `true` again |
 
-    App->>LynxTransition: show = true
-    LynxTransition->>Lynx Engine: addClass("fade-enter-from")<br/>addClass("fade-enter-active")
-    Note over LynxTransition: Content rendered
-    LynxTransition->>Lynx Engine: Next frame
-    LynxTransition->>Lynx Engine: removeClass("fade-enter-from")<br/>addClass("fade-enter-to")
-    Note over Lynx Engine: CSS transition animates
-    LynxTransition->>Lynx Engine: After duration
-    LynxTransition->>Lynx Engine: removeClass("fade-enter-active")<br/>removeClass("fade-enter-to")
+- The default `name` is `v`, which gives `v-enter` and `v-leave`.
+- Give each class a `@keyframes` animation, not a `transition`.
+- Use `both` in the `animation` shorthand (`animation-fill-mode: both`). The element then holds the first frame before the animation starts and the last frame after it ends. `fade-enter` stays on while the content is shown, so its last frame is the resting state.
+
+## Match `duration` to your CSS
+
+`duration` is the animation length in milliseconds, and defaults to `300`. `LynxTransition` can't detect when a CSS animation ends, so it uses `duration` to know when to remove leaving content.
+
+- If `duration` is shorter than the CSS animation, the content disappears before the leave animation finishes.
+- If it's longer, the content stays on its last frame until the time is up.
+
+## Run code after an animation
+
+`(afterEnter)` and `(afterLeave)` fire when `duration` has passed:
+
+```angular-html
+<lynx-transition
+  [show]="visible()"
+  name="fade"
+  [duration]="300"
+  (afterEnter)="onShown()"
+  (afterLeave)="onHidden()"
+>
+  <view class="panel"><text>Hello!</text></view>
+</lynx-transition>
 ```
 
-### Leave (show: true → false)
+`(afterLeave)` fires as the content is removed.
 
-The same sequence in reverse. Content is removed from the tree **after** the animation completes, not immediately.
+## Animate list items
 
-## Inputs
-
-| Input      | Type      | Default | Description                                                   |
-| ---------- | --------- | ------- | ------------------------------------------------------------- |
-| `show`     | `boolean` | `false` | Controls visibility. Triggers enter/leave animation on change |
-| `name`     | `string`  | `'v'`   | CSS class prefix (e.g. `"fade"` → `.fade-enter-from`)         |
-| `duration` | `number`  | `300`   | Animation duration in milliseconds. Must match your CSS       |
-
-## Outputs
-
-| Output       | Type   | Description                         |
-| ------------ | ------ | ----------------------------------- |
-| `afterEnter` | `void` | Emits when the enter animation ends |
-| `afterLeave` | `void` | Emits when the leave animation ends |
-
-## CSS Classes
-
-| Class                 | When applied                                  |
-| --------------------- | --------------------------------------------- |
-| `{name}-enter-from`   | Frame 1 of enter — the "start" state          |
-| `{name}-enter-active` | Entire enter duration — set `transition` here |
-| `{name}-enter-to`     | Frame 2 onward — the "end" state              |
-| `{name}-leave-from`   | Frame 1 of leave — the "start" state          |
-| `{name}-leave-active` | Entire leave duration — set `transition` here |
-| `{name}-leave-to`     | Frame 2 onward — the "end" state              |
-
-## Why `duration` Is Required
-
-Lynx runs Angular on a [background thread](/guide/introduction#the-dual-thread-model) (separate from the native UI) that cannot call `getComputedStyle()`. The component cannot auto-detect your CSS transition length, so you must pass it explicitly. This is the same constraint Vue Lynx has.
-
-:::warning
-Make sure your `duration` input matches the `transition-duration` in your CSS. If they differ, the classes will be removed before (or after) the visual transition finishes.
-:::
-
-## Slide Example
-
-```typescript title="src/app/slide-panel.ts"
-@Component({
-  imports: [LYNX_ELEMENTS, LynxTransition],
-  template: `
-    <lynx-transition [show]="open()" name="slide" [duration]="200">
-      <view class="drawer">
-        <text>Drawer content</text>
-      </view>
-    </lynx-transition>
-  `,
-  styles: [
-    `
-      .slide-enter-active,
-      .slide-leave-active {
-        transition-property: transform;
-        transition-duration: 200ms;
-        transition-timing-function: ease-out;
-      }
-      .slide-enter-from,
-      .slide-leave-to {
-        transform: translateX(-100%);
-      }
-    `,
-  ],
-})
-export class SlidePanel {
-  readonly open = signal(true);
-}
-```
-
-## TransitionGroup (Lists)
-
-`LynxTransitionGroup` animates items entering and leaving a list. Unlike `LynxTransition` (single element), it manages a collection and handles the diffing internally.
-
-Since Angular's `@for` destroys views immediately on removal (no hook to delay), `LynxTransitionGroup` manages its own views via `ViewContainerRef`. You provide the list and an item template:
+Angular's `@for` removes an item's view straight away, which leaves no time for a leave animation. `LynxTransitionGroup` renders the list itself, so each item can animate in and out:
 
 ```typescript title="src/app/animated-list.ts"
 import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS, LynxTransitionGroup } from '@blotch/angular-lynx'; // [!code highlight]
 
+type Item = { id: number; name: string };
+
 @Component({
+  selector: 'app-animated-list',
   imports: [LYNX_ELEMENTS, LynxTransitionGroup], // [!code highlight]
   template: `
-    <view (bindtap)="addItem()">
-      <text>Add Item</text>
-    </view>
+    <view (bindtap)="add()"><text>Add item</text></view>
 
     <lynx-transition-group
       [each]="items()"
@@ -162,66 +129,71 @@ import { LYNX_ELEMENTS, LynxTransitionGroup } from '@blotch/angular-lynx'; // [!
       [duration]="300"
     >
       <ng-template let-item>
-        <view (bindtap)="removeItem(item.id)">
+        <view (bindtap)="remove(item.id)">
           <text>{{ item.name }}</text>
         </view>
       </ng-template>
     </lynx-transition-group>
   `,
-  styles: [
-    `
-      .list-enter-active,
-      .list-leave-active {
-        transition:
-          opacity 300ms,
-          transform 300ms;
-      }
-      .list-enter-from {
+  styles: `
+    @keyframes list-enter {
+      from {
         opacity: 0;
         transform: translateX(30px);
       }
-      .list-leave-to {
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    @keyframes list-leave {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+      to {
         opacity: 0;
         transform: translateX(-30px);
       }
-    `,
-  ],
+    }
+    .list-enter {
+      animation: list-enter 300ms ease both;
+    }
+    .list-leave {
+      animation: list-leave 300ms ease both;
+    }
+  `,
 })
 export class AnimatedList {
-  private nextId = 0;
-  readonly items = signal<{ id: number; name: string }[]>([]);
+  readonly items = signal<Item[]>([]);
+  readonly byId = (item: Item) => item.id;
+  #nextId = 1;
 
-  readonly byId = (item: { id: number }) => item.id;
-
-  addItem() {
-    this.items.update((list) => [
-      ...list,
-      { id: this.nextId++, name: `Item ${this.nextId}` },
-    ]);
+  add(): void {
+    const id = this.#nextId++;
+    this.items.update((list) => [...list, { id, name: `Item ${id}` }]);
   }
 
-  removeItem(id: number) {
+  remove(id: number): void {
     this.items.update((list) => list.filter((item) => item.id !== id));
   }
 }
 ```
 
-### TransitionGroup Inputs
+- **`[each]`** is the list, and the `<ng-template>` renders one item. `let-item` names the item.
+- **`[trackBy]`** returns a unique key per item, like `track` in `@for`. The default uses the item itself, which only works for strings, numbers and other values you don't recreate.
+- **The classes go on each item's first element**, here the `<view>` inside the template.
+- **Items in the first render don't animate.** Only items added or removed later do.
+- **A removed item stays in place** while it animates out. If it comes back before the leave animation ends, it stops leaving.
+- **`(afterEnter)` and `(afterLeave)` emit the item** that finished animating.
 
-| Input      | Type                   | Default  | Description                                  |
-| ---------- | ---------------------- | -------- | -------------------------------------------- |
-| `each`     | `T[]`                  | `[]`     | The list of items to render                  |
-| `trackBy`  | `(item: T) => unknown` | identity | Returns a unique key per item (like `track`) |
-| `name`     | `string`               | `'v'`    | CSS class prefix                             |
-| `duration` | `number`               | `300`    | Animation duration in milliseconds           |
+## Limitations
 
-### TransitionGroup Outputs
+- **No move animations.** When items change order, they jump to their new places.
+- **Only [some properties](/guide/animations/#what-can-animate) animate**, as with any Lynx animation.
 
-| Output       | Type | Description                                  |
-| ------------ | ---- | -------------------------------------------- |
-| `afterEnter` | `T`  | Emits the item when its enter animation ends |
-| `afterLeave` | `T`  | Emits the item when its leave animation ends |
+## Related
 
-:::tip
-Move animations (FLIP) are not supported — `getBoundingClientRect()` is unavailable from the background thread. This is the same limitation Vue Lynx has.
-:::
+- [Animations](/guide/animations/): choose between transitions, keyframes and code
+- [`LynxTransition` and `LynxTransitionGroup` API](/api/angular-lynx/animation)
+- [Transitions example](/examples/transitions)

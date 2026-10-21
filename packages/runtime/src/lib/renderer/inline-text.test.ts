@@ -141,7 +141,6 @@ const installNativeFakes = (): void => {
   g.__GetAttributeByName = (n: FakeEl, name: string) => n.attrs.get(name);
   g.__SetID = (n: FakeEl, id: string) => n.attrs.set('id', id);
   g.__SetDataset = () => {};
-  g.__SetConfig = () => {};
   g.__AddInlineStyle = () => {};
   g.__SetInlineStyles = () => {};
   g.__AddEvent = () => {};

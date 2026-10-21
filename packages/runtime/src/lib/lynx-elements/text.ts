@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'text',
-  standalone: true,
   inputs: [
     'text-maxline',
     'text-single-line-vertical-align',
@@ -63,5 +62,5 @@ export class LynxText extends LynxElementBase {
  * Custom content shown at the end of a `<text>` in place of the ellipsis when
  * the text is truncated by `text-maxline`. Must be a direct child of `<text>`.
  */
-@Directive({ selector: 'inline-truncation', standalone: true })
+@Directive({ selector: 'inline-truncation' })
 export class LynxInlineTruncation extends LynxElementBase {}

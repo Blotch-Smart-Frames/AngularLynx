@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'viewpager',
-  standalone: true,
   inputs: [
     'initial-select-index',
     'enable-scroll',
@@ -68,6 +67,5 @@ export class LynxViewPager extends LynxElementBase {
  */
 @Directive({
   selector: 'viewpager-item',
-  standalone: true,
 })
 export class LynxViewPagerItem extends LynxElementBase {}

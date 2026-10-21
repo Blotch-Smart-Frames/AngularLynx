@@ -36,7 +36,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 - **All visible text must be in `<text>`** — raw text in `<view>` does not render
 - **Unknown tags become `<view>`** with a console warning (invisible on device)
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
-- **Images default to `aspectFit`** in the Angular renderer (Lynx native default is `scaleToFill`)
+- **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
+- **`<input>` and `<textarea>` have no border and are one line of text tall.** Size and outline them with classes (`h-10 border border-zinc-200`)
 
 ## Usage Examples
 

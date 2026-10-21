@@ -132,17 +132,17 @@ Destroys the component or template view, detaches it from change detection, and 
 
 ```typescript
 type PortalConfig = {
-  level?: number;
+  level?: 1 | 2 | 3 | 4;
   injector?: EnvironmentInjector;
   inputs?: Record<string, unknown>;
 };
 ```
 
-| Field      | Type                      | Description                                                                     |
-| ---------- | ------------------------- | ------------------------------------------------------------------------------- |
-| `level`    | `number`                  | The overlay's stacking level, from 1 to 4. Higher levels draw above lower ones. |
-| `injector` | `EnvironmentInjector`     | The injector for the content. Defaults to the app's root injector.              |
-| `inputs`   | `Record<string, unknown>` | Initial input values. Component portals only.                                   |
+| Field      | Type                      | Description                                                                                                                                     |
+| ---------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `level`    | `1 \| 2 \| 3 \| 4`        | The overlay's layer: 1, the default, is the top and 4 the lowest. See [Stack overlays with `level`](/guide/overlays#stack-overlays-with-level). |
+| `injector` | `EnvironmentInjector`     | The injector for the content. Defaults to the app's root injector.                                                                              |
+| `inputs`   | `Record<string, unknown>` | Initial input values. Component portals only.                                                                                                   |
 
 ## Related
 

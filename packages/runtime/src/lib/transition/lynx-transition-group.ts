@@ -53,7 +53,6 @@ type ViewEntry<T> = {
  */
 @Component({
   selector: 'lynx-transition-group',
-  standalone: true,
   template: `<ng-template #anchor />`,
 })
 export class LynxTransitionGroup<T> {

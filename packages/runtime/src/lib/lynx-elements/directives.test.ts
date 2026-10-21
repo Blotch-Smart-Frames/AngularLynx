@@ -5,11 +5,12 @@
 // video, webview, cover-view, title-bar-view) declare no logic of their own —
 // they only extend LynxElementBase with a typed `inputs` list for the Angular
 // template checker. ngOnChanges behavior is already
-// covered by base.test.ts (and input.test.ts for the two overrides). All that
-// is left to exercise here is the inherited `inject(ElementRef)` constructor
-// path for each exported class, so a single parametrized loop suffices.
+// covered by base.test.ts (and input.test.ts for the two overrides). What's
+// left to exercise here is the inherited `inject(ElementRef)` constructor
+// path for each exported class, and that the inputs they declare are the
+// attribute names Lynx reads.
 import '@angular/compiler';
-import { ElementRef } from '@angular/core';
+import { ElementRef, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   BrowserTestingModule,
@@ -20,6 +21,7 @@ import { LynxBlurView } from './blur-view';
 import { LynxCoverView } from './cover-view';
 import { LynxFrame } from './frame';
 import { LynxImage } from './image';
+import { LynxInput, LynxTextarea } from './input';
 import { LynxList, LynxListItem } from './list';
 import { LynxBlock, LynxFor, LynxIf } from './misc';
 import { LynxOverlay } from './overlay';
@@ -89,4 +91,41 @@ describe('declaration-only Lynx element directives', () => {
       expect(instance).toBeInstanceOf(Cls);
     },
   );
+});
+
+/**
+ * The input names a directive declares, its own and the ones it inherits.
+ */
+const inputsOf = (directive: Type<unknown>): string[] =>
+  Object.keys((directive as any).ɵdir.inputs);
+
+describe('declared inputs', () => {
+  it.each(
+    [...DIRECTIVE_CLASSES, LynxInput, LynxTextarea].map(
+      (Cls) => [Cls.name, Cls] as const,
+    ),
+  )('%s takes the attributes Lynx reads on every element', (_name, Cls) => {
+    expect(inputsOf(Cls)).toEqual(
+      expect.arrayContaining([
+        'accessibility-traits',
+        'flatten',
+        'pan-intercept-direction',
+        'pan-intercept-scope',
+        'consume-slide-event',
+        'enable-touch-pseudo-propagation',
+        'enable-exposure-ui-margin',
+      ]),
+    );
+    // iOS, Android and Harmony read only the plural.
+    expect(inputsOf(Cls)).not.toContain('accessibility-trait');
+  });
+
+  it('leaves list gaps to style, where Lynx reads them', () => {
+    expect(inputsOf(LynxList)).not.toContain('list-main-axis-gap');
+    expect(inputsOf(LynxList)).not.toContain('list-cross-axis-gap');
+  });
+
+  it("doesn't offer React Lynx's defer, which isn't a native attribute", () => {
+    expect(inputsOf(LynxListItem)).not.toContain('defer');
+  });
 });

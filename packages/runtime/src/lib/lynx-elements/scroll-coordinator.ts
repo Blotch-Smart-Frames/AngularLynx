@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'scroll-coordinator',
-  standalone: true,
   inputs: [
     'enable-scroll',
     'bounces',
@@ -68,7 +67,6 @@ export class LynxScrollCoordinator extends LynxElementBase {
  */
 @Directive({
   selector: 'scroll-coordinator-header',
-  standalone: true,
 })
 export class LynxScrollCoordinatorHeader extends LynxElementBase {}
 
@@ -77,7 +75,6 @@ export class LynxScrollCoordinatorHeader extends LynxElementBase {}
  */
 @Directive({
   selector: 'scroll-coordinator-toolbar',
-  standalone: true,
 })
 export class LynxScrollCoordinatorToolbar extends LynxElementBase {}
 
@@ -86,7 +83,6 @@ export class LynxScrollCoordinatorToolbar extends LynxElementBase {}
  */
 @Directive({
   selector: 'scroll-coordinator-slot',
-  standalone: true,
 })
 export class LynxScrollCoordinatorSlot extends LynxElementBase {}
 
@@ -96,7 +92,6 @@ export class LynxScrollCoordinatorSlot extends LynxElementBase {}
  */
 @Directive({
   selector: 'scroll-coordinator-slot-drag',
-  standalone: true,
   inputs: ['enable-drag'],
 })
 export class LynxScrollCoordinatorSlotDrag extends LynxElementBase {

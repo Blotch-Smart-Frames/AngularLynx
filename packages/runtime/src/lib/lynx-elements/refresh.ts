@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'refresh',
-  standalone: true,
   inputs: ['enable-refresh'],
 })
 export class LynxRefresh extends LynxElementBase {
@@ -21,6 +20,5 @@ export class LynxRefresh extends LynxElementBase {
  */
 @Directive({
   selector: 'refresh-header',
-  standalone: true,
 })
 export class LynxRefreshHeader extends LynxElementBase {}

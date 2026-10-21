@@ -3,17 +3,15 @@ import type { ElementRef } from '../../types/lynx';
 /**
  * XElements — use generic __CreateElement (no dedicated creation functions).
  * Require native-side input plugin to be registered by the app host.
+ *
+ * No default styles, as in React Lynx: a field is one line of text tall on
+ * every platform (iOS and Android measure it from the font), and it has no
+ * border. Inline defaults would beat the app's classes, so `h-[120px]` or
+ * `border-zinc-200` on an `<input>` would never apply.
  */
 export const createInputElement = (
   tag: 'input' | 'textarea',
   pageId: number,
 ): ElementRef => {
-  const element = __CreateElement(tag, pageId);
-
-  // Native Lynx inputs have no intrinsic height or border (unlike HTML inputs),
-  // so provide sensible defaults so the element is always visible.
-  __AddInlineStyle(element, 'height', tag === 'textarea' ? '80px' : '40px');
-  __AddInlineStyle(element, 'border', '1px solid');
-
-  return element;
+  return __CreateElement(tag, pageId);
 };

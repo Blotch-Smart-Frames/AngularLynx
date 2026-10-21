@@ -18,7 +18,6 @@ import { type ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 @Directive({
   selector:
     'input[formControlName],input[formControl],input[ngModel],input[formField]',
-  standalone: true,
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,

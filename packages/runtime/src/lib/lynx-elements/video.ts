@@ -7,7 +7,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'video',
-  standalone: true,
   inputs: [
     'src',
     'loop',

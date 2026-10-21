@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'frame',
-  standalone: true,
   inputs: [
     'src',
     'data',

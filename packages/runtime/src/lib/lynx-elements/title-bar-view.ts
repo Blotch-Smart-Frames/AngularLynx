@@ -7,7 +7,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'title-bar-view',
-  standalone: true,
   inputs: ['moveable'],
 })
 export class LynxTitleBarView extends LynxElementBase {

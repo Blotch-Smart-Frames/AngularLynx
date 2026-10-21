@@ -17,9 +17,10 @@ import { LYNX_DOCUMENT } from '../renderer/token';
  */
 export type PortalConfig = {
   /**
-   * Overlay z-level (1–4). Higher levels render above lower ones.
+   * The overlay's layer, from 1 (the top) to 4 (the lowest), as on
+   * `<overlay>`. Lynx's default is 1.
    */
-  level?: number;
+  level?: 1 | 2 | 3 | 4;
   /**
    * Custom injector for the component's dependency injection context.
    */

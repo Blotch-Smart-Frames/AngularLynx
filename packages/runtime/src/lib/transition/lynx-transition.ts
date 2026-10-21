@@ -51,7 +51,6 @@ import {
  */
 @Component({
   selector: 'lynx-transition',
-  standalone: true,
   template: `@if (shouldRender()) {
     <ng-content />
   }`,

@@ -201,9 +201,6 @@ const installNativeFakes = (): void => {
   g.__GetAttributeByName = (n: FakeEl, name: string) => n.attrs.get(name);
   g.__SetID = (n: FakeEl, id: string) => n.attrs.set('id', id);
   g.__SetDataset = () => {};
-  // Image elements are created via createImageElement, which seeds native config
-  // (mode/fadeIn/loadingPlaceholder). Inert here — we only assert tree/painting.
-  g.__SetConfig = () => {};
   g.__AddInlineStyle = (n: FakeEl, key: string, value: unknown) => {
     if (value == null) n.styles.delete(key);
     else n.styles.set(key, value);

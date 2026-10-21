@@ -72,7 +72,6 @@ const setupGlobals = () => {
   globalThis.__SetDataset = mock(() => {});
   globalThis.__FlushElementTree = mock(() => {});
   globalThis.__UpdateListCallbacks = mock(() => {});
-  globalThis.__SetConfig = mock(() => {});
 };
 
 describe('LynxDocument', () => {
@@ -150,6 +149,11 @@ describe('LynxDocument', () => {
     it('creates an image element', () => {
       doc.createElement('image');
       expect(asMock(globalThis.__CreateImage)).toHaveBeenCalled();
+    });
+
+    it("leaves an image's mode at Lynx's default", () => {
+      doc.createElement('image');
+      expect(asMock(globalThis.__SetAttribute)).not.toHaveBeenCalled();
     });
 
     it('creates a text element', () => {
@@ -245,6 +249,13 @@ describe('LynxDocument', () => {
         'textarea',
         expect.any(Number),
       );
+    });
+
+    it('gives inputs no inline styles, which would beat their classes', () => {
+      doc.createElement('input');
+      doc.createElement('textarea');
+      expect(asMock(globalThis.__AddInlineStyle)).not.toHaveBeenCalled();
+      expect(asMock(globalThis.__SetInlineStyles)).not.toHaveBeenCalled();
     });
 
     it('falls back to __CreateView for unknown tags', () => {

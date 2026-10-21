@@ -89,21 +89,26 @@ Declare Lynx's own low-level `<if>` and `<for>` elements, so a template that con
 
 ### Attributes on every element
 
-Every directive above, except the two form accessors, also accepts these inputs.
+Every directive above, except the two form accessors, also accepts these inputs. Write the true/false ones either way, `flatten="false"` or `[flatten]="false"`; both give Lynx a boolean. The same goes for the numbers of `pan-intercept-direction` and `pan-intercept-scope`.
 
-| Attribute                       | Type               | Description                                                      |
-| ------------------------------- | ------------------ | ---------------------------------------------------------------- |
-| `id`                            | `string`           | Element ID. Selector queries find elements by it.                |
-| `name`                          | `string`           | A name some Lynx APIs use to find the element.                   |
-| `user-interaction-enabled`      | `boolean`          | Whether the element receives touch events. Default `true`.       |
-| `native-interaction-enabled`    | `boolean`          | Whether the element receives the platform's own gestures.        |
-| `event-through`                 | `boolean`          | Lets touches pass through to the elements below.                 |
-| `hit-slop`                      | `string \| object` | Extends the touch area beyond the element's box.                 |
-| `block-native-event`            | `boolean`          | Whether the element consumes native iOS and Android gestures.    |
-| `ignore-focus`                  | `boolean`          | Stops the element from taking focus.                             |
-| `ios-enable-simultaneous-touch` | `boolean`          | Lets iOS recognize this touch together with others.              |
-| `accessibility-*`, `a11y-id`    |                    | See [Accessibility](/api/angular-lynx/accessibility#attributes). |
-| `exposure-*`                    |                    | See [Exposure](/api/angular-lynx/exposure#attributes).           |
+| Attribute                         | Type                 | Description                                                                           |
+| --------------------------------- | -------------------- | ------------------------------------------------------------------------------------- |
+| `id`                              | `string`             | Element ID. Selector queries find elements by it.                                     |
+| `name`                            | `string`             | A name some Lynx APIs use to find the element.                                        |
+| `user-interaction-enabled`        | `boolean`            | Whether the element receives touch events. Default `true`.                            |
+| `native-interaction-enabled`      | `boolean`            | Whether the element receives the platform's own gestures.                             |
+| `event-through`                   | `boolean`            | Lets touches pass through to the elements below.                                      |
+| `hit-slop`                        | `string \| object`   | Extends the touch area beyond the element's box.                                      |
+| `block-native-event`              | `boolean`            | Whether the element consumes native iOS and Android gestures.                         |
+| `ignore-focus`                    | `boolean`            | Stops the element from taking focus.                                                  |
+| `ios-enable-simultaneous-touch`   | `boolean`            | Lets iOS recognize this touch together with others.                                   |
+| `flatten`                         | `boolean`            | Android only. `false` gives the element its own native view. Default `true`.          |
+| `pan-intercept-direction`         | `0 \| 1`             | Takes pan gestures from views outside Lynx in this direction: horizontal or vertical. |
+| `pan-intercept-scope`             | `0`–`5`              | Which outside views `pan-intercept-direction` takes pans from.                        |
+| `consume-slide-event`             | `[number, number][]` | Swipe angle ranges the element keeps from platform gestures.                          |
+| `enable-touch-pseudo-propagation` | `boolean`            | Lets `:active` also apply to ancestors.                                               |
+| `accessibility-*`, `a11y-id`      |                      | See [Accessibility](/api/angular-lynx/accessibility#attributes).                      |
+| `exposure-*`                      |                      | See [Exposure](/api/angular-lynx/exposure#attributes).                                |
 
 ### `LYNX_FORM_ACCESSORS`
 

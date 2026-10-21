@@ -14,7 +14,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'blur-view',
-  standalone: true,
   inputs: [
     'blur-radius',
     'blur-sampling',

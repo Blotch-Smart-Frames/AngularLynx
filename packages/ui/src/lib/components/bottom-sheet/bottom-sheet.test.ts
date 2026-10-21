@@ -87,11 +87,11 @@ describe('UiBottomSheet', () => {
     const cast = inst as unknown as {
       onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
       onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
-      onHandleTouchEnd: () => void;
+      onDragEnd: () => void;
     };
     cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
     cast.onHandleTouchMove({ touches: [{ clientY: 300 }] });
-    cast.onHandleTouchEnd();
+    cast.onDragEnd();
     await waitForUpdate();
     expect(inst.open()).toBe(false);
   });
@@ -107,11 +107,11 @@ describe('UiBottomSheet', () => {
     const cast = inst as unknown as {
       onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
       onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
-      onHandleTouchEnd: () => void;
+      onDragEnd: () => void;
     };
     cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
     cast.onHandleTouchMove({ touches: [{ clientY: 130 }] });
-    cast.onHandleTouchEnd();
+    cast.onDragEnd();
     await waitForUpdate();
     expect(inst.open()).toBe(true);
   });
@@ -122,7 +122,7 @@ describe('UiBottomSheet', () => {
     const cast = inst as unknown as {
       onHandleTouchStart: (e: { touches?: { clientY: number }[] }) => void;
       onHandleTouchMove: (e: { touches?: { clientY: number }[] }) => void;
-      onHandleTouchEnd: () => void;
+      onDragEnd: () => void;
     };
     // touchmove without prior touchstart is a no-op (guards `#isDragging`).
     cast.onHandleTouchMove({ touches: [{ clientY: 200 }] });
@@ -131,8 +131,130 @@ describe('UiBottomSheet', () => {
     cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
     cast.onHandleTouchMove({ touches: [] });
     // touchend without an active drag is also a no-op.
-    cast.onHandleTouchEnd();
-    cast.onHandleTouchEnd();
+    cast.onDragEnd();
+    cast.onDragEnd();
+  });
+
+  type MouseDrag = {
+    onHandleMouseDown: (e: { y: number }) => void;
+    onMouseDragMove: (e: { y: number; buttons: number }) => void;
+    onDragEnd: () => void;
+    onBackdropMouseDown: () => void;
+    onBackdropTap: () => void;
+  };
+
+  it('mouse drag beyond the dismiss threshold closes the sheet', async () => {
+    const { componentRef, container } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    patchRefs(inst, container.querySelector('view') as Element);
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag;
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onMouseDragMove({ y: 300, buttons: 1 });
+    cast.onDragEnd();
+    await waitForUpdate();
+    expect(inst.open()).toBe(false);
+  });
+
+  it('mouse drag below the dismiss threshold snaps back to open', async () => {
+    const { componentRef, container } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    patchRefs(inst, container.querySelector('view') as Element);
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag;
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onMouseDragMove({ y: 130, buttons: 1 });
+    cast.onDragEnd();
+    await waitForUpdate();
+    expect(inst.open()).toBe(true);
+  });
+
+  it('ignores the backdrop click that follows a moved mouse drag', async () => {
+    const { componentRef } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag;
+    // A drag released above the panel: the browser's click lands on the
+    // backdrop, and must not close the sheet that just snapped back.
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onMouseDragMove({ y: 40, buttons: 1 });
+    cast.onDragEnd();
+    cast.onBackdropTap();
+    expect(inst.open()).toBe(true);
+
+    // Only that one click is ignored: the next backdrop tap closes it.
+    cast.onBackdropTap();
+    expect(inst.open()).toBe(false);
+  });
+
+  it('a new press clears an ignore no click consumed', async () => {
+    const { componentRef } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag;
+    // Released over the panel, so its catchtap ate the click.
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onMouseDragMove({ y: 120, buttons: 1 });
+    cast.onDragEnd();
+    // A real backdrop click starts with a mousedown on the backdrop.
+    cast.onBackdropMouseDown();
+    cast.onBackdropTap();
+    expect(inst.open()).toBe(false);
+  });
+
+  it('a mouse press without a move, or a touch drag, leaves the backdrop tap alone', async () => {
+    const { componentRef } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag & {
+      onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
+      onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
+    };
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onDragEnd();
+    // A moved touch is never followed by a tap, so nothing is ignored.
+    cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
+    cast.onHandleTouchMove({ touches: [{ clientY: 120 }] });
+    cast.onDragEnd();
+    cast.onBackdropTap();
+    expect(inst.open()).toBe(false);
+  });
+
+  it('ends a mouse drag whose release it never saw', async () => {
+    const { componentRef, container } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    patchRefs(inst, container.querySelector('view') as Element);
+    inst.open.set(true);
+    await waitForUpdate();
+
+    const cast = inst as unknown as MouseDrag;
+    cast.onHandleMouseDown({ y: 100 });
+    cast.onMouseDragMove({ y: 300, buttons: 1 });
+    // The button came up outside the window; the cursor is back without it.
+    cast.onMouseDragMove({ y: 120, buttons: 0 });
+    await waitForUpdate();
+    // Released 200px down, past the threshold, so it closes.
+    expect(inst.open()).toBe(false);
+  });
+
+  it('a mouse move outside a drag leaves the sheet in place', async () => {
+    const { componentRef } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    // The cursor moving over an open sheet with no button pressed.
+    (inst as unknown as MouseDrag).onMouseDragMove({ y: 300, buttons: 1 });
+    expect((inst as unknown as { dragOffset: () => number }).dragOffset()).toBe(
+      0,
+    );
   });
 
   it('applies a user class on the panel', async () => {

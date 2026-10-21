@@ -64,11 +64,25 @@ const BACKDROP_CLEAR_DISTANCE = 500;
   encapsulation: ViewEncapsulation.None,
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
+      <!--
+        The mouse drag's move/up listeners sit on the full-screen backdrop,
+        not the handle: a touch keeps targeting the element it started on, but
+        a mouse event targets whatever is under the cursor, so a cursor that
+        outruns the thin handle strip (or drags up off the panel) would stop
+        driving the drag. Mouse events bubble here from anywhere in the sheet,
+        including the handle and the panel. There's no mouseleave: like a
+        touch, the drag carries on until release, and Chrome doesn't deliver
+        mouseleave to Lynx web anyway (see onMouseDragMove for a release
+        outside the view).
+      -->
       <view
         #backdrop
         class="h-full w-full"
         [style]="backdropStyle()"
         (bindtap)="onBackdropTap()"
+        (bindmousedown)="onBackdropMouseDown()"
+        (bindmousemove)="onMouseDragMove($event)"
+        (bindmouseup)="onDragEnd()"
       >
         <view
           #panel
@@ -80,8 +94,9 @@ const BACKDROP_CLEAR_DISTANCE = 500;
             class="items-center pb-3 pt-2 flex justify-center"
             (catchtouchstart)="onHandleTouchStart($event)"
             (catchtouchmove)="onHandleTouchMove($event)"
-            (catchtouchend)="onHandleTouchEnd()"
-            (catchtouchcancel)="onHandleTouchEnd()"
+            (catchtouchend)="onDragEnd()"
+            (catchtouchcancel)="onDragEnd()"
+            (catchmousedown)="onHandleMouseDown($event)"
           >
             <view class="h-1 w-10 rounded-full bg-muted" />
           </view>
@@ -125,6 +140,15 @@ export class UiBottomSheet {
   // True only between touchstart and touchend on the handle, so unrelated move
   // events can't shift the sheet.
   #isDragging = false;
+  // Set when a mouse drag that actually moved is released. The browser follows
+  // that mouseup with a click on the nearest element under both the mousedown
+  // and the mouseup, which is the backdrop whenever the cursor ended up off the
+  // panel, and Lynx web maps that click to the backdrop's tap. Without this, a
+  // drag released above the panel (where the sheet snaps back) would close it.
+  #ignoreNextBackdropTap = false;
+  // Whether the current drag is a mouse drag that has moved: only those are
+  // followed by a click. A moved touch produces no tap.
+  #mouseDragMoved = false;
 
   constructor() {
     // `#hasBeenOpen` prevents the close animation from running on the initial
@@ -184,7 +208,22 @@ export class UiBottomSheet {
   });
 
   protected onBackdropTap(): void {
+    if (this.#ignoreNextBackdropTap) {
+      this.#ignoreNextBackdropTap = false;
+      return;
+    }
     this.open.set(false);
+  }
+
+  /**
+   * A fresh press starts a fresh click, so drop any ignore left over from a
+   * drag whose release didn't produce a backdrop click (one released over the
+   * panel, whose `catchtap` swallows it). Otherwise the next real backdrop tap
+   * would be ignored. The handle catches its own mousedown, which is fine: it
+   * starts a new drag that resets the flag on release.
+   */
+  protected onBackdropMouseDown(): void {
+    this.#ignoreNextBackdropTap = false;
   }
 
   /**
@@ -196,19 +235,14 @@ export class UiBottomSheet {
   protected onPanelTap(): void {}
 
   /**
-   * Begin a drag on the handle strip. The open slideIn holds the panel at
-   * translateY(0%) via fill:'forwards', which would override our inline
-   * transform — cancel it so `dragOffset` (applied through panelPositionStyle)
-   * actually moves the panel from here on.
+   * Begin a drag on the handle strip.
    */
   protected onHandleTouchStart(e: {
     touches?: ReadonlyArray<{ clientY: number }>;
   }): void {
     const y = e.touches?.[0]?.clientY;
     if (y == null) return;
-    this.#panelAnim?.cancel();
-    this.#isDragging = true;
-    this.#dragStartY = y;
+    this.#startDrag(y);
   }
 
   protected onHandleTouchMove(e: {
@@ -217,25 +251,76 @@ export class UiBottomSheet {
     if (!this.#isDragging) return;
     const y = e.touches?.[0]?.clientY;
     if (y == null) return;
-    // Clamp to >= 0: the sheet is already docked at the bottom, so only a
-    // downward (dismiss-direction) drag should move it.
-    this.dragOffset.set(Math.max(0, y - this.#dragStartY));
+    this.#moveDrag(y);
   }
 
   /**
-   * Release the drag. Past the threshold we set `open` to false and let the
+   * The mouse twin of onHandleTouchStart, so the handle drags on web. A
+   * desktop browser fires no touch events for a mouse, and Lynx web passes
+   * DOM events straight through rather than turning mouse input into touches.
+   * On a touch-only device no mouse events fire, so touch keeps driving it.
+   *
+   * Reads `y`, not `clientY`: Lynx PC reports a mouse event's clientY relative
+   * to the element under the cursor, which changes as the cursor moves across
+   * the sheet, while `y` is relative to the Lynx view on PC and web alike.
+   */
+  protected onHandleMouseDown(e: { y: number }): void {
+    this.#startDrag(e.y);
+  }
+
+  /**
+   * Bound on the backdrop (see the template), so it also sees every move the
+   * cursor makes over an open sheet. Only those during a drag count.
+   */
+  protected onMouseDragMove(e: { y: number; buttons: number }): void {
+    if (!this.#isDragging) return;
+    // No button held means the mouseup happened where the sheet couldn't see
+    // it: a release outside the Lynx view (past the edge of a docs preview, or
+    // outside the browser window) goes to the page, and web-core only listens
+    // inside the view. Treat the first move back as the release, or the panel
+    // would stay mid-drag.
+    if (e.buttons === 0) {
+      this.onDragEnd();
+      return;
+    }
+    this.#mouseDragMoved = true;
+    this.#moveDrag(e.y);
+  }
+
+  /**
+   * Release the drag, from a touchend, touchcancel or mouseup, or a mouse
+   * move with no button held. Past the threshold we set `open` to false and let the
    * effect drive teardown (#doClose → drag-aware #animateOut), which keeps the
    * two-way `open` binding in sync and reuses the `closed` emit. Otherwise the
    * sheet springs back to fully open.
    */
-  protected onHandleTouchEnd(): void {
+  protected onDragEnd(): void {
     if (!this.#isDragging) return;
     this.#isDragging = false;
+    this.#ignoreNextBackdropTap = this.#mouseDragMoved;
     if (this.dragOffset() > DISMISS_THRESHOLD) {
       this.open.set(false);
     } else {
       this.#snapBack(this.dragOffset());
     }
+  }
+
+  /**
+   * The open slideIn holds the panel at translateY(0%) via fill:'forwards',
+   * which would override our inline transform — cancel it so `dragOffset`
+   * (applied through panelPositionStyle) actually moves the panel from here on.
+   */
+  #startDrag(y: number): void {
+    this.#panelAnim?.cancel();
+    this.#isDragging = true;
+    this.#mouseDragMoved = false;
+    this.#dragStartY = y;
+  }
+
+  #moveDrag(y: number): void {
+    // Clamp to >= 0: the sheet is already docked at the bottom, so only a
+    // downward (dismiss-direction) drag should move it.
+    this.dragOffset.set(Math.max(0, y - this.#dragStartY));
   }
 
   /**

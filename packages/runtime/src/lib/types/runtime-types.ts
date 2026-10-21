@@ -1,4 +1,4 @@
-import type { TouchEvent } from '@lynx-js/types';
+import type { MouseEvent, TouchEvent } from '@lynx-js/types';
 
 declare global {
   /**
@@ -104,5 +104,20 @@ declare global {
     catchtouchmove: TouchEvent;
     catchtouchcancel: TouchEvent;
     catchlongpress: TouchEvent;
+    // Lynx's mouse events, which a mouse fires on web and Lynx PC instead of
+    // touch events. Without these entries Angular types `$event` on them as a
+    // plain DOM `Event`, with no coordinates, so a drag handler can't read
+    // where the cursor is. Lynx delivers its own MouseEvent object, not the
+    // DOM's, so that's the type here.
+    bindmousedown: MouseEvent;
+    bindmouseup: MouseEvent;
+    bindmousemove: MouseEvent;
+    bindmouseenter: MouseEvent;
+    bindmouseleave: MouseEvent;
+    catchmousedown: MouseEvent;
+    catchmouseup: MouseEvent;
+    catchmousemove: MouseEvent;
+    catchmouseenter: MouseEvent;
+    catchmouseleave: MouseEvent;
   }
 }

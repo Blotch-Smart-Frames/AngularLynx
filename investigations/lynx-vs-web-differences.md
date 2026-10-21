@@ -853,6 +853,56 @@ Bind the **mouse** press events alongside the touch ones on the same element, po
 
 ---
 
+## A drag driven by `touchmove` needs mouse events on web, bound wider than the handle
+
+### What you'd expect (web)
+
+Binding `touchstart`/`touchmove`/`touchend` on a drag handle covers a mouse as well, as press feedback seems to suggest.
+
+### What Lynx does
+
+Like the press events above, the touch events never fire from a mouse on web, so a `touchmove` drag (the bottom sheet's handle) does nothing on a desktop browser. Swapping in mouse events on the handle alone isn't enough, because the two input types target differently:
+
+- **A touch keeps its target.** Every `touchmove` goes to the element the touch started on, however far the finger travels.
+- **A mouse event targets whatever is under the cursor.** A fast drag leaves a thin handle strip within a frame or two, and its `mousemove`s stop reaching it.
+- **A moved mouse drag still ends in a click.** The browser fires `click` on the nearest element under both the `mousedown` and the `mouseup`, which web-core maps to `tap`. Release the drag over the backdrop and the backdrop's tap fires. A moved touch fires no tap.
+- **A release outside the Lynx view is lost.** The `mouseup` targets the page around the view (past the edge of a docs preview, or outside the browser window), and web-core only listens inside the view. Only `keydown`/`keyup` are document-level in web-core.
+- **`mouseleave` doesn't arrive in Chrome.** web-core listens with capture listeners on the `<lynx-view>`'s shadow root. Chrome skips `mouseenter`/`mouseleave` dispatch unless some element in the document has a listener for them, and a shadow-root listener doesn't count. So `bindmouseleave` only fires if something else on the page happens to listen for `mouseleave`. Checked on Chromium with a bare page: a capture listener on a shadow root got nothing, and adding a listener on an element in that root made both fire. The press-feedback `(bindmouseleave)` above is affected the same way.
+
+### The fix
+
+`UiBottomSheet` (`packages/ui/src/lib/components/bottom-sheet/bottom-sheet.ts`) does all of this:
+
+- `catchmousedown` on the handle starts the drag.
+- `bindmousemove` and `bindmouseup` on the full-screen backdrop move and end it. Mouse events bubble there from anywhere in the sheet.
+- After a moved mouse drag, it ignores the next backdrop tap. A `mousedown` on the backdrop clears that, in case the click never came.
+- A `mousemove` with `buttons === 0` during a drag counts as the release. That covers a release outside the view, and stands in for `mouseleave`.
+- It reads the event's `y`, not `clientY`. Lynx PC gives `clientY` relative to the element under the cursor, while `y` is relative to the Lynx view everywhere.
+
+One gap is left: the `mousedown` on the handle still starts the browser's text selection, because web-elements makes only `x-text` unselectable. Dragged inside the view, the panel stays under the cursor and nothing gets selected. Dragged out of a docs preview, it selects the page's text. Lynx's listeners are passive and its events have no `preventDefault()`, so only CSS could stop it.
+
+The runtime types these events as Lynx's `MouseEvent` in `HTMLElementEventMap` (`packages/runtime/src/lib/types/runtime-types.ts`), so `$event.y` type-checks in a template.
+
+---
+
+## web-core can't cancel an `element.animate()` that has finished
+
+### What you'd expect (native Lynx)
+
+`cancel()` on an animation started with `fill: 'forwards'` removes its effect, whether it's still running or has finished. Inline styles set afterwards show again.
+
+### What Lynx does
+
+On web, `cancel()` does nothing once the animation has finished. web-core's `__ElementAnimate` (`web-core/ts/client/mainthread/elementAPIs/createElementAPI.ts`) keeps a map from animation name to DOM `Animation`, and its `onfinish` deletes the entry. `ANIMATION_CANCEL` then finds nothing. The finished `fill: 'forwards'` frame keeps winning over the element's inline style for good.
+
+The bottom sheet showed it. Its open slide holds the panel at `translateY(0%)`, and a drag cancels that slide, then moves the panel through its inline `transform`. On iOS the panel followed the finger. On web the slide had finished by the time anyone grabbed the handle, so the cancel did nothing and the panel stayed put. The drag offset was still tracked, so releasing past the threshold closed it. Upstream `main` still has the same code.
+
+### The fix
+
+`LynxAnimation` (`packages/runtime/src/lib/animation/animation.ts`) keeps the DOM `Animation` on web. Right after `ANIMATION_START` it takes the last entry of `element.getAnimations()`, which lists script animations in creation order, so that's the one just started. `cancel()` then cancels it directly as well as through `__ElementAnimate`. Canceling twice is harmless. The branch is behind `__WEB__`, so native bundles drop it.
+
+---
+
 ## No `:hover`, `:focus` pseudo-classes; no `::before`/`::after` pseudo-elements
 
 ### What you'd expect (web)

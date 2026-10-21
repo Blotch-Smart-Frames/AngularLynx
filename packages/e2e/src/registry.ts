@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import type { RunContext } from './context.ts';
 import { PUBLISHABLE_PACKAGES, REPO_ROOT } from '../../release/src/packages.ts';
-import { start, stop, waitFor } from './process.ts';
+import { CheckError, start, stop, waitFor } from './process.ts';
 
 /** The registry every tool in the run installs from. */
 export type Registry = {
@@ -111,6 +111,9 @@ export const startLocalRegistry = async (
       echo: false,
     },
   );
+  // What the last ping got, for the timeout message. Verdaccio logs only
+  // warnings, so its log can't tell a slow start from one that hung.
+  let lastPing = 'no response';
   try {
     await waitFor(
       `Verdaccio to start on ${url}`,
@@ -119,15 +122,30 @@ export const startLocalRegistry = async (
           throw new Error(`Verdaccio exited early:\n${output()}`);
         }
         try {
-          return (await fetch(`${url}-/ping`)).ok;
-        } catch {
+          // A ping that never answers mustn't use up the whole wait.
+          const response = await fetch(`${url}-/ping`, {
+            signal: AbortSignal.timeout(5_000),
+          });
+          lastPing = `HTTP ${response.status}`;
+          return response.ok;
+        } catch (error) {
+          lastPing = String(
+            (error instanceof Error && error.cause instanceof Error
+              ? error.cause
+              : error) ?? 'unknown error',
+          );
           return false;
         }
       },
-      { timeoutMs: 30_000 },
+      // Verdaccio usually answers within 3 to 9 seconds on CI, but a macOS
+      // runner booting the iOS Simulator at the same time once took over 30.
+      { timeoutMs: 120_000 },
     );
   } catch (error) {
     stop(child);
+    if (error instanceof CheckError) {
+      throw new CheckError(`${error.message} The last ping got: ${lastPing}.`);
+    }
     throw error;
   }
 

@@ -82,6 +82,7 @@ lynxView.updateData(mapOf<String, Any>("userId" to "user_43"))
 ```
 
 - **Lynx calls GlobalData "global props"**, hence `updateGlobalProps`.
+- **Updates show up right away.** `updateData` merges the fields you send into the current InitData, and `initData()` changes to match. `updateGlobalProps` does the same for `globalData()`, and for the theme and language services.
 - **Set GlobalData before loading the bundle,** so it's there when your app starts.
 - **Newer Lynx APIs** load bundles with a `LynxLoadMeta` object instead. Lynx's [Using Data from Host Platform](https://lynxjs.org/guide/use-data-from-host-platform) guide shows them.
 
@@ -196,12 +197,6 @@ declare module '@blotch/angular-lynx' {
 ```
 
 Now `initData().userId` is a `string`, with no casting.
-
-## Limitations
-
-AngularLynx is a work-in-progress proof of concept, and host data has gaps:
-
-- **Changes after startup may not reach the screen.** The services pick up `updateData` and `updateGlobalProps` only in the background-thread copy of your app, and that copy doesn't draw. See [Threads](/guide/concepts/threads).
 
 ## Related
 

@@ -42,8 +42,6 @@ export class Profile {
 
 ## API
 
-**Known limitation:** both signals subscribe to new data from the host only on the [background thread](/guide/glossary#background-thread). Changes after startup may not reach the main-thread copy of your app, which draws the UI. This hasn't been verified on a device. See [Threads](/guide/concepts/threads).
-
 ### `LynxInitData`
 
 ```typescript
@@ -59,7 +57,7 @@ The page's InitData as a signal.
 readonly initData: WritableSignal<InitData>;
 ```
 
-Starts with the InitData the host passed when it opened the page, after your [default data processor](#registerdataprocessors) has run on it. It's `{}` when the host passes none, and outside Lynx. AngularLynx also keeps the value as `lynx.__initData`, as React Lynx does. On the background thread, it's set again each time the host sends new data.
+Starts with the InitData the host passed when it opened the page, after your [default data processor](#registerdataprocessors) has run on it. It's `{}` when the host passes none, and outside Lynx. AngularLynx also keeps the value as `lynx.__initData`, as React Lynx does. When the host sends new data, it's merged into the current value. When the host resets the data, the new data replaces it.
 
 ### `LynxGlobalData`
 
@@ -76,7 +74,7 @@ The app-wide GlobalData as a signal. `LynxTheme`, `LynxLocale` and `LynxSafeArea
 readonly globalData: WritableSignal<GlobalData>;
 ```
 
-Starts with the global values at launch, or `{}` when the host sets none. On the background thread, it's set again each time the host changes them.
+Starts with the global values at launch, or `{}` when the host sets none. When the host changes them, the new values are merged into the current ones.
 
 ### `registerDataProcessors()`
 

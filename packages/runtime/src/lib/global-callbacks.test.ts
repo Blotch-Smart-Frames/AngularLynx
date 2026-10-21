@@ -66,8 +66,14 @@ describe('global-callbacks', () => {
       expect(fired).toBe(true);
     });
 
-    it('updatePage is a no-op that does not throw', () => {
-      expect(() => (globalThis as any).updatePage()).not.toThrow();
+    it('updatePage does not throw without a lynx global', () => {
+      expect(() => (globalThis as any).updatePage({ a: 1 })).not.toThrow();
+    });
+
+    it('updateGlobalProps does not throw without a lynx global', () => {
+      expect(() =>
+        (globalThis as any).updateGlobalProps({ theme: 'Dark' }),
+      ).not.toThrow();
     });
 
     it('processData returns the data unchanged by default', () => {
@@ -150,6 +156,179 @@ describe('global-callbacks', () => {
       await load({ mainThread: true, lynx: { getApp } });
 
       expect(getApp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('host updates on the main thread', () => {
+    it('updatePage merges the update into lynx.__initData', async () => {
+      const lynx: Record<string, unknown> = { __initData: { userId: 'abc' } };
+      await load({ mainThread: true, lynx });
+
+      (globalThis as any).updatePage({ theme: 'dark' });
+
+      expect(lynx['__initData']).toEqual({ userId: 'abc', theme: 'dark' });
+    });
+
+    it('updatePage replaces lynx.__initData when the host resets it', async () => {
+      const lynx: Record<string, unknown> = { __initData: { userId: 'abc' } };
+      await load({ mainThread: true, lynx });
+
+      (globalThis as any).updatePage(
+        { theme: 'dark' },
+        { resetPageData: true },
+      );
+
+      expect(lynx['__initData']).toEqual({ theme: 'dark' });
+    });
+
+    it('updatePage publishes the merged InitData', async () => {
+      await load({ mainThread: true, lynx: {} });
+      const { initDataUpdates } = await import('./data-flow/host-updates');
+      const published: unknown[] = [];
+      initDataUpdates.subscribe((d) => published.push(d));
+
+      (globalThis as any).updatePage({ userId: 'abc' });
+
+      expect(published).toEqual([{ userId: 'abc' }]);
+    });
+
+    it('updateGlobalProps merges the update into lynx.__globalProps', async () => {
+      const lynx: Record<string, unknown> = {
+        __globalProps: { theme: 'Light', appLocale: 'en-US' },
+      };
+      await load({ mainThread: true, lynx });
+
+      (globalThis as any).updateGlobalProps({ theme: 'Dark' });
+
+      expect(lynx['__globalProps']).toEqual({
+        theme: 'Dark',
+        appLocale: 'en-US',
+      });
+    });
+
+    it('listens for __UpdateGlobalProps on the engine context, the only way web-core delivers it', async () => {
+      let listener: (event: { data?: unknown[] }) => void = () => {};
+      const addEventListener = vi.fn(
+        (_type: string, fn: typeof listener) => (listener = fn),
+      );
+      const lynx: Record<string, unknown> = {
+        getEngine: () => ({ addEventListener }),
+      };
+      await load({ mainThread: true, lynx });
+
+      listener({ data: [{ theme: 'Dark' }] });
+
+      expect(addEventListener).toHaveBeenCalledWith(
+        '__UpdateGlobalProps',
+        expect.any(Function),
+      );
+      expect(lynx['__globalProps']).toEqual({ theme: 'Dark' });
+    });
+
+    it('treats an __UpdateGlobalProps event without data as no change', async () => {
+      let listener: (event: { data?: unknown[] }) => void = () => {};
+      const lynx: Record<string, unknown> = {
+        __globalProps: { theme: 'Light' },
+        getEngine: () => ({
+          addEventListener: (_type: string, fn: typeof listener) =>
+            (listener = fn),
+        }),
+      };
+      await load({ mainThread: true, lynx });
+
+      listener({});
+
+      expect(lynx['__globalProps']).toEqual({ theme: 'Light' });
+    });
+
+    it('does not listen on the engine context on the background thread', async () => {
+      const getEngine = vi.fn();
+
+      await load({ mainThread: false, lynx: { getEngine } });
+
+      expect(getEngine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('host updates on the background thread', () => {
+    const loadBackground = async (lynx: Record<string, unknown> = {}) => {
+      const app: Record<string, any> = { _params: { initData: {} } };
+      const emit = vi.fn();
+      Object.assign(lynx, {
+        getApp: () => app,
+        getJSModule: () => ({ emit }),
+      });
+      await load({ mainThread: false, lynx });
+      return { app, emit, lynx };
+    };
+
+    it('updateCardData merges the update into lynx.__initData', async () => {
+      const { app, lynx } = await loadBackground();
+      lynx['__initData'] = { userId: 'abc' };
+
+      app['updateCardData']({ theme: 'dark' });
+
+      expect(lynx['__initData']).toEqual({ userId: 'abc', theme: 'dark' });
+    });
+
+    it('updateCardData replaces lynx.__initData on a reset', async () => {
+      const { app, lynx } = await loadBackground();
+      lynx['__initData'] = { userId: 'abc' };
+
+      app['updateCardData']({ theme: 'dark' }, { type: 1 });
+
+      expect(lynx['__initData']).toEqual({ theme: 'dark' });
+    });
+
+    it('updateCardData drops the performance timing flag', async () => {
+      const { app, lynx } = await loadBackground();
+
+      app['updateCardData']({ theme: 'dark', __lynx_timing_flag: 'x' });
+
+      expect(lynx['__initData']).toEqual({ theme: 'dark' });
+    });
+
+    it('updateCardData emits onDataChanged with the update', async () => {
+      const { app, emit } = await loadBackground();
+
+      app['updateCardData']({ theme: 'dark' });
+
+      expect(emit).toHaveBeenCalledWith('onDataChanged', [{ theme: 'dark' }]);
+    });
+
+    it('updateCardData treats a missing update as no change', async () => {
+      const { app, lynx } = await loadBackground();
+      lynx['__initData'] = { userId: 'abc' };
+
+      app['updateCardData']();
+
+      expect(lynx['__initData']).toEqual({ userId: 'abc' });
+    });
+
+    it('updateGlobalProps emits onGlobalPropsChanged with the merged props', async () => {
+      const { app, emit, lynx } = await loadBackground({
+        __globalProps: { appLocale: 'en-US' },
+      });
+
+      app['updateGlobalProps']({ theme: 'Dark' });
+
+      expect(lynx['__globalProps']).toEqual({
+        appLocale: 'en-US',
+        theme: 'Dark',
+      });
+      expect(emit).toHaveBeenCalledWith('onGlobalPropsChanged', [
+        { appLocale: 'en-US', theme: 'Dark' },
+      ]);
+    });
+
+    it('applies updates when lynx has no GlobalEventEmitter', async () => {
+      const app: Record<string, any> = { _params: null };
+      const lynx: Record<string, unknown> = { getApp: () => app };
+      await load({ mainThread: false, lynx });
+
+      app['updateGlobalProps']({ theme: 'Dark' });
+
+      expect(lynx['__globalProps']).toEqual({ theme: 'Dark' });
     });
   });
 

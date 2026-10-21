@@ -50,8 +50,6 @@ class LynxGlobalExposure {}
 
 Reports page-wide exposure in batches for every element that has an `exposure-id`. Use it for impression tracking across many elements.
 
-**Known limitation:** `exposures` and `disexposures` subscribe to Lynx's batches only on the [background thread](/guide/glossary#background-thread). The batches may not reach the main-thread copy of your app, which draws the UI. This hasn't been verified on a device. See [Threads](/guide/concepts/threads).
-
 ### `LynxGlobalExposure.exposures`
 
 ```typescript

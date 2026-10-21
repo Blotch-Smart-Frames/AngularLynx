@@ -90,9 +90,10 @@ Both implement the same `Renderer2` interface, so Angular component code is unaw
 
 `runtime.ts` registers these on `globalThis` so Lynx can call into Angular:
 
-| Callback           | Purpose                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| `renderPage(data)` | Stores the InitData as `lynx.__initData`, then signals the page is ready — unblocks main-thread bootstrap |
-| `updatePage()`     | Incremental update hook (no-op currently)                                                                 |
-| `processData()`    | Data-processing hook. Returns the data unchanged unless `registerDataProcessors()` replaces it            |
-| `runWorklet()`     | Executes a main-thread worklet function with parameters                                                   |
+| Callback                  | Purpose                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `renderPage(data)`        | Stores the InitData as `lynx.__initData`, then signals the page is ready — unblocks main-thread bootstrap |
+| `updatePage(data)`        | Merges a host InitData update into `lynx.__initData` and publishes it to `LynxInitData`                   |
+| `updateGlobalProps(data)` | Merges a host GlobalData update into `lynx.__globalProps` and publishes it to `LynxGlobalData`            |
+| `processData()`           | Data-processing hook. Returns the data unchanged unless `registerDataProcessors()` replaces it            |
+| `runWorklet()`            | Executes a main-thread worklet function with parameters                                                   |

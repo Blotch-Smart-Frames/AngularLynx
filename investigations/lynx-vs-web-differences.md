@@ -3239,7 +3239,7 @@ text-shadow: 2px 2px 0.1px red;
 
 ---
 
-## `globalProps` changes trigger a full page re-render — not component-scoped
+## `globalProps` changes re-render the whole page in React Lynx — AngularLynx updates a signal
 
 ### What you'd expect (web)
 
@@ -3247,7 +3247,7 @@ State changes typically re-render only the affected component subtree (via Angul
 
 ### What Lynx does
 
-When the native host updates `lynx.__globalProps` (e.g., for theme switching or locale changes), the `onGlobalPropsChanged` event fires and triggers a **full page re-render** of the entire Lynx page — not just components that read the changed prop. This can be expensive if `globalProps` changes frequently. For fine-grained updates, prefer CSS variables (which only re-style affected elements) or Angular signals (which only re-render subscribed components) over `globalProps`.
+When the native host updates `lynx.__globalProps` (e.g., for theme switching or locale changes), **React Lynx** re-renders the entire page — not just components that read the changed prop. Lynx itself emits no `onGlobalPropsChanged` event: React Lynx emits it from its `updateGlobalProps` hook. AngularLynx defines the same hooks (`packages/runtime/src/lib/global-callbacks.ts`), merges the update into `LynxGlobalData.globalData()`, and emits `onGlobalPropsChanged` on the background thread for app code. Only views that read the signal re-render. Even so, prefer CSS variables for theme colors: one class change re-styles the page without re-running templates.
 
 ---
 

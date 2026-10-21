@@ -39,14 +39,13 @@
       }
 
       .title-icon {
-        width: 32px;
-        height: 32px;
+        // Font Awesome centers each glyph in a 1.25em-wide box; auto width
+        // keeps the icon flush with the title's left edge.
+        --fa-width: auto;
+        align-self: flex-start;
+        font-size: 32px;
+        color: var(--rp-c-brand);
         margin-bottom: 16px;
-
-        svg {
-          width: 32px;
-          height: 32px;
-        }
       }
 
       .title {

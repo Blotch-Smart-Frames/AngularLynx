@@ -41,7 +41,8 @@ export default defineConfig({
   themeConfig: {
     socialLinks: [
       {
-        icon: 'github',
+        // Rspress renders this markup in place of its built-in GitHub SVG.
+        icon: { svg: '<i class="fa-brands fa-github" aria-hidden="true"></i>' },
         content: 'https://github.com/Blotch-Smart-Frames/AngularLynx',
         mode: 'link',
       },
@@ -372,6 +373,21 @@ export default defineConfig({
   },
   builderConfig: {
     plugins: [pluginSass()],
+    html: {
+      // Font Awesome Pro, from Blotch's CDN: the site's icons, including the
+      // ones theme/icons.tsx swaps in for Rspress's. It goes in the HTML
+      // template rather than Rspress's `head` option, which only reaches the
+      // pages `rspress build` renders and so leaves `rspress dev` without it.
+      tags: [
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'stylesheet',
+            href: 'https://cdn.blotch.app/fonts/font-awesome/css/all.min.css',
+          },
+        },
+      ],
+    },
     // `<Go>` imports Lynx for Web (`@lynx-js/web-core/client`, which brings its
     // own CSS) when a preview first mounts, and the bundler emits its workers
     // and WebAssembly like any other chunk.

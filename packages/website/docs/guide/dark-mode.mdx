@@ -107,7 +107,7 @@ Use them for things CSS can't reach, such as picking an image or a chart palette
 ## Limitations
 
 - **`prefers-color-scheme` doesn't work.** AngularLynx apps don't support `@media`. Use `LynxTheme`.
-- **The theme is read when the app starts.** Switching the phone's appearance while the app is open doesn't restyle it yet. The app picks up the change next time it starts.
+- **The generated apps don't report appearance changes yet.** `LynxTheme` updates whenever the host app sends a new theme, but the iOS app from `ng build --platform ios` sends one only at startup and when its layout changes. Switching the phone's appearance while the app is open may not restyle it until the app restarts. Your own native app can send the theme whenever it changes. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
 - **Android apps from `ng build --platform android` always report `'Light'`.** Lynx Explorer on Android reports the real setting.
 - **A `[style.--name]` binding can't set a CSS variable.** Set variables in a stylesheet, as above.
 

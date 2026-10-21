@@ -1,4 +1,5 @@
-import { Injectable, signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { globalExposureBatches } from './global-exposure-bridge';
 import type {
   GlobalExposureEvent,
   ObserverFrameRateOptions,
@@ -6,11 +7,11 @@ import type {
 
 @Injectable({ providedIn: 'root' })
 export class LynxGlobalExposure {
-  // Updated each time the Lynx engine fires a batched 'exposure' event via
-  // GlobalEventEmitter. Contains the most recent batch of exposure details.
+  // The most recent batch of elements that came on screen. Lynx batches them
+  // and reports them through GlobalEventEmitter's 'exposure' event.
   readonly exposures = signal<GlobalExposureEvent>([]);
 
-  // Updated each time the Lynx engine fires a batched 'disexposure' event.
+  // The most recent batch of elements that left the screen ('disexposure').
   readonly disexposures = signal<GlobalExposureEvent>([]);
 
   // Whether the global exposure detection system is currently active.
@@ -18,23 +19,14 @@ export class LynxGlobalExposure {
   readonly active = signal<boolean>(true);
 
   constructor() {
-    // GlobalEventEmitter is only available on the background thread (BTS context).
-    // On the main thread, getJSModule may return null or a stub without addListener,
-    // and calling it crashes the main-thread Angular app — which handles rendering.
-    // Since the main thread app stays broken, all subsequent route renders are blank.
-    if (
-      typeof lynx === 'undefined' ||
-      (typeof __MAIN_THREAD__ !== 'undefined' && __MAIN_THREAD__)
-    )
-      return;
-    const emitter = lynx.getJSModule('GlobalEventEmitter');
-    if (!emitter?.addListener) return;
-    emitter.addListener('exposure', (...args: unknown[]) =>
-      this.exposures.set(args[0] as GlobalExposureEvent),
+    // Lynx reports these events only on the background thread. The bridge
+    // forwards them to the main thread, which draws the UI, and publishes them
+    // on both (see global-exposure-bridge.ts). Unsubscribe when the app is
+    // destroyed, so an HMR re-bootstrap doesn't leave the old app listening.
+    const subscription = globalExposureBatches.subscribe(({ type, events }) =>
+      (type === 'exposure' ? this.exposures : this.disexposures).set(events),
     );
-    emitter.addListener('disexposure', (...args: unknown[]) =>
-      this.disexposures.set(args[0] as GlobalExposureEvent),
-    );
+    inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
   }
 
   /**

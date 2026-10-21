@@ -1,147 +1,59 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Injector, runInInjectionContext } from '@angular/core';
+import { afterEach, describe, expect, it } from 'vitest';
+import { initDataUpdates } from './host-updates';
 import { LynxInitData } from './init-data';
+
+/**
+ * Creates the service in an injection context, as the app's root injector
+ * does, so the test can also destroy that injector.
+ */
+const create = (): { service: LynxInitData; injector: Injector } => {
+  const injector = Injector.create({ providers: [] });
+  return {
+    service: runInInjectionContext(injector, () => new LynxInitData()),
+    injector,
+  };
+};
 
 describe('LynxInitData', () => {
   afterEach(() => {
     delete (globalThis as any).lynx;
   });
 
-  describe('when lynx is not defined', () => {
-    it('initializes initData to an empty object', () => {
-      const service = new LynxInitData();
-
-      expect(service.initData()).toEqual({});
+  describe('seeding', () => {
+    it('starts as an empty object when lynx is not defined', () => {
+      expect(create().service.initData()).toEqual({});
     });
 
-    it('does not throw when constructing without a lynx global', () => {
-      expect(() => new LynxInitData()).not.toThrow();
-    });
-  });
+    it('starts as an empty object when lynx.__initData is undefined', () => {
+      (globalThis as any).lynx = {};
 
-  describe('when lynx exists but getJSModule is not available (web preview)', () => {
-    beforeEach(() => {
-      (globalThis as any).lynx = { __initData: { userId: 'web' } };
+      expect(create().service.initData()).toEqual({});
     });
 
-    it('does not throw', () => {
-      expect(() => new LynxInitData()).not.toThrow();
-    });
+    it('starts with lynx.__initData', () => {
+      (globalThis as any).lynx = { __initData: { userId: 'abc' } };
 
-    it('seeds initData from lynx.__initData', () => {
-      const service = new LynxInitData();
-
-      expect(service.initData()).toEqual({ userId: 'web' });
+      expect(create().service.initData()).toEqual({ userId: 'abc' });
     });
   });
 
-  describe('when lynx is defined', () => {
-    let addListener: ReturnType<typeof vi.fn>;
-    let getJSModule: ReturnType<typeof vi.fn>;
+  describe('host updates', () => {
+    it('takes each update published by the engine callbacks', () => {
+      const { service } = create();
 
-    beforeEach(() => {
-      addListener = vi.fn();
-      getJSModule = vi.fn().mockReturnValue({ addListener });
-      (globalThis as any).lynx = {
-        __initData: { userId: 'abc' },
-        getJSModule,
-      };
-    });
-
-    it('seeds initData from lynx.__initData at construction', () => {
-      const service = new LynxInitData();
-
-      expect(service.initData()).toEqual({ userId: 'abc' });
-    });
-
-    it('calls getJSModule with "GlobalEventEmitter"', () => {
-      new LynxInitData();
-
-      expect(getJSModule).toHaveBeenCalledWith('GlobalEventEmitter');
-    });
-
-    it('registers a listener for the "onDataChanged" event', () => {
-      new LynxInitData();
-
-      expect(addListener).toHaveBeenCalledWith(
-        'onDataChanged',
-        expect.any(Function),
-      );
-    });
-
-    it('updates initData to the first argument when the listener is called', () => {
-      const service = new LynxInitData();
-      const listener: (...args: unknown[]) => void =
-        addListener.mock.calls[0][1];
-
-      listener({ userId: 'xyz', role: 'admin' });
+      initDataUpdates.next({ userId: 'xyz', role: 'admin' });
 
       expect(service.initData()).toEqual({ userId: 'xyz', role: 'admin' });
     });
 
-    it('ignores extra arguments beyond the first when the listener fires', () => {
-      const service = new LynxInitData();
-      const listener: (...args: unknown[]) => void =
-        addListener.mock.calls[0][1];
+    it('stops listening when its injector is destroyed', () => {
+      (globalThis as any).lynx = { __initData: { userId: 'abc' } };
+      const { service, injector } = create();
 
-      listener({ userId: 'xyz' }, 'extra', 42);
+      (injector as unknown as { destroy(): void }).destroy();
+      initDataUpdates.next({ userId: 'xyz' });
 
-      expect(service.initData()).toEqual({ userId: 'xyz' });
-    });
-
-    it('replaces initData entirely on each successive update', () => {
-      const service = new LynxInitData();
-      const listener: (...args: unknown[]) => void =
-        addListener.mock.calls[0][1];
-
-      listener({ a: 1 });
-      listener({ b: 2 });
-
-      expect(service.initData()).toEqual({ b: 2 });
-    });
-
-    it('seeds initData to an empty object when lynx.__initData is undefined', () => {
-      (globalThis as any).lynx.__initData = undefined;
-
-      const service = new LynxInitData();
-
-      expect(service.initData()).toEqual({});
-    });
-  });
-
-  describe('when running on the main thread', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
-    it('does not subscribe to GlobalEventEmitter (Lepus context has no getJSModule)', () => {
-      // __MAIN_THREAD__ is a compile-time define in the real build; stub it
-      // as a global here to exercise the runtime guard directly.
-      vi.stubGlobal('__MAIN_THREAD__', true);
-      const getJSModule = vi.fn();
-      (globalThis as any).lynx = {
-        __initData: { userId: 'abc' },
-        getJSModule,
-      };
-
-      const service = new LynxInitData();
-
-      expect(service.initData()).toEqual({ userId: 'abc' });
-      expect(getJSModule).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('when the GlobalEventEmitter module has no addListener', () => {
-    it('does not throw and leaves initData seeded', () => {
-      // A stub/partial host module (no addListener) must not crash construction.
-      (globalThis as any).lynx = {
-        __initData: { userId: 'abc' },
-        getJSModule: vi.fn().mockReturnValue({}),
-      };
-
-      let service!: LynxInitData;
-      expect(() => {
-        service = new LynxInitData();
-      }).not.toThrow();
       expect(service.initData()).toEqual({ userId: 'abc' });
     });
   });

@@ -92,10 +92,7 @@ export class Home {
 - **`exposure-id`** marks an element for tracking. Use `[attr.exposure-id]` to set it from data. **`exposure-scene`** is an optional label for grouping, such as the screen name.
 - **Lynx checks visibility about 20 times a second** and reports changes in batches.
 - **`exposures()`** holds the latest batch of elements that became visible. **`disexposures()`** holds the latest batch that left the screen.
-
-:::warning Use it for side effects, not for the UI
-`LynxGlobalExposure` receives events only in the [background-thread](/guide/glossary#background-thread) copy of your app. The copy that draws the screen never sees them, so a template that shows `exposures()` stays empty. Use the signals in an `effect()` to record impressions, for example by passing them to your native code with [`LynxNativeModule`](/api/angular-lynx/native-module). See [Threads](/guide/concepts/threads) for the two copies.
-:::
+- **Each signal holds only the latest batch.** To count impressions, or to track everything that's on screen, add each batch to your own state in an `effect()`.
 
 ### Pause and resume tracking
 

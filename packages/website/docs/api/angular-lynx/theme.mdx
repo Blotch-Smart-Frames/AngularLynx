@@ -33,8 +33,6 @@ class LynxTheme {}
 
 Reads the `theme` value that the [host app](/guide/glossary#host-app) sets in its global data. The host usually sets it from the operating system's appearance setting.
 
-**Known limitation:** it subscribes to host changes only on the background thread, through `LynxGlobalData`. Changes after startup may not reach the main thread, which draws the UI. See [Host data](/api/angular-lynx/host-data#api).
-
 ### `LynxTheme.theme`
 
 ```typescript

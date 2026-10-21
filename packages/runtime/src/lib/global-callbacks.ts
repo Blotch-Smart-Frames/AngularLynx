@@ -1,4 +1,8 @@
 import { Subject } from 'rxjs';
+import {
+  applyGlobalDataUpdate,
+  applyInitDataUpdate,
+} from './data-flow/host-updates';
 import { ssrEncode, ssrHydrate } from './ssr/ssr-callbacks';
 import {
   __mainThreadRefMap,
@@ -29,10 +33,14 @@ export const pageReady = new Subject<void>();
  * - renderPage: called once when the page is ready to render, with the page's
  *   InitData. On the main thread, bootstrapApplication() awaits this before
  *   calling Angular's bootstrap.
- * - updatePage: called when the host app sends updated data. No-op for now —
- *   Angular's change detection handles reactivity via LynxInitData/LynxGlobalData.
+ * - updatePage: called when the host app sends updated InitData.
+ * - updateGlobalProps: called when the host app changes the GlobalData.
  * - processData: called before data delivery for transformation. Overridden by
  *   registerDataProcessors() if the app needs custom data processing.
+ *
+ * The engine calls renderPage, updatePage and updateGlobalProps on the main
+ * thread only. The background thread hears about host updates through hooks
+ * on lynx.getApp() instead (further down).
  *
  * Lynx stores InitData nowhere the app can read it, so the runtime keeps it as
  * `lynx.__initData`, where React Lynx keeps it and LynxInitData seeds from.
@@ -47,8 +55,44 @@ globalThis.renderPage = (data?: Record<string, unknown>) => {
   pageReady.next();
 };
 
+// The main thread is where the UI is drawn, so its copy of LynxInitData must
+// hear about updates. `resetPageData` is set when the host resets the data
+// instead of updating it. React Lynx's updatePage merges the same way.
 // @ts-expect-error
-globalThis.updatePage = () => {};
+globalThis.updatePage = (
+  data?: Record<string, unknown>,
+  options?: { resetPageData?: boolean },
+) => {
+  if (typeof lynx !== 'undefined') {
+    applyInitDataUpdate(data, !!options?.resetPageData);
+  }
+};
+
+// Native Lynx calls this global unless an engine listener (below) is
+// registered for the same event. Native has already set lynx.__globalProps
+// to `data` by then; applyGlobalDataUpdate() sets it too, for the web.
+(globalThis as any).updateGlobalProps = (data?: Record<string, unknown>) => {
+  if (typeof lynx !== 'undefined') {
+    applyGlobalDataUpdate(data);
+  }
+};
+
+// @lynx-js/web-core never calls the updateGlobalProps global. It only
+// dispatches `__UpdateGlobalProps` to listeners on lynx.getEngine(), with the
+// call's arguments as `data`. Newer native engines do the same once a listener
+// exists, instead of calling the global. Either way the update arrives once.
+if (
+  __MAIN_THREAD__ &&
+  typeof lynx !== 'undefined' &&
+  typeof (lynx as any).getEngine === 'function'
+) {
+  (lynx as any)
+    .getEngine()
+    .addEventListener('__UpdateGlobalProps', (event: { data?: unknown[] }) =>
+      applyGlobalDataUpdate(event.data?.[0]),
+    );
+}
+
 // The engine hands processData's return value to renderPage and to the
 // background thread, so the default must pass the data through unchanged, as
 // React Lynx's default processor does. Native Lynx falls back to the original
@@ -67,8 +111,34 @@ if (
   typeof lynx !== 'undefined' &&
   typeof (lynx as any).getApp === 'function'
 ) {
-  const params = (lynx as any).getApp()._params;
+  const app = (lynx as any).getApp();
+  const params = app._params;
   (lynx as any).__initData = { ...params?.initData, ...params?.updateData };
+
+  /**
+   * Host updates reach the background thread through the updateCardData and
+   * updateGlobalProps hooks below, which lynx-core leaves for the framework to
+   * define, as React Lynx does. Lynx emits no GlobalEventEmitter event for
+   * them itself, so the hooks emit React Lynx's `onDataChanged` and
+   * `onGlobalPropsChanged` through this, for app code that listens for them.
+   */
+  const emit = (eventName: string, args: unknown[]): void =>
+    lynx.getJSModule?.('GlobalEventEmitter')?.emit?.(eventName, args);
+
+  app.updateCardData = (
+    data?: Record<string, unknown>,
+    options?: { type?: number },
+  ) => {
+    // `__lynx_timing_flag` only marks the update for performance timing; it
+    // isn't page data. React Lynx drops it too.
+    const { __lynx_timing_flag: _timingFlag, ...patch } = data ?? {};
+    // Type 1 is a reset (NativeUpdateDataType.RESET in React Lynx).
+    applyInitDataUpdate(patch, options?.type === 1);
+    emit('onDataChanged', [patch]);
+  };
+  app.updateGlobalProps = (data?: Record<string, unknown>) => {
+    emit('onGlobalPropsChanged', [applyGlobalDataUpdate(data)]);
+  };
 }
 
 // SSR (Instant First-Frame Rendering) callbacks — called by the Lynx engine

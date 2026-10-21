@@ -27,7 +27,7 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 **Bootstrap** (`runtime.ts`):
 
 - `bootstrapApplication(rootComponent, config?)` — on main thread, waits for `renderPage` callback before bootstrapping; on background thread, bootstraps immediately
-- Registers global Lynx callbacks: `renderPage`, `updatePage`, `processData`, `runWorklet`
+- Registers global Lynx callbacks: `renderPage`, `updatePage`, `updateGlobalProps`, `processData`, `runWorklet`. Host data updates reach the main thread through `updatePage`/`updateGlobalProps` (and web-core's `__UpdateGlobalProps` engine event), and the background thread through the `updateCardData`/`updateGlobalProps` hooks on `lynx.getApp()`; both publish through `data-flow/host-updates.ts`
 
 **Providers** (`providers.ts`):
 

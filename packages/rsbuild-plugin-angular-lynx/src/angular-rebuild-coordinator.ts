@@ -21,7 +21,7 @@ export type AngularCompileResult = {
   /**
    * Every file the compilation read: program sources plus component
    * resources such as external templates and stylesheets. Changes to any
-   * other non-TypeScript file (global CSS, assets, the scoped-CSS cache this
+   * other non-TypeScript file (global CSS, assets, the component-CSS cache this
    * plugin writes itself) can't affect Angular's output, so they don't
    * trigger a recompile.
    */

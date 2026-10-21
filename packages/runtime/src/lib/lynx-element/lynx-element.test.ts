@@ -61,6 +61,52 @@ describe('LynxElement', () => {
     });
   });
 
+  describe('addScopeClass', () => {
+    it('adds the class', () => {
+      element = new LynxElement(fakeRef);
+      element.addScopeClass('_ngcontent-l1');
+      expect(globalThis.__AddClass).toHaveBeenCalledWith(
+        fakeRef,
+        '_ngcontent-l1',
+      );
+    });
+
+    it('adds each scope class once', () => {
+      element = new LynxElement(fakeRef);
+      element.addScopeClass('_ngcontent-l1');
+      element.addScopeClass('_ngcontent-l1');
+      expect(globalThis.__AddClass).toHaveBeenCalledOnce();
+    });
+
+    it('keeps scope classes when Angular replaces the class list', () => {
+      // Angular writes static and bound classes as one string through
+      // setAttribute('class'), which would otherwise drop the scope classes.
+      element = new LynxElement(fakeRef);
+      element.addScopeClass('_ngcontent-l1');
+      element.addScopeClass('_nghost-l2');
+
+      element.setAttribute('class', 'title  big');
+      element.setAttribute('class', null);
+
+      expect(vi.mocked(globalThis.__SetClasses).mock.calls).toEqual([
+        [fakeRef, 'title big _ngcontent-l1 _nghost-l2'],
+        [fakeRef, '_ngcontent-l1 _nghost-l2'],
+      ]);
+    });
+
+    it('does not repeat a scope class the new class list already has', () => {
+      element = new LynxElement(fakeRef);
+      element.addScopeClass('_ngcontent-l1');
+
+      element.setAttribute('class', 'title _ngcontent-l1');
+
+      expect(globalThis.__SetClasses).toHaveBeenCalledWith(
+        fakeRef,
+        'title _ngcontent-l1',
+      );
+    });
+  });
+
   describe('addClass', () => {
     it('calls __AddClass with the class name', () => {
       element = new LynxElement(fakeRef);

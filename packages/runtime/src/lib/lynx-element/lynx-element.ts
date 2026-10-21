@@ -134,6 +134,13 @@ export class LynxElement implements BaseLynxElement {
   #dataset: Record<string, unknown> = {};
   /** Full space-separated class string, mirroring __SetClasses semantics. */
   #classes = '';
+  /**
+   * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
+   * Angular writes static and bound classes as one whole class string through
+   * setAttribute('class'), which would drop them, so they're added back each
+   * time.
+   */
+  #scopeClasses: string[] = [];
   /** Whole-string inline style set via setInlineStyles (style="..."). */
   #inlineStyleWhole: string | null = null;
   /** Per-key inline styles set via setStyle ([style.x] bindings). */
@@ -316,8 +323,16 @@ export class LynxElement implements BaseLynxElement {
       // the literal class 'foo bar baz' rather than three separate classes,
       // so no CSS rule would ever match. __SetClasses correctly parses the
       // space-separated list. This matches how React Lynx handles className.
-      __SetClasses(this.element, value ?? '');
-      this.#classes = value ?? '';
+      const classes = [
+        ...new Set([
+          ...String(value ?? '')
+            .split(/\s+/)
+            .filter(Boolean),
+          ...this.#scopeClasses,
+        ]),
+      ].join(' ');
+      __SetClasses(this.element, classes);
+      this.#classes = classes;
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
@@ -512,6 +527,12 @@ export class LynxElement implements BaseLynxElement {
     const set = new Set(this.#classes.split(/\s+/).filter(Boolean));
     set.add(name);
     this.#classes = [...set].join(' ');
+  }
+
+  addScopeClass(name: string): void {
+    if (this.#scopeClasses.includes(name)) return;
+    this.#scopeClasses.push(name);
+    this.addClass(name);
   }
 
   /**

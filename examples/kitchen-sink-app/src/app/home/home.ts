@@ -25,10 +25,9 @@ import { ScreenHost } from '../screen-host';
 
 @Component({
   selector: 'app-home',
-  // `home` gives the host a positioned containing block so the fixed emerald
-  // backdrop (`.home__bg`) can fill it precisely. See home.css for why the
-  // backdrop is a sibling *before* the scroll-view rather than a child.
-  host: { class: 'home' },
+  // home.css's `:host` rule gives the host a positioned containing block so
+  // the fixed backdrop (`.home__bg`) can fill it precisely. See home.css for
+  // why the backdrop is a sibling *before* the scroll-view rather than a child.
   hostDirectives: [ScreenHost],
   imports: [
     LYNX_ELEMENTS,

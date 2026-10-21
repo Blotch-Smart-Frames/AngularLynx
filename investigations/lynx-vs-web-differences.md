@@ -4777,3 +4777,19 @@ Template event handlers run on the main thread, whose `lynx` (`Utils::CreateLynx
 ### The fix
 
 `packages/runtime/src/lib/background-call.ts` relays the call to the background thread over the cross-thread event channel and resolves with its result: the main thread dispatches on `getJSContext()`, and the background thread replies on `getCoreContext()`. `LynxAccessibility.announce()`, `LynxFont.addFont()`, `LynxGlobalExposure.setObserverFrameRate()` and, on web, `stopExposure()`/`resumeExposure()` use it. A main-thread `LynxSessionStorage.subscribe()` subscribes through it and gets each change sent back. `LynxAccessibility.requestFocus()` finds the element with `__QuerySelector` on the page and calls `__InvokeUIMethod` instead, because the main thread owns the native elements.
+
+---
+
+## Lynx can't match attribute selectors, so emulated encapsulation scopes with classes
+
+### What you'd expect (web)
+
+With `ViewEncapsulation.Emulated`, Angular's compiler rewrites a component's selectors with attribute selectors (`.title` becomes `.title[_ngcontent-c1]`, `:host` becomes `[_nghost-c1]`), and the renderer puts those attributes on the component's elements, so its styles match only its own template.
+
+### What Lynx does
+
+Lynx's newer CSS engine parses attribute selectors (`css_selector_parser.cc` in Lynx core's `core/renderer/css/ng`) and even indexes them (`rule_set.cc`), but `SelectorMatcher::MatchSimple` (`css/ng/matcher/selector_matcher.cc`) only matches tag, class, id and pseudo-classes: anything else returns `false`. A rule scoped with an attribute never applies. Before the fix, the plugin skipped Angular's scoping entirely, so every component's CSS applied app-wide.
+
+### The fix
+
+The plugin lets Angular's compiler scope each component's styles as on the web, then lifts them out of the compiled component definition (`extractComponentStyles` in `packages/rsbuild-plugin-angular-lynx/src/component-styles.ts`) and turns `[_ngcontent-%COMP%]` and `[_nghost-%COMP%]` into classes (`._ngcontent-<id>`, `._nghost-<id>`). `EmulatedLynxRenderer` adds the same classes to the elements, and `LynxElement` keeps them when Angular replaces the whole class list. The compiler also marks CSS variables with a `%NS%` namespace placeholder (`var(--%NS%primary)`), which Angular's renderer fills with `CSS_VAR_NAMESPACE`, empty by default; the plugin fills it with the default at build time.

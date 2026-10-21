@@ -9,14 +9,26 @@ describe('EmulatedLynxRenderer', () => {
     return new EmulatedLynxRenderer(doc, componentId);
   };
 
-  it('createElement does not add any scope class', () => {
-    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+  it('createElement adds the _ngcontent scope class', () => {
+    // The plugin compiles `.title` in this component's styles to
+    // `.title._ngcontent-<id>`, so every element its template creates needs it.
+    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addScopeClass');
     const renderer = createRenderer('abc123');
     renderer.createElement('view');
 
-    expect(spy).not.toHaveBeenCalledWith('_ngscope-abc123');
+    expect(spy).toHaveBeenCalledWith('_ngcontent-abc123');
     expect(spy).not.toHaveBeenCalledWith('_nghost-abc123');
     spy.mockRestore();
+  });
+
+  it('applyToHost adds the _nghost scope class, for :host selectors', () => {
+    const renderer = createRenderer('abc123');
+    const host = new LynxBackgroundDocument().createElement('view');
+    const spy = vi.spyOn(host, 'addScopeClass');
+
+    renderer.applyToHost(host);
+
+    expect(spy).toHaveBeenCalledWith('_nghost-abc123');
   });
 
   it('selectRootElement adds _nghost class', () => {

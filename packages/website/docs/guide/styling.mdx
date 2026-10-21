@@ -18,7 +18,6 @@ For every property and value Lynx accepts, see the [Lynx CSS reference](https://
 | `position: fixed` pins to the viewport        | Positions against the `page`. Use `<overlay>` for floating UI           |
 | `:hover`, `::before`, `@media`, `!important`  | [Not supported](#selectors-and-rules)                                   |
 | `hsl(240 6% 10%)`                             | [Dropped silently](#colors). Write `hsl(240, 6%, 10%)` or `rgba()`      |
-| Component styles are scoped                   | [Every component rule applies app-wide](#component-styles)              |
 
 ## The root is `page`
 
@@ -195,14 +194,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 @Component({
   selector: 'app-card',
   imports: [LYNX_ELEMENTS],
-  host: { class: 'app-card' },
-  template: `<text class="app-card-title">{{ title() }}</text>`,
+  template: `<text class="title">{{ title() }}</text>`,
   styles: `
-    .app-card {
+    :host {
       padding: 16px;
       border-radius: 12px;
     }
-    .app-card-title {
+    .title {
       font-size: 18px;
     }
   `,
@@ -212,12 +210,17 @@ export class Card {
 }
 ```
 
-`styles` and `styleUrl` work, but **component styles aren't isolated** on Lynx:
+`styles` and `styleUrl` are scoped to the component, as in Angular on the web:
 
-- **`ViewEncapsulation.Emulated`** (the default) keeps your selectors as written. Lynx elements carry no per-component attributes, so a `.title` rule in one component also matches `.title` in another. Prefix class names with the component name, as above, or use [CSS Modules](/guide/css-modules) for names that can't clash.
-- **`:host` and `::ng-deep` don't work.** To style the host element, give it a class through `host: { class: '…' }`.
-- **`ViewEncapsulation.None`** styles the same way as `Emulated`.
+- **`ViewEncapsulation.Emulated`**, the default, applies a component's rules only to the elements in its own template. The `.title` rule above doesn't touch a `.title` in any other component.
+- **`:host` styles the component's own element.** `:host(.active)` and `:host-context(.dark)` work too. A class set with `host: { class: '…' }` is on that element, so style it with `:host(.…)`.
+- **`::ng-deep`** turns scoping off for the rest of the selector, to reach into child components. Angular deprecates it: prefer an input or a class on the child.
+- **`ViewEncapsulation.None`** makes the component's rules apply app-wide.
 - **`ViewEncapsulation.ShadowDom`** falls back to `None`, with a warning at build time and run time. Lynx has no shadow DOM.
+- **A rule that depends on an ancestor's class**, such as `:host(.active) .title`, follows the rule above: toggling the class at runtime doesn't re-match it by default.
+- **Component stylesheets are plain CSS.** A `.scss` or `.less` file in `styleUrl` isn't compiled.
+
+Lynx's CSS engine can't match attribute selectors, so AngularLynx scopes with classes where the web uses attributes. In the element tree, a component's elements carry a `_ngcontent-<id>` class, and its host element a `_nghost-<id>` class.
 
 ## Related
 

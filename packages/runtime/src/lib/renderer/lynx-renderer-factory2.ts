@@ -33,18 +33,16 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * at most one renderer instance that's reused across all instances of that
    * component.
    */
-  createRenderer(_hostElement: any, type: RendererType2 | null): Renderer2 {
-    if (!type || type.encapsulation === ViewEncapsulation.None) {
-      if (!this.#defaultRenderer) {
-        this.#defaultRenderer = new LynxRenderer(this.lynxDocument);
+  createRenderer(hostElement: any, type: RendererType2 | null): Renderer2 {
+    if (!type || type.encapsulation !== ViewEncapsulation.Emulated) {
+      // ShadowDom (and Angular's experimental isolated variant) needs a shadow
+      // root, which Lynx elements don't have. Their styles compile unscoped,
+      // so they apply app-wide, as with None.
+      if (type && type.encapsulation !== ViewEncapsulation.None) {
+        console.warn(
+          'ViewEncapsulation.ShadowDom is not supported in Lynx. Falling back to no encapsulation.',
+        );
       }
-      return this.#defaultRenderer;
-    }
-
-    if (type.encapsulation === ViewEncapsulation.ShadowDom) {
-      console.warn(
-        'ViewEncapsulation.ShadowDom is not supported in Lynx. Falling back to no encapsulation.',
-      );
       if (!this.#defaultRenderer) {
         this.#defaultRenderer = new LynxRenderer(this.lynxDocument);
       }
@@ -57,6 +55,11 @@ export class LynxRendererFactory2 implements RendererFactory2 {
     if (!renderer) {
       renderer = new EmulatedLynxRenderer(this.lynxDocument, type.id);
       this.#emulatedRenderers.set(type.id, renderer);
+    }
+    // Angular calls createRenderer for each component instance, with its host
+    // element. The bootstrap root has none here; selectRootElement marks it.
+    if (hostElement) {
+      renderer.applyToHost(hostElement);
     }
     return renderer;
   }

@@ -4,8 +4,7 @@ import { buildTransformedCode } from './transform-module';
 
 const base = {
   resourcePath: '/proj/src/app/app.component.ts',
-  componentStyles: undefined,
-  scopeInfo: undefined,
+  stylesheets: undefined,
 };
 
 describe('buildTransformedCode', () => {
@@ -14,19 +13,20 @@ describe('buildTransformedCode', () => {
     expect(buildTransformedCode({ ...base, code })).toBe(code);
   });
 
-  describe('scoped style imports', () => {
+  describe('component stylesheet imports', () => {
     it('prepends a "./"-prefixed import for stylesheets below the component dir', () => {
       const result = buildTransformedCode({
         ...base,
         code: 'BODY',
         // A path inside the component's directory yields a relative specifier
         // without a leading dot, so the transform must prepend "./".
-        componentStyles: {
-          imports: ['/proj/src/app/styles/x.__scoped_abc.css'],
+        stylesheets: {
+          imports: ['/proj/src/app/styles/x.App.0.css'],
+          scopes: [],
         },
       });
 
-      expect(result).toBe('import "./styles/x.__scoped_abc.css";BODY');
+      expect(result).toBe('import "./styles/x.App.0.css";BODY');
     });
 
     it('keeps the relative specifier as-is when it already starts with a dot', () => {
@@ -35,7 +35,7 @@ describe('buildTransformedCode', () => {
         code: 'BODY',
         // A path above the component's directory yields a "../" specifier which
         // is already a valid module specifier — no "./" prefix added.
-        componentStyles: { imports: ['/proj/src/shared.css'] },
+        stylesheets: { imports: ['/proj/src/shared.css'], scopes: [] },
       });
 
       expect(result).toBe('import "../shared.css";BODY');
@@ -45,8 +45,9 @@ describe('buildTransformedCode', () => {
       const result = buildTransformedCode({
         ...base,
         code: 'BODY',
-        componentStyles: {
+        stylesheets: {
           imports: ['/proj/src/app/a.css', '/proj/src/app/b.css'],
+          scopes: [],
         },
       });
 
@@ -55,17 +56,24 @@ describe('buildTransformedCode', () => {
   });
 
   describe('ɵcmp.id patch', () => {
-    it('appends the scope-id assignment when scopeInfo is provided', () => {
+    it('appends a scope-id assignment for each Emulated component', () => {
       const result = buildTransformedCode({
         ...base,
         code: 'BODY',
-        scopeInfo: { className: 'AppComponent', scopeId: 'abc123' },
+        stylesheets: {
+          imports: [],
+          scopes: [
+            { className: 'AppComponent', scopeId: 'abc123' },
+            { className: 'Other', scopeId: 'def456' },
+          ],
+        },
       });
 
       expect(result).toContain("AppComponent.ɵcmp.id = 'abc123';");
+      expect(result).toContain("Other.ɵcmp.id = 'def456';");
     });
 
-    it('does not append anything when scopeInfo is absent', () => {
+    it('does not append anything when the module has no stylesheets', () => {
       const result = buildTransformedCode({ ...base, code: 'BODY' });
       expect(result).not.toContain('ɵcmp.id');
     });
@@ -106,8 +114,10 @@ describe('buildTransformedCode', () => {
     const result = buildTransformedCode({
       resourcePath: '/proj/src/app/app.component.ts',
       code: 'bootstrapApplication(App);',
-      componentStyles: { imports: ['/proj/src/app/a.css'] },
-      scopeInfo: { className: 'App', scopeId: 'lzz' },
+      stylesheets: {
+        imports: ['/proj/src/app/a.css'],
+        scopes: [{ className: 'App', scopeId: 'lzz' }],
+      },
     });
 
     // Imports are prepended, the scope id is appended.

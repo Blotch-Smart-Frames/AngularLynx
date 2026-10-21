@@ -77,10 +77,10 @@ A few choices behind the table:
 `LynxRendererFactory2.createRenderer()` picks a renderer per component type:
 
 - **`ViewEncapsulation.None`**, or no type: one shared `LynxRenderer`.
-- **`ViewEncapsulation.Emulated`**, the default: one `EmulatedLynxRenderer` per component, keyed by its `ɵcmp.id`. It adds a `_nghost-<id>` class to the element from `selectRootElement()`, and nothing to child elements.
+- **`ViewEncapsulation.Emulated`**, the default: one `EmulatedLynxRenderer` per component, keyed by its `ɵcmp.id`. It adds a `_ngcontent-<id>` class to every element it creates, and a `_nghost-<id>` class to each host element of the component.
 - **`ViewEncapsulation.ShadowDom`**: logs a warning and falls back to `LynxRenderer`.
 
-Unlike the browser's emulated renderer, nothing adds `_ngcontent-*` attributes to child elements. Instead, the build plugin sets each component's `ɵcmp.id` to a scope ID, made from its class name and file path. The component's compiled CSS file is named after the same ID. The Lynx template loads that CSS, and the native CSS engine matches its class selectors.
+The browser's emulated renderer adds `_ngcontent-*` and `_nghost-*` attributes, and Angular's compiler scopes the component's selectors with them. Lynx's CSS engine can't match attribute selectors, so the build plugin turns them into class selectors and sets each component's `ɵcmp.id` to the scope ID the CSS was compiled with, made from its class name and file path. Elements keep their scope classes when Angular replaces their whole class list.
 
 ## The flush cycle
 

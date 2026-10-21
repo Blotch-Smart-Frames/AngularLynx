@@ -53,7 +53,7 @@ CSS properties do **not** inherit from parent to child (except nested `<text>` i
 
 ## Style Scoping
 
-Angular's `ViewEncapsulation.Emulated` works (adds `_nghost-*` classes). `ViewEncapsulation.ShadowDom` falls back to `None` with a warning. All component styles are effectively global by default.
+Component styles are scoped as in Angular on the web. `ViewEncapsulation.Emulated` (the default) applies a component's rules only to its own template, with `:host`, `:host-context()` and `::ng-deep`. Lynx can't match attribute selectors, so elements carry `_ngcontent-<id>` and `_nghost-<id>` classes instead of attributes. `ViewEncapsulation.None` makes rules global. `ViewEncapsulation.ShadowDom` falls back to `None` with a warning. Component stylesheets must be plain CSS.
 
 ## Responsive Units
 

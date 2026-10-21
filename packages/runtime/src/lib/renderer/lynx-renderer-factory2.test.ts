@@ -59,6 +59,45 @@ describe('LynxRendererFactory2', () => {
     expect(renderer).toBeInstanceOf(EmulatedLynxRenderer);
   });
 
+  it('marks each Emulated component host it is given', () => {
+    const factory = createFactory();
+    const type: RendererType2 = {
+      id: 'comp1',
+      encapsulation: ViewEncapsulation.Emulated,
+      styles: [],
+      data: {},
+    };
+    const first = new LynxBackgroundDocument().createElement('view');
+    const second = new LynxBackgroundDocument().createElement('view');
+    const spies = [first, second].map((host) =>
+      vi.spyOn(host, 'addScopeClass'),
+    );
+
+    // Angular calls createRenderer once per component instance.
+    factory.createRenderer(first, type);
+    factory.createRenderer(second, type);
+
+    for (const spy of spies) {
+      expect(spy).toHaveBeenCalledWith('_nghost-comp1');
+    }
+  });
+
+  it('treats experimental isolated ShadowDom like ShadowDom', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const factory = createFactory();
+    const renderer = factory.createRenderer(null, {
+      id: 'comp1',
+      // ViewEncapsulation.ExperimentalIsolatedShadowDom
+      encapsulation: 4 as ViewEncapsulation,
+      styles: [],
+      data: {},
+    });
+
+    expect(renderer).not.toBeInstanceOf(EmulatedLynxRenderer);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('caches default renderer across calls', () => {
     const factory = createFactory();
     const r1 = factory.createRenderer(null, null);

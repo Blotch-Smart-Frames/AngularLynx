@@ -39,6 +39,11 @@ export type BaseLynxElement = Pick<LynxJsElement, 'setAttribute'> & {
   ): void;
   appendChild(newChild: BaseLynxElement): void;
   addClass(name: string): void;
+  /**
+   * Adds a class that stays when the whole class list is replaced, for
+   * ViewEncapsulation.Emulated's scope classes (see EmulatedLynxRenderer).
+   */
+  addScopeClass(name: string): void;
   removeClass(name: string): void;
   remove(): void;
   parentNode(): BaseLynxElement | null;

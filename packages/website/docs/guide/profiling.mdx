@@ -1,0 +1,118 @@
+# Profiling performance
+
+Find out what makes your app slow. Record a trace of the running app in Lynx DevTool, mark your own code in it with `LynxPerformance`, and watch AngularLynx's render counters with `LynxDevTools`.
+
+## Record a trace
+
+A **trace** is a timeline of what the app did during a recording, on every thread. You record one with [Lynx DevTool](/guide/glossary#lynx-devtool).
+
+1. Connect Lynx Explorer to Lynx DevTool, as in [Debugging](/guide/debugging#inspect-the-app-with-lynx-devtool).
+2. In Lynx DevTool, choose **Trace** from the top bar, and pick your app.
+3. Press **Start**, use the slow part of your app, then press **Stop**.
+4. Press **Analyze** to look at the timeline. **Download** saves the trace as a file, which you can open in [Perfetto](https://ui.perfetto.dev/).
+
+To trace the app's launch, use **Startup Trace** in the top bar instead. Lynx's [trace guide](https://lynxjs.org/guide/devtool/trace) covers both.
+
+:::info Traces need Lynx Explorer
+Only development builds of the Lynx engine can record traces. Lynx Explorer has one. The apps `ng build --platform` makes use the release engine, which can't.
+:::
+
+## Mark your own code in the trace
+
+`LynxPerformance` adds named sections and marks to the trace, so you can find your own code in the timeline:
+
+```typescript title="src/app/feed.ts"
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxPerformance } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="sort()">
+      <text>Sort {{ items().length }} items</text>
+    </view>
+  `,
+})
+export class Feed {
+  readonly items = signal<readonly number[]>([3, 1, 2]);
+  readonly #perf = inject(LynxPerformance);
+
+  sort(): void {
+    this.#perf.profileStart('Feed::sort', {
+      args: { count: String(this.items().length) },
+    });
+    this.items.update((list) => [...list].sort((a, b) => a - b));
+    this.#perf.profileEnd();
+
+    this.#perf.profileMark('Feed::sorted');
+  }
+}
+```
+
+- **`profileStart(name)` and `profileEnd()`** wrap a section. Sections nest: each `profileEnd()` closes the most recent `profileStart()`.
+- **`profileMark(name)`** adds a single point in time.
+- **`args`** attaches values you can read in the trace. Lynx expects strings.
+- **`isRecording()`** tells you whether a trace is recording. Check it before you compute expensive `args`.
+- **`profileFlowId()`** returns an ID. Pass it as `flowId` to link sections across threads.
+
+The calls do nothing when no trace is recording, and outside Lynx, e.g. in tests.
+
+## Watch render counters
+
+`LynxDevTools` counts AngularLynx's rendering work and exposes the counts as a signal. Put them on screen to spot extra work, such as a tap that re-renders far more than you expect:
+
+```typescript title="src/app/debug-overlay.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxDevTools } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-debug-overlay',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <text>Change detection runs: {{ devtools.stats().cdCycles }}</text>
+      <text>
+        Elements: +{{ devtools.stats().elementCreated }} / -{{
+          devtools.stats().elementRemoved
+        }}
+      </text>
+      <text>Flushes: {{ devtools.stats().flushCount }}</text>
+      <view (bindtap)="devtools.refresh()">
+        <text>Refresh</text>
+      </view>
+      <view (bindtap)="devtools.reset()">
+        <text>Reset</text>
+      </view>
+    </view>
+  `,
+})
+export class DebugOverlay {
+  readonly devtools = inject(LynxDevTools);
+}
+```
+
+| Counter          | What it counts                                          |
+| ---------------- | ------------------------------------------------------- |
+| `cdCycles`       | Change detection runs                                   |
+| `elementCreated` | Native elements created                                 |
+| `elementRemoved` | Native elements removed                                 |
+| `flushCount`     | Times AngularLynx sent a batch of changes to the screen |
+
+- **`stats()` updates only when you ask.** Call `refresh()` to read the latest counts, or `reset()` to set them back to zero. The counters change on every render, so updating the signal each time would cause renders of its own.
+- **`snapshot()`** returns the counts once, without a signal, e.g. to log them.
+- **The counts cover the copy of your app that draws the screen.** See [Threads](/guide/concepts/threads).
+
+## Profiling in production builds
+
+AngularLynx's own profiling code is removed from production builds:
+
+- **The counters only count in development builds,** such as `ng serve` and `ng build -c development`. In a production build, `stats()` stays at zero.
+- **`LynxPerformance` calls stay in.** They cost little when no trace is recording, and the release Lynx engine records none.
+
+## Related
+
+- [`LynxPerformance` and `LynxDevTools` API](/api/angular-lynx/devtools)
+- [Debugging](/guide/debugging)
+- [Production and development builds](/guide/building-for-production#production-and-development-builds)
+- [Trace guide](https://lynxjs.org/guide/devtool/trace) on lynxjs.org

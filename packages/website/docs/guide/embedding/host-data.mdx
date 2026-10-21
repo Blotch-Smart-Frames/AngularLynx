@@ -1,0 +1,203 @@
+# Pass data from your native app
+
+Your native app can hand values to Angular. **InitData** goes to one LynxView when the native app opens your bundle. **GlobalData** is shared by every LynxView, and can change while the app runs. **Data processors** reshape InitData before Angular sees it.
+
+<Go example="data-flow" defaultFile="src/app/app.ts" />
+
+|                | [InitData](/guide/glossary#initdata)                     | [GlobalData](/guide/glossary#globaldata)  |
+| -------------- | -------------------------------------------------------- | ----------------------------------------- |
+| Sent           | When the native app opens the bundle, with updates later | Any time, to every LynxView               |
+| Typical values | A user ID, the item a screen should show                 | The theme, the language, safe-area insets |
+| Read it with   | `LynxInitData`                                           | `LynxGlobalData`                          |
+
+This page involves native code, like the rest of [Embedding](/guide/embedding/).
+
+## Read InitData
+
+```typescript title="src/app/app.ts"
+import { Component, computed, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxInitData } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>User: {{ userId() }}</text>`,
+})
+export class App {
+  readonly #initData = inject(LynxInitData);
+  readonly userId = computed(
+    () => this.#initData.initData()?.['userId'] ?? 'guest',
+  );
+}
+```
+
+- **`initData()`** is a signal holding the whole object.
+- **Guard the read with `?.`.** The object can be missing, e.g. when no native app sent any. See [Limitations](#limitations).
+- **No setup.** `LynxInitData` is provided in the root injector.
+
+## Read GlobalData
+
+```typescript title="src/app/banner.ts"
+import { Component, computed, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxGlobalData } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-banner',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Platform: {{ platform() }}</text>`,
+})
+export class Banner {
+  readonly #globalData = inject(LynxGlobalData);
+  readonly platform = computed(
+    () => this.#globalData.globalData()['platform'] ?? 'unknown',
+  );
+}
+```
+
+`globalData()` is an empty object when the native app sends no GlobalData. For the theme and the language, use the services in [Theme and language](#theme-and-language) instead.
+
+## Send the data from native code
+
+Your native app sends InitData when it loads the bundle into a LynxView, and GlobalData whenever it likes.
+
+On iOS, in Swift:
+
+```swift
+let initData = LynxTemplateData(dictionary: ["userId": "user_42"])
+lynxView.updateGlobalProps(with: LynxTemplateData(dictionary: ["theme": "Dark"]))
+lynxView.loadTemplate(fromURL: bundleUrl, initData: initData)
+
+// Later:
+lynxView.updateData(with: ["userId": "user_43"])
+```
+
+On Android, in Kotlin:
+
+```kotlin
+lynxView.updateGlobalProps(mapOf<String, Any>("theme" to "Dark"))
+lynxView.renderTemplateUrl(bundleUrl, mapOf<String, Any>("userId" to "user_42"))
+
+// Later:
+lynxView.updateData(mapOf<String, Any>("userId" to "user_43"))
+```
+
+- **Lynx calls GlobalData "global props"**, hence `updateGlobalProps`.
+- **Set GlobalData before loading the bundle,** so it's there when your app starts.
+- **Newer Lynx APIs** load bundles with a `LynxLoadMeta` object instead. Lynx's [Using Data from Host Platform](https://lynxjs.org/guide/use-data-from-host-platform) guide shows them.
+
+## Reshape InitData with data processors
+
+A **data processor** is a function that turns the data the native app sends into the shape your app wants. Register processors in `main.ts`, before `bootstrapApplication()`:
+
+```typescript title="src/main.ts"
+import {
+  bootstrapApplication,
+  registerDataProcessors,
+} from '@blotch/angular-lynx';
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+registerDataProcessors({
+  // Runs on InitData unless the native code names another processor.
+  // Here it renames the native app's `user_id` field.
+  defaultDataProcessor: (raw) => ({
+    userId: String(raw['user_id'] ?? 'guest'),
+  }),
+  // Run only when the native code names them.
+  dataProcessors: {
+    refreshFeed: (data) => ({ ...data, feedRefreshed: true }),
+  },
+});
+
+bootstrapApplication(App, appConfig);
+```
+
+- **Register before bootstrapping,** so the first data that arrives is already processed.
+- **Named processors** run when native code names one in an update: `updateData(with: data, processorName: "refreshFeed")` in Swift, or `updateData(data, "refreshFeed")` in Kotlin.
+- **A processor that throws** gives `{}` instead of crashing the app.
+
+## Fake the data while developing
+
+While you develop in Lynx Explorer or the web preview, nothing sends your app its data. Set it yourself in `main.ts`, before `bootstrapApplication()`:
+
+```typescript title="src/main.ts"
+import { isDevMode } from '@angular/core';
+import { bootstrapApplication } from '@blotch/angular-lynx';
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+if (isDevMode() && typeof lynx !== 'undefined') {
+  const host = lynx as any;
+  host.__initData = { userId: 'user_42', ...host.__initData };
+  host.__globalProps = { theme: 'Dark', ...host.__globalProps };
+}
+
+bootstrapApplication(App, appConfig);
+```
+
+- **Before bootstrapping,** because `LynxInitData` and `LynxGlobalData` read the data when they're created.
+- **`isDevMode()` is `false` in production builds,** so the fake values never ship.
+- **The spread keeps real values,** if a native app does send some.
+- **Data processors don't run** on values you set this way.
+
+The [data-flow example](/examples/data-flow) sets fake values the same way, in its `src/main.ts`.
+
+## What the generated apps pass
+
+The apps `ng build --platform` makes are host apps too. They pass:
+
+| App     | InitData | GlobalData                                                                                                                                       |
+| ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| iOS     | None     | `platform` (`'ios'`), `theme` (`'Dark'` or `'Light'`), and the safe-area insets `safeAreaTop`, `safeAreaBottom`, `safeAreaLeft`, `safeAreaRight` |
+| Android | None     | None                                                                                                                                             |
+
+To pass anything else, [eject](/guide/native-apps#eject-the-native-projects) or [embed the app in your own](/guide/embedding/).
+
+## Theme and language
+
+Two GlobalData values have services of their own. Use them instead of reading `globalData()`:
+
+- **[`LynxTheme`](/api/angular-lynx/theme)** reads `theme`, `'Dark'` or `'Light'`, and defaults to `'Light'`. See [Dark mode](/guide/dark-mode).
+- **[`LynxLocale`](/api/angular-lynx/locale)** reads `appLocale`. It falls back to the `sourceLocale` in `angular.json`, then to `'en-US'`. See [Internationalization](/guide/i18n).
+
+They apply those defaults and check the values for you. Have your native app send `theme` and `appLocale` under exactly those names.
+
+## Type the data
+
+By default, `initData()` and `globalData()` are typed as `Record<string, unknown>`. Describe your fields with [module augmentation](https://www.typescriptlang.org/docs/handbook/declaration-merging.html#module-augmentation):
+
+```typescript title="src/lynx-data.d.ts"
+// This export makes the file a module, so the block below adds to
+// @blotch/angular-lynx's types instead of replacing them.
+export {};
+
+declare module '@blotch/angular-lynx' {
+  interface InitData {
+    userId: string;
+  }
+  interface GlobalData {
+    theme: 'Dark' | 'Light';
+    appLocale: string;
+  }
+  // The data as native code sends it, before your data processor runs.
+  interface InitDataRaw {
+    user_id: string;
+  }
+}
+```
+
+Now `initData().userId` is a `string`, with no casting.
+
+## Limitations
+
+AngularLynx is a work-in-progress proof of concept, and host data has gaps:
+
+- **InitData from native code doesn't reach your components yet.** On a device, `initData()` starts out with no value. Guard your reads, and use [faked values](#fake-the-data-while-developing) while you develop.
+- **Changes after startup may not reach the screen.** The services pick up `updateData` and `updateGlobalProps` only in the background-thread copy of your app, and that copy doesn't draw. See [Threads](/guide/concepts/threads).
+
+## Related
+
+- [Embed in an existing native app](/guide/embedding/)
+- [Host data API](/api/angular-lynx/host-data): `LynxInitData`, `LynxGlobalData` and `registerDataProcessors()`.
+- [Dark mode](/guide/dark-mode) and [Internationalization](/guide/i18n)
+- [Using Data from Host Platform](https://lynxjs.org/guide/use-data-from-host-platform) on lynxjs.org

@@ -1,48 +1,50 @@
-# AngularLynx Testing Library
+# Testing
 
-Test AngularLynx components with `ng test`, as in any Angular app. `@blotch/angular-lynx-testing-library` renders a component through the full Lynx rendering pipeline in jsdom and exposes `@testing-library/dom` queries.
+Test your components with `ng test`. `@blotch/angular-lynx-testing-library` renders a component through AngularLynx's real renderer into **jsdom**, a browser-like environment that runs in Node, and gives you [Testing Library](https://testing-library.com/docs/dom-testing-library/intro) queries to check the result.
 
-## Running tests
-
-```bash
-ng test               # watches in a terminal, runs once in CI
-ng test --watch=false
-```
-
-`ng add` points the `test` target in angular.json at `@blotch/angular-lynx-build:unit-test`. It is Angular's own unit-test builder (Vitest) set up for Lynx, with the same options (`include`, `coverage`, `setupFiles`, `providersFile`, ...). It finds `*.spec.ts` and `*.test.ts` files, and compiles the tests ahead of time, like the app. Angular's `TestBed` works too: specs from `ng generate service` or `pipe` run as they are.
-
-Because the tests compile like the app, their templates are checked strictly, as the Angular Language Service checks them in the editor: a component that uses Lynx elements imports `LYNX_ELEMENTS` from `@blotch/angular-lynx`. Generated components do. The test code is type-checked too.
-
-## Setup
+## Set up
 
 ```bash
 ng generate @blotch/angular-lynx:add-testing
 ```
 
-This installs the testing library (and Vitest and jsdom, if the project doesn't have them) and makes sure `ng test` uses the AngularLynx builder. There's nothing else to set up: whenever the project has the library, `ng test` loads its setup before the tests, so the app needs no Vitest config or setup file. Components generated from then on get a `*.test.ts` that renders them with `render()`.
+- **What it does.** It installs the testing library, plus Vitest and jsdom if the project doesn't have them. It also makes sure `ng test` runs through the AngularLynx test builder.
+- **No config files.** `ng test` loads the library's setup by itself whenever the project has the library. You don't write a Vitest config or a setup file.
+- **New components come with a test.** From then on, `ng generate component` adds a `*.test.ts` that renders the component with `render()`.
 
-To install it by hand instead:
+To install the library by hand instead:
 
-```sh
+```bash
 npm install --save-dev @blotch/angular-lynx-testing-library
 ```
 
-## Rendering a Component
+## Run the tests
 
-`render()` bootstraps a standalone component through the full Lynx pipeline and returns `@testing-library/dom` queries:
+```bash
+ng test                 # watches for changes in a terminal, runs once in CI
+ng test --watch=false   # runs once
+```
 
-```ts
+- **The builder.** `ng add` points the `test` target in `angular.json` at `@blotch/angular-lynx-build:unit-test`. It's Angular's own unit-test builder (Vitest), set up for Lynx, so it takes the same options: `include`, `coverage`, `setupFiles`, `providersFile` and the rest.
+- **Test files.** It runs every `*.spec.ts` and `*.test.ts` file. Angular's `TestBed` works too, so the specs that `ng generate service` or `ng generate pipe` writes run as they are.
+- **Strict templates.** Tests compile ahead of time, like the app, and their templates are checked strictly. A component that uses Lynx elements must import `LYNX_ELEMENTS` from `@blotch/angular-lynx`. Generated components already do.
+
+## Render a component
+
+`render()` starts a standalone component the way your app starts, and returns queries bound to what it rendered:
+
+```typescript title="src/app/greeting.test.ts"
 import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render } from '@blotch/angular-lynx-testing-library';
 
 @Component({
-  selector: 'my-greeting',
+  selector: 'app-greeting',
   imports: [LYNX_ELEMENTS],
   template: `<text>Hello {{ name() }}</text>`,
 })
 class Greeting {
-  name = signal('World');
+  readonly name = signal('World');
 }
 
 it('renders a greeting', async () => {
@@ -51,62 +53,68 @@ it('renders a greeting', async () => {
 });
 ```
 
-### RenderOptions
+- **`render()` is async.** Await it. The first render has finished when it resolves.
+- **Lynx elements are real elements in the test.** A `<view>` renders as a `<view>` element and a `<text>` as a `<text>` element, so `querySelector('text')` works.
+- **Change detection and the renderer are set up for you.** You don't add `provideZonelessChangeDetection()` or `provideRenderer()`.
 
-Pass providers to inject dependencies:
+Pass `providers` to swap in test values for your app's dependencies:
 
-```ts
-const { getByText } = await render(Example, {
+```typescript
+import { API_URL } from './api-url';
+
+const { getByText } = await render(Greeting, {
   providers: [{ provide: API_URL, useValue: 'https://api.example.com' }],
 });
 ```
 
-### RenderResult
+[Testing patterns](./patterns#fake-native-apis) uses this to fake native APIs.
 
-| Property                        | Type                                             | Description                                                  |
-| ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
-| `container`                     | `Element`                                        | JSDOM root `<page>` element                                  |
-| `unmount`                       | `() => void`                                     | Destroys the Angular app                                     |
-| `rerender`                      | `(component, options?) => Promise<RenderResult>` | Swap to a new component without manual cleanup               |
-| `asFragment`                    | `() => DocumentFragment`                         | Snapshot of the container for `toMatchSnapshot()`            |
-| `componentRef`                  | `ComponentRef<unknown>`                          | Angular component reference — use `.injector` or `.instance` |
-| `getByText`, `queryByText`, ... | queries                                          | All `@testing-library/dom` queries bound to `container`      |
+## Query what rendered
 
-## Querying the DOM
+Use `getBy*` when the element must exist, and `queryBy*` when it may be absent:
 
-Use `getBy*` when the element must exist, `queryBy*` when it may be absent:
+```typescript title="src/app/product-list.test.ts"
+import { render, within } from '@blotch/angular-lynx-testing-library';
+import { ProductList } from './product-list';
 
-```ts
-const { getByText, queryByText } = await render(TextDisplay);
-expect(getByText('Hello Lynx')).toBeTruthy();
-expect(queryByText('Not here')).toBeNull();
-```
+it('lists the products', async () => {
+  const { container, getByText, queryByText } = await render(ProductList);
 
-Use the `screen` export for global queries, or `within()` to scope queries to a subtree:
+  expect(getByText('Gadget')).toBeTruthy();
+  expect(queryByText('Sold out')).toBeNull();
 
-```ts
-import { render, screen, within } from '@blotch/angular-lynx-testing-library';
-
-await render(ProductList);
-expect(screen.getByText('Hello Lynx')).toBeTruthy();
-
-const row = within(container.querySelectorAll('view')[1] as HTMLElement);
-expect(row.getByText('Gadget')).toBeTruthy();
-```
-
-## Re-rendering
-
-`rerender()` swaps the component without manual cleanup:
-
-```ts
-const { rerender } = await render(ComponentA);
-const { container } = await rerender(ComponentB, {
-  providers: [{ provide: MY_TOKEN, useValue: 'new-value' }],
+  // Scope queries to one part of the tree with within():
+  const secondRow = container.querySelectorAll('view')[1] as HTMLElement;
+  expect(within(secondRow).getByText('Gadget')).toBeTruthy();
 });
 ```
 
-## Next
+The library also exports `screen`, which runs queries against the whole document.
 
-- [Testing Patterns](./patterns) — Signals, events, snapshots, control flow
-- [Event Reference](/api/testing-library/event-reference) — All supported events and their template bindings
-- [API Reference](/api/testing-library/) — Full API types and signatures
+`render()` also returns:
+
+- **`container`:** the root `<page>` element that holds everything rendered.
+- **`componentRef`:** the component's `ComponentRef`, for reading its instance or its injector.
+- **`rerender(Component, options?)`:** renders another component in its place.
+- **`asFragment()`:** a copy of the tree, for snapshot tests.
+- **`unmount()`:** destroys the app. The library also cleans up after every test by itself.
+
+The [API reference](/api/testing-library/) lists every option and type.
+
+## What jsdom tests can't cover
+
+The tests run your app's main-thread copy in jsdom, not on a phone. Some things only exist on a device:
+
+- **Native APIs.** `LynxNativeModule.call()` returns `undefined`, and `LynxTextMeasure.measure()` throws. Provide fakes, as in [Fake native APIs](./patterns#fake-native-apis).
+- **Data from the host app.** No host app runs, so InitData and GlobalData hold nothing unless you provide them. See [Fake host data](./patterns#fake-host-data).
+- **Background-thread APIs.** Only the copy of your app that draws the screen runs in a test. See [Threads](/guide/concepts/threads).
+- **Main-thread scripts and gestures.** jsdom has no native elements to move, so test dragging and gestures on a device.
+- **Layout and native rendering.** jsdom computes no layout, so sizes and positions are unknown, and layout events don't fire by themselves.
+
+Check these by running the app in Lynx Explorer, or on a simulator with [Run on iOS and Android](/guide/native-apps).
+
+## Related
+
+- [Testing patterns](./patterns): signals, events, snapshots and fakes.
+- [Event reference](/api/testing-library/event-reference): every event `fireEvent` can send.
+- [Testing library API](/api/testing-library/)

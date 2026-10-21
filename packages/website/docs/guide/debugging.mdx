@@ -1,0 +1,182 @@
+# Debugging
+
+A phone has no browser console to open. This page shows where your logs go, how to stream them to your computer, and how to inspect a running app.
+
+## Where `console.log` goes
+
+`console.log()`, `console.warn()` and the rest work on Lynx. Where you read the output depends on where the app runs:
+
+| Your app runs in                               | Read `console.*` output in                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| The [web preview](/guide/glossary#web-preview) | Your browser's DevTools console, as for any web page                        |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | The **Console** panel of [Lynx DevTool](#inspect-the-app-with-lynx-devtool) |
+| The apps `ng build --platform` makes           | Nowhere you can easily read. These apps don't include Lynx DevTool          |
+
+On a device, `console.*` goes to Lynx's native logging, not to a panel on screen. To read logs without Lynx DevTool, use `LynxLogger`.
+
+## Stream logs to your computer
+
+`LynxLogger` sends log lines from the device to a file on your computer while `ng serve` runs.
+
+```typescript title="src/app/app.ts"
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxLogger } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="add()">
+      <text>Count: {{ count() }}</text>
+    </view>
+  `,
+})
+export class App {
+  readonly count = signal(0);
+  readonly #logger = inject(LynxLogger);
+
+  add(): void {
+    this.count.update((n) => n + 1);
+    this.#logger.log('Tapped, count is', this.count());
+  }
+}
+```
+
+In a second terminal, in the folder where you ran `ng serve`, follow the log file:
+
+```bash
+tail -f .dev-logs
+```
+
+Each call becomes one line with the time and the level:
+
+```bash
+10:42:07.311 LOG Tapped, count is 1
+```
+
+- **How it reaches you.** `ng serve` also starts a small log server on the next port up (3001 when the dev server uses 3000). The app sends each line there over your network. It works from any code, including event handlers.
+- **The file.** Lines go to `.dev-logs` in the folder you ran `ng serve` from. Each `ng serve` run starts the file fresh. Add `.dev-logs` to your `.gitignore`.
+- **The methods.** `log()`, `info()`, `warn()`, `error()` and `debug()`. The level shows in each line.
+- **Objects.** Each argument is turned into a string with `String()`, so an object prints as `[object Object]`. Pass `JSON.stringify(value)` instead.
+- **Logged twice?** Code that runs in both copies of your app, such as a constructor, logs once per copy. See [Threads](/guide/concepts/threads).
+- **Development only.** `LynxLogger` does nothing in production builds, so you can leave the calls in. A shipped app sends nothing.
+
+:::tip Nothing in `.dev-logs`?
+The phone must reach your computer on the log server's port as well as the dev server's. Check that both are on the same network, and that a firewall doesn't block the port.
+:::
+
+## Inspect the app with Lynx DevTool
+
+[**Lynx DevTool**](/guide/glossary#lynx-devtool) is a desktop app from the Lynx team: browser DevTools for an app running on a phone. Its panels are:
+
+- **Elements:** inspect and change the elements on screen.
+- **Console:** read logs and run JavaScript.
+- **Sources:** debug your JavaScript.
+- **Layers:** look at the app's layers in 3D to find rendering problems.
+- **Trace,** in the top bar: record a performance trace. See [Profiling performance](/guide/profiling).
+
+To connect it:
+
+1. Download Lynx DevTool from its [GitHub releases page](https://github.com/lynx-family/lynx-devtool/releases).
+2. In Lynx Explorer, open the **Switch** page and turn on **Lynx Debug** and **Lynx DevTool**. The same switch makes Lynx Explorer reload your app when you save a file.
+3. Connect the phone to your computer with a USB cable. Lynx DevTool finds it.
+
+Lynx's [DevTool guide](https://lynxjs.org/guide/devtool) covers each panel in depth.
+
+## Show errors on screen
+
+When nothing is connected, put the latest error on screen. This helps most in the apps `ng build --platform` makes, which show no error screen of their own.
+
+Extend [`LynxErrorHandler`](/guide/error-handling) so it copies each error into a signal:
+
+```typescript title="src/app/error-log.ts"
+import { type ErrorDetails, inject, Injectable, signal } from '@angular/core';
+import { LynxErrorHandler } from '@blotch/angular-lynx';
+
+/** Holds the latest error as text, for the screen. */
+@Injectable({ providedIn: 'root' })
+export class ErrorLog {
+  readonly last = signal('');
+}
+
+@Injectable()
+export class ShowErrorsHandler extends LynxErrorHandler {
+  readonly #log = inject(ErrorLog);
+
+  override handleError(error: unknown): void {
+    super.handleError(error);
+    this.#show(error);
+  }
+
+  override onViewError(error: Error, details: ErrorDetails): void {
+    super.onViewError(error, details);
+    this.#show(error);
+  }
+
+  #show(error: unknown): void {
+    // Angular can call the handler in the middle of rendering, where writing
+    // a signal throws NG0600. Wait until rendering has finished.
+    queueMicrotask(() => this.#log.last.set(String(error)));
+  }
+}
+```
+
+Register it after `provideRenderer()`, which registers the default handler:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  ErrorHandler,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+import { ShowErrorsHandler } from './error-log';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    { provide: ErrorHandler, useClass: ShowErrorsHandler }, // [!code highlight]
+  ],
+};
+```
+
+Then show it in your root component:
+
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { ErrorLog } from './error-log';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view>
+      <!-- Your app -->
+
+      @if (errors.last()) {
+        <view style="background-color: #b91c1c; padding: 8px;">
+          <text style="color: white; font-size: 12px; word-break: break-all;">
+            {{ errors.last() }}
+          </text>
+        </view>
+      }
+    </view>
+  `,
+})
+export class App {
+  readonly errors = inject(ErrorLog);
+}
+```
+
+- **Why a signal.** Under zoneless change detection, Angular re-renders only when a signal changes. A template that reads a plain variable never updates.
+- **Errors outside Angular.** An unhandled promise rejection, for example, skips the error handler. AngularLynx still saves it, as text in `globalThis.__lynxLastError`. That's a plain string, so read it on demand, e.g. from a tap handler that copies it into `errors.last`.
+- **Before you ship,** remove the display. It's a development aid, not something to show users.
+
+## Related
+
+- [Handling errors](/guide/error-handling): what happens when code throws, and `@boundary`.
+- [Profiling performance](/guide/profiling)
+- [`LynxLogger` and `LynxErrorHandler` API](/api/angular-lynx/errors-and-logging)
+- [Lynx DevTool guide](https://lynxjs.org/guide/devtool) on lynxjs.org

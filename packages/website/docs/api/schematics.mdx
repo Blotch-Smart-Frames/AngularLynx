@@ -1,0 +1,174 @@
+# Schematics
+
+`@blotch/angular-lynx` ships Angular CLI schematics that set a project up for Lynx and generate Lynx components.
+
+| Schematic                       | Command                                  | What it does                                       |
+| ------------------------------- | ---------------------------------------- | -------------------------------------------------- |
+| [`ng-add`](#ng-add)             | `ng add @blotch/angular-lynx`            | Turns an `ng new` project into a Lynx app          |
+| [`component`](#component)       | `ng generate component <name>`           | Generates a component with a Lynx template         |
+| [`add-tailwind`](#add-tailwind) | `ng g @blotch/angular-lynx:add-tailwind` | Adds Tailwind CSS with the Lynx preset             |
+| [`add-testing`](#add-testing)   | `ng g @blotch/angular-lynx:add-testing`  | Adds the AngularLynx testing library               |
+| [`add-i18n`](#add-i18n)         | `ng g @blotch/angular-lynx:add-i18n`     | Adds `@angular/localize` and `provideLocale()`     |
+| [`eject`](#eject)               | `ng g @blotch/angular-lynx:eject`        | Copies the iOS and Android projects into your repo |
+
+`npm create angular-lynx` runs `ng add` for you. Every schematic takes `--project`, which defaults to the project you're in.
+
+## `ng-add`
+
+```bash
+ng add @blotch/angular-lynx
+```
+
+**What it changes:**
+
+- **`src/main.ts`**: replaced. It calls `bootstrapApplication` from `@blotch/angular-lynx`.
+- **`src/app/app.config.ts`**: replaced, with `provideZonelessChangeDetection()`, `provideRenderer()` and `provideRouter(routes)` (from `@blotch/angular-lynx`).
+- **`src/app/app.ts`**: replaced with a root component whose inline template uses Lynx elements and a `<router-outlet>`. `app.html`, `app.css` (or `.scss`) and `app.spec.ts` are deleted.
+- **`src/rspeedy-env.d.ts`**: added. It types asset and CSS module imports.
+- **`tsconfig.app.json`** excludes `src/**/*.test.ts`, and **`tsconfig.spec.json`** includes it.
+- **`angular.json`**:
+  - `build` uses `@blotch/angular-lynx-build:application`. It keeps `ng new`'s configurations and the options the builder accepts, and adds `appName` and a placeholder `appId` (`com.example.<name>`) for the native apps.
+  - `ng new`'s `initial` budget (500 kB warning, 1 MB error) becomes 2 MB and 5 MB. A Lynx bundle holds Angular twice, once per thread.
+  - `serve` uses `@blotch/angular-lynx-build:dev-server`, keeping `buildTarget`, `port` and `host`.
+  - `test` uses `@blotch/angular-lynx-build:unit-test`, keeping the options of an `@angular/build:unit-test` target.
+  - `cli.schematicCollections` lists `@blotch/angular-lynx` first, so `ng generate component` makes Lynx components.
+- **`package.json`**: `start` runs `ng serve` and `build` runs `ng build`. Adds `@blotch/angular-lynx-build` and `@lynx-js/types` as dev dependencies.
+- **Tailwind CSS**, unless `--tailwind=false`: the same changes as [`add-tailwind`](#add-tailwind).
+
+It doesn't write a `lynx.config.ts`. The builders read everything from `angular.json` (see [`@blotch/angular-lynx-build`](/api/build/)).
+
+| Option       | Type      | Default             | Description                                           |
+| ------------ | --------- | ------------------- | ----------------------------------------------------- |
+| `--project`  | `string`  | The current project | The project to convert                                |
+| `--tailwind` | `boolean` | `true`              | Add Tailwind CSS. You're asked when you don't pass it |
+
+## `component`
+
+```bash
+ng generate component pages/dashboard   # or: ng g c pages/dashboard
+```
+
+`ng add` puts `@blotch/angular-lynx` first in `cli.schematicCollections`, so this command runs it. Without that setting, run `ng generate @blotch/angular-lynx:component <name>`. Other `ng generate` schematics, such as `service` and `pipe`, still come from Angular.
+
+**What it changes:**
+
+- **Runs Angular's component schematic** with your options and `angular.json`'s `@schematics/angular:component` defaults, so it creates the files you know.
+- **The template** gets Lynx elements: the `<p>dashboard works!</p>` placeholder becomes `<view><text>dashboard works!</text></view>`, in the `.html` file or inline.
+- **The component** imports `LYNX_ELEMENTS`, so its template type-checks in your editor and under `ng test`. A component declared in an NgModule (`--standalone false`) is left as Angular made it.
+- **The test**: if `@blotch/angular-lynx-testing-library` is in `package.json`, `dashboard.spec.ts` is replaced by `dashboard.test.ts`, which renders the component with [`render()`](/api/testing-library/). Without the library, Angular's spec stays.
+
+It takes all of [Angular's component options](https://angular.dev/cli/generate/component). Defaults come from `angular.json`, then Angular.
+
+| Option                     | Alias | Type                                          | Description                                           |
+| -------------------------- | ----- | --------------------------------------------- | ----------------------------------------------------- |
+| `name`                     |       | `string`                                      | The component name, optionally with a path. Required  |
+| `--project`                |       | `string`                                      | The project to add it to                              |
+| `--inline-template`        | `-t`  | `boolean`                                     | Put the template in the `.ts` file                    |
+| `--inline-style`           | `-s`  | `boolean`                                     | Put the styles in the `.ts` file                      |
+| `--style`                  |       | `css` \| `scss` \| `sass` \| `less` \| `none` | The stylesheet type                                   |
+| `--skip-tests`             |       | `boolean`                                     | Don't create a test file                              |
+| `--flat`                   |       | `boolean`                                     | Don't create a folder for the files                   |
+| `--type`                   |       | `string`                                      | Add a type to the file name, e.g. `dashboard.page.ts` |
+| `--add-type-to-class-name` |       | `boolean`                                     | Also add the type to the class name                   |
+| `--prefix`                 | `-p`  | `string`                                      | The selector prefix                                   |
+| `--selector`               |       | `string`                                      | The selector                                          |
+| `--skip-selector`          |       | `boolean`                                     | Don't give the component a selector                   |
+| `--change-detection`       | `-c`  | `Eager` \| `OnPush`                           | The change detection strategy                         |
+| `--view-encapsulation`     | `-v`  | `Emulated` \| `None` \| `ShadowDom`           | How styles are scoped                                 |
+| `--display-block`          | `-b`  | `boolean`                                     | Add `:host { display: block; }` to the styles         |
+| `--export-default`         |       | `boolean`                                     | Use a default export                                  |
+| `--ng-html`                |       | `boolean`                                     | Name the template `.ng.html`                          |
+| `--standalone`             |       | `boolean`                                     | Make a standalone component                           |
+| `--module`                 | `-m`  | `string`                                      | The NgModule to declare it in                         |
+| `--export`                 |       | `boolean`                                     | Export it from that NgModule                          |
+| `--skip-import`            |       | `boolean`                                     | Don't add it to an NgModule                           |
+
+## `add-tailwind`
+
+```bash
+ng generate @blotch/angular-lynx:add-tailwind
+```
+
+Use it if you skipped Tailwind during `ng add`. See [Tailwind CSS](/guide/tailwindcss).
+
+**What it changes:**
+
+- **`tailwind.config.ts`**: created, or replaced, with `@lynx-js/tailwind-preset` and `content: ['./src/**/*.ts']`.
+- **`src/styles.css`** (or `styles.scss` if it exists): its contents are replaced with `@tailwind base;` and `@tailwind utilities;`.
+- **`package.json`**: adds `tailwindcss` (3.x) and `@lynx-js/tailwind-preset` as dev dependencies.
+
+| Option      | Type     | Default             | Description           |
+| ----------- | -------- | ------------------- | --------------------- |
+| `--project` | `string` | The current project | The project to change |
+
+## `add-testing`
+
+```bash
+ng generate @blotch/angular-lynx:add-testing
+```
+
+Adds the [testing library](/api/testing-library/), so tests can render components on Lynx. See [Testing](/guide/testing/).
+
+**What it changes:**
+
+- **`package.json`**: adds `@blotch/angular-lynx-testing-library` as a dev dependency, plus `vitest` and `jsdom` if they're missing. `ng new` already adds both. Sets the `test` script to `ng test`.
+- **`angular.json`**: points `test` at `@blotch/angular-lynx-build:unit-test`, if it isn't already. `ng add` does this for new projects.
+
+There's no Vitest config or setup file to add: `ng test` loads the library's setup itself. Components you generate from then on get a test that renders them on Lynx.
+
+| Option      | Type     | Default             | Description           |
+| ----------- | -------- | ------------------- | --------------------- |
+| `--project` | `string` | The current project | The project to change |
+
+## `add-i18n`
+
+```bash
+ng generate @blotch/angular-lynx:add-i18n
+```
+
+Sets up `@angular/localize` with the device's language. See [Internationalization](/guide/i18n).
+
+**What it changes:**
+
+- **`angular.json`**: adds an `i18n` block with `sourceLocale: 'en-US'` if there's none, and adds `@angular/localize/init` to the build's `polyfills`.
+- **`tsconfig.app.json`**: adds `@angular/localize` to `compilerOptions.types`, so `$localize` is typed.
+- **`src/app/app.config.ts`**: adds `provideLocale()` as the first provider, unless the file already uses it.
+- **`package.json`**: adds `@angular/localize` as a dev dependency, at the same version range as your `@angular/core`.
+
+| Option      | Type     | Default             | Description           |
+| ----------- | -------- | ------------------- | --------------------- |
+| `--project` | `string` | The current project | The project to change |
+
+## `eject`
+
+```bash
+ng generate @blotch/angular-lynx:eject --platform ios
+```
+
+Copies the **native projects** (the source folders of the iOS and Android apps) that `ng build --platform` generates into your repo. Eject only when you need a native change that the [build options](/api/build/#native-app-options) don't cover. See [Run on iOS and Android](/guide/native-apps).
+
+**What it changes:**
+
+- **`ios/` and `android/`**: created in the project folder. It stops with an error if a folder already exists and isn't empty.
+- **`ng build --platform`** then builds those folders as they are.
+
+It's one-way. The app options in `angular.json` no longer apply to an ejected project, and keeping it up to date with Lynx, Apple's and Google's tools becomes your job. It needs `@blotch/angular-lynx-build` installed.
+
+| Option       | Type                        | Default             | Description                  |
+| ------------ | --------------------------- | ------------------- | ---------------------------- |
+| `--project`  | `string`                    | The current project | The project to eject         |
+| `--platform` | `ios` \| `android` \| `all` | `all`               | Which native project to copy |
+
+## `ng update`
+
+```bash
+ng update @blotch/angular-lynx
+```
+
+Updates `@blotch/angular-lynx`, `@blotch/angular-lynx-build`, `@blotch/angular-lynx-testing-library` and the packages they use together, so their versions stay in step.
+
+## Related
+
+- [Quick Start](/guide/quick-start)
+- [`@blotch/angular-lynx-build`](/api/build/)
+- [Testing](/guide/testing/)

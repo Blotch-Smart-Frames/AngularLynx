@@ -1,0 +1,136 @@
+# Publish to the app stores
+
+To get your app to users, you join each store's developer program, set up signing, build signed app files and upload them. `ng build --platform` makes the signed files. Uploading and the store listings are manual for now.
+
+Before you start, build and try the unsigned apps, as in [Run on iOS and Android](/guide/native-apps).
+
+## What signing is
+
+[**Signing**](/guide/glossary#signing) attaches a cryptographic signature to your app file that proves it came from you and hasn't been changed. The stores require it so that only you can publish updates to your app.
+
+## Join the developer programs
+
+Each store needs a developer account, and both charge for it. At the time of writing:
+
+- **Apple Developer Program:** US$99 a year. [Enroll on developer.apple.com](https://developer.apple.com/programs/).
+- **Google Play Console:** a one-time US$25 registration fee. [Create a developer account](https://support.google.com/googleplay/android-developer/answer/6112435).
+
+A personal Google Play account created after November 13, 2023 must run a closed test first: at least 12 testers, opted in for at least 14 days, before the app can go to production. See Google's [testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465).
+
+## Set up signing
+
+Signing secrets never go in `angular.json`. The signing options name the **environment variables** that hold the secrets, and the build reads them. Add the options next to the [app identity](/guide/native-apps#set-the-app-identity):
+
+```json title="angular.json"
+"options": {
+  "ios": {
+    "teamId": "ABCDE12345",
+    "signing": {
+      "keyIdEnv": "ASC_KEY_ID",
+      "issuerIdEnv": "ASC_ISSUER_ID",
+      "keyPathEnv": "ASC_KEY_PATH"
+    }
+  },
+  "android": {
+    "signing": {
+      "storeFileEnv": "UPLOAD_KEYSTORE",
+      "storePasswordEnv": "UPLOAD_STORE_PASSWORD",
+      "keyAlias": "my-alias",
+      "keyPasswordEnv": "UPLOAD_KEY_PASSWORD"
+    }
+  }
+}
+```
+
+The variable names are yours to choose. If signing is only partly set up, for example a variable isn't set, the build stops and names what's missing.
+
+### iOS: App Store Connect API key
+
+iOS signing uses an **App Store Connect API key**, which lets the build sign on your behalf. Xcode's tools then create the certificate and provisioning profile Apple needs by themselves, so you never open Xcode.
+
+1. **Turn on API access.** The account holder opens App Store Connect, goes to **Users and Access** → **Integrations**, and clicks **Request Access**.
+2. **Generate a team key.** In **Users and Access** → **Integrations** → **App Store Connect API** → **Team Keys**, click **Generate API Key**. Name it, choose the **Admin** role, and click **Generate**. Only an Admin can create team keys.
+3. **Download the private key**, a `.p8` file. You can download it only once, and Apple keeps no copy, so store it safely.
+4. **Note the key ID and the issuer ID** shown with your team keys, and your **team ID** from your Apple Developer account. Put the team ID in `ios.teamId`.
+5. **Set the variables** before you build:
+
+```bash
+export ASC_KEY_ID="2X9R4HXF34"
+export ASC_ISSUER_ID="57246542-96fe-1a63-e053-0824d011072a"
+export ASC_KEY_PATH="$HOME/secrets/app-store-connect.p8"
+```
+
+Without iOS signing, the build makes only the simulator app. Apple's [API key guide](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) has the details.
+
+:::warning Not yet tested with a real account
+iOS signing hasn't been verified against a real App Store Connect account yet. Use a key with the **Admin** role, which may be needed to create a distribution certificate. If signing fails, please [open an issue](https://github.com/Blotch-Smart-Frames/AngularLynx/issues).
+:::
+
+### Android: upload keystore
+
+{/* cspell:ignore keytool genkey keyalg keysize */}
+
+Android signing uses an **upload key**, kept in a **keystore** file. Google Play checks that each upload is signed with it, then signs the app for users with its own key.
+
+Create the keystore once with `keytool`, which comes with the JDK. This is the command from [Android's docs](https://developer.android.com/build/building-cmdline#sign_cmdline):
+
+```bash
+keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-alias
+```
+
+- **It asks** for a password and for your name and organization. Recent JDKs use that one password for both the keystore and the key, so set both password variables to it.
+- **It writes** `my-release-key.jks`, holding one key that's valid for 10,000 days.
+- **`my-alias`** is the key's name. Put the same value in `android.signing.keyAlias`, which takes the alias itself, not a variable.
+- **Keep the file safe,** and out of git. Back it up with its passwords. If you lose it, you have to [request an upload key reset](https://developer.android.com/studio/publish/app-signing#reset_upload_key) in the Play Console.
+
+Then set the variables before you build:
+
+```bash
+export UPLOAD_KEYSTORE="$HOME/secrets/my-release-key.jks"
+export UPLOAD_STORE_PASSWORD="…"
+export UPLOAD_KEY_PASSWORD="…"
+```
+
+Without Android signing, the build signs the app with a debug key. That app installs on emulators and phones, but Google Play rejects it.
+
+## Build the signed apps
+
+```bash
+ng build --platform all
+```
+
+With signing set up, the build adds `dist/ios/MyApp.ipa` and signs `dist/android/my-app.aab` with your upload key.
+
+In CI, store the key files and passwords as the CI service's secrets, and expose them as the same environment variables.
+
+## Upload to the stores
+
+`ng build` doesn't upload for you yet.
+
+**App Store:**
+
+1. In [App Store Connect](https://appstoreconnect.apple.com/), create an app with the same bundle ID as your `appId`.
+2. [Upload `MyApp.ipa`](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds), e.g. with Apple's **Transporter** app for Mac.
+3. Install it on your iPhone through **TestFlight**, Apple's app for testing builds. Then submit it for review.
+
+**Google Play:**
+
+1. In the [Play Console](https://play.google.com/console), create your app.
+2. Upload `my-app.aab` to a release. Start on the **internal testing** track. New apps must be uploaded as `.aab` files.
+3. When testing is done, promote the release to production.
+
+## Before you ship
+
+- **App ID:** you've replaced `ng add`'s `com.example.*` placeholder. The stores don't let you change it later.
+- **Build number:** it's higher than in your last upload.
+- **The built app works:** install `MyApp-simulator.app` or `my-app.apk` and try it. That's what your users get, not Lynx Explorer.
+- **Icon:** iOS uses your `icon`. The Android app still gets a placeholder icon for now.
+- **No debug aids:** remove on-screen debugging, such as an [error display](/guide/debugging#show-errors-on-screen).
+- **Crash reports:** [`LynxLogger`](/guide/debugging#stream-logs-to-your-computer) only works with your dev server, so it's silent in shipped apps. AngularLynx can't upload error reports yet either (see [Add your own handling](/guide/error-handling#add-your-own-handling)), so plan how you'll hear about your users' errors.
+- **Bundle size:** [budgets](/guide/building-for-production#budgets) fail the build when the bundle grows past a limit.
+
+## Related
+
+- [Run on iOS and Android](/guide/native-apps): build options and the app identity.
+- [`@blotch/angular-lynx-build` API](/api/build/): every signing option.
+- [Embed in an existing native app](/guide/embedding/): ship inside an app you already publish.

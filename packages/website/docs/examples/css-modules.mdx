@@ -1,12 +1,17 @@
 # CSS Modules
 
-Use hashed CSS Module classes for scoped, collision-free styling on Lynx.
+Component styles from a `.module.css` file, with class names hashed at build time so they can't clash with other styles.
 
 <Go example="css-modules" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **CSS Modules** — importing a `.module.css` file returns an object mapping original class names to unique hashed names, preventing style collisions
-- **`[class]` binding** — dynamically applies hashed class names via `styles['card']` instead of static class strings
-- **Scoped styles** — each class is locally scoped to the component that imports it, eliminating global namespace pollution
-- **Debug visibility** — the example renders the hashed class names on screen to show how CSS Modules transform class names at build time
+- **Importing a `.module.css` file** — `import styles from './demo.module.css'` gives you an object that maps each class name to its hashed name. See [CSS Modules](/guide/css-modules).
+- **`[class]="styles['card']"`** — applies a hashed class in the template. The component exposes `styles` as a field so the template can read it.
+- **A type declaration** — `src/css-modules.d.ts` declares `*.module.css` imports, so TypeScript accepts them.
+- **The hashed names on screen** — the last card prints what `card` and `title` compile to.
+
+## Related
+
+- [CSS on Lynx](/guide/styling)
+- [Tailwind CSS](/guide/tailwindcss)

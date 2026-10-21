@@ -1,126 +1,158 @@
-# Renderer Architecture
+# Renderer internals
 
-Angular uses `Renderer2` as its abstraction for DOM manipulation. On the web, this maps to `document.createElement()`, `element.appendChild()`, and friends. In AngularLynx, the renderer maps these operations to Lynx's native element API — global functions like `__CreateView`, `__AppendElement`, and `__FlushElementTree`.
+This page explains how AngularLynx turns Angular's rendering calls into native Lynx elements. It's for contributors and the curious: you don't need it to build an app. The source is in `packages/runtime/src/lib`, mainly `renderer/`, `lynx-document/`, `lynx-element/`, `router/` and `runtime.ts`.
 
-Understanding this architecture helps you debug rendering issues and reason about platform constraints.
+## Two bundles from one source
 
-## The Rendering Pipeline
+Apps install `@blotch/angular-lynx-build`. Its builders add the internal build plugin, `@blotch/rsbuild-plugin-angular-lynx`, to [RSpeedy](/guide/glossary#rspeedy), Lynx's build tool. The plugin compiles each entry twice:
 
-When Angular renders a component template, the operations flow through several layers:
+| Entry               | Thread     | Output                 | `__MAIN_THREAD__` |
+| ------------------- | ---------- | ---------------------- | ----------------- |
+| `main__main-thread` | Main       | `main-thread.js`       | `true`            |
+| `main`              | Background | `background-thread.js` | `false`           |
+
+Both are packed into one [bundle](/guide/glossary#bundle), `main.lynx.bundle`. `__MAIN_THREAD__` is a compile-time constant, so each half drops the other thread's branches.
+
+- **The [main thread](/guide/glossary#main-thread)** runs PrimJS, a QuickJS-based engine, and its code ships as bytecode. Older Lynx code calls this runtime **Lepus**.
+- **The [background thread](/guide/glossary#background-thread)** runs PrimJS on Android and JavaScriptCore on iOS.
+- **On the web**, `@lynx-js/web-core` runs the main thread in an iframe and the background thread in a Web Worker.
+
+## Both threads boot Angular
+
+`bootstrapApplication()` from `@blotch/angular-lynx` runs in both halves of the bundle (see [Threads](/guide/concepts/threads) for what this means for app code):
 
 ```mermaid
-flowchart TD
-    A["Angular Component Template"] -->|"compiled to render instructions"| B["Renderer2 API calls"]
-    B -->|"delegated to"| C["LynxRenderer"]
-    C -->|"calls"| D["LynxDocument.createElement('view')"]
-    D -->|"calls"| E["__CreateView(pageId)\nLynx global function"]
-    E --> F["Native element pool slot allocated"]
-    F -->|"at end of change detection"| G["__FlushElementTree()\nCommits all changes to native UI"]
+sequenceDiagram
+    participant N as Lynx engine
+    participant M as Main thread
+    participant B as Background thread
+    B->>B: bootstrapApplication()<br/>LynxBackgroundDocument
+    N->>M: renderPage()
+    M->>M: bootstrapApplication()<br/>LynxDocument
+    M->>N: __CreatePage, __CreateView, __AppendElement…
+    M->>M: markFirstRenderComplete()
+    N->>N: flush after renderPage returns
 ```
 
-Each step in this pipeline is a direct function call — there is no virtual DOM diffing or reconciliation. Angular's compiled template instructions directly create and manipulate native Lynx elements.
+- **The background copy** bootstraps as soon as it loads. `provideRenderer()` gives it a `LynxBackgroundDocument`.
+- **The main copy** waits for the engine to call the global `renderPage()`, then bootstraps with a `LynxDocument`.
+- **Before either**, the runtime installs its globals: `onerror` handlers that forward to `_ReportError`, polyfills (timers from `lynx.setTimeout`, `URL`, `queueMicrotask`), and the registry for [main-thread scripts](/guide/glossary#main-thread-script).
 
-## Key Components
+**`LynxDocument`** creates real native elements through Lynx's element functions (`__CreateView`, `__SetAttribute`, …). Its elements are the only ones you see, and the only ones that receive events.
 
-### LynxRendererFactory2
+**`LynxBackgroundDocument`** builds a tree of `LynxBackgroundElement` objects in memory. Nothing reads it for layout, and nothing sends it to the main thread. It exists so the same Angular code runs on a thread with no element functions. Event listeners on it are stored but never registered with the engine, so background handlers never fire.
 
-Implements Angular's `RendererFactory2`. When Angular creates a component, it calls `createRenderer()` to get a renderer instance. The factory returns:
+The background copy is useful because the background thread has APIs the main thread lacks, such as `fetch`, native modules and `lynx.createSelectorQuery()`. `LynxLogger`, `backgroundFn()` and `runOnBackground()` reach them across threads with Lynx's event channels (`getJSContext()` / `getCoreContext()`).
 
-- **`LynxRenderer`** — For components with `ViewEncapsulation.None`
-- **`EmulatedLynxRenderer`** — For the default `ViewEncapsulation.Emulated`, which adds a scope class to the host element for CSS isolation
+## How Renderer2 maps onto Lynx
 
-The factory also implements `end()`, which is called after every change detection cycle. This is where `__FlushElementTree()` is invoked to commit all pending element operations to the native UI.
+`LynxRenderer` implements Angular's `Renderer2`. It delegates to `LynxDocument` and to `LynxElement`, a wrapper around a native element reference:
 
-### LynxRenderer
+| `Renderer2` call                | What runs                                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selectRootElement()`           | `__CreatePage`                                                                                                                                                         |
+| `createElement(tag)`            | The tag's creator: `__CreateView`, `__CreateText`, `__CreateImage`, `__CreateScrollView`, …, or `__CreateElement('x-…')` for [XElement](/guide/glossary#xelement) tags |
+| `createText(value)`             | `__CreateRawText`                                                                                                                                                      |
+| `createComment()`               | `__CreateView` with `display: none`                                                                                                                                    |
+| `appendChild()`                 | `__AppendElement`                                                                                                                                                      |
+| `insertBefore()`                | `__InsertElementBefore`                                                                                                                                                |
+| `removeChild()`                 | Queues the removal. `__RemoveElement` runs at the end of the cycle                                                                                                     |
+| `setAttribute()`                | `__SetClasses` for `class`, `__SetInlineStyles` for `style`, `__SetID` for `id`, `__SetDataset` for `data-*`, otherwise `__SetAttribute`                               |
+| `setStyle()`, `removeStyle()`   | `__AddInlineStyle` (a `null` value removes)                                                                                                                            |
+| `addClass()`, `removeClass()`   | `__AddClass`; `__GetClasses` then `__SetClasses`                                                                                                                       |
+| `setValue()` on a text node     | `__SetAttribute(el, 'text', value)`                                                                                                                                    |
+| `listen()`                      | `__AddEvent(el, eventType, name, { type: 'worklet', value: listener })`, with `eventType` from the `bind`, `catch`, `capture-` or `global-` prefix                     |
+| `parentNode()`, `nextSibling()` | `__GetParent`, `__NextElement`                                                                                                                                         |
 
-Implements Angular's `Renderer2` interface. Maps every DOM operation to its Lynx equivalent:
+A few choices behind the table:
 
-| Renderer2 method                   | Lynx global function                        |
-| ---------------------------------- | ------------------------------------------- |
-| `createElement('view')`            | `__CreateView(pageId)`                      |
-| `createElement('text')`            | `__CreateText(pageId)`                      |
-| `createElement('image')`           | `__CreateImage(pageId)`                     |
-| `appendChild(parent, child)`       | `__AppendElement(parent, child)`            |
-| `insertBefore(parent, child, ref)` | `__InsertElementBefore(parent, child, ref)` |
-| `removeChild(parent, child)`       | `__RemoveElement(child)`                    |
-| `setAttribute(el, name, value)`    | `__SetAttribute(el, name, value)`           |
-| `setStyle(el, style, value)`       | `__AddInlineStyle(el, style, value)`        |
-| `addClass(el, name)`               | `__AddClass(el, name)`                      |
-| `listen(el, event, callback)`      | `__AddEvent(el, eventType, event)`          |
-| `createComment()`                  | `__CreateView(pageId)` (invisible anchor)   |
+- **Comment anchors are hidden views.** Angular inserts `@if`, `@for` and `createComponent()` content next to comment nodes. Lynx's non-element node crashes the tree functions Angular calls on anchors, so a `display: none` view stands in.
+- **Unknown tags become views.** Component host elements such as `<app-card>` go through `createElement()`, and they need to be real layout boxes.
+- **`<list>` is special.** It returns a `LynxListElement`, whose children the engine requests through a `componentAtIndex` callback instead of `__AppendElement`.
+- **Native references can't be hashed.** Using one as a `Map`, `Set` or `WeakSet` key crashes the main-thread engine. Wrappers are keyed by `__GetElementUniqueID()` instead.
+- **`listen()` adds no-op `stopPropagation()` and `preventDefault()`** to event objects that lack them, so Angular's own listener wrapper doesn't throw.
 
-:::info
-Angular uses comment nodes as insertion anchors for structural directives (`@if`, `@for`, `ViewContainerRef`). Since Lynx has no comment elements, AngularLynx creates invisible `<view>` elements as anchors instead.
+## Emulated and None renderers
+
+`LynxRendererFactory2.createRenderer()` picks a renderer per component type:
+
+- **`ViewEncapsulation.None`**, or no type: one shared `LynxRenderer`.
+- **`ViewEncapsulation.Emulated`**, the default: one `EmulatedLynxRenderer` per component, keyed by its `ɵcmp.id`. It adds a `_nghost-<id>` class to the element from `selectRootElement()`, and nothing to child elements.
+- **`ViewEncapsulation.ShadowDom`**: logs a warning and falls back to `LynxRenderer`.
+
+Unlike the browser's emulated renderer, nothing adds `_ngcontent-*` attributes to child elements. Instead, the build plugin sets each component's `ɵcmp.id` to a scope ID, made from its class name and file path. The component's compiled CSS file is named after the same ID. The Lynx template loads that CSS, and the native CSS engine matches its class selectors.
+
+## The flush cycle
+
+Element functions change the engine's element tree right away, but nothing is laid out or drawn until **`__FlushElementTree()`** runs. Angular calls `begin()` and `end()` on the renderer factory around every change-detection cycle. On the main thread, `end()` runs, in this order:
+
+1. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
+2. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
+3. **`__FlushElementTree()`** commits everything to the screen.
+4. **`processPendingListUpdates()`** tells each `<list>` that gained or lost children, then flushes that list.
+
+Reversing steps 3 and 4 leaves list items empty, or re-enters the flush and crashes. On the background thread, `end()` does nothing.
+
+**The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips step 3 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call, such as a list's first layout, waits for a `setTimeout`. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
+
+**Changes outside a cycle get a settle flush.** `scheduleSettleFlush()` queues one microtask that commits removals, text and a flush. It runs when:
+
+- an element is created outside a cycle, such as a lazy route's component that `RouterOutlet` builds during navigation
+- an event handler returns, in case it changed elements directly without changing a signal
+- a removed element is rebuilt
+
+It's skipped inside a cycle, because `end()` will flush, and during the first render. Main-thread scripts batch their own changes into one flush on a microtask.
+
+## How a tap reaches the screen
+
+Change detection is zoneless (see [Signals and change detection](/guide/concepts/signals)). A tap runs like this:
+
+1. The engine calls the global `runWorklet()` on the main thread with the listener that `listen()` registered.
+2. The listener runs your handler synchronously, inside the native event.
+3. Your handler sets a signal. Angular marks the view dirty, and its zoneless scheduler queues a tick, racing `setTimeout` against `requestAnimationFrame`. Lynx puts its timers on `lynx`, so the runtime copies them onto `globalThis` at startup.
+4. When the handler returns, `scheduleSettleFlush()` queues a microtask for any direct element changes.
+5. The tick runs change detection. The renderer calls element functions, and `end()` flushes.
+
+Changing the tree in step 2 is what [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) forbids: the engine is still delivering the event.
+
+## Removal, moves and rebuilding
+
+Angular moves a view by removing it and inserting it again in the same tick. `remove()` only queues the element, so an insert in the same tick cancels the removal. The engine sees a move, and the native element keeps its subtree.
+
+A removal that isn't undone before the flush destroys the element's native view, and Lynx can't bring it back. So every `LynxElement` caches what was set on it: attributes, id, dataset, classes, styles, listeners, text and children. Inserting a destroyed element rebuilds it, and its subtree, from that cache. This is how content shown again by an `@if`, or a route you return to, still renders.
+
+## The element pool
+
+An on-device crash investigation found that Lynx keeps a fixed pool of native element slots, about 256 (see [Glossary](/guide/glossary#element-pool)). `__RemoveElement` doesn't free a slot, and Lynx has no public function that does. Angular's default router destroys a route's components on every navigation and creates new elements on return. The app crashed on about the ninth navigation.
+
+**`LynxRouteReuseStrategy`** is the fix, and `provideRouter()` installs it:
+
+- **`shouldDetach()`** always returns `true`, so leaving a route detaches its view instead of destroying it.
+- **`store()` and `retrieve()`** keep detached views, keyed by the route's full path.
+- **`shouldReuseRoute()`** reuses a route when its config is the same.
+
+So component instances survive navigation, and `ngOnDestroy()` doesn't run when you leave a route.
+
+:::info Open question
+The strategy predates rebuilding on remount. A re-attached route now rebuilds its native elements from cache, so a revisit creates new elements. Whether the strategy still caps pool use hasn't been measured on a device since.
 :::
 
-### LynxDocument
+## Routing without a browser
 
-The main-thread document implementation. Creates native elements using Lynx's global `__Create*` functions. Each element type has a dedicated creation function:
+`provideRouter()` from `@blotch/angular-lynx` wraps Angular's and swaps three providers:
 
-- `__CreateView`, `__CreateText`, `__CreateImage`
-- `__CreateScrollView`, `__CreateList`
-- `__CreateFrame`, `__CreateBlock`
-- and others for each supported element
+- **`LynxPlatformLocation`** replaces `BrowserPlatformLocation`, which reads `window.location` and crashes on Lynx. It keeps location state in memory, parses URL strings by hand, and reports `href` as `lynx://app/…`. It needs its own `@Injectable()`: without one, Angular inherits `PlatformLocation`'s factory and builds the browser class.
+- **`LynxLocationStrategy`** replaces `PathLocationStrategy`. It keeps a history stack and an index in memory. `back()` and `forward()` move the index and notify `popstate` listeners.
+- **`LynxRouteReuseStrategy`**, described above.
 
-### LynxBackgroundDocument
+It also sets `resolveNavigationPromiseOnError: true`, so a failed navigation resolves to `false` instead of rejecting. Unhandled rejections there used to leave a blank screen. Listen for `NavigationError` to see failures.
 
-The background-thread document implementation. Creates an in-memory virtual element tree — no native calls are made. This is used when Angular runs on the background thread for layout calculation.
+The main thread has no `URL` class, and since Angular 22.2 the router's URL serializer calls `new URL()`. Without it, every URL serialized to `/` and no navigation happened. The runtime installs a `URL` and `URLSearchParams` polyfill that follows the web's URL Standard.
 
-## The Dual-Thread Architecture
+## Related
 
-The build plugin (`@blotch/rsbuild-plugin-angular-lynx`) compiles your app into two separate bundles from the same source code:
-
-| Bundle                 | Thread     | Compile-time define       | Document used                        |
-| ---------------------- | ---------- | ------------------------- | ------------------------------------ |
-| `main-thread.js`       | Main       | `__MAIN_THREAD__ = true`  | `LynxDocument` (real native calls)   |
-| `background-thread.js` | Background | `__MAIN_THREAD__ = false` | `LynxBackgroundDocument` (in-memory) |
-
-The `provideRenderer()` function checks `__MAIN_THREAD__` at runtime to decide which document to instantiate:
-
-```typescript
-{
-  provide: LYNX_DOCUMENT,
-  useFactory: () => {
-    if (__MAIN_THREAD__) {
-      return new LynxDocument();        // Real native element creation
-    }
-    return new LynxBackgroundDocument(); // Virtual in-memory tree
-  },
-}
-```
-
-## The Element Flush Cycle
-
-Unlike the web DOM where changes apply immediately to the screen, Lynx batches all element operations and applies them atomically:
-
-1. An event fires (e.g., user taps a button)
-2. Angular runs your event handler, which updates signals
-3. Change detection runs — `LynxRenderer` calls `__CreateView`, `__AppendElement`, `__SetAttribute`, etc.
-4. All these operations are queued internally by Lynx
-5. `LynxRendererFactory2.end()` calls `__FlushElementTree()`
-6. Lynx applies all queued operations to the native UI in one atomic update
-
-:::tip
-This batching means you never see partial UI states. If your event handler adds 10 elements and updates 5 styles, they all appear on screen simultaneously after the flush. This is similar to React's batched state updates, but at the rendering engine level.
-:::
-
-## How This Differs from Web Angular
-
-| Concept           | Web Angular                     | AngularLynx                                      |
-| ----------------- | ------------------------------- | ------------------------------------------------ |
-| Underlying API    | Browser DOM                     | Lynx global `__*` functions                      |
-| Change visibility | Immediate (paint on next frame) | Batched (flush at end of CD cycle)               |
-| Thread model      | Single main thread              | Dual: Angular on background, UI on main          |
-| Element types     | HTML elements (unlimited)       | Lynx native elements (fixed pool ~256 slots)     |
-| CSS model         | Full browser CSS                | Lynx CSS subset (no inheritance, no flow layout) |
-| Comment nodes     | Native HTML comments            | Invisible `<view>` anchors                       |
-
-## The Element Pool
-
-Lynx allocates elements in a fixed-size native pool (approximately 256 slots on device). Important implications:
-
-- **`__RemoveElement` detaches but does not free slots** — removed elements still occupy pool space
-- **Exhausting the pool crashes the app** — creating too many elements without reuse causes a hard crash
-- **Route reuse is critical** — `LynxRouteReuseStrategy` detaches views instead of destroying them, so their pool slots are reclaimed on revisit
-
-This is why AngularLynx's router uses a custom `RouteReuseStrategy` by default. See [Routing](/guide/routing) for details.
+- [Threads: where your code runs](/guide/concepts/threads)
+- [Signals and change detection](/guide/concepts/signals)
+- [Routing and navigation](/guide/routing)
+- [Main-thread scripts](/guide/main-thread/)
+- [`@blotch/angular-lynx-build` reference](/api/build/)

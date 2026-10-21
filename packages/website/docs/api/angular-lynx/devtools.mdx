@@ -1,0 +1,153 @@
+# DevTools
+
+Renderer counters you can show on screen, and named traces for Lynx's performance timeline. `import { LynxDevTools, LynxPerformance, type DevToolsStats } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/debug-panel.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxDevTools } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-debug-panel',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="devtools.refresh()">
+      <text>Change detection runs: {{ devtools.stats().cdCycles }}</text>
+      <text>Elements created: {{ devtools.stats().elementCreated }}</text>
+    </view>
+  `,
+})
+export class DebugPanel {
+  readonly devtools = inject(LynxDevTools);
+}
+```
+
+## API
+
+### `LynxDevTools`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxDevTools {}
+```
+
+Reads the counters that AngularLynx's renderer keeps. They count only in development builds. In a production build, they stay at `0`.
+
+- **Per thread.** Each thread keeps its own counters. The main thread's counters describe what you see on screen.
+
+### `LynxDevTools.stats`
+
+```typescript
+readonly stats: Signal<DevToolsStats>;
+```
+
+The counters as a signal. It doesn't update by itself: call `refresh()` to read new values.
+
+### `LynxDevTools.refresh()`
+
+```typescript
+refresh(): void;
+```
+
+Updates `stats` with the current counter values.
+
+### `LynxDevTools.snapshot()`
+
+```typescript
+snapshot(): DevToolsStats;
+```
+
+Returns the current counter values once, without a signal.
+
+### `LynxDevTools.reset()`
+
+```typescript
+reset(): void;
+```
+
+Sets every counter to `0` and updates `stats`.
+
+### `LynxPerformance`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxPerformance {}
+```
+
+Adds your own named traces and marks to the performance recording that [Lynx DevTool](/guide/glossary#lynx-devtool) (the desktop debugger app) captures. Unlike the counters, it works in every build, not only development builds. Every method does nothing when Lynx's tracing API isn't available.
+
+### `LynxPerformance.isRecording()`
+
+```typescript
+isRecording(): boolean;
+```
+
+Returns `true` while a recording is running.
+
+### `LynxPerformance.profileStart()`
+
+```typescript
+profileStart(
+  name: string,
+  options?: { flowId?: number; args?: Record<string, unknown> },
+): void;
+```
+
+Starts a named trace. Pair each call with `profileEnd()`. Traces nest.
+
+| Option   | Description                                                          |
+| -------- | -------------------------------------------------------------------- |
+| `flowId` | Links this trace to others with the same ID, from `profileFlowId()`. |
+| `args`   | Extra values recorded with the trace.                                |
+
+### `LynxPerformance.profileEnd()`
+
+```typescript
+profileEnd(): void;
+```
+
+Ends the most recently started trace.
+
+### `LynxPerformance.profileMark()`
+
+```typescript
+profileMark(name: string, options?: { args?: Record<string, unknown> }): void;
+```
+
+Records a single point in time, with optional `args`.
+
+### `LynxPerformance.profileFlowId()`
+
+```typescript
+profileFlowId(): number;
+```
+
+Returns a new ID for linking traces, for example across threads. Returns `0` when tracing isn't available.
+
+## Types
+
+### `DevToolsStats`
+
+```typescript
+type DevToolsStats = {
+  cdCycles: number;
+  elementCreated: number;
+  elementRemoved: number;
+  flushCount: number;
+  lastCdDurationMs: number;
+};
+```
+
+| Field              | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `cdCycles`         | Change detection runs since start or the last `reset()`. |
+| `elementCreated`   | Lynx elements created.                                   |
+| `elementRemoved`   | Lynx elements removed.                                   |
+| `flushCount`       | Times the renderer sent a batch of changes to Lynx.      |
+| `lastCdDurationMs` | Always `0` for now: the renderer doesn't record it yet.  |
+
+## Related
+
+- [Profiling performance](/guide/profiling)
+- [Debugging](/guide/debugging)

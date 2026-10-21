@@ -1,65 +1,117 @@
-# &lt;text&gt;
+# `<text>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Displays text content. All visible text in Lynx must be wrapped in a `<text>` element.
+Displays text, like a `<span>` or `<p>`. Every piece of visible text must be inside one.
 
 <Go example="element-text" defaultFile="src/app/app.ts" />
 
-```angular-html
-<text class="title">Hello World</text>
+## Usage
 
-<!-- Nested <text> for inline styling -->
-<text>
-  Regular text with
-  <text style="font-weight: bold;"> bold </text>
-  and
-  <text style="color: #dd0031;"> colored </text>
-  content
-</text>
+```typescript title="src/app/headline.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-headline',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <text text-maxline="2" style="text-overflow: ellipsis;">
+      Regular text with <text style="font-weight: bold;">bold</text> words
+    </text>
+  `,
+})
+export class Headline {}
 ```
 
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
 :::warning
-All text content must be wrapped in `<text>`. Unlike HTML, raw text nodes inside `<view>` will not render. This is the most common mistake when migrating from web Angular.
+Text directly inside a `<view>` doesn't render, and nothing warns you. Wrap it in `<text>`.
 :::
 
-## Text Truncation
+## Attributes
 
-Use `text-overflow` and `text-maxline` to control how long text is clipped:
+| Attribute                         | Type                                        | Default    | Description                                                                                                                                                          |
+| --------------------------------- | ------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text-maxline`                    | `number`                                    | —          | Maximum number of lines. Pair it with `text-overflow: ellipsis`: without it, iOS cuts the text off with no "…", and Android draws the extra lines over what follows. |
+| `text-selection`                  | `boolean`                                   | `false`    | Lets the user select and copy the text. On Android, also set `flatten="false"`.                                                                                      |
+| `custom-context-menu`             | `boolean`                                   | `false`    | iOS and Android. Shows your own menu, instead of the system one, after the user selects text. Needs `text-selection`.                                                |
+| `custom-text-selection`           | `boolean`                                   | `false`    | iOS and Android. Turns off the built-in selection gestures, so you drive selection with the methods below. Needs `text-selection`.                                   |
+| `text-single-line-vertical-align` | `'normal' \| 'top' \| 'center' \| 'bottom'` | `'normal'` | iOS and Android. Vertical alignment of single-line text, for fonts that don't center well. It slows text measurement.                                                |
+| `tail-color-convert`              | `boolean`                                   | `false`    | Colors the truncation "…" like the outer `<text>`, not the last nested one.                                                                                          |
+| `text-fake-bold`                  | `boolean`                                   | `false`    | iOS and Android. Draws a synthetic bold when the font has no bold face.                                                                                              |
+| `include-font-padding`            | `boolean`                                   | `false`    | Android only. Adds font padding above and below the text, for scripts that would otherwise be clipped.                                                               |
+| `android-emoji-compat`            | `boolean`                                   | `false`    | Android only. Draws emoji with the Emoji2 library, which the [host app](/guide/glossary#host-app) must include.                                                      |
 
-```css
-.truncated {
-  text-overflow: ellipsis;
-  text-maxline: 2; /* Lynx-specific — limits to N visible lines */
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
+
+## Events
+
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                 | `detail`                                                                                                                         | Description                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `bindlayout`          | `{ lineCount: number; lines: { start: number; end: number; ellipsisCount: number }[]; size: { width: number; height: number } }` | The text finished layout. A line with `ellipsisCount` above 0 was truncated. |
+| `bindselectionchange` | `{ start: number; end: number; direction: 'forward' \| 'backward' }`                                                             | iOS and Android. The selected range changed.                                 |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) work on iOS and Android. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.
+
+| Method                | Parameters                                                                                                           | Description                                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `setTextSelection`    | `{ startX: number; startY: number; endX: number; endY: number; showStartHandle?: boolean; showEndHandle?: boolean }` | Selects the text between two points, relative to the element. Returns the selection's `boundingRect`, `boxes` and `handles`. |
+| `getTextBoundingRect` | `{ start: number; end: number }`                                                                                     | Returns `{ boundingRect, boxes }` for a range of characters.                                                                 |
+| `getSelectedText`     | —                                                                                                                    | Returns `{ selectedText }`.                                                                                                  |
+
+```typescript
+import { Component } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxMainThreadEvent,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
+
+// In a main-thread script, invoke() returns the method's result as a Promise.
+const logSelection = mainThreadFn((event: MainThread.TouchEvent) => {
+  event.currentTarget
+    .invoke('getSelectedText')
+    .then((res: { selectedText: string }) => console.log(res.selectedText));
+});
+
+@Component({
+  selector: 'app-quote',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <text
+      text-selection="true"
+      flatten="false"
+      [mainThreadBindtap]="logSelection"
+    >
+      Select some of this text, then tap it.
+    </text>
+  `,
+})
+export class Quote {
+  readonly logSelection = logSelection;
 }
 ```
 
-Always pair `text-maxline` with `text-overflow: ellipsis` (Tailwind's `text-ellipsis`). On its own, `text-maxline` only sizes the text box: iOS cuts the text off at the last line without an ellipsis, and Android draws the remaining lines below the box, over whatever comes next.
+## Children
 
-### Custom truncation content
+A `<text>` can hold:
 
-Put an `<inline-truncation>` inside the `<text>` to replace the default ellipsis with your own content. It only appears when the text is actually truncated:
+- **Text**, including Angular interpolation such as `{{ name() }}`.
+- **Nested `<text>`**, to style part of the text. It inherits `color` and `font-family` from its parent `<text>`, even though CSS inheritance is otherwise off.
+- **`<image>`**, laid out inline with the text.
+- **`<view>`**, laid out inline like an inline block.
+- **`<inline-truncation>`**, as a direct child. Its content replaces the "…" when `text-maxline` truncates the text, and shows only then.
 
-```angular-html
-<text [text-maxline]="2" style="text-overflow: ellipsis;">
-  {{ article().body }}
-  <inline-truncation>
-    <text style="color: #2563eb;">… Read more</text>
-  </inline-truncation>
-</text>
-```
+## Related
 
-## Key Attributes
-
-| Attribute      | Type     | Description                                                                                                                   |
-| -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `text-maxline` | `number` | Maximum number of visible lines (Lynx-specific, no CSS equivalent in web). Add `text-overflow: ellipsis` to truncate with "…" |
-
-## Nesting Rules
-
-- **Nested `<text>`** inherits `color` and `font-family` from the parent `<text>`, even without CSS inheritance enabled
-- **Nested `<image>`** can appear inside `<text>` for inline text-and-image layouts
-- **Nested `<view>`** inside `<text>` participates in inline layout (like an inline-block)
-- **`<inline-truncation>`** must be a direct child of `<text>`. See [Custom truncation content](#custom-truncation-content)
+- [Elements and layout](/guide/elements/)
+- [CSS on Lynx](/guide/styling): text styles, `rem` and inheritance
+- [Custom fonts](/guide/custom-fonts/)
+- [Measure text](/guide/text-measurement)

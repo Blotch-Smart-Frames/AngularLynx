@@ -1,0 +1,162 @@
+# Exposure
+
+Know when elements scroll into or out of view, per element or for the whole page. `import { LynxExposure, LynxGlobalExposure, type ExposureEventDetail, type GlobalExposureEvent, type ObserverFrameRateOptions } from '@blotch/angular-lynx';`
+
+**[Exposure](/guide/glossary#exposure)** is Lynx's name for an element becoming visible on screen, like the web's `IntersectionObserver`.
+
+## Usage
+
+```typescript title="src/app/banner.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS, LynxExposure } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-banner',
+  imports: [LYNX_ELEMENTS, LynxExposure],
+  template: `
+    <view lynxExposure #seen="lynxExposure">
+      <text>{{ seen.visible() ? 'On screen' : 'Off screen' }}</text>
+    </view>
+  `,
+})
+export class Banner {}
+```
+
+## API
+
+### `LynxExposure`
+
+```typescript
+@Directive({ selector: '[lynxExposure]', exportAs: 'lynxExposure' })
+class LynxExposure {}
+```
+
+Tracks whether its element is in the visible area of its scroll container. It listens for the element's `binduiappear` and `binduidisappear` events, and works without `LynxGlobalExposure`.
+
+### `LynxExposure.visible`
+
+```typescript
+readonly visible: WritableSignal<boolean>;
+```
+
+`true` while the element is on screen. Starts `false`. Read it through the template reference, as in Usage.
+
+### `LynxGlobalExposure`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxGlobalExposure {}
+```
+
+Reports page-wide exposure in batches for every element that has an `exposure-id`. Use it for impression tracking across many elements.
+
+**Known limitation:** `exposures` and `disexposures` subscribe to Lynx's batches only on the [background thread](/guide/glossary#background-thread). The batches may not reach the main-thread copy of your app, which draws the UI. This hasn't been verified on a device. See [Threads](/guide/concepts/threads).
+
+### `LynxGlobalExposure.exposures`
+
+```typescript
+readonly exposures: WritableSignal<GlobalExposureEvent>;
+```
+
+The most recent batch of elements that came into view. Each batch replaces the last one.
+
+### `LynxGlobalExposure.disexposures`
+
+```typescript
+readonly disexposures: WritableSignal<GlobalExposureEvent>;
+```
+
+The most recent batch of elements that left the view.
+
+### `LynxGlobalExposure.active`
+
+```typescript
+readonly active: WritableSignal<boolean>;
+```
+
+Whether page-wide detection is running. Starts `true`. `stopExposure()` and `resumeExposure()` set it.
+
+### `LynxGlobalExposure.stopExposure()`
+
+```typescript
+stopExposure(options?: { sendEvent: boolean }): void;
+```
+
+Pauses page-wide detection. `LynxExposure` keeps working.
+
+| Option      | Description                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| `sendEvent` | Whether Lynx first sends a `disexposure` for every element now visible. Lynx's default is `true`. |
+
+### `LynxGlobalExposure.resumeExposure()`
+
+```typescript
+resumeExposure(): void;
+```
+
+Restarts page-wide detection.
+
+### `LynxGlobalExposure.setObserverFrameRate()`
+
+```typescript
+setObserverFrameRate(options?: ObserverFrameRateOptions): void;
+```
+
+Sets how often Lynx checks for exposure. Lynx provides it only on the background thread, so a call from an event handler throws.
+
+## Attributes
+
+Every Lynx element accepts these attributes. Give an element `exposure-id` to include it in `LynxGlobalExposure`. Write them as static attributes, such as `exposure-area="50%"`.
+
+| Attribute                   | Type      | Default | Description                                                                                                                 |
+| --------------------------- | --------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `exposure-id`               | `string`  |         | The ID reported in exposure batches. Required for page-wide tracking.                                                       |
+| `exposure-scene`            | `string`  |         | A group name. Together with the ID, it identifies the element.                                                              |
+| `exposure-area`             | `string`  | `'0%'`  | How much of the element must be visible to count, such as `'50%'`.                                                          |
+| `exposure-screen-margin-*`  | `string`  | `'0px'` | Grows or shrinks the screen's detection area on one edge: `-top`, `-right`, `-bottom` or `-left`.                           |
+| `exposure-ui-margin-*`      | `string`  | `'0px'` | Grows or shrinks the element's own box for detection on one edge. On iOS and Android, also set `enable-exposure-ui-margin`. |
+| `enable-exposure-ui-margin` | `boolean` | `false` | Turns on `exposure-ui-margin-*` on iOS and Android. It also changes how `exposure-screen-margin-*` works there.             |
+
+## Types
+
+### `ExposureEventDetail`
+
+```typescript
+type ExposureEventDetail = {
+  'exposure-id': string;
+  'exposure-scene': string;
+  exposureID: string;
+  exposureScene: string;
+  'unique-id': number;
+};
+```
+
+One element in a batch. Lynx sends the ID and scene twice, in kebab case and camel case. `unique-id` identifies the native element.
+
+### `GlobalExposureEvent`
+
+```typescript
+type GlobalExposureEvent = ExposureEventDetail[];
+```
+
+One batch.
+
+### `ObserverFrameRateOptions`
+
+```typescript
+type ObserverFrameRateOptions = {
+  forPageRect?: number;
+  forExposureCheck?: number;
+};
+```
+
+| Field              | Description                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `forPageRect`      | Checks per second for the [LynxView](/guide/glossary#lynxview)'s own position. `0` stops them. Lynx's default is 20. |
+| `forExposureCheck` | Checks per second for element visibility. Lynx's default is 20.                                                      |
+
+## Related
+
+- [Detect when elements are visible](/guide/exposure)
+- [Elements](/api/angular-lynx/elements#attributes-on-every-element)
+- [Lynx exposure docs](https://lynxjs.org/guide/interaction/visibility-detection/exposure-ability.html)

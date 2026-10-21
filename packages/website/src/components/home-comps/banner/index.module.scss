@@ -16,7 +16,7 @@
   overflow: hidden;
 
   .banner-title {
-    margin-bottom: 44px;
+    margin-bottom: 16px;
     color: var(--home-banner-title-color);
     text-align: center;
     font-size: 56px;
@@ -40,6 +40,15 @@
       color: transparent;
       animation: gradientMove 6s linear infinite;
     }
+  }
+
+  .banner-desc {
+    margin: 0 0 32px;
+    max-width: 70%;
+    color: var(--home-features-item-desc-color);
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.6;
   }
 
   .banner-btn {

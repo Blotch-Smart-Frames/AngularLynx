@@ -27,6 +27,136 @@
       "source": "/guide/testing/event-reference",
       "destination": "/api/testing-library/event-reference",
       "permanent": true
+    },
+    {
+      "source": "/guide/change-detection",
+      "destination": "/guide/concepts/signals",
+      "permanent": true
+    },
+    {
+      "source": "/guide/change-detection/signals",
+      "destination": "/guide/concepts/signals",
+      "permanent": true
+    },
+    {
+      "source": "/guide/schematics",
+      "destination": "/api/schematics",
+      "permanent": true
+    },
+    {
+      "source": "/guide/custom-fonts/dynamic-font-loading",
+      "destination": "/guide/custom-fonts/",
+      "permanent": true
+    },
+    {
+      "source": "/guide/gestures/:page(gesture-types|lifecycle)",
+      "destination": "/api/gestures/:page",
+      "permanent": true
+    },
+    {
+      "source": "/guide/gestures/:page(composition|complete-example)",
+      "destination": "/guide/gestures/",
+      "permanent": true
+    },
+    {
+      "source": "/guide/portal",
+      "destination": "/guide/overlays",
+      "permanent": true
+    },
+    {
+      "source": "/guide/remote-logging",
+      "destination": "/guide/debugging#stream-logs-to-your-computer",
+      "permanent": true
+    },
+    {
+      "source": "/guide/error-boundaries",
+      "destination": "/guide/error-handling#contain-failures-with-boundary",
+      "permanent": true
+    },
+    {
+      "source": "/guide/devtools",
+      "destination": "/guide/profiling",
+      "permanent": true
+    },
+    {
+      "source": "/guide/host-data",
+      "destination": "/guide/embedding/host-data",
+      "permanent": true
+    },
+    {
+      "source": "/guide/main-thread/worklet-transform",
+      "destination": "/guide/main-thread/",
+      "permanent": true
+    },
+    {
+      "source": "/api/angular-lynx/services",
+      "destination": "/api/angular-lynx/",
+      "permanent": true
+    },
+    {
+      "source": "/examples/gesture-playground",
+      "destination": "/examples/gestures",
+      "permanent": true
+    },
+    {
+      "source": "/examples/animated-cards",
+      "destination": "/examples/animations",
+      "permanent": true
+    },
+    {
+      "source": "/examples/enter-leave",
+      "destination": "/examples/transitions",
+      "permanent": true
+    },
+    {
+      "source": "/examples/multi-page-workspace",
+      "destination": "/examples/multi-page",
+      "permanent": true
+    },
+    {
+      "source": "/examples/data-dashboard",
+      "destination": "/examples/data-flow",
+      "permanent": true
+    },
+    {
+      "source": "/examples/dark-mode",
+      "destination": "/guide/dark-mode",
+      "permanent": true
+    },
+    {
+      "source": "/examples/tab-navigation",
+      "destination": "/guide/routing",
+      "permanent": true
+    },
+    {
+      "source": "/guide/animations/css-transitions",
+      "destination": "/guide/animations/#css-transitions",
+      "permanent": true
+    },
+    {
+      "source": "/guide/animations/css-keyframes",
+      "destination": "/guide/animations/#css-keyframes",
+      "permanent": true
+    },
+    {
+      "source": "/guide/css-colors",
+      "destination": "/guide/styling#colors",
+      "permanent": true
+    },
+    {
+      "source": "/guide/host-data/init-data",
+      "destination": "/guide/embedding/host-data#read-initdata",
+      "permanent": true
+    },
+    {
+      "source": "/guide/host-data/global-data",
+      "destination": "/guide/embedding/host-data#read-globaldata",
+      "permanent": true
+    },
+    {
+      "source": "/guide/host-data/data-processors",
+      "destination": "/guide/embedding/host-data#reshape-initdata-with-data-processors",
+      "permanent": true
     }
   ]
 }

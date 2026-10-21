@@ -1,6 +1,6 @@
 # Separator
 
-A visual divider used to separate sections of content, available in horizontal and vertical orientations.
+A one-pixel line in the border color that divides content, horizontally or vertically.
 
 <Go example="ui-separator" defaultFile="src/app/app.ts" />
 
@@ -11,38 +11,64 @@ npx @blotch/dolan add separator
 ```
 
 ```typescript
-import { UiSeparator } from '@/components/ui/separator';
+import { UiSeparator } from '../components/ui/separator';
 ```
 
 ## Usage
 
-### Horizontal
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiSeparator } from '../components/ui/separator';
 
-A horizontal separator spans the full width of its container:
-
-```angular-html
-<view class="flex flex-col gap-4">
-  <text>Above the separator</text>
-  <ui-separator />
-  <text>Below the separator</text>
-</view>
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiSeparator],
+  template: `
+    <view class="flex flex-col gap-4">
+      <text class="text-sm text-foreground">Account</text>
+      <ui-separator />
+      <text class="text-sm text-foreground">Billing</text>
+    </view>
+  `,
+})
+export class App {}
 ```
+
+A horizontal separator spans the full width of its parent.
 
 ### Vertical
 
-A vertical separator spans the full height of its container. The parent must have a defined height:
-
 ```angular-html
-<view class="flex flex-row items-center gap-4 h-5">
-  <text>Left</text>
+<view class="flex h-5 flex-row items-center gap-4">
+  <text class="text-sm text-foreground">Blog</text>
   <ui-separator orientation="vertical" />
-  <text>Right</text>
+  <text class="text-sm text-foreground">Docs</text>
 </view>
 ```
 
+A vertical separator stretches to the full height of its row, even when the row sets `items-center`. Set the row's height to set the line's length.
+
+### Spacing
+
+```angular-html
+<ui-separator class="my-4" />
+```
+
+The separator is one element, so margin classes on it work like on a `<view>`.
+
 ## API
 
-| Input         | Type                         | Default        | Description                                      |
-| ------------- | ---------------------------- | -------------- | ------------------------------------------------ |
-| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | The orientation of the separator                 |
-| `class`       | `string`                     | `''`           | Additional CSS classes to apply to the separator |
+### UiSeparator
+
+| Input         | Type                         | Default        | Description                          |
+| ------------- | ---------------------------- | -------------- | ------------------------------------ |
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | A full-width or a full-height line.  |
+| `class`       | `string`                     | `''`           | Extra Tailwind classes for the line. |
+
+No outputs.
+
+## Related
+
+- [Card](/dolan/card)
+- [Theming](/dolan/theming): the `border` color it uses

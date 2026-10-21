@@ -1,78 +1,128 @@
-# Custom Fonts
+# Custom fonts
 
-AngularLynx supports custom fonts via CSS `@font-face` — the same approach Angular developers use on the web. The build system automatically bundles font files as static assets with content-hashed filenames. For fonts loaded dynamically at runtime, `LynxFont` wraps the native `lynx.addFont()` API.
+Set text in your own typeface. Declare a font with `@font-face` when its file ships with your app, or load it while the app runs with `LynxFont.addFont()`.
 
 <Go example="custom-fonts" defaultFile="src/app/app.ts" />
 
-## CSS @font-face (Recommended)
+## Choose an approach
 
-Place your font file in `src/assets/fonts/` and declare it in your global stylesheet:
+| Approach             | Use it when                                                          | Works in the web preview |
+| -------------------- | -------------------------------------------------------------------- | ------------------------ |
+| `@font-face`         | The font file is in your project                                     | Yes                      |
+| `LynxFont.addFont()` | The font comes from a URL, or depends on a setting chosen at runtime | No                       |
+
+Prefer `@font-face`. The font becomes part of the [bundle](/guide/glossary#bundle), so it loads with the app and needs no network.
+
+## Declare a font with `@font-face`
+
+Put the font file in `src/assets/fonts/`, then declare it in your global stylesheet:
 
 ```css title="src/styles.css"
 @font-face {
-  font-family: 'CustomFont';
-  src: url('./assets/fonts/CustomFont.ttf') format('truetype');
+  font-family: 'Roboto';
+  src: url('./assets/fonts/Roboto-Light.ttf') format('truetype');
 }
 ```
 
-Then apply it in component styles:
+Use the family on each `<text>` that needs it:
 
 ```typescript title="src/app/heading.ts"
 import { Component } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-heading',
   imports: [LYNX_ELEMENTS],
-  template: `
-    <text class="heading">Hello in a custom font</text>
-    <text class="body">Default system font for comparison</text>
+  template: `<text class="app-heading">Hello in Roboto</text>`,
+  styles: `
+    .app-heading {
+      font-family: Roboto;
+      font-size: 24px;
+    }
   `,
-  styles: [
-    `
-      .heading {
-        font-family: CustomFont; /* [!code highlight] */
-        font-size: 24px;
-      }
-      .body {
-        font-size: 24px;
-      }
-    `,
-  ],
 })
 export class Heading {}
 ```
 
-At build time, Rsbuild processes the font file, hashes the filename (e.g., `CustomFont.a1b2c3d4.ttf`), and emits it to `dist/static/font/`.
+- **Set `font-family` on the `<text>` itself.** Fonts don't inherit from a `<view>` on Lynx. A nested `<text>` does take its parent's family. See [Inheritance](/guide/styling#inheritance).
+- **With Tailwind**, use an arbitrary value: `class="font-[Roboto]"`.
+- **The build embeds the font in the bundle** as Base64. That's why it loads on any device and in the web preview, with no fetch. Each font adds about 1.3 times its file size to the bundle, so keep font files small.
 
-## Platform Support
+### One family name per weight
 
-| Platform | Supported Formats     |
-| -------- | --------------------- |
-| Android  | TTF, OTF, TTC         |
-| iOS      | TTF, OTF, WOFF, WOFF2 |
-
-:::warning
-Lynx only supports `font-family` and `src` descriptors in `@font-face`. The `font-weight`, `font-style`, `font-variant`, `font-display`, and `unicode-range` descriptors are **not supported**.
-
-To use multiple weights or styles, declare each variant with a different `font-family` name, or use a variable font.
-:::
+`@font-face` accepts only the `font-family` and `src` descriptors. Lynx ignores `font-weight`, `font-style`, `font-display` and `unicode-range`, so you can't put two weights under one name. Give each its own family:
 
 ```css title="src/styles.css"
-/* Each weight needs its own font-family name */
 @font-face {
-  font-family: 'CustomFont-Regular';
-  src: url('./assets/fonts/CustomFont-Regular.ttf') format('truetype');
+  font-family: 'Inter-Regular';
+  src: url('./assets/fonts/Inter-Regular.ttf') format('truetype');
 }
 
 @font-face {
-  font-family: 'CustomFont-Bold';
-  src: url('./assets/fonts/CustomFont-Bold.ttf') format('truetype');
+  font-family: 'Inter-Bold';
+  src: url('./assets/fonts/Inter-Bold.ttf') format('truetype');
 }
 ```
 
-## Choosing an Approach
+A variable font is the other way to get several weights from one family.
 
-| Approach         | Best for                                                           |
-| ---------------- | ------------------------------------------------------------------ |
-| CSS `@font-face` | Fonts known at build time (bundled, hashed, zero runtime cost)     |
-| `LynxFont`       | Fonts loaded from remote URLs or determined dynamically at runtime |
+### File formats
+
+| Platform | Formats               |
+| -------- | --------------------- |
+| iOS      | TTF, OTF, WOFF, WOFF2 |
+| Android  | TTF, OTF, TTC         |
+
+Use TTF or OTF to cover both.
+
+## Load a font at runtime
+
+Inject `LynxFont` and call `addFont()` when a component starts:
+
+```typescript title="src/app/greeting.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxFont } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-greeting',
+  imports: [LYNX_ELEMENTS],
+  template: `<text style="font-family: Lobster">Hello in Lobster</text>`,
+})
+export class Greeting {
+  readonly #fonts = inject(LynxFont);
+
+  constructor() {
+    this.#fonts
+      .addFont({
+        fontFamily: 'Lobster',
+        src: 'url("https://example.com/fonts/Lobster-Regular.ttf")',
+      })
+      .catch(() => {
+        // Only one of your app's two copies can add fonts. See below.
+      });
+  }
+}
+```
+
+- **Call it from a constructor or `ngOnInit`.** Lynx accepts `addFont()` only from the [background thread](/guide/glossary#background-thread). A constructor runs on both threads, so the background copy of your app adds the font. On the main thread the call rejects, which the `catch` ignores.
+- **Text switches when the font arrives.** Until then, text that names the family shows the system font.
+- **Write `src` as a CSS `url()`**, the same value you'd put in `@font-face`.
+- **Repeat calls are safe.** A second call for the same family returns the same promise.
+
+### Limitations of runtime fonts
+
+- **Not from a tap handler.** Event handlers run on the [main thread](/guide/concepts/threads), where `addFont()` doesn't exist. Wrapping the call in `setTimeout` doesn't help, because the timer runs on the main thread too. Load the fonts you might need when the app starts.
+- **Don't show the loading status in templates yet.** `getStatus()` and `isLoaded()` track the copy of your app that made the call. In the main-thread copy, which draws your UI, they stay at `'loading'`.
+- **Not in the web preview.** Lynx's web renderer doesn't load fonts at runtime. Test them on a phone.
+
+## Limitations
+
+- **One weight per family name**, as described above.
+- **Text measurement ignores custom fonts.** [`LynxTextMeasure`](/guide/text-measurement) measures with the platform's built-in fonts.
+
+## Related
+
+- [`LynxFont` API](/api/angular-lynx/fonts)
+- [CSS on Lynx](/guide/styling)
+- [Custom fonts example](/examples/custom-fonts)
+- [`@font-face` on Lynx](https://lynxjs.org/api/css/at-rule/font-face.html)

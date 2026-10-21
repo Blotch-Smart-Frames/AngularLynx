@@ -1,6 +1,6 @@
 # @blotch/angular-lynx
 
-The core runtime package. Import `bootstrapApplication`, `provideRenderer`, `provideRouter`, and `LYNX_ELEMENTS` from here.
+Every export of the AngularLynx runtime, grouped by what it's for, with a link to its reference. Install it with `ng add @blotch/angular-lynx`.
 
 ```typescript
 import {
@@ -11,10 +11,102 @@ import {
 } from '@blotch/angular-lynx';
 ```
 
-| Section                  | Description                                               |
-| ------------------------ | --------------------------------------------------------- |
-| [Bootstrap](./bootstrap) | App startup: `bootstrapApplication`, `provideRenderer`    |
-| [Routing](./routing)     | `provideRouter`, location strategy, route reuse           |
-| [Elements](./elements)   | All Lynx element directives (`LYNX_ELEMENTS`, etc.)       |
-| [Animation](./animation) | `LynxAnimation`, `LynxAnimationOptions`                   |
-| [Services](./services)   | Data, session storage, exposure, fonts, logging, and more |
+## App setup
+
+| Export                   | Kind     | Reference                                |
+| ------------------------ | -------- | ---------------------------------------- |
+| `bootstrapApplication`   | Function | [Bootstrap](/api/angular-lynx/bootstrap) |
+| `provideRenderer`        | Function | [Bootstrap](/api/angular-lynx/bootstrap) |
+| `loadLazyBundle`         | Function | [Bootstrap](/api/angular-lynx/bootstrap) |
+| `provideRouter`          | Function | [Routing](/api/angular-lynx/routing)     |
+| `LynxLocationStrategy`   | Class    | [Routing](/api/angular-lynx/routing)     |
+| `LynxPlatformLocation`   | Class    | [Routing](/api/angular-lynx/routing)     |
+| `LynxRouteReuseStrategy` | Class    | [Routing](/api/angular-lynx/routing)     |
+| `provideLocale`          | Function | [Locale](/api/angular-lynx/locale)       |
+| `getLynxAppLocale`       | Function | [Locale](/api/angular-lynx/locale)       |
+| `registerDataProcessors` | Function | [Host data](/api/angular-lynx/host-data) |
+
+## Elements and forms
+
+| Export                                                                                                                                               | Kind       | Reference                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| `LYNX_ELEMENTS`                                                                                                                                      | Constant   | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxView`, `LynxText`, `LynxInlineTruncation`, `LynxImage`                                                                                          | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxScrollView`, `LynxList`, `LynxListItem`                                                                                                         | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxBlock`, `LynxIf`, `LynxFor`, `LynxFrame`                                                                                                        | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxInput`, `LynxTextarea`                                                                                                                          | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxOverlay`, `LynxRefresh`, `LynxRefreshHeader`                                                                                                    | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxScrollCoordinator`, `LynxScrollCoordinatorHeader`, `LynxScrollCoordinatorSlot`, `LynxScrollCoordinatorSlotDrag`, `LynxScrollCoordinatorToolbar` | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxSvg`, `LynxViewPager`, `LynxViewPagerItem`                                                                                                      | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LynxBlurView`, `LynxVideo`, `LynxWebView`, `LynxCoverView`, `LynxTitleBarView`                                                                      | Directives | [Elements](/api/angular-lynx/elements)                                                      |
+| `LYNX_FORM_ACCESSORS`                                                                                                                                | Constant   | [Elements](/api/angular-lynx/elements#lynx_form_accessors)                                  |
+| `LynxInputValueAccessor`, `LynxTextareaValueAccessor`                                                                                                | Directives | [Elements](/api/angular-lynx/elements#lynxinputvalueaccessor-and-lynxtextareavalueaccessor) |
+
+## Animation
+
+| Export                 | Kind      | Reference                                |
+| ---------------------- | --------- | ---------------------------------------- |
+| `LynxAnimation`        | Class     | [Animation](/api/angular-lynx/animation) |
+| `LynxTransition`       | Component | [Animation](/api/angular-lynx/animation) |
+| `LynxTransitionGroup`  | Component | [Animation](/api/angular-lynx/animation) |
+| `LynxAnimationOptions` | Type      | [Animation](/api/angular-lynx/animation) |
+| `BaseLynxAnimation`    | Type      | [Animation](/api/angular-lynx/animation) |
+
+## Gestures
+
+| Export                                                                                                                                          | Kind          | Reference                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------------------------- |
+| `LynxGestureDetector`                                                                                                                           | Directive     | [Gestures](/api/gestures/)                   |
+| `Gesture`, `ComposedGesture`                                                                                                                    | Object, class | [Gestures](/api/gestures/)                   |
+| `BaseGesture`, `ContinuousGesture`, `GestureType`                                                                                               | Classes, enum | [Gestures](/api/gestures/)                   |
+| `TapGesture`, `PanGesture`, `FlingGesture`, `LongPressGesture`, `PinchGesture`, `RotationGesture`                                               | Classes       | [Gesture types](/api/gestures/gesture-types) |
+| `FlingDirection`                                                                                                                                | Enum          | [Gesture types](/api/gestures/gesture-types) |
+| `GestureEvent`, `TapGestureEvent`, `PanGestureEvent`, `FlingGestureEvent`, `LongPressGestureEvent`, `PinchGestureEvent`, `RotationGestureEvent` | Types         | [Gesture types](/api/gestures/gesture-types) |
+| `GestureState`, `GestureStateManager`                                                                                                           | Enum, class   | [Gesture lifecycle](/api/gestures/lifecycle) |
+| `GestureCallback`, `GestureCallbackWithState`                                                                                                   | Types         | [Gesture lifecycle](/api/gestures/lifecycle) |
+
+## Main-thread scripts
+
+| Export                                 | Kind             | Reference                                                 |
+| -------------------------------------- | ---------------- | --------------------------------------------------------- |
+| `mainThreadFn`, `MainThreadFnHandle`   | Function, type   | [mainThreadFn](/api/main-thread/main-thread-fn)           |
+| `LynxMainThreadEvent`                  | Directive        | [LynxMainThreadEvent](/api/main-thread/main-thread-event) |
+| `MainThreadElement`, `MainThread`      | Class, namespace | [LynxMainThreadEvent](/api/main-thread/main-thread-event) |
+| `MainThreadRef`, `createMainThreadRef` | Class, function  | [MainThreadRef](/api/main-thread/main-thread-ref)         |
+| `LynxMainThread`                       | Service          | [LynxMainThread](/api/main-thread/main-thread-service)    |
+| `backgroundFn`, `BackgroundFnHandle`   | Function, type   | [backgroundFn](/api/main-thread/background-fn)            |
+
+## Services
+
+| Export                                                                                           | Kind               | Reference                                                  |
+| ------------------------------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------- |
+| `LynxAccessibility`                                                                              | Service            | [Accessibility](/api/angular-lynx/accessibility)           |
+| `LynxTheme`                                                                                      | Service            | [Theme](/api/angular-lynx/theme)                           |
+| `LynxSafeArea`                                                                                   | Service            | [Safe area](/api/angular-lynx/safe-area)                   |
+| `SAFE_AREA_INSET_TOP`, `SAFE_AREA_INSET_BOTTOM`, `SAFE_AREA_INSET_LEFT`, `SAFE_AREA_INSET_RIGHT` | Constants          | [Safe area](/api/angular-lynx/safe-area)                   |
+| `LynxLocale`                                                                                     | Service            | [Locale](/api/angular-lynx/locale)                         |
+| `LynxFont`                                                                                       | Service            | [Fonts](/api/angular-lynx/fonts)                           |
+| `LynxFontFaceConfig`, `LynxFontStatus`, `LynxFontEntry`                                          | Types              | [Fonts](/api/angular-lynx/fonts)                           |
+| `LynxPortal`, `PortalRef`                                                                        | Service, class     | [Portal](/api/angular-lynx/portal)                         |
+| `PortalConfig`                                                                                   | Type               | [Portal](/api/angular-lynx/portal)                         |
+| `LynxExposure`, `LynxGlobalExposure`                                                             | Directive, service | [Exposure](/api/angular-lynx/exposure)                     |
+| `ExposureEventDetail`, `GlobalExposureEvent`, `ObserverFrameRateOptions`                         | Types              | [Exposure](/api/angular-lynx/exposure)                     |
+| `LynxInitData`, `LynxGlobalData`                                                                 | Services           | [Host data](/api/angular-lynx/host-data)                   |
+| `InitData`, `InitDataRaw`, `GlobalData`, `DataProcessorDefinition`                               | Types              | [Host data](/api/angular-lynx/host-data)                   |
+| `LynxSessionStorage`, `SessionStorageSubscription`                                               | Service, type      | [Session storage](/api/angular-lynx/session-storage)       |
+| `LynxTextMeasure`                                                                                | Service            | [Text measure](/api/angular-lynx/text-measure)             |
+| `LynxSystemInfo`                                                                                 | Service            | [System info](/api/angular-lynx/system-info)               |
+| `LynxResourcePrefetch`                                                                           | Service            | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
+| `PrefetchRequest`, `PrefetchPriority`, `PrefetchCacheTarget`, `PrefetchResultDetail`             | Types              | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
+| `LynxNativeModule`, `NativeModuleMap`                                                            | Service, type      | [Native module](/api/angular-lynx/native-module)           |
+| `LynxErrorHandler`, `LynxLogger`                                                                 | Services           | [Errors and logging](/api/angular-lynx/errors-and-logging) |
+| `LynxDevTools`, `LynxPerformance`, `DevToolsStats`                                               | Services, type     | [DevTools](/api/angular-lynx/devtools)                     |
+
+## Schematics
+
+The package also ships the `ng add` and `ng generate` schematics. See [Schematics](/api/schematics).
+
+## Related
+
+- [API overview](/api/): the other packages and the element pages.
+- [Quick Start](/guide/quick-start)

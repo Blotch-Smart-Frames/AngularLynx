@@ -1,31 +1,53 @@
-# &lt;svg&gt;
+# `<svg>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Displays SVG graphics. Unlike web HTML, Lynx does not support inline SVG markup — pass the SVG as a string via the `content` attribute.
+Draws SVG from a markup string or a URL. Unlike HTML, you can't write SVG tags in the template: pass the markup as text, and give the element a width and height.
 
 <Go example="element-svg" defaultFile="src/app/app.ts" />
 
-```typescript
+## Usage
+
+```typescript title="src/app/dot.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
+  selector: 'app-dot',
   imports: [LYNX_ELEMENTS],
-  template: `
-    <svg [attr.content]="svgContent" style="width: 80px; height: 80px;" />
-  `,
+  template: `<svg [content]="icon" style="width: 24px; height: 24px;" />`,
 })
-export class SvgExample {
-  svgContent = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#dd0031"/></svg>`;
+export class Dot {
+  readonly icon = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="12" r="10" fill="#dd0031" />
+  </svg>`;
 }
 ```
 
-## Key Attributes
-
-| Attribute | Type     | Description                                |
-| --------- | -------- | ------------------------------------------ |
-| `content` | `string` | The SVG markup string to render (required) |
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
 :::warning
-You must set an explicit **width** and **height** on the `<svg>` element. Without dimensions, the SVG will not display.
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
 :::
+
+## Attributes
+
+| Attribute       | Type     | Default | Description                                                                                                                                                                                                                                                     |
+| --------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content`       | `string` | —       | SVG markup to draw. It can't use CSS variables or the page's styles. Draw lines with `<path>`: `<line>` doesn't show on iOS and Android. AngularLynx removes `stroke-dasharray` values iOS can't parse, such as `none`, which would blank every SVG in the app. |
+| `src`           | `string` | —       | URL of an SVG file. Use `src` or `content`, not both.                                                                                                                                                                                                           |
+| `current-color` | `string` | —       | iOS (Lynx 4.1 and later) and Android. The color `currentColor` stands for in the SVG. It doesn't override an explicit `fill` or `stroke`.                                                                                                                       |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
+
+## Events
+
+| Event      | `detail`                            | Description        |
+| ---------- | ----------------------------------- | ------------------ |
+| `bindload` | `{ width: number; height: number }` | The SVG was drawn. |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Related
+
+- [`<image>`](/api/elements/image): PNG, JPEG, WebP and GIF images
+- [Icon](/dolan/icon): the UI component that draws icons with `<svg>`
+- [Chart](/dolan/chart): charts drawn with `<svg>`

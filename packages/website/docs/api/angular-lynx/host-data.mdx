@@ -1,0 +1,159 @@
+# Host data
+
+Read the data your native app passes in, as signals, and transform it before your app sees it. `import { LynxInitData, LynxGlobalData, registerDataProcessors, type InitData, type GlobalData, type InitDataRaw, type DataProcessorDefinition } from '@blotch/angular-lynx';`
+
+The [host app](/guide/glossary#host-app) (the native iOS or Android app that runs your bundle) sends two kinds of data:
+
+- **[InitData](/guide/glossary#initdata):** data for this one page, passed when the host opens it.
+- **[GlobalData](/guide/glossary#globaldata):** app-wide values, such as the theme or locale, shared by every page.
+
+## Usage
+
+```typescript title="src/lynx-data.d.ts"
+// This export makes the file a module, so the block below adds to
+// @blotch/angular-lynx's types instead of replacing them.
+export {};
+
+declare module '@blotch/angular-lynx' {
+  interface InitData {
+    userId: string;
+  }
+  interface GlobalData {
+    theme: 'Light' | 'Dark';
+  }
+}
+```
+
+```typescript title="src/app/profile.ts"
+import { Component, computed, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxInitData } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-profile',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>User {{ userId() }}</text>`,
+})
+export class Profile {
+  readonly #initData = inject(LynxInitData);
+  // initData() can be undefined on a device today. See the limitations below.
+  readonly userId = computed(
+    () => this.#initData.initData()?.userId ?? 'guest',
+  );
+}
+```
+
+## API
+
+**Known limitation:** InitData from native code doesn't reach your app yet. See [Limitations](/guide/embedding/host-data#limitations).
+
+**Known limitation:** both signals subscribe to new data from the host only on the [background thread](/guide/glossary#background-thread). Changes after startup may not reach the main-thread copy of your app, which draws the UI. This hasn't been verified on a device. See [Threads](/guide/concepts/threads).
+
+### `LynxInitData`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxInitData {}
+```
+
+The page's InitData as a signal.
+
+### `LynxInitData.initData`
+
+```typescript
+readonly initData: WritableSignal<InitData>;
+```
+
+Starts with `lynx.__initData`, the InitData Lynx exposes at launch, or `{}` outside Lynx. Today AngularLynx doesn't fill in `lynx.__initData`, so on a device the value is `undefined`, although the type says `InitData`. Guard your reads. On the background thread, it's set again each time the host sends new data.
+
+### `LynxGlobalData`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxGlobalData {}
+```
+
+The app-wide GlobalData as a signal. `LynxTheme`, `LynxLocale` and `LynxSafeArea` read their values from it.
+
+### `LynxGlobalData.globalData`
+
+```typescript
+readonly globalData: WritableSignal<GlobalData>;
+```
+
+Starts with the global values at launch, or `{}` when the host sets none. On the background thread, it's set again each time the host changes them.
+
+### `registerDataProcessors()`
+
+```typescript
+function registerDataProcessors(definition: DataProcessorDefinition): void;
+```
+
+Registers functions that transform the host's InitData before your app receives it. Call it in `main.ts` before `bootstrapApplication()`.
+
+```typescript title="src/main.ts"
+import {
+  bootstrapApplication,
+  registerDataProcessors,
+} from '@blotch/angular-lynx';
+import { App } from './app/app';
+import { appConfig } from './app/app.config';
+
+registerDataProcessors({
+  defaultDataProcessor: (raw) => ({ ...raw, userId: String(raw['user_id']) }),
+});
+
+bootstrapApplication(App, appConfig);
+```
+
+- **Default processor:** used when the host sends data without naming a processor.
+- **Named processors:** used when the host names one. An unknown name passes the data through unchanged.
+- **A processor that throws** gives your app `{}` instead of crashing it.
+- **Calling it again** replaces the earlier registration.
+
+## Types
+
+### `InitDataRaw`
+
+```typescript
+interface InitDataRaw extends Record<string, unknown> {}
+```
+
+The InitData exactly as the host sends it. A processor's input. Augment it to type the raw fields.
+
+### `InitData`
+
+```typescript
+interface InitData extends Record<string, unknown> {}
+```
+
+The InitData your app reads, after processing. Augment it, as in [Usage](#usage), to type `initData()`.
+
+Put every augmentation in a file that contains `export {};`. Without it, the `declare module` block replaces the package's types instead of adding to them.
+
+### `GlobalData`
+
+```typescript
+interface GlobalData extends Record<string, unknown> {}
+```
+
+The GlobalData your app reads. Augment it to type `globalData()`.
+
+### `DataProcessorDefinition`
+
+```typescript
+type DataProcessorDefinition = {
+  defaultDataProcessor?: (rawInitData: InitDataRaw) => InitData;
+  dataProcessors?: Record<string, (...args: any[]) => any>;
+};
+```
+
+| Field                  | Description                                                       |
+| ---------------------- | ----------------------------------------------------------------- |
+| `defaultDataProcessor` | Transforms InitData when the host names no processor.             |
+| `dataProcessors`       | Processors the host can call by name. Each receives the raw data. |
+
+## Related
+
+- [Pass data from your native app](/guide/embedding/host-data): how the host sends data, step by step.
+- [Embed in an existing native app](/guide/embedding/)
+- [Theme](/api/angular-lynx/theme), [Locale](/api/angular-lynx/locale) and [Safe area](/api/angular-lynx/safe-area): built on `LynxGlobalData`.

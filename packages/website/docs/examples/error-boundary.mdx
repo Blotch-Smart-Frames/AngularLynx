@@ -1,26 +1,18 @@
 # Error Boundary
 
-Contain rendering failures with Angular's `@boundary` block, show a fallback, and recover with `$reset`.
+Contain a crash in one widget with Angular's `@boundary` block, show a fallback and recover. It needs Angular 22.2 or newer.
 
 <Go example="error-boundary" defaultFile="src/app/app.ts" />
 
-```angular-html
-@boundary {
-  <app-price-tile symbol="LYNX" [price]="price()" />
-} @error (let err, retry = $reset) {
-  <text>{{ err.message }}</text>
-  <view (bindtap)="restorePrice(); retry()">
-    <text>Retry</text>
-  </view>
-}
-```
+## What it shows
 
-## Key concepts
+- **`@boundary` and `@error`** — when the price tile throws while rendering, its fallback takes its place and the rest of the screen keeps working. See [Handling errors](/guide/error-handling).
+- **`$reset`** — the Retry button restores the price, then calls `retry()` to render the tile again. Fix the cause first, or it fails again.
+- **`when` on `@error`** — the profile card shows an "offline" fallback for an `OfflineError`, and a generic one for anything else.
+- **`resource()`** — `value()` throws while the resource is in its error state, so a boundary catches a failed load. An `@if` handles the loading state first.
+- **`onViewError`** — caught errors still reach the `ErrorHandler`. `boundary-log.ts` extends `LynxErrorHandler` to list them on screen, and defers its signal write with `queueMicrotask`. See [`LynxErrorHandler`](/api/angular-lynx/errors-and-logging).
 
-- **`@boundary` / `@error`**: a widget that throws while rendering is replaced by its fallback. The rest of the screen keeps working.
-- **`$reset`**: renders the primary block again. Fix the cause first, or it fails again.
-- **`when`**: chain `@error` blocks to show a different fallback for each kind of error (offline vs. bug).
-- **`resource()`**: `value()` throws in the error state, so a boundary can catch failed loads. Guard the loading state with `@if`.
-- **`onViewError`**: caught errors still reach the `ErrorHandler`. This example extends `LynxErrorHandler` to list them on screen, deferring the signal write with `queueMicrotask`.
+## Related
 
-See the [Error Boundaries guide](/guide/error-boundaries) for the full API.
+- [Error Handling](/examples/error-handling)
+- [Debugging](/guide/debugging)

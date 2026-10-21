@@ -1,12 +1,8 @@
 # Button Group
 
-A row (or column) of related actions rendered as a single, connected control — like a toolbar. Each item is an independent action.
+A row or column of connected buttons that reads as one toolbar, where each button runs its own action.
 
 <Go example="ui-button-group" defaultFile="src/app/app.ts" />
-
-:::tip
-Need **selection** state (one or many items stay "on")? Use [Toggle](/dolan/toggle)'s `UiToggleGroup` instead. A button group is for **actions**, so nothing stays selected.
-:::
 
 ## Installation
 
@@ -15,42 +11,53 @@ npx @blotch/dolan add button-group
 ```
 
 ```typescript
-import { UiButtonGroup, UiButtonGroupItem } from '@/components/ui/button-group';
+import {
+  UiButtonGroup,
+  UiButtonGroupItem,
+} from '../components/ui/button-group';
 ```
+
+Button Group imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-Wrap `<ui-button-group-item>` actions in a `<ui-button-group>`. Each item emits `pressed` when tapped.
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import {
+  UiButtonGroup,
+  UiButtonGroupItem,
+} from '../components/ui/button-group';
 
-```angular-html
-<ui-button-group>
-  <ui-button-group-item (pressed)="copy()">Copy</ui-button-group-item>
-  <ui-button-group-item (pressed)="cut()">Cut</ui-button-group-item>
-  <ui-button-group-item (pressed)="paste()">Paste</ui-button-group-item>
-</ui-button-group>
+@Component({
+  selector: 'app-root',
+  imports: [UiButtonGroup, UiButtonGroupItem],
+  template: `
+    <ui-button-group>
+      <ui-button-group-item (pressed)="copy()">Copy</ui-button-group-item>
+      <ui-button-group-item (pressed)="paste()">Paste</ui-button-group-item>
+    </ui-button-group>
+  `,
+})
+export class App {
+  protected copy(): void {}
+  protected paste(): void {}
+}
 ```
 
-## Variants
+- The group sets the look of every item. Each item emits its own `pressed`.
+- Nothing stays selected. For buttons that stay on, use a toggle group from [Toggle](/dolan/toggle).
+- The group hugs its items. Add `class="w-full"` to stretch it.
 
-Set `variant` on the group to style every item at once.
+### Variants
 
 ```angular-html
-<ui-button-group variant="default">
-  <ui-button-group-item>Left</ui-button-group-item>
-  <ui-button-group-item>Center</ui-button-group-item>
-  <ui-button-group-item>Right</ui-button-group-item>
-</ui-button-group>
-
-<ui-button-group variant="outline">
-  <ui-button-group-item>Left</ui-button-group-item>
-  <ui-button-group-item>Center</ui-button-group-item>
-  <ui-button-group-item>Right</ui-button-group-item>
-</ui-button-group>
+<ui-button-group variant="default">…</ui-button-group>
+<ui-button-group variant="outline">…</ui-button-group>
 ```
 
-## Sizes
+`default` fills the items with the secondary color. `outline` uses the background color inside a border.
 
-Set `size` on the group to size every item.
+### Sizes
 
 ```angular-html
 <ui-button-group size="sm">…</ui-button-group>
@@ -58,73 +65,58 @@ Set `size` on the group to size every item.
 <ui-button-group size="lg">…</ui-button-group>
 ```
 
-## Orientation
-
-Set `orientation="vertical"` to stack items into a column.
+### Vertical
 
 ```angular-html
-<ui-button-group orientation="vertical">
-  <ui-button-group-item (pressed)="profile()">Profile</ui-button-group-item>
-  <ui-button-group-item (pressed)="settings()">Settings</ui-button-group-item>
-  <ui-button-group-item (pressed)="signOut()">Sign out</ui-button-group-item>
+<ui-button-group orientation="vertical" variant="outline">
+  <ui-button-group-item (pressed)="openProfile()">Profile</ui-button-group-item>
+  <ui-button-group-item (pressed)="openSettings()">
+    Settings
+  </ui-button-group-item>
 </ui-button-group>
 ```
 
-## Disabled
-
-Disable the whole group, or a single item.
+### Disabled
 
 ```angular-html
-<!-- Whole group -->
-<ui-button-group [disabled]="true">
-  <ui-button-group-item>A</ui-button-group-item>
-  <ui-button-group-item>B</ui-button-group-item>
-</ui-button-group>
+<ui-button-group [disabled]="true">…</ui-button-group>
 
-<!-- One item -->
 <ui-button-group>
   <ui-button-group-item (pressed)="undo()">Undo</ui-button-group-item>
   <ui-button-group-item [disabled]="true">Redo</ui-button-group-item>
 </ui-button-group>
 ```
 
-## Full width
-
-The bar hugs its buttons by default. Add `class="w-full"` to stretch it, and `class="flex-1"` on each item to share the width evenly.
-
-```angular-html
-<ui-button-group class="w-full">
-  <ui-button-group-item class="flex-1" (pressed)="day()"
-    >Day</ui-button-group-item
-  >
-  <ui-button-group-item class="flex-1" (pressed)="week()"
-    >Week</ui-button-group-item
-  >
-  <ui-button-group-item class="flex-1" (pressed)="month()"
-    >Month</ui-button-group-item
-  >
-</ui-button-group>
-```
+Disable the whole group, or one item. A disabled item dims and doesn't emit `pressed`.
 
 ## API
 
 ### UiButtonGroup
 
-| Input         | Type                         | Default        | Description                                   |
-| ------------- | ---------------------------- | -------------- | --------------------------------------------- |
-| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Lay items out in a row or a column            |
-| `variant`     | `'default' \| 'outline'`     | `'default'`    | Visual style applied to all items             |
-| `size`        | `'default' \| 'sm' \| 'lg'`  | `'default'`    | Size applied to all items                     |
-| `disabled`    | `boolean`                    | `false`        | Disables every item in the group              |
-| `class`       | `string`                     | `''`           | Additional Tailwind classes for the group bar |
+| Input         | Type                         | Default        | Description                              |
+| ------------- | ---------------------------- | -------------- | ---------------------------------------- |
+| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Lays the items out in a row or a column. |
+| `variant`     | `'default' \| 'outline'`     | `'default'`    | Visual style of every item.              |
+| `size`        | `'default' \| 'sm' \| 'lg'`  | `'default'`    | Height and padding of every item.        |
+| `disabled`    | `boolean`                    | `false`        | Disables every item.                     |
+| `class`       | `string`                     | `''`           | Extra Tailwind classes for the group.    |
+
+No outputs.
 
 ### UiButtonGroupItem
 
-| Input      | Type      | Default | Description                              |
-| ---------- | --------- | ------- | ---------------------------------------- |
-| `disabled` | `boolean` | `false` | Disables just this item                  |
-| `class`    | `string`  | `''`    | Additional Tailwind classes for the item |
+| Input      | Type      | Default | Description                          |
+| ---------- | --------- | ------- | ------------------------------------ |
+| `disabled` | `boolean` | `false` | Disables this item only.             |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the item. |
 
-| Output    | Type   | Description                                                 |
-| --------- | ------ | ----------------------------------------------------------- |
-| `pressed` | `void` | Emitted when the item is tapped (not emitted when disabled) |
+| Output    | Type   | Description                                         |
+| --------- | ------ | --------------------------------------------------- |
+| `pressed` | `void` | Emits on tap, unless the item or group is disabled. |
+
+The file also exports `buttonGroupItemVariants` and the `ButtonGroupVariant`, `ButtonGroupSize` and `ButtonGroupOrientation` types.
+
+## Related
+
+- [Button](/dolan/button): a single button
+- [Toggle](/dolan/toggle): buttons that stay pressed

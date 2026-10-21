@@ -1,0 +1,106 @@
+# Scroll Area
+
+A vertical or horizontal scrolling container that tells you when the user reaches either end.
+
+## Installation
+
+```bash
+npx @blotch/dolan add scroll-area
+```
+
+```typescript
+import { UiScrollArea } from '../components/ui/scroll-area';
+```
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiScrollArea } from '../components/ui/scroll-area';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiScrollArea],
+  template: `
+    <ui-scroll-area
+      height="300px"
+      contentClass="gap-2 p-4"
+      (scrolledToEnd)="loadMore()"
+    >
+      @for (item of items(); track item) {
+        <text class="text-sm text-foreground">Item {{ item }}</text>
+      }
+    </ui-scroll-area>
+  `,
+})
+export class App {
+  protected readonly items = signal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+  protected loadMore(): void {
+    this.items.update((list) => [...list, list.length + 1, list.length + 2]);
+  }
+}
+```
+
+- **Give it a height.** A Lynx scroll view scrolls only inside a fixed height. Set `height`, or pass a height class such as `class="h-64"` or `class="flex-1"`.
+- **Children sit in an inner column**, or a row when horizontal. Style it with `contentClass`, for example for gaps and padding.
+- **CSS overflow doesn't scroll on Lynx**, which is why this wraps a [`<scroll-view>`](/api/elements/scroll-view) element.
+- For long lists of similar rows, use [List](/dolan/list), which reuses rows as they scroll off screen.
+
+### Horizontal
+
+```angular-html
+<ui-scroll-area orientation="horizontal" contentClass="gap-3 px-4">
+  @for (photo of photos(); track photo.id) {
+    <image [src]="photo.url" mode="aspectFill" class="h-24 w-24 rounded-md" />
+  }
+</ui-scroll-area>
+```
+
+The scroll area fills its parent's width in both orientations (`w-full`).
+
+### Reaching an end
+
+```angular-html
+<ui-scroll-area
+  height="400px"
+  [lowerThreshold]="200"
+  (scrolledToEnd)="loadMore()"
+>
+  …
+</ui-scroll-area>
+```
+
+`scrolledToEnd` fires within `lowerThreshold` pixels of the bottom (or right) edge, and `scrolledToStart` within `upperThreshold` of the top (or left). A threshold lets you load more before the user hits the end.
+
+### Bounce and scroll bar
+
+`bounces` and `scrollBar` are on by default. Setting either to `false` doesn't turn it off yet. The component removes the attribute for `false`, and Lynx's default for both is on.
+
+## API
+
+### UiScrollArea
+
+| Input            | Type                         | Default      | Description                                                                                      |
+| ---------------- | ---------------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
+| `orientation`    | `'vertical' \| 'horizontal'` | `'vertical'` | Scroll direction. Also lays the children out in a column or a row.                               |
+| `height`         | `string`                     | `''`         | A CSS height such as `'300px'`. Leave it empty to size it with `class`.                          |
+| `bounces`        | `boolean`                    | `true`       | Rubber-band bounce at the edges, on iOS. See [Bounce and scroll bar](#bounce-and-scroll-bar).    |
+| `scrollBar`      | `boolean`                    | `true`       | Shows the scroll bar. See [Bounce and scroll bar](#bounce-and-scroll-bar).                       |
+| `nestedScroll`   | `boolean`                    | `false`      | Sets `enable-nested-scroll` on the scroll view. Lynx documents that attribute for `<list>` only. |
+| `upperThreshold` | `number`                     | `0`          | Distance in pixels from the start at which `scrolledToStart` fires.                              |
+| `lowerThreshold` | `number`                     | `0`          | Distance in pixels from the end at which `scrolledToEnd` fires.                                  |
+| `class`          | `string`                     | `''`         | Extra Tailwind classes for the scroll view. It's `w-full` by default.                            |
+| `contentClass`   | `string`                     | `''`         | Extra Tailwind classes for the inner column or row.                                              |
+
+| Output            | Type   | Description                                                          |
+| ----------------- | ------ | -------------------------------------------------------------------- |
+| `scrolledToStart` | `void` | Emits when the user scrolls to within `upperThreshold` of the start. |
+| `scrolledToEnd`   | `void` | Emits when the user scrolls to within `lowerThreshold` of the end.   |
+
+## Related
+
+- [`<scroll-view>`](/api/elements/scroll-view): the element underneath, with more attributes and events
+- [List](/dolan/list): a recycling list for long data
+- [Elements and layout](/guide/elements/)

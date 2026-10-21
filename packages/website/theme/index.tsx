@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { HomeLayout as BaseHomeLayout } from '@rspress/core/theme-original';
 import {
   Banner,
+  Compare,
   Features,
   MeteorsBackground,
   ShowCase,
@@ -9,7 +10,7 @@ import {
 
 import './index.scss';
 
-const cyclingWords = ['Build', 'Ship', 'Render'];
+const cyclingWords = ['Build', 'Ship', 'Test'];
 
 const HeroCommandBox = () => {
   const [copied, setCopied] = useState(false);
@@ -149,6 +150,7 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
       <>
         <Features />
         <ShowCase />
+        <Compare />
         <Banner />
       </>
     ),

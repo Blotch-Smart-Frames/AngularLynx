@@ -1,6 +1,6 @@
 # Candlestick Chart
 
-Plot open, high, low and close (OHLC) prices as candles. Each candle is a thin **wick** from the low to the high and a **body** from the open to the close, green when the period closed at or above its open and red when it closed below. It's a preset of [`<ui-chart>`](/dolan/chart): it builds a [TanStack Charts](https://tanstack.com/charts) definition from its inputs, so it has the same touch tooltip, screen reader support, pan and zoom, and dark mode.
+Plot prices over time as candles, each showing a period's open, high, low and close, with a touch tooltip, pan and zoom, and dark mode built in.
 
 <Go example="ui-candlestick-chart" defaultFile="src/app/app.ts" />
 
@@ -10,36 +10,43 @@ Plot open, high, low and close (OHLC) prices as candles. Each candle is a thin *
 npx @blotch/dolan add candlestick-chart
 ```
 
-:::tip
-The candlestick chart depends on [`chart`](/dolan/chart), which is added automatically, along with the npm packages it imports: `@tanstack/charts` and `d3-shape`.
-:::
-
 ```typescript
-import { UiCandlestickChart } from '@/components/ui/candlestick-chart';
+import { UiCandlestickChart } from '../components/ui/candlestick-chart';
 ```
+
+This also adds [Chart](/dolan/chart), which draws the preset, and installs the npm packages `@tanstack/charts` and `d3-shape`.
 
 ## Usage
 
-Pass an array of `{ x, open, high, low, close }` items, all numbers. `x` is the period, such as a session index. The chart fits the y axis from the lowest low to the highest high, and leaves room for the candles at each end.
-
-```angular-html
-<ui-candlestick-chart [data]="prices" label="Share price" />
-```
-
 ```typescript
-prices = [
-  { x: 1, open: 100, high: 108, low: 98, close: 106 },
-  { x: 2, open: 106, high: 110, low: 103, close: 104 },
-  { x: 3, open: 104, high: 105, low: 96, close: 98 },
-  { x: 4, open: 98, high: 102, low: 95, close: 101 },
-];
+import { Component } from '@angular/core';
+import { UiCandlestickChart } from '../components/ui/candlestick-chart';
+
+@Component({
+  selector: 'app-share-price',
+  imports: [UiCandlestickChart],
+  template: `<ui-candlestick-chart [data]="prices" label="Share price" />`,
+})
+export class SharePrice {
+  protected readonly prices = [
+    { x: 1, open: 100, high: 108, low: 98, close: 106 },
+    { x: 2, open: 106, high: 110, low: 103, close: 104 },
+    { x: 3, open: 104, high: 105, low: 96, close: 98 },
+    { x: 4, open: 98, high: 102, low: 95, close: 101 },
+  ];
+}
 ```
 
-Touch the chart to see a candle's open, high, low and close in a tooltip, and tap to pin it. Set `label` so a screen reader can say what the chart shows.
+- `data` is an array of `{ x, open, high, low, close }` items, all numbers. `x` is the period, such as a session index.
+- Each candle has a thin **wick** from low to high and a wider **body** from open to close.
+- The y axis fits the lowest low to the highest high, with room for the candles at each end.
+- Touch a candle to see its four prices in a tooltip. Tap to pin it. Set `label` so a screen reader can say what the chart shows.
 
-### Custom colors
+## Customize
 
-`upColor` colors candles that closed at or above their open, and `downColor` those that closed below.
+### Colors
+
+`upColor` colors candles that closed at or above their open (default green). `downColor` colors those that closed below (default red).
 
 ```angular-html
 <ui-candlestick-chart
@@ -49,7 +56,7 @@ Touch the chart to see a candle's open, high, low and close in a tooltip, and ta
 />
 ```
 
-### Body and wick width
+### Shape
 
 `bodyWidthRatio` sets how much of its slot each body fills, from `0` to `1` (default `0.6`). A slot is the smallest gap between two `x` values. `wickWidth` is the wick's thickness in px.
 
@@ -57,40 +64,50 @@ Touch the chart to see a candle's open, high, low and close in a tooltip, and ta
 <ui-candlestick-chart [data]="prices" [bodyWidthRatio]="0.8" [wickWidth]="2" />
 ```
 
-### Label the axes
+### Axes and range
 
-`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default; `showGrid` turns them off and `showXGrid` adds vertical ones.
+`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default: `showGrid` turns them off, and `showXGrid` adds vertical ones.
 
 ```angular-html
 <ui-candlestick-chart
   [data]="prices"
   xAxisLabel="Session"
   yAxisLabel="Price ($)"
-  [showXGrid]="true"
+  [yMin]="90"
 />
 ```
 
-`xTickFormat` and `yTickFormat` turn tick values into labels, for example a session index into a date. `tickCount` sets roughly how many ticks each axis gets.
+- `xMin`, `xMax`, `yMin` and `yMax` fix a bound instead of fitting the data, for example to compare two charts on one scale.
+- `xTickFormat` and `yTickFormat` turn tick values into labels, for example a session index into a date.
+- `tickCount` sets roughly how many ticks each axis gets. The axis picks round values near it.
 
-### Fix the axis range
+### Padding
 
-Pass `yMin` and `yMax` (or `xMin` and `xMax`) to fix an axis bound instead of fitting the data, for example to compare two charts on one scale.
+`padding` insets the plot, each side as a fraction (`0` to `1`) of its size.
 
 ```angular-html
-<ui-candlestick-chart [data]="prices" [yMin]="90" [yMax]="120" />
+<ui-candlestick-chart [data]="prices" [padding]="{ top: 0.05, bottom: 0.05 }" />
 ```
 
 ### Size
 
-The chart fills its container's width and is 200px tall. Set `height` for a different height, and `width` for a fixed width, both in px.
-
-### Handle taps
-
-`candleTap` emits the tapped candle's `{ x, open, high, low, close }` item. Set `tooltip` to `false` to turn the tooltip off.
+The chart fills its container's width and is 200px tall. Set `height` for another height and `width` for a fixed width, both in px. Use `height` rather than a height class, because the preset always sets a height.
 
 ```angular-html
-<ui-candlestick-chart [data]="prices" (candleTap)="onCandleTap($event)" />
+<ui-candlestick-chart [data]="prices" [height]="260" />
 ```
+
+## Interaction
+
+### Taps
+
+`candleTap` emits the tapped candle's `{ x, open, high, low, close }` item. A tap on empty space emits nothing. Set `tooltip` to `false` to turn the tooltip off.
+
+```angular-html
+<ui-candlestick-chart [data]="prices" (candleTap)="selected.set($event)" />
+```
+
+`candleTap` fires inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
 
 ### Pan and zoom
 
@@ -100,19 +117,75 @@ Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons
 <ui-candlestick-chart [data]="prices" [zoomable]="true" zoomAxes="x" />
 ```
 
-See [Pan and zoom](/dolan/chart#pan-and-zoom) on the Chart page for how it behaves. To zoom from your own controls, call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component.
+To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.
 
-## Moving averages, volume and other marks
+## API
 
-The preset draws the candles. For a moving average, a price level, volume bars or other marks, build a definition and render it with [`<ui-chart>`](/dolan/chart). You can start from this preset's definition to keep its axes and styling:
+### UiCandlestickChart
+
+| Input              | Type                            | Default                    | Description                                            |
+| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------ |
+| `data`             | `readonly CandlestickDatum[]`   | Required                   | Candles, each `{ x, open, high, low, close }`.         |
+| `upColor`          | `string`                        | `'rgba(34, 197, 94, 1)'`   | Color of a candle that closed at or above its open.    |
+| `downColor`        | `string`                        | `'rgba(239, 68, 68, 1)'`   | Color of a candle that closed below its open.          |
+| `wickWidth`        | `number`                        | `1`                        | Wick thickness in px.                                  |
+| `bodyWidthRatio`   | `number`                        | `0.6`                      | Body width as a fraction of its slot, `0`–`1`.         |
+| `width`            | `number`                        | _fills container_          | Fixed width in px.                                     |
+| `height`           | `number`                        | `200`                      | Height in px.                                          |
+| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis.                       |
+| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks.                   |
+| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks.                     |
+| `xAxisLabel`       | `string`                        | `''`                       | X-axis title.                                          |
+| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title.                                          |
+| `padding`          | `ChartPadding`                  | `{}`                       | Inner inset, each side a `0`–`1` fraction of the plot. |
+| `xMin`             | `number`                        | _fits the data_            | Fixed x-axis lower bound.                              |
+| `xMax`             | `number`                        | _fits the data_            | Fixed x-axis upper bound.                              |
+| `yMin`             | `number`                        | _fits the data_            | Fixed y-axis lower bound.                              |
+| `yMax`             | `number`                        | _fits the data_            | Fixed y-axis upper bound.                              |
+| `xTickFormat`      | `(value: number) => string`     | _automatic_                | Formats x-axis tick labels.                            |
+| `yTickFormat`      | `(value: number) => string`     | _automatic_                | Formats y-axis tick labels.                            |
+| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched candle. A tap pins it.  |
+| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart.          |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Which color table the marks use.                       |
+| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons.                        |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom.                               |
+| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable.                |
+| `minZoom`          | `number`                        | `1`                        | Smallest zoom. `1` shows all the data.                 |
+| `maxZoom`          | `number`                        | `8`                        | Largest zoom.                                          |
+| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press or method call.           |
+| `class`            | `string`                        | `''`                       | Extra Tailwind classes for the chart's root view.      |
+
+| Output      | Type               | Description                 |
+| ----------- | ------------------ | --------------------------- |
+| `candleTap` | `CandlestickDatum` | The candle a tap landed on. |
+
+| Method        | Description               |
+| ------------- | ------------------------- |
+| `zoomIn()`    | Zooms in by `zoomStep`.   |
+| `zoomOut()`   | Zooms out by `zoomStep`.  |
+| `resetZoom()` | Shows all the data again. |
+
+`CandlestickDatum` is `{ x: number; open: number; high: number; low: number; close: number }`, exported from `../components/ui/candlestick-chart`. `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size, with omitted sides `0`. It's exported from `../components/ui/chart`.
+
+### candlestickChartDefinition
+
+```typescript
+function candlestickChartDefinition(
+  options: CandlestickChartOptions,
+): ChartDefinition;
+```
+
+Returns the [TanStack Charts](https://tanstack.com/charts) definition `<ui-candlestick-chart>` renders: a `link` mark for the wicks, a `rect` mark for the bodies, and a tooltip that lists all four prices. The options are the inputs that shape the chart, with the same defaults: `data`, `upColor`, `downColor`, `wickWidth`, `bodyWidthRatio`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label, color scheme and zoom are inputs of `<ui-chart>` instead.
+
+Start from it to add marks of your own, such as a price level or a moving average, and render the result with [`<ui-chart>`](/dolan/chart). Added marks get a plain x and y tooltip.
 
 ```typescript
 import { defineChart, ruleY } from '@tanstack/charts/universal';
-import { candlestickChartDefinition } from '@/components/ui/candlestick-chart';
+import { candlestickChartDefinition } from '../components/ui/candlestick-chart';
 
 const base = candlestickChartDefinition({ data: prices });
 
-const withPreviousClose = defineChart({
+protected readonly withPreviousClose = defineChart({
   ...base,
   marks: [
     ...base.marks,
@@ -121,63 +194,8 @@ const withPreviousClose = defineChart({
 });
 ```
 
-```angular-html
-<ui-chart
-  [definition]="withPreviousClose"
-  label="Share price and previous close"
-/>
-```
+## Related
 
-The preset's tooltip lists a candle's open, high, low and close. Points of the marks you add, such as a `lineY` moving average, get a plain x and y in the same tooltip. For a different tooltip altogether, give the definition its own `tooltip` (see [Show a tooltip](/dolan/chart#show-a-tooltip)).
-
-## API
-
-### UiCandlestickChart
-
-| Input              | Type                            | Default                    | Description                                                   |
-| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------------- |
-| `data`             | `CandlestickDatum[]`            | _required_                 | Candles, each `{ x, open, high, low, close }`                 |
-| `upColor`          | `string`                        | `'rgba(34, 197, 94, 1)'`   | Color of a candle that closed at or above its open            |
-| `downColor`        | `string`                        | `'rgba(239, 68, 68, 1)'`   | Color of a candle that closed below its open                  |
-| `wickWidth`        | `number`                        | `1`                        | Wick thickness in px                                          |
-| `bodyWidthRatio`   | `number`                        | `0.6`                      | Body width as a fraction of its slot, `0`–`1`                 |
-| `width`            | `number`                        | _fills container_          | Fixed width in px                                             |
-| `height`           | `number`                        | `200`                      | Height in px                                                  |
-| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis                               |
-| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks                           |
-| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks                             |
-| `xAxisLabel`       | `string`                        | `''`                       | X-axis title                                                  |
-| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title                                                  |
-| `padding`          | `ChartPadding`                  | `{}`                       | Inner inset, each side a `0`–`1` fraction of the plot         |
-| `xMin`             | `number`                        | _auto_                     | Fixed x-axis lower bound                                      |
-| `xMax`             | `number`                        | _auto_                     | Fixed x-axis upper bound                                      |
-| `yMin`             | `number`                        | _auto_                     | Fixed y-axis lower bound                                      |
-| `yMax`             | `number`                        | _auto_                     | Fixed y-axis upper bound                                      |
-| `xTickFormat`      | `(value: number) => string`     | _auto_                     | Formats x-axis tick labels                                    |
-| `yTickFormat`      | `(value: number) => string`     | _auto_                     | Formats y-axis tick labels                                    |
-| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched candle; a tap pins it          |
-| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart                  |
-| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Light or dark colors; see [Dark mode](/dolan/chart#dark-mode) |
-| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons                                |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom                                       |
-| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable                        |
-| `minZoom`          | `number`                        | `1`                        | Smallest zoom; `1` shows all the data                         |
-| `maxZoom`          | `number`                        | `8`                        | Largest zoom                                                  |
-| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press                                  |
-| `class`            | `string`                        | `''`                       | Additional CSS classes                                        |
-
-| Output      | Type               | Description                      |
-| ----------- | ------------------ | -------------------------------- |
-| `candleTap` | `CandlestickDatum` | Emits the candle that was tapped |
-
-| Method        | Description              |
-| ------------- | ------------------------ |
-| `zoomIn()`    | Zooms in by `zoomStep`   |
-| `zoomOut()`   | Zooms out by `zoomStep`  |
-| `resetZoom()` | Shows all the data again |
-
-`CandlestickDatum` is `{ x: number; open: number; high: number; low: number; close: number }`, exported from `@/components/ui/candlestick-chart`. `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size, with omitted sides `0`, exported from `@/components/ui/chart`.
-
-### candlestickChartDefinition
-
-`candlestickChartDefinition(options: CandlestickChartOptions)` returns the TanStack definition `<ui-candlestick-chart>` renders: a `link` mark for the wicks, a `rect` mark for the bodies, and a tooltip that lists the four prices. The options are the inputs that shape the chart, with the same defaults: `data`, `upColor`, `downColor`, `wickWidth`, `bodyWidthRatio`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label and zoom are inputs of `<ui-chart>` instead.
+- [Chart](/dolan/chart): moving averages, volume bars and other marks
+- [Line Chart](/dolan/line-chart): a price as a single line
+- [Bar Chart](/dolan/bar-chart): values as bars

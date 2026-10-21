@@ -1,0 +1,242 @@
+# Dialogs and overlays
+
+Show a dialog, a bottom sheet, a menu or a toast above the rest of your app. Start with a ready-made UI component, and build your own with `<overlay>` or `LynxPortal` when none fits.
+
+## Use a UI component
+
+```typescript title="src/app/profile.ts"
+import { Component, signal } from '@angular/core';
+import { UiButton } from '../components/ui/button';
+import {
+  UiDialog,
+  UiDialogFooter,
+  UiDialogHeader,
+  UiDialogTitle,
+} from '../components/ui/dialog';
+
+@Component({
+  selector: 'app-profile',
+  imports: [UiButton, UiDialog, UiDialogHeader, UiDialogTitle, UiDialogFooter],
+  template: `
+    <ui-button (pressed)="open.set(true)">Edit profile</ui-button>
+
+    <ui-dialog [(open)]="open">
+      <ui-dialog-header>
+        <ui-dialog-title>Edit profile</ui-dialog-title>
+      </ui-dialog-header>
+      <ui-dialog-footer>
+        <ui-button (pressed)="open.set(false)">Done</ui-button>
+      </ui-dialog-footer>
+    </ui-dialog>
+  `,
+})
+export class Profile {
+  readonly open = signal(false);
+}
+```
+
+Add a component with `npx @blotch/dolan add dialog`. It copies the source into `src/components/ui/`, so you can change it.
+
+| Component                           | Shows                                           |
+| ----------------------------------- | ----------------------------------------------- |
+| [Dialog](/dolan/dialog)             | A centered panel over a dimmed backdrop         |
+| [Alert Dialog](/dolan/alert-dialog) | A dialog the user must answer                   |
+| [Sheet](/dolan/sheet)               | A panel that slides in from an edge             |
+| [Bottom Sheet](/dolan/bottom-sheet) | A panel that rises from the bottom              |
+| [Action Sheet](/dolan/action-sheet) | A list of actions from the bottom of the screen |
+| [Toast](/dolan/toast)               | A short message that leaves the app usable      |
+
+They handle the backdrop, animation and touch rules below for you.
+
+## Build one with `<overlay>`
+
+```typescript title="src/app/confirm-delete.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-confirm-delete',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view
+      class="rounded-md bg-destructive px-4 py-3"
+      (bindtap)="open.set(true)"
+    >
+      <text class="text-destructive-foreground">Delete</text>
+    </view>
+
+    <overlay [attr.visible]="open()">
+      <!-- One child that fills the screen: the backdrop -->
+      <view
+        class="flex h-full w-full items-center justify-center bg-black/50"
+        (bindtap)="open.set(false)"
+      >
+        <view class="w-4/5 rounded-lg bg-background p-6" (catchtap)="noop()">
+          <text class="text-lg text-foreground">Delete this item?</text>
+          <view
+            class="mt-4 rounded-md bg-primary px-4 py-2"
+            (bindtap)="open.set(false)"
+          >
+            <text class="text-primary-foreground">Cancel</text>
+          </view>
+        </view>
+      </view>
+    </overlay>
+  `,
+})
+export class ConfirmDelete {
+  readonly open = signal(false);
+
+  noop(): void {}
+}
+```
+
+- **`<overlay>` floats above the whole app.** It lives in your template, and a signal bound to `visible` shows and hides it.
+- **Give it exactly one child, sized `h-full w-full`.** The overlay itself takes no space. It sizes only its first child, against the screen, and the web preview shows only that first child. Position your content inside that full-size view.
+- **Use `(catchtap)` on the panel.** It stops taps on the panel from reaching the backdrop's close handler. See [Stop an event from bubbling](/guide/elements/event-handling#stop-an-event-from-bubbling).
+- **On Android, the back button fires `(bindrequestclose)`** on the overlay. Close the overlay there.
+
+<Go example="element-overlay" defaultFile="src/app/app.ts" />
+
+## Open an overlay from code
+
+Use **`LynxPortal`** when the code that opens the overlay isn't the template that shows it, such as a service, a route guard or a shared confirm step. It renders a component or a template inside a new `<overlay>`.
+
+:::warning Close it yourself
+An overlay opened with `LynxPortal` stays open when the component that opened it is destroyed. Keep the `PortalRef` it returns, and call `destroy()` when you're done and when the opener is destroyed.
+:::
+
+```typescript title="src/app/confirm-dialog.ts"
+import { Component, input, output } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-confirm-dialog',
+  imports: [LYNX_ELEMENTS],
+  // The host is the overlay's only child, so it fills the screen.
+  host: { class: 'flex h-full w-full items-center justify-center bg-black/50' },
+  template: `
+    <view class="w-4/5 rounded-lg bg-background p-6">
+      <text class="text-lg font-semibold text-foreground">{{ title() }}</text>
+      <view
+        class="mt-4 rounded-md bg-primary px-4 py-2"
+        (bindtap)="closed.emit()"
+      >
+        <text class="text-primary-foreground">OK</text>
+      </view>
+    </view>
+  `,
+})
+export class ConfirmDialog {
+  readonly title = input('');
+  readonly closed = output<void>();
+}
+```
+
+```typescript title="src/app/settings.ts"
+import { Component, DestroyRef, inject } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxPortal,
+  type PortalRef,
+} from '@blotch/angular-lynx';
+import { ConfirmDialog } from './confirm-dialog';
+
+@Component({
+  selector: 'app-settings',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="reset()">
+      <text>Reset settings</text>
+    </view>
+  `,
+})
+export class Settings {
+  readonly #portal = inject(LynxPortal);
+  #dialog: PortalRef<ConfirmDialog> | null = null;
+
+  constructor() {
+    // The overlay outlives this component, so close it here too.
+    inject(DestroyRef).onDestroy(() => this.#close());
+  }
+
+  reset(): void {
+    // Opening creates views, so it waits until the tap handler returns.
+    setTimeout(() => {
+      this.#dialog = this.#portal.open(ConfirmDialog, {
+        inputs: { title: 'Settings reset' },
+      });
+      // Closing destroys views, so it's deferred the same way.
+      this.#dialog.instance?.closed.subscribe(() =>
+        setTimeout(() => this.#close()),
+      );
+    });
+  }
+
+  #close(): void {
+    this.#dialog?.destroy();
+    this.#dialog = null;
+  }
+}
+```
+
+- **Defer `open()` and `destroy()` with `setTimeout` inside a handler.** Both create or destroy views. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **The opened component is a normal component.** It can inject services and use inputs, outputs and signals. `ref.instance` is the component, and `ref.setInput()` changes an input later.
+- **`inputs` sets inputs when it opens.** `injector` gives it a different injector. See [`LynxPortal`](/api/angular-lynx/portal).
+
+### Open a template
+
+```typescript title="src/app/upload.ts"
+import { Component, TemplateRef, inject, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS, LynxPortal } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-upload',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="upload()">
+      <text>Upload</text>
+    </view>
+
+    <ng-template #saving>
+      <view class="flex h-full w-full items-center justify-center bg-black/50">
+        <text class="text-white">Saving…</text>
+      </view>
+    </ng-template>
+  `,
+})
+export class Upload {
+  readonly saving = viewChild.required<TemplateRef<unknown>>('saving');
+  readonly #portal = inject(LynxPortal);
+
+  upload(): void {
+    setTimeout(() => {
+      const ref = this.#portal.openTemplate(this.saving());
+      // Stands in for real work: closes the overlay after two seconds.
+      setTimeout(() => ref.destroy(), 2000);
+    });
+  }
+}
+```
+
+`openTemplate()` takes a `TemplateRef` from `viewChild()`, and an optional `context` for the template's variables.
+
+## Stack overlays with `level`
+
+`level` picks one of four layers for an overlay. Set it on the element, `<overlay [level]="2">`, or when opening, `portal.open(ConfirmDialog, { level: 2 })`.
+
+- **Level 1, the default, is the top layer.** Level 4 is the lowest, so a higher number sits further back.
+- **Within one level, the overlay shown last is on top.**
+- **Pick the level before the overlay shows.** Lynx doesn't move an overlay that's already visible to a new level.
+
+## Limitations
+
+- **An overlay blocks the whole app while it's visible.** It takes every touch, even when its content is small. For a toast or banner, use the [Toast](/dolan/toast) component, which floats a `position: fixed` view instead.
+- **The host app must include Lynx's [XElement](/guide/glossary#xelement) library**, which provides `<overlay>`. Lynx Explorer and the apps that `ng build --platform` makes include it. If you [embed your bundle](/guide/embedding/) in your own app, register it there.
+
+## Related
+
+- [`<overlay>`](/api/elements/overlay): every attribute and event
+- [`LynxPortal`](/api/angular-lynx/portal): `PortalRef` and `PortalConfig`
+- [Accessibility](/guide/accessibility#keep-focus-inside-a-dialog): keep screen reader focus inside a dialog
+- [Modal dialog example](/examples/modal-dialog)

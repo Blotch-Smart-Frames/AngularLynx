@@ -1,64 +1,100 @@
 # `backgroundFn` and `runOnBackground`
 
-Main thread functions can call back to the background thread using `runOnBackground`. This is useful when a main-thread event handler needs to trigger state updates, service calls, or other Angular-side logic.
+Lets main-thread code call a function on the [background thread](/guide/glossary#background-thread), where background-only APIs live. `import { backgroundFn } from '@blotch/angular-lynx';`
 
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::info
+Template handlers such as `(bindtap)` already run on the main thread. [Main-thread scripts](/guide/main-thread/) explains when you need this API instead.
 :::
 
-## Setup
+## Usage
 
-Define a background function at module scope with `backgroundFn()`. Like `mainThreadFn`, it uses a deterministic counter so both thread bundles generate matching IDs.
-
-```typescript title="src/app/my.ts"
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
 import {
+  backgroundFn,
+  LYNX_ELEMENTS,
+  LynxMainThreadEvent,
   mainThreadFn,
-  backgroundFn, // [!code highlight]
+  type MainThread,
 } from '@blotch/angular-lynx';
-import type { MainThread } from '@blotch/angular-lynx';
 
-// Registers on the background thread — can access module-level state
 let lastColor = '';
-const onColorChanged = backgroundFn((color: string) => {
-  // [!code highlight]
+
+// Registered on the background thread.
+const rememberColor = backgroundFn((color: string) => {
   lastColor = color;
-  // Could dispatch events, call services, update shared state, etc.
 });
 
-const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
+const paint = mainThreadFn((event: MainThread.TouchEvent) => {
   event.currentTarget.setStyleProperty('background-color', '#ff5722');
-  // runOnBackground is a global injected into mainThreadFn — no import needed
-  runOnBackground(onColorChanged, '#ff5722'); // [!code highlight]
+  void runOnBackground(rememberColor, '#ff5722');
 });
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <view [mainThreadBindtap]="paint"><text>Tap to paint</text></view>
+  `,
+})
+export class App {
+  readonly paint = paint;
+}
 ```
 
-## How It Works
-
-```mermaid
-sequenceDiagram
-    participant MT as Main Thread
-    participant BG as Background Thread
-    MT->>MT: handleTap() executes
-    MT->>MT: setStyleProperty() (instant)
-    MT->>BG: runOnBackground(handle, args)
-    BG->>BG: onColorChanged('#ff5722')
-    BG-->>MT: Promise resolves
-```
-
-## Rules
-
-1. **Module-level only** — `backgroundFn` must be called at module scope, same as `mainThreadFn`.
-2. **Closure over module state** — unlike `mainThreadFn`, background functions CAN reference module-level variables because they execute in the background thread context where the module lives.
-3. **No component-level closures** — background functions can't capture `this`, signals, or injected services from a component instance. Use shared module-level state or event patterns instead.
-4. **Arguments must be JSON-serializable** — data crosses the thread boundary via `JSON.stringify`.
-5. **Returns a Promise** — `runOnBackground()` returns a `Promise` that resolves when the function completes.
+`runOnBackground` is a global, so it needs no import. Its type comes with `@blotch/angular-lynx`.
 
 ## API
 
-```typescript
-// Define a background-callable function
-backgroundFn<TArgs, TReturn>(fn: (...args: TArgs) => TReturn): BackgroundFnHandle<TArgs, TReturn>
+### `backgroundFn(fn)`
 
-// Call from main-thread code (available as a global in mainThreadFn functions)
-runOnBackground(handle: BackgroundFnHandle, ...args: unknown[]): Promise<unknown>
+```typescript
+function backgroundFn<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => TReturn,
+): BackgroundFnHandle<TArgs, TReturn>;
 ```
+
+- **`fn`**: the function to run on the background thread.
+- **Returns** a handle to pass to `runOnBackground()`.
+
+### `runOnBackground(handle, ...args)`
+
+```typescript
+// A global on the main thread.
+function runOnBackground(
+  handle: { _wkltId: string },
+  ...args: unknown[]
+): Promise<unknown>;
+```
+
+- **`handle`**: a handle from `backgroundFn()`.
+- **`args`**: its arguments. They aren't type-checked against the function.
+- **Returns** a promise of the function's return value, typed `unknown`. If the function throws, it rejects with an `Error` whose message is the thrown value as a string.
+
+You can call it from a main-thread function or from a template event handler, since both run on the main thread.
+
+## Constraints
+
+- **`runOnBackground` exists only on the main thread.** Code in a constructor or `ngOnInit` also runs on the background thread, where calling it throws.
+- **Define `backgroundFn` at module scope.** The call finds the function by an ID, which matches on both threads only for module-level functions.
+- **Arguments and the return value are copied as JSON.**
+- **The function must return synchronously.** A returned promise isn't awaited: the caller receives `{}`, so an `async` function's result is lost.
+- **Signals it changes don't reach the screen.** It runs in the background copy of your app, which isn't shown. Return a value and set the signal on the main thread instead.
+
+## Types
+
+```typescript
+// An opaque handle. Its fields are internal.
+type BackgroundFnHandle<
+  TArgs extends unknown[] = unknown[],
+  TReturn = unknown,
+> = {
+  /* internal */
+};
+```
+
+## Related
+
+- [Main-thread scripts guide](/guide/main-thread/)
+- [Threads: where your code runs](/guide/concepts/threads)
+- [`LynxMainThread`](/api/main-thread/main-thread-service): the other direction

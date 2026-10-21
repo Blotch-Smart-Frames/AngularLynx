@@ -1,52 +1,121 @@
-# &lt;view&gt;
+# `<view>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-The basic container element, equivalent to `<div>` in HTML. Use it for layout and grouping.
+The basic container, like a `<div>`. Use it for layout, backgrounds, borders and tap targets.
 
 <Go example="element-view" defaultFile="src/app/app.ts" />
 
-```angular-html
-<view class="card">
-  <view class="card-header">
-    <text>Title</text>
-  </view>
-  <view class="card-body">
-    <text>Content goes here</text>
-  </view>
-</view>
-```
+## Usage
 
-## Layout
+```typescript title="src/app/card.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-Lynx defaults to **flexbox layout** (`display: linear`, equivalent to `display: flex` with `flex-direction: column`). This is different from HTML where `<div>` defaults to `display: block`.
-
-```css
-/* Children stack vertically by default */
-.row {
-  flex-direction: row; /* Switch to horizontal layout */
+@Component({
+  selector: 'app-card',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="card" (bindtap)="open()">
+      <text>Title</text>
+    </view>
+  `,
+})
+export class Card {
+  open(): void {}
 }
 ```
 
-## Key Attributes
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-| Attribute | Type      | Description                                                                                                                        |
-| --------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `name`    | `string`  | Identifies the element for native-side lookups via `findViewByName`                                                                |
-| `flatten` | `boolean` | Performance hint — merges the element's draw operations with its parent. Use on pure layout containers that have no visual styling |
+Children stack vertically by default, and text goes in a [`<text>`](/api/elements/text). See [CSS on Lynx](/guide/styling) for layout.
+
+## Attributes
+
+These attributes work on **every element**, not only `<view>`.
+
+| Attribute                         | Type                 | Default | Description                                                                                                                                                        |
+| --------------------------------- | -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                              | `string`             | —       | Unique id on the page. Selectors such as `#id` match it.                                                                                                           |
+| `class`                           | `string`             | —       | CSS classes.                                                                                                                                                       |
+| `style`                           | `string`             | —       | Inline styles.                                                                                                                                                     |
+| `data-*`                          | `any`                | —       | Custom data. A handler reads it from `$event.target.dataset`.                                                                                                      |
+| `name`                            | `string`             | —       | Deprecated: use `id`. A name the [host app](/guide/glossary#host-app) can look the element up by.                                                                  |
+| `flatten`                         | `boolean`            | `true`  | Android only. `"false"` gives the element its own native view. Sticky positioning, text selection, screenshots and reliable `overflow: hidden` clipping need that. |
+| `user-interaction-enabled`        | `boolean`            | `true`  | Whether the element and its children get touch events. Scrolling still works.                                                                                      |
+| `native-interaction-enabled`      | `boolean`            | `true`  | iOS only. Whether the element consumes the platform's own touch handling.                                                                                          |
+| `event-through`                   | `boolean`            | `false` | Touches pass through to the host app's views behind the Lynx view. Children inherit it.                                                                            |
+| `hit-slop`                        | `string \| object`   | `'0px'` | Enlarges the touch area without changing layout, e.g. `'10px'` or `{ top: '10px', left: '0px', right: '0px', bottom: '10px' }`.                                    |
+| `ignore-focus`                    | `boolean`            | `false` | Tapping the element doesn't take focus, so an open keyboard stays open. Children inherit it.                                                                       |
+| `block-native-event`              | `boolean`            | `false` | While this element is touched, platform gestures outside Lynx (such as the iOS swipe-back gesture) are blocked.                                                    |
+| `consume-slide-event`             | `[number, number][]` | —       | Swipe angle ranges, in degrees, that this element keeps from platform gestures. Use it to build your own scroll container.                                         |
+| `pan-intercept-direction`         | `0 \| 1`             | —       | iOS and Android. Takes pan gestures from outside views in this direction: `0` horizontal, `1` vertical.                                                            |
+| `pan-intercept-scope`             | `0`–`5`              | —       | iOS and Android. Which outside views to take pans from: `0` self, `1` ancestors, `2` descendants, `3` self and ancestors, `4` self and descendants, `5` all.       |
+| `enable-touch-pseudo-propagation` | `boolean`            | `false` | Lets the `:active` state also apply to ancestors.                                                                                                                  |
+| `ios-enable-simultaneous-touch`   | `boolean`            | `false` | iOS only. Forces touch events to fire when a native gesture would otherwise swallow them.                                                                          |
+| `accessibility-*`                 | —                    | —       | Screen reader attributes. See [Accessibility](/api/angular-lynx/accessibility).                                                                                    |
+| `exposure-*`                      | —                    | —       | Visibility tracking. See [Exposure](/api/angular-lynx/exposure).                                                                                                   |
 
 ## Events
 
-`<view>` supports all standard Lynx events. See [Event Handling](/guide/elements/event-handling) for the full list.
+These events work on **every element**. Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
 
-```angular-html
-<view
-  (bindtap)="onTap()"
-  (bindlongpress)="onLongPress()"
-  (bindtouchstart)="onTouchStart($event)"
->
-  <text>Interactive view</text>
-</view>
+Only touch events (taps, long presses, and touch start, move, end and cancel) bubble. Each also has a `catch` form (`catchtap`) that stops bubbling, and `capture-bind`/`capture-catch` forms for the capture phase.
+
+| Event                                                                                     | `detail`                                                                                                                   | Description                                                                                                      |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bindtap`                                                                                 | `{ x: number; y: number }`                                                                                                 | A finger taps the element, or a mouse clicks it. If `bindlongpress` is also bound, a long press fires only that. |
+| `bindlongpress`                                                                           | `{ x: number; y: number }`                                                                                                 | A finger presses and holds.                                                                                      |
+| `bindtouchstart`                                                                          | `{ x: number; y: number }`                                                                                                 | A finger touches the element. The event also has `touches` and `changedTouches`. Doesn't fire for a mouse.       |
+| `bindtouchmove`                                                                           | `{ x: number; y: number }`                                                                                                 | A touching finger moves.                                                                                         |
+| `bindtouchend`                                                                            | `{ x: number; y: number }`                                                                                                 | A finger lifts.                                                                                                  |
+| `bindtouchcancel`                                                                         | `{ x: number; y: number }`                                                                                                 | The system interrupts the touch, for example with an incoming call.                                              |
+| `bindmousedown`, `bindmouseup`, `bindmousemove`, `bindmouseenter`, `bindmouseleave`       | —                                                                                                                          | Mouse input on web and desktop. Bind them next to the touch events to get press feedback in a browser.           |
+| `bindlayoutchange`                                                                        | `{ id: string; width: number; height: number; top: number; right: number; bottom: number; left: number; dataset: object }` | Layout finished. Positions are relative to the Lynx view.                                                        |
+| `binduiappear`                                                                            | `{ 'exposure-id': string; 'exposure-scene': string; 'unique-id': string; dataset: object }`                                | The element comes on screen. See [Detect when elements are visible](/guide/exposure).                            |
+| `binduidisappear`                                                                         | Same as `binduiappear`                                                                                                     | The element leaves the screen.                                                                                   |
+| `bindanimationstart`, `bindanimationiteration`, `bindanimationend`, `bindanimationcancel` | —                                                                                                                          | A CSS keyframe animation starts, repeats, ends or is canceled. Its name is in `$event.params.animation_name`.    |
+| `bindtransitionstart`, `bindtransitionend`, `bindtransitioncancel`                        | —                                                                                                                          | A CSS transition starts, ends or is canceled.                                                                    |
+| `bindaccessibilityaction`                                                                 | `{ name: string }`                                                                                                         | A screen reader user picks one of the element's `accessibility-actions`.                                         |
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) work on every element. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.
+
+| Method                      | Parameters                                                                                                                                  | Description                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `boundingClientRect`        | `{ relativeTo?: 'screen' \| string }`                                                                                                       | Returns `{ id, dataset, left, top, right, bottom, width, height }`. Coordinates are relative to the Lynx view, the screen, or the element with that `id`. |
+| `scrollIntoView`            | `{ scrollIntoViewOptions: { block?: 'start' \| 'center' \| 'end'; inline?: 'start' \| 'center' \| 'end'; behavior?: 'smooth' \| 'none' } }` | Scrolls the nearest `<scroll-view>` to show the element. Web reads `block` and `behavior` from the top level, so pass them there too.                     |
+| `takeScreenshot`            | `{ format: 'jpeg' \| 'png'; scale?: number }`                                                                                               | iOS and Android. Returns `{ data }`, a base64 image of the element. On Android the element needs `flatten="false"`.                                       |
+| `requestAccessibilityFocus` | —                                                                                                                                           | iOS and Android. Moves the screen reader's focus to the element.                                                                                          |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-answer',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view #answer (bindtap)="reveal()">
+      <text>Show the answer</text>
+    </view>
+  `,
+})
+export class Answer {
+  readonly answer = viewChild.required('answer', { read: ElementRef });
+
+  reveal(): void {
+    // Native reads the nested options and web reads the top-level ones.
+    this.answer().nativeElement.invoke?.('scrollIntoView', {
+      scrollIntoViewOptions: { block: 'center' },
+      block: 'center',
+    });
+  }
+}
 ```
+
+## Related
+
+- [Elements and layout](/guide/elements/): how Lynx elements replace HTML
+- [CSS on Lynx](/guide/styling): layout defaults and what CSS works
+- [Handling taps and events](/guide/elements/event-handling)
+- [`<text>`](/api/elements/text) and [`<block>`](/api/elements/block)

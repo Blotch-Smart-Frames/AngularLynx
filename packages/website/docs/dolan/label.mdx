@@ -1,6 +1,6 @@
 # Label
 
-A text label for form fields, rendered as a Lynx `<text>` element with support for disabled state styling and content projection.
+A short caption in the form label style, for controls that don't have a `label` input of their own.
 
 <Go example="ui-label" defaultFile="src/app/app.ts" />
 
@@ -11,30 +11,56 @@ npx @blotch/dolan add label
 ```
 
 ```typescript
-import { UiLabel } from '@/components/ui/label';
+import { UiLabel } from '../components/ui/label';
 ```
 
 ## Usage
 
-```angular-html
-<ui-label>Email Address</ui-label>
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiLabel } from '../components/ui/label';
+import { UiSwitch } from '../components/ui/switch';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiLabel, UiSwitch],
+  template: `
+    <view class="flex flex-row items-center justify-between">
+      <ui-label>Wi-Fi</ui-label>
+      <ui-switch [(checked)]="wifi" />
+    </view>
+  `,
+})
+export class App {
+  protected readonly wifi = signal(true);
+}
 ```
+
+- This example also uses [Switch](/dolan/switch).
+- A label is text only. Tapping it doesn't toggle or focus the control next to it.
+- [Input](/dolan/input) and [Textarea](/dolan/textarea) draw their own label from a `label` input.
 
 ### Disabled
 
 ```angular-html
-<ui-label [disabled]="true">Account ID (read-only)</ui-label>
+<ui-label [disabled]="true">Airplane mode</ui-label>
 ```
 
-### With custom class
-
-```angular-html
-<ui-label class="text-base">Full Name</ui-label>
-```
+A disabled label dims to match a disabled control.
 
 ## API
 
+### UiLabel
+
 | Input      | Type      | Default | Description                          |
 | ---------- | --------- | ------- | ------------------------------------ |
-| `disabled` | `boolean` | `false` | Applies reduced opacity styling      |
-| `class`    | `string`  | `''`    | Additional CSS classes for the label |
+| `disabled` | `boolean` | `false` | Dims the label.                      |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the text. |
+
+No outputs.
+
+## Related
+
+- [Checkbox](/dolan/checkbox), [Switch](/dolan/switch), [Radio Group](/dolan/radio-group) and [Select](/dolan/select): controls to label
+- [Typography](/dolan/typography): other text styles

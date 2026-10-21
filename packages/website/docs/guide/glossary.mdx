@@ -1,0 +1,133 @@
+# Glossary
+
+Lynx and mobile-development terms used in these docs, in plain words. Terms are grouped by topic.
+
+## The Lynx platform
+
+### Lynx
+
+An open-source engine from ByteDance for building mobile apps with JavaScript and CSS. It draws the phone's own UI controls, and it runs on iOS, Android and the web. See [lynxjs.org](https://lynxjs.org/).
+
+### Element
+
+A building block of a Lynx UI, written as a tag in your template, such as `<view>`, `<text>` or `<image>`. Each element becomes a native UI control. Lynx elements replace HTML. See [Elements and layout](/guide/elements/).
+
+### `page`
+
+The root element of every Lynx app. In CSS, the `page` selector plays the role of `:root` or `body`: put global CSS variables there.
+
+### Bundle
+
+The single file your build produces, `main.lynx.bundle`. It holds your compiled code, templates and styles. A [host app](#host-app) loads it and runs it. See [Build your app](/guide/building-for-production).
+
+### Host app
+
+A native iOS or Android app with the Lynx engine inside, which loads and shows your [bundle](#bundle). In development it's [Lynx Explorer](#lynx-explorer). In production it's the app that `ng build --platform` generates, or your own native app.
+
+### LynxView
+
+The native view a [host app](#host-app) places on screen to show a bundle, like an `<iframe>` for Lynx content. You only deal with it when you [embed](/guide/embedding/) AngularLynx in your own native app.
+
+### Card
+
+An older Lynx name for one bundle shown in one [LynxView](#lynxview). Lynx Explorer's "Enter Card URL" field means "enter your bundle's URL".
+
+### Main thread
+
+The thread that creates and updates the native UI, and receives touches. AngularLynx runs your templates and event handlers here. See [Threads](/guide/concepts/threads).
+
+### Background thread
+
+Lynx's second JavaScript thread. It has APIs the main thread doesn't, such as `fetch`. AngularLynx starts a copy of your app here too, but that copy doesn't draw anything. See [Threads](/guide/concepts/threads).
+
+### Main-thread script
+
+A function marked to run on the [main thread](#main-thread) with direct access to native elements, for work that must happen on every frame, such as dragging. Also called a [worklet](#worklet). See [Main-thread scripts](/guide/main-thread/).
+
+### Worklet
+
+Lynx's name for a function that runs on the [main thread](#main-thread). Same as a [main-thread script](#main-thread-script).
+
+### UI method
+
+A function that a native element exposes, such as scrolling a `<scroll-view>` to a position or playing a `<video>`. You call it with the element's `invoke()` method. See [Call element methods](/guide/selector-query).
+
+### Element pool
+
+A limit on how many native elements an app can create, found in an on-device crash: about 256 slots, and removing an element doesn't free its slot. AngularLynx keeps the views of routes you leave alive to create fewer elements. See [Renderer internals](/guide/renderer-architecture#the-element-pool).
+
+### Exposure
+
+Lynx's term for an element becoming visible on screen, and "disexposure" for it leaving. It's like `IntersectionObserver` or impression tracking on the web. See [Detect when elements are visible](/guide/exposure).
+
+### InitData
+
+Data the [host app](#host-app) passes to your bundle when it opens it, such as a user ID. See [Pass data from your native app](/guide/embedding/host-data).
+
+### GlobalData
+
+Data the [host app](#host-app) shares with every bundle it shows, and can change while the app runs, such as the theme. Lynx also calls it global props. See [Pass data from your native app](/guide/embedding/host-data).
+
+### XElement
+
+A Lynx library that provides some elements, including `<input>`, `<textarea>`, `<overlay>`, `<svg>` and `<video>`. Lynx Explorer and the generated apps include it. Your own native app must add it, or those elements render nothing. See [Embedding](/guide/embedding/).
+
+### RSpeedy
+
+Lynx's build tool, based on Rspack. The AngularLynx builders run it for you when you run `ng build` or `ng serve`. You only configure it directly to [customize the build](/guide/building-for-production).
+
+## Development tools
+
+### Lynx Explorer
+
+Lynx's official app for development. It downloads a bundle from a URL or QR code and runs it, so you can try your app on a phone without building one. See [Quick Start](/guide/quick-start#4-open-it-on-a-phone).
+
+### Lynx Go
+
+A community-published build of [Lynx Explorer](#lynx-explorer) on the App Store and Google Play. The Lynx team doesn't maintain it, but it works the same way.
+
+### LogBox
+
+Lynx's in-app error overlay. In development, Lynx Explorer shows uncaught errors in it on top of your app. Builds for the stores don't include it. See [Handling errors](/guide/error-handling).
+
+### Lynx DevTool
+
+Lynx's desktop debugging app, with an element inspector and a console. Turning on the **Lynx DevTool** switch in Lynx Explorer also enables reload on save. See [Debugging](/guide/debugging).
+
+### Web preview
+
+Your app running in a desktop browser through Lynx's web renderer. `ng serve` prints its link as **Preview**. It's close to a phone but not identical.
+
+### Simulator
+
+The iOS Simulator: a virtual iPhone that runs on a Mac. It comes with Xcode. You can install and run apps on it without a real iPhone.
+
+### Emulator
+
+The Android emulator: a virtual Android phone that runs on your computer. It comes with Android Studio.
+
+## Publishing apps
+
+### App ID
+
+Your app's permanent, unique name in reverse-domain form, such as `com.example.myapp`. Apple calls it the bundle ID, and Google calls it the application ID. You can't change it after the first upload.
+
+### Signing
+
+Adding a cryptographic signature to your app that proves it came from you. Both stores reject unsigned apps. See [Publish to the app stores](/guide/publishing).
+
+### `.app`
+
+An iOS app as a folder. `ng build --platform ios` makes one for the [simulator](#simulator).
+
+### `.ipa`
+
+A signed iOS app file, which you upload to the App Store.
+
+### `.apk`
+
+An Android app file that installs directly on a phone or [emulator](#emulator).
+
+### `.aab`
+
+An Android App Bundle, the file you upload to Google Play. Google Play turns it into an `.apk` for each user's phone.

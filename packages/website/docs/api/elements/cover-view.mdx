@@ -1,52 +1,63 @@
-# &lt;cover-view&gt;
+# `<cover-view>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
+Draws its children above embedded native views, such as a [`<webview>`](/api/elements/webview), which otherwise cover all Lynx content. It works only in Lynx's desktop apps for Windows and macOS, which use Lynx's **Clay** renderer: desktop (Clay) only.
 
-:::warning Clay Only
-`<cover-view>` is only available on **Clay Windows** and **Clay macOS**. It has no effect on Android, iOS, or web.
-:::
+## Usage
 
-Renders its children into a platform overlay surface above Clay's main rendering surface. On Clay, embedded native views such as a [`<webview>`](/api/elements/webview) paint over regular Lynx content, whatever their order or `z-index`. Children of `<cover-view>` paint on top of them.
+```typescript title="src/app/browser.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-If you only need to cover other Lynx content, use a regular `<view>` with `position: fixed` instead.
-
-```angular-html
-<view style="width: 100%; height: 100%;">
-  <webview
-    src="https://lynxjs.org"
-    style="width: 100%; height: 100%;"
-  ></webview>
-
-  <cover-view
-    style="position: absolute; top: 16px; right: 16px; width: 240px; height: 48px;"
-  >
-    <view
-      style="width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.72);"
-    >
-      <text style="color: white;">Controls above the web view</text>
+@Component({
+  selector: 'app-browser',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view style="width: 100%; height: 100%;">
+      <webview
+        src="https://lynxjs.org"
+        style="width: 100%; height: 100%;"
+      ></webview>
+      <cover-view
+        style="position: absolute; top: 16px; right: 16px; width: 240px; height: 48px;"
+      >
+        <view
+          style="width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.72);"
+        >
+          <text style="color: white;">Controls above the web view</text>
+        </view>
+      </cover-view>
     </view>
-  </cover-view>
-</view>
+  `,
+})
+export class Browser {}
 ```
+
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::warning
+iOS and Android have no `<cover-view>`. Like any element the [host app](/guide/glossary#host-app) doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
+:::
 
 ## Attributes
 
-`<cover-view>` has no element-specific attributes. Position and size it with the same layout styles as `<view>`.
+None of its own. Position and size it like a `<view>`. It takes the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
-## Platform Behavior
+## Events
 
-- **Windows** renders the subtree into a native child overlay window above sibling child windows. It can't cover top-level or owned popup windows.
-- **macOS** renders the subtree into a `CALayer` in a transparent overlay view above the main Clay view. It can cover native controls inside the renderer's view tree, but not unrelated top-level views.
+None, apart from the [common events](/api/elements/view#events), such as `bindtap`.
 
-## Platform Support
+## Platform support
 
-| Platform     | Supported |
-| ------------ | --------- |
-| Clay Windows | Yes       |
-| Clay macOS   | Yes       |
-| Android      | No        |
-| iOS          | No        |
-| Harmony      | No        |
-| Web Lynx     | No        |
+| Platform        | Support                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| Windows (Clay)  | Yes. It covers native views inside the app window, but not separate pop-up windows.             |
+| macOS (Clay)    | Yes. It covers native controls inside the Lynx view, but not other windows or views outside it. |
+| iOS and Android | No. See the warning above.                                                                      |
+| Web             | No.                                                                                             |
+
+## Related
+
+- [`<webview>`](/api/elements/webview)
+- [`<title-bar-view>`](/api/elements/title-bar-view): the other desktop-only element
+- [`<overlay>`](/api/elements/overlay): a layer above the page on iOS, Android and web
+- To cover only other Lynx content, use a [`<view>`](/api/elements/view) with `position: fixed` instead

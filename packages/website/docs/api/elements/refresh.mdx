@@ -1,47 +1,89 @@
-# &lt;refresh&gt;
+# `<refresh>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-A pull-to-refresh container that reveals a customizable header during a downward swipe gesture. It accepts up to two direct children: a `<refresh-header>` and a `<view>` with vertically scrollable content.
+Pull-to-refresh: pulling down on its content reveals a header you design, then fires an event so you can reload.
 
 <Go example="element-refresh" defaultFile="src/app/app.ts" />
 
-```angular-html
-<refresh (bindstartrefresh)="onRefresh($event)">
-  <refresh-header>
-    <view style="height: 60px; align-items: center; justify-content: center;">
-      <text>{{ refreshing() ? 'Refreshing...' : 'Pull to refresh' }}</text>
-    </view>
-  </refresh-header>
-  <scroll-view scroll-orientation="vertical" style="height: 100vh;">
-    @for (item of items(); track item.id) {
-      <view style="padding: 16px; border-bottom: 1px solid #eee;">
-        <text>{{ item.name }}</text>
-      </view>
-    }
-  </scroll-view>
-</refresh>
+## Usage
+
+```typescript title="src/app/feed.ts"
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <refresh #refresher (bindstartrefresh)="reload()">
+      <refresh-header>
+        <view
+          style="height: 60px; align-items: center; justify-content: center;"
+        >
+          <text>Refreshing…</text>
+        </view>
+      </refresh-header>
+      <scroll-view scroll-orientation="vertical" style="height: 100vh;">
+        <text>Pull down</text>
+      </scroll-view>
+    </refresh>
+  `,
+})
+export class Feed {
+  readonly refresher = viewChild.required('refresher', { read: ElementRef });
+
+  reload(): void {
+    // Load your data, then hide the header: it stays open until finishRefresh.
+    this.refresher().nativeElement.invoke?.('finishRefresh');
+  }
+}
 ```
+
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
+:::
 
 ## Attributes
 
-- `enable-refresh` — (boolean, default `true`) Whether dragging down or calling `autoStartRefresh` can trigger the `bindstartrefresh` event.
+| Attribute        | Type      | Default | Description                                                            |
+| ---------------- | --------- | ------- | ---------------------------------------------------------------------- |
+| `enable-refresh` | `boolean` | `true`  | Whether pulling down, or calling `autoStartRefresh`, starts a refresh. |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-- `(bindheaderoffset)` — Fired during pull-down movement. Detail: `{ isDragging: boolean, offsetPercent: number }`
-- `(bindrefreshstatechange)` — Fired when `<refresh-header>` state changes. Detail: `{ state: RefreshState }`
-- `(bindstartrefresh)` — Fired when refresh is triggered. Detail: `{ isManual: boolean }`
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                    | `detail`                                         | Description                                                                                                          |
+| ------------------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `bindstartrefresh`       | `{ isManual: boolean }`                          | A refresh started. `isManual` is `true` when the user pulled. Reload, then call `finishRefresh`.                     |
+| `bindheaderoffset`       | `{ isDragging: boolean; offsetPercent: number }` | The header moved. `offsetPercent` is the pull distance divided by the header's height. Use it to animate the header. |
+| `bindrefreshstatechange` | `{ state: 0 \| 1 \| 2 }`                         | The header's state changed: `0` idle, `1` pulled far enough to release, `2` refreshing.                              |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
 ## Methods
 
-These are invoked via the [SelectorQuery](https://lynxjs.org/api/lynx-api/nodes-ref/nodes-ref-invoke.html) API, not through Angular:
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) start and end a refresh from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)), as the [Usage](#usage) example does with `finishRefresh`.
 
-- `autoStartRefresh()` — Programmatically trigger a refresh, exposing the full header
-- `finishRefresh()` — End the refresh state and retract the header
+| Method             | Parameters | Description                                                                           |
+| ------------------ | ---------- | ------------------------------------------------------------------------------------- |
+| `finishRefresh`    | —          | Ends the refresh, and the header slides away. Call it after every `bindstartrefresh`. |
+| `autoStartRefresh` | —          | Shows the whole header and fires `bindstartrefresh`, as if the user had pulled.       |
 
 ## Children
 
-**`<refresh-header>`** — The header view revealed during the pull gesture. Must be a direct child of `<refresh>`. Its height determines the pull distance threshold.
+Give `<refresh>` two direct children, in this order:
+
+1. **`<refresh-header>`**: the header the pull reveals.
+2. **One scrollable element**, such as a [`<scroll-view>`](/api/elements/scroll-view) or a [`<list>`](/api/elements/list).
+
+Only vertical pulls are supported.
+
+## Related
+
+- [`<scroll-view>`](/api/elements/scroll-view) and [`<list>`](/api/elements/list)
+- [`<scroll-coordinator>`](/api/elements/scroll-coordinator): refresh a page with a collapsing header
+- [Call element methods](/guide/selector-query)

@@ -1,178 +1,187 @@
 # Theming
 
-Change your app's entire look by editing a handful of CSS variables. Dolan's theming system — inspired by [shadcn/ui](https://ui.shadcn.com/docs/theming) — uses **semantic color tokens** that all components reference. Swap the values and every button, card, and input updates automatically.
+Change the look of every UI component by editing one CSS file. Components take their colors from **theme tokens**: CSS variables such as `--primary` whose values you set.
 
-## Quick Overview
-
-Define HSL color values on the `page` element (Lynx's root):
+## How it works
 
 ```css title="src/styles/default.css"
 page {
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
+  --primary: rgba(24, 24, 27, 1);
+  --primary-foreground: rgba(250, 250, 250, 1);
 }
 ```
 
-Use them via Tailwind utilities:
-
-```html
-<view class="bg-primary text-primary-foreground">...</view>
+```angular-html
+<view class="bg-primary p-4">
+  <text class="text-primary-foreground">Saved</text>
+</view>
 ```
 
-Toggle dark mode with a `.dark` class:
+- The tokens are set on `page`, the root element of every Lynx app (see [Glossary](/guide/glossary#page)), so every element can read them.
+- Each token holds a complete `rgba()` color. `tailwind-plugin.ts` maps the classes straight to the variable: `bg-primary` becomes `background-color: var(--primary)`.
+- `dolan init` copied both files into `src/styles/`. They're yours to edit.
 
-```css title="src/styles/dark.css"
-page.dark {
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-}
-```
+The tokens are complete colors because of how Lynx parses them. Lynx accepts only comma-separated `hsl()`, while the usual shadcn/ui setup produces space-separated `hsl(var(--x) / 1)`. Lynx drops that value without a warning, and the element renders transparent. See [CSS on Lynx](/guide/styling) for the other color rules.
 
-## Color Tokens
+## Opacity modifiers don't work
 
-| Token                                    | Purpose                            | Used by                                    |
-| ---------------------------------------- | ---------------------------------- | ------------------------------------------ |
-| `background` / `foreground`              | Default app background and text    | Page shell, sections, body text            |
-| `card` / `card-foreground`               | Elevated surfaces                  | Card, panels, settings sections            |
-| `primary` / `primary-foreground`         | High-emphasis actions, brand color | Default Button, badges, active accents     |
-| `secondary` / `secondary-foreground`     | Lower-emphasis actions             | Secondary buttons, supporting UI           |
-| `muted` / `muted-foreground`             | Subtle surfaces, low-emphasis text | Placeholders, helper text, Input, Textarea |
-| `accent` / `accent-foreground`           | Interactive highlights             | Ghost buttons, hover states                |
-| `destructive` / `destructive-foreground` | Error and danger emphasis          | Destructive buttons, invalid states        |
-| `border`                                 | Borders and separators             | Cards, menus, dividers                     |
-| `input`                                  | Form control borders               | Input, Textarea, Select                    |
-| `ring`                                   | Focus rings                        | Buttons, inputs, focusable controls        |
-| `chart-1` … `chart-5`                    | Chart series palette               | [Chart](/dolan/chart) and its presets      |
+`bg-primary/50` and `border-destructive/50` don't work. The token is one finished color, so Tailwind has no separate channels to add alpha to.
 
-## Border Radius
+Use one of these instead:
 
-| Token    | Purpose                             |
-| -------- | ----------------------------------- |
-| `radius` | Base corner radius (default: `8px`) |
+- **A translucent token.** The theme has `--destructive-subtle` (red at 10%), used as `bg-destructive-subtle`. Add your own the same way, as shown in [Add a token](#add-a-token).
+- **A solid token.** `bg-muted` makes a subtle track or background.
+- **`opacity-*` on the element.** This fades the element and its children together.
 
-Tailwind maps this to three utilities:
+Named Tailwind colors keep their modifiers. `bg-black/50` compiles to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
 
-- `rounded-lg` → `var(--radius)` (8px)
-- `rounded-md` → `calc(var(--radius) - 2px)` (6px)
-- `rounded-sm` → `calc(var(--radius) - 4px)` (4px)
+## Tokens
 
-## Customizing Your Brand
+| Token                                    | Tailwind classes                                | Used for                                         |
+| ---------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
+| `background` / `foreground`              | `bg-background`, `text-foreground`              | The app background and its text                  |
+| `card` / `card-foreground`               | `bg-card`, `text-card-foreground`               | Cards and raised surfaces                        |
+| `primary` / `primary-foreground`         | `bg-primary`, `text-primary-foreground`         | Main buttons, checked controls, your brand color |
+| `secondary` / `secondary-foreground`     | `bg-secondary`, `text-secondary-foreground`     | Secondary buttons, button groups                 |
+| `muted` / `muted-foreground`             | `bg-muted`, `text-muted-foreground`             | Field backgrounds, tab bars, helper text         |
+| `accent` / `accent-foreground`           | `bg-accent`, `text-accent-foreground`           | Pressed toggles, the selected select item        |
+| `destructive` / `destructive-foreground` | `bg-destructive`, `text-destructive-foreground` | Delete buttons, errors                           |
+| `destructive-subtle`                     | `bg-destructive-subtle`                         | The destructive alert's background               |
+| `border`                                 | `border-border`                                 | Borders and separators                           |
+| `input`                                  | `border-input`, `bg-input`                      | The select's border, the switch's off track      |
+| `ring`                                   | `border-ring`                                   | Input and textarea focus rings                   |
+| `ring-subtle`                            | none                                            | The soft outer focus ring, set inline by fields  |
+| `chart-1` … `chart-5`                    | `bg-chart-1` … `bg-chart-5`                     | Chart series colors, legend swatches             |
 
-Override any variable in `src/styles/default.css`:
+Every color class works with `bg-`, `text-` and `border-`. The plugin also sets `border-color: var(--border)` on every element, so a plain `border` class draws in the theme's border color.
+
+### Radius
+
+`--radius` (default `8px`) sets three classes:
+
+- `rounded-lg`: `var(--radius)`
+- `rounded-md`: `calc(var(--radius) - 2px)`
+- `rounded-sm`: `calc(var(--radius) - 4px)`
+
+### Safe area
+
+The plugin also adds padding classes that keep content clear of the notch and home indicator: `pt-safe`, `pb-safe`, `px-safe`, `p-safe` and the others. The numbered forms add a spacing value on top, so `pb-safe-4` is `calc(1rem + env(safe-area-inset-bottom))`. See [Safe area](/guide/safe-area).
+
+## Customize your brand
+
+Edit the values in `default.css`. Write each one as a complete `rgba()` or hex color.
 
 ```css title="src/styles/default.css"
 page {
-  /* Ocean blue brand */
-  --primary: 210 100% 50%;
-  --primary-foreground: 0 0% 100%;
-
-  /* Warm card backgrounds */
-  --card: 30 20% 98%;
-  --card-foreground: 30 10% 10%;
+  --primary: rgba(37, 99, 235, 1);
+  --primary-foreground: rgba(255, 255, 255, 1);
+  --ring: rgba(37, 99, 235, 1);
+  --ring-subtle: rgba(37, 99, 235, 0.4);
+  --radius: 12px;
+  /* …keep the other tokens… */
 }
 ```
 
-Create a matching dark theme in `src/styles/dark.css` with inverted values.
+- Change the same tokens in `dark.css` if you use dark mode.
+- Charts draw with a TypeScript copy of these colors, because Lynx's SVG renderer can't read CSS variables. Pass your new values to `provideChartTheme()`, as shown on [Chart](/dolan/chart).
+- [`dolan update`](/dolan/cli#update) merges theme changes too, so your edits survive updates.
 
-## How the Tailwind Plugin Works
+### Add a token
 
-The `tailwind-plugin.ts` file (generated by `dolan init`) connects CSS variables to Tailwind color utilities. It enables opacity modifiers like `bg-primary/50`:
+Add the variable to both theme files, then map it in the plugin:
+
+```css title="src/styles/default.css"
+page {
+  --success: rgba(22, 163, 74, 1);
+  --success-subtle: rgba(22, 163, 74, 0.1);
+}
+```
 
 ```typescript title="src/styles/tailwind-plugin.ts"
-export const dolanPlugin = plugin(
-  ({ addBase }) => {
-    addBase({
-      '*': { 'border-color': 'hsl(var(--border))' },
-    });
+colors: {
+  // …the existing colors…
+  success: {
+    DEFAULT: 'var(--success)', // [!code highlight]
+    subtle: 'var(--success-subtle)', // [!code highlight]
   },
-  {
-    theme: {
-      extend: {
-        colors: {
-          primary: {
-            DEFAULT: 'hsl(var(--primary) / <alpha-value>)',
-            foreground: 'hsl(var(--primary-foreground) / <alpha-value>)',
-          },
-          // ... all other tokens follow the same pattern
-        },
-      },
-    },
-  },
-);
+},
 ```
 
-## Dark Mode
+You can now use `bg-success`, `text-success` and `bg-success-subtle`.
 
-See the [Dark Mode guide](/guide/dark-mode) for toggling the `.dark` class at runtime using the `LynxTheme` service.
+### Start a new theme
 
-## Full Variable Reference
+```bash
+npx @blotch/dolan theme ocean
+```
 
-:::details Default theme (light)
+This copies `default.css` to `src/styles/ocean.css`. Edit it, then import it in place of `default.css` in `src/styles.css`. `dolan update` doesn't merge themes you create this way.
 
-```css
-page {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
+## Dark mode
 
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
+`dark.css` has a dark value for every token, under the selector `page.dark`. AngularLynx creates `page` for you and has no API for its classes. To switch themes at runtime, move the dark values onto a class you can bind.
 
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
+**1.** In `src/styles/dark.css`, change the selector `page.dark` to `.dark`.
 
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
+**2.** Bind that class on your root view from `LynxTheme`:
 
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
 
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
-
-  --radius: 8px;
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="h-full bg-background" [class.dark]="theme.isDarkMode()">
+      <text class="text-foreground">This follows the device theme.</text>
+    </view>
+  `,
+})
+export class App {
+  protected readonly theme = inject(LynxTheme);
 }
 ```
 
-:::
+- `isDarkMode()` is a signal. The **host app** (the native app that runs your bundle, see [Glossary](/guide/glossary#host-app)) sets it from the device's appearance setting.
+- Charts default to light colors. Add `provideChartTheme({ colorScheme: 'system' })` to make them follow too (see [Chart](/dolan/chart)).
+- For a manual toggle, bind `[class.dark]` to your own signal instead. See [Dark mode](/guide/dark-mode) and [`LynxTheme`](/api/angular-lynx/theme).
 
-:::details Dark theme
+## Variable reference
 
-```css
-page.dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
+Generated from `default.css` and `dark.css`.
 
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
+| Variable                   | Light (`default.css`)    | Dark (`dark.css`)          |
+| -------------------------- | ------------------------ | -------------------------- |
+| `--background`             | `rgba(255, 255, 255, 1)` | `rgba(9, 9, 11, 1)`        |
+| `--foreground`             | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
+| `--card`                   | `rgba(255, 255, 255, 1)` | `rgba(9, 9, 11, 1)`        |
+| `--card-foreground`        | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
+| `--primary`                | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
+| `--primary-foreground`     | `rgba(250, 250, 250, 1)` | `rgba(24, 24, 27, 1)`      |
+| `--secondary`              | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
+| `--secondary-foreground`   | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
+| `--muted`                  | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
+| `--muted-foreground`       | `rgba(113, 113, 122, 1)` | `rgba(161, 161, 170, 1)`   |
+| `--accent`                 | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
+| `--accent-foreground`      | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
+| `--destructive`            | `rgba(239, 68, 68, 1)`   | `rgba(127, 29, 29, 1)`     |
+| `--destructive-foreground` | `rgba(250, 250, 250, 1)` | `rgba(250, 250, 250, 1)`   |
+| `--destructive-subtle`     | `rgba(239, 68, 68, 0.1)` | `rgba(127, 29, 29, 0.1)`   |
+| `--border`                 | `rgba(228, 228, 231, 1)` | `rgba(39, 39, 42, 1)`      |
+| `--input`                  | `rgba(228, 228, 231, 1)` | `rgba(39, 39, 42, 1)`      |
+| `--ring`                   | `rgba(24, 24, 27, 1)`    | `rgba(212, 212, 216, 1)`   |
+| `--ring-subtle`            | `rgba(24, 24, 27, 0.4)`  | `rgba(212, 212, 216, 0.4)` |
+| `--chart-1`                | `rgba(231, 110, 80, 1)`  | `rgba(38, 98, 217, 1)`     |
+| `--chart-2`                | `rgba(42, 157, 144, 1)`  | `rgba(46, 184, 138, 1)`    |
+| `--chart-3`                | `rgba(39, 71, 84, 1)`    | `rgba(232, 140, 48, 1)`    |
+| `--chart-4`                | `rgba(232, 196, 104, 1)` | `rgba(175, 87, 219, 1)`    |
+| `--chart-5`                | `rgba(244, 164, 98, 1)`  | `rgba(226, 54, 112, 1)`    |
+| `--radius`                 | `8px`                    | `8px`                      |
 
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
+## Related
 
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
-
-  --radius: 8px;
-}
-```
-
-:::
+- [UI Components](/dolan/): install the theme with `dolan init`
+- [CSS on Lynx](/guide/styling): color formats and other CSS differences
+- [Tailwind CSS](/guide/tailwindcss): the Tailwind setup the plugin builds on
+- [Dark mode](/guide/dark-mode): switching themes at runtime

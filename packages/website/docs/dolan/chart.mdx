@@ -1,8 +1,8 @@
 # Chart
 
-Draw any chart [TanStack Charts](https://tanstack.com/charts) can describe with native Lynx elements. You build a chart definition with TanStack's `defineChart`, from marks such as lines, bars, areas, dots and reference lines, and pass it to `<ui-chart>`. The component sizes and draws the chart, and handles touch, the tooltip, screen readers, pan and zoom, and dark mode.
+Draw any chart that [TanStack Charts](https://tanstack.com/charts) can describe, with native elements. Describe the chart with TanStack's `defineChart` and pass it to `<ui-chart>`, which draws it and handles touch, tooltips, screen readers, pan and zoom, and dark mode.
 
-The [Line](/dolan/line-chart), [Area](/dolan/area-chart), [Bar](/dolan/bar-chart), [Scatter](/dolan/scatter-chart) and [Candlestick](/dolan/candlestick-chart) charts are presets built on `<ui-chart>`. Use a preset for a single series, and `<ui-chart>` for several series, overlays, or any mark a preset doesn't offer.
+For one series, the [Line](/dolan/line-chart), [Area](/dolan/area-chart), [Bar](/dolan/bar-chart), [Scatter](/dolan/scatter-chart) and [Candlestick](/dolan/candlestick-chart) presets are quicker. Use `<ui-chart>` for several series, overlays, or marks the presets don't offer.
 
 <Go example="ui-chart" defaultFile="src/app/app.ts" />
 
@@ -12,30 +12,25 @@ The [Line](/dolan/line-chart), [Area](/dolan/area-chart), [Bar](/dolan/bar-chart
 npx @blotch/dolan add chart
 ```
 
-:::tip
-`dolan add` also installs the npm packages the chart imports, `@tanstack/charts` and `d3-shape`, with your project's package manager. If that install fails, it prints the command to run yourself.
-:::
-
 ```typescript
-import { UiChart, tooltip } from '@/components/ui/chart';
+import { UiChart, tooltip } from '../components/ui/chart';
 ```
+
+`dolan add` also installs the npm packages the chart imports, `@tanstack/charts` and `d3-shape`. If that install fails, it prints the command to run yourself.
 
 ## Usage
 
-A definition maps fields of your data to a mark's channels (`x`, `y`, `fill`, …) and configures the scales. Import `defineChart` and the marks from `@tanstack/charts/universal`, the entry point without TanStack's browser code, and the scales from `@tanstack/charts/scales/*`.
-
-```typescript
+```typescript title="src/app/revenue.ts"
 import { Component } from '@angular/core';
 import { scaleBand } from '@tanstack/charts/scales/band';
 import { scaleLinear } from '@tanstack/charts/scales/linear';
 import { barY, defineChart } from '@tanstack/charts/universal';
-import { UiChart, tooltip } from '@/components/ui/chart';
+import { UiChart, tooltip } from '../components/ui/chart';
 
 const revenue = [
   { month: 'Jan', value: 42 },
   { month: 'Feb', value: 58 },
   { month: 'Mar', value: 71 },
-  { month: 'Apr', value: 49 },
 ];
 
 @Component({
@@ -44,7 +39,7 @@ const revenue = [
   template: `<ui-chart [definition]="definition" label="Monthly revenue" />`,
 })
 export class Revenue {
-  readonly definition = defineChart({
+  protected readonly definition = defineChart({
     marks: [barY(revenue, { x: 'month', y: 'value', fill: 'var(--primary)' })],
     scales: {
       x: { scale: () => scaleBand().padding(0.2) },
@@ -55,12 +50,18 @@ export class Revenue {
 }
 ```
 
-When the data comes from a signal, build the definition in a `computed()` so the chart redraws when the data changes, and bind it with `[definition]="definition()"`:
+- A **definition** maps fields of your data to a mark's channels (`x`, `y`, `fill`, …) and configures the scales.
+- Import `defineChart` and the marks from `@tanstack/charts/universal`, the entry point without browser code. Scales come from `@tanstack/charts/scales/*`.
+- The [TanStack Charts docs](https://tanstack.com/charts) cover every mark, scale and option. Don't use `@tanstack/charts/angular`: it draws into the browser DOM, which [Lynx](/guide/glossary#lynx) doesn't have.
+
+### Data from a signal
+
+Build the definition in a `computed()` so the chart redraws when the data changes, and bind `[definition]="definition()"`:
 
 ```typescript
 readonly sales = input.required<readonly Sale[]>();
 
-readonly definition = computed(() =>
+protected readonly definition = computed(() =>
   defineChart({
     marks: [barY(this.sales(), { x: 'month', y: 'value' })],
     scales: {
@@ -72,32 +73,27 @@ readonly definition = computed(() =>
 );
 ```
 
-The definition is plain TanStack Charts, so the [TanStack Charts docs](https://tanstack.com/charts) cover every mark, scale and option. TanStack's own Angular component, in `@tanstack/charts/angular`, draws into the browser DOM, which Lynx doesn't have. `<ui-chart>` takes its place.
-
 ### Size
 
-Without `width` or `height`, the chart fills its container's width and is 200px tall. It redraws when its layout changes, for example when the device rotates. Set the height with a class, or fix either side in pixels:
+Without `width` or `height`, the chart fills its container's width and is 200px tall. It redraws when its layout changes, for example on rotation. Set the height with a class, or fix either side in px:
 
 ```angular-html
 <ui-chart [definition]="definition" class="h-64" />
 <ui-chart [definition]="definition" [width]="320" [height]="180" />
 ```
 
-### Several series
+## Series and marks
 
-Put every series in one array and split them with the `z` channel. Each series takes the next color of the theme's chart palette, `var(--chart-1)` to `var(--chart-5)`.
+Put every series in one array and split them with the `z` channel. Each series takes the next palette color, `var(--chart-1)` to `var(--chart-5)`.
 
 ```typescript
 const revenue = [
   { month: 1, series: 'This year', value: 12 },
-  { month: 2, series: 'This year', value: 19 },
-  { month: 3, series: 'This year', value: 15 },
   { month: 1, series: 'Last year', value: 8 },
-  { month: 2, series: 'Last year', value: 11 },
-  { month: 3, series: 'Last year', value: 14 },
+  // ...
 ];
 
-readonly definition = defineChart({
+protected readonly definition = defineChart({
   marks: [lineY(revenue, { x: 'month', y: 'value', z: 'series' })],
   scales: {
     x: { scale: scaleLinear },
@@ -108,29 +104,11 @@ readonly definition = defineChart({
 });
 ```
 
-`focus: 'group-x'` makes a touch focus every series at that x value, so the tooltip lists them together with the series names. If each series is a separate array, give each its own mark with a fixed `z`, such as `lineY(lastYear, { x: 'month', y: 'value', z: () => 'Last year' })`.
+- `focus: 'group-x'` focuses every series at the touched x value, so the tooltip lists them together.
+- If each series is its own array, give each a mark with a fixed `z`: `lineY(lastYear, { x: 'month', y: 'value', z: () => 'Last year' })`.
+- For a legend, lay out `<view>` swatches next to the chart. The `bg-chart-1` to `bg-chart-5` classes match the series colors.
 
-To add a legend, build it from views next to the chart. The `bg-chart-1` to `bg-chart-5` Tailwind classes use the same palette, so each swatch matches its series.
-
-```angular-html
-<ui-chart [definition]="definition" label="Revenue, this year and last" />
-<view class="flex flex-row gap-4">
-  <view class="flex flex-row items-center gap-1.5">
-    <view class="h-2.5 w-2.5 rounded-full bg-chart-1"></view>
-    <text class="text-xs text-muted-foreground">This year</text>
-  </view>
-  <view class="flex flex-row items-center gap-1.5">
-    <view class="h-2.5 w-2.5 rounded-full bg-chart-2"></view>
-    <text class="text-xs text-muted-foreground">Last year</text>
-  </view>
-</view>
-```
-
-The template uses `<view>` and `<text>`, so the component imports `LYNX_ELEMENTS` from `@blotch/angular-lynx` too.
-
-### Combine marks
-
-List several marks to layer them. They share the scales, and each mark draws over the ones before it. A dashed target line over bars:
+List several marks to layer them. They share the scales, and each draws over the ones before it:
 
 ```typescript
 marks: [
@@ -139,118 +117,58 @@ marks: [
 ],
 ```
 
-Rules don't take focus, so a touch still lands on the bars. A trend line under a scatter plot, with `ci: 0` to leave out the confidence band:
+- Rules don't take focus, so a touch still lands on the bars.
+- For a trend line, use `linearRegressionY(points, { x: 'x', y: 'y', ci: 0 })` before a `dot` mark. `ci: 0` leaves out the confidence band.
+- For smooth lines and areas, pass `curve: d3Curve(curveMonotoneX)`, with `curveMonotoneX` from `d3-shape`. It never overshoots the data.
+
+To keep a preset's axes and styling, start from its definition function and add marks. Each preset exports one, such as `lineChartDefinition`:
 
 ```typescript
-marks: [
-  linearRegressionY(points, { x: 'x', y: 'y', ci: 0, stroke: 'var(--chart-2)' }),
-  dot(points, { x: 'x', y: 'y', fill: 'var(--primary)' }),
-],
-```
-
-### Smooth curves
-
-Line and area marks take a `curve`. Wrap a curve from `d3-shape`, which installs with the chart, in `d3Curve`:
-
-```typescript
-import { curveMonotoneX } from 'd3-shape';
-import { d3Curve, lineY } from '@tanstack/charts/universal';
-
-lineY(revenue, { x: 'month', y: 'value', curve: d3Curve(curveMonotoneX) });
-```
-
-`curveMonotoneX` never overshoots the data, so the line stays within the values it passes through.
-
-### Start from a preset
-
-Each preset exports the function that builds its definition: `lineChartDefinition`, `areaChartDefinition`, `barChartDefinition`, `scatterChartDefinition` and `candlestickChartDefinition`. Each takes the preset's data, mark and axis inputs as options. Start from one to keep the preset's axes and styling, then add marks:
-
-```typescript
-import { defineChart, ruleY } from '@tanstack/charts/universal';
-import { lineChartDefinition } from '@/components/ui/line-chart';
-
 const base = lineChartDefinition({ data: revenue, smooth: true, yMin: 0 });
 
-const withTarget = defineChart({
+protected readonly withTarget = defineChart({
   ...base,
   marks: [...base.marks, ruleY([20], { stroke: 'var(--muted-foreground)' })],
 });
 ```
 
-```angular-html
-<ui-chart [definition]="withTarget" label="Revenue against target" />
-```
+## Tooltips
 
-### Show a tooltip
+Put `tooltip` in the definition to show a tooltip for the touched point. Without it, a touch still focuses points and emits `focusChange`.
 
-Put `tooltip` in the definition to show a tooltip for the touched point. Without it, a touch still focuses points and emits `focusChange`, but no tooltip appears.
+- Import `tooltip` from the chart component, not from `@tanstack/charts/tooltip`, which is built from browser DOM elements. This one draws native views.
+- Pass TanStack's tooltip options with `use`, as in `tooltip: { use: tooltip, sticky: false }`. See [`tooltip`](#tooltip) for the options it reads.
 
-Import `tooltip` from the chart component, not from `@tanstack/charts/tooltip`. TanStack's tooltip is built from browser DOM elements. This one tells `<ui-chart>` to draw the tooltip with native views. A definition shared with a web app can keep TanStack's tooltip; `<ui-chart>` still draws its own.
-
-To set TanStack's tooltip options, pass them with `use`:
-
-```typescript
-tooltip: {
-  use: tooltip,
-  items: [
-    { channel: 'x', label: 'Month' },
-    { channel: 'y', label: 'Revenue', text: (point) => `$${point.yValue}k` },
-  ],
-},
-```
-
-See [`tooltip`](#tooltip) for the options `<ui-chart>` reads.
-
-### Custom tooltip
-
-To lay out the tooltip's contents yourself, put an `<ng-template uiChartTooltip>` inside the chart. The chart still places the tooltip and draws its card; the template replaces what's inside.
+To lay out the tooltip yourself, put an `<ng-template uiChartTooltip>` inside the chart. The chart still places the tooltip and draws its card.
 
 ```angular-html
 <ui-chart [definition]="definition" label="Monthly revenue">
   <ng-template uiChartTooltip let-tooltip>
-    <text class="text-xs text-muted-foreground">{{
-      tooltip.primaryPoint.xValue
-    }}</text>
     <text class="text-sm font-semibold text-card-foreground">
       {{ tooltip.primaryPoint.yValue }}k
     </text>
-    @if (tooltip.pinned) {
-      <text class="text-xs text-muted-foreground">Tap to close</text>
-    }
   </ng-template>
 </ui-chart>
 ```
 
-Import `UiChartTooltip` (and `LYNX_ELEMENTS` for the elements) in your component. The template gets a [`UiChartTooltipContext`](#uicharttooltip). A point's `datum` is your original row, typed `unknown` in the template; read its fields in a component method that casts it.
+Import `UiChartTooltip` and `LYNX_ELEMENTS` in your component. The template gets a [`UiChartTooltipContext`](#uicharttooltip). A point's `datum` is typed `unknown` there, so read its fields in a component method that casts it.
 
-### Touch and selection
+## Touch, selection and zoom
 
-- **Scrub.** Touch the chart and drag. Focus follows the nearest point, which the chart highlights and shows in the tooltip.
-- **Tap to select.** A tap emits the point under it from `pointSelect`, and pins the tooltip so it stays open after the finger lifts. While it's pinned, touches don't move the focus. The next tap unpins it.
-- With `sticky: false` in the tooltip options, a tap selects and focuses the point without pinning.
+- **Scrub:** touch and drag. Focus follows the nearest point, which the chart highlights and shows in the tooltip.
+- **Tap:** emits the point from `pointSelect` and pins the tooltip. While it's pinned, touches don't move focus. The next tap unpins it. With `sticky: false`, a tap doesn't pin.
 - If a scrolling parent takes over the touch, focus clears. A pinned tooltip stays.
 
-```angular-html
-<ui-chart [definition]="definition" (pointSelect)="onSelect($event)" />
-```
-
 ```typescript
-import type { ChartPoint } from '@tanstack/charts/types';
-
+// <ui-chart [definition]="definition" (pointSelect)="onSelect($event)" />
 protected onSelect(point: ChartPoint | null): void {
   this.selected.set(point ? (point.datum as Sale) : null);
 }
 ```
 
-Both outputs emit TanStack's `ChartPoint`. Its `datum` is the row you passed to the mark.
+`ChartPoint` comes from `@tanstack/charts/types`. Its `datum` is the row you passed to the mark. Both outputs fire inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
 
-The definition decides which points a touch lands on. By default it's the nearest point within 48px (`maxFocusDistance`). `focus: 'nearest-x'` prefers the closest x value, `'group-x'` focuses every series at that x value, and `focus: false` turns focus off. A TanStack `selection` controller in the definition is told about each tap as well.
-
-### Screen readers
-
-The chart is one accessibility element. A screen reader announces its `label` and, once a point has focus, that point's series, x value and y value. The chart offers two custom actions, **Next point** and **Previous point**, which move focus through the points in order and show the tooltip as a touch would.
-
-Set `label` on every chart to say what it shows. The default is `'Chart'`.
+By default a touch focuses the nearest point within 48px (`maxFocusDistance`). Set `focus` in the definition to change that: `'nearest-x'` prefers the closest x value, `'group-x'` takes every series at that x, and `false` turns focus off. A TanStack `selection` controller in the definition is told about each tap.
 
 ### Pan and zoom
 
@@ -260,256 +178,143 @@ Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** (reset)
 <ui-chart [definition]="definition" [zoomable]="true" zoomAxes="x" />
 ```
 
-- Zoom works on the continuous axes the definition configures in `scales.x` and `scales.y`, such as a `scaleLinear` axis. Category axes (band and point scales) don't zoom, and an axis without an entry in `scales` stays fixed.
-- `zoomAxes` limits panning and zooming to `'x'` or `'y'` (the default is `'xy'`).
-- `minZoom` and `maxZoom` bound the zoom, where `1` shows all the data. `zoomStep` is the factor for each button press.
-- On a zoomable chart, a drag pans instead of moving the focus. A short tap still focuses and selects a point.
-- There's no pinch to zoom: Lynx doesn't have a native pinch gesture handler yet.
+- Zoom works on continuous axes in `scales.x` and `scales.y`, such as `scaleLinear`. Band and point scales don't zoom, and an axis missing from `scales` stays fixed.
+- On a zoomable chart, a drag pans instead of moving focus. A short tap still selects a point.
+- There's no pinch to zoom, because Lynx has no native pinch handler yet.
+- For your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` from a `viewChild.required(UiChart)`.
+- Zooming doesn't touch your data or definition. The chart sets TanStack's `viewport` option on the zoomed scales.
 
-To drive zoom from your own controls, set `showZoomControls` to `false` and call the methods:
+## Accessibility
 
-```typescript
-readonly chart = viewChild.required(UiChart);
+The chart is one accessibility element. Set `label` on every chart to say what it shows; the default is `'Chart'`.
 
-zoomIn(): void {
-  this.chart().zoomIn();
-}
-```
+- A screen reader announces the `label`, then the focused point's series, x value and y value.
+- Two custom actions, **Next point** and **Previous point**, step focus through the points and show the tooltip.
 
-Zooming doesn't change your data or your definition. The chart sets TanStack's `viewport` option on the zoomed scales and redraws, and the marks are clipped to the visible window.
+## Theming and dark mode
 
-### Theming
-
-Give marks theme colors as CSS variables: `var(--primary)`, `var(--muted-foreground)`, or the chart palette `var(--chart-1)` to `var(--chart-5)`. They have light and dark values like the rest of the theme, and the chart's color scheme picks which the marks use (see [Dark mode](#dark-mode)). Fixed colors such as `rgba(37, 99, 235, 1)` or `#2563eb` work too, and stay the same in both modes. Marks without a color take the palette in order. Text and gridlines follow `var(--foreground)`.
-
-The palette lives in the theme CSS that `dolan init` copies into your project:
-
-```css title="src/styles/default.css"
-page {
-  --chart-1: rgba(231, 110, 80, 1);
-  --chart-2: rgba(42, 157, 144, 1);
-  --chart-3: rgba(39, 71, 84, 1);
-  --chart-4: rgba(232, 196, 104, 1);
-  --chart-5: rgba(244, 164, 98, 1);
-}
-```
-
-```css title="src/styles/dark.css"
-page.dark {
-  --chart-1: rgba(38, 98, 217, 1);
-  --chart-2: rgba(46, 184, 138, 1);
-  --chart-3: rgba(232, 140, 48, 1);
-  --chart-4: rgba(175, 87, 219, 1);
-  --chart-5: rgba(226, 54, 112, 1);
-}
-```
-
-If you set up your project before the chart palette existed, add these variables to both files, and add the `chart` colors to the `colors` in `tailwind-plugin.ts` so the `bg-chart-*` classes exist:
-
-```typescript title="src/styles/tailwind-plugin.ts"
-chart: {
-  1: 'var(--chart-1)',
-  2: 'var(--chart-2)',
-  3: 'var(--chart-3)',
-  4: 'var(--chart-4)',
-  5: 'var(--chart-5)',
-},
-```
+Give marks theme colors as CSS variables, such as `var(--primary)` or the palette `var(--chart-1)` to `var(--chart-5)`. They switch with dark mode. Fixed colors such as `#2563eb` stay the same in both modes. Marks without a color take the palette in order, and text and gridlines follow `var(--foreground)`.
 
 :::info Why the colors are in TypeScript too
-Lynx draws the marks with its native `<svg>` element, which parses the SVG by itself and never sees your CSS. `var(--chart-1)` means nothing to it, and Lynx has no API to read a variable's value from JavaScript. So the chart keeps a copy of the theme colors in `chart-theme.ts` and replaces each `var(--token)` with its value before it writes the SVG. Axis labels and the tooltip are native views and read the CSS variables directly.
+Lynx draws the marks with its native `<svg>` element, which never sees your CSS, and Lynx can't read a variable's value from JavaScript. So `chart-theme.ts` keeps a copy of the theme colors, and the chart swaps each `var(--token)` for its value before drawing. Labels and the tooltip are native views, so they read the CSS variables directly.
 :::
 
-If you change a color in your theme CSS, change it in `chart-theme.ts` as well, or override it in your app config with `provideChartTheme`. Pass only the tokens you changed; they merge over the defaults.
+If you change a color in `default.css` or `dark.css`, change it in `chart-theme.ts` too, or override it in your app config. Pass only the tokens you changed:
 
 ```typescript title="src/app/app.config.ts"
-import { provideChartTheme } from '@/components/ui/chart';
-
-export const appConfig: ApplicationConfig = {
-  providers: [
-    // ...
-    provideChartTheme({
-      light: { 'chart-1': 'rgba(37, 99, 235, 1)' },
-      dark: { 'chart-1': 'rgba(96, 165, 250, 1)' },
-    }),
-  ],
-};
+providers: [
+  provideChartTheme({
+    light: { 'chart-1': 'rgba(37, 99, 235, 1)' },
+    dark: { 'chart-1': 'rgba(96, 165, 250, 1)' },
+  }),
+],
 ```
 
-### Dark mode
+The chart has to follow the same source as your app's `.dark` class, or you get dark bars on a light card. The color scheme says which color table the marks use:
 
-A chart has to follow the same source as your app's `.dark` class. Its marks take their colors from the tables in `chart-theme.ts`, while its axis labels and tooltip read the CSS variables, which change when `.dark` is set. If the two disagree, you get dark-mode bars on a light card, with labels and legend swatches in the other mode.
+| Value      | Colors                                     | Use it when                                                                  |
+| ---------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `'light'`  | Always light (the default)                 | Your app never sets `.dark`.                                                 |
+| `'system'` | Follows `LynxTheme`, the device appearance | Your app sets `.dark` from `LynxTheme`, as in [Dark mode](/guide/dark-mode). |
+| `'dark'`   | Always dark                                | Your app is always dark.                                                     |
+| A function | Whatever it returns, `'light'` or `'dark'` | Your app switches themes itself. Read the same signal that sets `.dark`      |
 
-The color scheme setting tells the chart which table to use:
-
-| Value      | Colors                                     | Use it when                                                                                           |
-| ---------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `'light'`  | Always light (the default)                 | Your app never sets `.dark`                                                                           |
-| `'system'` | Follows `LynxTheme`, the system appearance | Your app sets `.dark` from `LynxTheme`, as in the [Dark Mode guide](/guide/dark-mode)                 |
-| `'dark'`   | Always dark                                | Your app is always dark                                                                               |
-| A function | Whatever it returns, `'light'` or `'dark'` | Your app switches themes itself, for example from an in-app setting. Read the state that sets `.dark` |
-
-Set it for every chart at once in your app config:
-
-```typescript title="src/app/app.config.ts"
-providers: [provideChartTheme({ colorScheme: 'system' })],
-```
-
-If your app keeps its own theme state, pass a function that reads it, such as a signal that also drives the `.dark` class. The chart reads it reactively, so it switches when the signal changes:
-
-```typescript
-// theme.ts
-export const appColorScheme = signal<'light' | 'dark'>('light');
-
-// app.config.ts
-providers: [provideChartTheme({ colorScheme: () => appColorScheme() })],
-```
-
-The presets render `<ui-chart>`, so the setting applies to them too. To set one chart differently, preset or `<ui-chart>`, use its `colorScheme` input, which takes `'light'`, `'dark'` or `'system'`:
-
-```angular-html
-<ui-chart [definition]="definition" colorScheme="system" />
-```
-
-The presets don't have this input; they use the setting from your app config.
-
-## How it works
-
-TanStack Charts separates describing a chart from drawing it. `defineChart` only records the marks and options. When `<ui-chart>` knows its size, TanStack compiles the definition into a scene: plain shapes and text labels at pixel positions, plus the data points a touch can focus. `<ui-chart>` draws that scene with Lynx elements:
-
-- **Shapes** go into three `<svg>` layers: the focus highlight under the marks, the marks themselves, and the highlight over them. The SVG uses only features every Lynx platform draws the same way, with each theme variable replaced by its color.
-- **Labels** (tick labels and axis titles) are native `<text>`, so they use the app's fonts and read theme variables directly. TanStack measures them with `lynx.getTextInfo` when it lays out the axes, so the margins fit the text.
-- **The tooltip and zoom buttons** are native views.
-- **A touch** is matched against the scene's list of data points using the definition's focus strategy, rather than hit-testing the drawn shapes.
+Set it for every chart with `provideChartTheme({ colorScheme: 'system' })`, or for one chart, preset or `<ui-chart>`, with its `colorScheme` input.
 
 ## API
 
 ### UiChart
 
-| Input              | Type                            | Default                                | Description                                                     |
-| ------------------ | ------------------------------- | -------------------------------------- | --------------------------------------------------------------- |
-| `definition`       | `ChartDefinition`               | _required_                             | The chart to draw: what `defineChart` returns                   |
-| `width`            | `number`                        | _fills container_                      | Fixed width in px                                               |
-| `height`           | `number`                        | `200`                                  | Fixed height in px; without it, 200px or the height of a class  |
-| `label`            | `string`                        | `'Chart'`                              | What a screen reader announces for the chart                    |
-| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ (`'light'`) | Which color table the marks use; `'system'` follows `LynxTheme` |
-| `zoomable`         | `boolean`                       | `false`                                | Drag to pan, with zoom buttons                                  |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                                 | Which axes pan and zoom                                         |
-| `showZoomControls` | `boolean`                       | `true`                                 | Show the +/−/1:1 buttons when zoomable                          |
-| `minZoom`          | `number`                        | `1`                                    | Smallest zoom; `1` shows all the data                           |
-| `maxZoom`          | `number`                        | `8`                                    | Largest zoom                                                    |
-| `zoomStep`         | `number`                        | `1.4`                                  | Zoom factor per button press or method call                     |
-| `class`            | `string`                        | `''`                                   | Additional CSS classes                                          |
+| Input              | Type                            | Default                                | Description                                                      |
+| ------------------ | ------------------------------- | -------------------------------------- | ---------------------------------------------------------------- |
+| `definition`       | `ChartDefinition`               | Required                               | The chart to draw: what `defineChart` returns.                   |
+| `width`            | `number`                        | _fills container_                      | Fixed width in px.                                               |
+| `height`           | `number`                        | `200`                                  | Fixed height in px. Without it, 200px or a height class.         |
+| `label`            | `string`                        | `'Chart'`                              | What a screen reader announces for the chart.                    |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ (`'light'`) | Which color table the marks use. `'system'` follows `LynxTheme`. |
+| `zoomable`         | `boolean`                       | `false`                                | Drag to pan, with zoom buttons.                                  |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                                 | Which axes pan and zoom.                                         |
+| `showZoomControls` | `boolean`                       | `true`                                 | Show the +/−/1:1 buttons when zoomable.                          |
+| `minZoom`          | `number`                        | `1`                                    | Smallest zoom. `1` shows all the data.                           |
+| `maxZoom`          | `number`                        | `8`                                    | Largest zoom.                                                    |
+| `zoomStep`         | `number`                        | `1.4`                                  | Zoom factor per button press or method call.                     |
+| `class`            | `string`                        | `''`                                   | Extra Tailwind classes for the chart's root view.                |
 
-| Output        | Type                 | Description                                                                                                                   |
-| ------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `focusChange` | `ChartPoint \| null` | The focused point (the first of a focused group) each time focus moves, by touch or screen reader; `null` when focus clears   |
-| `pointSelect` | `ChartPoint \| null` | The point a tap landed on, or `null` for a tap on empty space. Emitted for every tap, including the one that unpins a tooltip |
+| Output        | Type                 | Description                                                                                    |
+| ------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
+| `focusChange` | `ChartPoint \| null` | The focused point (first of a focused group) each time focus moves. `null` when it clears.     |
+| `pointSelect` | `ChartPoint \| null` | The point a tap landed on, or `null` for empty space. Emits on every tap, including unpinning. |
 
-| Method        | Description                                                     |
-| ------------- | --------------------------------------------------------------- |
-| `zoomIn()`    | Zooms in by `zoomStep` around the center of the visible window  |
-| `zoomOut()`   | Zooms out by `zoomStep` around the center of the visible window |
-| `resetZoom()` | Shows the whole chart again                                     |
-| `dismiss()`   | Clears focus and unpins the tooltip                             |
+| Method        | Description                                                      |
+| ------------- | ---------------------------------------------------------------- |
+| `zoomIn()`    | Zooms in by `zoomStep` around the center of the visible window.  |
+| `zoomOut()`   | Zooms out by `zoomStep` around the center of the visible window. |
+| `resetZoom()` | Shows the whole chart again.                                     |
+| `dismiss()`   | Clears focus and unpins the tooltip.                             |
 
-`ChartPoint` comes from `@tanstack/charts/types`. Its `datum` is your row, `xValue` and `yValue` are the values on each axis, `groupLabel` is the series name, `x` and `y` are its position in px, and `color` is its mark's color.
+A `ChartPoint` has `datum` (your row), `xValue` and `yValue`, `groupLabel` (the series name), `x` and `y` (its position in px) and `color`.
 
 ### UiChartTooltip
 
 `<ng-template uiChartTooltip let-tooltip>` replaces the tooltip's contents. Its context is a `UiChartTooltipContext`:
 
-| Property       | Type                            | Description                                    |
-| -------------- | ------------------------------- | ---------------------------------------------- |
-| `points`       | `readonly ChartPoint[]`         | The focused points, in the tooltip's row order |
-| `primaryPoint` | `ChartPoint`                    | The touched point, whatever the row order      |
-| `content`      | `ChartTooltipContent \| string` | The default title and rows, already formatted  |
-| `pinned`       | `boolean`                       | Whether a tap has pinned the tooltip           |
-| `dismiss`      | `() => void`                    | Clears focus and unpins the tooltip            |
+| Property       | Type                            | Description                                     |
+| -------------- | ------------------------------- | ----------------------------------------------- |
+| `points`       | `readonly ChartPoint[]`         | The focused points, in the tooltip's row order. |
+| `primaryPoint` | `ChartPoint`                    | The touched point, whatever the row order.      |
+| `content`      | `ChartTooltipContent \| string` | The default title and rows, already formatted.  |
+| `pinned`       | `boolean`                       | Whether a tap has pinned the tooltip.           |
+| `dismiss`      | `() => void`                    | Clears focus and unpins the tooltip.            |
 
 ### tooltip
 
-The tooltip token for a definition: `tooltip` alone, or `{ use: tooltip, ...options }` with these TanStack tooltip options. Options that style the browser tooltip's DOM element, such as `className` and `portal`, have no effect.
+The tooltip token: `tooltip` alone, or `{ use: tooltip, ...options }`. `<ui-chart>` reads these TanStack options. Options that style the browser tooltip's DOM, such as `className` and `portal`, have no effect.
 
-| Option        | Default     | Description                                                                |
-| ------------- | ----------- | -------------------------------------------------------------------------- |
-| `items`       | x and y     | Rows for a single focused point, in order: channels, datum fields, or text |
-| `content`     | _automatic_ | A function that returns the title and rows                                 |
-| `format`      | —           | A function that returns text for the primary point, instead of rows        |
-| `formatGroup` | —           | A function that returns text for the whole focused group                   |
-| `sort`        | `'visual'`  | Row order when several points have focus                                   |
-| `anchor`      | `'point'`   | What the tooltip follows: `'point'`, `'pointer'`, `'group-center'`, …      |
-| `placement`   | `'auto'`    | Side of the anchor, or a list to try in order; kept inside the chart       |
-| `offset`      | `10`        | Gap between the anchor and the tooltip, in px                              |
-| `sticky`      | `true`      | A tap pins the tooltip until the next tap                                  |
-| `visibility`  | `'focus'`   | `'pinned'` shows the tooltip only once a tap pins it                       |
+| Option        | Default     | Description                                                            |
+| ------------- | ----------- | ---------------------------------------------------------------------- |
+| `items`       | x and y     | Rows for a single focused point: channels, datum fields, or text.      |
+| `content`     | _automatic_ | A function that returns the title and rows.                            |
+| `format`      | —           | A function that returns text for the primary point, instead of rows.   |
+| `formatGroup` | —           | A function that returns text for the whole focused group.              |
+| `sort`        | `'visual'`  | Row order when several points have focus.                              |
+| `anchor`      | `'point'`   | What the tooltip follows: `'point'`, `'pointer'`, `'group-center'`, …. |
+| `placement`   | `'auto'`    | Side of the anchor, or a list to try in order. Kept inside the chart.  |
+| `offset`      | `10`        | Gap between the anchor and the tooltip, in px.                         |
+| `sticky`      | `true`      | A tap pins the tooltip until the next tap.                             |
+| `visibility`  | `'focus'`   | `'pinned'` shows the tooltip only once a tap pins it.                  |
 
 ### provideChartTheme
 
-`provideChartTheme(theme)` returns a provider that sets the color scheme and overrides the chart colors for every chart in its injector. Every field is optional; `light`, `dark` and `chart` merge over their defaults.
+`provideChartTheme(theme)` returns a provider for every chart in its injector. Every field is optional, and `light`, `dark` and `chart` merge over their defaults.
 
-| Field         | Type                                                         | Description                                                                                        |
-| ------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `colorScheme` | `'light' \| 'dark' \| 'system' \| (() => 'light' \| 'dark')` | Which color table the marks use; defaults to `'light'`. See [Dark mode](#dark-mode)                |
-| `light`       | `Record<string, string>`                                     | Light-mode color per token name, without `--` (e.g. `'chart-1'`); defaults to `CHART_LIGHT_COLORS` |
-| `dark`        | `Record<string, string>`                                     | Dark-mode color per token name; defaults to `CHART_DARK_COLORS`                                    |
-| `chart`       | `Partial<ChartTheme>`                                        | The TanStack theme scenes are built with, such as the `palette`; defaults to `DEFAULT_CHART_THEME` |
+| Field         | Type                                                         | Description                                                                               |
+| ------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `colorScheme` | `'light' \| 'dark' \| 'system' \| (() => 'light' \| 'dark')` | Which color table the marks use. Defaults to `'light'`.                                   |
+| `light`       | `Record<string, string>`                                     | Light color per token, without `--` (e.g. `'chart-1'`). Merged over `CHART_LIGHT_COLORS`. |
+| `dark`        | `Record<string, string>`                                     | Dark color per token. Merged over `CHART_DARK_COLORS`.                                    |
+| `chart`       | `Partial<ChartTheme>`                                        | The TanStack theme, such as its `palette`. Merged over `DEFAULT_CHART_THEME`.             |
 
-`DEFAULT_CHART_THEME` paints text and gridlines with `var(--foreground)`, secondary text with `var(--muted-foreground)`, and series with `var(--chart-1)` to `var(--chart-5)`. Keep the paints as `var(--token)` strings so one definition serves both color schemes. A `var()` whose token isn't in the color table falls back to its fallback value, as in `var(--brand, #2563eb)`, or to the foreground color without one.
+Keep paints as `var(--token)` strings so one definition serves both color schemes. An unknown token falls back to the `var()`'s fallback, as in `var(--brand, #2563eb)`, or to the foreground color.
 
-## Migrating from the old chart components
+:::details Migrating from the old chart components
+`<ui-cartesian-chart>` and its `<ui-*-series>` children are gone, and so is the `ChartPoint` type from `cartesian-chart`. Single-series charts keep their preset, which now fills its container's width (it was 320px). Use `XYDatum` and `CandlestickDatum` for the point types, and set a color scheme to match how your app switches `.dark`. Pinch to zoom is gone. Several series move to `<ui-chart>`, with one mark per series:
 
-Earlier versions drew charts from views with a `<ui-cartesian-chart>` base and `<ui-line-series>`, `<ui-area-series>`, `<ui-bar-series>`, `<ui-scatter-series>` and `<ui-candlestick-series>` inside it. Those components, and the `ChartPoint` type from `cartesian-chart`, are gone.
+| Before                    | After                                                                  |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `<ui-line-series>`        | `lineY`, plus `dot` for the dots.                                      |
+| `<ui-area-series>`        | `areaY` with `y1` set to the baseline, plus `lineY`.                   |
+| `<ui-bar-series>`         | `barY` for category x values, `rect` for numbers.                      |
+| `<ui-scatter-series>`     | `dot`.                                                                 |
+| `<ui-candlestick-series>` | The marks of `candlestickChartDefinition` (`link` and `rect`).         |
+| `xDomain` / `yDomain`     | `scales.x` / `scales.y` with `scale: () => scaleLinear().domain([…])`. |
+| `xAxisLabel`, `xTicks`    | `axis: { label: '…', ticks: { values: […] } }` on the scale.           |
+| `(pointTap)`              | `(pointSelect)` on `<ui-chart>`. The item is `point.datum`.            |
 
-**Single-series charts** keep their preset: `<ui-line-chart>`, `<ui-area-chart>`, `<ui-bar-chart>`, `<ui-scatter-chart>` and `<ui-candlestick-chart>` take the same data and most of the same inputs. The differences:
+:::
 
-- A chart now fills its container's width when you don't set `width` (it was 320px).
-- Point types: use `XYDatum` from `@/components/ui/chart` instead of `ChartPoint`, and `CandlestickDatum` instead of `CandlestickPoint`. The shapes are the same.
-- The tap outputs (`pointTap`, `barTap`, `candleTap`) emit your data item, as before.
-- New inputs: `tooltip`, `label` and `showGrid`.
-- Pinch to zoom is gone; use the zoom buttons or methods.
-- Dark mode needs a setting. The old charts were views and followed your `.dark` class by themselves. The new ones draw their marks as SVG with colors from `chart-theme.ts`, so set the color scheme to match how your app switches `.dark` (see [Dark mode](#dark-mode)).
+## Related
 
-**Several series and overlays** move to `<ui-chart>`. Replace the base and its series with one definition that has a mark per series:
-
-```angular-html
-<!-- Before -->
-<ui-cartesian-chart [xDomain]="[1, 6]" [yDomain]="[0, 40]">
-  <ui-line-series [data]="thisYear" [color]="'var(--chart-1)'" />
-  <ui-line-series [data]="lastYear" [color]="'var(--chart-2)'" />
-</ui-cartesian-chart>
-
-<!-- After -->
-<ui-chart [definition]="definition" label="Revenue, this year and last" />
-```
-
-```typescript
-readonly definition = defineChart({
-  marks: [
-    lineY(thisYear, { x: 'x', y: 'y', stroke: 'var(--chart-1)' }),
-    dot(thisYear, { x: 'x', y: 'y', fill: 'var(--chart-1)' }),
-    lineY(lastYear, { x: 'x', y: 'y', stroke: 'var(--chart-2)' }),
-    dot(lastYear, { x: 'x', y: 'y', fill: 'var(--chart-2)' }),
-  ],
-  scales: {
-    x: { scale: () => scaleLinear().domain([1, 6]) },
-    y: { scale: () => scaleLinear().domain([0, 40]), grid: true },
-  },
-  tooltip,
-});
-```
-
-| Before                                    | After                                                                   |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| `<ui-line-series>`                        | `lineY`, plus `dot` for the dots                                        |
-| `<ui-area-series>`                        | `areaY` with `y1` set to the baseline, plus `lineY` for the line on top |
-| `<ui-bar-series>`                         | `barY` for category x values, `rect` for numeric ones                   |
-| `<ui-scatter-series>`                     | `dot`                                                                   |
-| `<ui-candlestick-series>`                 | The marks of `candlestickChartDefinition` (`link` and `rect`)           |
-| `xDomain` / `yDomain`                     | `scales.x` / `scales.y` with `scale: () => scaleLinear().domain([…])`   |
-| `xTicks` / `yTicks`                       | `axis: { ticks: { values: […] } }` on the scale                         |
-| `xAxisLabel` / `yAxisLabel`               | `axis: { label: '…' }` on the scale                                     |
-| `showGrid` / `showXGrid`                  | `grid: true` on the scale                                               |
-| `(pointTap)` and the other series outputs | `(pointSelect)` on `<ui-chart>`; the item is `point.datum`              |
-
-The presets' definition functions are a quick start: their marks already match the old series, and you can add more (see [Start from a preset](#start-from-a-preset)).
+- [Line Chart](/dolan/line-chart), [Area Chart](/dolan/area-chart), [Bar Chart](/dolan/bar-chart), [Scatter Chart](/dolan/scatter-chart) and [Candlestick Chart](/dolan/candlestick-chart): presets for one series
+- [Theming](/dolan/theming): the theme colors marks can use
+- [Dark mode](/guide/dark-mode): switch the app's `.dark` class
+- [`<svg>`](/api/elements/svg): the element the marks are drawn with

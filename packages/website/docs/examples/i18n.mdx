@@ -1,13 +1,17 @@
-# i18n
+# Internationalization
 
-Internationalize an Angular app on Lynx using `@angular/localize` and the `LynxLocale` service.
+Translatable strings with Angular's `i18n` attribute and `$localize`, plus the device locale from `LynxLocale`.
 
 <Go example="i18n" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`i18n` attribute** — marks template text for extraction and translation, with optional meaning, description, and `@@id` syntax
-- **`$localize` tagged template** — used in component code for translatable strings with interpolated variables (`:@@id:text ${expr}:placeholder:`)
-- **`LynxLocale`** — injectable service that exposes the current device locale as a signal via `.locale()`
-- **`provideLocale()`** — registers the locale provider in the app config, bridging the Lynx runtime's locale data into Angular's DI system
-- **Translation IDs** — custom `@@app.greeting` IDs provide stable keys for translation files, decoupled from the source text
+- **`i18n` attributes** — mark template text for translation, with custom IDs such as `@@app.greeting` and an optional meaning and description. See [Internationalization](/guide/i18n).
+- **`$localize`** — marks strings in code, with named placeholders such as `${count}:count:`.
+- **`LynxLocale`** — `locale()` is a signal with the locale the **host app** ([Glossary](/guide/glossary#host-app)) reports. Without one, it falls back to `sourceLocale` in `angular.json`. See [`LynxLocale`](/api/angular-lynx/locale).
+- **`provideLocale()`** — in `app.config.ts`, it sets Angular's `LOCALE_ID` from that locale, so pipes format for it.
+- **No translations yet** — the example ships no translation files, so it shows the source text.
+
+## Related
+
+- [Internationalization on angular.dev](https://angular.dev/guide/i18n)

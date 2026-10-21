@@ -1,32 +1,61 @@
-# &lt;frame&gt;
+# `<frame>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
+Embeds another Lynx **bundle** ([Glossary](/guide/glossary#bundle)) inside your page, like an `<iframe>`. The embedded page runs as its own separate app. To show a website, use [`<webview>`](/api/elements/webview) instead.
 
-Embeds another Lynx page via a bundle URL. Similar to `<iframe>` in HTML — the embedded page runs in its own isolated context.
+## Usage
 
-```angular-html
-<frame
-  src="https://example.com/page.lynx.bundle"
-  style="width: 100%; height: 200px;"
-  (bindload)="onFrameLoad($event)"
-></frame>
+```typescript title="src/app/widget-host.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-widget-host',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <frame
+      src="https://example.com/widget.lynx.bundle"
+      [data]="{ userId: userId() }"
+      style="width: 100%; height: 200px;"
+      (bindload)="loaded.set(true)"
+    ></frame>
+  `,
+})
+export class WidgetHost {
+  readonly userId = signal('42');
+  readonly loaded = signal(false);
+}
 ```
 
-## Key Attributes
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-| Attribute | Type     | Description                                |
-| --------- | -------- | ------------------------------------------ |
-| `src`     | `string` | URL of the Lynx bundle to embed (required) |
+## Attributes
+
+| Attribute                   | Type                      | Default                                            | Description                                                                              |
+| --------------------------- | ------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `src`                       | `string`                  | —                                                  | URL of the bundle to embed.                                                              |
+| `data`                      | `Record<string, unknown>` | —                                                  | Data passed to the embedded page.                                                        |
+| `global-props`              | `Record<string, unknown>` | —                                                  | Global properties for the embedded page, which it reads from `lynx.__globalProps`.       |
+| `auto-height`               | `boolean`                 | `false`                                            | The frame takes the height of the embedded page's content.                               |
+| `auto-width`                | `boolean`                 | `false`                                            | iOS and Android. The frame takes the width of the embedded page's content.               |
+| `preset-height`             | `string`                  | —                                                  | iOS and Android. Height to use until the embedded page reports its size, e.g. `'200px'`. |
+| `preset-width`              | `string`                  | —                                                  | iOS and Android. Width to use until the embedded page reports its size.                  |
+| `enable-multi-async-thread` | `boolean`                 | The [host app](/guide/glossary#host-app)'s setting | iOS and Android. Overrides the host app's threading setting for the embedded page.       |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event       | Description                                     |
-| ----------- | ----------------------------------------------- |
-| `bindload`  | Fires when the embedded bundle finishes loading |
-| `binderror` | Fires when the bundle fails to load             |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
 
-:::info
-The embedded page has its own Angular application and element pool, completely isolated from the host. Communication between host and frame uses Lynx's native messaging APIs.
-:::
+| Event             | `detail`                                                     | Description                                                                             |
+| ----------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `bindload`        | `{ url: string; statusCode: number; statusMessage: string }` | The embedded bundle finished loading. `statusCode` and `statusMessage` say how it went. |
+| `bindloadmetrics` | `{ url: string; mode: string; entry: object }`               | iOS and Android, Lynx 3.9 and later. Load timings reported by the embedded page.        |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Related
+
+- [Multi-page apps](/guide/multi-page): build several bundles from one project
+- [`<webview>`](/api/elements/webview): embed a website
+- [Build your app](/guide/building-for-production): where bundles come from

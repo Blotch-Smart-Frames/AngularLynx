@@ -1,0 +1,76 @@
+# Aspect Ratio
+
+A full-width box that keeps a set width-to-height ratio, for images and video.
+
+## Installation
+
+```bash
+npx @blotch/dolan add aspect-ratio
+```
+
+```typescript
+import { UiAspectRatio } from '../components/ui/aspect-ratio';
+```
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiAspectRatio } from '../components/ui/aspect-ratio';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiAspectRatio],
+  template: `
+    <ui-aspect-ratio [ratio]="16 / 9" class="rounded-lg">
+      <image
+        src="https://example.com/photo.jpg"
+        mode="aspectFill"
+        class="h-full w-full"
+      />
+    </ui-aspect-ratio>
+  `,
+})
+export class App {}
+```
+
+- The box is as wide as its parent. Its height follows from `ratio`, which is width divided by height.
+- Content that spills past the box is clipped (`overflow-hidden`).
+- There's no automatic ratio from the image's own size. Lynx supports only explicit `aspect-ratio` values.
+- Set `mode` on the [`<image>`](/api/elements/image). CSS `object-fit` doesn't work on Lynx.
+
+### Common ratios
+
+```angular-html
+<ui-aspect-ratio>…</ui-aspect-ratio>
+<ui-aspect-ratio [ratio]="4 / 3">…</ui-aspect-ratio>
+<ui-aspect-ratio [ratio]="9 / 16">…</ui-aspect-ratio>
+```
+
+The default `1` makes a square. `9 / 16` makes a tall box for portrait video.
+
+### Narrower than the parent
+
+```angular-html
+<ui-aspect-ratio [ratio]="1" class="w-24">…</ui-aspect-ratio>
+```
+
+A width class replaces the default `w-full`, and the height follows.
+
+## API
+
+### UiAspectRatio
+
+| Input   | Type     | Default | Description                                |
+| ------- | -------- | ------- | ------------------------------------------ |
+| `ratio` | `number` | `1`     | Width divided by height, such as `16 / 9`. |
+| `class` | `string` | `''`    | Extra Tailwind classes for the box.        |
+
+No outputs.
+
+## Related
+
+- [`<image>`](/api/elements/image): show a picture inside the box
+- [Avatar](/dolan/avatar): a round picture with a fallback
+- [Card](/dolan/card)

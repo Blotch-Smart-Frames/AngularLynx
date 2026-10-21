@@ -1,6 +1,6 @@
 # Sheet
 
-A bottom sheet that slides up from the bottom of the screen. Includes a drag handle and dismisses when tapping the backdrop. Ideal for secondary actions and contextual forms on mobile.
+Slide a panel up from the bottom of the screen for secondary actions or a short form. Users close it by tapping the backdrop or dragging it down.
 
 <Go example="ui-sheet" defaultFile="src/app/app.ts" />
 
@@ -17,8 +17,10 @@ import {
   UiSheetTitle,
   UiSheetDescription,
   UiSheetFooter,
-} from '@/components/ui/sheet';
+} from '../components/ui/sheet';
 ```
+
+This also adds [Bottom Sheet](/dolan/bottom-sheet), which handles the sliding, dragging and backdrop.
 
 ## Usage
 
@@ -30,10 +32,11 @@ import {
   UiSheetTitle,
   UiSheetDescription,
   UiSheetFooter,
-} from '@/components/ui/sheet';
-import { UiButton } from '@/components/ui/button';
+} from '../components/ui/sheet';
+import { UiButton } from '../components/ui/button';
 
 @Component({
+  selector: 'app-settings-sheet',
   imports: [
     UiSheet,
     UiSheetHeader,
@@ -43,56 +46,77 @@ import { UiButton } from '@/components/ui/button';
     UiButton,
   ],
   template: `
-    <ui-button (pressed)="open.set(true)">Open Sheet</ui-button>
+    <ui-button (pressed)="open.set(true)">Settings</ui-button>
 
     <ui-sheet [(open)]="open">
       <ui-sheet-header>
         <ui-sheet-title>Settings</ui-sheet-title>
-        <ui-sheet-description>
-          Configure your preferences.
-        </ui-sheet-description>
+        <ui-sheet-description>Configure your preferences.</ui-sheet-description>
       </ui-sheet-header>
       <ui-sheet-footer>
-        <ui-button (pressed)="open.set(false)">Save</ui-button>
+        <ui-button (pressed)="open.set(false)">Save changes</ui-button>
+        <ui-button variant="outline" (pressed)="open.set(false)">
+          Cancel
+        </ui-button>
       </ui-sheet-footer>
     </ui-sheet>
   `,
 })
-export class Example {
-  open = signal(false);
+export class SettingsSheet {
+  protected readonly open = signal(false);
 }
+```
+
+- `[(open)]` two-way binds a signal. Set it to `true` to slide the sheet up and `false` to slide it down.
+- A backdrop tap sets `open` back to `false`.
+- The bar at the top is a drag handle. Dragging it down more than 100px closes the sheet, and a shorter drag springs it back. The backdrop lightens as it moves.
+- The sheet pads its content and keeps it clear of the home indicator at the bottom of the screen.
+- `<ui-sheet-title>` and `<ui-sheet-description>` render `<text>`, so put plain text in them. The footer stacks its buttons full width.
+
+### Other content
+
+Put any elements between the header and footer. Import `LYNX_ELEMENTS` in your component for them.
+
+```angular-html
+<ui-sheet [(open)]="open">
+  <ui-sheet-header>
+    <ui-sheet-title>Filters</ui-sheet-title>
+  </ui-sheet-header>
+  <view class="flex flex-col gap-3 py-4">
+    <text class="text-sm text-foreground">Notifications: on</text>
+  </view>
+</ui-sheet>
+```
+
+The sheet grows with its content. For long content, put a [`<scroll-view>`](/api/elements/scroll-view) with a fixed height inside, because a scroll view needs one to scroll.
+
+### Run code after it closes
+
+`closed` emits once the slide-down animation has finished. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a button instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+
+```angular-html
+<ui-sheet [(open)]="open" (closed)="onClosed()">…</ui-sheet>
 ```
 
 ## API
 
 ### UiSheet
 
-| Input / Output | Type             | Default | Description                                 |
-| -------------- | ---------------- | ------- | ------------------------------------------- |
-| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility    |
-| `class`        | `string`         | `''`    | Additional CSS classes for the sheet panel  |
-| `closed`       | `output<void>`   | --      | Emitted after the close animation completes |
+| Input   | Type      | Default | Description                                                                                   |
+| ------- | --------- | ------- | --------------------------------------------------------------------------------------------- |
+| `open`  | `boolean` | `false` | Whether the sheet is shown. Supports `[(open)]`.                                              |
+| `class` | `string`  | `''`    | Extra Tailwind classes for the content area inside the panel. Default padding is `px-6 pb-6`. |
 
-### UiSheetHeader
+| Output       | Type      | Description                                                                       |
+| ------------ | --------- | --------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when a backdrop tap or a drag closes the sheet. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                         |
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
+All sub-components (`UiSheetHeader`, `UiSheetTitle`, `UiSheetDescription`, `UiSheetFooter`) accept `class`.
 
-### UiSheetTitle
+## Related
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
-
-### UiSheetDescription
-
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
-
-### UiSheetFooter
-
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
+- [Bottom Sheet](/dolan/bottom-sheet): the bare panel the sheet is built on
+- [Action Sheet](/dolan/action-sheet): a list of actions from the bottom
+- [Dialog](/dolan/dialog): a centered panel

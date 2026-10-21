@@ -1,0 +1,123 @@
+# Coming from web Angular
+
+This page lists everything that changes when you move Angular code from the browser to Lynx. Skim the cheat sheet first, then check the compatibility table for the features you use.
+
+## Cheat sheet
+
+| On the web                                              | On Lynx                                                          |
+| ------------------------------------------------------- | ---------------------------------------------------------------- |
+| `<div>`                                                 | `<view>`                                                         |
+| `<span>`, `<p>`, `<h1>`                                 | `<text>`. Text only shows inside `<text>`                        |
+| `<img src>`                                             | `<image src>`, which needs a width and height                    |
+| A scrolling `<div>`                                     | `<scroll-view>`, or `<list>` for long lists                      |
+| `<button (click)>`                                      | `<view (bindtap)>` with a `<text>` inside                        |
+| `<input (input)>`                                       | `<input (bindinput)>`, with the value in `$event.detail.value`   |
+| `(click)`                                               | `(bindtap)`, or `(catchtap)` to stop it bubbling                 |
+| `:root { --x: … }`                                      | `page { --x: … }`                                                |
+| `display: block`                                        | `display: linear` (the default) or `display: flex`               |
+| `:hover`, `@media`                                      | No equivalent. Use signals, and `LynxSystemInfo` for screen size |
+| `bootstrapApplication` from `@angular/platform-browser` | `bootstrapApplication` from `@blotch/angular-lynx`               |
+| Zone.js or zoneless                                     | Zoneless only                                                    |
+| `routerLink`                                            | `(bindtap)` that calls `router.navigate()`                       |
+| `document`, `window`                                    | Not available                                                    |
+
+Here's one component on each platform:
+
+```angular-html
+<!-- Web -->
+<div class="card" (click)="select()">
+  <img [src]="avatar" />
+  <span>{{ name() }}</span>
+</div>
+
+<!-- Lynx -->
+<view class="card" (bindtap)="select()">
+  <image [src]="avatar" class="w-10 h-10" />
+  <text>{{ name() }}</text>
+</view>
+```
+
+## Templates
+
+**Lynx elements replace HTML.** A Lynx app has no HTML engine, so `<div>` and `<span>` mean nothing to it. Lynx [elements](/guide/elements/) map to native UI controls instead. [Elements and layout](/guide/elements/) lists them all.
+
+**Text must be inside `<text>`.** On the web, text can sit anywhere. On Lynx, text that isn't inside a `<text>` element doesn't render. Nest `<text>` elements to style part of a sentence.
+
+**Import `LYNX_ELEMENTS`.** Add it to every component that uses Lynx elements, as `ng generate component` does. It gives you type checking in your editor and makes `ng test` compile.
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-hello',
+  imports: [LYNX_ELEMENTS],
+  template: `<view><text>Hello</text></view>`,
+})
+export class Hello {}
+```
+
+## Events
+
+Lynx events start with `bind` or `catch`:
+
+- `(bindtap)` handles a tap and lets it bubble up to parent elements.
+- `(catchtap)` handles a tap and stops it there.
+
+Event data is in `$event.detail`. A text input's value, for example, is `$event.detail.value`.
+
+Event handlers have one rule the web doesn't have. You can change signals freely, but don't navigate or open overlays directly inside a handler: wrap those calls in `setTimeout`. [Threads: where your code runs](/guide/concepts/threads#the-settimeout-rule) explains why.
+
+See [Handling taps and events](/guide/elements/event-handling) for every event.
+
+## Styling
+
+Lynx has its own CSS engine. It supports most layout CSS, but its defaults differ from a browser's:
+
+- **Elements stack vertically** by default (`display: linear`). Add `display: flex` (Tailwind's `flex`) for flexbox.
+- **`box-sizing` is `border-box`**, and margins don't collapse.
+- **Styles aren't inherited.** Setting `color` on a `<view>` doesn't color the `<text>` inside it.
+- **`rem` is 14px**, not 16px.
+- **Some features are missing:** `:hover`, `::before`, `@media` and `!important`.
+- **Component styles aren't isolated yet.** A component's CSS applies to the whole app, so give classes distinct names or use [CSS Modules](/guide/css-modules).
+
+[CSS on Lynx](/guide/styling) covers every difference. Tailwind works through a [Lynx preset](/guide/tailwindcss).
+
+## The JavaScript environment
+
+Your code doesn't run in a browser. There's no DOM, so `document.querySelector`, `window.addEventListener` and `localStorage` don't exist. AngularLynx fills in what Angular itself needs, such as `setTimeout` and `URL`.
+
+Libraries that touch the DOM, or depend on browser APIs, won't work. That includes Angular Material, most of the CDK, and chart libraries that draw on a `<canvas>`. [The JavaScript environment](/guide/concepts/javascript-environment) lists what's available.
+
+## Angular feature compatibility
+
+✅ works as on the web · ⚠️ works with differences · ❌ not supported
+
+| Feature                                                             | Status | Notes                                                                                                        |
+| ------------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------------------------ |
+| Standalone components, DI, `inject()`                               |   ✅   |                                                                                                              |
+| Signals: `signal`, `computed`, `effect`, `linkedSignal`, `resource` |   ✅   | [Signals](/guide/concepts/signals)                                                                           |
+| `input()`, `output()`, `model()`, queries                           |   ✅   |                                                                                                              |
+| `@if`, `@for`, `@switch`, `@let`                                    |   ✅   |                                                                                                              |
+| Pipes                                                               |   ✅   |                                                                                                              |
+| Libraries that use `Intl`                                           |   ⚠️   | Need [polyfills](/guide/concepts/javascript-environment#intl)                                                |
+| Content projection (`<ng-content>`)                                 |   ✅   | [Content projection](/guide/content-projection)                                                              |
+| `ViewContainerRef.createComponent()`                                |   ✅   |                                                                                                              |
+| Change detection                                                    |   ⚠️   | Zoneless only. Use signals, `toSignal()` or the `async` pipe                                                 |
+| Event bindings                                                      |   ⚠️   | `bind*`/`catch*` names. [Events](/guide/elements/event-handling)                                             |
+| Component styles                                                    |   ⚠️   | Not isolated yet: a component's CSS applies to the whole app. [CSS on Lynx](/guide/styling#component-styles) |
+| Router                                                              |   ⚠️   | No URL bar and no `routerLink`. [Routing](/guide/routing)                                                    |
+| Lazy routes and `@defer`                                            |   ⚠️   | Code isn't split into separate files. Some `@defer` triggers don't work. [`@defer`](/guide/defer)            |
+| Reactive, template-driven and signal forms                          |   ⚠️   | On `<input>` and `<textarea>`. No native checkbox, radio or select. [Forms](/guide/forms)                    |
+| `@boundary` error boundaries (Angular 22.2)                         |   ✅   | [Handling errors](/guide/error-handling)                                                                     |
+| `i18n` attributes and `$localize`                                   |   ⚠️   | Translations load at runtime, not at build time. [Internationalization](/guide/i18n)                         |
+| `@angular/animations`                                               |   ❌   | Use CSS transitions or `LynxTransition`. [Animations](/guide/animations/)                                    |
+| `HttpClient`, `httpResource`, `fetch`                               |   ❌   | Not supported yet. [Why](/guide/concepts/javascript-environment#network-requests)                            |
+| Zone.js, `NgZone`                                                   |   ❌   |                                                                                                              |
+| Angular Material, CDK overlays                                      |   ❌   | They render HTML. Use the [UI components](/dolan/)                                                           |
+| `ng generate`, `ng test`, `ng build`, `ng update`                   |   ✅   | [Schematics](/api/schematics)                                                                                |
+
+## Related
+
+- [What is AngularLynx?](/guide/introduction)
+- [Glossary](/guide/glossary): Lynx and mobile terms in plain words.

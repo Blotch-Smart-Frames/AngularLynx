@@ -35,29 +35,43 @@ const featuresConfig = [
   {
     // Angular's logo exists only among Font Awesome's brand icons.
     icon: 'fa-brands fa-angular',
-    title: 'Powered by Angular',
-    desc: 'Full support for signals, standalone components, and modern control flow — the same Angular APIs you already know and love.',
+    title: 'The Angular you already know',
+    desc: 'Standalone components, signals, dependency injection, the router, forms and @defer. Generate components with ng generate, test with ng test, and build with ng build.',
     actions: [
-      { text: 'angular.dev', link: 'https://angular.dev/' },
-      { text: 'npm', link: 'https://www.npmjs.com/package/@angular/cli' },
+      { text: 'Coming from web Angular', link: '/guide/coming-from-web' },
+      {
+        text: 'What works',
+        link: '/guide/coming-from-web#angular-feature-compatibility',
+      },
     ],
-    isRowSet: 508,
+    isRowSet: 360,
   },
   {
-    icon: 'fa-light fa-bolt',
-    title: 'Made for Lynx',
-    desc: "Dual-threaded Angular tailor-made for Lynx, carrying over Lynx's native UI responsiveness and main thread scripting.",
+    icon: 'fa-light fa-mobile',
+    title: 'Real native UI, drawn by Lynx',
+    desc: "Lynx is ByteDance's open-source engine, used in TikTok. It turns your templates into the phone's own UI controls, styled with CSS, so your app scrolls and feels like any other app.",
     illustration: true,
   },
   {
-    icon: 'fa-light fa-circle-nodes',
-    title: 'Compatible with Angular Ecosystem',
-    desc: 'Bring your favorite Angular libraries and enjoy the rich Angular ecosystem on Lynx.',
+    icon: 'fa-light fa-rocket-launch',
+    title: 'From ng serve to the App Store',
+    desc: 'Preview in the browser and on your phone as you code. ng build --platform ios or android builds apps ready for the stores, with no Xcode or Gradle project to maintain.',
     actions: [
-      { text: 'Angular Router', link: '/guide/routing' },
-      { text: 'Signals', link: '/guide/change-detection/signals' },
-      { text: 'Tailwind CSS', link: '/guide/tailwindcss' },
+      { text: 'Quick Start', link: '/guide/quick-start' },
+      { text: 'Run on iOS and Android', link: '/guide/native-apps' },
     ],
+  },
+  {
+    icon: 'fa-light fa-toolbox',
+    title: 'Everything an app needs',
+    desc: 'UI components you copy into your project, Tailwind CSS, gestures, animations, a testing library and internationalization.',
+    actions: [
+      { text: 'UI Components', link: '/dolan/' },
+      { text: 'Tailwind CSS', link: '/guide/tailwindcss' },
+      { text: 'Testing', link: '/guide/testing/' },
+      { text: 'Examples', link: '/examples/' },
+    ],
+    isRowSet: 360,
   },
 ];
 

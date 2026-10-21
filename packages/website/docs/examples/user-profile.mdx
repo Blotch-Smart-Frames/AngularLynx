@@ -1,12 +1,20 @@
 # User Profile
 
-A profile screen showing avatar, status badge, stats, bio card, and an edit flow using a bottom sheet with form fields.
+A profile screen with an avatar, a badge, stats and an "About" card, plus a sheet for editing the bio. Look here for a view-then-edit screen.
+
+Built with the [UI components](/dolan/): [Avatar](/dolan/avatar), [Badge](/dolan/badge), [Card](/dolan/card), [Sheet](/dolan/sheet), [Input](/dolan/input), [Textarea](/dolan/textarea), [Label](/dolan/label), [Separator](/dolan/separator) and [Button](/dolan/button).
 
 <Go example="user-profile" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Avatar and Badge** — `UiAvatar` displays the user's photo or initials; `UiBadge` shows status like "Pro" membership
-- **Card for grouped content** — The "About" section uses `UiCard` to visually group related profile information
-- **Sheet for inline editing** — Tapping "Edit Profile" opens a `UiSheet` with form inputs, avoiding a full page navigation
-- **Form inputs** — `UiInput` handles single-line text and `UiTextarea` handles the bio, both with labels for accessibility
+- **Avatar fallback** — `fallback="AJ"` shows initials when there's no photo.
+- **Vertical separators** — `orientation="vertical"` divides the Posts, Followers and Following stats.
+- **Editing in a sheet** — Edit Profile opens a Sheet that slides up from the bottom, so there's no navigation to a new screen.
+- **Draft, then save** — the sheet edits a copy in `editBio`. Save copies it into `bio`, and Cancel closes the sheet without saving.
+- **Card sections** — a Card with a header and content groups the About text.
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays)
+- [Settings Page](/examples/settings-page)

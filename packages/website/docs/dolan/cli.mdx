@@ -1,0 +1,245 @@
+# CLI
+
+The `@blotch/dolan` CLI copies UI components into your app, then tells you when they change and merges the updates for you. Run every command from your project folder.
+
+```bash
+npx @blotch/dolan <command> [options]
+```
+
+- Once `@blotch/dolan` is a dependency (see [installation](/dolan/#installation)), `npx` runs your installed copy. The shorter `npx dolan <command>` works too.
+- `npx @blotch/dolan --help` lists the commands, and `<command> --help` lists a command's options. `--version` prints the version.
+- Every command except `info` needs a `dolan.config.json`. Run [`init`](#init) first.
+
+| Command                 | What it does                                            |
+| ----------------------- | ------------------------------------------------------- |
+| [`init`](#init)         | Set up dolan and copy the theme files                   |
+| [`add`](#add)           | Copy components into your app                           |
+| [`list`](#list)         | Show installed components and their status              |
+| [`info`](#info)         | Show a component's files and dependencies               |
+| [`diff`](#diff)         | Show how your copy differs from the bundled source      |
+| [`outdated`](#outdated) | List components that aren't up to date (exits 1 if any) |
+| [`update`](#update)     | Merge the bundled source into your copies               |
+| [`remove`](#remove)     | Delete a component                                      |
+| [`eject`](#eject)       | Stop recording a component's file hashes                |
+| [`theme`](#theme)       | List theme files, or start a new one                    |
+| [`doctor`](#doctor)     | Check your setup                                        |
+
+## Where updates come from
+
+The CLI package contains the component source. It doesn't download anything. So "upstream" in every command means the source bundled with the `@blotch/dolan` version you have installed.
+
+To get newer components, upgrade the CLI and then update:
+
+```bash
+npm install @blotch/dolan@latest
+npx @blotch/dolan update
+```
+
+The CLI keeps two files at the project root. Commit both.
+
+- **`dolan.config.json`:** where components and theme files go. Paths are relative to the project folder.
+- **`dolan.lock.json`:** a hash of every copied file, as it was when dolan wrote it. Comparing it with your file and the bundled source tells dolan who changed what.
+
+```json title="dolan.config.json"
+{
+  "aliases": {
+    "components": "src/components/ui",
+    "theme": "src/styles"
+  }
+}
+```
+
+If your project has an `.oxfmtrc.json` and oxfmt installed, dolan formats the `.ts` files it writes with your settings.
+
+## init
+
+```bash
+npx @blotch/dolan init
+```
+
+Asks two questions, then sets up the project:
+
+| Prompt                                 | Default             |
+| -------------------------------------- | ------------------- |
+| Where should components be installed?  | `src/components/ui` |
+| Where should theme files be installed? | `src/styles`        |
+
+- Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
+- Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. It overwrites them if they're already there, so running `init` again resets your theme edits.
+- Creates the components folder and prints the next steps. The printed `@import` path starts at the project root. From `src/styles.css`, it's `./styles/default.css`.
+
+Options: none.
+
+## add
+
+```bash
+npx @blotch/dolan add [components...]
+```
+
+Copies each component into `<components>/<name>/`. With no names, it shows a checklist.
+
+- **Dependencies come too.** Adding `button` also adds `spinner`, and the CLI prints what it added.
+- **Imports are rewritten.** `cn()` and the animation helpers are imported from `@blotch/dolan/utils/cn` and `@blotch/dolan/utils/animate`.
+- **Unit tests are copied.** Each component brings its `<name>.test.ts`.
+- **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise.
+- **npm packages are installed.** If a component imports a package your `package.json` lacks, `add` installs it with your package manager (npm, pnpm, yarn or bun, detected from the lockfile). Today only `chart` and the chart presets need any: `@tanstack/charts` and `d3-shape`.
+
+| Argument or option | Description                                                                  |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `[components...]`  | Component names. An unknown name stops the command and lists the valid ones. |
+
+## list
+
+```bash
+npx @blotch/dolan list
+```
+
+Alias: `ls`. Prints each installed component with its status and file count. Only folders named after a known component count, so your own folders are ignored.
+
+| Status     | JSON value      | Meaning                                                                |
+| ---------- | --------------- | ---------------------------------------------------------------------- |
+| up to date | `up-to-date`    | Your copy matches the bundled source.                                  |
+| outdated   | `auto-update`   | You haven't edited it, and the bundled source changed or added a file. |
+| modified   | `user-modified` | You edited it, and the bundled source hasn't changed.                  |
+| conflict   | `conflict`      | Both changed, or dolan has no hash for a file that differs.            |
+
+| Argument or option | Description                                                            |
+| ------------------ | ---------------------------------------------------------------------- |
+| `--json`           | Print `{ "components": [{ "name", "status", "fileCount" }] }` instead. |
+
+## info
+
+```bash
+npx @blotch/dolan info <component>
+```
+
+Prints a component's files, the components it depends on, and the components that use it. With a `dolan.config.json`, it also shows what's installed. It works without one.
+
+| Argument or option | Description         |
+| ------------------ | ------------------- |
+| `<component>`      | The component name. |
+
+## diff
+
+```bash
+npx @blotch/dolan diff [component]
+```
+
+With a name, it prints every file that differs from the bundled source. Lines starting with `-` are yours, and lines starting with `+` are upstream. Without a name, it lists the changed components and asks which to show.
+
+| Argument or option | Description                         |
+| ------------------ | ----------------------------------- |
+| `[component]`      | Show this installed component only. |
+
+## outdated
+
+```bash
+npx @blotch/dolan outdated
+```
+
+Lists the installed components that aren't up to date, using the [statuses](#list) above. It exits with code 1 when there are any, so a CI job can fail on it. Components you edited count as well.
+
+| Argument or option | Description                                                    |
+| ------------------ | -------------------------------------------------------------- |
+| `--json`           | Print `{ "components": [...] }`, still exiting 1 if not empty. |
+
+## update
+
+```bash
+npx @blotch/dolan update
+```
+
+Merges the bundled source into every installed component, file by file:
+
+| Your file | Bundled source       | What `update` does                                                                            |
+| --------- | -------------------- | --------------------------------------------------------------------------------------------- |
+| Unchanged | Changed, or new file | Asks once whether to apply all of these (default Yes), then overwrites.                       |
+| Edited    | Unchanged            | Keeps yours.                                                                                  |
+| Edited    | Changed              | Conflict. Asks per file: show the diff, keep yours, take upstream, or review it hunk by hunk. |
+
+- **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. That covers ejected components, and theme files you edited before your first `update`.
+- **Theme files** (`default.css`, `dark.css`, `tailwind-plugin.ts`) are merged the same way. Themes you made with [`theme`](#theme) aren't.
+- **New dependencies are added.** If a component's new version needs another component, `update` copies it in.
+- **npm packages are installed** the same way [`add`](#add) does.
+- **You're asked about a conflict once.** After you choose, the lockfile records the new upstream hash. If you kept your version, the file shows as modified until upstream changes again.
+
+| Argument or option | Description                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `-f, --force`      | Overwrite every file with upstream, discarding your changes. Wins over `--selective`.                  |
+| `-s, --selective`  | Review every changed file one at a time, including your own edits. "Skip for now" asks again next run. |
+
+## remove
+
+```bash
+npx @blotch/dolan remove <component>
+```
+
+Alias: `rm`. Deletes the component's folder and its lockfile entry.
+
+- If other installed components depend on it, it warns and asks first (default No).
+- It offers to remove dependencies that nothing else uses (default Yes). It looks one level deep, so remove deeper dependencies yourself.
+- It doesn't uninstall npm packages.
+
+| Argument or option | Description                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `<component>`      | An installed component.                                                                     |
+| `-f, --force`      | Skip both questions: remove it even if others depend on it, and remove unused dependencies. |
+
+## eject
+
+```bash
+npx @blotch/dolan eject <component>
+```
+
+Removes the component's file hashes from `dolan.lock.json` and leaves its files alone. It asks first (default No).
+
+:::warning
+`update`, `list`, `diff` and `outdated` still read every folder named after a component, ejected or not. With no hash recorded, `update` treats each file that differs from upstream as a conflict and asks you, and `update --force` overwrites it. To hide a component from dolan, rename its folder and the imports that point at it.
+:::
+
+| Argument or option | Description                     |
+| ------------------ | ------------------------------- |
+| `<component>`      | An installed component.         |
+| `-f, --force`      | Skip the confirmation question. |
+
+## theme
+
+```bash
+npx @blotch/dolan theme [name]
+```
+
+Without a name, it lists the `.css` files in your theme folder. With a name, it copies `default.css` to `<theme folder>/<name>.css` for you to edit. It stops if that file exists.
+
+Import the new file in place of `default.css`. See [Theming](/dolan/theming#start-a-new-theme).
+
+| Argument or option | Description                         |
+| ------------------ | ----------------------------------- |
+| `[name]`           | Create a theme file with this name. |
+
+## doctor
+
+```bash
+npx @blotch/dolan doctor
+```
+
+Runs these checks in order and exits with code 1 if any fail:
+
+| Check                                                                                                                              | If it doesn't pass |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `dolan.config.json` exists, is valid JSON and has `components`, `utils` and `theme` paths                                          | Fails and stops    |
+| The components and theme folders exist                                                                                             | Fails              |
+| The theme folder has `tailwind-plugin.ts`, and `default.css` or `dark.css`                                                         | Warns              |
+| `tailwind.config.ts` or `.js` exists and mentions `blotchPlugin`                                                                   | Warns              |
+| `package.json` lists `@angular/core`, `@angular/common`, `@angular/platform-browser`, `@angular/router` and `@blotch/angular-lynx` | Fails              |
+| `package.json` lists `tailwindcss`                                                                                                 | Warns              |
+| Every component folder is a known component, has all its files and has its dependencies                                            | Warns              |
+
+`init` doesn't write a `utils` path, and no other command reads one. To pass the first check, add `"utils": "src/lib/utils"` to `aliases`.
+
+Options: none.
+
+## Related
+
+- [UI Components](/dolan/): install dolan and add your first component
+- [Theming](/dolan/theming): the theme files `init` copies
+- [Tailwind CSS](/guide/tailwindcss): required by every component

@@ -1,6 +1,6 @@
 # Collapsible
 
-An interactive component that expands and collapses a section of content.
+One section whose content shows and hides when its trigger is tapped.
 
 <Go example="ui-collapsible" defaultFile="src/app/app.ts" />
 
@@ -13,76 +13,90 @@ npx @blotch/dolan add collapsible
 ```typescript
 import {
   UiCollapsible,
-  UiCollapsibleTrigger,
   UiCollapsibleContent,
-} from '@/components/ui/collapsible';
+  UiCollapsibleTrigger,
+} from '../components/ui/collapsible';
 ```
 
 ## Usage
 
-### Basic
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiCollapsible,
+  UiCollapsibleContent,
+  UiCollapsibleTrigger,
+} from '../components/ui/collapsible';
 
-Wrap a trigger and content section inside `ui-collapsible`. Tapping the trigger toggles the content:
-
-```angular-html
-<ui-collapsible>
-  <ui-collapsible-trigger>
-    <text>Toggle content</text>
-  </ui-collapsible-trigger>
-  <ui-collapsible-content>
-    <text>This content can be shown or hidden.</text>
-  </ui-collapsible-content>
-</ui-collapsible>
+@Component({
+  selector: 'app-root',
+  imports: [
+    LYNX_ELEMENTS,
+    UiCollapsible,
+    UiCollapsibleTrigger,
+    UiCollapsibleContent,
+  ],
+  template: `
+    <ui-collapsible [(open)]="open" class="rounded-lg border border-border">
+      <ui-collapsible-trigger class="justify-between p-4">
+        <text class="text-sm font-medium text-foreground">
+          3 tagged versions
+        </text>
+        <text class="text-xs text-muted-foreground">
+          {{ open() ? 'Hide' : 'Show' }}
+        </text>
+      </ui-collapsible-trigger>
+      <ui-collapsible-content>
+        <view class="px-4 pb-4">
+          <text class="text-sm text-foreground">v1.0.0, v1.1.0, v2.0.0</text>
+        </view>
+      </ui-collapsible-content>
+    </ui-collapsible>
+  `,
+})
+export class App {
+  protected readonly open = signal(false);
+}
 ```
 
-### Controlled
+- `[(open)]` keeps your signal and the collapsible in step. Leave it out if you don't need the state.
+- The trigger is a row (`flex-row items-center`) and doesn't wrap its content, so put your own `<text>` elements inside.
+- Content shows only while open. It slides and fades in as it opens.
 
-Use two-way binding with the `open` model to control the collapsible state programmatically:
+### Open from code
 
 ```angular-html
-<ui-collapsible [(open)]="isOpen">
-  <ui-collapsible-trigger>
-    <text>{{ isOpen ? 'Collapse' : 'Expand' }}</text>
-  </ui-collapsible-trigger>
-  <ui-collapsible-content>
-    <text>Controlled content.</text>
-  </ui-collapsible-content>
-</ui-collapsible>
+<ui-collapsible [(open)]="open">…</ui-collapsible>
 ```
+
+Set the bound signal, for example `this.open.set(true)`, and the content opens. `UiCollapsible` also has a public `toggle()` method, which does nothing while disabled.
 
 ### Disabled
 
-Set `disabled` to prevent the collapsible from being toggled:
-
 ```angular-html
-<ui-collapsible [disabled]="true">
-  <ui-collapsible-trigger>
-    <text>Cannot toggle</text>
-  </ui-collapsible-trigger>
-  <ui-collapsible-content>
-    <text>This content is locked.</text>
-  </ui-collapsible-content>
-</ui-collapsible>
+<ui-collapsible [disabled]="true">…</ui-collapsible>
 ```
+
+The trigger dims and ignores taps. Setting `open` from code still works.
 
 ## API
 
 ### UiCollapsible
 
-| Input/Output | Type             | Default | Description                                      |
-| ------------ | ---------------- | ------- | ------------------------------------------------ |
-| `open`       | `model<boolean>` | `false` | Two-way binding for the open/closed state        |
-| `disabled`   | `boolean`        | `false` | Whether the collapsible is disabled              |
-| `class`      | `string`         | `''`    | Additional CSS classes to apply to the container |
+| Input      | Type      | Default | Description                                     |
+| ---------- | --------- | ------- | ----------------------------------------------- |
+| `open`     | `boolean` | `false` | Whether the content shows. Supports `[(open)]`. |
+| `disabled` | `boolean` | `false` | Dims the trigger and ignores taps.              |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the container.       |
 
-### UiCollapsibleTrigger
+| Output       | Type      | Description                                     |
+| ------------ | --------- | ----------------------------------------------- |
+| `openChange` | `boolean` | Emits the new state when the trigger is tapped. |
 
-| Input   | Type     | Default | Description                                    |
-| ------- | -------- | ------- | ---------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the trigger |
+All sub-components (`UiCollapsibleTrigger`, `UiCollapsibleContent`) accept `class`.
 
-### UiCollapsibleContent
+## Related
 
-| Input   | Type     | Default | Description                                              |
-| ------- | -------- | ------- | -------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |
+- [Accordion](/dolan/accordion): several sections that open one at a time
+- [Signals and change detection](/guide/concepts/signals)

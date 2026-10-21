@@ -1,46 +1,115 @@
-# &lt;input&gt;
+# `<input>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Single-line text input field.
+A single-line text field, like `<input type="text">`. For several lines, use [`<textarea>`](/api/elements/textarea).
 
 <Go example="element-input" defaultFile="src/app/app.ts" />
 
-```angular-html
-<input
-  type="text"
-  placeholder="Enter your name"
-  (bindinput)="onInput($event)"
-/>
-```
+## Usage
 
-The input event provides the value via `event.detail.value`. Angular types `$event` as `Event`, so read `detail` through `CustomEvent`. A narrower parameter type fails the build's type check.
+```typescript title="src/app/search.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-```typescript
-onInput(event: Event): void {
-  this.name.set((event as CustomEvent<{ value: string }>).detail.value);
+@Component({
+  selector: 'app-search',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <input
+      placeholder="Search"
+      confirm-type="search"
+      (bindinput)="onInput($event)"
+      (bindconfirm)="search()"
+    />
+  `,
+})
+export class Search {
+  readonly query = signal('');
+
+  onInput(event: Event): void {
+    this.query.set((event as CustomEvent<{ value: string }>).detail.value);
+  }
+
+  search(): void {}
 }
 ```
 
-## Key Attributes
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-| Attribute     | Type      | Description                                              |
-| ------------- | --------- | -------------------------------------------------------- |
-| `type`        | `string`  | Input type: `"text"` (default), `"number"`, `"password"` |
-| `placeholder` | `string`  | Placeholder text shown when empty                        |
-| `maxlength`   | `number`  | Maximum character length                                 |
-| `auto-focus`  | `boolean` | Automatically focus when the element appears             |
-| `value`       | `string`  | Current input value                                      |
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
+:::
+
+## Attributes
+
+| Attribute                  | Type                                                              | Default                                                | Description                                                                                                                                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                     | `'text' \| 'number' \| 'digit' \| 'password' \| 'tel' \| 'email'` | `'text'`                                               | What can be typed, and which on-screen keyboard opens.                                                                                                                                                                                |
+| `placeholder`              | `string`                                                          | —                                                      | Hint shown while the field is empty.                                                                                                                                                                                                  |
+| `value`                    | `string`                                                          | —                                                      | Sets the text from code, for example to clear the field. Bind it as `[value]`: AngularLynx sends it through `setValue`, because Lynx ignores a `value` attribute once the user has typed. `[attr.value]` skips that and doesn't work. |
+| `default-value`            | `string`                                                          | —                                                      | iOS and Android. Text on the first render only. It doesn't fire `bindinput`.                                                                                                                                                          |
+| `maxlength`                | `number`                                                          | No limit                                               | Maximum number of characters.                                                                                                                                                                                                         |
+| `confirm-type`             | `'send' \| 'search' \| 'go' \| 'done' \| 'next'`                  | `'send'`                                               | Label of the keyboard's return key. Pressing it fires `bindconfirm`.                                                                                                                                                                  |
+| `readonly`                 | `boolean`                                                         | `false`                                                | The text can't be edited. How focus behaves differs between platforms.                                                                                                                                                                |
+| `disabled`                 | `boolean`                                                         | `false`                                                | The field is fully inert: no focus and no keyboard.                                                                                                                                                                                   |
+| `input-filter`             | `string`                                                          | —                                                      | A regular expression each typed character must match, e.g. `'[0-9]'`.                                                                                                                                                                 |
+| `show-soft-input-on-focus` | `boolean`                                                         | `true`                                                 | iOS and Android. Opens the on-screen keyboard when the field gets focus.                                                                                                                                                              |
+| `ios-auto-correct`         | `boolean`                                                         | `true`                                                 | iOS only. Autocorrect.                                                                                                                                                                                                                |
+| `ios-spell-check`          | `boolean`                                                         | `true`                                                 | iOS only. Spell checking.                                                                                                                                                                                                             |
+| `android-fullscreen-mode`  | `boolean`                                                         | `true`                                                 | Android only. In landscape, the keyboard and the field fill the screen.                                                                                                                                                               |
+| `style`                    | `string`                                                          | `height: 40px; border: 1px solid` (set by AngularLynx) | Native fields have no height or border of their own, so AngularLynx sets these inline. Override them in `style`.                                                                                                                      |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id` and `class`.
 
 ## Events
 
-| Event         | Description                                                              |
-| ------------- | ------------------------------------------------------------------------ |
-| `bindinput`   | Fires on every keystroke. `event.detail.value` contains the current text |
-| `bindfocus`   | Fires when the input gains focus                                         |
-| `bindblur`    | Fires when the input loses focus                                         |
-| `bindconfirm` | Fires when the user presses the confirm/return key                       |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
 
-For form patterns with validation, see the [Forms](/guide/forms) guide.
+| Event           | `detail`                                                                                 | Description                                                                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bindinput`     | `{ value: string; selectionStart: number; selectionEnd: number; isComposing?: boolean }` | The text changed. `isComposing` is `true` while a keyboard that builds characters from several keystrokes, such as a Chinese or Japanese one, is mid-character. |
+| `bindfocus`     | `{ value: string }`                                                                      | The field got focus.                                                                                                                                            |
+| `bindblur`      | `{ value: string }`                                                                      | The field lost focus.                                                                                                                                           |
+| `bindconfirm`   | `{ value: string }`                                                                      | The user pressed the keyboard's return key.                                                                                                                     |
+| `bindselection` | `{ selectionStart: number; selectionEnd: number }`                                       | The cursor or the selection moved.                                                                                                                              |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) control the field from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.
+
+| Method              | Parameters                                         | Description                                                     |
+| ------------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| `focus`             | —                                                  | Focuses the field and opens the keyboard.                       |
+| `blur`              | —                                                  | Removes focus and closes the keyboard.                          |
+| `getValue`          | —                                                  | Returns `{ value, selectionStart, selectionEnd, isComposing }`. |
+| `setValue`          | `{ value: string }`                                | Replaces the text. A `[value]` binding calls this for you.      |
+| `setSelectionRange` | `{ selectionStart: number; selectionEnd: number }` | Selects a range of characters. Equal values place the cursor.   |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-search-box',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <input #search placeholder="Search" />
+    <view (bindtap)="startSearch()"><text>Search</text></view>
+  `,
+})
+export class SearchBox {
+  readonly search = viewChild.required('search', { read: ElementRef });
+
+  startSearch(): void {
+    this.search().nativeElement.invoke?.('focus');
+  }
+}
+```
+
+## Related
+
+- [Forms](/guide/forms): reactive forms, validation and the on-screen keyboard
+- [`<textarea>`](/api/elements/textarea)
+- [Input](/dolan/input): the styled UI component
+- [Elements](/api/angular-lynx/elements): the form value accessors for `formControl` and `ngModel`

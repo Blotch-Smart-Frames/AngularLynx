@@ -1,0 +1,119 @@
+# Signals and change detection
+
+AngularLynx updates the screen when your signals change. There's no Zone.js, so signals are how Angular knows what to re-render. If you already write signal-based Angular, nothing here changes how you code.
+
+## Signals drive the UI
+
+```typescript title="src/app/counter.ts"
+import { Component, computed, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-counter',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="increment()">
+      <text>Count: {{ count() }}</text>
+      <text>Double: {{ double() }}</text>
+    </view>
+  `,
+})
+export class Counter {
+  readonly count = signal(0);
+  readonly double = computed(() => this.count() * 2);
+
+  increment(): void {
+    this.count.update((n) => n + 1);
+  }
+}
+```
+
+- `count.update()` changes the value.
+- Angular sees that `count` changed and re-renders the template parts that read it.
+- `double` is recalculated because it reads `count`.
+
+You never call `markForCheck()` or `detectChanges()` after changing a signal.
+
+## Every Angular signal API works
+
+`signal`, `computed`, `effect`, `linkedSignal`, `resource`, `input`, `output`, `model`, `viewChild` and the other queries, `toSignal` and `toObservable` all behave as on the web. See [Angular's signals guide](https://angular.dev/guide/signals) for how to use them.
+
+One rule comes from Angular itself: signal-based properties such as `input()`, `output()`, `model()` and `viewChild()` must be public. Angular can't read them from `#private` or `private` fields.
+
+```typescript
+export class Card {
+  readonly title = input.required<string>(); // ✅ public
+  // #title = input<string>();               // ❌ Angular can't see it
+}
+```
+
+## Zoneless only
+
+Every AngularLynx app uses zoneless change detection. `ng add` sets it up in `app.config.ts`:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
+
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideRouter(routes),
+  ],
+};
+```
+
+Zone.js can't run on Lynx, because the APIs it patches don't exist there. Don't add `zone.js` or `provideZoneChangeDetection()`: the app fails at startup.
+
+Angular 22 also makes `OnPush` the default for every component, so you don't need to set `changeDetection`.
+
+## Observables
+
+Under zoneless change detection, a value that arrives in a bare `subscribe()` callback doesn't update the screen. Pick one of these instead:
+
+| Option                            | When to use it                                              |
+| --------------------------------- | ----------------------------------------------------------- |
+| `toSignal(obs$)`                  | Recommended. The value becomes a signal                     |
+| `{{ obs$ \| async }}`             | In a template. The `async` pipe marks the view for checking |
+| `markForCheck()` in `subscribe()` | Last resort, for code you can't change                      |
+
+```typescript
+import { Component } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { interval } from 'rxjs';
+
+@Component({
+  selector: 'app-clock',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>{{ seconds() }} s</text>`,
+})
+export class Clock {
+  readonly seconds = toSignal(interval(1000), { initialValue: 0 });
+}
+```
+
+## Updates arrive together
+
+AngularLynx sends the screen all the changes from one render at once. If a handler sets five signals, the screen updates once, with all five. You never see a half-updated view.
+
+## How it compares to the web
+
+| Pattern                               | Web Angular                     | AngularLynx                    |
+| ------------------------------------- | ------------------------------- | ------------------------------ |
+| What triggers a re-render             | Zone.js or signals              | Signals (or `markForCheck()`)  |
+| `async` pipe                          | Works                           | Works                          |
+| `NgZone.run()`, `runOutsideAngular()` | Common in older code            | Not available. There's no zone |
+| `ChangeDetectorRef.detectChanges()`   | Sometimes needed                | Rarely needed                  |
+| When changes reach the screen         | Immediately, as the DOM changes | Together, after each render    |
+
+## Related
+
+- [Threads: where your code runs](/guide/concepts/threads): why some calls in event handlers need `setTimeout`.
+- [Renderer internals](/guide/renderer-architecture): how a render is scheduled and sent to the screen.

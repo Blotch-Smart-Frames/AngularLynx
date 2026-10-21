@@ -1,12 +1,19 @@
 # Checkout Form
 
-A multi-step checkout flow with shipping address, payment method selection, order summary, and a progress indicator.
+A three-step checkout with a shipping address, a payment method and an order summary, under a progress bar.
+
+Built with the [UI components](/dolan/): [Progress](/dolan/progress), [Input](/dolan/input), [Select](/dolan/select), [Radio Group](/dolan/radio-group), [Checkbox](/dolan/checkbox), [Card](/dolan/card), [Label](/dolan/label), [Separator](/dolan/separator) and [Button](/dolan/button).
 
 <Go example="checkout-form" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Multi-step wizard** — A `step()` signal controls which section is visible; `UiProgress` shows overall completion
-- **Form controls** — `UiInput` for text fields, `UiSelect` for dropdowns (country), `UiRadioGroup` for payment method, and `UiCheckbox` for terms agreement
-- **Conditional rendering** — `@if` blocks show/hide payment fields based on the selected method (card fields only appear when "Credit Card" is chosen)
-- **Order summary with Card** — The final step uses `UiCard` to present itemized totals with a separator before the grand total
+- **Steps from one signal** — `step()` picks the visible section with `@if`. `computed()` turns it into the progress value and the step label.
+- **Two-way bound fields** — each Input binds `[(value)]` to its own signal, and a Select picks the country.
+- **Conditional fields** — the card number, expiry and CVV fields appear only while the Radio Group is set to card.
+- **Order summary** — a Card lists the items, with a Separator above the total.
+
+## Related
+
+- [Forms](/guide/forms)
+- [Onboarding Wizard](/examples/onboarding-wizard)

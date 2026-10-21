@@ -1,0 +1,164 @@
+# Run on iOS and Android
+
+`ng build --platform` turns your app into a real iOS or Android app, with your app's name and icon, that you can install on a virtual phone or your own phone. Use it to test what your users will get, and to make the files you upload to the app stores.
+
+**You never open an Xcode or Android Studio project.** The builder generates the native project and builds it for you. You still install Xcode and Android Studio, because their build tools do the compiling.
+
+## Install the tools
+
+Each platform needs its own tools. Install the ones for the platforms you build.
+
+### iOS: a Mac with Xcode
+
+1. **Use a Mac.** Apple only ships its build tools for macOS, so iOS apps can't be built on Windows or Linux.
+2. **Install Xcode** from the Mac App Store. It's a large download.
+3. **Open Xcode once.** It asks to install extra components and the iOS platform. Accept both. The iOS platform includes the [**iOS Simulator**](/guide/glossary#simulator), a virtual iPhone that runs on your Mac.
+
+After that, you can close Xcode. The build calls its command-line tools by itself.
+
+### Android: Android Studio and a JDK
+
+{/* cspell:ignore LOCALAPPDATA */}
+
+1. **Install [Android Studio](https://developer.android.com/studio)**, on macOS, Windows or Linux. Its setup wizard installs the **Android SDK**, Android's build tools, and the [**emulator**](/guide/glossary#emulator), which runs virtual Android phones on your computer.
+2. **Keep the SDK's default location**, or set `ANDROID_HOME` to where you put it. The builder looks in `~/Library/Android/sdk` on macOS, `%LOCALAPPDATA%\Android\Sdk` on Windows and `~/Android/Sdk` on Linux.
+3. **Install JDK 17 or newer**, Java's development kit. Android's build needs it. On macOS, the builder finds an installed JDK by itself. Elsewhere, or to use the JDK that comes with Android Studio, set `JAVA_HOME`, e.g. on macOS:
+
+   ```bash
+   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+   ```
+
+4. **Create a virtual phone.** In Android Studio's **Device Manager**, add a virtual device and start it.
+
+## Build the apps
+
+```bash
+ng build --platform ios       # writes dist/ios/
+ng build --platform android   # writes dist/android/
+ng build --platform all       # both
+```
+
+Each build first makes the bundle, as `ng build` does, then the app around it. You get these files:
+
+| File                           | What it is                                                                                                                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dist/ios/MyApp-simulator.app` | An **`.app`**: an iOS app as a folder. This one runs only on the iOS Simulator                                                                                                    |
+| `dist/ios/MyApp.ipa`           | An [**`.ipa`**](/guide/glossary#ipa): a signed iOS app file you upload to the App Store. Built only once [iOS signing](/guide/publishing#ios-app-store-connect-api-key) is set up |
+| `dist/android/my-app.apk`      | An [**`.apk`**](/guide/glossary#apk): an Android app file you can install directly on an emulator or phone                                                                        |
+| `dist/android/my-app.aab`      | An [**`.aab`**](/guide/glossary#aab): an Android App Bundle, the file you upload to Google Play. It can't be installed directly                                                   |
+
+The file names come from your app's [`appName`](#set-the-app-identity): `My App` gives `MyApp` on iOS and `my-app` on Android.
+
+- **The first build is slow.** The iOS build downloads a prebuilt copy of the Lynx engine once. The first Android build downloads Android's build system and libraries, which can take several minutes. Later builds take seconds.
+- **The native project is hidden.** The builder generates it in Angular's build cache (`.angular/cache/`, which `ng new` already git-ignores) and reuses it until your options change. `ng cache clean` deletes it, and the next build generates it again.
+- **When a build fails,** the error names the full log file. Read the end of it for the tool's own message.
+
+:::info One screen, one bundle
+The generated app shows `main.lynx.bundle` full screen, and Angular Router handles all navigation inside it. It doesn't open the other bundles of a [multi-page](/guide/multi-page) app. For those, [eject](#eject-the-native-projects) or [embed them in your own app](/guide/embedding/).
+:::
+
+## Run on the iOS Simulator
+
+```bash
+open -a Simulator
+xcrun simctl install booted dist/ios/MyApp-simulator.app
+xcrun simctl launch booted com.example.myapp
+```
+
+- `open -a Simulator` starts the Simulator, which starts a virtual iPhone.
+- `xcrun simctl install booted …` installs the app on the running ("booted") virtual iPhone. You can also drag the `.app` onto the Simulator window.
+- `xcrun simctl launch booted …` opens the app. Pass your [`appId`](#set-the-app-identity). Tapping its icon works too.
+
+**On a real iPhone,** the simulator app doesn't run. Upload the signed `.ipa` to App Store Connect, then install it with TestFlight, Apple's app for testing builds before release. That needs an Apple Developer account and signing: see [Publish to the app stores](/guide/publishing).
+
+## Run on an emulator or Android phone
+
+```bash
+adb devices
+adb install -r dist/android/my-app.apk
+```
+
+- **`adb`** is Android's tool for talking to emulators and phones. It's in the SDK's `platform-tools` folder, e.g. `~/Library/Android/sdk/platform-tools` on macOS. Add that folder to your `PATH`.
+- **`adb devices`** lists the running emulators and connected phones. If more than one is listed, pick one with `adb -s <id> install …`.
+- **`adb install -r`** installs the app, replacing an older copy. Then tap its icon.
+
+**On a real Android phone,** turn on **Developer options** and **USB debugging** in its settings, connect it with a USB cable, and allow the connection on the phone. Then use the same commands.
+
+If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the installed copy was signed with a different key, e.g. before you [set up signing](/guide/publishing#android-upload-keystore). Remove it first with `adb uninstall com.example.myapp`.
+
+## Set the app identity
+
+The app's name, ID and version are options of the `build` target in `angular.json`:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "appName": "My App",
+    "appId": "com.example.myapp",
+    "version": "1.2.0",
+    "buildNumber": 42,
+    "icon": "src/assets/icon.png",
+    "orientation": "portrait",
+    "permissions": { "camera": "Scan receipts" },
+    "deepLinkSchemes": ["myapp"]
+  }
+}
+```
+
+:::warning Replace the placeholder app ID
+`ng add` sets `appId` to a placeholder, `com.example.<project>`. Replace it before your first upload. The stores identify your app by its [app ID](/guide/glossary#app-id), and it can't change afterwards.
+:::
+
+| Option            | Description                                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `appName`         | The name under the icon. `ng add` sets it to the project name                                                                                                   |
+| `appId`           | The iOS bundle ID and Android application ID. Two or more dot-separated parts of letters and digits, each starting with a letter                                |
+| `version`         | The version users see, up to three numbers (`1.2.0`). Defaults to `package.json`'s version, or `1.0.0` while that's still `ng new`'s `0.0.0`                    |
+| `buildNumber`     | A whole number that must increase with every store upload. Defaults to `1`                                                                                      |
+| `icon`            | A 1024×1024 PNG without transparency. iOS only for now: Android apps get a placeholder icon                                                                     |
+| `orientation`     | `portrait` (default), `landscape` or `all`                                                                                                                      |
+| `permissions`     | Any of `camera`, `microphone`, `location`, `photos`, `contacts` and `notifications`, each with the reason iOS shows when it asks. Android shows its own message |
+| `deepLinkSchemes` | URL schemes that open the app, e.g. `myapp` for `myapp://` links                                                                                                |
+
+### Per-environment values
+
+Use Angular's `configurations` to build variants, such as a staging app that installs next to the real one:
+
+```json title="angular.json"
+"configurations": {
+  "staging": { "appId": "com.example.myapp.staging", "appName": "My App (Staging)" }
+}
+```
+
+```bash
+ng build --platform ios -c staging
+```
+
+Angular merges a configuration into the options one key deep. So a configuration that sets `ios` or `android` replaces that whole object.
+
+## Eject the native projects
+
+For a native change the options don't cover, such as adding a native library, **eject** as a last resort:
+
+```bash
+ng generate @blotch/angular-lynx:eject                    # both platforms
+ng generate @blotch/angular-lynx:eject --platform ios     # or android
+```
+
+This writes the generated projects into `ios/` and `android/` at your project root. From then on you edit them in Xcode or Android Studio and commit them. `ng build --platform` builds those folders as they are, with your latest bundle and signing.
+
+Ejecting is one-way, and it costs you:
+
+- **The identity options stop applying.** Name, ID, version, icon, permissions and the rest now live in the native projects. The signing options still apply.
+- **Upkeep becomes your job.** New Lynx versions, new Xcode versions and Google Play's yearly requirements no longer arrive with AngularLynx updates.
+- **You need native knowledge** to change the projects.
+
+To go back to the generated project, delete the folder.
+
+## Related
+
+- [Publish to the app stores](/guide/publishing): sign and upload.
+- [Build your app](/guide/building-for-production): the bundle, budgets and build options.
+- [Embed in an existing native app](/guide/embedding/)
+- [`@blotch/angular-lynx-build` API](/api/build/) and the [eject schematic](/api/schematics)

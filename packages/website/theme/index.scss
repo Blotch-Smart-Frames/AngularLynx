@@ -248,6 +248,12 @@ $angular-light-blue: #42a5f5;
     background: none;
   }
 
+  // Rspress sizes the hero buttons to their label with no side padding, so a
+  // longer label such as "What is AngularLynx?" touches the button's border.
+  .rp-home-hero__action {
+    padding: 0 24px;
+  }
+
   @media (max-width: 1000px) {
     .rp-home-hero {
       margin-top: 54px;

@@ -1,50 +1,141 @@
-# Lynx Elements
+# Elements and layout
 
-Lynx provides a set of native UI elements instead of HTML. Your Angular templates use `<view>`, `<text>`, `<image>`, and other Lynx-specific elements to build the interface.
+AngularLynx templates use [Lynx](/guide/glossary#lynx) **elements**, such as `<view>`, `<text>` and `<image>`, instead of HTML tags. Each element becomes a real piece of iOS or Android UI, so your app looks, scrolls and responds like any other app on the phone.
 
-## Importing Elements
+## Build a screen from Lynx elements
 
-Import `LYNX_ELEMENTS` in your component's `imports` array for IDE autocomplete and type checking:
-
-```typescript
+```typescript title="src/app/profile-card.ts"
 import { Component } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
-  selector: 'app-card',
-  standalone: true,
-  imports: [LYNX_ELEMENTS], // [!code highlight]
+  selector: 'app-profile-card',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <view class="card">
-      <text>Hello World</text>
+    <view class="flex flex-row items-center gap-3 rounded-xl bg-card p-4">
+      <image
+        src="https://avatars.githubusercontent.com/u/1"
+        class="h-12 w-12 rounded-full"
+      />
+      <view class="flex-1">
+        <text class="font-semibold text-foreground">Ada Lovelace</text>
+        <text class="text-sm text-muted-foreground">Mathematician</text>
+      </view>
     </view>
   `,
 })
-export class Card {}
+export class ProfileCard {}
 ```
 
-:::tip
-`LYNX_ELEMENTS` is optional at build time — the build plugin automatically injects `CUSTOM_ELEMENTS_SCHEMA` so your app compiles regardless. But importing it gives you autocomplete and type safety in your IDE.
-:::
+- **There's no browser underneath.** iOS and Android each have their own UI toolkit, and Lynx turns each [element](/guide/glossary#element) into a piece of it. HTML tags have no meaning there, so Lynx defines its own small set.
+- **`<view>` is the box, like a `<div>`.** `<text>` holds text and `<image>` shows a picture. The [mapping table](#html-to-lynx-mapping) lists the rest.
+- **Import `LYNX_ELEMENTS`** in every component that uses Lynx elements. The template type checker and `ng test` need it. The build accepts the tags without it.
+- **HTML tags don't work.** A `<div>`, `<span>` or `<button>` becomes a plain, unstyled `<view>`, and AngularLynx only logs a warning.
 
-## HTML to Lynx Mapping
+Style elements with CSS classes or `style`, as on the web. Lynx CSS has some gaps, such as no `:hover` and no `@media`. See [CSS on Lynx](/guide/styling).
 
-| HTML                             | Lynx                                                          | Notes                       |
-| -------------------------------- | ------------------------------------------------------------- | --------------------------- |
-| `<div>`                          | [`<view>`](/api/elements/view)                                | Generic container           |
-| `<span>`, `<p>`, `<h1>`...`<h6>` | [`<text>`](/api/elements/text)                                | All text content            |
-| `<img>`                          | [`<image>`](/api/elements/image)                              | Different attribute names   |
-| `<div style="overflow:auto">`    | [`<scroll-view>`](/api/elements/scroll-view)                  | Dedicated scrolling element |
-| `<ul>` / virtual scroll          | [`<list>`](/api/elements/list) + `<list-item>`                | Native virtualization       |
-| `<input>`                        | [`<input>`](/api/elements/input)                              | Events use `bindinput`      |
-| `<textarea>`                     | [`<textarea>`](/api/elements/textarea)                        | Events use `bindinput`      |
-| `<button>`                       | `<view>` + `(bindtap)`                                        | No native button element    |
-| `<a>`                            | `<view>` + `(bindtap)`                                        | No native link element      |
-| Modal / Dialog                   | [`<overlay>`](/api/elements/overlay)                          | Native floating layer       |
-| Swipeable page carousel          | [`<viewpager>`](/api/elements/viewpager) + `<viewpager-item>` | Native horizontal paging    |
-| `<iframe>`                       | [`<frame>`](/api/elements/frame)                              | Loads Lynx bundles          |
-| `<iframe>` (web content)         | [`<webview>`](/api/elements/webview)                          | Loads URLs or HTML          |
-| `<video>`                        | [`<video>`](/api/elements/video)                              | Controlled via UI methods   |
-| `backdrop-filter: blur()`        | [`<blur-view>`](/api/elements/blur-view)                      | Also Liquid Glass           |
+## Put all text in `<text>`
 
-Every element, including the ones with no HTML equivalent, has a reference page under [API → Elements](/api/#elements).
+```angular-html
+<view class="rounded-xl bg-card p-4">
+  <text class="text-base text-foreground">
+    Your order of
+    <text class="font-bold">3 items</text>
+    ships
+    <text class="text-destructive">tomorrow</text>.
+  </text>
+</view>
+```
+
+- **Text renders only inside `<text>`.** A word placed straight in a `<view>` doesn't appear at all, with no error.
+- **Nest `<text>` for inline styles.** A `<text>` inside another `<text>` flows inline, like a `<span>`, and picks up text styles such as color from the outer one.
+- **Write text across lines naturally.** AngularLynx trims the leading and trailing spaces that template indentation leaves, so the text above renders flush.
+- **Styles don't inherit, except in text.** A `color` or `font-size` on a `<view>` doesn't reach the `<text>` inside it. Set text styles on the `<text>` element.
+
+<Go example="element-text" defaultFile="src/app/app.ts" />
+
+## Lay out with the default column
+
+```angular-html
+<view class="gap-2 p-4">
+  <text>First</text>
+  <text>Second</text>
+  <view class="self-start rounded-full bg-muted px-3 py-1">
+    <text class="text-sm">Hugs its content</text>
+  </view>
+</view>
+```
+
+Every element starts in Lynx's **linear** layout, `display: linear`. Children stack top to bottom, like a vertical flex column.
+
+- **Children stretch to the full width.** A child with no width fills its parent's cross axis. Add `self-start` (`align-self: flex-start`) to make it hug its content, as a badge or pill should.
+- **There's no `block` or `inline`.** Lynx has no text flow outside `<text>`, so every element is a box.
+- **Boxes use `border-box`, and margins never collapse.** Two 16px margins between siblings give 32px of space.
+
+## Use `flex` for rows and alignment
+
+```angular-html
+<view class="flex flex-row items-center justify-between p-4">
+  <text class="text-foreground">Notifications</text>
+  <text class="text-muted-foreground">On</text>
+</view>
+```
+
+- **Add `flex` (`display: flex`) first.** It switches the element to flexbox, which behaves like CSS flexbox on the web. Its default direction is a row, as on the web.
+- **`flex-row` alone does nothing.** Linear layout ignores `flex-direction`, so a view with `flex-row` but no `flex` still stacks its children.
+- **`grid` works too.** Use `display: grid` when you need rows and columns.
+
+## Scroll with `<scroll-view>` or `<list>`
+
+```angular-html
+<scroll-view scroll-orientation="vertical" class="h-[300px]">
+  @for (item of items(); track item.id) {
+    <view class="border-b border-border px-4 py-3">
+      <text>{{ item.name }}</text>
+    </view>
+  }
+</scroll-view>
+```
+
+- **`overflow: scroll` doesn't scroll.** Only `<scroll-view>` and `<list>` scroll.
+- **Give a `<scroll-view>` a height.** Use a fixed height, or `h-full` inside a parent with a known height. Without one, it grows to fit its content and never scrolls.
+- **`flex-1` on the scroll view doesn't bound it.** To fill leftover space, put `flex-1 flex flex-col` on a wrapping `<view>` and `h-full w-full` on the `<scroll-view>`.
+- **Use `<list>` for long or endless lists.** It only creates the rows on screen and reuses them as you scroll. See [`<list>`](/api/elements/list).
+
+<Go example="element-scroll-view" defaultFile="src/app/app.ts" />
+
+## Float content above the page
+
+Use [`<overlay>`](/api/elements/overlay) for dialogs, sheets and menus that sit on top of everything. `position: fixed` doesn't pin to the screen on Lynx: it positions against the app's root element, the [`page`](/guide/glossary#page), and scrolls with it. See [Dialogs and overlays](/guide/overlays).
+
+## HTML to Lynx mapping
+
+| HTML                             | Lynx                                                          | Notes                                      |
+| -------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
+| `<div>`                          | [`<view>`](/api/elements/view)                                | Generic container                          |
+| `<span>`, `<p>`, `<h1>`...`<h6>` | [`<text>`](/api/elements/text)                                | All text content                           |
+| `<img>`                          | [`<image>`](/api/elements/image)                              | Needs a size. `mode` replaces `object-fit` |
+| `<div style="overflow:auto">`    | [`<scroll-view>`](/api/elements/scroll-view)                  | Dedicated scrolling element                |
+| `<ul>` / virtual scroll          | [`<list>`](/api/elements/list) + `<list-item>`                | Native virtualization                      |
+| `<input>`                        | [`<input>`](/api/elements/input)                              | Events use `bindinput`                     |
+| `<textarea>`                     | [`<textarea>`](/api/elements/textarea)                        | Events use `bindinput`                     |
+| `<button>`                       | `<view>` + `(bindtap)`                                        | No native button element                   |
+| `<a>`                            | `<view>` + `(bindtap)`                                        | No native link element                     |
+| `<dialog>`, modal                | [`<overlay>`](/api/elements/overlay)                          | Native floating layer                      |
+| Swipeable page carousel          | [`<viewpager>`](/api/elements/viewpager) + `<viewpager-item>` | Native horizontal paging                   |
+| `<iframe>`                       | [`<frame>`](/api/elements/frame)                              | Loads Lynx bundles                         |
+| `<iframe>` (web content)         | [`<webview>`](/api/elements/webview)                          | Loads URLs or HTML                         |
+| `<video>`                        | [`<video>`](/api/elements/video)                              | Controlled via UI methods                  |
+| `<svg>`                          | [`<svg>`](/api/elements/svg)                                  | Markup in `content`, or a file in `src`    |
+| `backdrop-filter: blur()`        | [`<blur-view>`](/api/elements/blur-view)                      | Also iOS's translucent glass material      |
+
+For buttons, inputs and other controls with a finished look, use the [UI components](/dolan/).
+
+Every element, including the ones with no HTML equivalent, has a reference page under [API → Elements](/api/elements/view).
+
+## Related
+
+- [Handling taps and events](/guide/elements/event-handling)
+- [CSS on Lynx](/guide/styling): every CSS difference from the web
+- [Content projection](/guide/content-projection): `<ng-content>` and the `<text>` rules
+- [`LYNX_ELEMENTS`](/api/angular-lynx/elements): every element directive

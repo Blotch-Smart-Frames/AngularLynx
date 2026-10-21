@@ -1,52 +1,175 @@
-# Event Handling
+# Handling taps and events
 
-Lynx uses a prefix-based event system that controls propagation behavior:
+[Lynx](/guide/glossary#lynx) elements fire native events: taps, touches, scrolls and text input. You bind them with Angular's `(event)` syntax, using Lynx names such as `(bindtap)` in place of `(click)`.
 
 <Go example="element-event-handling" defaultFile="src/app/app.ts" />
 
-| Prefix          | Behavior                         | Example                        |
-| --------------- | -------------------------------- | ------------------------------ |
-| `bind`          | Bubbles up to parent elements    | `(bindtap)="onTap()"`          |
-| `catch`         | Handles and stops propagation    | `(catchtap)="onTap()"`         |
-| `capture-bind`  | Capture phase, then bubbles      | `(capture-bindtap)="onTap()"`  |
-| `capture-catch` | Capture phase, stops propagation | `(capture-catchtap)="onTap()"` |
+## Handle a tap
 
-## Common Events
+```typescript title="src/app/color-picker.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-```angular-html
-<!-- Tap (like click) -->
-<view (bindtap)="onTap($event)">
-  <text>Tap me</text>
-</view>
-
-<!-- Input change -->
-<input (bindinput)="onInput($event)" />
-
-<!-- Scroll -->
-<scroll-view (bindscroll)="onScroll($event)" scroll-orientation="vertical">
-  ...
-</scroll-view>
-
-<!-- Touch events -->
-<view
-  (bindtouchstart)="onTouchStart($event)"
-  (bindtouchmove)="onTouchMove($event)"
-  (bindtouchend)="onTouchEnd($event)"
->
-  <text>Touch area</text>
-</view>
-```
-
-:::warning Important
-Event handlers in Lynx run in a worklet context. If your handler triggers DOM mutations (like router navigation or toggling overlays), you must defer them with `setTimeout`:
-
-```typescript
-onTap(): void {
-  setTimeout(() => {
-    this.router.navigateByUrl('/other');
-  }, 0);
+@Component({
+  selector: 'app-color-picker',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @for (color of colors; track color) {
+      <view class="rounded-lg bg-card p-4" (bindtap)="selected.set(color)">
+        <text class="text-foreground">{{ color }}</text>
+      </view>
+    }
+    <text class="text-muted-foreground">Selected: {{ selected() }}</text>
+  `,
+})
+export class ColorPicker {
+  readonly colors = ['Red', 'Green', 'Blue'];
+  readonly selected = signal('none');
 }
 ```
 
-See [Change Detection](/guide/change-detection) for why this is necessary.
-:::
+- **`bindtap` is Lynx's click.** It fires when a finger presses and lifts without moving far. In the [web preview](/guide/glossary#web-preview), a mouse click fires it too.
+- **`(click)` does nothing.** AngularLynx ignores event names that don't start with a Lynx prefix such as `bind` or `catch`, and it doesn't warn you.
+- **Pass values as arguments.** `(bindtap)="select(item)"` is simpler than reading the item back from the event.
+- **Handlers run on the [main thread](/guide/glossary#main-thread)**, inside the native event. Changing signals there is always safe. See [Threads](/guide/concepts/threads).
+
+## Defer navigation and new views
+
+```typescript title="src/app/order-row.ts"
+import { Component, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-order-row',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="openDetails()">
+      <text>{{ opening() ? 'Opening…' : 'Order #1042' }}</text>
+    </view>
+  `,
+})
+export class OrderRow {
+  readonly opening = signal(false);
+  readonly #router = inject(Router);
+
+  openDetails(): void {
+    // Safe right away: Angular re-renders after the handler returns.
+    this.opening.set(true);
+
+    // Deferred: navigating creates and destroys views.
+    setTimeout(() => this.#router.navigate(['/orders', 1042]));
+  }
+}
+```
+
+Wrap router navigation, `LynxPortal.open()` and `element.animate()` in `setTimeout` when you call them from a handler. A handler runs inside the native event, and creating or destroying views there can crash the app or leave it blank. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+
+## Stop an event from bubbling
+
+```angular-html
+<view class="h-full w-full bg-black/50" (bindtap)="close()">
+  <!-- catchtap keeps taps on the panel from reaching the backdrop -->
+  <view class="rounded-lg bg-background p-6" (catchtap)="noop()">
+    <text>Tapping here doesn't close the dialog.</text>
+  </view>
+</view>
+```
+
+The prefix on the event name decides how the event travels:
+
+| Prefix          | Behavior                                 | Example                        |
+| --------------- | ---------------------------------------- | ------------------------------ |
+| `bind`          | Handles the event and lets it bubble up  | `(bindtap)="onTap()"`          |
+| `catch`         | Handles the event and stops it there     | `(catchtap)="onTap()"`         |
+| `capture-bind`  | Handles it on the way down, then bubbles | `(capture-bindtap)="onTap()"`  |
+| `capture-catch` | Handles it on the way down, then stops   | `(capture-catchtap)="onTap()"` |
+
+- **Use `catch`, not `$event.stopPropagation()`.** Lynx sets propagation by the prefix. AngularLynx turns `stopPropagation()` and `preventDefault()` into harmless no-ops so web-style code doesn't crash, but they don't stop anything.
+- **A `catch` handler can be empty.** The prefix alone stops the event, so `(catchtap)="noop()"` with an empty method is a common pattern.
+
+## Read the event object
+
+```typescript title="src/app/touch-pad.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import type { TouchEvent } from '@lynx-js/types';
+
+@Component({
+  selector: 'app-touch-pad',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="h-[200px] bg-muted" (bindtouchmove)="onMove($event)">
+      <text>{{ x() }}, {{ y() }}</text>
+    </view>
+  `,
+})
+export class TouchPad {
+  readonly x = signal(0);
+  readonly y = signal(0);
+
+  onMove(event: TouchEvent): void {
+    const touch = event.touches[0];
+    if (!touch) return;
+    this.x.set(Math.round(touch.x));
+    this.y.set(Math.round(touch.y));
+  }
+}
+```
+
+Every event has the same outer shape. `ng add` installs `@lynx-js/types`, which has a type for each one.
+
+| Field            | Type                   | What it holds                                                                                         |
+| ---------------- | ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `type`           | `string`               | The event name without its prefix, such as `'tap'`                                                    |
+| `timestamp`      | `number`               | When the event fired                                                                                  |
+| `target`         | `{ id, uid, dataset }` | The element the event started on: its `id` attribute, an internal number, and its `data-*` attributes |
+| `currentTarget`  | `{ id, uid, dataset }` | The element whose handler is running                                                                  |
+| `detail`         | object                 | The event's own data. See [Common events](#common-events)                                             |
+| `touches`        | `Touch[]`              | Touch and tap events only: the fingers on the screen                                                  |
+| `changedTouches` | `Touch[]`              | Touch and tap events only: the fingers that changed in this event                                     |
+
+Each `Touch` has `x` and `y` relative to the element, `pageX` and `pageY` relative to the page, `clientX` and `clientY` relative to the screen, and an `identifier`.
+
+`target` and `currentTarget` are plain data, not elements, so you can't call methods on them. To call an element method, such as scrolling a `<scroll-view>`, see [Call element methods](/guide/selector-query).
+
+### Type the parameter
+
+- **Tap, long-press and touch events:** `$event` is Lynx's `TouchEvent`. Import it with `import type { TouchEvent } from '@lynx-js/types'`, as above.
+- **Every other event:** Angular types `$event` as the DOM `Event`. Accept `Event`, then cast it to read `detail`: `(event as CustomEvent<{ value: string }>).detail.value`.
+
+## Common events
+
+| Event                                                                | Elements                  | Fires when                                                              | `detail`                                                               |
+| -------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `bindtap`                                                            | All                       | A finger presses and lifts                                              | `{ x, y }`, page position                                              |
+| `bindlongpress`                                                      | All                       | A finger is held down                                                   | `{ x, y }`                                                             |
+| `bindtouchstart`, `bindtouchmove`, `bindtouchend`, `bindtouchcancel` | All                       | A finger goes down, moves, lifts or is interrupted                      | `{ x, y }`, plus `touches`                                             |
+| `bindlayoutchange`                                                   | All                       | The element's size or position changes                                  | `{ id, width, height, top, right, bottom, left, dataset }`             |
+| `bindscroll`                                                         | `<scroll-view>`, `<list>` | The content scrolls                                                     | `{ scrollTop, scrollLeft, scrollHeight, scrollWidth, deltaX, deltaY }` |
+| `bindscrolltolower`                                                  | `<scroll-view>`, `<list>` | Scrolling nears the end                                                 | Same as `bindscroll`                                                   |
+| `bindinput`                                                          | `<input>`, `<textarea>`   | The text changes                                                        | `{ value, selectionStart, selectionEnd, isComposing }`                 |
+| `bindfocus`, `bindblur`, `bindconfirm`                               | `<input>`, `<textarea>`   | The field gains or loses focus, or the keyboard's action key is pressed | `{ value }`                                                            |
+| `bindload`                                                           | `<image>`                 | The image finishes loading                                              | `{ width, height }`                                                    |
+
+Each element's page under [API → Elements](/api/elements/view) lists all its events.
+
+- **`bindtap` and `bindlongpress` exclude each other.** With both on one element, a long press fires only `bindlongpress`.
+- **Touch events don't fire from a mouse.** In the web preview, a mouse fires `tap` but no `touchstart` or `touchend`. If you build press feedback from touch events, also bind `bindmousedown` and `bindmouseup`.
+
+## Choose taps, gestures or touch events
+
+| Use                                            | For                                                                                                                        |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `bindtap` and `bindlongpress`                  | Buttons, list rows, anything you press. Start here.                                                                        |
+| [Gestures](/guide/gestures/) (`[lynxGesture]`) | Drags and swipes, or several interactions on one element that must not clash, such as a drag that shouldn't count as a tap |
+| Touch events (`bindtouchstart`…)               | Raw finger positions, such as a pressed state or a custom drawing pad                                                      |
+| [Main-thread scripts](/guide/main-thread/)     | Moving an element on every frame with no lag                                                                               |
+
+## Related
+
+- [Gestures](/guide/gestures/)
+- [Threads: where your code runs](/guide/concepts/threads)
+- [Forms](/guide/forms): `bindinput` behind Angular's form APIs
+- [Call element methods](/guide/selector-query)
+- [Testing event reference](/api/testing-library/event-reference): firing these events in tests

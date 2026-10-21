@@ -1,40 +1,187 @@
 # Elements
 
-Import `LYNX_ELEMENTS` to get IDE autocompletion and type checking for all Lynx elements in your templates:
+`LYNX_ELEMENTS` declares every Lynx [element](/guide/glossary#element) as an Angular directive, so your templates type-check. `import { LYNX_ELEMENTS } from '@blotch/angular-lynx';`
 
-```typescript
-import { Component } from '@angular/core';
+## Usage
+
+```typescript title="src/app/greeting.ts"
+import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-greeting',
   imports: [LYNX_ELEMENTS],
   template: `
     <view class="card">
+      <image [src]="avatar()" />
       <text>Hello from Lynx</text>
     </view>
   `,
 })
-export class MyComponent {}
+export class Greeting {
+  readonly avatar = signal('https://example.com/avatar.png');
+}
 ```
 
-## All Element Directives
+- **When it's needed:** your editor's type checking and `ng test` need it. `ng build` and `ng serve` add `CUSTOM_ELEMENTS_SCHEMA` for you, so they pass without it.
+- **Attributes:** each directive declares its element's attributes as inputs, so `[src]="url()"` type-checks. Bind any other attribute with `[attr.name]`.
+- **Events** aren't declared as outputs. Bind them by name, such as `(bindtap)`. See [Handling taps and events](/guide/elements/event-handling).
 
-| Export           | Kind      | Description                                                    |
-| ---------------- | --------- | -------------------------------------------------------------- |
-| `LYNX_ELEMENTS`  | Const     | Array of all directives below. Add to your component `imports` |
-| `LynxView`       | Directive | `<view>` — container element (like `<div>`)                    |
-| `LynxText`       | Directive | `<text>` — text display (all text must be inside `<text>`)     |
-| `LynxImage`      | Directive | `<image>` — image display with `src` attribute                 |
-| `LynxScrollView` | Directive | `<scroll-view>` — scrollable container                         |
-| `LynxList`       | Directive | `<list>` — virtualized list for large datasets                 |
-| `LynxListItem`   | Directive | `<list-item>` — child of `<list>`                              |
-| `LynxInput`      | Directive | `<input>` — single-line text input                             |
-| `LynxTextarea`   | Directive | `<textarea>` — multi-line text input                           |
-| `LynxOverlay`    | Directive | `<overlay>` — modal/popup overlay                              |
-| `LynxFrame`      | Directive | `<frame>` — embeds another Lynx bundle                         |
-| `LynxBlock`      | Directive | `<block>` — invisible grouping (like `<ng-container>`)         |
-| `LynxSvg`        | Directive | `<svg>` — vector graphics via `content` attribute              |
-| `LynxIf`         | Directive | `<if>` — Lynx-native conditional rendering                     |
-| `LynxFor`        | Directive | `<for>` — Lynx-native list rendering                           |
+## API
 
-Each element's attributes and events are on its own page under [Elements](/api/#elements). For how the elements map to HTML, see the [Lynx Elements guide](/guide/elements/).
+### `LYNX_ELEMENTS`
+
+```typescript
+const LYNX_ELEMENTS: readonly [
+  typeof LynxView,
+  typeof LynxText,
+  // …every directive in the table below, in this order
+];
+```
+
+Every directive below, as one array for a component's `imports`. Each directive is also exported on its own.
+
+| Directive                       | Selector                         | Reference                                                      |
+| ------------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| `LynxView`                      | `view`                           | [`<view>`](/api/elements/view)                                 |
+| `LynxText`                      | `text`                           | [`<text>`](/api/elements/text)                                 |
+| `LynxInlineTruncation`          | `inline-truncation`              | [`<text>`](/api/elements/text)                                 |
+| `LynxImage`                     | `image`                          | [`<image>`](/api/elements/image)                               |
+| `LynxScrollView`                | `scroll-view`                    | [`<scroll-view>`](/api/elements/scroll-view)                   |
+| `LynxList`                      | `list`                           | [`<list>`](/api/elements/list)                                 |
+| `LynxListItem`                  | `list-item`                      | [`<list>`](/api/elements/list)                                 |
+| `LynxBlock`                     | `block`                          | [`<block>`](/api/elements/block)                               |
+| `LynxIf`                        | `if`                             | [No page](#lynxif-and-lynxfor)                                 |
+| `LynxFor`                       | `for`                            | [No page](#lynxif-and-lynxfor)                                 |
+| `LynxFrame`                     | `frame`                          | [`<frame>`](/api/elements/frame)                               |
+| `LynxInput`                     | `input`                          | [`<input>`](/api/elements/input)                               |
+| `LynxTextarea`                  | `textarea`                       | [`<textarea>`](/api/elements/textarea)                         |
+| `LynxInputValueAccessor`        | `input` with a form directive    | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor) |
+| `LynxTextareaValueAccessor`     | `textarea` with a form directive | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor) |
+| `LynxOverlay`                   | `overlay`                        | [`<overlay>`](/api/elements/overlay)                           |
+| `LynxRefresh`                   | `refresh`                        | [`<refresh>`](/api/elements/refresh)                           |
+| `LynxRefreshHeader`             | `refresh-header`                 | [`<refresh>`](/api/elements/refresh)                           |
+| `LynxScrollCoordinator`         | `scroll-coordinator`             | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
+| `LynxScrollCoordinatorHeader`   | `scroll-coordinator-header`      | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
+| `LynxScrollCoordinatorSlot`     | `scroll-coordinator-slot`        | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
+| `LynxScrollCoordinatorSlotDrag` | `scroll-coordinator-slot-drag`   | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
+| `LynxScrollCoordinatorToolbar`  | `scroll-coordinator-toolbar`     | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
+| `LynxSvg`                       | `svg`                            | [`<svg>`](/api/elements/svg)                                   |
+| `LynxViewPager`                 | `viewpager`                      | [`<viewpager>`](/api/elements/viewpager)                       |
+| `LynxViewPagerItem`             | `viewpager-item`                 | [`<viewpager>`](/api/elements/viewpager)                       |
+| `LynxBlurView`                  | `blur-view`                      | [`<blur-view>`](/api/elements/blur-view)                       |
+| `LynxVideo`                     | `video`                          | [`<video>`](/api/elements/video)                               |
+| `LynxWebView`                   | `webview`                        | [`<webview>`](/api/elements/webview)                           |
+| `LynxCoverView`                 | `cover-view`                     | [`<cover-view>`](/api/elements/cover-view)                     |
+| `LynxTitleBarView`              | `title-bar-view`                 | [`<title-bar-view>`](/api/elements/title-bar-view)             |
+
+### `LynxIf` and `LynxFor`
+
+```typescript
+@Directive({ selector: 'if' })
+class LynxIf {}
+
+@Directive({ selector: 'for' })
+class LynxFor {}
+```
+
+Declare Lynx's own low-level `<if>` and `<for>` elements, so a template that contains them type-checks. They're unrelated to Angular's `@if` and `@for` blocks, and AngularLynx doesn't test them. Use `@if` and `@for` instead.
+
+### Attributes on every element
+
+Every directive above, except the two form accessors, also accepts these inputs.
+
+| Attribute                       | Type               | Description                                                      |
+| ------------------------------- | ------------------ | ---------------------------------------------------------------- |
+| `id`                            | `string`           | Element ID. Selector queries find elements by it.                |
+| `name`                          | `string`           | A name some Lynx APIs use to find the element.                   |
+| `user-interaction-enabled`      | `boolean`          | Whether the element receives touch events. Default `true`.       |
+| `native-interaction-enabled`    | `boolean`          | Whether the element receives the platform's own gestures.        |
+| `event-through`                 | `boolean`          | Lets touches pass through to the elements below.                 |
+| `hit-slop`                      | `string \| object` | Extends the touch area beyond the element's box.                 |
+| `block-native-event`            | `boolean`          | Whether the element consumes native iOS and Android gestures.    |
+| `ignore-focus`                  | `boolean`          | Stops the element from taking focus.                             |
+| `ios-enable-simultaneous-touch` | `boolean`          | Lets iOS recognize this touch together with others.              |
+| `accessibility-*`, `a11y-id`    |                    | See [Accessibility](/api/angular-lynx/accessibility#attributes). |
+| `exposure-*`                    |                    | See [Exposure](/api/angular-lynx/exposure#attributes).           |
+
+### `LYNX_FORM_ACCESSORS`
+
+```typescript
+const LYNX_FORM_ACCESSORS: readonly [
+  typeof LynxInputValueAccessor,
+  typeof LynxTextareaValueAccessor,
+];
+```
+
+Both form value accessors as one array. `LYNX_ELEMENTS` already contains them.
+
+### `LynxInputValueAccessor` and `LynxTextareaValueAccessor`
+
+```typescript
+@Directive({
+  selector:
+    'input[formControlName], input[formControl], input[ngModel], input[formField]',
+})
+class LynxInputValueAccessor implements ControlValueAccessor {}
+
+@Directive({
+  selector:
+    'textarea[formControlName], textarea[formControl], textarea[ngModel], textarea[formField]',
+})
+class LynxTextareaValueAccessor implements ControlValueAccessor {}
+```
+
+Connect `<input>` and `<textarea>` to reactive forms, `ngModel` and Signal Forms' `[formField]`. They switch on only when one of those form directives is on the element. Angular forms calls their members; you don't. Both classes have the same members.
+
+### `onInput()`
+
+```typescript
+onInput(event: Event): void;
+```
+
+Runs on `bindinput`. Sends the typed text, `event.detail.value`, to the form control.
+
+### `onBlur()`
+
+```typescript
+onBlur(): void;
+```
+
+Runs on `bindblur`. Marks the control as touched.
+
+### `writeValue()`
+
+```typescript
+writeValue(value: string): void;
+```
+
+Shows the form value in the field through the element's `setValue` [UI method](/guide/glossary#ui-method). Lynx ignores changes to the `value` attribute after the user has typed, so `form.reset()` and `setValue()` need this.
+
+### `registerOnChange()` and `registerOnTouched()`
+
+```typescript
+registerOnChange(fn: (value: string) => void): void;
+registerOnTouched(fn: () => void): void;
+```
+
+Store the callbacks Angular forms passes in.
+
+### `setDisabledState()`
+
+```typescript
+setDisabledState(isDisabled: boolean): void;
+```
+
+Sets or removes the element's `disabled` attribute.
+
+## Types
+
+None of its own. `ControlValueAccessor` comes from `@angular/forms`.
+
+## Related
+
+- [Elements and layout](/guide/elements/): which element to use, and how they differ from HTML.
+- [Handling taps and events](/guide/elements/event-handling)
+- [Forms](/guide/forms)
+- [Accessibility](/api/angular-lynx/accessibility) and [Exposure](/api/angular-lynx/exposure): the shared attributes in detail.

@@ -1,12 +1,19 @@
 # FAQ / Help Center
 
-A searchable FAQ page with accordion sections grouped by category, collapsible headers, and a "Contact Support" dialog.
+A searchable help page with collapsible categories, one answer open at a time and a "Contact Support" dialog.
+
+Built with the [UI components](/dolan/): [Accordion](/dolan/accordion), [Collapsible](/dolan/collapsible), [Input](/dolan/input), [Dialog](/dolan/dialog), [Textarea](/dolan/textarea), [Label](/dolan/label) and [Button](/dolan/button).
 
 <Go example="faq-help-center" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Accordion for Q&A pairs** — Each FAQ item uses `UiAccordion` in single mode so only one answer is expanded at a time
-- **Collapsible for category groups** — `UiCollapsible` wraps each category section, letting users collapse entire groups they don't need
-- **Search filtering** — The input filters FAQ items in real-time by matching against both questions and answers
-- **Dialog for contact form** — The "Contact Support" button opens a `UiDialog` with subject and message fields for submitting a help request
+- **Search with `computed()`** — `filtered()` matches the query against questions and answers and drops empty categories. `@empty` shows a "no results" message.
+- **Collapsible categories** — each category is a Collapsible that starts open, with `[open]="true"`.
+- **One answer at a time** — an Accordion with `type="single"` closes the open answer when you open another.
+- **A form in a dialog** — Contact Support opens a Dialog with a subject Input and a message Textarea.
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays)
+- [Contact List](/examples/contact-list)

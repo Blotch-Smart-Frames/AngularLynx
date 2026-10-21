@@ -1,6 +1,6 @@
 # Empty State
 
-A centered placeholder for empty views, with an optional icon, description, and action slot.
+Fill an empty screen or list with a centered message, an optional icon, and an action that helps the user get started.
 
 <Go example="ui-empty-state" defaultFile="src/app/app.ts" />
 
@@ -11,54 +11,65 @@ npx @blotch/dolan add empty-state
 ```
 
 ```typescript
-import { UiEmptyState } from '@/components/ui/empty-state';
+import { UiEmptyState } from '../components/ui/empty-state';
 ```
 
-:::tip
-The `empty-state` component depends on `icon`. Both are added automatically.
-:::
+This also adds [Icon](/dolan/icon), which draws the optional icon.
 
 ## Usage
 
-### Basic
+```typescript
+import { Component } from '@angular/core';
+import { UiEmptyState } from '../components/ui/empty-state';
 
-```angular-html
-<ui-empty-state title="No items" />
+@Component({
+  selector: 'app-no-results',
+  imports: [UiEmptyState],
+  template: `
+    <ui-empty-state
+      icon="search"
+      title="No results found"
+      description="Try adjusting your search or filters."
+    />
+  `,
+})
+export class NoResults {}
 ```
 
-### With Icon and Description
+- `title` is required. `icon` and `description` are optional.
+- `icon` takes any name from the [Icon](/dolan/icon) set, such as `'search'`, `'inbox'` or `'plus'`. It's drawn at the `lg` size.
+
+### With an action
+
+Put a button or other content inside. It renders below the description.
 
 ```angular-html
 <ui-empty-state
-  icon="search"
-  title="No results found"
-  description="Try adjusting your search or filters."
-/>
-```
-
-### With Action
-
-Use content projection to add action buttons:
-
-```angular-html
-<ui-empty-state
-  icon="plus"
-  title="No items"
-  description="Get started by creating your first item."
+  icon="inbox"
+  title="No messages"
+  description="Messages from your team show up here."
 >
-  <ui-button class="mt-4" (pressed)="onCreate()">Create Item</ui-button>
+  <ui-button (pressed)="compose()">New message</ui-button>
 </ui-empty-state>
 ```
 
+Import [`UiButton`](/dolan/button) in your component for this.
+
 ## API
 
-| Input         | Type                    | Default      | Description                     |
-| ------------- | ----------------------- | ------------ | ------------------------------- |
-| `icon`        | `IconName \| undefined` | `undefined`  | Icon to display above the title |
-| `title`       | `string`                | **required** | Heading text                    |
-| `description` | `string`                | `''`         | Supporting text below the title |
-| `class`       | `string`                | `''`         | Additional CSS classes          |
+### UiEmptyState
 
-:::tip
-The `icon` input accepts any name from the built-in icon set (e.g. `'search'`, `'plus'`, `'heart'`, `'star'`). See the [Icon](/dolan/icon) component for the full list.
-:::
+| Input         | Type                    | Default     | Description                               |
+| ------------- | ----------------------- | ----------- | ----------------------------------------- |
+| `title`       | `string`                | Required    | Heading text.                             |
+| `description` | `string`                | `''`        | Supporting text below the title.          |
+| `icon`        | `IconName \| undefined` | `undefined` | Icon above the title.                     |
+| `class`       | `string`                | `''`        | Extra Tailwind classes for the container. |
+
+No outputs.
+
+## Related
+
+- [Icon](/dolan/icon): every icon name `icon` accepts
+- [Button](/dolan/button): the action to put inside
+- [Card](/dolan/card): frame an empty state inside a section

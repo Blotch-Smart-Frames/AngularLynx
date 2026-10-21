@@ -1,6 +1,6 @@
 # Input
 
-A text input field with support for labels, placeholder text, helper text, error states, and disabled styling.
+A single-line text field with an optional label, helper text and error message.
 
 <Go example="ui-input" defaultFile="src/app/app.ts" />
 
@@ -11,58 +11,114 @@ npx @blotch/dolan add input
 ```
 
 ```typescript
-import { UiInput } from '@/components/ui/input';
+import { UiInput } from '../components/ui/input';
 ```
 
 ## Usage
 
-```angular-html
-<ui-input label="Email" placeholder="you@example.com" [(value)]="email" />
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiInput } from '../components/ui/input';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiInput],
+  template: `
+    <ui-input label="Email" placeholder="you@example.com" [(value)]="email" />
+  `,
+})
+export class App {
+  protected readonly email = signal('');
+}
 ```
 
-### With helper text
+- `[(value)]` updates your signal on every keystroke. Setting the signal from code updates the field too.
+- The field shows a focus ring while it has focus.
+- `class` styles the whole block of label, field and message, so use it for spacing such as `class="mt-4"`.
+
+### Helper text and errors
 
 ```angular-html
 <ui-input
   label="Username"
-  placeholder="Enter username"
-  helperText="Must be at least 3 characters"
+  helperText="At least 3 characters"
   [(value)]="username"
 />
-```
-
-### With error state
-
-```angular-html
 <ui-input
   label="Password"
   type="password"
-  error="Password must be at least 8 characters"
+  [error]="passwordError()"
   [(value)]="password"
 />
 ```
 
+- `helperText` shows small muted text under the field.
+- A non-empty `error` replaces the helper text with red text and turns the ring red. The field shakes when an error first appears.
+
+### Types
+
+```angular-html
+<ui-input label="Password" type="password" [(value)]="password" />
+```
+
+`type` goes to the underlying [`<input>`](/api/elements/input) element, which takes `text`, `number` and `password`.
+
 ### Disabled
 
 ```angular-html
-<ui-input label="Account ID" [disabled]="true" value="ACC-12345" />
+<ui-input label="Account ID" value="ACC-12345" [disabled]="true" />
+```
+
+A disabled field dims and ignores typing.
+
+### Signal Forms
+
+`UiInput` implements Angular's `FormValueControl`, so it works with the `[formField]` directive of Signal Forms (see [Forms](/guide/forms)).
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { form, FormField, required } from '@angular/forms/signals';
+import { UiInput } from '../components/ui/input';
+
+@Component({
+  selector: 'app-root',
+  imports: [FormField, UiInput],
+  template: `<ui-input label="Name" [formField]="profile.name" />`,
+})
+export class App {
+  readonly #model = signal({ name: '' });
+
+  protected readonly profile = form(this.#model, (s) => {
+    required(s.name);
+  });
+}
 ```
 
 ## API
 
-| Input         | Type            | Default  | Description                                   |
-| ------------- | --------------- | -------- | --------------------------------------------- |
-| `value`       | `model<string>` | `''`     | The current input value (two-way bindable)    |
-| `label`       | `string`        | `''`     | Label text displayed above the input          |
-| `placeholder` | `string`        | `''`     | Placeholder text shown when empty             |
-| `type`        | `string`        | `'text'` | Input type (text, password, email, etc.)      |
-| `helperText`  | `string`        | `''`     | Helper text displayed below the input         |
-| `error`       | `string`        | `''`     | Error message (replaces helper text when set) |
-| `disabled`    | `boolean`       | `false`  | Whether the input is disabled                 |
-| `class`       | `string`        | `''`     | Additional CSS classes for the container      |
+### UiInput
 
-| Output    | Type     | Description                                 |
-| --------- | -------- | ------------------------------------------- |
-| `changed` | `string` | Emits the new value when input text changes |
-| `focused` | `void`   | Emits when the input receives focus         |
-| `blurred` | `void`   | Emits when the input loses focus            |
+| Input         | Type      | Default  | Description                                              |
+| ------------- | --------- | -------- | -------------------------------------------------------- |
+| `value`       | `string`  | `''`     | The text. Supports `[(value)]`.                          |
+| `label`       | `string`  | `''`     | Text above the field. Hidden when empty.                 |
+| `placeholder` | `string`  | `''`     | Hint shown while the field is empty.                     |
+| `type`        | `string`  | `'text'` | The `<input>` element's type, such as `password`.        |
+| `helperText`  | `string`  | `''`     | Muted text under the field. Hidden while `error` is set. |
+| `error`       | `string`  | `''`     | Error text. Turns the ring red and shakes the field.     |
+| `disabled`    | `boolean` | `false`  | Dims the field and ignores typing.                       |
+| `class`       | `string`  | `''`     | Extra Tailwind classes for the outer block.              |
+
+| Output        | Type     | Description                                         |
+| ------------- | -------- | --------------------------------------------------- |
+| `valueChange` | `string` | Emits the text on every keystroke, for `[(value)]`. |
+| `changed`     | `string` | Emits the text on every keystroke.                  |
+| `focused`     | `void`   | Emits when the field gains focus.                   |
+| `blurred`     | `void`   | Emits when the field loses focus.                   |
+
+## Related
+
+- [Textarea](/dolan/textarea): a multi-line field
+- [Label](/dolan/label): a caption for other controls
+- [Forms](/guide/forms): forms and the on-screen keyboard
+- [`<input>`](/api/elements/input): the element underneath

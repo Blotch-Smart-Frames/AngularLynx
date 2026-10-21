@@ -1,6 +1,6 @@
 # Action Sheet
 
-A bottom sheet that presents a set of actions. Slides up from the bottom with a list of tappable items and an optional cancel button. Dismisses when tapping the backdrop or the cancel button.
+Offer a short list of actions in a group that slides up from the bottom of the screen, with a separate Cancel button below it.
 
 <Go example="ui-action-sheet" defaultFile="src/app/app.ts" />
 
@@ -16,7 +16,7 @@ import {
   UiActionSheetTitle,
   UiActionSheetItem,
   UiActionSheetCancel,
-} from '@/components/ui/action-sheet';
+} from '../components/ui/action-sheet';
 ```
 
 ## Usage
@@ -28,10 +28,11 @@ import {
   UiActionSheetTitle,
   UiActionSheetItem,
   UiActionSheetCancel,
-} from '@/components/ui/action-sheet';
-import { UiButton } from '@/components/ui/button';
+} from '../components/ui/action-sheet';
+import { UiButton } from '../components/ui/button';
 
 @Component({
+  selector: 'app-share-menu',
   imports: [
     UiActionSheet,
     UiActionSheetTitle,
@@ -44,55 +45,106 @@ import { UiButton } from '@/components/ui/button';
 
     <ui-action-sheet [(open)]="open">
       <ui-action-sheet-title>Share this document</ui-action-sheet-title>
-      <ui-action-sheet-item (pressed)="onCopy()">
-        Copy Link
+      <ui-action-sheet-item (pressed)="copyLink()">
+        Copy link
       </ui-action-sheet-item>
-      <ui-action-sheet-item (pressed)="onEmail()">
-        Send via Email
+      <ui-action-sheet-item (pressed)="sendEmail()">
+        Send by email
       </ui-action-sheet-item>
-      <ui-action-sheet-item variant="destructive" (pressed)="onDelete()">
+      <ui-action-sheet-item variant="destructive" (pressed)="remove()">
         Delete
       </ui-action-sheet-item>
       <ui-action-sheet-cancel />
     </ui-action-sheet>
   `,
 })
-export class Example {
-  open = signal(false);
+export class ShareMenu {
+  protected readonly open = signal(false);
 
-  onCopy(): void {}
-  onEmail(): void {}
-  onDelete(): void {}
+  protected copyLink(): void {}
+  protected sendEmail(): void {}
+  protected remove(): void {}
 }
+```
+
+- `[(open)]` two-way binds a signal. Set it to `true` to slide the sheet up.
+- Tapping an item emits its `pressed`, then closes the sheet. You don't need to set `open` yourself.
+- Tapping Cancel or the backdrop closes the sheet without emitting anything.
+- The title and items stack in one rounded group. `<ui-action-sheet-cancel>` always renders as its own tile below the group, wherever you put it.
+- Items and the title render their content in a `<text>`, so put plain text in them.
+- The sheet draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+
+### Destructive items
+
+`variant="destructive"` colors an item's text red, for actions such as delete.
+
+```angular-html
+<ui-action-sheet-item variant="destructive" (pressed)="remove()">
+  Delete
+</ui-action-sheet-item>
+```
+
+### Navigate from an item
+
+`pressed` fires inside the tap. Changing signals there is safe, but router navigation isn't: wrap it in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) for why.
+
+```typescript
+readonly #router = inject(Router);
+
+protected openSettings(): void {
+  setTimeout(() => this.#router.navigateByUrl('/settings'));
+}
+```
+
+You can also wait for `closed`, which emits after the slide-down animation, from a timer.
+
+### Cancel label
+
+```angular-html
+<ui-action-sheet-cancel label="Not now" />
 ```
 
 ## API
 
 ### UiActionSheet
 
-| Input / Output | Type             | Default | Description                                    |
-| -------------- | ---------------- | ------- | ---------------------------------------------- |
-| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility       |
-| `class`        | `string`         | `''`    | Additional CSS classes for the sheet container |
-| `closed`       | `output<void>`   | --      | Emitted after the close animation completes    |
+| Input   | Type      | Default | Description                                                            |
+| ------- | --------- | ------- | ---------------------------------------------------------------------- |
+| `open`  | `boolean` | `false` | Whether the sheet is shown. Supports `[(open)]`.                       |
+| `class` | `string`  | `''`    | Extra Tailwind classes for the column that holds the group and Cancel. |
 
-### UiActionSheetTitle
+| Output       | Type      | Description                                                                              |
+| ------------ | --------- | ---------------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when an item, Cancel or the backdrop closes the sheet. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                                |
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
+| Method    | Description       |
+| --------- | ----------------- |
+| `close()` | Closes the sheet. |
 
 ### UiActionSheetItem
 
-| Input / Output | Type                         | Default     | Description                     |
-| -------------- | ---------------------------- | ----------- | ------------------------------- |
-| `variant`      | `'default' \| 'destructive'` | `'default'` | Visual style of the item        |
-| `class`        | `string`                     | `''`        | Additional CSS classes          |
-| `pressed`      | `output<void>`               | --          | Emitted when the item is tapped |
+| Input     | Type                         | Default     | Description |
+| --------- | ---------------------------- | ----------- | ----------- |
+| `variant` | `'default' \| 'destructive'` | `'default'` | Text color. |
+
+| Output    | Type   | Description                                             |
+| --------- | ------ | ------------------------------------------------------- |
+| `pressed` | `void` | Emits when the item is tapped, before the sheet closes. |
 
 ### UiActionSheetCancel
 
-| Input   | Type     | Default    | Description                         |
-| ------- | -------- | ---------- | ----------------------------------- |
-| `label` | `string` | `'Cancel'` | Text displayed on the cancel button |
-| `class` | `string` | `''`       | Additional CSS classes              |
+| Input   | Type     | Default    | Description        |
+| ------- | -------- | ---------- | ------------------ |
+| `label` | `string` | `'Cancel'` | The button's text. |
+
+No outputs. Tapping it closes the sheet.
+
+All sub-components (`UiActionSheetTitle`, `UiActionSheetItem`, `UiActionSheetCancel`) accept `class`. Items and Cancel only work inside a `<ui-action-sheet>`, because they close it.
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
+- [Sheet](/dolan/sheet): a panel from the bottom for any content
+- [Alert Dialog](/dolan/alert-dialog): confirm one action in a centered panel
+- [Bottom Sheet](/dolan/bottom-sheet): a bare panel to lay out yourself

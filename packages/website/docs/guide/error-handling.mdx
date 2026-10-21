@@ -1,89 +1,155 @@
-# Error Handling
+# Handling errors
 
-AngularLynx automatically routes unhandled errors to the native Lynx error reporting system. No manual setup is required — `provideRenderer()` registers `LynxErrorHandler` as Angular's `ErrorHandler`.
+When your code throws, AngularLynx reports the error to Lynx and keeps it as text you can show. To keep one broken part from taking down a screen, wrap it in `@boundary` and show a fallback instead.
 
 <Go example="error-handling" defaultFile="src/app/app.ts" />
 
-## How It Works
+## What happens when an error isn't caught
 
-When an unhandled error occurs in your Angular code (template expressions, lifecycle hooks, event handlers), `LynxErrorHandler`:
+An error is **uncaught** when nothing handles it, for example a throw in a template binding, a lifecycle hook or an event handler. What you see depends on where the app runs:
 
-1. Formats the error as `"ErrorName: message\nstack"`
-2. Stores it in `globalThis.__lynxLastError` for on-device debugging
-3. Calls `_ReportError(error, { errorCode: 1101 })` to notify the native Lynx runtime
+| Your app runs in                               | What you see                                                                                                                             |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | Lynx's red error screen, **LogBox**, with the message and stack trace                                                                    |
+| The [web preview](/guide/glossary#web-preview) | The error in your browser's DevTools console                                                                                             |
+| The apps `ng build --platform` makes           | No error screen. These apps don't include LogBox, so [show errors on screen](/guide/debugging#show-errors-on-screen) while you test them |
 
-The error code `1101` follows the Lynx convention (`LYNX_ERROR_CODE_LEPUS`), matching what React Lynx uses for JavaScript errors.
+## What `provideRenderer()` sets up
 
-:::tip Recovering from rendering errors
-`LynxErrorHandler` reports errors but can't restore the UI. To swap a crashed part of the screen for a fallback and let the user retry, use an [`@boundary` block](./error-boundaries).
-:::
+Every app's config calls `provideRenderer()`. Among other things, it registers `LynxErrorHandler` as Angular's [`ErrorHandler`](https://angular.dev/api/core/ErrorHandler). For each uncaught error, `LynxErrorHandler`:
 
-## On-Device Debugging
+1. saves the error's name, message and stack as text in `globalThis.__lynxLastError`, so you can [show it on screen](/guide/debugging#show-errors-on-screen);
+2. reports the error to Lynx, which opens the error screen in Lynx Explorer.
 
-Since Lynx apps run on-device with no browser console, `LynxErrorHandler` stores the last error in a global string. Render it in your template to see errors on screen:
+AngularLynx also installs global `onerror` and `onunhandledrejection` handlers. They save and report errors that happen outside Angular, such as a promise rejection that nothing handles.
 
-```typescript title="src/app/app.ts"
-import { Component } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+## Add your own handling
 
-@Component({
-  imports: [LYNX_ELEMENTS],
-  template: `
-    <view>
-      <!-- Your app content -->
+Extend `LynxErrorHandler` and call `super` to keep the default behavior:
 
-      @if (lastError) {
-        <view style="background-color: red; padding: 8px;">
-          <text style="color: white; font-size: 12px; word-break: break-all;">
-            {{ lastError }}
-          </text>
-        </view>
-      }
-    </view>
-  `,
-})
-export class App {
-  get lastError(): string {
-    return (globalThis as any).__lynxLastError ?? '';
-  }
-}
-```
-
-:::tip
-Remove the error display before shipping to production. It's a development aid, not a user-facing feature.
-:::
-
-## Unhandled Promise Rejections
-
-Global `onerror` and `onunhandledrejection` handlers also feed into `__lynxLastError`, catching errors that occur outside Angular's scope — such as errors in native callbacks or unhandled promise rejections.
-
-## Custom Error Handling
-
-If you need additional error handling on top of the native reporting, extend `LynxErrorHandler`:
-
-```typescript title="src/app/custom-error-handler.ts"
-import { Injectable } from '@angular/core';
-import { LynxErrorHandler } from '@blotch/angular-lynx';
+```typescript title="src/app/app-error-handler.ts"
+import { inject, Injectable } from '@angular/core';
+import { LynxErrorHandler, LynxLogger } from '@blotch/angular-lynx';
 
 @Injectable()
-export class CustomErrorHandler extends LynxErrorHandler {
+export class AppErrorHandler extends LynxErrorHandler {
+  readonly #logger = inject(LynxLogger);
+
   override handleError(error: unknown): void {
+    // Keep the default: save the error and report it to Lynx.
     super.handleError(error);
-    // Your custom logic here (analytics, error tracking, etc.)
+    // Also write it to .dev-logs while `ng serve` runs.
+    this.#logger.error(String(error));
   }
 }
 ```
 
-Provide it in your app config:
+Provide it after `provideRenderer()`, so it replaces the default:
 
 ```typescript title="src/app/app.config.ts"
-import { ErrorHandler } from '@angular/core';
-import { CustomErrorHandler } from './custom-error-handler';
+import {
+  type ApplicationConfig,
+  ErrorHandler,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+import { AppErrorHandler } from './app-error-handler';
 
-export const appConfig = {
+export const appConfig: ApplicationConfig = {
   providers: [
+    provideZonelessChangeDetection(),
     provideRenderer(),
-    { provide: ErrorHandler, useClass: CustomErrorHandler }, // [!code highlight]
+    { provide: ErrorHandler, useClass: AppErrorHandler }, // [!code highlight]
   ],
 };
 ```
+
+- **Don't write signals directly in the handler.** Angular can call it in the middle of rendering, where a signal write throws `NG0600`. Defer the write with `queueMicrotask()`, as [Show errors on screen](/guide/debugging#show-errors-on-screen) does.
+- **Uploading reports to a server isn't supported yet.** Most errors happen on the main thread, which has no network access. See [Network requests](/guide/concepts/javascript-environment#network-requests).
+
+## Contain failures with `@boundary`
+
+**`@boundary`** catches errors while Angular creates or updates the views inside it. When one happens, Angular removes that part of the screen and renders the `@error` block in its place. The rest of the screen keeps working.
+
+<Go example="error-boundary" defaultFile="src/app/app.ts" />
+
+:::warning Developer preview
+`@boundary` needs Angular 22.2 or newer, and it's a developer preview API. Its syntax and behavior may change in later Angular releases.
+:::
+
+```angular-html
+<view>
+  <text>Portfolio</text>
+
+  @boundary {
+    <app-price-tile symbol="LYNX" [price]="price()" />
+  } @error (let err, retry = $reset) {
+    <text>{{ err.message }}</text>
+    <view (bindtap)="restorePrice(); retry()">
+      <text>Retry</text>
+    </view>
+  }
+
+  <text>Everything outside the boundary keeps rendering.</text>
+</view>
+```
+
+- **It works on Lynx with no setup.** AngularLynx swaps the native elements for the fallback in place.
+- **`err`** is the caught error, and **`retry()`** (`$reset`) renders the primary block again. Fix the cause first, as `restorePrice()` does here, or the block throws again.
+- **Use `(bindtap)` for the retry button.** Angular's own examples use `(click)`, but on Lynx a tap arrives as `bindtap`. See [Handling taps and events](/guide/elements/event-handling).
+- **Everything else,** such as `when` conditions, nested boundaries and `resource()` errors, works as Angular documents it in [Error boundaries with `@boundary`](https://angular.dev/guide/templates/error-boundaries).
+
+### What a boundary catches
+
+| Caught                                    | Not caught                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------- |
+| Component and directive constructors      | Event handlers such as `(bindtap)`. These go to the app's `ErrorHandler`         |
+| Template bindings and interpolations      | Errors thrown inside the `@error` block itself. These go to the next boundary up |
+| Lifecycle hooks                           | Async work that never feeds back into rendering                                  |
+| `@for` and other control-flow expressions | Projected (`<ng-content>`) content, which belongs to the parent's view           |
+| Effects declared inside the boundary      |                                                                                  |
+| Lazily and dynamically created components |                                                                                  |
+
+## Report errors a boundary caught
+
+Angular passes caught errors to the app's `ErrorHandler` too, through its `onViewError()` method. `LynxErrorHandler` implements it:
+
+- It saves the error in `globalThis.__lynxLastError`, like any other error.
+- It reports the error to Lynx as a **warning**, not an error. The user is already looking at a working fallback, so Lynx Explorer doesn't open its error screen, and monitoring doesn't count a crash.
+
+To act on caught errors yourself, override `onViewError()`:
+
+```typescript title="src/app/app-error-handler.ts"
+import { type ErrorDetails, inject, Injectable, signal } from '@angular/core';
+import { LynxErrorHandler } from '@blotch/angular-lynx';
+
+/** Messages of errors that boundaries caught, newest first. */
+@Injectable({ providedIn: 'root' })
+export class CaughtErrors {
+  readonly messages = signal<readonly string[]>([]);
+}
+
+@Injectable()
+export class AppErrorHandler extends LynxErrorHandler {
+  readonly #caught = inject(CaughtErrors);
+
+  override onViewError(error: Error, details: ErrorDetails): void {
+    super.onViewError(error, details);
+    // details.declarationType is the component that threw.
+    queueMicrotask(() =>
+      this.#caught.messages.update((list) => [error.message, ...list]),
+    ); // [!code highlight]
+  }
+}
+```
+
+:::warning Don't write signals in `onViewError()`
+Angular calls `onViewError()` synchronously, in the middle of rendering. Writing a signal there throws `NG0600` and can break the boundary. Defer the write with `queueMicrotask()`, as above.
+:::
+
+## Related
+
+- [Debugging](/guide/debugging): logs, Lynx DevTool and on-screen errors.
+- [Testing patterns](/guide/testing/patterns#test-an-error-fallback): test a `@boundary` fallback.
+- [`LynxErrorHandler` API](/api/angular-lynx/errors-and-logging)
+- [Error boundaries with `@boundary`](https://angular.dev/guide/templates/error-boundaries) on angular.dev

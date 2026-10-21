@@ -1,6 +1,6 @@
 # Switch
 
-A toggle switch for turning options on or off, with an animated thumb that slides between states.
+An on/off switch for settings, with a thumb that springs across when tapped.
 
 <Go example="ui-switch" defaultFile="src/app/app.ts" />
 
@@ -11,52 +11,74 @@ npx @blotch/dolan add switch
 ```
 
 ```typescript
-import { UiSwitch } from '@/components/ui/switch';
+import { UiSwitch } from '../components/ui/switch';
 ```
 
 ## Usage
 
-```angular-html
-<ui-switch [(checked)]="enabled" />
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiLabel } from '../components/ui/label';
+import { UiSwitch } from '../components/ui/switch';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiLabel, UiSwitch],
+  template: `
+    <view class="flex flex-row items-center justify-between">
+      <ui-label>Bluetooth</ui-label>
+      <ui-switch [(checked)]="bluetooth" />
+    </view>
+  `,
+})
+export class App {
+  protected readonly bluetooth = signal(false);
+}
 ```
 
-### With a label
-
-```angular-html
-<view class="flex flex-row items-center justify-between">
-  <ui-label>Dark Mode</ui-label>
-  <ui-switch [(checked)]="darkMode" />
-</view>
-```
-
-### With label and description
-
-```angular-html
-<view class="flex flex-row items-center justify-between">
-  <view class="flex flex-col gap-1">
-    <ui-label>Notifications</ui-label>
-    <text class="text-xs text-muted-foreground"
-      >Receive push notifications</text
-    >
-  </view>
-  <ui-switch [(checked)]="notifications" />
-</view>
-```
+- This example also uses [Label](/dolan/label).
+- The track is the primary color when on and the input color when off.
+- The switch is 44 by 24 pixels, set in pixels so it looks the same at any font size.
 
 ### Disabled
 
 ```angular-html
-<ui-switch [disabled]="true" /> <ui-switch [disabled]="true" [checked]="true" />
+<view class="flex flex-row gap-3">
+  <ui-switch [disabled]="true" />
+  <ui-switch [disabled]="true" [checked]="true" />
+</view>
 ```
+
+A disabled switch dims and ignores taps.
+
+### Listen without a signal
+
+```angular-html
+<ui-switch (changed)="onNotifications($event)" />
+```
+
+`changed` emits the new state after each tap.
 
 ## API
 
-| Input      | Type             | Default | Description                                 |
-| ---------- | ---------------- | ------- | ------------------------------------------- |
-| `checked`  | `model<boolean>` | `false` | Whether the switch is on (two-way bindable) |
-| `disabled` | `boolean`        | `false` | Whether the switch is disabled              |
-| `class`    | `string`         | `''`    | Additional CSS classes for the track        |
+### UiSwitch
 
-| Output    | Type      | Description                              |
-| --------- | --------- | ---------------------------------------- |
-| `changed` | `boolean` | Emits the new checked state when toggled |
+| Input      | Type      | Default | Description                              |
+| ---------- | --------- | ------- | ---------------------------------------- |
+| `checked`  | `boolean` | `false` | Whether it's on. Supports `[(checked)]`. |
+| `disabled` | `boolean` | `false` | Dims the switch and ignores taps.        |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the track.    |
+
+| Output          | Type      | Description                             |
+| --------------- | --------- | --------------------------------------- |
+| `changed`       | `boolean` | Emits the new state after a tap.        |
+| `checkedChange` | `boolean` | Emits the new state, for `[(checked)]`. |
+
+`UiSwitch` also has a public `toggle()` method, which does nothing while disabled.
+
+## Related
+
+- [Checkbox](/dolan/checkbox): for agreeing or picking options in a form
+- [Toggle](/dolan/toggle): a button that stays pressed
+- [Label](/dolan/label)

@@ -1,211 +1,82 @@
-# Session Storage
+# Share state between pages
+
+One native app can show several [bundles](/guide/glossary#bundle), or several [pages](/guide/multi-page) of one project, and each is its own Angular app. `LynxSessionStorage` gives them a shared key-value store that lasts as long as the app is running.
+
+It isn't the browser's `sessionStorage`, which belongs to one tab. Every Lynx view in the [host app](/guide/glossary#host-app) (the native app that runs your bundles) sees the same keys. The store empties when the app quits.
+
+:::info In the web preview and in tests
+The [web preview](/guide/glossary#web-preview) and unit tests have no native store, so `LynxSessionStorage` keeps values in memory instead. Every method works, but each page gets its own store, so nothing is shared.
+:::
 
 <Go example="session-storage" defaultFile="src/app/app.ts" />
 
-Lynx session storage is a cross-LynxView key-value store that persists for the lifetime of the host app session. Use it to share data between multiple cards, pages, or LynxView instances. AngularLynx wraps the native API with `LynxSessionStorage` — an injectable service providing Promise-based reads, direct writes, and reactive signals.
+## Write a value and watch it
 
-## Overview
-
-Unlike browser `localStorage`, Lynx session storage:
-
-- Stores **objects** (not strings) — no JSON serialization needed
-- Reads are **asynchronous** (callback-based natively, Promise-based in AngularLynx)
-- Supports **subscriptions** — get notified when another LynxView changes a key
-- Scoped to the **host app session** — cleared when the app process dies
-
-| Method        | Description                                           |
-| ------------- | ----------------------------------------------------- |
-| `setItem`     | Write a value (synchronous, fire-and-forget)          |
-| `getItem`     | One-shot async read (returns a `Promise`)             |
-| `subscribe`   | Listen for changes from other LynxViews               |
-| `unsubscribe` | Cancel a subscription                                 |
-| `watch`       | Create a reactive signal that auto-updates on changes |
-
-## Setup
-
-No extra providers needed — `LynxSessionStorage` is `providedIn: 'root'`:
-
-```typescript title="src/app/my.ts"
+```typescript title="src/app/app.ts"
 import { Component, inject } from '@angular/core';
-import { LynxSessionStorage, LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
-
-@Component({
-  imports: [LYNX_ELEMENTS],
-  template: `...`,
-})
-export class Example {
-  readonly #sessionStorage = inject(LynxSessionStorage); // [!code highlight]
-}
-```
-
-## Writing Data
-
-`setItem` writes a value to session storage. All subscribers (including those in other LynxViews) are notified immediately.
-
-```typescript
-const sessionStorage = inject(LynxSessionStorage);
-
-sessionStorage.setItem('user-preferences', { theme: 'dark', fontSize: 16 });
-sessionStorage.setItem('counter', 42);
-```
-
-Values can be any serializable object — numbers, strings, arrays, or nested objects.
-
-## Reading Data
-
-### One-Shot Read
-
-`getItem` performs a single asynchronous read:
-
-```typescript
-const preferences = await sessionStorage.getItem<{ theme: string }>(
-  'user-preferences',
-);
-console.log(preferences.theme); // 'dark'
-```
-
-### Reactive Signal
-
-`watch` creates an Angular signal that automatically stays in sync with the session storage key. When any LynxView writes to that key, the signal updates:
-
-```typescript title="src/app/counter.ts"
-import { Component, inject } from '@angular/core';
-import { LynxSessionStorage, LYNX_ELEMENTS } from '@blotch/angular-lynx';
-
-@Component({
-  imports: [LYNX_ELEMENTS],
-  template: `
-    <view>
-      <text>Counter: {{ counter() ?? 'not set' }}</text>
-    </view>
-  `,
-})
-export class Counter {
-  readonly #sessionStorage = inject(LynxSessionStorage);
-
-  // Auto-updates when any LynxView calls setItem('counter', ...)
-  readonly counter = this.#sessionStorage.watch<number>('counter'); // [!code highlight]
-}
-```
-
-The signal starts as `undefined` and seeds itself with the current value asynchronously. The subscription is automatically cleaned up when the component is destroyed.
-
-#### Providing an explicit injector
-
-If you call `watch` outside an injection context (e.g., inside a callback), pass an injector explicitly:
-
-```typescript
-import { inject, Injector } from '@angular/core';
-
-const injector = inject(Injector);
-
-someCallback(() => {
-  const value = sessionStorage.watch('key', { injector });
-});
-```
-
-## Manual Subscriptions
-
-For fine-grained control, use `subscribe` and `unsubscribe` directly:
-
-```typescript
-const sub = sessionStorage.subscribe<number>('counter', (value) => {
-  console.log('Counter changed to:', value);
-});
-
-// Later: clean up
-sessionStorage.unsubscribe(sub);
-```
-
-:::tip
-Prefer `watch()` over manual subscriptions — it handles cleanup automatically via `DestroyRef` and integrates with Angular's signal-based change detection.
-:::
-
-## Cross-View Communication
-
-Session storage is designed for sharing state between multiple LynxViews. A typical pattern:
-
-```mermaid
-sequenceDiagram
-    participant View A
-    participant Session Storage
-    participant View B
-
-    View A->>Session Storage: setItem('theme', { mode: 'dark' })
-    Session Storage-->>View B: subscription callback fires
-    View B->>View B: signal updates → UI re-renders
-```
-
-**View A** writes:
-
-```typescript
-sessionStorage.setItem('theme', { mode: 'dark' });
-```
-
-**View B** reacts:
-
-```typescript
-readonly theme = this.#sessionStorage.watch<{ mode: string }>('theme');
-// template: {{ theme()?.mode }} → automatically shows 'dark'
-```
-
-## Complete Example
-
-```typescript title="src/app/session-storage-demo.ts"
-import { Component, inject, signal } from '@angular/core';
 import { LYNX_ELEMENTS, LynxSessionStorage } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view>
-      <!-- Reactive counter via watch() -->
-      <view style="padding: 16px;">
-        <text>Counter: {{ counter() ?? 'undefined' }}</text>
-        <view (bindtap)="increment()">
-          <text>Increment</text>
-        </view>
-        <view (bindtap)="reset()">
-          <text>Reset</text>
-        </view>
-      </view>
-
-      <!-- One-shot read via getItem() -->
-      <view style="padding: 16px;">
-        <text>Last read: {{ lastRead() }}</text>
-        <view (bindtap)="readOnce()">
-          <text>Read Once</text>
-        </view>
-      </view>
+    <view (bindtap)="increment()">
+      <text>Count: {{ count() ?? 'not set' }}</text>
     </view>
   `,
 })
-export class SessionStorageDemo {
+export class App {
   readonly #sessionStorage = inject(LynxSessionStorage);
 
-  readonly counter = this.#sessionStorage.watch<number>('counter');
-  readonly lastRead = signal<string>('(not yet read)');
+  readonly count = this.#sessionStorage.watch<number>('count');
 
   increment(): void {
-    const current = this.counter() ?? 0;
-    this.#sessionStorage.setItem('counter', current + 1);
-  }
-
-  reset(): void {
-    this.#sessionStorage.setItem('counter', 0);
-  }
-
-  async readOnce(): Promise<void> {
-    try {
-      const value = await this.#sessionStorage.getItem<number>('counter');
-      this.lastRead.set(`counter = ${value ?? 'undefined'}`);
-    } catch {
-      this.lastRead.set('(not available)');
-    }
+    this.#sessionStorage.setItem('count', (this.count() ?? 0) + 1);
   }
 }
 ```
 
-:::info
-`LynxSessionStorage` is safe to inject in any environment. When the native Lynx session storage API is not available (e.g., during unit tests, SSR, or web preview), the service falls back to an in-memory store. All methods — `setItem`, `getItem`, `watch`, and `subscribe` — work correctly, though data will not persist across page reloads or be shared across LynxViews.
-:::
+- **`setItem(key, value)`** stores a value under a key. Store a plain object, or a single value such as a string or a number.
+- **`watch(key)`** returns a signal for the key. It starts as `undefined`, then holds the stored value.
+- **Call `watch()` in a field initializer or constructor.** It stops listening when the component is destroyed. Elsewhere, pass an injector: `watch('count', { injector })`.
+- **Call `setItem()` again after a change.** On a device the store keeps a copy, so changing an object after you store it doesn't update what other pages read.
+
+## Read a value once
+
+```typescript
+const count = await this.#sessionStorage.getItem<number>('count');
+```
+
+`getItem()` returns a Promise of the stored value. Handle a key that was never set with `??`, as the first example does.
+
+## When another page's changes appear
+
+On a phone, the copy of your app that draws the UI runs on the [main thread](/guide/glossary#main-thread). Lynx doesn't send change notifications there. So a `watch()` signal:
+
+- **updates right away** when the same page calls `setItem()`
+- **picks up other pages' values** when the signal is created
+- **doesn't update** when another page writes the key later
+
+To see a newer value from another page, call `getItem()` again.
+
+## Subscribe with a callback
+
+For code that doesn't use signals, `subscribe()` calls you back when the key changes:
+
+```typescript
+const subscription = this.#sessionStorage.subscribe<number>('count', (value) =>
+  console.log('count is now', value),
+);
+
+// When you no longer need it:
+this.#sessionStorage.unsubscribe(subscription);
+```
+
+Unsubscribe yourself: unlike `watch()`, a subscription doesn't end with the component. The same rule about other pages' changes applies.
+
+## Related
+
+- [`LynxSessionStorage` reference](/api/angular-lynx/session-storage)
+- [Multi-page apps](/guide/multi-page)
+- [Embed in an existing native app](/guide/embedding/)
+- [Session storage example](/examples/session-storage)

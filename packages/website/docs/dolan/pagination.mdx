@@ -1,0 +1,94 @@
+# Pagination
+
+Let users move through pages of results with a row of page numbers between previous and next arrows.
+
+## Installation
+
+```bash
+npx @blotch/dolan add pagination
+```
+
+```typescript
+import { UiPagination } from '../components/ui/pagination';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { UiPagination } from '../components/ui/pagination';
+
+@Component({
+  selector: 'app-results-footer',
+  imports: [UiPagination],
+  template: `<ui-pagination [(page)]="page" [totalPages]="12" />`,
+})
+export class ResultsFooter {
+  protected readonly page = signal(1);
+}
+```
+
+- `[(page)]` two-way binds the current page. Pages count from `1`.
+- Tapping a number goes to that page. The arrows step one page back or forward, and dim at the first and last page.
+- The first and last pages always show. Around the current page, `siblingCount` pages show on each side, and `...` fills the gaps.
+- With `5 + 2 × siblingCount` pages or fewer, every page shows and there are no gaps.
+
+### Show the current page's items
+
+Derive the visible slice from the page signal with `computed()`. It updates whenever the user changes page.
+
+```typescript
+protected readonly pageSize = 20;
+protected readonly items = signal<readonly Item[]>([]);
+protected readonly page = signal(1);
+
+protected readonly totalPages = computed(() =>
+  Math.max(1, Math.ceil(this.items().length / this.pageSize)),
+);
+protected readonly pageItems = computed(() => {
+  const start = (this.page() - 1) * this.pageSize;
+  return this.items().slice(start, start + this.pageSize);
+});
+```
+
+```angular-html
+<ui-pagination [(page)]="page" [totalPages]="totalPages()" />
+```
+
+### More neighbors
+
+`siblingCount` sets how many pages show on each side of the current one. Fewer fit a narrow screen better.
+
+```angular-html
+<ui-pagination [(page)]="page" [totalPages]="50" [siblingCount]="2" />
+```
+
+### React to a change
+
+Listen to `pageChange` to run code when the user changes page. It fires inside the tap, so changing signals there is safe, but wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+
+```angular-html
+<ui-pagination [(page)]="page" [totalPages]="12" (pageChange)="scrollToTop()" />
+```
+
+## API
+
+### UiPagination
+
+| Input          | Type     | Default  | Description                                      |
+| -------------- | -------- | -------- | ------------------------------------------------ |
+| `page`         | `number` | `1`      | The current page, from `1`. Supports `[(page)]`. |
+| `totalPages`   | `number` | Required | The number of pages.                             |
+| `siblingCount` | `number` | `1`      | Pages shown on each side of the current one.     |
+| `class`        | `string` | `''`     | Extra Tailwind classes for the row.              |
+
+| Output       | Type     | Description                                                                     |
+| ------------ | -------- | ------------------------------------------------------------------------------- |
+| `pageChange` | `number` | Emits the new page when the user taps a number or an arrow. Part of `[(page)]`. |
+
+The component doesn't clamp `page`. If you set it yourself, keep it between `1` and `totalPages`.
+
+## Related
+
+- [List](/dolan/list): infinite scroll instead of pages
+- [Empty State](/dolan/empty-state): what to show when there are no results

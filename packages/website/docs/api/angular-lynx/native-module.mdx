@@ -1,0 +1,119 @@
+# LynxNativeModule
+
+Call native code that the host app exposes, and share JavaScript modules within a page. `import { LynxNativeModule, type NativeModuleMap } from '@blotch/angular-lynx';`
+
+A **native module** is an object that the [host app](/guide/glossary#host-app) (the native iOS or Android app that runs your bundle) registers, with methods written in Swift, Kotlin or another native language.
+
+## Usage
+
+```typescript title="src/app/home.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxNativeModule } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-home',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Home</text>`,
+})
+export class Home {
+  readonly #native = inject(LynxNativeModule);
+
+  constructor() {
+    // Tell the host app that this screen opened.
+    void this.#native.call('trackScreen', { name: 'home' });
+  }
+}
+```
+
+## API
+
+### `LynxNativeModule`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxNativeModule {}
+```
+
+Typed access to Lynx's native module bridge and its JavaScript module registry. Every method is safe to call outside Lynx: it does nothing, or returns `undefined`.
+
+:::warning Background thread only
+Lynx provides native modules and the module registry only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers and draws the UI, every method does nothing or returns `undefined`. A constructor runs on both threads, so the call in Usage reaches the host from the background copy. Results also arrive there, so showing them on screen isn't supported yet. See [Threads](/guide/concepts/threads).
+:::
+
+### `LynxNativeModule.call()`
+
+```typescript
+call<T = unknown>(name: string, params?: Record<string, unknown>): Promise<T | undefined>;
+```
+
+Calls the host's bridge method `name` with `params`, which defaults to `{}`. Resolves with the first value the host passes back, or `undefined` when there is no bridge.
+
+### `LynxNativeModule.on()`
+
+```typescript
+on(name: string, callback: (...args: unknown[]) => void): void;
+```
+
+Listens for the bridge event `name` from the host. There's no way to stop listening.
+
+### `LynxNativeModule.getNativeModule()`
+
+```typescript
+getNativeModule<K extends string>(
+  name: K,
+): K extends keyof NativeModuleMap ? NativeModuleMap[K] : unknown;
+```
+
+Returns the native module the host registered as `name`, or `undefined`. The return type comes from `NativeModuleMap`. Until you can extend that type (see below), cast the result to your module's interface.
+
+### `LynxNativeModule.getJSModule()`
+
+```typescript
+getJSModule<T = unknown>(name: string): T | undefined;
+```
+
+Returns a JavaScript module registered in this page with `registerJSModule()`, or `undefined`.
+
+### `LynxNativeModule.registerJSModule()`
+
+```typescript
+registerJSModule<T extends object>(name: string, module: T): void;
+```
+
+Registers `module` under `name`, so other code in this page, including native callbacks, can find it.
+
+## Types
+
+### `NativeModuleMap`
+
+```typescript
+type NativeModuleMap = {};
+```
+
+Maps module names to their types for `getNativeModule()`. It's meant to be extended with your own modules, but it's declared as a `type`, which TypeScript can't merge with your declarations. Cast instead:
+
+```typescript title="src/app/battery.ts"
+import { Injectable, inject } from '@angular/core';
+import { LynxNativeModule } from '@blotch/angular-lynx';
+
+type DeviceModule = {
+  getBatteryLevel(callback: (level: number) => void): void;
+};
+
+@Injectable({ providedIn: 'root' })
+export class Battery {
+  readonly #device = inject(LynxNativeModule).getNativeModule(
+    'DeviceModule',
+  ) as DeviceModule | undefined;
+
+  read(callback: (level: number) => void): void {
+    this.#device?.getBatteryLevel(callback);
+  }
+}
+```
+
+## Related
+
+- [Embed in an existing native app](/guide/embedding/)
+- [Pass data from your native app](/guide/embedding/host-data)
+- [Lynx native modules docs](https://lynxjs.org/guide/use-native-modules.html)

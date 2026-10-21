@@ -1,6 +1,6 @@
 # Scatter Chart
 
-Plot `{ x, y }` points as dots, or as a bubble chart with a size per dot. It's a preset of [`<ui-chart>`](/dolan/chart): it builds a [TanStack Charts](https://tanstack.com/charts) definition from its inputs, so it has the same touch tooltip, screen reader support, pan and zoom, and dark mode.
+Plot points as dots to show how two values relate, or size each dot for a bubble chart, with a touch tooltip, pan and zoom, and dark mode built in.
 
 <Go example="ui-scatter-chart" defaultFile="src/app/app.ts" />
 
@@ -10,91 +10,88 @@ Plot `{ x, y }` points as dots, or as a bubble chart with a size per dot. It's a
 npx @blotch/dolan add scatter-chart
 ```
 
-:::tip
-The scatter chart depends on [`chart`](/dolan/chart), which is added automatically, along with the npm packages it imports: `@tanstack/charts` and `d3-shape`.
-:::
-
 ```typescript
-import { UiScatterChart } from '@/components/ui/scatter-chart';
+import { UiScatterChart } from '../components/ui/scatter-chart';
 ```
+
+This also adds [Chart](/dolan/chart), which draws the preset, and installs the npm packages `@tanstack/charts` and `d3-shape`.
 
 ## Usage
 
-Pass an array of `{ x, y }` points, both numbers. The chart fits rounded axis ranges to the data and insets each side by 4% so dots at the edges aren't cut off.
-
-```angular-html
-<ui-scatter-chart [data]="measurements" label="Dose and response" />
-```
-
 ```typescript
-measurements = [
-  { x: 1, y: 3 },
-  { x: 2, y: 4 },
-  { x: 4, y: 6 },
-  { x: 8, y: 10 },
-];
+import { Component } from '@angular/core';
+import { UiScatterChart } from '../components/ui/scatter-chart';
+
+@Component({
+  selector: 'app-dose-response',
+  imports: [UiScatterChart],
+  template: `<ui-scatter-chart
+    [data]="measurements"
+    label="Dose and response"
+  />`,
+})
+export class DoseResponse {
+  protected readonly measurements = [
+    { x: 1, y: 3 },
+    { x: 2, y: 4 },
+    { x: 4, y: 6 },
+    { x: 8, y: 10 },
+  ];
+}
 ```
 
-Touch the chart to see a point's values in a tooltip, and tap to pin it. Set `label` so a screen reader can say what the chart shows.
+- `data` is an array of `{ x, y }` points, both numbers. The axes fit rounded ranges to the data.
+- Each side is inset by 4%, so dots at the edges aren't cut off.
+- Touch the chart to see a point's values in a tooltip. Tap to pin it. Set `label` so a screen reader can say what the chart shows.
 
-### Color the dots
+## Customize
 
-`color` fills every dot (default `var(--primary)`). A theme color such as `var(--chart-2)` switches with [dark mode](/dolan/chart#dark-mode); a fixed color stays the same. Pass `colors` to give each dot its own color; the list repeats if it's shorter than the data.
+### Colors
+
+`color` fills every dot (default `var(--primary)`). A theme color such as `var(--chart-2)` switches with [dark mode](/dolan/chart#theming-and-dark-mode). A fixed color stays the same. Pass `colors` to give each dot its own color. The list repeats if it's shorter than the data.
 
 ```angular-html
 <ui-scatter-chart [data]="clusters" [colors]="clusterColors" />
 ```
 
 ```typescript
-// The first three points are group A, the rest group B.
-clusterColors = [
+// The first two points are group A, the rest group B.
+protected readonly clusterColors = [
   'var(--chart-1)',
   'var(--chart-1)',
-  'var(--chart-1)',
-  'var(--chart-2)',
   'var(--chart-2)',
   'var(--chart-2)',
 ];
 ```
 
-For groups with a legend and tooltip names, use [`<ui-chart>`](/dolan/chart#several-series) with a `z` channel instead.
+For groups with a legend and named tooltips, use [`<ui-chart>`](/dolan/chart#series-and-marks) with a `z` channel instead.
 
-### Size the dots (bubble chart)
+### Shape
 
 `radius` sets every dot's radius in px (default `4`). Pass `sizes` to give each dot its own radius, which shows a third value as the dot's size. Points past the end of `sizes` use `radius`.
 
 ```angular-html
-<ui-scatter-chart [data]="measurements" [sizes]="bubbleSizes" />
+<ui-scatter-chart [data]="measurements" [sizes]="[4, 6, 5, 9]" />
 ```
 
-```typescript
-bubbleSizes = [4, 6, 5, 9]; // Radius in px, one per point
-```
+### Axes and range
 
-### Label the axes
-
-`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default; `showGrid` turns them off and `showXGrid` adds vertical ones.
+`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default: `showGrid` turns them off, and `showXGrid` adds vertical ones.
 
 ```angular-html
 <ui-scatter-chart
   [data]="measurements"
   xAxisLabel="Dose"
   yAxisLabel="Response"
-  [showXGrid]="true"
+  [yMin]="0"
 />
 ```
 
-`xTickFormat` and `yTickFormat` turn tick values into labels, and `tickCount` sets roughly how many ticks each axis gets.
+- `xMin`, `xMax`, `yMin` and `yMax` fix a bound instead of fitting the data, for example to compare two charts on one scale.
+- `xTickFormat` and `yTickFormat` turn tick values into labels.
+- `tickCount` sets roughly how many ticks each axis gets. The axis picks round values near it.
 
-### Fix the axis range
-
-Pass `xMin`, `xMax`, `yMin` and `yMax` to fix axis bounds instead of fitting the data, for example to compare two charts on one scale.
-
-```angular-html
-<ui-scatter-chart [data]="measurements" [yMin]="0" [yMax]="14" />
-```
-
-### Pad the plot edges
+### Padding
 
 `padding` insets the plot, each side as a fraction (`0` to `1`) of its size. Sides you leave out keep the 4% default.
 
@@ -104,102 +101,109 @@ Pass `xMin`, `xMax`, `yMin` and `yMax` to fix axis bounds instead of fitting the
 
 ### Size
 
-The chart fills its container's width and is 200px tall. Set `height` for a different height, and `width` for a fixed width, both in px.
-
-### Handle taps
-
-`pointTap` emits the tapped `{ x, y }` point. Set `tooltip` to `false` to turn the tooltip off.
+The chart fills its container's width and is 200px tall. Set `height` for another height and `width` for a fixed width, both in px. Use `height` rather than a height class, because the preset always sets a height.
 
 ```angular-html
-<ui-scatter-chart [data]="measurements" (pointTap)="onPointTap($event)" />
+<ui-scatter-chart [data]="measurements" [height]="240" />
 ```
+
+## Interaction
+
+### Taps
+
+`pointTap` emits the tapped `{ x, y }` point. A tap on empty space emits nothing. Set `tooltip` to `false` to turn the tooltip off.
+
+```angular-html
+<ui-scatter-chart [data]="measurements" (pointTap)="selected.set($event)" />
+```
+
+`pointTap` fires inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
 
 ### Pan and zoom
 
-Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons.
+Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons. `zoomAxes` limits it to one axis.
 
 ```angular-html
 <ui-scatter-chart [data]="measurements" [zoomable]="true" />
 ```
 
-See [Pan and zoom](/dolan/chart#pan-and-zoom) on the Chart page for how it behaves. To zoom from your own controls, call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component.
-
-## Trend lines, groups and other marks
-
-The preset draws one group of dots. For a trend line, several groups, or other marks, build a definition and render it with [`<ui-chart>`](/dolan/chart). You can start from this preset's definition to keep its axes and styling. Put the trend line first so the dots draw over it, and set `ci` to `0` to leave out the confidence band:
-
-```typescript
-import { defineChart, linearRegressionY } from '@tanstack/charts/universal';
-import { scatterChartDefinition } from '@/components/ui/scatter-chart';
-
-const base = scatterChartDefinition({ data: measurements });
-
-const withTrend = defineChart({
-  ...base,
-  marks: [
-    linearRegressionY(measurements, {
-      x: 'x',
-      y: 'y',
-      ci: 0,
-      stroke: 'var(--chart-2)',
-    }),
-    ...base.marks,
-  ],
-});
-```
-
-```angular-html
-<ui-chart [definition]="withTrend" label="Dose and response, with trend" />
-```
+To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.
 
 ## API
 
 ### UiScatterChart
 
-| Input              | Type                            | Default                    | Description                                                   |
-| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------------- |
-| `data`             | `XYDatum[]`                     | _required_                 | Points to plot, each `{ x, y }`                               |
-| `color`            | `string`                        | `'var(--primary)'`         | Fill for every dot (any CSS color)                            |
-| `colors`           | `string[]`                      | `[]`                       | One fill per dot, repeating; overrides `color`                |
-| `radius`           | `number`                        | `4`                        | Dot radius in px                                              |
-| `sizes`            | `number[]`                      | `[]`                       | One radius per dot in px (a bubble chart)                     |
-| `width`            | `number`                        | _fills container_          | Fixed width in px                                             |
-| `height`           | `number`                        | `200`                      | Height in px                                                  |
-| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis                               |
-| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks                           |
-| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks                             |
-| `xAxisLabel`       | `string`                        | `''`                       | X-axis title                                                  |
-| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title                                                  |
-| `padding`          | `ChartPadding`                  | `0.04` per side            | Inner inset, each side a `0`–`1` fraction of the plot         |
-| `xMin`             | `number`                        | _auto_                     | Fixed x-axis lower bound                                      |
-| `xMax`             | `number`                        | _auto_                     | Fixed x-axis upper bound                                      |
-| `yMin`             | `number`                        | _auto_                     | Fixed y-axis lower bound                                      |
-| `yMax`             | `number`                        | _auto_                     | Fixed y-axis upper bound                                      |
-| `xTickFormat`      | `(value: number) => string`     | _auto_                     | Formats x-axis tick labels                                    |
-| `yTickFormat`      | `(value: number) => string`     | _auto_                     | Formats y-axis tick labels                                    |
-| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched point; a tap pins it           |
-| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart                  |
-| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Light or dark colors; see [Dark mode](/dolan/chart#dark-mode) |
-| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons                                |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom                                       |
-| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable                        |
-| `minZoom`          | `number`                        | `1`                        | Smallest zoom; `1` shows all the data                         |
-| `maxZoom`          | `number`                        | `8`                        | Largest zoom                                                  |
-| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press                                  |
-| `class`            | `string`                        | `''`                       | Additional CSS classes                                        |
+| Input              | Type                            | Default                    | Description                                                        |
+| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------------------ |
+| `data`             | `readonly XYDatum[]`            | Required                   | Points to plot, each `{ x, y }`.                                   |
+| `color`            | `string`                        | `'var(--primary)'`         | Fill for every dot (any CSS color).                                |
+| `colors`           | `readonly string[]`             | `[]`                       | One fill per dot, repeating. Overrides `color` when not empty.     |
+| `radius`           | `number`                        | `4`                        | Dot radius in px.                                                  |
+| `sizes`            | `readonly number[]`             | `[]`                       | One radius per dot, for a bubble chart. Extra points use `radius`. |
+| `width`            | `number`                        | _fills container_          | Fixed width in px.                                                 |
+| `height`           | `number`                        | `200`                      | Height in px.                                                      |
+| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis.                                   |
+| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks.                               |
+| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks.                                 |
+| `xAxisLabel`       | `string`                        | `''`                       | X-axis title.                                                      |
+| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title.                                                      |
+| `padding`          | `ChartPadding`                  | `{}` (4% each side)        | Inner inset, each side a `0`–`1` fraction of the plot.             |
+| `xMin`             | `number`                        | _fits the data_            | Fixed x-axis lower bound.                                          |
+| `xMax`             | `number`                        | _fits the data_            | Fixed x-axis upper bound.                                          |
+| `yMin`             | `number`                        | _fits the data_            | Fixed y-axis lower bound.                                          |
+| `yMax`             | `number`                        | _fits the data_            | Fixed y-axis upper bound.                                          |
+| `xTickFormat`      | `(value: number) => string`     | _automatic_                | Formats x-axis tick labels.                                        |
+| `yTickFormat`      | `(value: number) => string`     | _automatic_                | Formats y-axis tick labels.                                        |
+| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched point. A tap pins it.               |
+| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart.                      |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Which color table the marks use.                                   |
+| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons.                                    |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom.                                           |
+| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable.                            |
+| `minZoom`          | `number`                        | `1`                        | Smallest zoom. `1` shows all the data.                             |
+| `maxZoom`          | `number`                        | `8`                        | Largest zoom.                                                      |
+| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press or method call.                       |
+| `class`            | `string`                        | `''`                       | Extra Tailwind classes for the chart's root view.                  |
 
-| Output     | Type      | Description                     |
-| ---------- | --------- | ------------------------------- |
-| `pointTap` | `XYDatum` | Emits the point that was tapped |
+| Output     | Type      | Description                |
+| ---------- | --------- | -------------------------- |
+| `pointTap` | `XYDatum` | The point a tap landed on. |
 
-| Method        | Description              |
-| ------------- | ------------------------ |
-| `zoomIn()`    | Zooms in by `zoomStep`   |
-| `zoomOut()`   | Zooms out by `zoomStep`  |
-| `resetZoom()` | Shows all the data again |
+| Method        | Description               |
+| ------------- | ------------------------- |
+| `zoomIn()`    | Zooms in by `zoomStep`.   |
+| `zoomOut()`   | Zooms out by `zoomStep`.  |
+| `resetZoom()` | Shows all the data again. |
 
-`XYDatum` is `{ x: number; y: number }` and `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size. Both are exported from `@/components/ui/chart`.
+`XYDatum` is `{ x: number; y: number }`. `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size. Both are exported from `../components/ui/chart`.
 
 ### scatterChartDefinition
 
-`scatterChartDefinition(options: ScatterChartOptions)` returns the TanStack definition `<ui-scatter-chart>` renders: one `dot` mark. The options are the inputs that shape the chart, with the same defaults: `data`, `color`, `colors`, `radius`, `sizes`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label and zoom are inputs of `<ui-chart>` instead.
+```typescript
+function scatterChartDefinition(options: ScatterChartOptions): ChartDefinition;
+```
+
+Returns the [TanStack Charts](https://tanstack.com/charts) definition `<ui-scatter-chart>` renders: one `dot` mark. The options are the inputs that shape the chart, with the same defaults: `data`, `color`, `colors`, `radius`, `sizes`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label, color scheme and zoom are inputs of `<ui-chart>` instead.
+
+Start from it to add marks of your own, such as a trend line, and render the result with [`<ui-chart>`](/dolan/chart). Put the trend line first so the dots draw over it. `ci: 0` leaves out the confidence band.
+
+```typescript
+import { defineChart, linearRegressionY } from '@tanstack/charts/universal';
+import { scatterChartDefinition } from '../components/ui/scatter-chart';
+
+const base = scatterChartDefinition({ data: measurements });
+
+protected readonly withTrend = defineChart({
+  ...base,
+  marks: [
+    linearRegressionY(measurements, { x: 'x', y: 'y', ci: 0, stroke: 'var(--chart-2)' }),
+    ...base.marks,
+  ],
+});
+```
+
+## Related
+
+- [Chart](/dolan/chart): groups, trend lines and other marks
+- [Line Chart](/dolan/line-chart): points joined by a line
+- [Bar Chart](/dolan/bar-chart): values as bars

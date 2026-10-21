@@ -1,44 +1,63 @@
-# &lt;title-bar-view&gt;
+# `<title-bar-view>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-:::warning Clay Only
-`<title-bar-view>` is only available on **Clay Windows** and **Clay macOS** platforms. It has no effect on Android, iOS, or web.
-:::
-
-Customizes the draggable area of a frameless window, similar to the CSS `app-region` property on the web. Use it to define which parts of a custom title bar allow the user to drag the window.
+Makes part of a custom title bar the handle that drags the window, like the CSS `app-region: drag` property. It works only in Lynx's desktop apps for Windows and macOS, which use Lynx's **Clay** renderer: desktop (Clay) only.
 
 <Go example="element-title-bar-view" defaultFile="src/app/app.ts" />
 
-```angular-html
-<view style="height: 48px; flex-direction: row; align-items: center;">
-  <title-bar-view [moveable]="true" style="flex: 1; height: 100%;">
-    <text style="font-size: 14px;">My App</text>
-  </title-bar-view>
-  <view
-    (bindtap)="close()"
-    style="width: 48px; height: 100%; align-items: center; justify-content: center;"
-  >
-    <text>X</text>
-  </view>
-</view>
+## Usage
+
+```typescript title="src/app/title-bar.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-title-bar',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view style="height: 44px; flex-direction: row; align-items: center;">
+      <title-bar-view [moveable]="true" style="flex: 1; height: 100%;">
+        <text>My App</text>
+      </title-bar-view>
+      <view style="width: 44px; height: 100%;" (bindtap)="close()">
+        <text>✕</text>
+      </view>
+    </view>
+  `,
+})
+export class TitleBar {
+  close(): void {}
+}
 ```
 
-In this example, the `<title-bar-view>` region is draggable (moves the window), while the close button beside it remains interactive.
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+Dragging the title moves the window, and the close button next to it stays tappable.
+
+:::warning
+iOS and Android have no `<title-bar-view>`. Like any element the [host app](/guide/glossary#host-app) doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
+:::
 
 ## Attributes
 
-- `moveable` — (boolean, default `false`) When `true`, dragging within this element moves the window.
+| Attribute  | Type      | Default | Description                                          |
+| ---------- | --------- | ------- | ---------------------------------------------------- |
+| `moveable` | `boolean` | `false` | When `true`, dragging this element moves the window. |
 
-## Platform Support
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
-| Platform     | Supported |
-| ------------ | --------- |
-| Clay Windows | 3.8+      |
-| Clay macOS   | 3.8+      |
-| Android      | No        |
-| iOS          | No        |
-| Harmony      | No        |
-| Web Lynx     | No        |
+## Events
+
+None, apart from the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Platform support
+
+| Platform                              | Support                    |
+| ------------------------------------- | -------------------------- |
+| Windows and macOS desktop apps (Clay) | Yes, Lynx 3.8 and later.   |
+| iOS and Android                       | No. See the warning above. |
+| Web                                   | No.                        |
+
+## Related
+
+- [`<cover-view>`](/api/elements/cover-view): the other desktop-only element
+- [`<view>`](/api/elements/view)

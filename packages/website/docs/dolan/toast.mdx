@@ -1,6 +1,6 @@
 # Toast
 
-A non-blocking notification that appears briefly at the bottom of the screen. Toasts are triggered imperatively via the `toast()` function and auto-dismiss after a configurable duration.
+Show a brief message at the bottom of the screen that goes away by itself, without blocking the rest of the app.
 
 <Go example="ui-toast" defaultFile="src/app/app.ts" />
 
@@ -11,46 +11,53 @@ npx @blotch/dolan add toast
 ```
 
 ```typescript
-import { UiToaster, toast } from '@/components/ui/toast';
+import { UiToaster, toast } from '../components/ui/toast';
 ```
 
 ## Setup
 
-Place the `<ui-toaster />` component once in your root template. This component manages rendering and animating all toasts.
+Put one `<ui-toaster />` in your root component's template. It draws every toast in the app.
 
-```angular-html
-<ui-toaster />
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { UiToaster } from '../components/ui/toast';
+
+@Component({
+  selector: 'app-root',
+  imports: [RouterOutlet, UiToaster],
+  template: `
+    <router-outlet />
+    <ui-toaster />
+  `,
+})
+export class App {}
 ```
 
 ## Usage
 
-Call the `toast()` function from anywhere in your component to show a notification:
+Call `toast()` from anywhere: a component, a service, a route guard or a plain function. It needs no injection.
 
 ```typescript
-import { Component } from '@angular/core';
-import { UiToaster, toast } from '@/components/ui/toast';
-import { UiButton } from '@/components/ui/button';
+import { toast } from '../components/ui/toast';
 
-@Component({
-  imports: [UiToaster, UiButton],
-  template: `
-    <ui-button (pressed)="notify()">Show Toast</ui-button>
-    <ui-toaster />
-  `,
-})
-export class Example {
-  notify(): void {
-    toast({ title: 'Event has been created' });
-  }
+protected save(): void {
+  toast({ title: 'Event has been created' });
 }
 ```
 
-### With Description
+- The newest toast appears in front, above the bottom safe area. Up to three stack, with older ones peeking out behind. More wait in a queue.
+- Each toast closes after `duration` (5 seconds). The countdown starts when it becomes visible, so queued toasts don't expire unseen.
+- Tapping the front toast closes it. Dragging it down more than 80px closes it too, and a shorter drag springs it back.
+- Taps elsewhere keep working while a toast is showing.
+- `toast()` only updates a signal, so it's safe to call inside a tap handler.
+
+### With a description
 
 ```typescript
 toast({
   title: 'Event has been created',
-  description: 'Sunday, December 03, 2023 at 9:00 AM',
+  description: 'Sunday, December 3 at 9:00 AM',
 });
 ```
 
@@ -58,51 +65,107 @@ toast({
 
 ```typescript
 toast({
-  title: 'Uh oh! Something went wrong.',
+  title: 'Something went wrong',
   description: 'There was a problem with your request.',
   variant: 'destructive',
 });
 ```
 
-### With Action
+### With an action
+
+An action adds a button on the right. Tapping it runs `onAction`, then closes the toast.
 
 ```typescript
 toast({
   title: 'Message sent',
-  action: {
-    label: 'Undo',
-    onAction: () => {
-      toast({ title: 'Message unsent' });
-    },
-  },
+  action: { label: 'Undo', onAction: () => this.undoSend() },
 });
 ```
+
+`onAction` runs inside the tap. To navigate from it, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+
+### Duration
+
+```typescript
+toast({ title: 'Copied', duration: 2000 });
+```
+
+Dragging a toast pauses its countdown. Letting it spring back restarts the full `duration`.
+
+### Dismiss from code
+
+`toast()` returns the toast's ID. Pass it to `dismissToast()` to remove the toast early.
+
+```typescript
+import { dismissToast, toast } from '../components/ui/toast';
+
+const id = toast({ title: 'Uploading…', duration: 60000 });
+// later
+dismissToast(id);
+```
+
+`dismissToast()` removes the toast at once, without the slide-out animation.
 
 ## API
 
 ### UiToaster
 
-The container component that renders active toasts. Place it once in your app template, typically at the root level.
+The component that draws the toasts. It has no inputs or outputs. Render one, in your root component.
 
 ### toast(options)
 
-Shows a new toast notification. Returns the toast ID.
+```typescript
+function toast(options: ToastOptions): string;
+```
 
-| Option        | Type                         | Default     | Description                                        |
-| ------------- | ---------------------------- | ----------- | -------------------------------------------------- |
-| `title`       | `string`                     | --          | **Required.** The main toast message               |
-| `description` | `string`                     | `undefined` | Additional detail text below the title             |
-| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style of the toast                          |
-| `duration`    | `number`                     | `5000`      | Auto-dismiss delay in milliseconds                 |
-| `action`      | `ToastAction`                | `undefined` | Action button with `label` and `onAction` callback |
+Shows a toast and returns its ID.
+
+| Option        | Type                         | Default     | Description                                         |
+| ------------- | ---------------------------- | ----------- | --------------------------------------------------- |
+| `title`       | `string`                     | Required    | The main message.                                   |
+| `description` | `string`                     | `undefined` | Extra detail below the title.                       |
+| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style.                                       |
+| `duration`    | `number`                     | `5000`      | Time on screen in milliseconds, once visible.       |
+| `action`      | `ToastAction`                | `undefined` | A button with a `label` and an `onAction` callback. |
 
 ### dismissToast(id)
 
-Programmatically dismisses a toast by its ID (returned from `toast()`).
+```typescript
+function dismissToast(id: string): void;
+```
 
-### ToastAction
+Removes the toast with that ID, whether it's showing or queued.
 
-| Property   | Type         | Description                                       |
-| ---------- | ------------ | ------------------------------------------------- |
-| `label`    | `string`     | Text displayed on the action button               |
-| `onAction` | `() => void` | Callback invoked when the action button is tapped |
+### toasts
+
+```typescript
+const toasts: WritableSignal<readonly ToastData[]>;
+```
+
+The queue, oldest first. Read it, for example to show a count. Change it with `toast()` and `dismissToast()`.
+
+### Types
+
+```typescript
+type ToastAction = {
+  readonly label: string;
+  readonly onAction: () => void;
+};
+
+type ToastData = {
+  readonly id: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly variant: 'default' | 'destructive';
+  readonly duration: number;
+  readonly action?: ToastAction;
+};
+
+type ToastOptions = Partial<Omit<ToastData, 'id'>> & { readonly title: string };
+```
+
+## Related
+
+- [Alert](/dolan/alert): a message that stays in the page
+- [Dialogs and overlays](/guide/overlays): messages that block the app until dismissed
+- [Safe area](/guide/safe-area): how the toast stays clear of the home indicator

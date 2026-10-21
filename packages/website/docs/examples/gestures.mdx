@@ -1,13 +1,18 @@
 # Gestures
 
-Handle pan, tap, and exclusive gesture recognition using the Lynx gesture system.
+A draggable box, a tap counter and an area that tells a drag from a tap, built with AngularLynx's gesture recognizers.
 
 <Go example="gestures" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`[lynxGesture]`** — directive that attaches a gesture recognizer to a Lynx element via `LynxGestureDetector`
-- **`PanGesture`** — tracks drag movement with `onUpdate` (continuous position) and `onEnd` callbacks, configurable with `minDistance`
-- **`TapGesture`** — detects discrete tap events with an `onEnd` callback
-- **`Gesture.Exclusive()`** — composes multiple gestures so only one can win recognition at a time (pan takes priority over tap when dragging)
-- **Fluent API** — gesture objects use a chainable builder pattern (`.minDistance(5).onUpdate(...).onEnd(...)`) for readable configuration
+- **`[lynxGesture]`** — attaches a gesture object to an element. Import `LynxGestureDetector` to use it. See [Gestures](/guide/gestures/).
+- **`PanGesture`** — `onUpdate` reports `translationX` and `translationY` from the start of each drag. The example adds them to a saved offset, so the box stays where you drop it.
+- **`TapGesture`** — `onEnd` counts each tap.
+- **`Gesture.Exclusive()`** — tries the gestures in order, so the tap only fires if the pan fails. A drag wins over a tap. See [Gesture API](/api/gestures/).
+- **Builder methods** — `.minDistance(5).onUpdate(…).onEnd(…)` configures each gesture in one chain. See [Gesture types](/api/gestures/gesture-types).
+
+## Related
+
+- [Main-Thread Scripts](/examples/main-thread)
+- [Gesture states and callbacks](/api/gestures/lifecycle)

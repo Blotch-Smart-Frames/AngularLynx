@@ -1,16 +1,25 @@
-# Content Projection
+# Content projection
 
-Angular's content projection (`<ng-content>`) works in AngularLynx, including projection into `<text>` elements. This enables the standard component library pattern where wrapper components accept projected content.
+`<ng-content>` lets a component wrap content that its parent passes in. Cards, labels and every [UI component](/dolan/) are built this way. It works on [Lynx](/guide/glossary#lynx), with four rules that come from Lynx's elements.
 
-## Basic Projection
+## The Lynx rules
 
-Content projection into `<view>` elements works identically to web Angular:
+1. **Projected text must land inside a `<text>`.** Lynx renders text only inside `<text>`. If your component takes text, put the `<ng-content>` inside a `<text>`. Text projected into a `<view>` doesn't appear.
+2. **A nested `<text>` is inline.** When the parent passes `<text>` elements into your `<text>`, they flow as styled runs, like `<span>`s.
+3. **The host element is a real box.** `<app-card>` becomes a plain, unstyled `<view>` in the layout, between the parent and your template. When the component must fill or stretch, put the classes on the host with `host: { class: '…' }`.
+4. **Each projected element takes a native slot.** Lynx has a fixed number of slots for native elements, the [element pool](/guide/glossary#element-pool). To show hundreds of items, use [`<list>`](/api/elements/list), which only creates the rows on screen.
 
-```typescript
+## Project into a view
+
+```typescript title="src/app/card.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
   selector: 'app-card',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <view class="card">
+    <view class="rounded-xl border border-border bg-card p-4">
       <ng-content />
     </view>
   `,
@@ -18,100 +27,130 @@ Content projection into `<view>` elements works identically to web Angular:
 export class Card {}
 ```
 
-```html
+```angular-html
 <app-card>
-  <text>This text is projected into the card.</text>
+  <text class="text-foreground">This text is projected into the card.</text>
 </app-card>
 ```
 
-## Projection into `<text>` Elements
+- **Pass elements, not bare text,** into a component that projects into a `<view>`. The parent wraps its words in `<text>`.
 
-You can project content directly into `<text>` elements. This is the pattern used by component libraries for styled labels and titles:
+## Project text
 
-```typescript
+```typescript title="src/app/card-title.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
-  selector: 'ui-card-title',
-  template: `<text class="card-title"><ng-content /></text>`,
-})
-export class UiCardTitle {}
-```
-
-```html
-<ui-card-title>My Card Title</ui-card-title>
-```
-
-### Text-in-text (inline styling)
-
-Lynx supports nested `<text>` elements for inline styling. Projection works with this pattern:
-
-```typescript
-@Component({
-  selector: 'ui-label',
-  template: `<text class="label"><ng-content /></text>`,
-})
-export class UiLabel {}
-```
-
-```html
-<ui-label>
-  <text style="font-weight: bold;">Bold</text>
-  <text style="color: #666;"> and muted</text>
-</ui-label>
-```
-
-## Named Slots
-
-Multi-slot projection with `select` works inside `<text>` elements:
-
-```typescript
-@Component({
-  selector: 'ui-badge',
+  selector: 'app-card-title',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <text class="badge">
+    <text class="text-lg font-semibold text-foreground">
+      <ng-content />
+    </text>
+  `,
+})
+export class CardTitle {}
+```
+
+```angular-html
+<app-card-title>My card title</app-card-title>
+
+<app-card-title>
+  Order
+  <text class="text-muted-foreground">#1042</text>
+</app-card-title>
+```
+
+- **Bare text works here,** because it lands inside the component's `<text>`.
+- **Nested `<text>` styles part of the text.** The second usage renders "Order #1042" on one line, with the number muted.
+
+## Fill the parent from the host
+
+```typescript title="src/app/panel.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-panel',
+  imports: [LYNX_ELEMENTS],
+  // The host is the element the parent lays out, so it takes the flex-1.
+  host: { class: 'flex flex-1 flex-col' },
+  template: `
+    <scroll-view scroll-orientation="vertical" class="h-full w-full">
+      <ng-content />
+    </scroll-view>
+  `,
+})
+export class Panel {}
+```
+
+- **Put sizing on the host.** A `flex-1` on an inner view does nothing if the unstyled host around it sizes to its content.
+- **A component with no content needs host sizing most.** With nothing inside, its host can collapse to zero size, hiding everything in it.
+
+## Named slots
+
+```typescript title="src/app/badge.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-badge',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <text class="rounded-full bg-muted px-2 text-sm">
       <ng-content select="[icon]" />
       <ng-content />
     </text>
   `,
 })
-export class UiBadge {}
+export class Badge {}
 ```
 
-```html
-<ui-badge>
-  <text icon style="color: gold;">★ </text>
+```angular-html
+<app-badge>
+  <text icon class="text-primary">★ </text>
   <text>Featured</text>
-</ui-badge>
+</app-badge>
 ```
 
-## Conditional Projection
+`select` works as on the web, including inside a `<text>`.
 
-Control flow (`@if`, `@for`) works inside `<text>` elements around projected content:
+## Conditional projection
 
-```typescript
+```typescript title="src/app/expandable-label.ts"
+import { Component, input } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
-  selector: 'ui-expandable-label',
+  selector: 'app-expandable-label',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <text class="label">
+    <text class="text-foreground">
       @if (expanded()) {
         <ng-content />
       } @else {
-        <text>...</text>
+        <text>…</text>
       }
     </text>
   `,
 })
-export class UiExpandableLabel {
+export class ExpandableLabel {
   readonly expanded = input(true);
 }
 ```
 
-## Content Queries
+`@if` and `@for` work around projected content, inside a `<view>` or a `<text>`.
 
-`contentChild()` and `contentChildren()` work with projected content:
+## Content queries
 
-```typescript
+```typescript title="src/app/item-list.ts"
+import { Component, ElementRef, contentChildren } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
-  selector: 'app-list',
+  selector: 'app-item-list',
+  imports: [LYNX_ELEMENTS],
   template: `
     <view>
       <text>Items: {{ items().length }}</text>
@@ -119,24 +158,22 @@ export class UiExpandableLabel {
     </view>
   `,
 })
-export class AppList {
+export class ItemList {
   readonly items = contentChildren('item', { read: ElementRef });
 }
 ```
 
-```html
-<app-list>
+```angular-html
+<app-item-list>
   <text #item>Item A</text>
   <text #item>Item B</text>
-</app-list>
+</app-item-list>
 ```
 
-## Lynx-Specific Notes
+`contentChild()` and `contentChildren()` find projected elements and components, as on the web. With `read: ElementRef`, you get the Lynx element, not a DOM node.
 
-:::tip Raw text nodes
-When you project raw text (not wrapped in a `<text>` element), the renderer creates an implicit text node. For consistent styling, prefer wrapping projected content in explicit `<text>` elements.
-:::
+## Related
 
-:::warning Element count
-Each projected element counts toward the total element budget. For lists with many projected items, consider using `<list>` with virtualization instead of projecting hundreds of elements.
-:::
+- [Elements and layout](/guide/elements/): the `<text>` and layout rules
+- [Glossary: element pool](/guide/glossary#element-pool)
+- [Content projection on angular.dev](https://angular.dev/guide/components/content-projection)

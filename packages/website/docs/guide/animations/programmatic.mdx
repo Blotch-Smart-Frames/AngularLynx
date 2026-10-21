@@ -1,79 +1,162 @@
-# Programmatic animate() API
+# Animate from code
 
-For imperative control, use the `animate()` method on native Lynx elements. Access the element via `viewChild` and call `animate()` with keyframes and options:
+Call `animate()` on an element to play keyframes you choose at runtime, such as a pulse on tap or a shake on an error. It returns a handle you can pause, resume or cancel.
+
+<Go example="animations" defaultFile="src/app/app.ts" />
+
+## Run an animation
 
 ```typescript title="src/app/pulse.ts"
-import { Component, viewChild, type ElementRef } from '@angular/core';
-import { LYNX_ELEMENTS, type LynxAnimation } from '@blotch/angular-lynx'; // [!code highlight]
+import { Component, type ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS, type LynxAnimation } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-pulse',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view #box class="box" (bindtap)="runAnimation()">
+    <view #box class="box" (bindtap)="pulse()">
       <text>Tap to pulse</text>
     </view>
   `,
-  styles: [
-    `
-      .box {
-        width: 100px;
-        height: 100px;
-        background-color: #6200ee;
-        align-items: center;
-        justify-content: center;
-      }
-    `,
-  ],
+  styles: `
+    .box {
+      width: 100px;
+      height: 100px;
+      align-items: center;
+      justify-content: center;
+      background-color: #6366f1;
+    }
+  `,
 })
 export class Pulse {
-  readonly boxRef = viewChild<ElementRef>('box');
+  readonly box = viewChild.required<ElementRef>('box');
   #animation: LynxAnimation | null = null;
 
-  runAnimation(): void {
+  pulse(): void {
     setTimeout(() => {
-      const el = this.boxRef();
-      if (!el) return;
-
       this.#animation?.cancel(); // [!code highlight]
-
-      this.#animation = el.nativeElement.animate(
-        // [!code highlight]
+      this.#animation = this.box().nativeElement.animate(
         [
-          // [!code highlight]
-          { transform: 'scale(1)', opacity: 1 }, // [!code highlight]
-          { transform: 'scale(1.3)', opacity: 0.7 }, // [!code highlight]
-          { transform: 'scale(1)', opacity: 1 }, // [!code highlight]
-        ], // [!code highlight]
-        { duration: 600, easing: 'ease-in-out' }, // [!code highlight]
-      ); // [!code highlight]
-    }, 0);
+          { transform: 'scale(1)', opacity: 1 },
+          { transform: 'scale(1.3)', opacity: 0.7 },
+          { transform: 'scale(1)', opacity: 1 },
+        ],
+        { duration: 600, easing: 'ease-in-out' },
+      );
+    });
   }
 }
 ```
 
-:::tip
-Always cancel the previous animation before starting a new one on the same element to prevent stacking.
-:::
+- **`nativeElement` isn't a DOM element.** On Lynx, `viewChild()` gives you an `ElementRef` whose `nativeElement` is AngularLynx's wrapper around a native [element](/guide/glossary#element). It has `animate()`, but no `style`, `classList` or other DOM properties.
+- **Start it in `setTimeout`.** Starting an animation inside a tap handler can crash the app, so defer it until the handler returns. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **Cancel the previous animation first.** Each call starts a new animation alongside any that are still running.
+- **Keyframes** are an array of objects whose keys are CSS property names. Only [some properties](/guide/animations/#what-can-animate) animate.
 
-## LynxAnimation
+## Set the options
 
-`element.animate()` returns a `LynxAnimation` object:
+The second argument takes these common options:
 
-| Method     | Description                                 |
-| ---------- | ------------------------------------------- |
-| `play()`   | Resume a paused animation                   |
-| `pause()`  | Pause the animation at its current position |
-| `cancel()` | Stop and remove the animation               |
+```typescript
+import type { LynxAnimationOptions } from '@blotch/angular-lynx';
 
-## LynxAnimationOptions
+const options: LynxAnimationOptions = {
+  duration: 400, // milliseconds
+  delay: 100, // milliseconds before it starts
+  easing: 'ease-out', // or 'linear', 'cubic-bezier(0.2, 0, 0, 1)', …
+  iterations: Infinity, // how many times to play; Infinity loops forever
+  direction: 'alternate', // 'normal', 'reverse', 'alternate' or 'alternate-reverse'
+  fill: 'forwards', // keep the last frame when it ends
+};
+```
 
-| Option                          | Type               | Description                                                 |
-| ------------------------------- | ------------------ | ----------------------------------------------------------- |
-| `duration`                      | `number \| string` | Duration in milliseconds                                    |
-| `delay`                         | `number \| string` | Delay before animation starts                               |
-| `easing` / `timingFunction`     | `string`           | Timing function (e.g., `'ease-in-out'`, `'linear'`)         |
-| `iterations` / `iterationCount` | `number \| string` | Number of repetitions (`Infinity` for loop)                 |
-| `fill` / `fillMode`             | `string`           | Fill mode (`'forwards'`, `'backwards'`, `'both'`, `'none'`) |
-| `direction`                     | `string`           | Direction (`'normal'`, `'reverse'`, `'alternate'`)          |
+- A number on its own is the duration: `animate(keyframes, 300)`.
+- Without `fill: 'forwards'`, the element goes back to its own styles when the animation ends.
+- AngularLynx also accepts Lynx's CSS-style names: `timingFunction`, `iterationCount` and `fillMode`.
 
-Both Web Animations API naming (`easing`, `iterations`, `fill`) and Lynx-native naming (`timingFunction`, `iterationCount`, `fillMode`) are accepted.
+The [animation API reference](/api/angular-lynx/animation) lists every option.
+
+## Pause, resume and cancel
+
+`animate()` returns a `LynxAnimation` handle with three methods:
+
+```typescript title="src/app/spinner.ts"
+import { Component, type ElementRef, signal, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS, type LynxAnimation } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-spinner',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view #box class="box" (bindtap)="start()"><text>Start</text></view>
+    <view (bindtap)="togglePause()">
+      <text>{{ paused() ? 'Resume' : 'Pause' }}</text>
+    </view>
+    <view (bindtap)="stop()"><text>Stop</text></view>
+  `,
+  styles: `
+    .box {
+      width: 80px;
+      height: 80px;
+      background-color: #f97316;
+    }
+  `,
+})
+export class Spinner {
+  readonly box = viewChild.required<ElementRef>('box');
+  readonly paused = signal(false);
+  #animation: LynxAnimation | null = null;
+
+  start(): void {
+    setTimeout(() => {
+      this.#animation?.cancel();
+      this.#animation = this.box().nativeElement.animate(
+        [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+        { duration: 1000, iterations: Infinity },
+      );
+      this.paused.set(false);
+    });
+  }
+
+  togglePause(): void {
+    setTimeout(() => {
+      if (this.paused()) {
+        this.#animation?.play(); // [!code highlight]
+      } else {
+        this.#animation?.pause(); // [!code highlight]
+      }
+      this.paused.update((p) => !p);
+    });
+  }
+
+  stop(): void {
+    setTimeout(() => {
+      this.#animation?.cancel(); // [!code highlight]
+      this.#animation = null;
+    });
+  }
+}
+```
+
+- **`pause()`** freezes the animation at its current frame, and **`play()`** resumes it.
+- **`cancel()`** stops the animation for good. Start a new one with `animate()`.
+- **There's no `finish()`**, no `finished` promise and no `onfinish` callback. To run code when an animation ends, start a `setTimeout` for its total length.
+- **Removing the element cancels its animations for you.** You don't need to clean up when a component is destroyed.
+
+## Where it runs
+
+AngularLynx runs your app on two threads (see [Threads](/guide/concepts/threads)). Only the [main thread](/guide/glossary#main-thread) copy animates real elements, and that's where event handlers run, so calling `animate()` from a handler works.
+
+The [background thread](/guide/glossary#background-thread) copy has no native elements. There, `animate()` does nothing and returns a handle whose methods do nothing. Development builds log a warning when that happens.
+
+## Limitations
+
+- **Don't call `animate()` from an event that the animation can fire again.** Starting or canceling an animation can re-run event handlers on the same element or one nearby. Fading an `<image>` in from its own `(bindload)` handler, for example, can loop until the app crashes. If you must, guard the handler so it runs once.
+- **No Web Animations API extras.** There's no `document.getAnimations()`, `KeyframeEffect` or `currentTime`.
+
+## Related
+
+- [Animations](/guide/animations/): CSS transitions and `@keyframes`
+- [Enter and leave transitions](/guide/animations/enter-leave)
+- [Animation API reference](/api/angular-lynx/animation)
+- [Main-thread scripts](/guide/main-thread/): animate on every frame, such as while dragging

@@ -1,0 +1,115 @@
+# LynxSystemInfo
+
+Device and platform facts, such as the screen size and the operating system. `import { LynxSystemInfo } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/device.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxSystemInfo } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-device',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <text>{{ info.platform }} {{ info.osVersion }}</text>
+    <text>{{ info.screenWidth }} × {{ info.screenHeight }}</text>
+  `,
+})
+export class Device {
+  readonly info = inject(LynxSystemInfo);
+}
+```
+
+## API
+
+### `LynxSystemInfo`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxSystemInfo {}
+```
+
+Reads Lynx's global `SystemInfo`. Lynx fills it in once when the page starts, so the values never change and aren't signals.
+
+- **Creating it throws** outside Lynx, such as in unit tests.
+
+### `LynxSystemInfo.platform`
+
+```typescript
+get platform(): PlatformType;
+```
+
+The platform, such as `'iOS'` or `'Android'`.
+
+### `LynxSystemInfo.osVersion`
+
+```typescript
+get osVersion(): string;
+```
+
+The operating system's version.
+
+### `LynxSystemInfo.engineVersion`
+
+```typescript
+get engineVersion(): string;
+```
+
+The Lynx engine's version, such as `'3.2'`.
+
+### `LynxSystemInfo.pixelWidth` and `pixelHeight`
+
+```typescript
+get pixelWidth(): number;
+get pixelHeight(): number;
+```
+
+The screen's size in physical pixels.
+
+### `LynxSystemInfo.pixelRatio`
+
+```typescript
+get pixelRatio(): number;
+```
+
+Physical pixels per CSS pixel.
+
+### `LynxSystemInfo.screenWidth` and `screenHeight`
+
+```typescript
+get screenWidth(): number;
+get screenHeight(): number;
+```
+
+The screen's size in CSS pixels: the physical size divided by `pixelRatio`.
+
+### `LynxSystemInfo.runtimeType`
+
+```typescript
+get runtimeType(): 'v8' | 'jsc' | 'quickjs';
+```
+
+The JavaScript engine that runs the [background thread](/guide/glossary#background-thread). Lynx sets it only on that thread.
+
+### `LynxSystemInfo.theme`
+
+```typescript
+get theme(): object | undefined;
+```
+
+A theme object, if the [host app](/guide/glossary#host-app) provides one. For light or dark mode, use [`LynxTheme`](/api/angular-lynx/theme).
+
+## Types
+
+`PlatformType` comes from `@lynx-js/types`:
+
+```typescript
+type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'pc';
+```
+
+## Related
+
+- [Safe area](/api/angular-lynx/safe-area)
+- [Theme](/api/angular-lynx/theme)
+- [The JavaScript environment](/guide/concepts/javascript-environment)

@@ -1,6 +1,6 @@
 # Badge
 
-A small status descriptor for UI elements, useful for labels, counts, and categories.
+Label something with a small pill, such as a status, a count or a category.
 
 <Go example="ui-badge" defaultFile="src/app/app.ts" />
 
@@ -11,29 +11,68 @@ npx @blotch/dolan add badge
 ```
 
 ```typescript
-import { UiBadge } from '@/components/ui/badge';
+import { UiBadge } from '../components/ui/badge';
 ```
+
+Badge imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-### Default
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiBadge } from '../components/ui/badge';
 
-```angular-html
-<ui-badge>New</ui-badge>
+@Component({
+  selector: 'app-inbox-row',
+  imports: [LYNX_ELEMENTS, UiBadge],
+  template: `
+    <view class="flex flex-row items-center gap-2">
+      <text class="text-sm text-foreground">Notifications</text>
+      <ui-badge variant="destructive">3</ui-badge>
+    </view>
+  `,
+})
+export class InboxRow {}
 ```
+
+- Put plain text inside. The badge wraps its content in a `<text>` element.
+- The badge hugs its text instead of stretching to fill its parent.
+- It pops in with a short spring animation when it first renders.
 
 ### Variants
 
 ```angular-html
-<ui-badge variant="default">Default</ui-badge>
+<ui-badge>Default</ui-badge>
 <ui-badge variant="secondary">Secondary</ui-badge>
 <ui-badge variant="destructive">Destructive</ui-badge>
 <ui-badge variant="outline">Outline</ui-badge>
 ```
 
+### Without the animation
+
+Set `animated` to `false` for a badge that appears without popping in, for example in a long list.
+
+```angular-html
+<ui-badge [animated]="false">Archived</ui-badge>
+```
+
 ## API
 
-| Input     | Type                                                     | Default     | Description            |
-| --------- | -------------------------------------------------------- | ----------- | ---------------------- |
-| `variant` | `'default' \| 'secondary' \| 'destructive' \| 'outline'` | `'default'` | Visual style variant   |
-| `class`   | `string`                                                 | `''`        | Additional CSS classes |
+### UiBadge
+
+| Input      | Type                                                     | Default     | Description                                     |
+| ---------- | -------------------------------------------------------- | ----------- | ----------------------------------------------- |
+| `variant`  | `'default' \| 'secondary' \| 'destructive' \| 'outline'` | `'default'` | Visual style.                                   |
+| `animated` | `boolean`                                                | `true`      | Pop in with a spring animation on first render. |
+| `class`    | `string`                                                 | `''`        | Extra Tailwind classes for the pill.            |
+
+No outputs.
+
+The file also exports `badgeVariants`, the `class-variance-authority` function that returns the pill's classes for a variant, and the `BadgeVariant` type.
+
+## Related
+
+- [Button](/dolan/button): a tappable control in the same styles
+- [Avatar](/dolan/avatar): pair a badge with a user's photo
+- [Theming](/dolan/theming): change the colors the variants use

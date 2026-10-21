@@ -1,167 +1,243 @@
-# Testing Patterns
+# Testing patterns
 
-Common patterns for testing AngularLynx components with `@blotch/angular-lynx-testing-library`.
+Recipes for common tests with `@blotch/angular-lynx-testing-library`: signal changes, events, host data, native APIs, error fallbacks and snapshots. Set up the library first, as in [Testing](./).
 
-## Reactive Updates with Signals
+## Change a signal, then wait
 
-After changing a signal outside an event handler, call `waitForUpdate()` to flush change detection:
+Angular re-renders after a signal changes, not at the moment it changes. Call `waitForUpdate()` before you check the result:
 
-```ts
+```typescript title="src/app/label.test.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 
-it('reflects signal changes in the DOM', async () => {
-  const label = signal('initial');
+@Component({
+  selector: 'app-label',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>{{ label() }}</text>`,
+})
+class Label {
+  readonly label = signal('initial');
+}
 
-  @Component({
-    selector: 'test-label',
-    template: `<text>{{ label() }}</text>`,
-  })
-  class Label {
-    label = label;
-  }
-
-  const { container } = await render(Label);
+it('shows the new label', async () => {
+  const { container, componentRef } = await render(Label);
   expect(container.querySelector('text')!.textContent).toBe('initial');
 
-  label.set('updated');
+  (componentRef.instance as Label).label.set('updated');
   await waitForUpdate();
 
   expect(container.querySelector('text')!.textContent).toBe('updated');
 });
 ```
 
-:::tip
-`waitForUpdate()` is only needed when you change signals directly in test code. Events fired through `fireEvent` trigger change detection automatically.
-:::
+`waitForUpdate()` lets Angular's scheduled change detection run, then forces one more pass so every update reaches the tree.
 
-## Firing Events
+## Fire events
 
-Use `fireEvent` to simulate Lynx user interactions:
+`fireEvent` sends Lynx events, such as a tap, to an element:
 
-```ts
+```typescript title="src/app/counter.test.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
-  render,
   fireEvent,
+  render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
 
-it('increments count on tap', async () => {
-  @Component({
-    selector: 'test-counter',
-    template: `<view (bindtap)="increment()"
-      ><text>{{ count() }}</text></view
-    >`,
-  })
-  class Counter {
-    count = signal(0);
-    increment() {
-      this.count.update((n) => n + 1);
-    }
-  }
+@Component({
+  selector: 'app-counter',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="increment()">
+      <text>{{ count() }}</text>
+    </view>
+  `,
+})
+class Counter {
+  readonly count = signal(0);
 
+  increment(): void {
+    this.count.update((n) => n + 1);
+  }
+}
+
+it('counts taps', async () => {
   const { container } = await render(Counter);
+
   fireEvent.tap(container.querySelector('view')!);
   await waitForUpdate();
+
   expect(container.querySelector('text')!.textContent).toBe('1');
 });
 ```
 
-Pass custom properties in the second argument:
+- **Your handler runs right away.** `fireEvent.tap()` calls `increment()` before it returns.
+- **The screen updates afterwards.** As on a device, Angular re-renders after the handler, so `await waitForUpdate()` before you check the tree.
+- **Pass event data as the second argument.** Its properties are copied onto the event your handler receives. Lynx's `<input>` puts its text in `event.detail.value`, for example:
 
-```ts
-fireEvent.input(element, { value: 'hello' });
-// handler receives event.value === 'hello'
+```typescript
+fireEvent.input(input, { detail: { value: 'hello' } });
 ```
 
-See [Event Reference](/api/testing-library/event-reference) for all supported events.
+The [event reference](/api/testing-library/event-reference) lists every event `fireEvent` can send.
 
-## Snapshot Testing
+## Fake host data
 
-`asFragment()` captures the Lynx element tree as a `DocumentFragment`:
+No host app runs in a test, so InitData and GlobalData hold nothing. Provide a stand-in for `LynxInitData` or `LynxGlobalData` with the values you need:
 
-```ts
-const { asFragment } = await render(Example);
+```typescript title="src/app/welcome.test.ts"
+import { Component, computed, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxInitData } from '@blotch/angular-lynx';
+import { render } from '@blotch/angular-lynx-testing-library';
+
+@Component({
+  selector: 'app-welcome',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Hi {{ userId() }}</text>`,
+})
+class Welcome {
+  readonly #initData = inject(LynxInitData);
+  readonly userId = computed(
+    () => this.#initData.initData()?.['userId'] ?? 'guest',
+  );
+}
+
+it('greets the user named in InitData', async () => {
+  const { getByText } = await render(Welcome, {
+    providers: [
+      {
+        provide: LynxInitData,
+        useValue: { initData: signal({ userId: 'user_42' }) },
+      },
+    ],
+  });
+
+  expect(getByText('Hi user_42')).toBeTruthy();
+});
+```
+
+`LynxTheme` and `LynxLocale` read GlobalData, so the same trick sets them. For example, `{ provide: LynxGlobalData, useValue: { globalData: signal({ theme: 'Dark' }) } }` makes `LynxTheme.isDarkMode()` return `true`.
+
+## Fake native APIs
+
+Services that call the phone return nothing or throw in jsdom: `LynxNativeModule.call()` returns `undefined`, and `LynxTextMeasure.measure()` throws. Provide fakes:
+
+```typescript
+import { LynxNativeModule, LynxTextMeasure } from '@blotch/angular-lynx';
+
+const { getByText } = await render(ProfileHeader, {
+  providers: [
+    { provide: LynxNativeModule, useValue: { call: async () => 'device-123' } },
+    { provide: LynxTextMeasure, useValue: { measure: () => ({ width: 120 }) } },
+  ],
+});
+```
+
+To test a service on its own, without rendering anything, use Angular's `TestBed` with the same providers. `ng test` runs `TestBed` tests as they are.
+
+## Test an error fallback
+
+`@boundary` works in tests. Give the test an error handler that records caught errors. The default `LynxErrorHandler` reports them to Lynx, and the test environment's stand-in for Lynx throws them again.
+
+```typescript title="src/app/price.test.ts"
+import { Component, ErrorHandler, Injectable, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxErrorHandler } from '@blotch/angular-lynx';
+import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+
+@Injectable()
+class RecordingErrorHandler extends LynxErrorHandler {
+  readonly caught: Error[] = [];
+
+  override onViewError(error: Error): void {
+    this.caught.push(error);
+  }
+}
+
+@Component({
+  selector: 'app-price',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @boundary {
+      <text>{{ format(price()) }}</text>
+    } @error {
+      <text>Price unavailable</text>
+    }
+  `,
+})
+class Price {
+  readonly price = signal(10);
+
+  format(value: number): string {
+    if (Number.isNaN(value)) throw new Error('Bad price');
+    return `$${value}`;
+  }
+}
+
+it('shows the fallback when the price is bad', async () => {
+  const handler = new RecordingErrorHandler();
+  const { getByText, componentRef } = await render(Price, {
+    providers: [{ provide: ErrorHandler, useValue: handler }],
+  });
+
+  (componentRef.instance as Price).price.set(Number.NaN);
+  await waitForUpdate();
+
+  expect(getByText('Price unavailable')).toBeTruthy();
+  expect(handler.caught).toHaveLength(1);
+});
+```
+
+## Snapshot tests
+
+`asFragment()` copies the rendered Lynx element tree, ready for a snapshot:
+
+```typescript
+const { asFragment } = await render(Label);
 expect(asFragment()).toMatchSnapshot();
 ```
 
-Capture before and after states:
+Each call takes a new copy, so you can snapshot before and after a change.
 
-```ts
-label.set('before');
-expect(asFragment().querySelector('text')!.textContent).toBe('before');
+## Reach into the component
 
-label.set('after');
-await waitForUpdate();
-expect(asFragment().querySelector('text')!.textContent).toBe('after');
-```
+`componentRef` is the rendered component's `ComponentRef`:
 
-## Accessing the Component
+```typescript
+const { componentRef } = await render(Label);
 
-`componentRef` gives direct access to the Angular `ComponentRef`:
+// Read a service from the app's injector.
+const store = componentRef.injector.get(CartStore);
 
-```ts
-// Read an injected service
-const service = componentRef.injector.get(MyService);
-
-// Mutate signal state
-(componentRef.instance as Example).label.set('updated');
+// Change state on the instance, then wait for the update.
+(componentRef.instance as Label).label.set('updated');
 await waitForUpdate();
 ```
 
-:::note
-`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime (JIT), it doesn't: use writable `signal()` fields on the component instance there.
-:::
+`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, it doesn't. Change writable signals on the instance there.
 
-## Control Flow
+## Custom queries
 
-`@if` and `@for` work exactly as in a real app:
+Pass `queries` to add your own query helpers next to the standard ones:
 
-```ts
-it('conditionally renders content', async () => {
-  const show = signal(true);
-
-  @Component({
-    selector: 'test-cond',
-    template: `@if (show()) {
-      <text>Visible</text>
-    }`,
-  })
-  class ConditionalView {
-    show = show;
-  }
-
-  const { container } = await render(ConditionalView);
-  expect(container.querySelector('text')).toBeTruthy();
-
-  show.set(false);
-  await waitForUpdate();
-  expect(container.querySelector('text')).toBeNull();
-});
-```
-
-## Custom Queries
-
-Pass a `queries` map to add query helpers alongside the standard `@testing-library/dom` queries:
-
-```ts
-const queryByLynxTag = (container: HTMLElement, tag: string) =>
+```typescript
+const queryByTag = (container: HTMLElement, tag: string) =>
   container.querySelector(tag);
 
-const result = await render(Example, {
-  queries: { queryByLynxTag },
-});
-expect(result.queryByLynxTag('view')).not.toBeNull();
-// Standard queries still work:
-expect(result.getByText('Hello')).not.toBeNull();
+const result = await render(Label, { queries: { queryByTag } });
+
+expect(result.queryByTag('text')).not.toBeNull();
+expect(result.getByText('initial')).not.toBeNull();
 ```
 
 ## Cleanup
 
-The library auto-calls `cleanup()` after each test. To opt out, set `ATL_SKIP_AUTO_CLEANUP=true` and call `cleanup()` manually.
+The library destroys the rendered app after each test. To turn that off, set the environment variable `ATL_SKIP_AUTO_CLEANUP=true` and call `cleanup()` or `unmount()` yourself.
 
-You can also use `unmount()`:
+## Related
 
-```ts
-const { unmount } = await render(Example);
-unmount();
-```
+- [Testing](./): setup, `ng test` and `render()`.
+- [Event reference](/api/testing-library/event-reference)
+- [Testing library API](/api/testing-library/)
+- [Handling errors](/guide/error-handling#contain-failures-with-boundary)

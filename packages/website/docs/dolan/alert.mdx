@@ -1,6 +1,6 @@
 # Alert
 
-Displays a callout message to draw attention to important information, warnings, or errors.
+Draw attention to a message inside the page, such as a tip, a warning or an error, in a bordered box.
 
 <Go example="ui-alert" defaultFile="src/app/app.ts" />
 
@@ -11,17 +11,32 @@ npx @blotch/dolan add alert
 ```
 
 ```typescript
-import { UiAlert } from '@/components/ui/alert';
+import { UiAlert } from '../components/ui/alert';
 ```
+
+Alert imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-```angular-html
-<ui-alert
-  title="Heads up!"
-  description="You can add components to your app using the CLI."
-/>
+```typescript
+import { Component } from '@angular/core';
+import { UiAlert } from '../components/ui/alert';
+
+@Component({
+  selector: 'app-tip',
+  imports: [UiAlert],
+  template: `
+    <ui-alert
+      title="Heads up!"
+      description="You can add components to your app using the CLI."
+    />
+  `,
+})
+export class Tip {}
 ```
+
+- The alert sits in the page flow. It doesn't float over content or block taps. For that, use [Toast](/dolan/toast) or [Alert Dialog](/dolan/alert-dialog).
+- It slides up and fades in when it first renders.
 
 ### Destructive
 
@@ -33,12 +48,16 @@ import { UiAlert } from '@/components/ui/alert';
 />
 ```
 
-### With Content Projection
+The destructive variant tints the background and colors the border and text red.
+
+### Custom content
+
+Put elements inside to add them below the title and description. Wrap text in `<text>`, and import `LYNX_ELEMENTS` in your component.
 
 ```angular-html
 <ui-alert title="Update available">
-  <text class="text-sm text-muted-foreground mt-2">
-    A new version of the app is ready. Restart to apply changes.
+  <text class="mt-2 text-sm text-muted-foreground">
+    A new version of the app is ready. Restart to apply it.
   </text>
 </ui-alert>
 ```
@@ -47,9 +66,19 @@ import { UiAlert } from '@/components/ui/alert';
 
 ### UiAlert
 
-| Input         | Type                         | Default     | Description                                  |
-| ------------- | ---------------------------- | ----------- | -------------------------------------------- |
-| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style of the alert                    |
-| `title`       | `string`                     | `''`        | Title text displayed at the top of the alert |
-| `description` | `string`                     | `''`        | Description text displayed below the title   |
-| `class`       | `string`                     | `''`        | Additional CSS classes to apply              |
+| Input         | Type                         | Default     | Description                              |
+| ------------- | ---------------------------- | ----------- | ---------------------------------------- |
+| `variant`     | `'default' \| 'destructive'` | `'default'` | Visual style.                            |
+| `title`       | `string`                     | `''`        | Title text. Hidden when empty.           |
+| `description` | `string`                     | `''`        | Text below the title. Hidden when empty. |
+| `class`       | `string`                     | `''`        | Extra Tailwind classes for the box.      |
+
+No outputs.
+
+The file also exports `alertVariants`, the `class-variance-authority` function that returns the box's classes for a variant, and the `AlertVariant` type.
+
+## Related
+
+- [Toast](/dolan/toast): a brief message that floats over the app
+- [Alert Dialog](/dolan/alert-dialog): ask the user to confirm
+- [Theming](/dolan/theming): change the colors the variants use

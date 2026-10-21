@@ -1,13 +1,17 @@
-# Defer
+# Defer Blocks
 
-Lazy-load components with Angular's `@defer` blocks, using signal and timer triggers.
+Two `@defer` blocks: one renders when you tap a button, and one renders after three seconds.
 
 <Go example="defer" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`@defer (when condition())`** — delays rendering until a signal-based condition becomes `true`, keeping the initial bundle small
-- **`@defer (on timer(3000ms))`** — automatically triggers deferred loading after a specified delay
-- **`@placeholder`** — displays fallback content before the defer trigger fires
-- **`@loading`** — shows a loading indicator while the deferred chunk is being fetched and compiled
-- **Signal-driven triggers** — combining `signal()` with `@defer (when ...)` gives fine-grained control over when heavy components load
+- **`@defer (when visible())`** — renders `<app-heavy>` once the signal turns `true`. See [`@defer`](/guide/defer).
+- **`@defer (on timer(3000ms))`** — renders it after a delay, with no user action.
+- **`@placeholder` and `@loading`** — show content before the trigger fires and while the block loads.
+- **The main bundle by default** — the deferred component still ships in your main **bundle** ([Glossary](/guide/glossary#bundle)) unless you turn on the `experimental_isLazyBundle` plugin option. See [`@blotch/angular-lynx-build`](/api/build/).
+
+## Related
+
+- [Loading States](/examples/loading-states)
+- [`@defer` on angular.dev](https://angular.dev/guide/templates/defer)

@@ -9,8 +9,13 @@ export const Banner: React.FC = () => {
         Start building with{' '}
         <span className={styles['angular-lynx-text']}>AngularLynx</span>
       </p>
+      {/* State the project's maturity where people decide to try it. */}
+      <p className={styles['banner-desc']}>
+        An early, work-in-progress project for Angular 22. Expect missing
+        pieces, and tell us about them on GitHub.
+      </p>
       <a href="/guide/quick-start" className={styles['banner-btn']}>
-        Quick Start
+        Get started
       </a>
       <DotPattern />
     </div>

@@ -1,53 +1,113 @@
-# &lt;image&gt;
+# `<image>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Displays images from local imports or remote URLs.
+Displays a PNG, JPEG, WebP, GIF or BMP image, like an `<img>`. It loads bundled assets, remote URLs and base64 data URIs.
 
 <Go example="element-image" defaultFile="src/app/app.ts" />
 
-```typescript
+## Usage
+
+```typescript title="src/app/avatar.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import logo from '../assets/logo.png';
 
 @Component({
+  selector: 'app-avatar',
   imports: [LYNX_ELEMENTS],
-  template: ` <image [src]="logo" style="width: 80px; height: 80px;" /> `,
+  template: `
+    <image [src]="logo" mode="aspectFit" style="width: 64px; height: 64px;" />
+    <image
+      src="https://example.com/photo.jpg"
+      mode="aspectFill"
+      style="width: 200px; height: 150px;"
+      (binderror)="failed.set(true)"
+    />
+  `,
 })
-export class Logo {
-  logo = logo;
+export class Avatar {
+  readonly logo = logo;
+  readonly failed = signal(false);
 }
 ```
 
-Supported formats: PNG, JPG, WebP, GIF (animated), base64 data URIs.
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-## Remote Images
-
-```angular-html
-<image
-  src="https://example.com/photo.jpg"
-  style="width: 200px; height: 150px;"
-  (bindload)="onLoaded()"
-  (binderror)="onError()"
-/>
-```
-
-:::info
-You must set an explicit **width** and **height** (or use `auto-size`) for the image to display. Unlike HTML `<img>`, Lynx `<image>` has no intrinsic size.
+:::warning
+Give every `<image>` a width and height. Unlike `<img>`, it has no size of its own, and Lynx doesn't load an image whose box is 0×0.
 :::
 
-## Key Attributes
+## Attributes
 
-| Attribute   | Type      | Description                                                          |
-| ----------- | --------- | -------------------------------------------------------------------- |
-| `src`       | `string`  | Image source — local import or remote URL (required)                 |
-| `mode`      | `string`  | Cropping/scaling mode: `"cover"` (default), `"contain"`, `"stretch"` |
-| `auto-size` | `boolean` | Automatically adjusts element size to match the image's aspect ratio |
+| Attribute                           | Type                                                       | Default         | Description                                                                                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src`                               | `string`                                                   | —               | Image to show: an imported asset, an `http`/`https` URL or a base64 data URI. SVG doesn't work here: use [`<svg>`](/api/elements/svg).                                               |
+| `mode`                              | `'scaleToFill' \| 'aspectFit' \| 'aspectFill' \| 'center'` | `'scaleToFill'` | How the image fills its box: stretched, fitted inside (like `object-fit: contain`), covering it (like `cover`), or not scaled. Set it on every image: CSS `object-fit` doesn't work. |
+| `placeholder`                       | `string`                                                   | —               | Image shown while `src` loads. Takes the same values as `src`.                                                                                                                       |
+| `auto-size`                         | `boolean`                                                  | `false`         | After loading, an image missing a width or height sizes itself to keep the image's aspect ratio.                                                                                     |
+| `blur-radius`                       | `string`                                                   | —               | Blurs the image itself, e.g. `'10px'`. To blur what's behind an element, use [`<blur-view>`](/api/elements/blur-view).                                                               |
+| `tint-color`                        | `string`                                                   | —               | iOS and Android. Paints every non-transparent pixel this color, for single-color icons.                                                                                              |
+| `cap-insets`                        | `string`                                                   | —               | iOS and Android. Nine-slice stretching: four insets (top, right, bottom, left) that keep their size while the middle stretches.                                                      |
+| `cap-insets-scale`                  | `number`                                                   | `1`             | iOS and Android. Scales the `cap-insets` values.                                                                                                                                     |
+| `autoplay`                          | `boolean`                                                  | `true`          | iOS and Android. Starts an animated image as soon as it loads.                                                                                                                       |
+| `loop-count`                        | `number`                                                   | `0`             | iOS and Android. How many times an animated image plays. `0` loops forever.                                                                                                          |
+| `defer-src-invalidation`            | `boolean`                                                  | `false`         | iOS and Android. Keeps showing the old image until a new `src` has loaded, so there's no blank flash.                                                                                |
+| `prefetch-width`, `prefetch-height` | `string`                                                   | `'0px'`         | iOS and Android. Loads the image even while its box is still 0×0. Lynx marks these as deprecated.                                                                                    |
+| `image-config`                      | `'ARGB_8888' \| 'RGB_565'`                                 | `'ARGB_8888'`   | Android only. `'RGB_565'` uses half the memory but drops transparency.                                                                                                               |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event       | Description                             |
-| ----------- | --------------------------------------- |
-| `bindload`  | Fires when the image loads successfully |
-| `binderror` | Fires when the image fails to load      |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+
+| Event                     | `detail`                                                                | Description                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `bindload`                | `{ width: number; height: number }`                                     | The image loaded. The sizes are the image's own, in pixels.                                     |
+| `binderror`               | `{ errMsg: string; error_code: number; lynx_categorized_code: number }` | The image failed to load.                                                                       |
+| `bindstartplay`           | —                                                                       | iOS and Android. An animated image starts playing.                                              |
+| `bindcurrentloopcomplete` | —                                                                       | iOS and Android. An animated image finished one loop.                                           |
+| `bindfinalloopcomplete`   | —                                                                       | iOS and Android. An animated image finished all its loops. It never fires without `loop-count`. |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Methods
+
+These **UI methods** ([Glossary](/guide/glossary#ui-method)) control animated images on iOS and Android. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)).
+
+| Method            | Parameters | Description                                                               |
+| ----------------- | ---------- | ------------------------------------------------------------------------- |
+| `pauseAnimation`  | —          | Pauses the animation and keeps its loop count.                            |
+| `resumeAnimation` | —          | Resumes a paused animation.                                               |
+| `stopAnimation`   | —          | Stops the animation and resets its loop count.                            |
+| `startAnimate`    | —          | Deprecated. Restarts the animation from the start: use `resumeAnimation`. |
+
+```typescript
+import { Component, ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-spinner',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <image
+      #spinner
+      src="https://example.com/spinner.gif"
+      style="width: 48px; height: 48px;"
+      (bindtap)="pause()"
+    />
+  `,
+})
+export class Spinner {
+  readonly spinner = viewChild.required('spinner', { read: ElementRef });
+
+  pause(): void {
+    this.spinner().nativeElement.invoke?.('pauseAnimation');
+  }
+}
+```
+
+## Related
+
+- [`<svg>`](/api/elements/svg): vector images
+- [CSS on Lynx](/guide/styling): sizing, borders and `background-image`
+- [Call element methods](/guide/selector-query)

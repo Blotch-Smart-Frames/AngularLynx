@@ -1,6 +1,6 @@
 # Button
 
-An interactive button component with multiple visual variants, sizes, and loading/disabled states.
+A tappable button with five styles, four sizes, and disabled and loading states.
 
 <Go example="ui-button" defaultFile="src/app/app.ts" />
 
@@ -11,22 +11,38 @@ npx @blotch/dolan add button
 ```
 
 ```typescript
-import { UiButton } from '@/components/ui/button';
+import { UiButton } from '../components/ui/button';
 ```
 
-:::tip
-The `button` component depends on `spinner`. Both are added automatically.
-:::
+This also adds [Spinner](/dolan/spinner), which shows while the button is loading. Button imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-```angular-html
-<ui-button (pressed)="onSave()">Save changes</ui-button>
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiButton } from '../components/ui/button';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiButton],
+  template: `
+    <ui-button [loading]="saving()" (pressed)="save()">Save changes</ui-button>
+  `,
+})
+export class App {
+  protected readonly saving = signal(false);
+
+  protected save(): void {
+    this.saving.set(true);
+  }
+}
 ```
 
-## Variants
+- `pressed` fires on tap. It doesn't fire while the button is disabled or loading.
+- Put plain text inside. The button wraps it in a `<text>` element for you.
+- The button shrinks slightly while a finger is down, on every platform.
 
-Use the `variant` input to change the button's visual style.
+### Variants
 
 ```angular-html
 <ui-button variant="default">Default</ui-button>
@@ -36,9 +52,7 @@ Use the `variant` input to change the button's visual style.
 <ui-button variant="ghost">Ghost</ui-button>
 ```
 
-## Sizes
-
-Use the `size` input to control the button dimensions.
+### Sizes
 
 ```angular-html
 <ui-button size="sm">Small</ui-button>
@@ -47,40 +61,72 @@ Use the `size` input to control the button dimensions.
 <ui-button size="icon">+</ui-button>
 ```
 
-## Disabled
+`icon` makes a square button for a single character.
 
-Set `disabled` to prevent interaction. The button becomes visually muted and ignores taps.
+### Disabled and loading
 
 ```angular-html
 <ui-button [disabled]="true">Disabled</ui-button>
+<ui-button [loading]="true">Saving</ui-button>
 ```
 
-## Loading
+Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner.
 
-Set `loading` to replace the label with a spinner. The button also becomes non-interactive while loading.
+### Custom classes
 
 ```angular-html
-<ui-button [loading]="isSaving()">Save</ui-button>
+<ui-button class="w-full">Continue</ui-button>
 ```
 
-## Custom classes
+Your classes are merged onto the button's container and replace any default they conflict with.
 
-Use the `class` input to apply additional Tailwind utility classes.
+### Button styles on your own view
 
-```angular-html
-<ui-button class="w-full">Full width</ui-button>
+`buttonVariants()` returns the container classes for a variant and size. Use it to style a view that isn't a `<ui-button>`, and color its text yourself.
+
+```typescript title="src/app/settings-link.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { buttonVariants } from '../components/ui/button';
+
+@Component({
+  selector: 'app-settings-link',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [class]="linkClass">
+      <text class="text-sm font-medium text-foreground">Settings</text>
+    </view>
+  `,
+})
+export class SettingsLink {
+  protected readonly linkClass = buttonVariants({
+    variant: 'outline',
+    size: 'sm',
+  });
+}
 ```
 
 ## API
 
-| Input      | Type                                                                | Default     | Description                              |
-| ---------- | ------------------------------------------------------------------- | ----------- | ---------------------------------------- |
-| `variant`  | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost'` | `'default'` | Visual style of the button               |
-| `size`     | `'default' \| 'sm' \| 'lg' \| 'icon'`                               | `'default'` | Size of the button                       |
-| `disabled` | `boolean`                                                           | `false`     | Whether the button is disabled           |
-| `loading`  | `boolean`                                                           | `false`     | Shows a spinner and disables interaction |
-| `class`    | `string`                                                            | `''`        | Additional Tailwind CSS classes          |
+### UiButton
 
-| Output    | Type   | Description                                                              |
-| --------- | ------ | ------------------------------------------------------------------------ |
-| `pressed` | `void` | Emitted when the button is tapped (not emitted when disabled or loading) |
+| Input      | Type                                                                | Default     | Description                                     |
+| ---------- | ------------------------------------------------------------------- | ----------- | ----------------------------------------------- |
+| `variant`  | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost'` | `'default'` | Visual style.                                   |
+| `size`     | `'default' \| 'sm' \| 'lg' \| 'icon'`                               | `'default'` | Height and padding. `icon` is a square.         |
+| `disabled` | `boolean`                                                           | `false`     | Dims the button and ignores taps.               |
+| `loading`  | `boolean`                                                           | `false`     | Shows a spinner, dims the button, ignores taps. |
+| `class`    | `string`                                                            | `''`        | Extra Tailwind classes for the container.       |
+
+| Output    | Type   | Description                               |
+| --------- | ------ | ----------------------------------------- |
+| `pressed` | `void` | Emits on tap, unless disabled or loading. |
+
+The file also exports `buttonVariants` and the `ButtonVariant` and `ButtonSize` types.
+
+## Related
+
+- [Button Group](/dolan/button-group): connected buttons for related actions
+- [Toggle](/dolan/toggle): a button that stays pressed
+- [Spinner](/dolan/spinner): the loading indicator
+- [Handling taps and events](/guide/elements/event-handling)

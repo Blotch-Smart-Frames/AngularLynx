@@ -1,13 +1,18 @@
-# Forms
+# Signal Forms
 
-Build a reactive contact form with validation using Angular's `ReactiveFormsModule` on Lynx.
+A contact form built with Angular's signal forms, with required and email validation on the UI components' inputs. Look here to wire `@angular/forms/signals` into an AngularLynx app.
 
 <Go example="forms" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **`ReactiveFormsModule`** — Angular's reactive forms work on Lynx with native `<input>` and `<textarea>` elements
-- **`FormGroup` / `FormControl`** — typed form controls with `nonNullable: true` for stricter null safety
-- **`Validators`** — built-in validators (`required`, `email`) drive conditional error messages via `@if` control flow
-- **`markAllAsTouched()`** — triggers validation display on submit without requiring the user to blur each field first
-- **Signal-driven submit state** — `signal(false)` tracks submission status, auto-resetting after a timeout
+- **`form()`** — builds the form from a `signal` model, with `required()` and `email()` rules in its schema. See [Forms](/guide/forms).
+- **`[formField]`** — binds each [Input](/dolan/input) and [Textarea](/dolan/textarea) to its field, through the `FormField` directive.
+- **Field state** — `touched()` and `errors()` decide when each error message appears.
+- **`submit()`** — marks every field as touched, then runs the callback only if the form is valid.
+- **UI components** — the inputs and the [Button](/dolan/button) come from the [UI components](/dolan/).
+
+## Related
+
+- [Signal forms on angular.dev](https://angular.dev/guide/forms/signals/models)
+- [Form Input](/examples/form-input)

@@ -1,0 +1,103 @@
+.compare-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 auto 80px;
+  padding: 0 20px;
+  max-width: 960px;
+
+  .title {
+    color: var(--home-title-color);
+    text-align: center;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 40px;
+    margin-bottom: 12px;
+  }
+
+  .desc {
+    color: var(--home-desc-color);
+    text-align: center;
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+
+  // The table scrolls sideways on its own on a narrow phone, so the page
+  // itself never does.
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 16px;
+    border: var(--home-features-item-bg-border);
+    background: var(--home-features-item-bg);
+  }
+
+  .table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 14px;
+    line-height: 1.5;
+
+    th,
+    td {
+      padding: 14px 20px;
+      text-align: left;
+      vertical-align: top;
+      border: none;
+      border-bottom: var(--home-features-item-bg-border);
+    }
+
+    thead th {
+      color: var(--home-features-item-desc-color);
+      font-weight: 500;
+    }
+
+    tbody th {
+      color: var(--home-title-color);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    td {
+      color: var(--home-features-item-desc-color);
+    }
+
+    tbody tr:last-child th,
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .highlight th {
+      color: var(--rp-c-brand);
+    }
+
+    .highlight td {
+      color: var(--home-title-color);
+    }
+  }
+
+  .link {
+    margin-top: 20px;
+    color: #dd0031;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+:global(.dark) .compare-frame .link {
+  color: #ff6b6b;
+}
+
+@media (max-width: 500px) {
+  .compare-frame .title {
+    font-size: 8vw;
+    line-height: normal;
+  }
+}

@@ -1,0 +1,130 @@
+# List
+
+Scroll through long lists smoothly: [Lynx](/guide/glossary#lynx) creates rows as they scroll into view and reuses them, so thousands of items stay fast.
+
+`<ui-list>` wraps Lynx's [`<list>`](/api/elements/list) element with typed inputs, named outputs and a height you can set in one place.
+
+## Installation
+
+```bash
+npx @blotch/dolan add list
+```
+
+```typescript
+import { UiList } from '../components/ui/list';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiList } from '../components/ui/list';
+
+type Contact = { id: string; name: string };
+
+@Component({
+  selector: 'app-contacts',
+  imports: [LYNX_ELEMENTS, UiList],
+  template: `
+    <ui-list height="400px">
+      @for (contact of contacts(); track contact.id) {
+        <list-item [attr.item-key]="contact.id">
+          <view class="border-b border-border px-4 py-3">
+            <text class="text-base text-foreground">{{ contact.name }}</text>
+          </view>
+        </list-item>
+      }
+    </ui-list>
+  `,
+})
+export class Contacts {
+  protected readonly contacts = signal<Contact[]>([
+    { id: 'c1', name: 'Ada Lovelace' },
+    { id: 'c2', name: 'Grace Hopper' },
+  ]);
+}
+```
+
+- Wrap each row in a `<list-item>` with a unique `item-key`. Lynx uses the key to track and reuse rows, so never reuse a key for a different item.
+- Give the list a fixed height, with `height` or a height class such as `h-96`. A list without one doesn't scroll.
+- The list fills its parent's width.
+
+For a short list, a [`<scroll-view>`](/api/elements/scroll-view) is simpler and works as well.
+
+### Load more at the end
+
+`scrolledToEnd` emits when the user nears the bottom. Append the next page there for infinite scroll.
+
+```angular-html
+<ui-list
+  class="h-full"
+  [lowerThresholdItemCount]="5"
+  (scrolledToEnd)="loadMore()"
+>
+  …
+</ui-list>
+```
+
+- `lowerThresholdItemCount` emits `scrolledToEnd` that many items before the last one, so the next page arrives before the user hits the bottom.
+- `scrolledToStart` and `upperThresholdItemCount` do the same at the top.
+- Appending to a signal is safe here. Fetching data isn't supported from components yet (see [Network requests](/guide/concepts/javascript-environment#network-requests)).
+
+### Grid and masonry
+
+`listType="flow"` lays rows out in a grid of `spanCount` columns. `listType="waterfall"` does the same with columns of uneven heights, like a photo wall.
+
+```angular-html
+<ui-list
+  listType="waterfall"
+  [spanCount]="2"
+  mainAxisGap="8px"
+  crossAxisGap="8px"
+  height="600px"
+>
+  …
+</ui-list>
+```
+
+`mainAxisGap` is the gap between rows along the scroll direction, and `crossAxisGap` the gap between columns. Set `full-span` on a `<list-item>`, such as a section header, to stretch it across every column.
+
+### Horizontal
+
+```angular-html
+<ui-list orientation="horizontal" class="h-32">…</ui-list>
+```
+
+## API
+
+### UiList
+
+Each input sets one [`<list>`](/api/elements/list) attribute, named in brackets.
+
+| Input                     | Type                                | Default      | Description                                                                             |
+| ------------------------- | ----------------------------------- | ------------ | --------------------------------------------------------------------------------------- |
+| `listType`                | `'single' \| 'flow' \| 'waterfall'` | `'single'`   | One column, a grid, or a grid with uneven heights (`list-type`).                        |
+| `spanCount`               | `number`                            | `1`          | Number of columns for `flow` and `waterfall` (`span-count`).                            |
+| `orientation`             | `'vertical' \| 'horizontal'`        | `'vertical'` | Scroll direction (`scroll-orientation`).                                                |
+| `height`                  | `string`                            | `''`         | CSS height, such as `'400px'`, set as an inline style. Needed unless a class sets one.  |
+| `mainAxisGap`             | `string`                            | `''`         | Gap between items along the scroll direction, such as `'8px'` (`list-main-axis-gap`).   |
+| `crossAxisGap`            | `string`                            | `''`         | Gap between columns (`list-cross-axis-gap`).                                            |
+| `bounces`                 | `boolean`                           | `true`       | Bounce past the ends on iOS (`bounces`).                                                |
+| `scrollBar`               | `boolean`                           | `true`       | Show the scroll bar (`scroll-bar-enable`).                                              |
+| `nestedScroll`            | `boolean`                           | `false`      | Coordinate scrolling with a scrolling parent (`enable-nested-scroll`).                  |
+| `sticky`                  | `boolean`                           | `false`      | Let items with `sticky-top` or `sticky-bottom` stick to the edge (`sticky`).            |
+| `stickyOffset`            | `number`                            | `0`          | Distance in px from the edge where sticky items stop (`sticky-offset`).                 |
+| `preloadBufferCount`      | `number`                            | `0`          | Extra items to prepare beyond the visible ones (`preload-buffer-count`).                |
+| `lowerThresholdItemCount` | `number`                            | `0`          | How many items before the end `scrolledToEnd` emits (`lower-threshold-item-count`).     |
+| `upperThresholdItemCount` | `number`                            | `0`          | How many items before the start `scrolledToStart` emits (`upper-threshold-item-count`). |
+| `class`                   | `string`                            | `''`         | Extra Tailwind classes for the `<list>`.                                                |
+
+| Output            | Type   | Description                                                       |
+| ----------------- | ------ | ----------------------------------------------------------------- |
+| `scrolledToStart` | `void` | Emits when the list scrolls near its start (`bindscrolltoupper`). |
+| `scrolledToEnd`   | `void` | Emits when the list scrolls near its end (`bindscrolltolower`).   |
+
+## Related
+
+- [`<list>`](/api/elements/list): the element `<ui-list>` wraps, and `<list-item>`
+- [`<scroll-view>`](/api/elements/scroll-view): a simpler scroller for short content
+- [Pagination](/dolan/pagination): show results in pages instead

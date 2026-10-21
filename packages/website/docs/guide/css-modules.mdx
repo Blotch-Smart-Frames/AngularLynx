@@ -1,46 +1,38 @@
 # CSS Modules
 
-[CSS Modules](https://github.com/css-modules/css-modules) let you import class names as JavaScript objects, where each class is locally scoped with a unique hash. They work out of the box with the AngularLynx build plugin — no extra configuration needed.
+Give a component class names that can't clash with any other component's. With [CSS Modules](https://github.com/css-modules/css-modules), the build turns each class in a `.module.css` file into a unique name, and you apply it from TypeScript.
 
 <Go example="css-modules" defaultFile="src/app/app.ts" />
 
-## Setup
+## When to use them
 
-Add a type declaration so TypeScript understands `.module.css` imports:
+Reach for CSS Modules when:
 
-```typescript title="src/css-modules.d.ts"
-declare module '*.module.css' {
-  const classes: Record<string, string>;
-  export default classes;
-}
-```
+- **Two components use the same class name.** Component styles aren't isolated on Lynx: a `.title` rule in one component also matches `.title` in another. CSS Modules make each name unique. See [Component styles](/guide/styling#component-styles).
+- **You pick classes in TypeScript.** The class names are values you can pass around, compute or store.
+- **Several components share one stylesheet.** Each imports the same `.module.css` file.
 
-## Usage
+For most components, `styles` or `styleUrl` with distinctive class names is simpler.
 
-Create a `.module.css` file with your styles:
+## Use a CSS Module
+
+Write ordinary CSS in a file ending in `.module.css`:
 
 ```css title="src/app/card/card.module.css"
 .card {
   background-color: white;
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 12px;
 }
 
 .title {
   font-size: 18px;
   font-weight: bold;
-  color: #333;
-}
-
-.badge {
-  background-color: #6200ee;
-  border-radius: 16px;
-  padding: 4px 10px;
+  color: #333333;
 }
 ```
 
-Import and apply in your component:
+Import it into the component, and bind each class with `[class]`:
 
 ```typescript title="src/app/card/card.ts"
 import { Component } from '@angular/core';
@@ -48,38 +40,46 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import styles from './card.module.css'; // [!code highlight]
 
 @Component({
+  selector: 'app-card',
   imports: [LYNX_ELEMENTS],
   template: `
     <view [class]="styles['card']">
-      <text [class]="styles['title']">Card Title</text>
-      <view [class]="styles['badge']">
-        <text style="color: white; font-size: 12px">New</text>
-      </view>
+      <text [class]="styles['title']">Card title</text>
     </view>
   `,
 })
 export class Card {
-  readonly styles = styles; // [!code highlight]
+  protected readonly styles = styles; // [!code highlight]
 }
 ```
 
-At build time, class names are hashed (e.g., `card` becomes `card-abc123`), preventing collisions across components.
+- **`styles` maps each class to its unique name**, such as `card` to something like `card-a1b2c3`. The build writes the CSS under the unique names.
+- **Use brackets, `styles['card']`, not `styles.card`.** The type is an index signature, and Angular's strict TypeScript settings only allow bracket access on those.
+- **The component exposes `styles` as a field** because a template can only read the component's own members.
 
-:::info
-Use bracket notation (`styles['card']`) instead of dot access (`styles.card`). TypeScript's strict mode enforces bracket access on index-signature types like `Record<string, string>`.
-:::
+There's nothing to configure. Any file ending in `.module.css` is a CSS Module.
 
-## When to Use CSS Modules
+## TypeScript types
 
-Angular already scopes component styles via `ViewEncapsulation`. CSS Modules serve a different purpose:
+Apps created with `npm create angular-lynx` already have the types. They come from `src/rspeedy-env.d.ts`, which `ng add` writes:
 
-| Feature                 | Angular ViewEncapsulation                      | CSS Modules                           |
-| ----------------------- | ---------------------------------------------- | ------------------------------------- |
-| Scoping                 | Automatic per-component                        | Per-file, explicit import             |
-| Class names             | Original names, scoped via attribute selectors | Hashed names                          |
-| Composition             | Limited to component boundaries                | Compose across components via imports |
-| Dynamic class selection | Template-only                                  | Programmatic in TypeScript            |
+```typescript title="src/rspeedy-env.d.ts"
+/// <reference types="@blotch/angular-lynx-build/client" />
+```
 
-Use CSS Modules when you need to programmatically select class names, share styles across multiple components, or work with a design system that exports `.module.css` files.
+If TypeScript reports `Cannot find module './card.module.css'`, add that file.
 
-For most components, Angular's default `styleUrl` is simpler and works well.
+## Compared with component styles
+
+|                    | Component styles (`styles`, `styleUrl`)                                                   | CSS Modules                        |
+| ------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------- |
+| Class names        | As written                                                                                | Unique, generated by the build     |
+| Scoping            | None. `Emulated` encapsulation doesn't rewrite selectors on Lynx, so rules apply app-wide | Each name exists only in its file  |
+| How you apply them | `class="title"`                                                                           | `[class]="styles['title']"`        |
+| Share across files | Copy the CSS, or move it to the global stylesheet                                         | Import the same `.module.css` file |
+
+## Related
+
+- [CSS on Lynx](/guide/styling)
+- [Tailwind CSS](/guide/tailwindcss)
+- [CSS Modules example](/examples/css-modules)

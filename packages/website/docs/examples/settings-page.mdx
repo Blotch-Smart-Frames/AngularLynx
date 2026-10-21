@@ -1,12 +1,20 @@
 # Settings Page
 
-A typical app settings screen with grouped preference toggles, a language selector, and a destructive action with confirmation dialog.
+A settings screen with grouped switches, a language picker, a theme choice and a confirmed "Delete Account" button. Use it as a starting point for your own preferences screen.
+
+Built with the [UI components](/dolan/): [Switch](/dolan/switch), [Select](/dolan/select), [Radio Group](/dolan/radio-group), [Alert Dialog](/dolan/alert-dialog), [Button](/dolan/button), [Label](/dolan/label) and [Separator](/dolan/separator).
 
 <Go example="settings-page" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **Grouped settings** — Separators and section headings organize preferences into visual groups (Notifications, Appearance, Danger Zone)
-- **Switch for binary options** — Toggles like push notifications and sound use `UiSwitch` with two-way binding via `[(checked)]`
-- **Select and Radio Group for choices** — Multi-option preferences use `UiSelect` (language) and `UiRadioGroup` (theme) depending on option count
-- **Destructive action with confirmation** — The "Delete Account" button opens an `UiAlertDialog` requiring explicit confirmation before proceeding
+- **Two-way binding to signals** — `[(checked)]`, `[(value)]` and `[(open)]` bind each control straight to a `signal`. See [Signals and change detection](/guide/concepts/signals).
+- **Grouped sections** — headings and separators split the screen into Notifications, Appearance and Danger Zone.
+- **Tappable radio labels** — each label sits inside its `ui-radio-group-item`, so tapping the text selects the option. [Lynx](/guide/glossary#lynx) has no `<label for>`.
+- **Confirming a destructive action** — Delete Account opens an Alert Dialog with Cancel and Delete buttons.
+- **A stored theme choice** — the theme radio group only saves the choice in a signal. To switch colors, see [Dark mode](/guide/dark-mode).
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays)
+- [Forms](/guide/forms)

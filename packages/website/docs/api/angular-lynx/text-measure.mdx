@@ -1,0 +1,100 @@
+# LynxTextMeasure
+
+Measure how wide a string renders, and where it breaks into lines, before you lay it out. `import { LynxTextMeasure } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/label.ts"
+import { Component, computed, inject, input } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTextMeasure } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-label',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [style.width.px]="width()">
+      <text style="font-size: 16px">{{ label() }}</text>
+    </view>
+  `,
+})
+export class Label {
+  readonly label = input.required<string>();
+  readonly #measure = inject(LynxTextMeasure);
+  readonly width = computed(() => {
+    try {
+      return this.#measure.measure(this.label(), { fontSize: '16px' }).width;
+    } catch {
+      // The web preview can't measure text, so leave the width unset there.
+      return null;
+    }
+  });
+}
+```
+
+## API
+
+### `LynxTextMeasure`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxTextMeasure {}
+```
+
+Measures text with the platform's text engine. On a device, it works on both threads, including in event handlers.
+
+### `LynxTextMeasure.measure()`
+
+```typescript
+measure(text: string, options: TextInfo): TextMetrics;
+```
+
+Returns the text's width in pixels. With `maxWidth` and a `maxLine` above 1, it also returns the text of each line.
+
+- **Empty `text`** returns `{ width: 0 }`.
+- **Built-in fonts only.** A custom font, from `@font-face` or `LynxFont`, is measured with the system font instead.
+- **Invalid options,** such as a `fontSize` of 0, return `{ width: 0 }`.
+- **Throws in the web preview** and outside Lynx, such as in unit tests, where Lynx's text measuring isn't available.
+
+## Types
+
+`TextInfo` and `TextMetrics` come from `@lynx-js/types`.
+
+### `TextInfo`
+
+```typescript
+interface TextInfo {
+  fontSize: string;
+  fontFamily?: string;
+  maxWidth?: string;
+  maxLine?: number;
+}
+```
+
+| Field        | Description                                                       |
+| ------------ | ----------------------------------------------------------------- |
+| `fontSize`   | Required. In `px` only, such as `'14px'`.                         |
+| `fontFamily` | A built-in font. Defaults to the system font.                     |
+| `maxWidth`   | The line width for line breaking, in `px` only.                   |
+| `maxLine`    | The most lines to lay out. With `1`, the result has no `content`. |
+
+Other text styles, such as `fontWeight` and `letterSpacing`, aren't supported.
+
+### `TextMetrics`
+
+```typescript
+interface TextMetrics {
+  width: number;
+  content?: Array<string>;
+}
+```
+
+| Field     | Description                                 |
+| --------- | ------------------------------------------- |
+| `width`   | The rendered width, in pixels.              |
+| `content` | The text of each line, when the text wraps. |
+
+## Related
+
+- [Measure text](/guide/text-measurement)
+- [Fonts](/api/angular-lynx/fonts)
+- [Lynx `getTextInfo()` docs](https://lynxjs.org/api/lynx-api/lynx/lynx-get-text-info.html)

@@ -1,26 +1,74 @@
 # `MainThreadRef`
 
-A shared reference that can be read and written from both threads. Use it to pass state between main thread functions or to accumulate values across events (like a tap counter).
+A box that keeps a value between calls of your [main-thread scripts](/guide/glossary#main-thread-script), such as a tap count or the element a drag started on. `import { createMainThreadRef, MainThreadRef } from '@blotch/angular-lynx';`
 
-:::danger Escape Hatch — Not Standard Angular
-Main thread scripts directly manipulate native elements, **bypassing Angular's signal-based change detection entirely**. This is analogous to direct DOM manipulation via `ElementRef.nativeElement` — something Angular [explicitly discourages](https://angular.dev/api/core/ElementRef). Only use when cross-thread latency is unacceptable (e.g., 60fps gesture tracking). Try standard Angular event bindings first.
+:::info
+Template handlers such as `(bindtap)` already run on the main thread. [Main-thread scripts](/guide/main-thread/) explains when you need this API instead.
 :::
 
 ## Usage
 
-```typescript
-import { createMainThreadRef, mainThreadFn } from '@blotch/angular-lynx';
-import type { MainThread } from '@blotch/angular-lynx';
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import {
+  createMainThreadRef,
+  LYNX_ELEMENTS,
+  LynxMainThreadEvent,
+  mainThreadFn,
+  type MainThread,
+} from '@blotch/angular-lynx';
 
-const counter = createMainThreadRef(0); // [!code highlight]
+const taps = createMainThreadRef(0);
 
-const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
-  counter.current++; // [!code highlight]
-  const el = event.currentTarget;
-  el.setStyleProperty('opacity', String(1 - counter.current * 0.1));
+const fade = mainThreadFn((event: MainThread.TouchEvent) => {
+  taps.current++;
+  event.currentTarget.setStyleProperty('opacity', String(1 / taps.current));
 });
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxMainThreadEvent],
+  template: `
+    <view [mainThreadBindtap]="fade">
+      <text>Tap to fade</text>
+    </view>
+  `,
+})
+export class App {
+  readonly fade = fade;
+}
 ```
 
-- `createMainThreadRef(initialValue)` creates a `MainThreadRef<T>`
-- Access via `.current` (getter and setter)
-- On the main thread, refs are stored in `globalThis.__workletRefMap` for worklet access
+## API
+
+### `createMainThreadRef(initValue)`
+
+```typescript
+function createMainThreadRef<T>(initValue: T): MainThreadRef<T>;
+```
+
+Creates a ref holding `initValue`. It's the same as `new MainThreadRef(initValue)`.
+
+### `MainThreadRef<T>`
+
+```typescript
+class MainThreadRef<T> {
+  constructor(initValue: T);
+  current: T;
+}
+```
+
+- **`current`**: the value. Read it and assign to it from your main-thread functions.
+
+## Constraints
+
+- **Each thread has its own copy.** A value written on the main thread isn't seen by code on the background thread, and the reverse. Use a ref only from main-thread functions.
+- **Use it from the function's closure.** Don't pass it as an argument to `runOnMainThread()` or `runOnBackground()`: from the other thread, the function receives a plain object instead of the ref.
+- **Create it at module scope**, next to the functions that use it.
+- **Changing it doesn't render anything.** It isn't a signal.
+
+## Related
+
+- [Main-thread scripts guide](/guide/main-thread/)
+- [`mainThreadFn`](/api/main-thread/main-thread-fn)
+- [`LynxMainThreadEvent`](/api/main-thread/main-thread-event)

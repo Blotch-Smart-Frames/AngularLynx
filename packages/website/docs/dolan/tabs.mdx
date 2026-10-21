@@ -1,6 +1,6 @@
 # Tabs
 
-A set of layered sections of content, known as tab panels, displayed one at a time.
+Panels that share one space, switched by a row of tab buttons.
 
 <Go example="ui-tabs" defaultFile="src/app/app.ts" />
 
@@ -13,78 +13,101 @@ npx @blotch/dolan add tabs
 ```typescript
 import {
   UiTabs,
+  UiTabsContent,
   UiTabsList,
   UiTabsTrigger,
-  UiTabsContent,
-} from '@/components/ui/tabs';
+} from '../components/ui/tabs';
 ```
 
 ## Usage
 
-### Basic
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiTabs,
+  UiTabsContent,
+  UiTabsList,
+  UiTabsTrigger,
+} from '../components/ui/tabs';
 
-Set the `value` on `ui-tabs` to control which tab is active. Each trigger and content panel is linked by a matching `value`:
-
-```angular-html
-<ui-tabs value="tab1">
-  <ui-tabs-list>
-    <ui-tabs-trigger value="tab1">Tab 1</ui-tabs-trigger>
-    <ui-tabs-trigger value="tab2">Tab 2</ui-tabs-trigger>
-  </ui-tabs-list>
-  <ui-tabs-content value="tab1">
-    <text>Content for tab 1.</text>
-  </ui-tabs-content>
-  <ui-tabs-content value="tab2">
-    <text>Content for tab 2.</text>
-  </ui-tabs-content>
-</ui-tabs>
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiTabs, UiTabsList, UiTabsTrigger, UiTabsContent],
+  template: `
+    <ui-tabs [(value)]="tab">
+      <ui-tabs-list>
+        <ui-tabs-trigger value="account">Account</ui-tabs-trigger>
+        <ui-tabs-trigger value="password">Password</ui-tabs-trigger>
+      </ui-tabs-list>
+      <ui-tabs-content value="account">
+        <text class="text-sm text-foreground">Change your name and email.</text>
+      </ui-tabs-content>
+      <ui-tabs-content value="password">
+        <text class="text-sm text-foreground">Change your password.</text>
+      </ui-tabs-content>
+    </ui-tabs>
+  `,
+})
+export class App {
+  protected readonly tab = signal('account');
+}
 ```
 
-### Controlled
+- A trigger and a panel belong together when their `value` matches.
+- Set a starting `value`. With the default `''`, no tab is active and every panel is hidden.
+- Triggers wrap their content in `<text>`, so pass plain text.
+- The tab bar hugs its triggers instead of filling the width.
 
-Use two-way binding with the `value` model to track the active tab:
+### Without a signal
 
 ```angular-html
-<ui-tabs [(value)]="activeTab" (changed)="onTabChange($event)">
-  <ui-tabs-list>
-    <ui-tabs-trigger value="overview">Overview</ui-tabs-trigger>
-    <ui-tabs-trigger value="details">Details</ui-tabs-trigger>
-  </ui-tabs-list>
-  <ui-tabs-content value="overview">
-    <text>Overview content.</text>
-  </ui-tabs-content>
-  <ui-tabs-content value="details">
-    <text>Details content.</text>
-  </ui-tabs-content>
-</ui-tabs>
+<ui-tabs value="account" (changed)="onTab($event)">…</ui-tabs>
 ```
+
+A plain `value` sets the starting tab. `changed` emits the value of each tab the user taps.
+
+### Panels keep their state
+
+Every panel stays rendered, and inactive ones are hidden rather than removed. So components inside a panel keep their state when the user switches away and back.
+
+When the active tab changes, the new panel slides in from the side of the tab that was tapped.
 
 ## API
 
 ### UiTabs
 
-| Input/Output | Type             | Default | Description                                           |
-| ------------ | ---------------- | ------- | ----------------------------------------------------- |
-| `value`      | `model<string>`  | `''`    | Two-way binding for the currently active tab value    |
-| `class`      | `string`         | `''`    | Additional CSS classes to apply to the tabs container |
-| `changed`    | `output<string>` | —       | Emits the new tab value when the active tab changes   |
+| Input   | Type     | Default | Description                                   |
+| ------- | -------- | ------- | --------------------------------------------- |
+| `value` | `string` | `''`    | The active tab's value. Supports `[(value)]`. |
+| `class` | `string` | `''`    | Extra Tailwind classes for the container.     |
 
-### UiTabsList
-
-| Input   | Type     | Default | Description                                               |
-| ------- | -------- | ------- | --------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the tab list container |
+| Output        | Type     | Description                                 |
+| ------------- | -------- | ------------------------------------------- |
+| `changed`     | `string` | Emits the value of the tab the user tapped. |
+| `valueChange` | `string` | Emits the new value, for `[(value)]`.       |
 
 ### UiTabsTrigger
 
-| Input   | Type     | Default    | Description                                    |
-| ------- | -------- | ---------- | ---------------------------------------------- |
-| `value` | `string` | _required_ | The value that identifies this tab trigger     |
-| `class` | `string` | `''`       | Additional CSS classes to apply to the trigger |
+| Input   | Type     | Default  | Description                             |
+| ------- | -------- | -------- | --------------------------------------- |
+| `value` | `string` | Required | The panel this trigger shows.           |
+| `class` | `string` | `''`     | Extra Tailwind classes for the trigger. |
+
+No outputs.
 
 ### UiTabsContent
 
-| Input   | Type     | Default    | Description                                              |
-| ------- | -------- | ---------- | -------------------------------------------------------- |
-| `value` | `string` | _required_ | The value that identifies this tab content panel         |
-| `class` | `string` | `''`       | Additional CSS classes to apply to the content container |
+| Input   | Type     | Default  | Description                           |
+| ------- | -------- | -------- | ------------------------------------- |
+| `value` | `string` | Required | The trigger that shows this panel.    |
+| `class` | `string` | `''`     | Extra Tailwind classes for the panel. |
+
+No outputs.
+
+All other sub-components (`UiTabsList`) accept `class`.
+
+## Related
+
+- [Accordion](/dolan/accordion): stacked sections instead of tabs
+- [Toggle](/dolan/toggle): a segmented control without panels

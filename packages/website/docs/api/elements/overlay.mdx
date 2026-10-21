@@ -1,43 +1,86 @@
-# &lt;overlay&gt;
+# `<overlay>`
 
-:::tip
-Add `imports: [LYNX_ELEMENTS]` from `@blotch/angular-lynx` to your component for intellisense, autocomplete, and type safety.
-:::
-
-Renders content above the normal document flow, like a modal or popup. Toggle visibility with the `visible` attribute.
+A layer above the whole page, like a modal `<dialog>`. Use it for dialogs and sheets: while it shows, the rest of the app gets no taps.
 
 <Go example="element-overlay" defaultFile="src/app/app.ts" />
 
-```angular-html
-<overlay [attr.visible]="showModal()">
-  <view class="backdrop" (bindtap)="closeModal()">
-    <view class="modal" (catchtap)="($event)">
-      <text class="modal-title">Confirm</text>
-      <text>Are you sure?</text>
-      <view class="modal-button" (bindtap)="closeModal()">
-        <text style="color: white;">Close</text>
+## Usage
+
+```typescript title="src/app/confirm.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-confirm',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <overlay
+      [attr.visible]="open()"
+      style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;"
+    >
+      <view
+        style="width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.4);"
+        (bindtap)="open.set(false)"
+      >
+        <view
+          style="padding: 24px; background-color: white;"
+          (catchtap)="onPanelTap()"
+        >
+          <text>Are you sure?</text>
+        </view>
       </view>
-    </view>
-  </view>
-</overlay>
+    </overlay>
+  `,
+})
+export class Confirm {
+  readonly open = signal(false);
+
+  // catchtap stops the tap here, so tapping the panel doesn't reach the backdrop and close it.
+  onPanelTap(): void {}
+}
 ```
 
-:::tip
-Use `(catchtap)` on the modal content to prevent taps from bubbling to the backdrop's `(bindtap)` handler.
+Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
+
+:::warning
+Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
 :::
 
-## Key Attributes
+## Attributes
 
-| Attribute | Type      | Description                                     |
-| --------- | --------- | ----------------------------------------------- |
-| `visible` | `boolean` | Controls whether the overlay is shown or hidden |
+| Attribute                      | Type                                           | Default    | Description                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `visible`                      | `boolean`                                      | `false`    | Shows or hides the overlay.                                                                                                                            |
+| `level`                        | `1 \| 2 \| 3 \| 4`                             | `1`        | iOS and Android. The layer the overlay sits in, when several are open.                                                                                 |
+| `mode`                         | `'window' \| 'top' \| 'page'`                  | `'window'` | iOS only. What the overlay attaches to in the native app: the whole app window, the topmost screen, or the current navigation stack.                   |
+| `ios-enable-swipe-back`        | `boolean`                                      | `false`    | iOS only. Lets the swipe-back gesture leave the page while the overlay shows.                                                                          |
+| `android-navigation-bar-style` | `'auto' \| 'light' \| 'dark' \| 'transparent'` | `'auto'`   | Android only, Lynx 4.1 and later. Look of the system navigation bar while the overlay shows. `transparent` also needs `android-adapt-edge-to-edge`.    |
+| `android-overlay-scope`        | `'global' \| 'fragment'`                       | `'global'` | Android only, Lynx 4.3 and later. `'fragment'` ties the overlay to the part of the native screen that holds your Lynx view, so it hides along with it. |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
 
 ## Events
 
-| Event     | Description                                                                     |
-| --------- | ------------------------------------------------------------------------------- |
-| `bindtap` | Fires when the overlay background is tapped (useful for "tap outside to close") |
+Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
 
-:::info
-For programmatic overlays that can be triggered from any component, see the [Portal](/guide/portal) API.
-:::
+| Event                | `detail`                                            | Description                                                                                                                           |
+| -------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `bindshowoverlay`    | —                                                   | iOS and Android. The overlay was shown.                                                                                               |
+| `binddismissoverlay` | —                                                   | iOS and Android. The overlay was hidden.                                                                                              |
+| `bindrequestclose`   | —                                                   | Android only. The user pressed the system back button. Set `visible` to `false` to close.                                             |
+| `bindoverlaytouch`   | `{ x: number; y: number; state: 0 \| 1 \| 2 \| 3 }` | iOS and Android. A touch on the overlay. `state` is `0` down, `1` move, `2` up or `3` cancel; `x` and `y` are relative to the window. |
+| `binderror`          | `{ errorCode: string; errorMsg: string }`           | Android only. The overlay couldn't be shown.                                                                                          |
+
+Plus the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Children
+
+Give the overlay **one** child: a view that fills the screen (`width: 100%; height: 100%`), such as a dimmed backdrop. Put your content inside that view.
+
+The overlay takes no space itself. It sizes only its first child, against the screen, so a bare `position: absolute` first child collapses to the top-left corner.
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays): when to use `<overlay>`, `LynxPortal` or a UI component
+- [LynxPortal](/api/angular-lynx/portal): open an overlay from anywhere in the app
+- [Dialog](/dolan/dialog), [Sheet](/dolan/sheet) and [Bottom Sheet](/dolan/bottom-sheet): UI components built on it

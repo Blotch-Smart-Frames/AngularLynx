@@ -1,13 +1,17 @@
 # Animations
 
-Demonstrate three animation techniques on Lynx: CSS transitions, CSS keyframes, and the JavaScript `animate()` API.
+Three ways to animate on [Lynx](/guide/glossary#lynx): a CSS transition, a CSS `@keyframes` animation and the `element.animate()` API.
 
 <Go example="animations" defaultFile="src/app/app.ts" />
 
-## Key concepts
+## What it shows
 
-- **CSS transitions** — use the `transition` property and `[class.active]` binding to animate property changes smoothly
-- **CSS `@keyframes`** — define named keyframe animations and toggle them via class bindings
-- **`element.animate()` API** — Lynx supports the Web Animations API for imperative, programmatic animations with full keyframe control
-- **`viewChild()`** — signal-based query to get a reference to a native element for direct manipulation
-- **`LynxAnimation`** — typed return value from `animate()`, supporting `cancel()` and other animation lifecycle controls
+- **A CSS transition** — toggling `[class.transition-active]` animates the box's background color through `transition: background-color 0.5s`. See [Animations](/guide/animations/).
+- **CSS `@keyframes`** — adding the `spinning` class starts an endless `rotate` animation.
+- **`element.animate()`** — `viewChild()` finds the element, and `animate()` plays a scale-and-fade pulse. The returned `LynxAnimation` is canceled before each replay. See [Animate from code](/guide/animations/programmatic) and [`LynxAnimation`](/api/angular-lynx/animation).
+- **The `setTimeout` rule** — `animate()` is called inside `setTimeout`, because starting it inside a tap handler can crash the app. The class toggles are wrapped too, though signal changes don't need it. See [The `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+
+## Related
+
+- [Enter and Leave Transitions](/examples/transitions)
+- [Gestures](/examples/gestures)

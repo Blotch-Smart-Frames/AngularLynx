@@ -1,86 +1,92 @@
-# Text Measurement
+# Measure text
 
-`LynxTextMeasure` wraps the native `lynx.getTextInfo()` API, letting you measure text width and perform line-breaking calculations before rendering.
+`LynxTextMeasure` tells you how wide a string will be, and where it will wrap, before you render it. Use it to:
 
-:::warning
-Only built-in platform fonts are supported. Custom fonts loaded via `@font-face` or `LynxFont` will fall back to the default system font and return **inaccurate** measurements.
-:::
+- **check whether a label fits**, and shorten it or pick a smaller size if it doesn't
+- **size a container to its text**, such as a chip, a badge or a tooltip
+- **count the lines** a paragraph takes at a given width, or get the text of each line
 
-## Usage
+## Measure a string
 
-```typescript title="src/app/layout.ts"
-import { Component, inject, signal } from '@angular/core';
-import { LYNX_ELEMENTS, LynxTextMeasure } from '@blotch/angular-lynx'; // [!code highlight]
+```typescript title="src/app/chip.ts"
+import { Component, computed, inject, input } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTextMeasure } from '@blotch/angular-lynx';
 
 @Component({
+  selector: 'app-chip',
   imports: [LYNX_ELEMENTS],
-  template: ` <text>Text width: {{ width() }}px</text> `,
+  template: `
+    <view [style.width.px]="width()" style="padding: 0 12px;">
+      <text style="font-size: 14px;">{{ label() }}</text>
+    </view>
+  `,
 })
-export class Layout {
-  readonly #textMeasure = inject(LynxTextMeasure); // [!code highlight]
-  readonly width = signal(0);
+export class Chip {
+  readonly #textMeasure = inject(LynxTextMeasure);
+  readonly label = input.required<string>();
 
-  ngOnInit(): void {
-    const { width } = this.#textMeasure.measure('Hello, Lynx!', {
-      // [!code highlight]
-      fontSize: '16px', // [!code highlight]
-    }); // [!code highlight]
-    this.width.set(width);
-  }
+  // Text width plus 12px of padding on each side.
+  readonly width = computed(
+    () =>
+      this.#textMeasure.measure(this.label(), { fontSize: '14px' }).width + 24,
+  );
 }
 ```
 
-## Line Breaking
+- **`measure(text, options)` is synchronous.** It returns `{ width }` right away, so you can use it in a `computed()`.
+- **`fontSize` is required**, and it takes `px` only, as a string: `'14px'`.
+- **`width` is in pixels.**
+- **Match your CSS.** Pass the same `fontSize` your `<text>` uses, or the numbers won't match what's drawn.
 
-Pass `maxWidth` and `maxLine` to get text split into lines. The returned `content` array contains each line as a string:
+## Find where text wraps
+
+Add `maxWidth` and `maxLine` to get the text split into lines:
 
 ```typescript
-const result = this.textMeasure.measure(
+const { content } = this.#textMeasure.measure(
   'The quick brown fox jumps over the lazy dog',
-  {
-    fontSize: '14px',
-    maxWidth: '120px', // [!code highlight]
-    maxLine: 3, // [!code highlight]
-  },
+  { fontSize: '14px', maxWidth: '120px', maxLine: 3 },
 );
 
-// result.width — total text width in px
-// result.content — ['The quick brown', 'fox jumps over', 'the lazy dog']
+// content: one string per line, for example
+// ['The quick brown', 'fox jumps over', 'the lazy dog']
 ```
 
-:::info
-When `maxLine` is `1`, the `content` field is omitted to reduce overhead — you only get the `width`.
-:::
+- **`content`** holds the text of each line, up to `maxLine` lines.
+- **`maxWidth`** takes `px` only.
+- **With `maxLine: 1`, there's no `content`.** You get only `width`.
 
-## API
+## Fonts it can measure
 
-### `measure(text, options)`
+Measurement uses the platform's built-in fonts only.
 
-| Parameter | Type       | Description                                 |
-| --------- | ---------- | ------------------------------------------- |
-| `text`    | `string`   | Text to measure                             |
-| `options` | `TextInfo` | Measurement options (from `@lynx-js/types`) |
+- **Custom fonts aren't used.** A font you load with `@font-face` or `LynxFont` (see [Custom fonts](/guide/custom-fonts/)) is measured as the default font, so the result is wrong for it.
+- **`fontFamily`** picks a built-in font by name, such as `'PingFang SC'` on iOS. Leave it out for the default font.
+- **Only the options above count.** `font-weight` and `letter-spacing` aren't supported, so bold text measures like regular text.
 
-**Returns:** `TextMetrics` (from `@lynx-js/types`)
+## In the web preview and in tests
 
-### TextInfo
+`measure()` needs Lynx's text engine. Outside a device or [Lynx Explorer](/guide/glossary#lynx-explorer), it throws:
 
-| Property     | Type     | Required | Description                                       |
-| ------------ | -------- | -------- | ------------------------------------------------- |
-| `fontSize`   | `string` | Yes      | Font size with px unit (e.g., `'14px'`)           |
-| `fontFamily` | `string` | No       | Built-in font family name (e.g., `'PingFang SC'`) |
-| `maxWidth`   | `string` | No       | Max width before wrapping, with px unit           |
-| `maxLine`    | `number` | No       | Maximum number of lines                           |
+- **In the [web preview](/guide/glossary#web-preview)**, it throws `lynx.getTextInfo is not a function`.
+- **In unit tests**, it throws too. Mock `LynxTextMeasure` with a provider.
 
-### TextMetrics
+If a component must also render in the web preview, catch the error and fall back to an estimate:
 
-| Property  | Type       | Description                                                      |
-| --------- | ---------- | ---------------------------------------------------------------- |
-| `width`   | `number`   | Measured text width in px                                        |
-| `content` | `string[]` | Lines of text (present when `maxLine` > 1 and `maxWidth` is set) |
+```typescript
+readonly width = computed(() => {
+  try {
+    return this.#textMeasure.measure(this.label(), { fontSize: '14px' }).width;
+  } catch {
+    // Web preview: about 7px per character at 14px.
+    return this.label().length * 7;
+  }
+});
+```
 
-## Use Cases
+## Related
 
-- **Truncation logic**: Determine if text will overflow a container and apply ellipsis
-- **Dynamic layouts**: Size containers based on text content before rendering
-- **Text wrapping preview**: Show how text will break across lines given width constraints
+- [`LynxTextMeasure` reference](/api/angular-lynx/text-measure)
+- [Custom fonts](/guide/custom-fonts/)
+- [`<text>` element](/api/elements/text)
+- [Testing](/guide/testing/)

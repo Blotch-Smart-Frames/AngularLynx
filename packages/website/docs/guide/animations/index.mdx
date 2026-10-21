@@ -1,85 +1,154 @@
 # Animations
 
-Animate your UI with CSS transitions, CSS `@keyframes`, or the programmatic `element.animate()` API.
+Animate your UI with CSS transitions, CSS `@keyframes`, an element's `animate()` method, or the `LynxTransition` component for content that appears and disappears.
 
 <Go example="animations" defaultFile="src/app/app.ts" />
 
-:::warning
-Angular's `@angular/animations` package is **not supported**. Lynx does not have the Web Animations API that Angular's animation DSL targets. Use the approaches below instead.
+## Choose an approach
+
+| You want to                                                    | Use                                     | Details                                                      |
+| -------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| Change a color, size or position smoothly when state changes   | CSS `transition`                        | [Below](#css-transitions)                                    |
+| Loop an animation, or play a fixed sequence (spinner, pulse)   | CSS `@keyframes`                        | [Below](#css-keyframes)                                      |
+| Start an animation from code, with keyframes chosen at runtime | The element's `animate()` method        | [Animate from code](/guide/animations/programmatic)          |
+| Animate content as it appears and disappears                   | `LynxTransition`, `LynxTransitionGroup` | [Enter and leave transitions](/guide/animations/enter-leave) |
+| Move an element with a finger, frame by frame                  | A main-thread script                    | [Main-thread scripts](/guide/main-thread/)                   |
+
+:::info Angular's animation APIs
+Angular's `@angular/animations` package (`trigger()`, `state()`, `transition()`) isn't supported. Use the approaches on this page instead.
+
+[Lynx elements](/guide/glossary#element) do have an `animate()` method that looks like the browser's [Web Animations API](https://developer.mozilla.org/docs/Web/API/Element/animate). It's Lynx's own version: it returns a handle with only `play()`, `pause()` and `cancel()`. See [Animate from code](/guide/animations/programmatic).
 :::
 
-## Choosing an Approach
+## CSS transitions
 
-| Approach            | Best for                                                  | Guide                                    |
-| ------------------- | --------------------------------------------------------- | ---------------------------------------- |
-| CSS transitions     | Simple property changes (color, size, opacity)            | [CSS Transitions](./css-transitions)     |
-| CSS @keyframes      | Continuous/looping animations (spinners, pulses)          | [CSS @keyframes](./css-keyframes)        |
-| `element.animate()` | One-shot sequences, imperative control, dynamic keyframes | [Programmatic API](./programmatic)       |
-| `LynxTransition`    | Enter/leave animations (show/hide content with animation) | [Enter/Leave Transitions](./enter-leave) |
+Put `transition` on an element, then change a property by toggling a class from a signal:
 
-## Quick Examples
+```typescript title="src/app/fade.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-### CSS Transition
+@Component({
+  selector: 'app-fade',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="box" [class.active]="active()" (bindtap)="toggle()">
+      <text>Tap me</text>
+    </view>
+  `,
+  styles: `
+    .box {
+      width: 100px;
+      height: 100px;
+      background-color: #a1a1aa;
+      transition: background-color 0.5s ease-in-out; /* [!code highlight] */
+    }
+    .active {
+      background-color: #6366f1;
+    }
+  `,
+})
+export class Fade {
+  readonly active = signal(false);
 
-Toggle a class to animate a property change:
-
-```css
-.box {
-  transition: opacity 0.3s ease;
-}
-.hidden {
-  opacity: 0;
-}
-```
-
-```angular-html
-<view class="box" [class.hidden]="isHidden()">
-  <text>Fading content</text>
-</view>
-```
-
-### CSS @keyframes
-
-Define a keyframe animation and apply it via a class:
-
-```css
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+  toggle(): void {
+    this.active.update((v) => !v);
   }
 }
-.spinning {
-  animation: spin 1s linear infinite;
+```
+
+- The handler only sets a signal, which is always safe in an event handler. Angular updates the class after it returns.
+- A `transition` runs when a property changes on an element that's already on screen. It doesn't run when the element first appears: use [`LynxTransition`](/guide/animations/enter-leave) for that.
+- Only [some properties](#what-can-animate) animate.
+- Write time values with a unit: `0ms`, not `0`. Lynx ignores a bare `0`.
+
+## CSS @keyframes
+
+Define `@keyframes` in your component styles, and start the animation by adding a class:
+
+```typescript title="src/app/spin.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-spin',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view class="spinner" [class.spinning]="spinning()" (bindtap)="toggle()">
+      <text>Spin</text>
+    </view>
+  `,
+  styles: `
+    @keyframes rotate {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    .spinner {
+      width: 80px;
+      height: 80px;
+      background-color: #f97316;
+    }
+    .spinning {
+      animation: rotate 1s linear infinite; /* [!code highlight] */
+    }
+  `,
+})
+export class Spin {
+  readonly spinning = signal(false);
+
+  toggle(): void {
+    this.spinning.update((v) => !v);
+  }
 }
 ```
 
-```angular-html
-<view [class.spinning]="loading()">
-  <text>Loading...</text>
-</view>
+- Adding the `spinning` class starts the animation from its first frame, and removing it stops the animation.
+- `infinite` in the `animation` shorthand loops it. Use a number to play it that many times.
+
+## Animate from code
+
+Call `animate()` on an element you get with [`viewChild()`](https://angular.dev/api/core/viewChild):
+
+```typescript title="src/app/pulse.ts"
+import { Component, type ElementRef, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-pulse',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view #box (bindtap)="pulse()">
+      <text>Tap to pulse</text>
+    </view>
+  `,
+})
+export class Pulse {
+  readonly box = viewChild.required<ElementRef>('box');
+
+  pulse(): void {
+    setTimeout(() => {
+      this.box().nativeElement.animate(
+        [
+          { transform: 'scale(1)' },
+          { transform: 'scale(1.2)' },
+          { transform: 'scale(1)' },
+        ],
+        { duration: 300, easing: 'ease-out' },
+      );
+    });
+  }
+}
 ```
 
-### Programmatic
+The `setTimeout` is required: start animations after the tap handler returns (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)). [Animate from code](/guide/animations/programmatic) covers the options and how to pause or cancel.
 
-Call `animate()` on a native element reference for dynamic, one-shot animations:
+## Enter and leave
 
-```typescript
-const el = this.boxRef()!.nativeElement;
-setTimeout(() => {
-  el.animate(
-    [
-      { transform: 'scale(1)' },
-      { transform: 'scale(1.2)' },
-      { transform: 'scale(1)' },
-    ],
-    { duration: 300, easing: 'ease-out' },
-  );
-}, 0);
-```
-
-### Enter/Leave
-
-Use `LynxTransition` to animate content appearing and disappearing:
+Wrap content in `<lynx-transition>` to animate it in when `show` turns `true`, and out before it's removed:
 
 ```angular-html
 <lynx-transition [show]="visible()" name="fade" [duration]="300">
@@ -88,3 +157,28 @@ Use `LynxTransition` to animate content appearing and disappearing:
   </view>
 </lynx-transition>
 ```
+
+The `fade-enter` and `fade-leave` classes each need a `@keyframes` animation. See [Enter and leave transitions](/guide/animations/enter-leave).
+
+## What can animate
+
+Both `transition` and `@keyframes` animate only these properties:
+
+| Group      | Properties                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| Position   | `left`, `right`, `top`, `bottom`                                                                   |
+| Size       | `width`, `height`, `min-width`, `max-width`, `min-height`, `max-height`, `flex-basis`, `flex-grow` |
+| Spacing    | `padding-top`, `padding-right`, `padding-bottom`, `padding-left`, and the same four for `margin`   |
+| Borders    | `border-top-width` and the other three sides, `border-top-color` and the other three sides         |
+| Appearance | `opacity`, `background-color`, `color`, `filter`                                                   |
+| Transform  | `transform`, `transform-origin`                                                                    |
+
+Any other property, such as `border-radius`, `font-size` or `letter-spacing`, doesn't animate.
+
+## Related
+
+- [Animate from code](/guide/animations/programmatic)
+- [Enter and leave transitions](/guide/animations/enter-leave)
+- [Animation API reference](/api/angular-lynx/animation)
+- [CSS on Lynx](/guide/styling)
+- [Animations example](/examples/animations)

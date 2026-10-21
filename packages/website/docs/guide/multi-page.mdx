@@ -1,18 +1,21 @@
-# Multi-Page Apps
+# Multi-page apps
 
-A multi-page Lynx app produces multiple `.lynx.bundle` files from a single workspace — one per page. Each page is a fully independent Angular application with its own `bootstrapApplication()`, root component, and injector tree.
+A multi-page app builds several **pages** from one project. Each page is a separate [bundle](/guide/glossary#bundle) and its own Angular app, with its own `bootstrapApplication()`, root component and services. Use pages when a native app shows independent Lynx screens, such as a main app plus a separate settings screen.
 
-Use multi-page when you have genuinely separate screens (e.g., a main app, a settings panel, an onboarding flow) that don't share navigation state. For screens that share a router and navigation history, use [Angular routing](/guide/routing) within a single page instead.
+:::info How people move between pages
+Angular Router can't open another page, because each page is a separate app. The [host app](/guide/glossary#host-app) (the native iOS or Android app that runs your bundles) opens each page in its own view.
+
+- The app that `ng build --platform ios` or `--platform android` generates shows only `main.lynx.bundle`. It copies your other bundles into the app but never opens them.
+- To open the others, eject the generated project and add the native code yourself (see [Run on iOS and Android](/guide/native-apps)), or [embed the bundles in your own native app](/guide/embedding/).
+
+For screens inside one app, use [routing](/guide/routing) instead.
+:::
 
 <Go example="multi-page" defaultFile="lynx.config.ts" />
 
-## Configuration
+## Add a page in `lynx.config.ts`
 
-There are two ways to define pages — choose whichever fits your workflow.
-
-### Option A: `source.entry` in lynx.config.ts
-
-Specify an object where each key is a page name and each value is the entry file path. It replaces the single entry `ng build` takes from the build target's `browser` option:
+List each page under `source.entry`. The key is the page name, and the value is its entry file:
 
 ```typescript title="lynx.config.ts"
 import { defineConfig } from '@blotch/angular-lynx-build';
@@ -27,11 +30,38 @@ export default defineConfig({
 });
 ```
 
-This is the lightweight approach — consistent with how React Lynx handles multi-page and requires no changes to `angular.json`.
+Give each page an entry file that bootstraps its own root component:
 
-### Option B: `pages` in plugin options
+```typescript title="src/pages/settings/main.ts"
+import { bootstrapApplication } from '@blotch/angular-lynx';
+import { Settings } from './settings';
+import { settingsConfig } from './settings.config';
 
-Define each page as a separate project in `angular.json`, then tell the plugin which projects to build:
+bootstrapApplication(Settings, settingsConfig);
+```
+
+```typescript title="src/pages/settings/settings.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+
+export const settingsConfig: ApplicationConfig = {
+  providers: [provideZonelessChangeDetection(), provideRenderer()],
+};
+```
+
+- **One bundle per key.** `ng build` writes `main.lynx.bundle` and `settings.lynx.bundle`, plus a `.web.bundle` of each for the [web preview](/guide/glossary#web-preview).
+- **`source.entry` replaces the single entry** that `ng build` otherwise takes from `browser` in `angular.json`.
+- **Keep a page called `main`.** The generated native app opens `main.lynx.bundle`, and `ng build --platform` stops with an error without it.
+- **Each page has its own providers.** Give it its own `ApplicationConfig`, with routes if it needs them.
+
+## Or define each page as an `angular.json` project
+
+If you'd rather see each page as a project in your workspace, add one `application` project per page:
+
+<Go example="multi-page-workspace" defaultFile="angular.json" />
 
 ```json title="angular.json"
 {
@@ -72,71 +102,46 @@ Define each page as a separate project in `angular.json`, then tell the plugin w
 }
 ```
 
+Then turn on the `pages` option in `lynx.config.ts`:
+
 ```typescript title="lynx.config.ts"
 import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
 
 export default defineConfig({
   plugins: [
     pluginAngularLynx({
-      pages: 'all', // build all application-type projects
-      // or: pages: ['main', 'settings']
+      pages: 'all', // every application project, or e.g. ['main', 'settings']
     }),
   ],
 });
 ```
 
-Both projects share the workspace root, so name one when you run the CLI: `ng build main` and `ng serve main` build every page.
+- **Project names become bundle names.** Name the first project `main`, for the same reason as above.
+- **Name a project when you run the CLI.** Both projects share the workspace root, so run `ng build main` or `ng serve main`. Either one builds every page.
+- **All pages must share one `tsConfig`.** The build compiles them in a single pass and stops if they differ.
+- **`pages` replaces `source.entry`**, so use one setup or the other.
 
-This is the Angular-native approach — useful when you want each page to be visible as a distinct project in your workspace, benefiting from IDE project awareness and Angular CLI tooling.
+## Open each page while you develop
 
-## File Structure
+`ng serve` prints a `Lynx` URL and a `Web` URL, with a `∟ Preview` link, for every page. Each one loads only that page.
 
-Each page needs its own entry file with `bootstrapApplication()`:
+- **In [Lynx Explorer](/guide/glossary#lynx-explorer)**, the QR code is for the first page. To show another page's QR code, press `r` in the terminal and pick the page. You can also paste a page's `Lynx` URL into "Enter Card URL".
+- **In the web preview**, open the page's `∟ Preview` link. Its URL names the page's web bundle, such as `settings.web.bundle`.
 
-```
-src/
-  main.ts                          # Main page entry
-  app/
-    app.ts
-    app.config.ts
-  pages/
-    settings/
-      main.ts                      # Settings page entry
-      settings.ts
-      settings.config.ts
-```
+## Share data between pages
 
-Each entry file follows the standard bootstrap pattern:
+Pages don't share services, signals or router state, because each is a separate app. To pass values between them while the app runs, use [`LynxSessionStorage`](/guide/session-storage).
 
-```typescript title="src/pages/settings/main.ts"
-import { bootstrapApplication } from '@blotch/angular-lynx';
-import { Settings } from './settings';
-import { settingsConfig } from './settings.config';
+## Limitations
 
-bootstrapApplication(Settings, settingsConfig);
-```
+- **The generated native app opens only `main`.** See the note at the top of this page.
+- **Each bundle carries its own copy of Angular.** Two small pages are each about as big as a one-page app.
+- **One `tsConfig` for every page.**
 
-## Build Output
+## Related
 
-Building produces a separate `.lynx.bundle` for each page:
-
-```
-dist/
-  main.lynx.bundle           # Main page bundle
-  settings.lynx.bundle       # Settings page bundle
-```
-
-## Key Differences from Single-Page
-
-| Aspect        | Single-page                  | Multi-page             |
-| ------------- | ---------------------------- | ---------------------- |
-| Entry points  | One `bootstrapApplication()` | One per page           |
-| Navigation    | Angular Router               | Lynx native navigation |
-| Shared state  | Services via DI              | None (separate apps)   |
-| Bundle output | One `.lynx.bundle`           | One per page           |
-| Use case      | App with unified navigation  | Independent screens    |
-
-## Requirements
-
-- All pages must share the same `tsConfig` — the Angular compiler runs a single compilation pass.
-- `source.entry` and `pages` are mutually exclusive — use one or the other, not both.
+- [Share state between pages](/guide/session-storage)
+- [Embed in an existing native app](/guide/embedding/)
+- [Build your app](/guide/building-for-production)
+- [`@blotch/angular-lynx-build` reference](/api/build/)
+- [Multi-page example](/examples/multi-page)

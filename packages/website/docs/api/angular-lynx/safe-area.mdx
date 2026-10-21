@@ -1,0 +1,95 @@
+# Safe area
+
+CSS values and a service for keeping content clear of the notch, status bar and home indicator. `import { LynxSafeArea, SAFE_AREA_INSET_TOP, SAFE_AREA_INSET_BOTTOM, SAFE_AREA_INSET_LEFT, SAFE_AREA_INSET_RIGHT } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/screen.ts"
+import { Component, inject } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxSafeArea,
+  SAFE_AREA_INSET_BOTTOM,
+  SAFE_AREA_INSET_TOP,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-screen',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view [style.padding-top]="top" [style.padding-bottom]="bottom">
+      @if (safeArea.isNotchScreen()) {
+        <text>This device has a notch</text>
+      }
+    </view>
+  `,
+})
+export class Screen {
+  readonly safeArea = inject(LynxSafeArea);
+  readonly top = SAFE_AREA_INSET_TOP;
+  readonly bottom = SAFE_AREA_INSET_BOTTOM;
+}
+```
+
+In a stylesheet, write the CSS directly: `padding-top: env(safe-area-inset-top);`.
+
+## API
+
+### `SAFE_AREA_INSET_*`
+
+```typescript
+const SAFE_AREA_INSET_TOP = 'env(safe-area-inset-top)';
+const SAFE_AREA_INSET_BOTTOM = 'env(safe-area-inset-bottom)';
+const SAFE_AREA_INSET_LEFT = 'env(safe-area-inset-left)';
+const SAFE_AREA_INSET_RIGHT = 'env(safe-area-inset-right)';
+```
+
+The CSS `env()` value for each inset, for style bindings in TypeScript.
+
+| Constant                 | Covers                                |
+| ------------------------ | ------------------------------------- |
+| `SAFE_AREA_INSET_TOP`    | The notch or status bar.              |
+| `SAFE_AREA_INSET_BOTTOM` | The home indicator.                   |
+| `SAFE_AREA_INSET_LEFT`   | The left edge, such as in landscape.  |
+| `SAFE_AREA_INSET_RIGHT`  | The right edge, such as in landscape. |
+
+### `LynxSafeArea`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxSafeArea {}
+```
+
+Device facts for layouts that adapt to the safe area. Creating it throws outside Lynx, such as in unit tests, because it reads `LynxSystemInfo`.
+
+### `LynxSafeArea.isNotchScreen`
+
+```typescript
+readonly isNotchScreen: Signal<boolean>;
+```
+
+`true` when the [host app](/guide/glossary#host-app) reports a notch or screen cutout through its `isNotchScreen` global value. `false` when it reports none.
+
+**Known limitation:** it subscribes to host changes only on the background thread, through `LynxGlobalData`. Changes after startup may not reach the main thread, which draws the UI. See [Host data](/api/angular-lynx/host-data#api).
+
+### `LynxSafeArea.platform`
+
+```typescript
+get platform(): PlatformType;
+```
+
+The platform, such as `'iOS'` or `'Android'`. Same as [`LynxSystemInfo.platform`](/api/angular-lynx/system-info).
+
+## Types
+
+`PlatformType` comes from `@lynx-js/types`:
+
+```typescript
+type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'pc';
+```
+
+## Related
+
+- [Safe area](/guide/safe-area): pad screens and fixed bars.
+- [System info](/api/angular-lynx/system-info)
+- [Host data](/api/angular-lynx/host-data)

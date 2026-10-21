@@ -1,6 +1,6 @@
 # Alert Dialog
 
-A modal dialog that requires user acknowledgement. Unlike [Dialog](/dolan/dialog), tapping the backdrop does **not** dismiss an alert dialog -- the user must explicitly choose an action.
+Ask the user to confirm or cancel an important action in a centered panel that only closes when they choose.
 
 <Go example="ui-alert-dialog" defaultFile="src/app/app.ts" />
 
@@ -17,7 +17,7 @@ import {
   UiAlertDialogTitle,
   UiAlertDialogDescription,
   UiAlertDialogFooter,
-} from '@/components/ui/alert-dialog';
+} from '../components/ui/alert-dialog';
 ```
 
 ## Usage
@@ -30,10 +30,11 @@ import {
   UiAlertDialogTitle,
   UiAlertDialogDescription,
   UiAlertDialogFooter,
-} from '@/components/ui/alert-dialog';
-import { UiButton } from '@/components/ui/button';
+} from '../components/ui/alert-dialog';
+import { UiButton } from '../components/ui/button';
 
 @Component({
+  selector: 'app-delete-account',
   imports: [
     UiAlertDialog,
     UiAlertDialogHeader,
@@ -43,65 +44,79 @@ import { UiButton } from '@/components/ui/button';
     UiButton,
   ],
   template: `
-    <ui-button (pressed)="open.set(true)">Delete</ui-button>
+    <ui-button variant="destructive" (pressed)="open.set(true)">
+      Delete account
+    </ui-button>
 
     <ui-alert-dialog [(open)]="open">
       <ui-alert-dialog-header>
         <ui-alert-dialog-title>Are you sure?</ui-alert-dialog-title>
         <ui-alert-dialog-description>
-          This action cannot be undone.
+          This action can't be undone.
         </ui-alert-dialog-description>
       </ui-alert-dialog-header>
       <ui-alert-dialog-footer>
         <ui-button variant="outline" (pressed)="open.set(false)">
           Cancel
         </ui-button>
-        <ui-button variant="destructive" (pressed)="onConfirm()">
-          Continue
+        <ui-button variant="destructive" (pressed)="confirm()">
+          Delete
         </ui-button>
       </ui-alert-dialog-footer>
     </ui-alert-dialog>
   `,
 })
-export class Example {
-  open = signal(false);
+export class DeleteAccount {
+  protected readonly open = signal(false);
 
-  onConfirm(): void {
+  protected confirm(): void {
+    // Delete the account here.
     this.open.set(false);
   }
 }
+```
+
+- Unlike [Dialog](/dolan/dialog), tapping the backdrop does nothing. Your buttons are the only way to close it, so always include one that cancels.
+- `[(open)]` two-way binds a signal. Set it to `true` to open the dialog and `false` to close it.
+- The backdrop fades in and the panel scales up. Closing plays the reverse.
+- The dialog draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+- `<ui-alert-dialog-title>` and `<ui-alert-dialog-description>` render `<text>`, so put plain text in them. The footer lays out its buttons in a row, aligned right.
+
+### Run code after it closes
+
+`closed` emits once the close animation has finished, about 270ms after `open` turns `false`. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a button instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+
+```angular-html
+<ui-alert-dialog [(open)]="open" (closed)="onClosed()">…</ui-alert-dialog>
+```
+
+### Panel width
+
+`class` goes on the panel, which is `w-4/5` wide by default.
+
+```angular-html
+<ui-alert-dialog [(open)]="open" class="w-11/12">…</ui-alert-dialog>
 ```
 
 ## API
 
 ### UiAlertDialog
 
-| Input / Output | Type             | Default | Description                                 |
-| -------------- | ---------------- | ------- | ------------------------------------------- |
-| `open`         | `model<boolean>` | `false` | Two-way binding that controls visibility    |
-| `class`        | `string`         | `''`    | Additional CSS classes for the dialog panel |
-| `closed`       | `output<void>`   | --      | Emitted after the close animation completes |
+| Input   | Type      | Default | Description                                       |
+| ------- | --------- | ------- | ------------------------------------------------- |
+| `open`  | `boolean` | `false` | Whether the dialog is shown. Supports `[(open)]`. |
+| `class` | `string`  | `''`    | Extra Tailwind classes for the panel.             |
 
-### UiAlertDialogHeader
+| Output       | Type      | Description                                                                   |
+| ------------ | --------- | ----------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Part of `[(open)]`. The alert dialog never closes itself, so it doesn't emit. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                     |
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
+All sub-components (`UiAlertDialogHeader`, `UiAlertDialogTitle`, `UiAlertDialogDescription`, `UiAlertDialogFooter`) accept `class`.
 
-### UiAlertDialogTitle
+## Related
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
-
-### UiAlertDialogDescription
-
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
-
-### UiAlertDialogFooter
-
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `class` | `string` | `''`    | Additional CSS classes |
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
+- [Dialog](/dolan/dialog): a dialog the backdrop can close
+- [Action Sheet](/dolan/action-sheet): offer several actions instead of two
+- [`<overlay>`](/api/elements/overlay): the element the dialog draws in

@@ -1,6 +1,6 @@
 # Avatar
 
-A circular avatar component that displays a user image or fallback initials.
+Show a user's photo in a circle, with their initials when there's no photo or it fails to load.
 
 <Go example="ui-avatar" defaultFile="src/app/app.ts" />
 
@@ -11,20 +11,32 @@ npx @blotch/dolan add avatar
 ```
 
 ```typescript
-import { UiAvatar } from '@/components/ui/avatar';
+import { UiAvatar } from '../components/ui/avatar';
 ```
+
+This also adds [Skeleton](/dolan/skeleton), which the avatar shows while the photo loads.
 
 ## Usage
 
-### With Image
+```typescript
+import { Component } from '@angular/core';
+import { UiAvatar } from '../components/ui/avatar';
 
-```angular-html
-<ui-avatar src="https://i.pravatar.cc/150?img=1" />
+@Component({
+  selector: 'app-profile-header',
+  imports: [UiAvatar],
+  template: `<ui-avatar src="https://i.pravatar.cc/150?img=1" fallback="JD" />`,
+})
+export class ProfileHeader {}
 ```
 
-### With Fallback Initials
+- A pulsing skeleton covers the circle until the photo loads.
+- If the photo fails to load, for example when the device is offline, the avatar shows `fallback` instead.
+- `src` must be a PNG, JPEG, GIF, BMP or WebP image. [Lynx](/guide/glossary#lynx)'s [`<image>`](/api/elements/image) doesn't load SVG files.
 
-When no `src` is provided, the avatar displays the `fallback` text:
+### Initials only
+
+Leave out `src` to show the `fallback` text on a muted circle. With neither, the circle is empty.
 
 ```angular-html
 <ui-avatar fallback="JD" />
@@ -32,17 +44,33 @@ When no `src` is provided, the avatar displays the `fallback` text:
 
 ### Sizes
 
+`size` sets the diameter. The initials scale with it.
+
 ```angular-html
-<ui-avatar src="https://example.com/avatar.jpg" size="sm" />
-<ui-avatar src="https://example.com/avatar.jpg" size="default" />
-<ui-avatar src="https://example.com/avatar.jpg" size="lg" />
+<ui-avatar fallback="SM" size="sm" />
+<ui-avatar fallback="MD" />
+<ui-avatar fallback="LG" size="lg" />
+<ui-avatar fallback="XL" size="xl" />
+<ui-avatar fallback="2X" size="2xl" />
 ```
+
+The sizes match Tailwind's `h-8`, `h-10`, `h-14`, `h-20` and `h-28`, from `sm` to `2xl`.
 
 ## API
 
-| Input      | Type                        | Default     | Description                                   |
-| ---------- | --------------------------- | ----------- | --------------------------------------------- |
-| `src`      | `string`                    | `''`        | URL of the avatar image                       |
-| `fallback` | `string`                    | `''`        | Initials to display when no image is provided |
-| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size of the avatar                            |
-| `class`    | `string`                    | `''`        | Additional CSS classes                        |
+### UiAvatar
+
+| Input      | Type                                         | Default     | Description                                                            |
+| ---------- | -------------------------------------------- | ----------- | ---------------------------------------------------------------------- |
+| `src`      | `string`                                     | `''`        | Image URL.                                                             |
+| `fallback` | `string`                                     | `''`        | Text shown when there's no `src` or the image fails, usually initials. |
+| `size`     | `'sm' \| 'default' \| 'lg' \| 'xl' \| '2xl'` | `'default'` | Diameter.                                                              |
+| `class`    | `string`                                     | `''`        | Extra Tailwind classes for the circle.                                 |
+
+No outputs.
+
+## Related
+
+- [Skeleton](/dolan/skeleton): the placeholder shown while the photo loads
+- [`<image>`](/api/elements/image): the element that draws the photo
+- [Badge](/dolan/badge): label a user's status next to their avatar

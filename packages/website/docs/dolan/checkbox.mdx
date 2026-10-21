@@ -1,6 +1,6 @@
 # Checkbox
 
-A control that allows users to toggle between checked and unchecked states. Pair with `UiLabel` for accessible form labels.
+A small box that toggles a check mark on tap.
 
 <Go example="ui-checkbox" defaultFile="src/app/app.ts" />
 
@@ -11,44 +11,72 @@ npx @blotch/dolan add checkbox
 ```
 
 ```typescript
-import { UiCheckbox } from '@/components/ui/checkbox';
+import { UiCheckbox } from '../components/ui/checkbox';
 ```
 
 ## Usage
 
-```angular-html
-<ui-checkbox [(checked)]="accepted" />
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiCheckbox } from '../components/ui/checkbox';
+import { UiLabel } from '../components/ui/label';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiCheckbox, UiLabel],
+  template: `
+    <view class="flex flex-row items-center">
+      <ui-checkbox [(checked)]="accepted" />
+      <ui-label>Accept the terms</ui-label>
+    </view>
+  `,
+})
+export class App {
+  protected readonly accepted = signal(false);
+}
 ```
 
-### With a label
-
-```angular-html
-<view class="flex flex-row items-center gap-3">
-  <ui-checkbox [(checked)]="terms" />
-  <ui-label>Accept terms and conditions</ui-label>
-</view>
-```
+- This example also uses [Label](/dolan/label). Tapping the label doesn't toggle the checkbox.
+- The box is 20 pixels, but its tap area is 44 by 44 pixels, a comfortable size for a finger.
+- The check mark pops in and out when the state changes.
 
 ### Disabled
 
 ```angular-html
+<ui-checkbox [disabled]="true" />
 <ui-checkbox [disabled]="true" [checked]="true" />
 ```
 
-### Listening for changes
+A disabled checkbox dims and ignores taps.
+
+### Listen without a signal
 
 ```angular-html
-<ui-checkbox [(checked)]="value" (changed)="onChanged($event)" />
+<ui-checkbox (changed)="onNewsletter($event)" />
 ```
+
+`changed` emits the new state after each tap.
 
 ## API
 
-| Input      | Type             | Default | Description                                        |
-| ---------- | ---------------- | ------- | -------------------------------------------------- |
-| `checked`  | `model<boolean>` | `false` | Whether the checkbox is checked (two-way bindable) |
-| `disabled` | `boolean`        | `false` | Whether the checkbox is disabled                   |
-| `class`    | `string`         | `''`    | Additional CSS classes for the checkbox container  |
+### UiCheckbox
 
-| Output    | Type      | Description                              |
-| --------- | --------- | ---------------------------------------- |
-| `changed` | `boolean` | Emits the new checked state when toggled |
+| Input      | Type      | Default | Description                                           |
+| ---------- | --------- | ------- | ----------------------------------------------------- |
+| `checked`  | `boolean` | `false` | Whether it's checked. Supports `[(checked)]`.         |
+| `disabled` | `boolean` | `false` | Dims the checkbox and ignores taps.                   |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the box, not the tap area. |
+
+| Output          | Type      | Description                             |
+| --------------- | --------- | --------------------------------------- |
+| `changed`       | `boolean` | Emits the new state after a tap.        |
+| `checkedChange` | `boolean` | Emits the new state, for `[(checked)]`. |
+
+`UiCheckbox` also has a public `toggle()` method, which does nothing while disabled.
+
+## Related
+
+- [Switch](/dolan/switch): an on/off control for settings
+- [Radio Group](/dolan/radio-group): pick one of several options
+- [Label](/dolan/label)

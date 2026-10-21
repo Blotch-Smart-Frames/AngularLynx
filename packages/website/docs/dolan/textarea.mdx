@@ -1,6 +1,6 @@
 # Textarea
 
-A multi-line text input for longer content, with support for labels, helper text, error states, and disabled styling.
+A multi-line text field that grows with its content, with an optional label, helper text and error message.
 
 <Go example="ui-textarea" defaultFile="src/app/app.ts" />
 
@@ -11,33 +11,54 @@ npx @blotch/dolan add textarea
 ```
 
 ```typescript
-import { UiTextarea } from '@/components/ui/textarea';
+import { UiTextarea } from '../components/ui/textarea';
 ```
 
 ## Usage
 
-```angular-html
-<ui-textarea
-  label="Bio"
-  placeholder="Tell us about yourself..."
-  [(value)]="bio"
-/>
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiTextarea } from '../components/ui/textarea';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiTextarea],
+  template: `
+    <ui-textarea
+      label="Bio"
+      placeholder="Tell us about yourself"
+      [(value)]="bio"
+    />
+  `,
+})
+export class App {
+  protected readonly bio = signal('');
+}
 ```
 
-### With helper text
+- `[(value)]` updates your signal on every keystroke. Setting the signal from code updates the field too.
+- The field opens three lines tall and grows as the user types.
+- `class` styles the whole block of label, field and message.
+
+### Height limits
+
+```angular-html
+<ui-textarea label="Review" [minLines]="3" [maxLines]="6" [(value)]="review" />
+<ui-textarea label="Note" [minLines]="1" [maxLines]="4" [(value)]="note" />
+```
+
+- `minLines` sets the starting height.
+- `maxLines` stops the growth. Past it, the field scrolls and shows a scroll bar. Without it, the field keeps growing.
+- Each line is 20 pixels, the line height of the field's text.
+
+### Helper text and errors
 
 ```angular-html
 <ui-textarea
   label="Feedback"
-  placeholder="Share your thoughts..."
-  helperText="Your feedback helps us improve"
+  helperText="Helps us improve"
   [(value)]="feedback"
 />
-```
-
-### With error state
-
-```angular-html
 <ui-textarea
   label="Description"
   error="Description is required"
@@ -45,30 +66,43 @@ import { UiTextarea } from '@/components/ui/textarea';
 />
 ```
 
+A non-empty `error` replaces the helper text with red text and turns the focus ring red. The field shakes when an error first appears.
+
 ### Disabled
 
 ```angular-html
-<ui-textarea
-  label="System Notes"
-  [disabled]="true"
-  value="Read-only content."
-/>
+<ui-textarea label="System notes" value="Read only" [disabled]="true" />
 ```
+
+### Signal Forms
+
+`UiTextarea` implements Angular's `FormValueControl`, so `[formField]` works on it the same way as on [Input](/dolan/input#signal-forms).
 
 ## API
 
-| Input         | Type            | Default | Description                                   |
-| ------------- | --------------- | ------- | --------------------------------------------- |
-| `value`       | `model<string>` | `''`    | The current textarea value (two-way bindable) |
-| `label`       | `string`        | `''`    | Label text displayed above the textarea       |
-| `placeholder` | `string`        | `''`    | Placeholder text shown when empty             |
-| `helperText`  | `string`        | `''`    | Helper text displayed below the textarea      |
-| `error`       | `string`        | `''`    | Error message (replaces helper text when set) |
-| `disabled`    | `boolean`       | `false` | Whether the textarea is disabled              |
-| `class`       | `string`        | `''`    | Additional CSS classes for the container      |
+### UiTextarea
 
-| Output    | Type     | Description                                    |
-| --------- | -------- | ---------------------------------------------- |
-| `changed` | `string` | Emits the new value when textarea text changes |
-| `focused` | `void`   | Emits when the textarea receives focus         |
-| `blurred` | `void`   | Emits when the textarea loses focus            |
+| Input         | Type                  | Default     | Description                                              |
+| ------------- | --------------------- | ----------- | -------------------------------------------------------- |
+| `value`       | `string`              | `''`        | The text. Supports `[(value)]`.                          |
+| `label`       | `string`              | `''`        | Text above the field. Hidden when empty.                 |
+| `placeholder` | `string`              | `''`        | Hint shown while the field is empty.                     |
+| `helperText`  | `string`              | `''`        | Muted text under the field. Hidden while `error` is set. |
+| `error`       | `string`              | `''`        | Error text. Turns the ring red and shakes the field.     |
+| `disabled`    | `boolean`             | `false`     | Dims the field and ignores typing.                       |
+| `minLines`    | `number`              | `3`         | Starting height, in lines.                               |
+| `maxLines`    | `number \| undefined` | `undefined` | Height at which the field stops growing and scrolls.     |
+| `class`       | `string`              | `''`        | Extra Tailwind classes for the outer block.              |
+
+| Output        | Type     | Description                                         |
+| ------------- | -------- | --------------------------------------------------- |
+| `valueChange` | `string` | Emits the text on every keystroke, for `[(value)]`. |
+| `changed`     | `string` | Emits the text on every keystroke.                  |
+| `focused`     | `void`   | Emits when the field gains focus.                   |
+| `blurred`     | `void`   | Emits when the field loses focus.                   |
+
+## Related
+
+- [Input](/dolan/input): a single-line field
+- [Forms](/guide/forms): forms and the on-screen keyboard
+- [`<textarea>`](/api/elements/textarea): the element underneath

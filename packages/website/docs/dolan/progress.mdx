@@ -1,6 +1,6 @@
 # Progress
 
-A horizontal progress bar that indicates completion with an animated fill.
+Show how far a task has got with a horizontal bar that fills as the value grows.
 
 <Go example="ui-progress" defaultFile="src/app/app.ts" />
 
@@ -11,39 +11,57 @@ npx @blotch/dolan add progress
 ```
 
 ```typescript
-import { UiProgress } from '@/components/ui/progress';
+import { UiProgress } from '../components/ui/progress';
 ```
 
 ## Usage
 
-### Basic
-
-```angular-html
-<ui-progress [value]="50" />
-```
-
-### With Signal
-
 ```typescript
-readonly progress = signal(0);
+import { Component, signal } from '@angular/core';
+import { UiProgress } from '../components/ui/progress';
+
+@Component({
+  selector: 'app-upload',
+  imports: [UiProgress],
+  template: `<ui-progress [value]="uploaded()" />`,
+})
+export class Upload {
+  protected readonly uploaded = signal(30);
+}
 ```
 
-```angular-html
-<ui-progress [value]="progress()" />
-```
+- `value` runs from `0` to `max`, which is `100` by default. Values outside that range are clamped.
+- When `value` changes, the fill animates to its new width. The first render doesn't animate.
+- The bar fills its parent's width. Set a width class to change that.
 
-### Custom Max
-
-Set a custom maximum value instead of the default 100:
+### Custom max
 
 ```angular-html
 <ui-progress [value]="150" [max]="200" />
 ```
 
+### Indeterminate
+
+Set `indeterminate` when you can't tell how far along the task is. A short fill slides across the track over and over, and `value` is ignored.
+
+```angular-html
+<ui-progress [indeterminate]="true" />
+```
+
 ## API
 
-| Input   | Type     | Default | Description            |
-| ------- | -------- | ------- | ---------------------- |
-| `value` | `number` | `0`     | Current progress value |
-| `max`   | `number` | `100`   | Maximum value          |
-| `class` | `string` | `''`    | Additional CSS classes |
+### UiProgress
+
+| Input           | Type      | Default | Description                                              |
+| --------------- | --------- | ------- | -------------------------------------------------------- |
+| `value`         | `number`  | `0`     | Current value, from `0` to `max`.                        |
+| `max`           | `number`  | `100`   | The value of a full bar. `0` or less shows an empty bar. |
+| `indeterminate` | `boolean` | `false` | Loop a sliding fill instead of showing `value`.          |
+| `class`         | `string`  | `''`    | Extra Tailwind classes for the track.                    |
+
+No outputs.
+
+## Related
+
+- [Spinner](/dolan/spinner): show loading when you can't measure progress
+- [Skeleton](/dolan/skeleton): hold the place of content that's loading

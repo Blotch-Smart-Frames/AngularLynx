@@ -1,0 +1,101 @@
+# Bottom Sheet
+
+Slide a bare panel up from the bottom of the screen, with a drag handle and a backdrop, and fill it with anything you like.
+
+[Sheet](/dolan/sheet) and [Select](/dolan/select) are built on it. Use Sheet when you want a padded panel with a title and footer. Use Bottom Sheet when you want to lay out the panel yourself.
+
+## Installation
+
+```bash
+npx @blotch/dolan add bottom-sheet
+```
+
+```typescript
+import { UiBottomSheet } from '../components/ui/bottom-sheet';
+```
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiBottomSheet } from '../components/ui/bottom-sheet';
+import { UiButton } from '../components/ui/button';
+
+@Component({
+  selector: 'app-sort-picker',
+  imports: [LYNX_ELEMENTS, UiBottomSheet, UiButton],
+  template: `
+    <ui-button (pressed)="open.set(true)">Sort by</ui-button>
+
+    <ui-bottom-sheet [(open)]="open">
+      @for (option of options; track option) {
+        <view class="px-6 py-3" (bindtap)="choose(option)">
+          <text class="text-base text-foreground">{{ option }}</text>
+        </view>
+      }
+    </ui-bottom-sheet>
+  `,
+})
+export class SortPicker {
+  protected readonly options = ['Newest', 'Oldest', 'Most popular'];
+  protected readonly open = signal(false);
+  protected readonly sort = signal('Newest');
+
+  protected choose(option: string): void {
+    this.sort.set(option);
+    this.open.set(false);
+  }
+}
+```
+
+- `[(open)]` two-way binds a signal. Set it to `true` to slide the panel up and `false` to slide it down.
+- A backdrop tap sets `open` back to `false`. Taps inside the panel don't reach the backdrop.
+- The panel has rounded top corners, a border and the background color, but no padding. Your content starts right below the handle.
+- The panel's bottom is padded by the safe area, so content stays clear of the home indicator.
+- The sheet draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+
+### Drag to dismiss
+
+The bar at the top is a drag handle. Only the handle responds to dragging, so scrolling content inside the panel still works.
+
+- Dragging the handle down more than 100px and letting go closes the sheet.
+- A shorter drag springs the panel back up.
+- The backdrop lightens as the panel moves down.
+
+### Long content
+
+The panel grows with its content and has no maximum height. For a long list, put a [`<scroll-view>`](/api/elements/scroll-view) with a fixed height inside, because a scroll view needs one to scroll.
+
+```angular-html
+<ui-bottom-sheet [(open)]="open">
+  <scroll-view scroll-orientation="vertical" class="h-80">
+    <!-- rows -->
+  </scroll-view>
+</ui-bottom-sheet>
+```
+
+### Run code after it closes
+
+`closed` emits once the slide-down animation has finished. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a tap inside the sheet instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+
+## API
+
+### UiBottomSheet
+
+| Input   | Type      | Default | Description                                      |
+| ------- | --------- | ------- | ------------------------------------------------ |
+| `open`  | `boolean` | `false` | Whether the sheet is shown. Supports `[(open)]`. |
+| `class` | `string`  | `''`    | Extra Tailwind classes for the panel.            |
+
+| Output       | Type      | Description                                                                       |
+| ------------ | --------- | --------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when a backdrop tap or a drag closes the sheet. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                         |
+
+## Related
+
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
+- [Sheet](/dolan/sheet): a padded panel with a title and footer
+- [Select](/dolan/select): a picker that opens in a bottom sheet
+- [Action Sheet](/dolan/action-sheet): a list of actions from the bottom

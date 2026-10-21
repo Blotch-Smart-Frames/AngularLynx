@@ -1,6 +1,6 @@
 # Icon
 
-SVG icons rendered natively via Lynx's `<svg>` element. Includes 195 icons from the [Lucide](https://lucide.dev) icon set, covering navigation, actions, media, communication, files, status, people, commerce, weather, devices, layout, charts, and more.
+195 vector icons from the [Lucide](https://lucide.dev) set, drawn with Lynx's `<svg>` element.
 
 <Go example="ui-icon" defaultFile="src/app/app.ts" />
 
@@ -11,110 +11,101 @@ npx @blotch/dolan add icon
 ```
 
 ```typescript
-import { UiIcon } from '@/components/ui/icon';
+import { UiIcon } from '../components/ui/icon';
 ```
 
 ## Usage
 
-```angular-html
-<ui-icon name="check" />
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { UiIcon } from '../components/ui/icon';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiIcon],
+  template: `<ui-icon name="heart" size="lg" color="#ef4444" />`,
+})
+export class App {}
 ```
 
-## Available icons
+### Colors
 
-Grouped below by category. Import `IconName` for the full type-safe union, or `ICONS` to enumerate every key at runtime (`Object.keys(ICONS)`).
+Pass `color` a literal color, such as `#71717a` or `rgba(9, 9, 11, 1)`.
 
-**Common**
-`check`, `x`, `plus`, `minus`, `chevron-down`, `chevron-up`, `chevron-left`, `chevron-right`, `arrow-left`, `arrow-right`, `search`, `menu`, `info`, `alert-triangle`, `loader`, `circle`, `ellipsis`, `eye`, `eye-off`, `settings`, `trash`, `heart`, `star`, `bell`
+- The icon's SVG is drawn on its own, so it can't read CSS. `var(--primary)` and text color classes have no effect.
+- Without `color`, the icon keeps its SVG's `currentColor`, which doesn't follow your text color.
+- If you use dark mode, pick the color from your theme signal, for example `[color]="theme.isDarkMode() ? '#fafafa' : '#09090b'"`.
 
-**Navigation & Arrows**
-`arrow-up`, `arrow-down`, `arrow-up-right`, `arrow-up-left`, `arrow-down-right`, `arrow-down-left`, `chevrons-up`, `chevrons-down`, `chevrons-left`, `chevrons-right`, `move`, `maximize`, `minimize`, `external-link`, `refresh-cw`, `rotate-cw`, `undo-2`, `redo-2`
-
-**Actions & Editing**
-`edit`, `pencil`, `copy`, `clipboard`, `save`, `download`, `upload`, `share-2`, `sliders-horizontal`, `zoom-in`, `zoom-out`, `scissors`, `trash-2`, `pin`, `link`, `filter`
-
-**Media & Playback**
-`play`, `pause`, `square`, `circle-stop`, `skip-forward`, `skip-back`, `rewind`, `fast-forward`, `volume-2`, `volume-x`, `mic`, `mic-off`, `camera`, `video`, `music`, `headphones`
-
-**Communication**
-`mail`, `message-circle`, `message-square`, `send`, `phone`, `phone-call`, `at-sign`, `inbox`, `megaphone`, `rss`, `reply`, `globe`
-
-**Files & Folders**
-`file`, `file-text`, `file-plus`, `folder`, `folder-open`, `book`, `book-open`, `archive`, `paperclip`, `newspaper`, `database`, `hard-drive`
-
-**Status & Alerts**
-`check-circle`, `x-circle`, `alert-circle`, `plus-circle`, `minus-circle`, `shield`, `shield-check`, `lock`, `lock-open`, `key`, `ban`, `help-circle`
-
-**People & Social**
-`user`, `users`, `user-circle`, `user-plus`, `user-check`, `user-x`, `thumbs-up`, `thumbs-down`, `smile`, `frown`, `hand`, `handshake`
-
-**Commerce**
-`shopping-cart`, `shopping-bag`, `credit-card`, `dollar-sign`, `tag`, `tags`, `gift`, `package`, `truck`, `wallet`, `receipt`, `store`
-
-**Weather & Nature**
-`sun`, `moon`, `cloud`, `cloud-rain`, `cloud-snow`, `wind`, `droplet`, `zap`, `snowflake`, `flame`, `sunrise`, `sparkles`
-
-**Devices & Tech**
-`home`, `calendar`, `clock`, `map-pin`, `map`, `compass`, `wifi`, `bluetooth`, `battery`, `smartphone`, `monitor`, `laptop`, `server`, `cpu`, `keyboard`, `power`
-
-**Layout & Text**
-`layout-grid`, `layout-dashboard`, `table`, `columns-3`, `rows-3`, `list`, `list-checks`, `list-ordered`, `bold`, `quote`, `align-left`, `align-center`, `align-right`, `type`
-
-**Charts & Data**
-`chart-bar`, `chart-line`, `chart-pie`, `chart-column`, `activity`, `trending-up`, `trending-down`, `target`
-
-**Objects & Fun**
-`award`, `trophy`, `crown`, `rocket`, `lightbulb`, `coffee`, `terminal`, `code`, `command`, `git-branch`, `bug`
-
-## Sizes
-
-Use the `size` input to control the icon dimensions.
+### Sizes
 
 ```angular-html
 <ui-icon name="heart" size="xs" />
-<!-- 16px -->
 <ui-icon name="heart" size="sm" />
-<!-- 20px -->
 <ui-icon name="heart" size="md" />
-<!-- 24px (default) -->
 <ui-icon name="heart" size="lg" />
-<!-- 32px -->
 ```
 
-## Custom colors
+The sizes are 16, 20, 24 (the default) and 32 pixels square.
 
-By default the icon uses `currentColor`. Pass a `color` to override.
+### Type-safe names
 
-```angular-html
-<ui-icon name="heart" color="#ef4444" />
-<ui-icon name="star" color="#eab308" />
-<ui-icon name="check" color="#22c55e" />
-```
-
-## Using with Button
-
-Pair icons with buttons using the `icon` size variant.
-
-```angular-html
-<ui-button size="icon">
-  <ui-icon name="plus" size="sm" color="white" />
-</ui-button>
-```
-
-## Type safety
-
-Import `IconName` for type-safe icon names in your component class.
+`IconName` is the union of every icon name. `ICONS` maps each name to its SVG markup, so `Object.keys(ICONS)` lists them all.
 
 ```typescript
-import { type IconName } from '@/components/ui/icon';
+import { signal } from '@angular/core';
+import { type IconName } from '../components/ui/icon';
 
-readonly currentIcon = signal<IconName>('check');
+const current = signal<IconName>('check');
 ```
+
+### Spacing
+
+`UiIcon` has no `class` input. A `class` you write on `<ui-icon>` lands on its outer element, which is enough for margins such as `class="mr-2"`.
+
+### Available icons
+
+**Common:** `check`, `x`, `plus`, `minus`, `chevron-down`, `chevron-up`, `chevron-left`, `chevron-right`, `arrow-left`, `arrow-right`, `search`, `menu`, `info`, `alert-triangle`, `loader`, `circle`, `ellipsis`, `eye`, `eye-off`, `settings`, `trash`, `heart`, `star`, `bell`
+
+**Navigation and arrows:** `arrow-up`, `arrow-down`, `arrow-up-right`, `arrow-up-left`, `arrow-down-right`, `arrow-down-left`, `chevrons-up`, `chevrons-down`, `chevrons-left`, `chevrons-right`, `move`, `maximize`, `minimize`, `external-link`, `refresh-cw`, `rotate-cw`, `undo-2`, `redo-2`
+
+**Actions and editing:** `edit`, `pencil`, `copy`, `clipboard`, `save`, `download`, `upload`, `share-2`, `sliders-horizontal`, `zoom-in`, `zoom-out`, `scissors`, `trash-2`, `pin`, `link`, `filter`
+
+**Media:** `play`, `pause`, `square`, `circle-stop`, `skip-forward`, `skip-back`, `rewind`, `fast-forward`, `volume-2`, `volume-x`, `mic`, `mic-off`, `camera`, `video`, `music`, `headphones`
+
+**Communication:** `mail`, `message-circle`, `message-square`, `send`, `phone`, `phone-call`, `at-sign`, `inbox`, `megaphone`, `rss`, `reply`, `globe`
+
+**Files and folders:** `file`, `file-text`, `file-plus`, `folder`, `folder-open`, `book`, `book-open`, `archive`, `paperclip`, `newspaper`, `database`, `hard-drive`
+
+**Status:** `check-circle`, `x-circle`, `alert-circle`, `plus-circle`, `minus-circle`, `shield`, `shield-check`, `lock`, `lock-open`, `key`, `ban`, `help-circle`
+
+**People:** `user`, `users`, `user-circle`, `user-plus`, `user-check`, `user-x`, `thumbs-up`, `thumbs-down`, `smile`, `frown`, `hand`, `handshake`
+
+**Commerce:** `shopping-cart`, `shopping-bag`, `credit-card`, `dollar-sign`, `tag`, `tags`, `gift`, `package`, `truck`, `wallet`, `receipt`, `store`
+
+**Weather and nature:** `sun`, `moon`, `cloud`, `cloud-rain`, `cloud-snow`, `wind`, `droplet`, `zap`, `snowflake`, `flame`, `sunrise`, `sparkles`
+
+**Places and devices:** `home`, `calendar`, `clock`, `map-pin`, `map`, `compass`, `wifi`, `bluetooth`, `battery`, `smartphone`, `monitor`, `laptop`, `server`, `cpu`, `keyboard`, `power`
+
+**Layout and text:** `layout-grid`, `layout-dashboard`, `table`, `columns-3`, `rows-3`, `list`, `list-checks`, `list-ordered`, `bold`, `quote`, `align-left`, `align-center`, `align-right`, `type`
+
+**Charts:** `chart-bar`, `chart-line`, `chart-pie`, `chart-column`, `activity`, `trending-up`, `trending-down`, `target`
+
+**Objects:** `award`, `trophy`, `crown`, `rocket`, `lightbulb`, `coffee`, `terminal`, `code`, `command`, `git-branch`, `bug`
 
 ## API
 
-| Input   | Type                           | Default      | Description                                             |
-| ------- | ------------------------------ | ------------ | ------------------------------------------------------- |
-| `name`  | `IconName`                     | _(required)_ | Name of the icon to render                              |
-| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`       | Size of the icon (16/20/24/32 px)                       |
-| `color` | `string \| undefined`          | `undefined`  | Overrides the stroke color (defaults to `currentColor`) |
+### UiIcon
+
+| Input   | Type                           | Default     | Description                                            |
+| ------- | ------------------------------ | ----------- | ------------------------------------------------------ |
+| `name`  | `IconName`                     | Required    | The icon to draw.                                      |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | 16, 20, 24 or 32 pixels square.                        |
+| `color` | `string \| undefined`          | `undefined` | Stroke color. Must be a literal color, not `var(--x)`. |
+
+No outputs.
+
+## Related
+
+- [`<svg>`](/api/elements/svg): the element that draws the icons
+- [Empty State](/dolan/empty-state): shows an icon above a message
+- [Theming](/dolan/theming): the colors to match

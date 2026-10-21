@@ -1,6 +1,6 @@
 # Toggle
 
-A two-state button that can be toggled on or off. Use `UiToggleGroup` with `UiToggleGroupItem` for single or multi-select toggle groups.
+A button that stays pressed until tapped again, on its own or in a group where one or several are pressed.
 
 <Go example="ui-toggle" defaultFile="src/app/app.ts" />
 
@@ -15,20 +15,37 @@ import {
   UiToggle,
   UiToggleGroup,
   UiToggleGroupItem,
-} from '@/components/ui/toggle';
+} from '../components/ui/toggle';
 ```
+
+Toggle imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-### Single toggle
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiToggle } from '../components/ui/toggle';
 
-```angular-html
-<ui-toggle [(pressed)]="bold">
-  <text class="text-sm font-bold text-foreground">B</text>
-</ui-toggle>
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiToggle],
+  template: `
+    <ui-toggle [(pressed)]="bold">
+      <text class="text-sm font-bold text-foreground">B</text>
+    </ui-toggle>
+  `,
+})
+export class App {
+  protected readonly bold = signal(false);
+}
 ```
 
-### Toggle group (single selection)
+- A pressed toggle gets the accent background.
+- Toggles don't wrap their content, so put a `<text>` element inside.
+- `pressed` here is the on/off state, not a tap event like Button's `pressed`.
+
+### Toggle group, one at a time
 
 ```angular-html
 <ui-toggle-group type="single" [(value)]="alignment">
@@ -38,38 +55,35 @@ import {
   <ui-toggle-group-item value="center">
     <text class="text-sm text-foreground">Center</text>
   </ui-toggle-group-item>
-  <ui-toggle-group-item value="right">
-    <text class="text-sm text-foreground">Right</text>
-  </ui-toggle-group-item>
 </ui-toggle-group>
 ```
 
-### Toggle group (multiple selection)
+- `value` is an array even in single mode, such as `['left']`. Bind it to `signal<string[]>(['left'])`.
+- Tapping the pressed item again clears the selection to `[]`. Use [Radio Group](/dolan/radio-group) if one option must always stay selected.
+
+### Toggle group, several at once
 
 ```angular-html
-<ui-toggle-group type="multiple" [(value)]="formatting">
-  <ui-toggle-group-item value="bold">
-    <text class="text-sm font-bold text-foreground">B</text>
-  </ui-toggle-group-item>
-  <ui-toggle-group-item value="italic">
-    <text class="text-sm italic text-foreground">I</text>
-  </ui-toggle-group-item>
-</ui-toggle-group>
+<ui-toggle-group type="multiple" [(value)]="formatting">…</ui-toggle-group>
 ```
 
-### Outline variant
+Each tap adds or removes that item's value.
+
+### Variants and sizes
 
 ```angular-html
-<ui-toggle-group type="single" variant="outline" [(value)]="size">
-  <ui-toggle-group-item value="sm">
-    <text class="text-sm text-foreground">S</text>
-  </ui-toggle-group-item>
-  <ui-toggle-group-item value="md">
-    <text class="text-sm text-foreground">M</text>
-  </ui-toggle-group-item>
-  <ui-toggle-group-item value="lg">
-    <text class="text-sm text-foreground">L</text>
-  </ui-toggle-group-item>
+<ui-toggle variant="outline" size="sm">…</ui-toggle>
+<ui-toggle-group variant="outline" size="lg">…</ui-toggle-group>
+```
+
+A group passes its `variant` and `size` to every item.
+
+### Disabled
+
+```angular-html
+<ui-toggle [disabled]="true">…</ui-toggle>
+<ui-toggle-group type="single" [disabled]="true" [value]="['left']">
+  …
 </ui-toggle-group>
 ```
 
@@ -77,28 +91,46 @@ import {
 
 ### UiToggle
 
-| Input      | Type                        | Default     | Description                                      |
-| ---------- | --------------------------- | ----------- | ------------------------------------------------ |
-| `pressed`  | `model<boolean>`            | `false`     | Whether the toggle is pressed (two-way bindable) |
-| `variant`  | `'default' \| 'outline'`    | `'default'` | Visual style variant                             |
-| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Toggle size                                      |
-| `disabled` | `boolean`                   | `false`     | Whether the toggle is disabled                   |
-| `class`    | `string`                    | `''`        | Additional CSS classes                           |
+| Input      | Type                        | Default     | Description                                   |
+| ---------- | --------------------------- | ----------- | --------------------------------------------- |
+| `pressed`  | `boolean`                   | `false`     | Whether it's pressed. Supports `[(pressed)]`. |
+| `variant`  | `'default' \| 'outline'`    | `'default'` | `outline` adds a border.                      |
+| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Height and padding.                           |
+| `disabled` | `boolean`                   | `false`     | Dims the toggle and ignores taps.             |
+| `class`    | `string`                    | `''`        | Extra Tailwind classes for the toggle.        |
+
+| Output          | Type      | Description                             |
+| --------------- | --------- | --------------------------------------- |
+| `pressedChange` | `boolean` | Emits the new state, for `[(pressed)]`. |
 
 ### UiToggleGroup
 
-| Input      | Type                        | Default     | Description                                    |
-| ---------- | --------------------------- | ----------- | ---------------------------------------------- |
-| `value`    | `model<string[]>`           | `[]`        | The selected values (two-way bindable)         |
-| `type`     | `'single' \| 'multiple'`    | `'single'`  | Selection mode                                 |
-| `variant`  | `'default' \| 'outline'`    | `'default'` | Visual style for all items                     |
-| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size for all items                             |
-| `disabled` | `boolean`                   | `false`     | Disables all items in the group                |
-| `class`    | `string`                    | `''`        | Additional CSS classes for the group container |
+| Input      | Type                        | Default     | Description                                      |
+| ---------- | --------------------------- | ----------- | ------------------------------------------------ |
+| `type`     | `'single' \| 'multiple'`    | `'single'`  | Whether one or several items can be pressed.     |
+| `value`    | `string[]`                  | `[]`        | The pressed items' values. Supports `[(value)]`. |
+| `variant`  | `'default' \| 'outline'`    | `'default'` | Style of every item.                             |
+| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size of every item.                              |
+| `disabled` | `boolean`                   | `false`     | Dims every item and ignores taps.                |
+| `class`    | `string`                    | `''`        | Extra Tailwind classes for the row.              |
+
+| Output        | Type       | Description                           |
+| ------------- | ---------- | ------------------------------------- |
+| `valueChange` | `string[]` | Emits the new value, for `[(value)]`. |
 
 ### UiToggleGroupItem
 
-| Input   | Type     | Default    | Description                         |
-| ------- | -------- | ---------- | ----------------------------------- |
-| `value` | `string` | _required_ | The value this item represents      |
-| `class` | `string` | `''`       | Additional CSS classes for the item |
+| Input   | Type     | Default  | Description                          |
+| ------- | -------- | -------- | ------------------------------------ |
+| `value` | `string` | Required | The value this item adds or removes. |
+| `class` | `string` | `''`     | Extra Tailwind classes for the item. |
+
+No outputs.
+
+The file also exports the `ToggleVariant` and `ToggleSize` types.
+
+## Related
+
+- [Button Group](/dolan/button-group): connected buttons for one-off actions
+- [Radio Group](/dolan/radio-group): one option that always stays selected
+- [Switch](/dolan/switch): an on/off control for settings

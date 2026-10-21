@@ -1,6 +1,6 @@
 # Typography
 
-Consistent text styles for headings, body text, and utility variants. Built on a single `<text>` element with Tailwind classes managed via [class-variance-authority](https://cva.style/).
+Nine text styles, from page headings to muted captions, that render as a single `<text>` element.
 
 <Go example="ui-typography" defaultFile="src/app/app.ts" />
 
@@ -11,53 +11,70 @@ npx @blotch/dolan add typography
 ```
 
 ```typescript
-import { UiText } from '@/components/ui/typography';
+import { UiText } from '../components/ui/typography';
 ```
+
+Typography imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
-```angular-html
-<ui-text>This is a paragraph.</ui-text>
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { UiText } from '../components/ui/typography';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiText],
+  template: `
+    <ui-text variant="h1">Order history</ui-text>
+    <ui-text variant="muted">Updated a minute ago</ui-text>
+  `,
+})
+export class App {}
 ```
 
-## Variants
+`<ui-text>` wraps its content in a `<text>` element and sets the color for you, so the text follows your theme.
 
-### Headings
+### Variants
 
-```angular-html
-<ui-text variant="h1">Heading 1</ui-text>
-<ui-text variant="h2">Heading 2</ui-text>
-<ui-text variant="h3">Heading 3</ui-text>
-<ui-text variant="h4">Heading 4</ui-text>
-```
+| Variant | Classes                                  | Use for                 |
+| ------- | ---------------------------------------- | ----------------------- |
+| `h1`    | `text-4xl font-bold text-foreground`     | The page title          |
+| `h2`    | `text-3xl font-semibold text-foreground` | Section titles          |
+| `h3`    | `text-2xl font-semibold text-foreground` | Subsection titles       |
+| `h4`    | `text-xl font-semibold text-foreground`  | Small headings          |
+| `p`     | `text-base text-foreground`              | Body text (the default) |
+| `lead`  | `text-xl text-muted-foreground`          | An intro paragraph      |
+| `large` | `text-lg font-semibold text-foreground`  | Emphasized text         |
+| `small` | `text-sm font-medium text-foreground`    | Labels and fine print   |
+| `muted` | `text-sm text-muted-foreground`          | Captions and hints      |
 
-### Body text
-
-```angular-html
-<ui-text variant="p">Regular paragraph text (default).</ui-text>
-<ui-text variant="lead">A lead paragraph with larger, lighter styling.</ui-text>
-<ui-text variant="large">Large emphasized text.</ui-text>
-```
-
-### Utility styles
+### Custom classes
 
 ```angular-html
-<ui-text variant="small">Small text for labels or fine print.</ui-text>
-<ui-text variant="muted">Muted text for secondary information.</ui-text>
+<ui-text variant="p" class="text-primary">Primary text</ui-text>
+<ui-text variant="small" class="font-bold text-destructive">
+  Payment failed
+</ui-text>
 ```
 
-## Custom classes
-
-Use the `class` input to extend the base styles with Tailwind utilities.
-
-```angular-html
-<ui-text variant="p" class="text-primary">Primary colored text</ui-text>
-<ui-text variant="small" class="font-bold">Bold small text</ui-text>
-```
+Your classes replace the variant's classes where they conflict, so `text-primary` wins over `text-foreground`.
 
 ## API
 
-| Input     | Type                                                                             | Default | Description                     |
-| --------- | -------------------------------------------------------------------------------- | ------- | ------------------------------- |
-| `variant` | `'h1' \| 'h2' \| 'h3' \| 'h4' \| 'p' \| 'lead' \| 'large' \| 'small' \| 'muted'` | `'p'`   | Typography style variant        |
-| `class`   | `string`                                                                         | `''`    | Additional Tailwind CSS classes |
+### UiText
+
+| Input     | Type                                                                             | Default | Description                          |
+| --------- | -------------------------------------------------------------------------------- | ------- | ------------------------------------ |
+| `variant` | `'h1' \| 'h2' \| 'h3' \| 'h4' \| 'p' \| 'lead' \| 'large' \| 'small' \| 'muted'` | `'p'`   | The text style.                      |
+| `class`   | `string`                                                                         | `''`    | Extra Tailwind classes for the text. |
+
+No outputs.
+
+The file also exports `typographyVariants` and the `TypographyVariant` type.
+
+## Related
+
+- [`<text>`](/api/elements/text): the element it renders
+- [Theming](/dolan/theming): the `foreground` and `muted-foreground` colors
+- [Custom fonts](/guide/custom-fonts/)

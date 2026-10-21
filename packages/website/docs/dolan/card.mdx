@@ -1,6 +1,6 @@
 # Card
 
-A container for grouping related content and actions, with optional header, footer, title, and description sections.
+A bordered surface that groups related content, with optional header, title, description, content and footer parts.
 
 <Go example="ui-card" defaultFile="src/app/app.ts" />
 
@@ -13,75 +13,99 @@ npx @blotch/dolan add card
 ```typescript
 import {
   UiCard,
+  UiCardContent,
+  UiCardDescription,
+  UiCardFooter,
   UiCardHeader,
   UiCardTitle,
-  UiCardDescription,
-  UiCardContent,
-  UiCardFooter,
-} from '@/components/ui/card';
+} from '../components/ui/card';
 ```
 
 ## Usage
 
-```angular-html
-<ui-card>
-  <ui-card-header>
-    <ui-card-title>Title</ui-card-title>
-    <ui-card-description>Description text</ui-card-description>
-  </ui-card-header>
-  <ui-card-content>
-    <text>Card body content goes here.</text>
-  </ui-card-content>
-  <ui-card-footer>
-    <text>Footer content</text>
-  </ui-card-footer>
-</ui-card>
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiCard,
+  UiCardContent,
+  UiCardDescription,
+  UiCardFooter,
+  UiCardHeader,
+  UiCardTitle,
+} from '../components/ui/card';
+
+@Component({
+  selector: 'app-root',
+  imports: [
+    LYNX_ELEMENTS,
+    UiCard,
+    UiCardHeader,
+    UiCardTitle,
+    UiCardDescription,
+    UiCardContent,
+    UiCardFooter,
+  ],
+  template: `
+    <ui-card>
+      <ui-card-header>
+        <ui-card-title>Notifications</ui-card-title>
+        <ui-card-description>You have 3 unread messages.</ui-card-description>
+      </ui-card-header>
+      <ui-card-content>
+        <text class="text-sm text-foreground">New deployment started</text>
+      </ui-card-content>
+      <ui-card-footer>
+        <text class="text-sm text-muted-foreground">View all</text>
+      </ui-card-footer>
+    </ui-card>
+  `,
+})
+export class App {}
 ```
 
-You can omit any sub-component. For a minimal card, use only `ui-card-content`:
+- Every part is optional. Header, content and footer share the same side padding, so they line up.
+- Title and description wrap their content in `<text>`. Content and footer don't, so use your own `<text>` elements there.
+
+### Content only
 
 ```angular-html
 <ui-card>
   <ui-card-content class="pt-6">
-    <text>A simple card with just content.</text>
+    <text class="text-sm text-foreground">A simple card.</text>
   </ui-card-content>
 </ui-card>
 ```
+
+Content has no top padding, because it usually follows a header. Add `pt-6` when it stands alone.
+
+### Pressable
+
+```angular-html
+<ui-card [pressable]="true" (bindtap)="openOrder()">
+  <ui-card-content class="pt-6">
+    <text class="text-sm text-foreground">Order #1024</text>
+  </ui-card-content>
+</ui-card>
+```
+
+`pressable` makes the card shrink slightly while a finger is down. It adds no event, so handle the tap yourself with `(bindtap)`.
 
 ## API
 
 ### UiCard
 
-| Input   | Type     | Default | Description                                           |
-| ------- | -------- | ------- | ----------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the card container |
+| Input       | Type      | Default | Description                              |
+| ----------- | --------- | ------- | ---------------------------------------- |
+| `pressable` | `boolean` | `false` | Shrinks the card slightly while pressed. |
+| `class`     | `string`  | `''`    | Extra Tailwind classes for the card.     |
 
-### UiCardHeader
+No outputs.
 
-| Input   | Type     | Default | Description                                   |
-| ------- | -------- | ------- | --------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the header |
+All sub-components (`UiCardHeader`, `UiCardTitle`, `UiCardDescription`, `UiCardContent`, `UiCardFooter`) accept `class`.
 
-### UiCardTitle
+## Related
 
-| Input   | Type     | Default | Description                                       |
-| ------- | -------- | ------- | ------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the title text |
-
-### UiCardDescription
-
-| Input   | Type     | Default | Description                                             |
-| ------- | -------- | ------- | ------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the description text |
-
-### UiCardContent
-
-| Input   | Type     | Default | Description                                              |
-| ------- | -------- | ------- | -------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |
-
-### UiCardFooter
-
-| Input   | Type     | Default | Description                                             |
-| ------- | -------- | ------- | ------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the footer container |
+- [Separator](/dolan/separator): divide content inside a card
+- [Typography](/dolan/typography): text styles for card content
+- [Handling taps and events](/guide/elements/event-handling)

@@ -1,6 +1,6 @@
 # Radio Group
 
-A group of radio buttons where only one option can be selected at a time. Use `UiRadioGroupItem` inside a `UiRadioGroup` to define options.
+A list of options where tapping one selects it and clears the others.
 
 <Go example="ui-radio-group" defaultFile="src/app/app.ts" />
 
@@ -11,28 +11,33 @@ npx @blotch/dolan add radio-group
 ```
 
 ```typescript
-import { UiRadioGroup, UiRadioGroupItem } from '@/components/ui/radio-group';
+import { UiRadioGroup, UiRadioGroupItem } from '../components/ui/radio-group';
 ```
 
 ## Usage
 
-```angular-html
-<ui-radio-group [(value)]="selected">
-  <ui-radio-group-item value="email">Email</ui-radio-group-item>
-  <ui-radio-group-item value="phone">Phone</ui-radio-group-item>
-  <ui-radio-group-item value="text">Text Message</ui-radio-group-item>
-</ui-radio-group>
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiRadioGroup, UiRadioGroupItem } from '../components/ui/radio-group';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiRadioGroup, UiRadioGroupItem],
+  template: `
+    <ui-radio-group [(value)]="plan">
+      <ui-radio-group-item value="free">Free</ui-radio-group-item>
+      <ui-radio-group-item value="pro">Pro, $9 a month</ui-radio-group-item>
+    </ui-radio-group>
+  `,
+})
+export class App {
+  protected readonly plan = signal('free');
+}
 ```
 
-### With a label
-
-```angular-html
-<ui-label>Preferred Contact</ui-label>
-<ui-radio-group [(value)]="contact">
-  <ui-radio-group-item value="email">Email</ui-radio-group-item>
-  <ui-radio-group-item value="phone">Phone</ui-radio-group-item>
-</ui-radio-group>
-```
+- Each item shows a circle and its label. Tapping anywhere on the row selects it.
+- Items wrap their content in `<text>`, so pass plain text.
+- Once an option is selected, tapping it again keeps it selected. Start with `''` for no selection.
 
 ### Disabled
 
@@ -43,23 +48,34 @@ import { UiRadioGroup, UiRadioGroupItem } from '@/components/ui/radio-group';
 </ui-radio-group>
 ```
 
+Disabling the group dims every item and ignores taps. There's no per-item `disabled`.
+
 ## API
 
 ### UiRadioGroup
 
-| Input      | Type            | Default | Description                                     |
-| ---------- | --------------- | ------- | ----------------------------------------------- |
-| `value`    | `model<string>` | `''`    | The currently selected value (two-way bindable) |
-| `disabled` | `boolean`       | `false` | Disables all radio items in the group           |
-| `class`    | `string`        | `''`    | Additional CSS classes for the group container  |
+| Input      | Type      | Default | Description                                      |
+| ---------- | --------- | ------- | ------------------------------------------------ |
+| `value`    | `string`  | `''`    | The selected item's value. Supports `[(value)]`. |
+| `disabled` | `boolean` | `false` | Dims every item and ignores taps.                |
+| `class`    | `string`  | `''`    | Extra Tailwind classes for the column of items.  |
 
-| Output    | Type     | Description                              |
-| --------- | -------- | ---------------------------------------- |
-| `changed` | `string` | Emits the selected value when it changes |
+| Output        | Type     | Description                                  |
+| ------------- | -------- | -------------------------------------------- |
+| `changed`     | `string` | Emits the value of the item the user tapped. |
+| `valueChange` | `string` | Emits the new value, for `[(value)]`.        |
 
 ### UiRadioGroupItem
 
-| Input   | Type     | Default    | Description                          |
-| ------- | -------- | ---------- | ------------------------------------ |
-| `value` | `string` | _required_ | The value this radio item represents |
-| `class` | `string` | `''`       | Additional CSS classes for the item  |
+| Input   | Type     | Default  | Description                         |
+| ------- | -------- | -------- | ----------------------------------- |
+| `value` | `string` | Required | The value this item selects.        |
+| `class` | `string` | `''`     | Extra Tailwind classes for the row. |
+
+No outputs.
+
+## Related
+
+- [Select](/dolan/select): pick one option from a bottom sheet
+- [Checkbox](/dolan/checkbox): choose several independent options
+- [Toggle](/dolan/toggle): a single-select toggle group

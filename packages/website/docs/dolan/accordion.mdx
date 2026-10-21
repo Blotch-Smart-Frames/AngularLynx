@@ -1,6 +1,6 @@
 # Accordion
 
-A vertically stacked set of interactive headings that each reveal a section of content.
+A stack of sections that expand when tapped, one at a time or several at once.
 
 <Go example="ui-accordion" defaultFile="src/app/app.ts" />
 
@@ -13,80 +13,142 @@ npx @blotch/dolan add accordion
 ```typescript
 import {
   UiAccordion,
+  UiAccordionContent,
   UiAccordionItem,
   UiAccordionTrigger,
-  UiAccordionContent,
-} from '@/components/ui/accordion';
+} from '../components/ui/accordion';
 ```
 
 ## Usage
 
-### Single Mode
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiAccordion,
+  UiAccordionContent,
+  UiAccordionItem,
+  UiAccordionTrigger,
+} from '../components/ui/accordion';
 
-Only one item can be expanded at a time. Opening a new item automatically closes the previous one:
-
-```angular-html
-<ui-accordion type="single">
-  <ui-accordion-item value="item-1">
-    <ui-accordion-trigger>Section One</ui-accordion-trigger>
-    <ui-accordion-content>
-      <text>Content for section one.</text>
-    </ui-accordion-content>
-  </ui-accordion-item>
-  <ui-accordion-item value="item-2">
-    <ui-accordion-trigger>Section Two</ui-accordion-trigger>
-    <ui-accordion-content>
-      <text>Content for section two.</text>
-    </ui-accordion-content>
-  </ui-accordion-item>
-</ui-accordion>
+@Component({
+  selector: 'app-root',
+  imports: [
+    LYNX_ELEMENTS,
+    UiAccordion,
+    UiAccordionItem,
+    UiAccordionTrigger,
+    UiAccordionContent,
+  ],
+  template: `
+    <ui-accordion>
+      <ui-accordion-item value="shipping">
+        <ui-accordion-trigger>
+          How long does shipping take?
+        </ui-accordion-trigger>
+        <ui-accordion-content>
+          <text class="text-sm text-muted-foreground">Three to five days.</text>
+        </ui-accordion-content>
+      </ui-accordion-item>
+      <ui-accordion-item value="returns">
+        <ui-accordion-trigger>Can I return an item?</ui-accordion-trigger>
+        <ui-accordion-content>
+          <text class="text-sm text-muted-foreground">
+            Yes, within 30 days.
+          </text>
+        </ui-accordion-content>
+      </ui-accordion-item>
+    </ui-accordion>
+  `,
+})
+export class App {}
 ```
 
-### Multiple Mode
+- Each item needs a unique `value`. All items start closed.
+- The trigger wraps its content in `<text>` and adds an arrow, so pass plain text.
+- Content shows only while its item is open. It slides and fades in as the item opens.
 
-Multiple items can be expanded simultaneously:
+### Several open at once
 
 ```angular-html
-<ui-accordion type="multiple">
-  <ui-accordion-item value="item-1">
-    <ui-accordion-trigger>First</ui-accordion-trigger>
-    <ui-accordion-content>
-      <text>First section content.</text>
-    </ui-accordion-content>
-  </ui-accordion-item>
-  <ui-accordion-item value="item-2">
-    <ui-accordion-trigger>Second</ui-accordion-trigger>
-    <ui-accordion-content>
-      <text>Second section content.</text>
-    </ui-accordion-content>
-  </ui-accordion-item>
-</ui-accordion>
+<ui-accordion type="multiple">…</ui-accordion>
 ```
+
+With the default `single`, opening an item closes the others.
+
+### Control from code
+
+```typescript title="src/app/faq.ts"
+import { Component, viewChild } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiAccordion,
+  UiAccordionContent,
+  UiAccordionItem,
+  UiAccordionTrigger,
+} from '../components/ui/accordion';
+
+@Component({
+  selector: 'app-faq',
+  imports: [
+    LYNX_ELEMENTS,
+    UiAccordion,
+    UiAccordionItem,
+    UiAccordionTrigger,
+    UiAccordionContent,
+  ],
+  template: `
+    <text class="text-sm text-primary" (bindtap)="showReturns()">
+      Read the returns policy
+    </text>
+    <ui-accordion>
+      <ui-accordion-item value="returns">
+        <ui-accordion-trigger>Can I return an item?</ui-accordion-trigger>
+        <ui-accordion-content>
+          <text class="text-sm text-muted-foreground">
+            Yes, within 30 days.
+          </text>
+        </ui-accordion-content>
+      </ui-accordion-item>
+    </ui-accordion>
+  `,
+})
+export class Faq {
+  readonly faq = viewChild.required(UiAccordion);
+
+  protected showReturns(): void {
+    if (!this.faq().isExpanded('returns')) {
+      this.faq().toggle('returns');
+    }
+  }
+}
+```
+
+`UiAccordion` has two public methods: `toggle(value)` opens or closes an item, and `isExpanded(value)` says whether it's open. The open values are in its `expandedItems` signal, a `Set<string>`.
 
 ## API
 
 ### UiAccordion
 
-| Input   | Type                     | Default    | Description                                                    |
-| ------- | ------------------------ | ---------- | -------------------------------------------------------------- |
-| `type`  | `'single' \| 'multiple'` | `'single'` | Whether one or multiple items can be expanded at the same time |
-| `class` | `string`                 | `''`       | Additional CSS classes to apply to the accordion container     |
+| Input   | Type                     | Default    | Description                                |
+| ------- | ------------------------ | ---------- | ------------------------------------------ |
+| `type`  | `'single' \| 'multiple'` | `'single'` | Whether opening an item closes the others. |
+| `class` | `string`                 | `''`       | Extra Tailwind classes for the container.  |
+
+No outputs.
 
 ### UiAccordionItem
 
-| Input   | Type     | Default    | Description                                           |
-| ------- | -------- | ---------- | ----------------------------------------------------- |
-| `value` | `string` | _required_ | A unique identifier for the accordion item            |
-| `class` | `string` | `''`       | Additional CSS classes to apply to the item container |
+| Input   | Type     | Default  | Description                                |
+| ------- | -------- | -------- | ------------------------------------------ |
+| `value` | `string` | Required | Identifies the item. Unique per accordion. |
+| `class` | `string` | `''`     | Extra Tailwind classes for the item.       |
 
-### UiAccordionTrigger
+No outputs.
 
-| Input   | Type     | Default | Description                                    |
-| ------- | -------- | ------- | ---------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the trigger |
+All other sub-components (`UiAccordionTrigger`, `UiAccordionContent`) accept `class`.
 
-### UiAccordionContent
+## Related
 
-| Input   | Type     | Default | Description                                              |
-| ------- | -------- | ------- | -------------------------------------------------------- |
-| `class` | `string` | `''`    | Additional CSS classes to apply to the content container |
+- [Collapsible](/dolan/collapsible): a single section that opens and closes
+- [Tabs](/dolan/tabs): show one panel at a time with a tab bar

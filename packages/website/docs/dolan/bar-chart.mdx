@@ -1,6 +1,6 @@
 # Bar Chart
 
-Plot one series of values as vertical bars, over categories such as `'Mon'` or along a numeric axis. It's a preset of [`<ui-chart>`](/dolan/chart): it builds a [TanStack Charts](https://tanstack.com/charts) definition from its inputs, so it has the same touch tooltip, screen reader support, pan and zoom, and dark mode.
+Plot one series of values as vertical bars, over categories such as `'Mon'` or along a numeric axis, with a touch tooltip, pan and zoom, and dark mode built in.
 
 <Go example="ui-bar-chart" defaultFile="src/app/app.ts" />
 
@@ -10,155 +10,188 @@ Plot one series of values as vertical bars, over categories such as `'Mon'` or a
 npx @blotch/dolan add bar-chart
 ```
 
-:::tip
-The bar chart depends on [`chart`](/dolan/chart), which is added automatically, along with the npm packages it imports: `@tanstack/charts` and `d3-shape`.
-:::
-
 ```typescript
-import { UiBarChart } from '@/components/ui/bar-chart';
+import { UiBarChart } from '../components/ui/bar-chart';
 ```
+
+This also adds [Chart](/dolan/chart), which draws the preset, and installs the npm packages `@tanstack/charts` and `d3-shape`.
 
 ## Usage
 
-Pass an array of `{ x, y }` items. `x` is either a category label or a number.
-
-```angular-html
-<ui-bar-chart [data]="visits" label="Visits per day" />
-```
-
 ```typescript
-visits = [
-  { x: 'Mon', y: 42 },
-  { x: 'Tue', y: 58 },
-  { x: 'Wed', y: 71 },
-  { x: 'Thu', y: 49 },
-];
+import { Component } from '@angular/core';
+import { UiBarChart } from '../components/ui/bar-chart';
+
+@Component({
+  selector: 'app-visits',
+  imports: [UiBarChart],
+  template: `<ui-bar-chart [data]="visits" label="Visits per day" />`,
+})
+export class Visits {
+  protected readonly visits = [
+    { x: 'Mon', y: 42 },
+    { x: 'Tue', y: 58 },
+    { x: 'Wed', y: 71 },
+    { x: 'Thu', y: 49 },
+  ];
+}
 ```
 
-- **Category labels.** If any `x` is a string, each bar gets an equal slot in data order, labeled with its `x`.
-- **Numbers.** If every `x` is a number, the bars sit at their values on a numeric axis, so uneven gaps in the data stay visible and the x axis can pan and zoom.
+- `data` is an array of `{ x, y }` items. `y` is a number, and `x` is a category label or a number.
+- **Category labels:** if any `x` is a string, each bar gets an equal slot in data order, labeled with its `x`.
+- **Numbers:** if every `x` is a number, the bars sit at their values on a numeric axis. Uneven gaps stay visible, and the x axis can pan and zoom.
+- Touch the chart to see a bar's value in a tooltip. Tap to pin it. Set `label` so a screen reader can say what the chart shows.
 
-Touch the chart to see a bar's value in a tooltip, and tap to pin it. Set `label` so a screen reader can say what the chart shows.
+## Customize
 
-### Color the bars
+### Colors
 
-`color` fills every bar (default `var(--primary)`). A theme color such as `var(--chart-2)` switches with [dark mode](/dolan/chart#dark-mode); a fixed color stays the same. Pass `colors` to give each bar its own color; the list repeats if it's shorter than the data.
+`color` fills every bar (default `var(--primary)`). A theme color such as `var(--chart-2)` switches with [dark mode](/dolan/chart#theming-and-dark-mode). A fixed color stays the same. Pass `colors` to give each bar its own color. The list repeats if it's shorter than the data.
 
 ```angular-html
-<ui-bar-chart [data]="visits" [colors]="palette" />
+<ui-bar-chart [data]="visits" [colors]="['var(--chart-1)', 'var(--chart-2)']" />
 ```
 
-```typescript
-palette = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)'];
-```
+### Shape
 
-### Round the corners and set the bar width
-
-`radius` rounds each bar's corners, in px. `barWidthRatio` sets how much of its slot each bar fills, from `0` to `1` (default `0.7`). With numeric `x`, a slot is the smallest gap between two `x` values.
+Bars grow from `baseline` (default `0`), and the y axis always includes it. Values below the baseline grow down, so gains and losses read as a diverging chart.
 
 ```angular-html
-<ui-bar-chart [data]="visits" [radius]="4" [barWidthRatio]="0.5" />
+<ui-bar-chart
+  [data]="profit"
+  [baseline]="0"
+  [radius]="4"
+  [barWidthRatio]="0.5"
+/>
 ```
 
-### Show negative values
+- `radius` rounds each bar's corners, in px.
+- `barWidthRatio` sets how much of its slot each bar fills, from `0` to `1` (default `0.7`). With numeric `x`, a slot is the smallest gap between two `x` values.
+- To color by sign, pass `colors` built from the data, such as `profit.map((d) => (d.y >= 0 ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)'))`.
 
-Bars grow from `baseline` (default `0`), and the y axis always includes it. Values below the baseline grow down, so gains and losses read as a diverging chart. Color by sign for a profit-and-loss look:
+### Axes and range
+
+`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default: `showGrid` turns them off, and `showXGrid` adds vertical ones.
 
 ```angular-html
-<ui-bar-chart [data]="profit" [colors]="signColors" />
+<ui-bar-chart
+  [data]="visits"
+  xAxisLabel="Day"
+  yAxisLabel="Visits"
+  [yMin]="0"
+  [yMax]="100"
+/>
 ```
 
-```typescript
-profit = [
-  { x: 1, y: 18 },
-  { x: 2, y: -12 },
-  { x: 3, y: 25 },
-];
+- `yMin` and `yMax` fix the y axis instead of fitting the data, for example to compare two charts on one scale.
+- `yTickFormat` turns y tick values into labels, and `tickCount` sets roughly how many ticks the axis gets.
+- With numeric `x`, `xMin`, `xMax` and `xTickFormat` do the same for the x axis.
+- With category labels, the x axis always shows every category. `xMin`, `xMax`, `xTickFormat` and the x `tickCount` don't apply to it.
 
-// Green for gains, red for losses.
-signColors = this.profit.map((item) =>
-  item.y >= 0 ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)',
-);
-```
+### Padding
 
-### Label the axes
-
-`xAxisLabel` and `yAxisLabel` add axis titles. Horizontal gridlines are on by default; `showGrid` turns them off and `showXGrid` adds vertical ones.
+`padding` insets the plot, each side as a fraction (`0` to `1`) of its size. With category labels, only `top` and `bottom` apply.
 
 ```angular-html
-<ui-bar-chart [data]="visits" xAxisLabel="Day" yAxisLabel="Visits" />
+<ui-bar-chart [data]="visits" [padding]="{ top: 0.1 }" />
 ```
-
-`yTickFormat` turns y tick values into labels, and `tickCount` sets roughly how many ticks the axis gets. With numeric `x`, `xTickFormat` does the same for the x axis.
-
-### Fix the axis range
-
-Pass `yMin` and `yMax` to fix the y axis instead of fitting the data, for example to compare two charts on one scale. With numeric `x`, `xMin` and `xMax` do the same for the x axis.
-
-```angular-html
-<ui-bar-chart [data]="visits" [yMin]="0" [yMax]="100" />
-```
-
-With category labels, the x axis always shows every category, so `xMin`, `xMax`, `xTickFormat`, the `tickCount` for x, and `padding.left` and `padding.right` don't apply to it.
 
 ### Size
 
-The chart fills its container's width and is 200px tall. Set `height` for a different height, and `width` for a fixed width, both in px.
-
-### Handle taps
-
-`barTap` emits the tapped `{ x, y }` item. Set `tooltip` to `false` to turn the tooltip off.
+The chart fills its container's width and is 200px tall. Set `height` for another height and `width` for a fixed width, both in px. Use `height` rather than a height class, because the preset always sets a height.
 
 ```angular-html
-<ui-bar-chart [data]="visits" (barTap)="onBarTap($event)" />
+<ui-bar-chart [data]="visits" [height]="160" />
 ```
+
+## Interaction
+
+### Taps
+
+`barTap` emits the tapped `{ x, y }` item. A tap on empty space emits nothing. Set `tooltip` to `false` to turn the tooltip off.
+
+```angular-html
+<ui-bar-chart [data]="visits" (barTap)="selected.set($event)" />
+```
+
+`barTap` fires inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
 
 ### Pan and zoom
 
 Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons. Zooming in on a numeric x axis spreads the bars apart. A category axis doesn't zoom, so with category labels only the y axis does.
 
 ```angular-html
-<ui-bar-chart [data]="revenue" [zoomable]="true" zoomAxes="x" />
+<ui-bar-chart [data]="sales" [zoomable]="true" zoomAxes="x" />
 ```
 
-See [Pan and zoom](/dolan/chart#pan-and-zoom) on the Chart page for how it behaves. To zoom from your own controls, call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component.
+To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.
 
-## Several series, overlays and other marks
+## API
 
-The preset draws one series. For grouped or stacked bars, horizontal bars, or a line over the bars, build a definition with TanStack's `barY` or `barX` and render it with [`<ui-chart>`](/dolan/chart#several-series). A `z` channel stacks the series; add `layout: group()` to place them side by side:
+### UiBarChart
+
+| Input              | Type                            | Default                    | Description                                                    |
+| ------------------ | ------------------------------- | -------------------------- | -------------------------------------------------------------- |
+| `data`             | `readonly BarDatum[]`           | Required                   | Bars, each `{ x, y }`.                                         |
+| `color`            | `string`                        | `'var(--primary)'`         | Fill for every bar (any CSS color).                            |
+| `colors`           | `readonly string[]`             | `[]`                       | One fill per bar, repeating. Overrides `color` when not empty. |
+| `baseline`         | `number`                        | `0`                        | The value bars grow from. Values below it grow down.           |
+| `barWidthRatio`    | `number`                        | `0.7`                      | Bar width as a fraction of its slot, `0`–`1`.                  |
+| `radius`           | `number`                        | `0`                        | Corner radius in px.                                           |
+| `width`            | `number`                        | _fills container_          | Fixed width in px.                                             |
+| `height`           | `number`                        | `200`                      | Height in px.                                                  |
+| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis.                               |
+| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks.                           |
+| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks.                             |
+| `xAxisLabel`       | `string`                        | `''`                       | X-axis title.                                                  |
+| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title.                                                  |
+| `padding`          | `ChartPadding`                  | `{}`                       | Inner inset, each side a `0`–`1` fraction of the plot.         |
+| `xMin`             | `number`                        | _fits the data_            | Fixed x-axis lower bound (numeric `x` only).                   |
+| `xMax`             | `number`                        | _fits the data_            | Fixed x-axis upper bound (numeric `x` only).                   |
+| `yMin`             | `number`                        | _fits the data_            | Fixed y-axis lower bound.                                      |
+| `yMax`             | `number`                        | _fits the data_            | Fixed y-axis upper bound.                                      |
+| `xTickFormat`      | `(value: number) => string`     | _automatic_                | Formats x-axis tick labels (numeric `x` only).                 |
+| `yTickFormat`      | `(value: number) => string`     | _automatic_                | Formats y-axis tick labels.                                    |
+| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched bar. A tap pins it.             |
+| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart.                  |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Which color table the marks use.                               |
+| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons.                                |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom.                                       |
+| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable.                        |
+| `minZoom`          | `number`                        | `1`                        | Smallest zoom. `1` shows all the data.                         |
+| `maxZoom`          | `number`                        | `8`                        | Largest zoom.                                                  |
+| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press or method call.                   |
+| `class`            | `string`                        | `''`                       | Extra Tailwind classes for the chart's root view.              |
+
+| Output   | Type       | Description              |
+| -------- | ---------- | ------------------------ |
+| `barTap` | `BarDatum` | The bar a tap landed on. |
+
+| Method        | Description               |
+| ------------- | ------------------------- |
+| `zoomIn()`    | Zooms in by `zoomStep`.   |
+| `zoomOut()`   | Zooms out by `zoomStep`.  |
+| `resetZoom()` | Shows all the data again. |
+
+`BarDatum` is `{ x: number | string; y: number }`, exported from `../components/ui/bar-chart`. `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size, with omitted sides `0`. It's exported from `../components/ui/chart`.
+
+### barChartDefinition
 
 ```typescript
-import { barY, defineChart, group } from '@tanstack/charts/universal';
-
-const units = [
-  { month: 'Jan', product: 'Basic', units: 3 },
-  { month: 'Jan', product: 'Pro', units: 5 },
-  { month: 'Feb', product: 'Basic', units: 4 },
-  { month: 'Feb', product: 'Pro', units: 2 },
-];
-
-const grouped = defineChart({
-  marks: [
-    barY(units, { x: 'month', y: 'units', z: 'product', layout: group() }),
-  ],
-  scales: {
-    x: { scale: () => scaleBand().padding(0.2) },
-    y: { scale: scaleLinear, nice: true, grid: true },
-  },
-  focus: 'group-x',
-  tooltip,
-});
+function barChartDefinition(options: BarChartOptions): ChartDefinition;
 ```
 
-To keep this preset's axes and styling, start from its definition and add marks, such as a target line:
+Returns the [TanStack Charts](https://tanstack.com/charts) definition `<ui-bar-chart>` renders: `barY` on a band scale for category labels, or `rect` on a linear scale for numbers. The options are the inputs that shape the chart, with the same defaults: `data`, `color`, `colors`, `baseline`, `barWidthRatio`, `radius`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label, color scheme and zoom are inputs of `<ui-chart>` instead.
+
+Start from it to add marks of your own, such as a target line, and render the result with [`<ui-chart>`](/dolan/chart):
 
 ```typescript
 import { defineChart, ruleY } from '@tanstack/charts/universal';
-import { barChartDefinition } from '@/components/ui/bar-chart';
+import { barChartDefinition } from '../components/ui/bar-chart';
 
 const base = barChartDefinition({ data: visits, radius: 4 });
 
-const withTarget = defineChart({
+protected readonly withTarget = defineChart({
   ...base,
   marks: [
     ...base.marks,
@@ -171,59 +204,10 @@ const withTarget = defineChart({
 });
 ```
 
-```angular-html
-<ui-chart [definition]="withTarget" label="Visits against target" />
-```
+For grouped or stacked bars, build a definition with TanStack's `barY` and a `z` channel. A `z` channel stacks the series, and `layout: group()` places them side by side.
 
-## API
+## Related
 
-### UiBarChart
-
-| Input              | Type                            | Default                    | Description                                                   |
-| ------------------ | ------------------------------- | -------------------------- | ------------------------------------------------------------- |
-| `data`             | `BarDatum[]`                    | _required_                 | Bars, each `{ x, y }`                                         |
-| `color`            | `string`                        | `'var(--primary)'`         | Fill for every bar (any CSS color)                            |
-| `colors`           | `string[]`                      | `[]`                       | One fill per bar, repeating; overrides `color`                |
-| `barWidthRatio`    | `number`                        | `0.7`                      | Bar width as a fraction of its slot, `0`–`1`                  |
-| `baseline`         | `number`                        | `0`                        | Value bars grow from; values below it grow down               |
-| `radius`           | `number`                        | `0`                        | Corner radius in px                                           |
-| `width`            | `number`                        | _fills container_          | Fixed width in px                                             |
-| `height`           | `number`                        | `200`                      | Height in px                                                  |
-| `tickCount`        | `number`                        | `5`                        | Target number of ticks per axis                               |
-| `showGrid`         | `boolean`                       | `true`                     | Horizontal gridlines at the y ticks                           |
-| `showXGrid`        | `boolean`                       | `false`                    | Vertical gridlines at the x ticks                             |
-| `xAxisLabel`       | `string`                        | `''`                       | X-axis title                                                  |
-| `yAxisLabel`       | `string`                        | `''`                       | Y-axis title                                                  |
-| `padding`          | `ChartPadding`                  | `{}`                       | Inner inset, each side a `0`–`1` fraction of the plot         |
-| `xMin`             | `number`                        | _auto_                     | Fixed x-axis lower bound (numeric `x` only)                   |
-| `xMax`             | `number`                        | _auto_                     | Fixed x-axis upper bound (numeric `x` only)                   |
-| `yMin`             | `number`                        | _auto_                     | Fixed y-axis lower bound                                      |
-| `yMax`             | `number`                        | _auto_                     | Fixed y-axis upper bound                                      |
-| `xTickFormat`      | `(value: number) => string`     | _auto_                     | Formats x-axis tick labels (numeric `x` only)                 |
-| `yTickFormat`      | `(value: number) => string`     | _auto_                     | Formats y-axis tick labels                                    |
-| `tooltip`          | `boolean`                       | `true`                     | Show a tooltip for the touched bar; a tap pins it             |
-| `label`            | `string`                        | `'Chart'`                  | What a screen reader announces for the chart                  |
-| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ | Light or dark colors; see [Dark mode](/dolan/chart#dark-mode) |
-| `zoomable`         | `boolean`                       | `false`                    | Drag to pan, with zoom buttons                                |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                     | Which axes pan and zoom                                       |
-| `showZoomControls` | `boolean`                       | `true`                     | Show the +/−/1:1 buttons when zoomable                        |
-| `minZoom`          | `number`                        | `1`                        | Smallest zoom; `1` shows all the data                         |
-| `maxZoom`          | `number`                        | `8`                        | Largest zoom                                                  |
-| `zoomStep`         | `number`                        | `1.4`                      | Zoom factor per button press                                  |
-| `class`            | `string`                        | `''`                       | Additional CSS classes                                        |
-
-| Output   | Type       | Description                   |
-| -------- | ---------- | ----------------------------- |
-| `barTap` | `BarDatum` | Emits the bar that was tapped |
-
-| Method        | Description              |
-| ------------- | ------------------------ |
-| `zoomIn()`    | Zooms in by `zoomStep`   |
-| `zoomOut()`   | Zooms out by `zoomStep`  |
-| `resetZoom()` | Shows all the data again |
-
-`BarDatum` is `{ x: number | string; y: number }`, exported from `@/components/ui/bar-chart`. `ChartPadding` is `{ top?, right?, bottom?, left? }`, each a fraction (`0`–`1`) of the plot's size, with omitted sides `0`, exported from `@/components/ui/chart`.
-
-### barChartDefinition
-
-`barChartDefinition(options: BarChartOptions)` returns the TanStack definition `<ui-bar-chart>` renders: `barY` on a band scale for category labels, or `rect` on a linear scale for numbers. The options are the inputs that shape the chart, with the same defaults: `data`, `color`, `colors`, `barWidthRatio`, `baseline`, `radius`, `tickCount`, `showGrid`, `showXGrid`, `xAxisLabel`, `yAxisLabel`, `padding`, `xMin`, `xMax`, `yMin`, `yMax`, `xTickFormat`, `yTickFormat` and `tooltip`. Size, label and zoom are inputs of `<ui-chart>` instead.
+- [Chart](/dolan/chart): grouped, stacked and horizontal bars
+- [Line Chart](/dolan/line-chart): values as a line
+- [Area Chart](/dolan/area-chart): a line with the area below it filled

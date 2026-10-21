@@ -1,6 +1,6 @@
 # Spinner
 
-An animated loading spinner with configurable size and color.
+Show that something is loading with a rotating icon, when you can't tell how long it will take.
 
 <Go example="ui-spinner" defaultFile="src/app/app.ts" />
 
@@ -11,16 +11,27 @@ npx @blotch/dolan add spinner
 ```
 
 ```typescript
-import { UiSpinner } from '@/components/ui/spinner';
+import { UiSpinner } from '../components/ui/spinner';
 ```
 
 ## Usage
 
-### Basic
+```typescript
+import { Component } from '@angular/core';
+import { UiSpinner } from '../components/ui/spinner';
 
-```angular-html
-<ui-spinner />
+@Component({
+  selector: 'app-loading',
+  imports: [UiSpinner],
+  template: `<ui-spinner color="rgba(113, 113, 122, 1)" />`,
+})
+export class Loading {}
 ```
+
+- The spinner turns once every 1.6 seconds, for as long as it's on screen.
+- It's drawn with [Lynx](/guide/glossary#lynx)'s [`<svg>`](/api/elements/svg) element, which can't read your CSS. Pass `color` as a literal color, such as `#3b82f6` or `rgba(…)`. A theme variable such as `var(--primary)` won't work there.
+- Without `color`, the icon keeps the SVG's `currentColor` stroke, which doesn't follow your theme. Set `color` whenever the spinner sits on a dark background or the app has dark mode.
+- It has no `class` input. Wrap it in a `<view>` to position it.
 
 ### Sizes
 
@@ -31,15 +42,25 @@ import { UiSpinner } from '@/components/ui/spinner';
 <ui-spinner size="lg" />
 ```
 
-### Custom Color
+`xs` is 16px, `sm` 20px, `md` 24px and `lg` 32px.
 
-```angular-html
-<ui-spinner color="#3b82f6" />
-```
+### In a button
+
+[Button](/dolan/button) shows a spinner in place of its label while `loading` is `true`, so you don't need to add one yourself.
 
 ## API
 
-| Input   | Type                           | Default     | Description                                          |
-| ------- | ------------------------------ | ----------- | ---------------------------------------------------- |
-| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | Size of the spinner                                  |
-| `color` | `string \| undefined`          | `undefined` | Custom stroke color (uses `currentColor` by default) |
+### UiSpinner
+
+| Input   | Type                           | Default     | Description                                           |
+| ------- | ------------------------------ | ----------- | ----------------------------------------------------- |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | Width and height: 16, 20, 24 or 32px.                 |
+| `color` | `string \| undefined`          | `undefined` | Stroke color, as a literal color. Not a CSS variable. |
+
+No outputs.
+
+## Related
+
+- [Button](/dolan/button): shows a spinner while `loading`
+- [Progress](/dolan/progress): show how far a task has got
+- [Skeleton](/dolan/skeleton): hold the place of content that's loading

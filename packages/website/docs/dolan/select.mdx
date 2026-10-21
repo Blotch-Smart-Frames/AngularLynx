@@ -1,6 +1,6 @@
 # Select
 
-A dropdown menu for selecting a single value from a list of options. Opens a bottom sheet panel with animated transitions.
+A field that opens a bottom sheet of options and shows the one the user picks.
 
 <Go example="ui-select" defaultFile="src/app/app.ts" />
 
@@ -11,59 +11,92 @@ npx @blotch/dolan add select
 ```
 
 ```typescript
-import { UiSelect, UiSelectItem } from '@/components/ui/select';
+import { UiSelect, UiSelectItem } from '../components/ui/select';
 ```
+
+This also adds [Bottom Sheet](/dolan/bottom-sheet), which holds the options.
 
 ## Usage
 
-```angular-html
-<ui-select placeholder="Pick a framework" [(value)]="framework">
-  <ui-select-item value="angular" label="Angular" />
-  <ui-select-item value="react" label="React" />
-  <ui-select-item value="vue" label="Vue" />
-  <ui-select-item value="svelte" label="Svelte" />
-</ui-select>
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiSelect, UiSelectItem } from '../components/ui/select';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiSelect, UiSelectItem],
+  template: `
+    <ui-select placeholder="Pick a country" [(value)]="country">
+      <ui-select-item value="us" label="United States" />
+      <ui-select-item value="uk" label="United Kingdom" />
+      <ui-select-item value="jp" label="Japan" />
+    </ui-select>
+  `,
+})
+export class App {
+  protected readonly country = signal('');
+}
 ```
+
+- Tapping the field opens the sheet. Tapping an item selects it and closes the sheet.
+- Tapping the dimmed backdrop, or dragging the sheet's handle down, closes it without a change.
+- The field shows the selected item's `label`, or `placeholder` when nothing is selected. The selected item has a check mark.
+- The list scrolls once it's taller than 300 pixels.
 
 ### With a label
 
 ```angular-html
-<ui-label>Country</ui-label>
-<ui-select [(value)]="country">
-  <ui-select-item value="us" label="United States" />
-  <ui-select-item value="uk" label="United Kingdom" />
-  <ui-select-item value="de" label="Germany" />
-</ui-select>
+<view class="flex flex-col gap-2">
+  <ui-label>Country</ui-label>
+  <ui-select [(value)]="country">…</ui-select>
+</view>
 ```
+
+See [Label](/dolan/label).
 
 ### Disabled
 
 ```angular-html
 <ui-select value="admin" [disabled]="true">
   <ui-select-item value="admin" label="Administrator" />
-  <ui-select-item value="editor" label="Editor" />
+  <ui-select-item value="viewer" label="Viewer" />
 </ui-select>
 ```
+
+A disabled select dims and doesn't open.
+
+### Open from code
+
+`UiSelect` has public `open()`, `close()` and `toggle()` methods. Get it with `viewChild(UiSelect)` and call them from a handler. `open()` and `toggle()` do nothing while disabled.
 
 ## API
 
 ### UiSelect
 
-| Input         | Type            | Default       | Description                                     |
-| ------------- | --------------- | ------------- | ----------------------------------------------- |
-| `value`       | `model<string>` | `''`          | The currently selected value (two-way bindable) |
-| `placeholder` | `string`        | `'Select...'` | Placeholder text when no value is selected      |
-| `disabled`    | `boolean`       | `false`       | Whether the select is disabled                  |
-| `class`       | `string`        | `''`          | Additional CSS classes for the trigger          |
+| Input         | Type      | Default       | Description                                      |
+| ------------- | --------- | ------------- | ------------------------------------------------ |
+| `value`       | `string`  | `''`          | The selected item's value. Supports `[(value)]`. |
+| `placeholder` | `string`  | `'Select...'` | Shown in the field while nothing is selected.    |
+| `disabled`    | `boolean` | `false`       | Dims the field and stops it from opening.        |
+| `class`       | `string`  | `''`          | Extra Tailwind classes for the field.            |
 
-| Output    | Type     | Description                              |
-| --------- | -------- | ---------------------------------------- |
-| `changed` | `string` | Emits the selected value when it changes |
+| Output        | Type     | Description                                  |
+| ------------- | -------- | -------------------------------------------- |
+| `changed`     | `string` | Emits the value of the item the user tapped. |
+| `valueChange` | `string` | Emits the new value, for `[(value)]`.        |
 
 ### UiSelectItem
 
-| Input   | Type     | Default    | Description                         |
-| ------- | -------- | ---------- | ----------------------------------- |
-| `value` | `string` | _required_ | The value this item represents      |
-| `label` | `string` | _required_ | The display text for this item      |
-| `class` | `string` | `''`       | Additional CSS classes for the item |
+| Input   | Type     | Default  | Description                                  |
+| ------- | -------- | -------- | -------------------------------------------- |
+| `value` | `string` | Required | The value this item selects.                 |
+| `label` | `string` | Required | The text shown in the list and in the field. |
+| `class` | `string` | `''`     | Extra Tailwind classes for the item's row.   |
+
+No outputs.
+
+## Related
+
+- [Radio Group](/dolan/radio-group): show every option on screen
+- [Bottom Sheet](/dolan/bottom-sheet): the panel the options open in
+- [Dialogs and overlays](/guide/overlays)

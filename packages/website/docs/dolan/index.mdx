@@ -1,92 +1,199 @@
-# @blotch/dolan UI Components
+# UI Components
 
-A collection of beautifully crafted UI components for AngularLynx, inspired by [shadcn/ui](https://ui.shadcn.com/). Components are copied into your project — you own the code and can customize freely.
+**UI components** are ready-made buttons, form controls, dialogs, charts and more for AngularLynx apps. A CLI copies their source into your project, so you own the code and can change anything. It's the same idea as [shadcn/ui](https://ui.shadcn.com/).
 
-## Getting Started
+Two package names are involved:
 
-### 1. Initialize dolan
+- **`@blotch/ui`** is the component source. You never install it.
+- **`@blotch/dolan`** is the CLI. It carries a copy of that source and writes it into `src/components/ui/`.
 
-Run the init command in your project root:
+## Before you start
+
+The components are styled with Tailwind CSS. If you said yes to Tailwind when you created the app, you're ready. Otherwise, set it up first: see [Tailwind CSS](/guide/tailwindcss).
+
+## Installation
+
+**1. Install the CLI as a dependency.**
+
+```bash
+npm install @blotch/dolan class-variance-authority
+```
+
+- Copied components import `cn()` and animation helpers from `@blotch/dolan`, so your app needs it to build, not only to run commands.
+- Button, Button Group, Toggle, Typography, Badge and Alert also import `class-variance-authority`, which `dolan add` doesn't install for you.
+
+**2. Set up dolan.**
 
 ```bash
 npx @blotch/dolan init
 ```
 
-This creates:
+Press Enter to accept both default folders. It writes `dolan.config.json` and copies three theme files into `src/styles/`:
 
-- `dolan.config.json` — path aliases for components, utils, and theme
-- `src/lib/utils/cn.ts` — class merging utility (clsx + tailwind-merge)
-- `src/styles/default.css` and `src/styles/dark.css` — theme CSS custom properties
-- `src/styles/tailwind-plugin.ts` — Tailwind plugin for dolan theme tokens
+- `default.css`: the light theme's colors and corner radius
+- `dark.css`: the dark theme's colors
+- `tailwind-plugin.ts`: maps those colors to Tailwind classes such as `bg-primary`
 
-### 2. Configure Tailwind
-
-Add the plugin to your Tailwind config:
+**3. Add the Tailwind plugin.**
 
 ```typescript title="tailwind.config.ts"
 import type { Config } from 'tailwindcss';
 import preset from '@lynx-js/tailwind-preset';
-import { dolanPlugin } from './src/styles/tailwind-plugin';
+import { blotchPlugin } from './src/styles/tailwind-plugin'; // [!code highlight]
 
 const config: Config = {
   content: ['./src/**/*.ts'],
   presets: [preset],
-  plugins: [dolanPlugin],
+  plugins: [blotchPlugin], // [!code highlight]
 };
 
 export default config;
 ```
 
-Import the theme in your global styles:
+**4. Import the theme.** Put the `@import` lines first, because CSS ignores an `@import` that comes after other rules.
 
 ```css title="src/styles.css"
-@import './src/styles/default.css';
+@import './styles/default.css';
+@import './styles/dark.css';
+
 @tailwind base;
-@tailwind components;
 @tailwind utilities;
 ```
 
-### 3. Add components
+`dark.css` changes nothing until you turn dark mode on. See [Theming](/dolan/theming#dark-mode).
+
+**5. Add components.**
 
 ```bash
 npx @blotch/dolan add button card
 ```
 
-Components are copied to `src/components/ui/` by default. Dependencies are resolved automatically — for example, adding `button` also adds `spinner`. `dolan add` also installs any npm packages a component imports, with your project's package manager: adding `chart` installs `@tanstack/charts` and `d3-shape`.
+Each one lands in `src/components/ui/<name>/`. Components it depends on come too: `button` brings `spinner`.
 
-### 4. Use components
+**6. Use them.**
 
-```typescript
-import { Component } from '@angular/core';
-import { UiButton } from '@/components/ui/button';
-import { UiCard, UiCardContent } from '@/components/ui/card';
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiButton } from '../components/ui/button';
+import {
+  UiCard,
+  UiCardContent,
+  UiCardHeader,
+  UiCardTitle,
+} from '../components/ui/card';
 
 @Component({
   selector: 'app-root',
-  imports: [UiButton, UiCard, UiCardContent],
+  imports: [
+    LYNX_ELEMENTS,
+    UiButton,
+    UiCard,
+    UiCardHeader,
+    UiCardTitle,
+    UiCardContent,
+  ],
   template: `
-    <ui-card>
-      <ui-card-content>
-        <ui-button (pressed)="onClick()">Click me</ui-button>
-      </ui-card-content>
-    </ui-card>
+    <view class="h-full bg-background p-6">
+      <ui-card>
+        <ui-card-header>
+          <ui-card-title>Welcome</ui-card-title>
+        </ui-card-header>
+        <ui-card-content>
+          <ui-button (pressed)="increment()">
+            Tapped {{ count() }} times
+          </ui-button>
+        </ui-card-content>
+      </ui-card>
+    </view>
   `,
 })
 export class App {
-  onClick() {
-    console.log('clicked');
+  protected readonly count = signal(0);
+
+  protected increment(): void {
+    this.count.update((n) => n + 1);
   }
 }
 ```
 
-:::tip
-The `@/` prefix in import paths refers to your project's `src/` directory. If your project doesn't use path aliases, replace `@/` with the appropriate relative path.
-:::
+- The component pages import from `../components/ui/<name>`, a path relative to `src/app/`.
+- Templates use [Lynx](/guide/glossary#lynx) **elements** such as `<view>` and `<text>` instead of HTML (see [Glossary](/guide/glossary#element)). Import `LYNX_ELEMENTS` whenever you use them (see [Elements](/api/angular-lynx/elements)).
 
-## Design Principles
+## Good to know
 
-- **Signal-based** — All inputs use Angular's `input()` API, outputs use `output()`, and two-way bindings use `model()`
-- **Tailwind-first** — Styled with Tailwind CSS using CSS custom properties for theming
-- **Variant-driven** — Uses [class-variance-authority](https://cva.style/) for consistent variant APIs
-- **Lynx-native** — Built with Lynx elements (`<view>`, `<text>`, `<overlay>`) for native rendering
-- **Customizable** — Every component accepts a `class` input for additional Tailwind overrides
+- **Text color doesn't inherit.** CSS inheritance is off by default on Lynx, so put a color class such as `text-foreground` on each of your own `<text>` elements. The components color their own text.
+- **Tests come with the code.** `dolan add` copies each component's `<name>.test.ts`. Most use `@blotch/angular-lynx-testing-library`, so set up [testing](/guide/testing/) or delete those files.
+- **Updates are merged, not forced.** Run [`dolan update`](/dolan/cli#update) after upgrading `@blotch/dolan`. It keeps your edits and asks when both sides changed.
+
+## Components
+
+**General**
+
+- [Button](/dolan/button): a tappable button with variants, sizes and a loading state
+- [Button Group](/dolan/button-group): connected buttons that act as one toolbar
+- [Icon](/dolan/icon): 195 vector icons
+- [Typography](/dolan/typography): text styles for headings, body and captions
+
+**Layout**
+
+- [Card](/dolan/card): a bordered surface with header, content and footer
+- [Separator](/dolan/separator): a thin horizontal or vertical line
+- [Accordion](/dolan/accordion): stacked sections that expand one or many at a time
+- [Collapsible](/dolan/collapsible): one section that shows and hides its content
+- [Tabs](/dolan/tabs): panels switched by a row of tab buttons
+- [Aspect Ratio](/dolan/aspect-ratio): a box that keeps a width-to-height ratio
+- [Scroll Area](/dolan/scroll-area): a scrolling container with edge events
+
+**Navigation**
+
+- [Nav Drawer](/dolan/nav-drawer): a side menu that slides in
+- [Pagination](/dolan/pagination): page numbers with previous and next buttons
+
+**Data Display**
+
+- [Avatar](/dolan/avatar): a profile picture with a fallback
+- [Badge](/dolan/badge): a small status label
+- [List](/dolan/list): a fast, recycling list for long data
+- [Chart](/dolan/chart): draws any TanStack Charts definition
+- [Line Chart](/dolan/line-chart), [Area Chart](/dolan/area-chart), [Bar Chart](/dolan/bar-chart), [Scatter Chart](/dolan/scatter-chart) and [Candlestick Chart](/dolan/candlestick-chart): ready-made charts
+- [Progress](/dolan/progress): a progress bar
+- [Skeleton](/dolan/skeleton): a placeholder shape while content loads
+- [Spinner](/dolan/spinner): a loading indicator
+- [Empty State](/dolan/empty-state): a message for screens with nothing to show
+
+**Forms**
+
+- [Input](/dolan/input): a single-line text field with label, helper text and error
+- [Textarea](/dolan/textarea): a multi-line text field that grows with its content
+- [Label](/dolan/label): a caption for a form control
+- [Checkbox](/dolan/checkbox): an on/off box with a check mark
+- [Radio Group](/dolan/radio-group): pick one option from a list
+- [Select](/dolan/select): pick one option from a bottom sheet
+- [Switch](/dolan/switch): an on/off toggle switch
+- [Toggle](/dolan/toggle): a button that stays pressed, alone or in a group
+
+**Feedback**
+
+- [Alert](/dolan/alert): an inline message
+- [Alert Dialog](/dolan/alert-dialog): a dialog that asks for confirmation
+- [Dialog](/dolan/dialog): a centered modal window
+- [Bottom Sheet](/dolan/bottom-sheet): a panel that slides up from the bottom
+- [Sheet](/dolan/sheet): a bottom sheet with header and footer slots
+- [Action Sheet](/dolan/action-sheet): a list of actions that slides up
+- [Toast](/dolan/toast): short messages that appear and go away
+
+## Design principles
+
+- **You own the code.** Components are plain files in your repo. Edit them like your own.
+- **Signals throughout.** Inputs use `input()`, events use `output()`, and two-way values use `model()`, so `[(value)]` and `[(checked)]` work.
+- **Theme tokens, not colors.** Components use classes such as `bg-primary` and `text-muted-foreground`, defined once in your theme. See [Theming](/dolan/theming).
+- **Variants with `cva`.** Variant classes come from [class-variance-authority](https://cva.style/). Components export them, for example `buttonVariants`.
+- **Your classes win.** Most components take a `class` input. It's merged with `cn()`, so a conflicting class you pass replaces the default.
+- **Lynx elements only.** Components are built from `<view>`, `<text>`, `<svg>`, `<overlay>` and other Lynx elements, never HTML.
+
+## Related
+
+- [CLI](/dolan/cli): every `@blotch/dolan` command
+- [Theming](/dolan/theming): change colors, radius and dark mode
+- [Tailwind CSS](/guide/tailwindcss): set up Tailwind for Lynx

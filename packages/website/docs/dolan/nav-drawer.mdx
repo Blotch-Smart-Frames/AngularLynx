@@ -1,0 +1,182 @@
+# Nav Drawer
+
+Put your app's navigation in a panel that slides in from the side of the screen, opened from a menu button.
+
+<Go example="ui-nav-drawer" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add nav-drawer
+```
+
+```typescript
+import {
+  UiNavDrawer,
+  UiNavDrawerHeader,
+  UiNavDrawerContent,
+  UiNavDrawerItem,
+  UiNavDrawerFooter,
+  UiNavDrawerTrigger,
+} from '../components/ui/nav-drawer';
+```
+
+This also adds [Icon](/dolan/icon), which draws the menu button's icon.
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  UiNavDrawer,
+  UiNavDrawerHeader,
+  UiNavDrawerContent,
+  UiNavDrawerItem,
+  UiNavDrawerTrigger,
+} from '../components/ui/nav-drawer';
+import { UiIcon } from '../components/ui/icon';
+
+@Component({
+  selector: 'app-shell',
+  imports: [
+    LYNX_ELEMENTS,
+    UiNavDrawer,
+    UiNavDrawerHeader,
+    UiNavDrawerContent,
+    UiNavDrawerItem,
+    UiNavDrawerTrigger,
+    UiIcon,
+  ],
+  template: `
+    <view class="flex flex-row items-center px-4 py-3">
+      <ui-nav-drawer-trigger (pressed)="open.set(true)" />
+      <text class="ml-3 text-lg font-semibold text-foreground">My App</text>
+    </view>
+
+    <ui-nav-drawer [(open)]="open">
+      <ui-nav-drawer-header>
+        <text class="text-lg font-semibold text-foreground">Navigation</text>
+      </ui-nav-drawer-header>
+      <ui-nav-drawer-content>
+        @for (page of pages; track page) {
+          <ui-nav-drawer-item
+            [active]="current() === page"
+            (pressed)="current.set(page)"
+          >
+            <ui-icon name="chevron-right" size="sm" />
+            <text class="text-sm text-foreground">{{ page }}</text>
+          </ui-nav-drawer-item>
+        }
+      </ui-nav-drawer-content>
+    </ui-nav-drawer>
+  `,
+})
+export class Shell {
+  protected readonly pages = ['Home', 'Search', 'Settings'];
+  protected readonly open = signal(false);
+  protected readonly current = signal('Home');
+}
+```
+
+- `<ui-nav-drawer-trigger>` is a menu button with a hamburger icon. It only emits `pressed`, so set your `open` signal there.
+- The drawer covers 80% of the screen width and the full height, over a dimmed backdrop. A backdrop tap closes it.
+- Tapping an item emits its `pressed`, then closes the drawer.
+- `[active]` highlights the item for the current page. When the drawer opens, it scrolls the active item into view.
+- An item lays out its content in a row. Put an icon and a `<text>` in it.
+- The drawer draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+
+### Layout
+
+The drawer stacks up to three sections, each optional:
+
+- **`<ui-nav-drawer-header>`** at the top, padded clear of the status bar and notch.
+- **`<ui-nav-drawer-content>`** in the middle. It fills the space left over and scrolls when the items don't fit.
+- **`<ui-nav-drawer-footer>`** at the bottom, padded clear of the home indicator. Use it for account actions such as Log out.
+
+### Navigate with the router
+
+`pressed` fires inside the tap. Changing signals there is safe, but router navigation isn't: wrap it in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) for why.
+
+```typescript
+readonly #router = inject(Router);
+
+protected go(url: string): void {
+  setTimeout(() => this.#router.navigateByUrl(url));
+}
+```
+
+```angular-html
+<ui-nav-drawer-item
+  [active]="current() === '/settings'"
+  (pressed)="go('/settings')"
+>
+  <text class="text-sm text-foreground">Settings</text>
+</ui-nav-drawer-item>
+```
+
+### Open from the right
+
+```angular-html
+<ui-nav-drawer [(open)]="open" side="right">…</ui-nav-drawer>
+```
+
+### Keep the drawer open
+
+Set `autoClose` to `false` on an item that shouldn't close the drawer, such as one that expands a group.
+
+```angular-html
+<ui-nav-drawer-item [autoClose]="false" (pressed)="toggleGroup()">
+  <text class="text-sm text-foreground">Projects</text>
+</ui-nav-drawer-item>
+```
+
+## API
+
+### UiNavDrawer
+
+| Input   | Type                | Default  | Description                                       |
+| ------- | ------------------- | -------- | ------------------------------------------------- |
+| `open`  | `boolean`           | `false`  | Whether the drawer is shown. Supports `[(open)]`. |
+| `side`  | `'left' \| 'right'` | `'left'` | The edge the drawer slides in from.               |
+| `class` | `string`            | `''`     | Extra Tailwind classes for the panel.             |
+
+| Output       | Type      | Description                                                                         |
+| ------------ | --------- | ----------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits `false` when an item or a backdrop tap closes the drawer. Part of `[(open)]`. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                           |
+
+| Method    | Description        |
+| --------- | ------------------ |
+| `close()` | Closes the drawer. |
+
+### UiNavDrawerItem
+
+| Input       | Type                         | Default     | Description                                                                |
+| ----------- | ---------------------------- | ----------- | -------------------------------------------------------------------------- |
+| `active`    | `boolean`                    | `false`     | Highlight the item, and scroll to it when the drawer opens.                |
+| `autoClose` | `boolean`                    | `true`      | Close the drawer after a tap.                                              |
+| `variant`   | `'default' \| 'destructive'` | `'default'` | Accepted, but has no visual effect yet. Color the item's content yourself. |
+
+| Output    | Type   | Description                                              |
+| --------- | ------ | -------------------------------------------------------- |
+| `pressed` | `void` | Emits when the item is tapped, before the drawer closes. |
+
+| Method             | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `scrollIntoView()` | Scrolls the drawer's content so the item is centered. |
+
+### UiNavDrawerTrigger
+
+| Output    | Type   | Description                      |
+| --------- | ------ | -------------------------------- |
+| `pressed` | `void` | Emits when the button is tapped. |
+
+All sub-components (`UiNavDrawerHeader`, `UiNavDrawerContent`, `UiNavDrawerItem`, `UiNavDrawerFooter`, `UiNavDrawerTrigger`) accept `class`. Items only work inside a `<ui-nav-drawer>`, because they close it.
+
+## Related
+
+- [Routing and navigation](/guide/routing): move between pages with the router
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
+- [Safe area](/guide/safe-area): the insets the header and footer pad for
+- [Icon](/dolan/icon): icons for the items

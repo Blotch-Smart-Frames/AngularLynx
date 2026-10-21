@@ -1,83 +1,90 @@
-# @defer Blocks
+# `@defer`
 
-Angular's [deferrable views](https://angular.dev/guide/defer) work on Lynx: a deferred component is created only when its trigger fires. Its code ships in the main bundle, so there's no separate chunk to download.
+`@defer` holds back part of a template until a trigger fires, so the first screen renders sooner. On Lynx it delays **creating views**, not downloading code: the deferred component's code is already in your [bundle](/guide/glossary#bundle).
 
 <Go example="defer" defaultFile="src/app/app.ts" />
 
-## Basic Usage
-
-Use `@defer` with a `when` condition to load a component when a signal becomes true:
+## Defer until a condition is true
 
 ```typescript title="src/app/feed.ts"
 import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { Comments } from './comments';
 
 @Component({
-  imports: [LYNX_ELEMENTS],
-  templateUrl: './feed.html',
+  selector: 'app-feed',
+  imports: [LYNX_ELEMENTS, Comments],
+  template: `
+    <view (bindtap)="showComments.set(true)">
+      <text>Show comments</text>
+    </view>
+
+    @defer (when showComments()) {
+      <app-comments />
+    } @placeholder {
+      <text>Tap to see comments</text>
+    }
+  `,
 })
 export class Feed {
   readonly showComments = signal(false);
-
-  loadComments(): void {
-    this.showComments.set(true);
-  }
 }
 ```
 
-```angular-html title="src/app/feed.html"
-<view>
-  <view (bindtap)="loadComments()">
-    <text>Show Comments</text>
-  </view>
+- **Before the trigger fires**, Angular renders `@placeholder`. `<app-comments>` isn't created, so none of its native elements exist yet.
+- **When `showComments()` becomes `true`**, Angular creates `<app-comments>` and removes the placeholder.
+- **It stays created** after that, even if the signal turns `false` again.
+- **Setting the signal in the tap handler is safe.** Angular creates the deferred view after the handler returns.
 
-  @defer (when showComments()) {
-    <app-comments />
-  } @placeholder {
-    <text>Tap to load comments</text>
-  } @loading {
-    <text>Loading...</text>
-  } @error {
-    <text>Failed to load comments</text>
-  }
-</view>
+## Triggers
+
+| Trigger           | Works on Lynx | Notes                                                                                    |
+| ----------------- | :-----------: | ---------------------------------------------------------------------------------------- |
+| `when condition`  |      Yes      | The most useful trigger on Lynx                                                          |
+| `on immediate`    |      Yes      | As soon as the template has rendered                                                     |
+| `on idle`         |      Yes      | When the app has a moment to spare. The default if you give no trigger                   |
+| `on timer(500ms)` |      Yes      | After a delay                                                                            |
+| `on viewport`     |      No       | Lynx has no `IntersectionObserver`. See [below](#load-when-an-element-scrolls-into-view) |
+| `on interaction`  |      No       | Listens for `click` and `keydown`, which Lynx never fires                                |
+| `on hover`        |      No       | Listens for mouse and focus events, which Lynx never fires                               |
+| `prefetch …`      |  Not useful   | The code is already in the bundle, so there's nothing to fetch early                     |
+
+## Load when an element scrolls into view
+
+`on viewport` doesn't work, but the [`lynxExposure`](/guide/exposure) directive gives you the same signal. Put it on a wrapper and use `when`:
+
+```typescript title="src/app/post.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS, LynxExposure } from '@blotch/angular-lynx';
+import { Comments } from './comments';
+
+@Component({
+  selector: 'app-post',
+  imports: [LYNX_ELEMENTS, LynxExposure, Comments],
+  template: `
+    <view lynxExposure #area="lynxExposure" style="min-height: 200px">
+      @defer (when area.visible()) {
+        <app-comments />
+      } @placeholder {
+        <text>Comments</text>
+      }
+    </view>
+  `,
+})
+export class Post {}
 ```
 
-## Supported Triggers
+- `area.visible()` turns `true` when the wrapper first appears on screen, for example when the user scrolls to it.
+- Give the wrapper a size. An element with no width or height never counts as visible.
 
-| Trigger          | Supported | Notes                                                 |
-| ---------------- | :-------: | ----------------------------------------------------- |
-| `when condition` |    Yes    | Signal-based — the most common trigger on Lynx        |
-| `on timer(ms)`   |    Yes    | Loads after a delay                                   |
-| `on idle`        |    Yes    | Loads when the runtime is idle                        |
-| `on viewport`    |    No     | Requires IntersectionObserver (not available in Lynx) |
-| `on interaction` |    No     | Requires DOM focus/input events                       |
-| `on hover`       |    No     | No hover in touch environments                        |
-| `prefetch`       |    No     | Requires `document.visibilityState`                   |
+## The other blocks
 
-:::warning
-Viewport-based triggers (`on viewport`) do **not** work on Lynx. Use `when` with a signal or `on timer` instead.
-:::
+- **`@placeholder`** shows until the trigger fires. `@placeholder (minimum 500ms)` keeps it up for at least that long, to avoid a flash.
+- **`@loading`** shows while Angular loads the deferred code. Nothing downloads on Lynx, so this takes almost no time and `@loading` shows only briefly, if at all. Add `minimum`, as in `@loading (minimum 500ms)`, if you want it visible. Otherwise leave it out.
+- **`@error`** shows if loading fails. With the code already in the bundle, that's rare.
 
-## Blocks
+## Related
 
-All four `@defer` sub-blocks work as expected:
-
-- **`@placeholder`** — Shown before the trigger condition is met
-- **`@loading`** — Shown while the deferred dependencies load
-- **`@error`** — Shown if they fail to load
-- **`@defer`** — The deferred content itself
-
-## Timer Example
-
-Load a component automatically after 3 seconds:
-
-```angular-html
-@defer (on timer(3000ms)) {
-  <app-recommendations />
-} @placeholder {
-  <text>Recommendations loading in 3s...</text>
-} @loading {
-  <text>Loading...</text>
-}
-```
+- [Detect when elements are visible](/guide/exposure)
+- [Defer example](/examples/defer)
+- [Angular's `@defer` guide](https://angular.dev/guide/templates/defer)

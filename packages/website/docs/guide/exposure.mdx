@@ -1,66 +1,34 @@
-# Exposure Detection
+# Detect when elements are visible
 
-AngularLynx provides two complementary APIs for tracking element visibility — a **directive** for per-element tracking and a **service** for global exposure events dispatched by the Lynx engine.
+Find out when an element scrolls onto or off the screen, as you would with `IntersectionObserver` on the web. Use it to render heavy content only when needed, or to track which items the user saw. Lynx calls this **exposure** (see [Glossary](/guide/glossary#exposure)).
 
-## Overview
+## Choose an API
 
-Lynx's exposure system detects when elements enter or leave the viewport. It operates at two levels:
+| You want to                                                         | Use                                                                                                        |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Change what one element shows when it becomes visible               | The [`lynxExposure` directive](#watch-one-element): a `visible()` signal per element                       |
+| Record impressions across the whole page, for example for analytics | The [`LynxGlobalExposure` service](#track-impressions-across-the-page): batched events for tagged elements |
 
-| Level           | Mechanism                                                      | API                  |
-| --------------- | -------------------------------------------------------------- | -------------------- |
-| **Per-element** | `binduiappear` / `binduidisappear` native events               | `LynxExposure`       |
-| **Global**      | `GlobalEventEmitter` batched `exposure` / `disexposure` events | `LynxGlobalExposure` |
+## Watch one element
 
-The directive is ideal for reacting to individual element visibility (e.g., lazy-loading content when it scrolls into view). The service is better suited for analytics — it receives batched reports of all elements that have an `exposure-id` attribute.
-
-## LynxExposure
-
-Attach the `lynxExposure` directive to any element to get a reactive `visible` signal tracking whether it's currently in the viewport.
-
-### Setup
-
-```typescript title="src/app/my.ts"
-import { Component } from '@angular/core';
-import {
-  LynxExposure, // [!code highlight]
-  LYNX_ELEMENTS,
-} from '@blotch/angular-lynx';
-
-@Component({
-  imports: [LYNX_ELEMENTS, LynxExposure], // [!code highlight]
-  template: `...`,
-})
-export class Example {}
-```
-
-### Usage
-
-```angular-html
-<view lynxExposure #exp="lynxExposure">
-  <text>{{ exp.visible() ? 'On screen' : 'Off screen' }}</text>
-</view>
-```
-
-The directive:
-
-1. Listens to `binduiappear` on the host element → sets `visible` to `true`
-2. Listens to `binduidisappear` → sets `visible` to `false`
-3. Automatically cleans up listeners on destroy
-
-### Example: Conditional rendering on visibility
+Add `lynxExposure` to an element and read its `visible()` signal:
 
 ```typescript title="src/app/feed-item.ts"
 import { Component } from '@angular/core';
-import { LynxExposure, LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxExposure } from '@blotch/angular-lynx'; // [!code highlight]
 
 @Component({
-  imports: [LYNX_ELEMENTS, LynxExposure],
+  selector: 'app-feed-item',
+  imports: [LYNX_ELEMENTS, LynxExposure], // [!code highlight]
   template: `
-    <view lynxExposure #exp="lynxExposure" style="height: 200px;">
+    <view lynxExposure #exp="lynxExposure" style="height: 200px">
       @if (exp.visible()) {
-        <image src="https://example.com/heavy-image.png" />
+        <image
+          src="https://example.com/photo.jpg"
+          style="width: 100%; height: 200px"
+        />
       } @else {
-        <view style="background-color: #f0f0f0;" />
+        <view style="height: 200px; background-color: #e4e4e7" />
       }
     </view>
   `,
@@ -68,158 +36,103 @@ import { LynxExposure, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class FeedItem {}
 ```
 
-## LynxGlobalExposure
+- **`#exp="lynxExposure"`** gives the template a reference to the directive.
+- **`exp.visible()`** is `true` while the element is on screen and `false` otherwise. It starts as `false`.
+- **The element must have a size** and not be fully transparent. Inside a `<scroll-view>` or `<list>`, it counts as visible when it overlaps the visible part of the scroll area.
+- **The directive cleans up after itself** when the element is destroyed.
 
-The service subscribes to the Lynx engine's global `exposure` / `disexposure` events that fire for elements with an `exposure-id` attribute. The engine batches visibility changes at ~20fps and dispatches them as arrays.
+The directive switches content in and out as the user scrolls. To create a component the first time it appears and keep it, combine `lynxExposure` with [`@defer`](/guide/defer).
 
-### Setup
+## Track impressions across the page
 
-No imports needed in the template — just inject the service:
+Give each element you want to track an `exposure-id`, then read the batches from `LynxGlobalExposure`:
 
-```typescript title="src/app/analytics.ts"
-import { Component, inject, effect } from '@angular/core';
-import { LynxGlobalExposure, LYNX_ELEMENTS } from '@blotch/angular-lynx'; // [!code highlight]
+```typescript title="src/app/home.ts"
+import { Component, effect, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxGlobalExposure } from '@blotch/angular-lynx'; // [!code highlight]
 
 @Component({
+  selector: 'app-home',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view exposure-id="promo-banner" exposure-scene="home">
-      <text>Promotional content</text>
-    </view>
+    <scroll-view scroll-orientation="vertical" style="height: 100%">
+      <view
+        exposure-id="promo-banner"
+        exposure-scene="home"
+        style="height: 300px"
+      >
+        <text>Promotion</text>
+      </view>
+      @for (product of products; track product) {
+        <view
+          [attr.exposure-id]="product"
+          exposure-scene="home"
+          style="height: 120px"
+        >
+          <text>{{ product }}</text>
+        </view>
+      }
+    </scroll-view>
   `,
 })
-export class Analytics {
+export class Home {
+  readonly products = ['shoes', 'hats', 'bags', 'scarves'];
   readonly #exposure = inject(LynxGlobalExposure); // [!code highlight]
 
   constructor() {
     effect(() => {
-      const events = this.#exposure.exposures();
-      for (const detail of events) {
-        console.log('Exposed:', detail.exposureID, detail.exposureScene);
+      for (const seen of this.#exposure.exposures()) {
+        console.log('Seen:', seen.exposureID, 'in', seen.exposureScene);
       }
     });
   }
 }
 ```
 
-### Signals
+- **`exposure-id`** marks an element for tracking. Use `[attr.exposure-id]` to set it from data. **`exposure-scene`** is an optional label for grouping, such as the screen name.
+- **Lynx checks visibility about 20 times a second** and reports changes in batches.
+- **`exposures()`** holds the latest batch of elements that became visible. **`disexposures()`** holds the latest batch that left the screen.
 
-| Signal         | Type                          | Description                                                 |
-| -------------- | ----------------------------- | ----------------------------------------------------------- |
-| `exposures`    | `Signal<GlobalExposureEvent>` | Latest batch of exposure events (elements became visible)   |
-| `disexposures` | `Signal<GlobalExposureEvent>` | Latest batch of disexposure events (elements left viewport) |
-| `active`       | `Signal<boolean>`             | Whether global exposure detection is currently running      |
+:::warning Use it for side effects, not for the UI
+`LynxGlobalExposure` receives events only in the [background-thread](/guide/glossary#background-thread) copy of your app. The copy that draws the screen never sees them, so a template that shows `exposures()` stays empty. Use the signals in an `effect()` to record impressions, for example by passing them to your native code with [`LynxNativeModule`](/api/angular-lynx/native-module). See [Threads](/guide/concepts/threads) for the two copies.
+:::
 
-### Event Detail Shape
+### Pause and resume tracking
 
-Each entry in a `GlobalExposureEvent` array has:
-
-```typescript
-type ExposureEventDetail = {
-  'exposure-id': string; // kebab-case (from element attribute)
-  'exposure-scene': string;
-  exposureID: string; // camelCase alias
-  exposureScene: string;
-  'unique-id': number; // internal element identifier
-};
-```
-
-### Pause and Resume
-
-The service provides methods to pause and resume global exposure detection. Pausing prevents `exposure`/`disexposure` `GlobalEventEmitter` events from firing. Per-element `binduiappear`/`binduidisappear` events (used by the directive) continue regardless.
-
-```typescript
-const exposure = inject(LynxGlobalExposure);
-
-// Pause — optionally send one final disexposure event for visible elements
-exposure.stopExposure({ sendEvent: true });
-
-// Resume
-exposure.resumeExposure();
-```
-
-### Set Observer Frame Rate
-
-Control how frequently the engine checks for visibility changes:
-
-```typescript
-exposure.setObserverFrameRate({
-  forPageRect: 30, // page-rect calculation fps
-  forExposureCheck: 20, // exposure check fps
-});
-```
-
-## exposure-id vs lynxExposure
-
-|              | `exposure-id` + Service                            | `lynxExposure` Directive                               |
-| ------------ | -------------------------------------------------- | ------------------------------------------------------ |
-| **Scope**    | Global — all tagged elements report to one service | Local — each directive instance tracks its own element |
-| **Best for** | Analytics, impression tracking                     | Conditional rendering, lazy loading                    |
-| **Pausable** | Yes (`stopExposure` / `resumeExposure`)            | No — always active while the element exists            |
-| **Data**     | Batched arrays with IDs and scenes                 | Single boolean `visible` signal                        |
-
-## Complete Example
-
-```typescript title="src/app/exposure-demo.ts"
-import { Component, computed, inject, signal } from '@angular/core';
-import {
-  LYNX_ELEMENTS,
-  LynxExposure,
-  LynxGlobalExposure,
-} from '@blotch/angular-lynx';
+```typescript title="src/app/tracking-toggle.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxGlobalExposure } from '@blotch/angular-lynx';
 
 @Component({
-  imports: [LYNX_ELEMENTS, LynxExposure],
+  selector: 'app-tracking-toggle',
+  imports: [LYNX_ELEMENTS],
   template: `
-    <view>
-      <!-- Directive: per-element visibility -->
-      <scroll-view scroll-orientation="vertical" style="height: 150px;">
-        @for (item of items; track item) {
-          <view lynxExposure #exp="lynxExposure" style="padding: 16px;">
-            <text>{{ item }} — {{ exp.visible() ? 'VISIBLE' : 'HIDDEN' }}</text>
-          </view>
-        }
-      </scroll-view>
-
-      <!-- Service: global exposure events -->
-      <view>
-        <text>Last exposed IDs: {{ lastExposedIds() }}</text>
-      </view>
-      <scroll-view scroll-orientation="vertical" style="height: 150px;">
-        <view exposure-id="card-1"><text>Card 1</text></view>
-        <view exposure-id="card-2"><text>Card 2</text></view>
-        <view exposure-id="card-3"><text>Card 3</text></view>
-      </scroll-view>
-
-      <!-- Pause/Resume toggle -->
-      <view (bindtap)="toggle()">
-        <text>{{ active() ? 'Pause' : 'Resume' }}</text>
-      </view>
+    <view (bindtap)="toggle()">
+      <text>{{
+        exposure.active() ? 'Pause tracking' : 'Resume tracking'
+      }}</text>
     </view>
   `,
 })
-export class ExposureDemo {
-  readonly #exposure = inject(LynxGlobalExposure);
-
-  readonly items = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'];
-  readonly active = this.#exposure.active;
-  readonly lastExposedIds = computed(() =>
-    this.#exposure
-      .exposures()
-      .map((e) => e.exposureID)
-      .join(', '),
-  );
+export class TrackingToggle {
+  readonly exposure = inject(LynxGlobalExposure);
 
   toggle(): void {
-    if (this.active()) {
-      this.#exposure.stopExposure({ sendEvent: false });
+    if (this.exposure.active()) {
+      this.exposure.stopExposure(); // [!code highlight]
     } else {
-      this.#exposure.resumeExposure();
+      this.exposure.resumeExposure(); // [!code highlight]
     }
   }
 }
 ```
 
-:::info
-The `exposure-id` and `exposure-scene` attributes are plain Lynx element attributes — no Angular binding syntax needed unless the values are dynamic. Use `[attr.exposure-id]="myId()"` for dynamic IDs.
-:::
+- **`stopExposure()`** stops Lynx's visibility checks. By default, Lynx first reports every visible element as having left. Pass `{ sendEvent: false }` to skip that.
+- **`active()`** is a signal that's `false` while paused.
+
+## Related
+
+- [Exposure API reference](/api/angular-lynx/exposure): every signal, method and event field
+- [`@defer`](/guide/defer): create a component when it first scrolls into view
+- [Threads: where your code runs](/guide/concepts/threads)
+- [Lynx's exposure guide](https://lynxjs.org/guide/interaction/visibility-detection/exposure-ability.html): attributes such as `exposure-area` that change when an element counts as visible

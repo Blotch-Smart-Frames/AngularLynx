@@ -1,18 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __mainThreadRefMap } from '../worklet-bridge';
-import {
-  __resetRefCounter,
-  createMainThreadRef,
-  MainThreadRef,
-} from './main-thread-ref';
+import { createMainThreadRef, MainThreadRef } from './main-thread-ref';
 
 describe('MainThreadRef', () => {
-  // The module-level ID counter persists across tests in the same worker, so
-  // every test resets it first to get a deterministic id=0 start.
-  beforeEach(() => {
-    __resetRefCounter();
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
     for (const key of Object.keys(__mainThreadRefMap)) {
@@ -33,12 +23,13 @@ describe('MainThreadRef', () => {
       expect(__mainThreadRefMap[ref._wvid]).toBe(ref);
     });
 
+    // The module-level counter carries on across tests in the same worker,
+    // so this compares the IDs rather than expecting fixed ones.
     it('assigns incrementing _wvid values across instances', () => {
       const first = new MainThreadRef(1);
       const second = new MainThreadRef(2);
 
-      expect(first._wvid).toBe(0);
-      expect(second._wvid).toBe(1);
+      expect(second._wvid).toBe(first._wvid + 1);
     });
   });
 
@@ -84,21 +75,6 @@ describe('MainThreadRef', () => {
 
       expect(ref).toBeInstanceOf(MainThreadRef);
       expect(ref.current).toBe(42);
-    });
-  });
-
-  describe('__resetRefCounter', () => {
-    beforeEach(() => {
-      vi.stubGlobal('__MAIN_THREAD__', false);
-    });
-
-    it('resets the id counter back to 0', () => {
-      new MainThreadRef('a');
-      new MainThreadRef('b');
-      __resetRefCounter();
-      const ref = new MainThreadRef('c');
-
-      expect(ref._wvid).toBe(0);
     });
   });
 });

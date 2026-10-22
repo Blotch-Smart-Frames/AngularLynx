@@ -51,15 +51,25 @@ const handleTap = mainThreadFn((event: MainThread.TouchEvent) => {
   el.setStyleProperty('background-color', color);
 });
 
+// The box's position, measured when a drag starts. getBoundingClientRect() is
+// asynchronous, so each touchmove reads this instead of measuring again.
+const dragBox = createMainThreadRef<MainThread.BoundingClientRect | null>(null);
+
+const handleTouchStart = mainThreadFn((event: MainThread.TouchEvent) => {
+  void event.currentTarget.getBoundingClientRect().then((rect) => {
+    dragBox.current = rect;
+  });
+});
+
 const handleTouchMove = mainThreadFn((event: MainThread.TouchEvent) => {
-  const el = event.currentTarget;
-  const rect = (
-    el as unknown as { getBoundingClientRect(): DOMRect }
-  ).getBoundingClientRect();
+  const rect = dragBox.current;
+  // The first moves can arrive before the measurement does.
+  if (!rect) return;
   // Map the finger's horizontal position within the box to an opacity ramp.
+  // Touch clientX and the rect's left are both measured from the LynxView.
   const relativeX = (event.touches[0]!.clientX - rect.left) / rect.width;
   const opacity = Math.max(0.3, Math.min(1, relativeX));
-  el.setStyleProperty('opacity', String(opacity));
+  event.currentTarget.setStyleProperty('opacity', String(opacity));
 });
 
 const handleTouchEnd = mainThreadFn((event: MainThread.TouchEvent) => {
@@ -219,6 +229,7 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
           <view
             class="items-center rounded-lg bg-teal-500 py-10 flex justify-center"
+            [mainThreadBindtouchstart]="handleTouchStart"
             [mainThreadBindtouchmove]="handleTouchMove"
             [mainThreadBindtouchend]="handleTouchEnd"
           >
@@ -338,6 +349,7 @@ export class MainThreadDemo {
 
   // Expose the main-thread handles to the template.
   readonly handleTap = handleTap;
+  readonly handleTouchStart = handleTouchStart;
   readonly handleTouchMove = handleTouchMove;
   readonly handleTouchEnd = handleTouchEnd;
   readonly handleCrossThreadTap = handleCrossThreadTap;

@@ -1,17 +1,24 @@
+import { Injector, runInInjectionContext } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  __resetWorkletCounter,
-  mainThreadFn,
-  type MainThreadFnHandle,
-} from './main-thread-fn';
+import { __workletMap } from '../worklet-bridge';
+import { mainThreadFn, type MainThreadFnHandle } from './main-thread-fn';
+
+/**
+ * The number in a handle's ID. The module-level counter carries on across
+ * tests in the same worker, so tests compare IDs rather than expect fixed ones.
+ */
+const idNumber = (handle: MainThreadFnHandle): number =>
+  Number(handle._wkltId.replace('__angular_mts_', ''));
+
+/**
+ * Stands in for the runtime's registerWorklet global, which stores the
+ * function in __workletMap.
+ */
+const registerInMap = (_type: string, id: string, fn: Function): void => {
+  __workletMap[id] = fn;
+};
 
 describe('mainThreadFn', () => {
-  // The module-level ID counter persists across tests in the same worker, so
-  // every test resets it first to get a deterministic '__angular_mts_0' start.
-  beforeEach(() => {
-    __resetWorkletCounter();
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -26,11 +33,11 @@ describe('mainThreadFn', () => {
       vi.stubGlobal('registerWorklet', registerWorklet);
       const fn = () => 'hi';
 
-      mainThreadFn(fn);
+      const handle = mainThreadFn(fn);
 
       expect(registerWorklet).toHaveBeenCalledWith(
         'main-thread',
-        '__angular_mts_0',
+        handle._wkltId,
         fn,
       );
     });
@@ -41,7 +48,7 @@ describe('mainThreadFn', () => {
       const handle: MainThreadFnHandle = mainThreadFn(() => 1);
 
       expect(handle).toEqual({
-        _wkltId: '__angular_mts_0',
+        _wkltId: expect.stringMatching(/^__angular_mts_\d+$/),
         _workletType: 'main-thread',
         __isMainThreadFn: true,
       });
@@ -53,8 +60,29 @@ describe('mainThreadFn', () => {
       const first = mainThreadFn(() => 1);
       const second = mainThreadFn(() => 2);
 
-      expect(first._wkltId).toBe('__angular_mts_0');
-      expect(second._wkltId).toBe('__angular_mts_1');
+      expect(idNumber(second)).toBe(idNumber(first) + 1);
+    });
+
+    it('releases a function created in an injection context when its injector is destroyed', () => {
+      vi.stubGlobal('registerWorklet', registerInMap);
+      const injector = Injector.create({ providers: [] });
+      const fn = () => 'instance';
+
+      const handle = runInInjectionContext(injector, () => mainThreadFn(fn));
+
+      expect(__workletMap[handle._wkltId]).toBe(fn);
+      injector.destroy();
+      expect(handle._wkltId in __workletMap).toBe(false);
+    });
+
+    it('keeps a function created outside an injection context registered', () => {
+      vi.stubGlobal('registerWorklet', registerInMap);
+      const fn = () => 'module';
+
+      const handle = mainThreadFn(fn);
+
+      expect(__workletMap[handle._wkltId]).toBe(fn);
+      delete __workletMap[handle._wkltId];
     });
   });
 
@@ -73,26 +101,14 @@ describe('mainThreadFn', () => {
     });
 
     it('still returns a handle with an incrementing id', () => {
-      const handle = mainThreadFn(() => 'hi');
+      const first = mainThreadFn(() => 'hi');
+      const second = mainThreadFn(() => 'there');
 
-      expect(handle).toEqual({
-        _wkltId: '__angular_mts_0',
+      expect(second).toEqual({
+        _wkltId: `__angular_mts_${idNumber(first) + 1}`,
         _workletType: 'main-thread',
         __isMainThreadFn: true,
       });
-    });
-  });
-
-  describe('__resetWorkletCounter', () => {
-    it('resets the id counter back to 0', () => {
-      vi.stubGlobal('__MAIN_THREAD__', false);
-
-      mainThreadFn(() => 1);
-      mainThreadFn(() => 2);
-      __resetWorkletCounter();
-      const handle = mainThreadFn(() => 3);
-
-      expect(handle._wkltId).toBe('__angular_mts_0');
     });
   });
 });

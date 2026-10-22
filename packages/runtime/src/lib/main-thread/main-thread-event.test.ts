@@ -15,8 +15,18 @@ import {
   it,
   vi,
 } from 'vitest';
+import { __workletMap } from '../worklet-bridge';
 import { LynxMainThreadEvent } from './main-thread-event';
 import type { MainThreadFnHandle } from './main-thread-fn';
+
+/**
+ * What the directive passes __AddEvent to remove a handler. Native Lynx
+ * ignores `undefined` for a worklet handler, so it registers one with no ID.
+ */
+const NO_HANDLER = {
+  type: 'worklet',
+  value: { _workletType: 'main-thread' },
+};
 
 const makeHandle = (id: string): MainThreadFnHandle =>
   ({
@@ -114,17 +124,78 @@ describe('LynxMainThreadEvent', () => {
       },
     );
 
-    it('does not register when the input value is a plain function, not a worklet handle', () => {
-      // Plain functions are accepted by the input type (pre-compiled worklet
-      // build plugin output), but only actual MainThreadFnHandle objects can
-      // be handed to __AddEvent — a raw function has no _wkltId to reference.
+    it('registers a plain function the build did not wrap, and passes its ID to __AddEvent', () => {
       const nativeHandle = {};
       const directive = createDirective({ element: nativeHandle });
-      directive.mainThreadBindtap = () => undefined;
+      const handler = () => undefined;
+      directive.mainThreadBindtap = handler;
+
+      directive.ngOnChanges({ mainThreadBindtap: {} as any });
+
+      const [, , , value] = addEvent.mock.calls[0]!;
+      expect(addEvent).toHaveBeenCalledWith(nativeHandle, 'bindEvent', 'tap', {
+        type: 'worklet',
+        value: {
+          _wkltId: expect.stringMatching(/^__angular_mts_handler_\d+$/),
+          _workletType: 'main-thread',
+        },
+      });
+      expect(__workletMap[value.value._wkltId]).toBe(handler);
+    });
+
+    it.each([null, undefined])(
+      'removes the handler when the input changes to %s',
+      (empty) => {
+        const nativeHandle = {};
+        const directive = createDirective({ element: nativeHandle });
+        directive.mainThreadBindtap = makeHandle('w-tap');
+        directive.ngOnChanges({ mainThreadBindtap: {} as any });
+        addEvent.mockClear();
+
+        directive.mainThreadBindtap = empty;
+        directive.ngOnChanges({ mainThreadBindtap: {} as any });
+        directive.ngOnDestroy();
+
+        // Removed once by the change; destroy has nothing left to remove.
+        expect(addEvent).toHaveBeenCalledTimes(1);
+        expect(addEvent).toHaveBeenCalledWith(
+          nativeHandle,
+          'bindEvent',
+          'tap',
+          NO_HANDLER,
+        );
+      },
+    );
+
+    it('does nothing for an input that starts as null', () => {
+      const directive = createDirective({ element: {} });
+      directive.mainThreadBindtap = null;
 
       directive.ngOnChanges({ mainThreadBindtap: {} as any });
 
       expect(addEvent).not.toHaveBeenCalled();
+    });
+
+    it('releases its registered plain function when the input changes', () => {
+      const nativeHandle = {};
+      const directive = createDirective({ element: nativeHandle });
+      directive.mainThreadBindtap = () => 'first';
+      directive.ngOnChanges({ mainThreadBindtap: {} as any });
+      const firstId = addEvent.mock.calls[0]![3].value._wkltId;
+
+      directive.mainThreadBindtap = makeHandle('w-tap');
+      directive.ngOnChanges({ mainThreadBindtap: {} as any });
+
+      expect(firstId in __workletMap).toBe(false);
+      expect(addEvent).toHaveBeenLastCalledWith(
+        nativeHandle,
+        'bindEvent',
+        'tap',
+        {
+          type: 'worklet',
+          value: { _wkltId: 'w-tap', _workletType: 'main-thread' },
+        },
+      );
     });
 
     it('skips changed inputs that have no INPUT_TO_EVENT mapping', () => {
@@ -150,7 +221,7 @@ describe('LynxMainThreadEvent', () => {
   });
 
   describe('ngOnDestroy', () => {
-    it('unregisters each tracked event pair via __AddEvent(..., undefined)', () => {
+    it('replaces each tracked handler with one that does nothing', () => {
       const nativeHandle = {};
       const directive = createDirective({ element: nativeHandle });
       directive.mainThreadBindtap = makeHandle('w-tap');
@@ -167,15 +238,26 @@ describe('LynxMainThreadEvent', () => {
         nativeHandle,
         'bindEvent',
         'tap',
-        undefined,
+        NO_HANDLER,
       );
       expect(addEvent).toHaveBeenCalledWith(
         nativeHandle,
         'catchEvent',
         'scroll',
-        undefined,
+        NO_HANDLER,
       );
       expect(addEvent).toHaveBeenCalledTimes(2);
+    });
+
+    it('releases the plain functions it registered', () => {
+      const directive = createDirective({ element: {} });
+      directive.mainThreadBindtap = () => 'tap';
+      directive.ngOnChanges({ mainThreadBindtap: {} as any });
+      const id = addEvent.mock.calls[0]![3].value._wkltId;
+
+      directive.ngOnDestroy();
+
+      expect(id in __workletMap).toBe(false);
     });
 
     it('returns early when nativeElement.element is missing', () => {

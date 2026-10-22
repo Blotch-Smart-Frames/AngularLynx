@@ -73,6 +73,25 @@ test('the generated app loads lazy routes', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// Setting a [mainThreadBind*] input to null must remove its handler. The lazy
+// page's first tap counts and turns the handler off, so a second tap must leave
+// the count at 1 (issue #55). Native Lynx is where removal broke; this checks
+// the same fixture on the web.
+test('a main-thread handler set to null stops running', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open lazy page', { exact: true }).click();
+
+  await page.getByText('Main taps: 0').click();
+  await expect(page.getByText('Main taps: 1')).toBeVisible();
+  await page.getByText('Main taps: 1').click();
+  // A second count would render within a frame or two of the tap.
+  await page.waitForTimeout(500);
+  await expect(page.getByText('Main taps: 1')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

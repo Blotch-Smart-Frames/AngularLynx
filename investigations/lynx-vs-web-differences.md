@@ -4844,3 +4844,35 @@ Lynx's newer CSS engine parses attribute selectors (`css_selector_parser.cc` in 
 ### The fix
 
 The plugin lets Angular's compiler scope each component's styles as on the web, then lifts them out of the compiled component definition (`extractComponentStyles` in `packages/rsbuild-plugin-angular-lynx/src/component-styles.ts`) and turns `[_ngcontent-%COMP%]` and `[_nghost-%COMP%]` into classes (`._ngcontent-<id>`, `._nghost-<id>`). `EmulatedLynxRenderer` adds the same classes to the elements, and `LynxElement` keeps them when Angular replaces the whole class list. The compiler also marks CSS variables with a `%NS%` namespace placeholder (`var(--%NS%primary)`), which Angular's renderer fills with `CSS_VAR_NAMESPACE`, empty by default; the plugin fills it with the default at build time.
+
+---
+
+## A main-thread script can't read an element's position synchronously
+
+### What you'd expect (web)
+
+`element.getBoundingClientRect()` returns the element's layout box straight away, so a `touchmove` handler can measure the element it's dragging on every event.
+
+### What Lynx does
+
+The main thread's element functions have no layout read. `__GetComputedStyleByKey(element, 'left')` returns the computed CSS `left`, a positioning offset that's usually `0`, not where the element is: in the web preview it gave `top: 0` for an element 188px down. Lynx core has a synchronous `GetRectToLynxView()`, but only the old Lepus worklet `LepusElement` exposes it (`core/renderer/worklet/lepus_element.cc`), and nothing in the element function table reaches it (`core/runtime/lepus/bindings/renderer_functions_def.h`). The only way to get the position is the `boundingClientRect` UI method through `__InvokeUIMethod`, which answers in a callback.
+
+### The fix
+
+`MainThreadElement.getBoundingClientRect()` used to build its rect from the computed `width`, `height`, `left` and `top`. It now calls the `boundingClientRect` UI method and returns a promise of `{ left, top, right, bottom, width, height }`, measured from the LynxView, or from `relativeTo`. `MainThread.Element` and the `MainThread` event types declare it. A gesture measures once on `touchstart` and keeps the rect in a `MainThreadRef`, as the kitchen-sink app's "Live opacity" demo does.
+
+---
+
+## `__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx
+
+### What you'd expect (web)
+
+`removeEventListener()` removes a listener, whatever kind it is. On Lynx for Web, `__AddEvent` with `undefined` as the handler removes it too.
+
+### What Lynx does
+
+Native Lynx keeps a handler registered as a worklet (`{ type: 'worklet', value }`, which every `[mainThreadBind*]` input uses). `Element::FiberAddEvent` (`core/renderer/dom/fiber/fiber_element.cc`) calls `RemoveEvent()` for an empty callback, and `AttributeHolder::RemoveEvent()` (`attribute_holder.cc`) only erases from `static_events_`, which holds background-thread handlers. Worklet handlers live in `lepus_events_`, so the old one keeps firing. On the iOS Simulator, a `[mainThreadBindtap]` set to `null` still ran on the next tap.
+
+### The fix
+
+`LynxMainThreadEvent` removes a handler by registering a worklet with no ID, `{ type: 'worklet', value: { _workletType: 'main-thread' } }`, which replaces the old one and which `runWorklet` ignores. React Lynx removes main-thread handlers the same way (`updateWorkletEvent` in `packages/react/runtime/src/snapshot/snapshot/workletEvent.ts`). Layer 6's `native/main-thread.yaml` checks it on device.

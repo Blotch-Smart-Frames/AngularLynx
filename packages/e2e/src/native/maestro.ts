@@ -46,6 +46,10 @@ export const FLOWS: readonly Flow[] = [
     file: 'xelement.yaml',
     description: "renders XElement's input, svg and overlay",
   },
+  {
+    file: 'main-thread.yaml',
+    description: 'removes a main-thread handler set to null',
+  },
 ];
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */

@@ -47,10 +47,3 @@ export class MainThreadRef<T> {
 
 export const createMainThreadRef = <T>(initValue: T): MainThreadRef<T> =>
   new MainThreadRef(initValue);
-
-/**
- * Reset counter on HMR.
- */
-export const __resetRefCounter = (): void => {
-  nextRefId = 0;
-};

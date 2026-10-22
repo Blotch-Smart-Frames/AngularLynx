@@ -48,13 +48,15 @@ export class App {
 
 ```typescript
 class LynxMainThreadEvent {
-  mainThreadBindtap?: MainThreadFnHandle | null;
-  mainThreadCatchtap?: MainThreadFnHandle | null;
+  mainThreadBindtap?: MainThreadFnHandle | ((...args: any[]) => any) | null;
+  mainThreadCatchtap?: MainThreadFnHandle | ((...args: any[]) => any) | null;
   // … one input per cell in the table below
 }
 ```
 
-Each input takes a handle from [`mainThreadFn()`](/api/main-thread/main-thread-fn), or a function with the `'main thread'` directive. `Bind` inputs let the event bubble to ancestors. `Catch` inputs stop it at this element.
+Each input takes a handle from [`mainThreadFn()`](/api/main-thread/main-thread-fn), or a function with the `'main thread'` directive. Any other function works too, such as a class method: the directive registers it on the main thread, and releases it when the input changes or the element is destroyed. A method passed this way has no `this`, so use an arrow function property if the handler needs one. Set an input to `null` or `undefined` to remove its handler.
+
+`Bind` inputs let the event bubble to ancestors. `Catch` inputs stop it at this element.
 
 | Event            | Bubbles                        | Stops bubbling              | Handler's event type           |
 | ---------------- | ------------------------------ | --------------------------- | ------------------------------ |
@@ -78,7 +80,7 @@ In the handler, `event.target` and `event.currentTarget` are [`MainThread.Elemen
 
 - **The web preview fires mouse events, not touch events.** A desktop browser never fires touch events, so bind the `mouse*` inputs too for a drag that works there. Phones fire touch events, plus a `mousedown` and `mouseup` after a tap.
 - **A handler doesn't run change detection.** Change the element directly, through `event.currentTarget`.
-- **Each input takes one handler.** Binding a new one replaces the old one.
+- **Each input takes one handler.** Binding a new one replaces the old one, and `null` removes it.
 
 ## Types
 
@@ -86,19 +88,20 @@ In the handler, `event.target` and `event.currentTarget` are [`MainThread.Elemen
 import type { MainThread } from '@blotch/angular-lynx';
 ```
 
-`MainThread` is a namespace of the types from `@lynx-js/types/main-thread`:
+`MainThread` is a namespace of the types from `@lynx-js/types/main-thread`, with `getBoundingClientRect()` added to `MainThread.Element`:
 
-| Type                           | What it is                                                              |
-| ------------------------------ | ----------------------------------------------------------------------- |
-| `MainThread.Element`           | An element you can change directly (methods below)                      |
-| `MainThread.TouchEvent`        | `tap`, `longpress` and `touch*` events. Has `touches`, `changedTouches` |
-| `MainThread.MouseEvent`        | `mouse*` events                                                         |
-| `MainThread.WheelEvent`        | Wheel events                                                            |
-| `MainThread.KeyEvent`          | Key events                                                              |
-| `MainThread.AnimationEvent`    | `animationstart`, `animationend`                                        |
-| `MainThread.TransitionEvent`   | `transitionend`                                                         |
-| `MainThread.LayoutChangeEvent` | `layoutchange`                                                          |
-| `MainThread.UIAppearanceEvent` | Appear and disappear events                                             |
+| Type                            | What it is                                                              |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `MainThread.Element`            | An element you can change directly (methods below)                      |
+| `MainThread.TouchEvent`         | `tap`, `longpress` and `touch*` events. Has `touches`, `changedTouches` |
+| `MainThread.MouseEvent`         | `mouse*` events                                                         |
+| `MainThread.WheelEvent`         | Wheel events                                                            |
+| `MainThread.KeyEvent`           | Key events                                                              |
+| `MainThread.AnimationEvent`     | `animationstart`, `animationend`                                        |
+| `MainThread.TransitionEvent`    | `transitionend`                                                         |
+| `MainThread.LayoutChangeEvent`  | `layoutchange`                                                          |
+| `MainThread.UIAppearanceEvent`  | Appear and disappear events                                             |
+| `MainThread.BoundingClientRect` | What `getBoundingClientRect()` resolves with                            |
 
 ```typescript
 // MainThread.Element
@@ -115,12 +118,25 @@ interface Element {
     keyframes: Record<string, number | string>[],
     options?: number | AnimationOptions,
   ): Animation;
+  getBoundingClientRect(options?: {
+    relativeTo?: string;
+  }): Promise<BoundingClientRect>;
 }
+
+// MainThread.BoundingClientRect
+type BoundingClientRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
 ```
 
 - **`setStyleProperty()` and `setAttribute()`** batch their changes, and Lynx applies them together after your handler returns.
 - **`invoke()`** calls one of the element's [UI methods](/guide/glossary#ui-method), such as `scrollTo` on a `<scroll-view>`, and resolves with its result.
-- **`getBoundingClientRect()`** also exists at runtime (AngularLynx's `MainThreadElement` class adds it), but isn't on the type. It returns `{ left, top, right, bottom, width, height }` built from the computed `width`, `height`, `left` and `top` styles. So `left` and `top` are the CSS values, often `0`, not the element's position on screen.
+- **`getBoundingClientRect()`** resolves with the element's position and size, measured from the top-left corner of the [LynxView](/guide/glossary#lynxview). Pass `relativeTo: 'screen'`, or another element's `id`, to measure from there instead. Unlike the DOM's, it returns a promise: Lynx gives a script the layout position only through the `boundingClientRect` [UI method](/guide/glossary#ui-method), which this calls. Measure once when a gesture starts rather than on every move.
 
 ## Related
 

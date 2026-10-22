@@ -37,10 +37,3 @@ export const backgroundFn = <TArgs extends unknown[], TReturn>(
     __isBackgroundFn: true,
   } as BackgroundFnHandle<TArgs, TReturn>;
 };
-
-/**
- * Reset counter on HMR.
- */
-export const __resetBgWorkletCounter = (): void => {
-  nextBgWorkletId = 0;
-};

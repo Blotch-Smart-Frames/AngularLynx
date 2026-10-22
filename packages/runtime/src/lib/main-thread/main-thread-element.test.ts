@@ -279,56 +279,65 @@ describe('MainThreadElement', () => {
   });
 
   describe('getBoundingClientRect', () => {
-    it('returns all zeros when __GetComputedStyleByKey is not a function', () => {
-      // __GetComputedStyleByKey is intentionally not stubbed in beforeEach,
-      // so it is undefined here — exercising the typeof-guard fallback path.
-      const el = new MainThreadElement(fakeRef);
+    const rect = {
+      left: 10,
+      top: 188,
+      right: 110,
+      bottom: 238,
+      width: 100,
+      height: 50,
+    };
 
-      expect(el.getBoundingClientRect()).toEqual({
-        left: 0,
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 0,
-        height: 0,
-      });
-    });
-
-    it('parses computed style values when __GetComputedStyleByKey is available', () => {
-      const styles: Record<string, string> = {
-        width: '100px',
-        height: '50px',
-        left: '10px',
-        top: '20px',
-      };
-      vi.stubGlobal(
-        '__GetComputedStyleByKey',
-        (_el: ElementRef, key: string) => styles[key],
+    it('resolves with the layout box from the boundingClientRect UI method', async () => {
+      vi.mocked(__InvokeUIMethod).mockImplementation(
+        (_el, _method, _params, callback) => {
+          callback({
+            code: 0,
+            data: { id: 'box', dataset: { kind: 'card' }, ...rect },
+          });
+        },
       );
       const el = new MainThreadElement(fakeRef);
 
-      expect(el.getBoundingClientRect()).toEqual({
-        left: 10,
-        top: 20,
-        right: 110,
-        bottom: 70,
-        width: 100,
-        height: 50,
-      });
+      // id and dataset are dropped, so it reads like a DOM rect.
+      await expect(el.getBoundingClientRect()).resolves.toEqual(rect);
+      expect(__InvokeUIMethod).toHaveBeenCalledWith(
+        fakeRef,
+        'boundingClientRect',
+        {},
+        expect.any(Function),
+      );
     });
 
-    it('falls back to 0 for values that fail to parse', () => {
-      vi.stubGlobal('__GetComputedStyleByKey', () => 'not-a-number');
+    it('passes relativeTo through to the UI method', async () => {
+      vi.mocked(__InvokeUIMethod).mockImplementation(
+        (_el, _method, _params, callback) => {
+          callback({ code: 0, data: rect });
+        },
+      );
       const el = new MainThreadElement(fakeRef);
 
-      expect(el.getBoundingClientRect()).toEqual({
-        left: 0,
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 0,
-        height: 0,
-      });
+      await el.getBoundingClientRect({ relativeTo: 'screen' });
+
+      expect(__InvokeUIMethod).toHaveBeenCalledWith(
+        fakeRef,
+        'boundingClientRect',
+        { relativeTo: 'screen' },
+        expect.any(Function),
+      );
+    });
+
+    it('rejects when the UI method fails', async () => {
+      vi.mocked(__InvokeUIMethod).mockImplementation(
+        (_el, _method, _params, callback) => {
+          callback({ code: 1, data: undefined });
+        },
+      );
+      const el = new MainThreadElement(fakeRef);
+
+      await expect(el.getBoundingClientRect()).rejects.toThrow(
+        'UI method invoke',
+      );
     });
   });
 });

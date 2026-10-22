@@ -7,7 +7,7 @@ import {
   type SimpleChanges,
 } from '@angular/core';
 import type { BaseLynxElement } from '../lynx-element/types';
-import type { BaseGesture } from './base-gesture';
+import { type BaseGesture, ContinuousGesture } from './base-gesture';
 import { ComposedGesture } from './composition';
 import {
   type GestureOrigin,
@@ -44,6 +44,26 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
 
   lynxGesture!: GestureInput;
 
+  constructor() {
+    // Force the element onto its own native layer. Lynx "flattens" a view that
+    // has no event listeners and no non-flatten attributes into its parent's
+    // layer for performance, and a flattened view cannot receive its own
+    // gestures. Unlike adding a DOM event listener, registering a gesture
+    // detector does NOT auto-mark the element non-flatten, so we set it
+    // explicitly — mirroring React Lynx's processGesture. `flatten` is an
+    // Android-only concept (a no-op on iOS), but it's required for gestures to
+    // fire on Android.
+    //
+    // It's set here, when the element is created, rather than when a gesture
+    // is bound: Android decides whether an element gets a View of its own when
+    // it first draws it, and turning flatten off afterwards doesn't give it one.
+    // ngOnChanges came too late for a routed component's elements and for a
+    // gesture bound after the first render (`[lynxGesture]="on ? pan : []"`),
+    // and those gestures never fired on Android (issue #56).
+    const elementRef = (this.#el as any).element;
+    if (elementRef) __SetAttribute(elementRef, 'flatten', false);
+  }
+
   /**
    * Full teardown + re-register on every input change. This is safe because
    * gesture IDs are stable (assigned once in BaseGesture constructor), so
@@ -54,21 +74,10 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
     const gestures = this.#resolveGestures();
     if (gestures.length === 0) return;
 
-    // On the background thread the element is a virtual node with no native
-    // handle (.element is undefined); native gesture registration only happens
-    // on the main thread, so there's nothing to do here otherwise.
+    // An element with no native handle (.element is undefined), such as the
+    // renderer's in-memory test double, has nothing to register a gesture on.
     const elementRef = (this.#el as any).element;
     if (!elementRef) return;
-
-    // Force the element onto its own native layer. Lynx "flattens" a view that
-    // has no event listeners and no non-flatten attributes into its parent's
-    // layer for performance, and a flattened view cannot receive its own
-    // gestures. Unlike adding a DOM event listener, registering a gesture
-    // detector does NOT auto-mark the element non-flatten, so we set it
-    // explicitly — mirroring React Lynx's processGesture. `flatten` is an
-    // Android-only concept (a no-op on iOS), but it's required for gestures to
-    // fire on Android.
-    __SetAttribute(elementRef, 'flatten', false);
 
     for (const g of gestures) {
       // GestureStateManager allows callbacks to programmatically fail/activate
@@ -80,7 +89,7 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
       const origin = createGestureOrigin();
       const config = {
         callbacks: buildGestureCallbacks(g, origin, stateManager),
-        config: Object.keys(g._config).length > 0 ? g._config : undefined,
+        config: g._config,
       };
       // Relationship map tells the native gesture system how gestures interact:
       // - waitFor: this gesture waits for the dependency to fail before recognizing
@@ -152,7 +161,15 @@ type NativeCallbackEntry = {
  * Gesture-Handler-style semantics (where `onEnd` means "the gesture actually
  * happened"), we observe `onStart` — registering our own observer when the user
  * didn't — to learn whether the gesture was recognized, then drop the
- * failed-gesture `onEnd`. Continuous gestures pass through untouched.
+ * failed-gesture `onEnd`.
+ *
+ * Continuous gestures (pan, fling, pinch, rotation) always get an `onBegin`,
+ * an empty one when the user didn't register theirs. Lynx's native fling
+ * handler, and its pan handler before Lynx 3.9, fire `onStart` and `onEnd` only
+ * after `onBegin` has fired, and fire `onBegin` only when one is registered
+ * (LynxFlingGestureHandler.m / FlingGestureHandler.java), so without it those
+ * two callbacks never ran, with no error. Running it also anchors the
+ * gesture's translation where the touch began (see mapGestureEvent).
  */
 const buildGestureCallbacks = (
   gesture: AnyGesture,
@@ -178,9 +195,17 @@ const buildGestureCallbacks = (
   // Only a discrete gesture with an onEnd handler needs success/failure
   // disambiguation; everything else is a straight passthrough.
   if (!isDiscrete || !userEnd) {
-    return Object.entries(gesture._callbacks).map(([name, cb]) =>
+    const callbacks = Object.entries(gesture._callbacks).map(([name, cb]) =>
       wrap(name, cb),
     );
+    if (
+      gesture instanceof ContinuousGesture &&
+      !gesture._callbacks['onBegin']
+    ) {
+      // wrap() maps the event, which is what anchors the translation.
+      callbacks.push(wrap('onBegin', () => {}));
+    }
+    return callbacks;
   }
 
   const userStart = gesture._callbacks['onStart'];

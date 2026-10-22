@@ -11,7 +11,9 @@ import { TapGesture } from './tap-gesture';
 import { PanGesture } from './pan-gesture';
 import { PinchGesture } from './pinch-gesture';
 import { LongPressGesture } from './long-press-gesture';
-import { GestureType } from './types';
+import { FlingGesture } from './fling-gesture';
+import { RotationGesture } from './rotation-gesture';
+import { FlingDirection, GestureType } from './types';
 
 /**
  * Builds a directive instance with a fake element injected via DI.
@@ -188,16 +190,29 @@ describe('LynxGestureDetector', () => {
       expect(stateManager).toEqual(expect.any(Object));
     });
 
-    it('passes undefined for config when gesture has no config', () => {
-      // PinchGesture seeds no defaults, so its config stays empty — unlike
-      // Tap/LongPress/Pan which always carry a full default config.
+    it('sends { enabled: true } for a gesture with no options of its own', () => {
+      // PinchGesture seeds no defaults of its own, but every gesture starts
+      // from BaseGesture's, so a config is always sent.
       const g = new PinchGesture();
       const directive = createDirective(nativeEl);
 
       applyGesture(directive, g);
 
       const [, , , config] = setGestureDetector.mock.calls[0];
-      expect(config.config).toBeUndefined();
+      expect(config.config).toEqual({ enabled: true });
+    });
+
+    it('sends a fling option together with the defaults', () => {
+      const g = new FlingGesture().direction(FlingDirection.LEFT);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+
+      const [, , , config] = setGestureDetector.mock.calls[0];
+      expect(config.config).toEqual({
+        enabled: true,
+        direction: FlingDirection.LEFT,
+      });
     });
 
     it('passes the full config object (defaults merged with overrides)', () => {
@@ -248,13 +263,19 @@ describe('LynxGestureDetector', () => {
       expect(relationMap.continueWith).toEqual([g3.id]);
     });
 
-    it('marks the element non-flatten so it can receive gestures', () => {
-      const g = new TapGesture();
-      const directive = createDirective(nativeEl);
-
-      applyGesture(directive, g);
+    it('marks the element non-flatten when it is created, before any gesture is bound', () => {
+      // Android only gives an element a View of its own when it first draws
+      // it, so a routed component's gesture, bound after that, never fired.
+      createDirective(nativeEl);
 
       expect(setAttribute).toHaveBeenCalledWith(fakeRef, 'flatten', false);
+      expect(setGestureDetector).not.toHaveBeenCalled();
+    });
+
+    it('marks nothing on an element with no native handle', () => {
+      createDirective({});
+
+      expect(setAttribute).not.toHaveBeenCalled();
     });
 
     it('detaches old gestures before attaching new ones on subsequent changes', () => {
@@ -399,6 +420,106 @@ describe('LynxGestureDetector', () => {
 
       fnFor('onBegin')({ params: {} });
       expect(onBegin).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('onBegin for continuous gestures', () => {
+    /**
+     * The callback names sent in the most recent __SetGestureDetector call.
+     */
+    const registeredNames = (): string[] => {
+      const [, , , config] = setGestureDetector.mock.lastCall!;
+      return config.callbacks.map((c: { name: string }) => c.name);
+    };
+
+    /**
+     * Fetches the wrapped native `_fn` for a callback by name from the most
+     * recent __SetGestureDetector call.
+     */
+    const fnFor = (name: string): ((event: unknown) => void) => {
+      const [, , , config] = setGestureDetector.mock.lastCall!;
+      return config.callbacks.find((c: { name: string }) => c.name === name)
+        .callback._fn;
+    };
+
+    it.each([
+      ['pan', () => new PanGesture()],
+      ['fling', () => new FlingGesture()],
+      ['pinch', () => new PinchGesture()],
+      ['rotation', () => new RotationGesture()],
+    ])(
+      'registers an empty onBegin on a %s that has none, so Lynx fires onStart and onEnd',
+      (_name, create) => {
+        const g = create().onStart(vi.fn()).onEnd(vi.fn());
+        const directive = createDirective(nativeEl);
+
+        applyGesture(directive, g);
+
+        expect(registeredNames().sort()).toEqual([
+          'onBegin',
+          'onEnd',
+          'onStart',
+        ]);
+        expect(() => fnFor('onBegin')({ params: {} })).not.toThrow();
+      },
+    );
+
+    it("keeps the user's own onBegin as the only one", () => {
+      const onBegin = vi.fn();
+      const g = new PanGesture().onBegin(onBegin).onEnd(vi.fn());
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+      fnFor('onBegin')({ params: { pageX: 1, pageY: 2 } });
+
+      expect(registeredNames().filter((n) => n === 'onBegin')).toHaveLength(1);
+      expect(onBegin).toHaveBeenCalledOnce();
+    });
+
+    it('adds none to a discrete gesture, whose onStart and onEnd fire without it', () => {
+      const g = new TapGesture().onStart(vi.fn());
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+
+      expect(registeredNames()).toEqual(['onStart']);
+    });
+
+    it('measures translation from the touch-down, not from activation', () => {
+      // Without a user onBegin, the translation used to anchor at onStart,
+      // dropping the distance a pan with minDistance moves before activating.
+      const onUpdate = vi.fn();
+      const g = new PanGesture()
+        .minDistance(20)
+        .onStart(vi.fn())
+        .onUpdate(onUpdate);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+      fnFor('onBegin')({ params: { pageX: 10, pageY: 10 } });
+      fnFor('onStart')({ params: { pageX: 31, pageY: 10 } });
+      fnFor('onUpdate')({ params: { pageX: 50, pageY: 14 } });
+
+      const [event] = onUpdate.mock.lastCall!;
+      expect(event.translationX).toBe(40);
+      expect(event.translationY).toBe(4);
+    });
+
+    it('measures each touch from its own start when no onEnd is registered', () => {
+      // The origin used to reset only in a registered onEnd, so the next drag
+      // was measured from the previous drag's start.
+      const onUpdate = vi.fn();
+      const g = new PanGesture().onUpdate(onUpdate);
+      const directive = createDirective(nativeEl);
+
+      applyGesture(directive, g);
+      fnFor('onBegin')({ params: { pageX: 0, pageY: 0 } });
+      fnFor('onUpdate')({ params: { pageX: 100, pageY: 0 } });
+      fnFor('onBegin')({ params: { pageX: 500, pageY: 0 } });
+      fnFor('onUpdate')({ params: { pageX: 510, pageY: 0 } });
+
+      const [event] = onUpdate.mock.lastCall!;
+      expect(event.translationX).toBe(10);
     });
   });
 

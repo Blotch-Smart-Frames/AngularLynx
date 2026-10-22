@@ -14,7 +14,7 @@ Gestures run only on iOS and Android. The [web preview](/guide/glossary#web-prev
 | ------------------------------------ | --------------------------------------------------------------------------- |
 | A button or a tappable row           | `(bindtap)`. See [Handling taps and events](/guide/elements/event-handling) |
 | To drag something with a finger      | `PanGesture`                                                                |
-| A quick swipe in one direction       | `FlingGesture`                                                              |
+| Momentum after a quick drag          | `FlingGesture`, with a `PanGesture` on the same element                     |
 | A press and hold with its own timing | `LongPressGesture`                                                          |
 | A tap and a drag on the same element | `TapGesture` and `PanGesture`, combined with `Gesture.Exclusive`            |
 
@@ -66,7 +66,7 @@ A gesture calls you back at each stage:
 | `onEnd`    | The gesture finishes                                                        |
 
 - **On a tap or long press, `onEnd` means success.** Lynx also calls `onEnd` when these gestures fail, for example when a tap turns into a drag. AngularLynx drops that call for you.
-- **On a pan or fling, register `onBegin` whenever you use `onStart` or `onEnd`.** An empty callback is enough. Without it, Lynx never calls `onStart` or `onEnd`, and doesn't warn you.
+- **Register only the callbacks you need.** Lynx skips a fling's `onStart` and `onEnd` unless an `onBegin` is registered, so AngularLynx registers an empty one for you.
 - **Every callback also gets a state manager** as its second argument. It can end or fail the gesture from code. See [Gesture lifecycle](/api/gestures/lifecycle).
 
 ## Combine gestures
@@ -75,7 +75,7 @@ A gesture calls you back at each stage:
 import { Gesture, PanGesture, TapGesture } from '@blotch/angular-lynx';
 
 export class DragOrTap {
-  readonly #pan = new PanGesture().minDistance(10).onBegin(() => {});
+  readonly #pan = new PanGesture().minDistance(10).onUpdate(() => {});
   readonly #tap = new TapGesture().onEnd(() => {});
 
   // Bind this one with [lynxGesture]="gesture".
@@ -139,8 +139,6 @@ export class Sticker {
 
   readonly #pan = new PanGesture()
     .minDistance(10)
-    // Empty, but required: without it, Lynx never calls onEnd.
-    .onBegin(() => {})
     .onUpdate((event) => {
       // translationX/Y is the distance from where the finger went down.
       this.#x.set(this.#restX + event.translationX);
@@ -171,6 +169,8 @@ export class Sticker {
 
 - **Pinch and rotation never fire.** `PinchGesture` and `RotationGesture` exist, but no Lynx platform recognizes them yet. Drive zoom from a pan or from on-screen buttons.
 - **`numberOfTaps(2)` doesn't make a double tap.** No Lynx platform counts taps, so it fires on the first one. Compare the times of successive taps in `onEnd` yourself.
+- **Some options do nothing yet, including `enabled(false)`.** Lynx reads only a few of them, such as `minDistance` and `maxDuration`. See [Options Lynx doesn't read yet](/api/gestures/gesture-types#options-lynx-doesnt-read-yet).
+- **A fling has no `onStart`**, and fires reliably only on an element that also has a pan. See [FlingGesture](/api/gestures/gesture-types#flinggesture).
 - **If no gesture in the app fires on a device**, check that your `lynx.config.ts` doesn't set `enableNewGesture` to `false`. AngularLynx turns it on by default, and Lynx ignores every gesture without it. See [If no gesture fires](/api/gestures/gesture-types#if-no-gesture-fires).
 
 ## Related

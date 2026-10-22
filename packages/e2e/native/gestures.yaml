@@ -1,0 +1,25 @@
+# Layer 6: gestures, which only the native renderers fire (fixtures/gestures.ts).
+# One quick swipe runs a pan and a fling together. The pan must report the
+# distance moved before it activated, and the fling's onEnd must run although
+# neither gesture registers onBegin (issue #56).
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open gestures
+- extendedWaitUntil:
+    visible: 'Pan from touch: no'
+    timeout: 15000
+# Fast enough for Lynx to fling the element once the finger lifts.
+- swipe:
+    from:
+      text: Swipe here
+    direction: RIGHT
+    duration: 150
+- extendedWaitUntil:
+    visible: 'Pan from touch: yes'
+    timeout: 10000
+# The fling ends when its momentum runs out, a few seconds after the swipe.
+- extendedWaitUntil:
+    visible: 'Fling ended: yes'
+    timeout: 15000
+- takeScreenshot: gestures

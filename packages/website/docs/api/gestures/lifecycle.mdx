@@ -6,7 +6,6 @@ The states a gesture moves through, the callbacks that mark each step, and `Gest
 
 ```typescript
 readonly pan = new PanGesture()
-  .onBegin(() => {})
   .onUpdate((event, state) => {
     // A mostly vertical drag isn't ours: let a scroll view take it.
     if (Math.abs(event.translationY) > Math.abs(event.translationX)) {
@@ -47,16 +46,18 @@ The event's `state` field is usually absent. The callback that fires tells you t
 
 ## Callbacks
 
-| Callback        | Fires when                                                    | Gestures                    |
-| --------------- | ------------------------------------------------------------- | --------------------------- |
-| `onBegin`       | A finger touches down and the gesture starts checking (BEGAN) | All                         |
-| `onStart`       | The gesture is recognized (ACTIVE)                            | All                         |
-| `onUpdate`      | The finger moves while the gesture is ACTIVE                  | Pan, Fling, Pinch, Rotation |
-| `onEnd`         | The gesture finishes (END)                                    | All                         |
-| `onTouchesDown` | A finger touches the element                                  | All                         |
-| `onTouchesUp`   | A finger lifts                                                | All                         |
+| Callback        | Fires when                                                    | Gestures                            |
+| --------------- | ------------------------------------------------------------- | ----------------------------------- |
+| `onBegin`       | A finger touches down and the gesture starts checking (BEGAN) | All. A fling: when the finger lifts |
+| `onStart`       | The gesture is recognized (ACTIVE)                            | All                                 |
+| `onUpdate`      | The finger moves while the gesture is ACTIVE                  | Pan, Fling, Pinch, Rotation         |
+| `onEnd`         | The gesture finishes (END)                                    | All                                 |
+| `onTouchesDown` | A finger touches the element                                  | All                                 |
+| `onTouchesUp`   | A finger lifts                                                | All                                 |
 
-A successful tap runs `onStart`, then `onEnd`. A long press runs `onStart` once the hold is long enough, and `onEnd` when the finger lifts.
+A successful tap runs `onStart`, then `onEnd`. A long press runs `onStart` once the hold is long enough, and `onEnd` when the finger lifts. A fling runs `onBegin`, `onUpdate` on every frame and `onEnd`, but never `onStart` (see [FlingGesture](/api/gestures/gesture-types#flinggesture)).
+
+You don't need to register `onBegin` for the others to fire. Lynx skips a fling's `onStart` and `onEnd` when no `onBegin` is registered, and did the same for a pan before Lynx 3.9, so AngularLynx registers an empty one on every pan, fling, pinch and rotation that has none.
 
 ### Failed and canceled gestures
 
@@ -64,7 +65,6 @@ There's no `onFail` or `onCancel` callback.
 
 - **Tap and long press:** Lynx also calls `onEnd` when the gesture fails. AngularLynx drops that call, so `onEnd` fires only after `onStart`. Use either one to mean "it happened".
 - **Pan, Fling, Pinch and Rotation:** AngularLynx passes `onEnd` through as Lynx sends it. Don't assume a pan's `onEnd` means success. Check your own state instead.
-- **Continuous gestures need `onBegin`.** Lynx fires their `onStart` and `onEnd` only after `onBegin`, so register one, even an empty one.
 
 ### Callback signature
 

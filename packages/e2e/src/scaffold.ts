@@ -651,8 +651,8 @@ const useHelloInApp = (appDir: string) => {
 };
 
 /**
- * Replaces the generated hello component with the counter fixture and adds a
- * lazy-loaded route, for the checks in Layers 3 and 6.
+ * Replaces the generated hello component with the counter fixture and adds
+ * two lazy-loaded routes, for the checks in Layers 3 and 6.
  */
 const applyFixtures = (appDir: string) => {
   copyFileSync(
@@ -665,10 +665,12 @@ const applyFixtures = (appDir: string) => {
       path.join(appDir, 'src/app/hello', file),
     );
   }
-  copyFileSync(
-    path.join(FIXTURES_DIR, 'lazy-route.ts'),
-    path.join(appDir, 'src/app/lazy-route.ts'),
-  );
+  for (const file of ['lazy-route.ts', 'gestures.ts']) {
+    copyFileSync(
+      path.join(FIXTURES_DIR, file),
+      path.join(appDir, 'src/app', file),
+    );
+  }
   // The generated test checks the generated template, which the fixture
   // replaced. It already passed in its own step.
   rmSync(path.join(appDir, 'src/app/hello/hello.spec.ts'), { force: true });
@@ -684,6 +686,10 @@ export const routes: Routes = [
   {
     path: 'lazy',
     loadComponent: () => import('./lazy-route').then((m) => m.LazyRoute),
+  },
+  {
+    path: 'gestures',
+    loadComponent: () => import('./gestures').then((m) => m.GesturesRoute),
   },
 ];
 `,

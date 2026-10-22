@@ -23,8 +23,14 @@ export abstract class BaseGesture<
   _callbacks: Record<string, GestureCallback<any>> = {};
   /**
    * @internal
+   *
+   * Starts as `{ enabled: true }`, like React Lynx's gesture-runtime, so every
+   * gesture sends a config, even one with no options of its own (Fling, Pinch,
+   * Rotation). Gestures whose native handler reads options seed the rest of
+   * their defaults too: once a config is present, iOS reads each key it leaves
+   * out as `0` (see ./const).
    */
-  _config: Record<string, unknown> = {};
+  _config: Record<string, unknown> = { enabled: true };
   /**
    * @internal
    */
@@ -38,6 +44,15 @@ export abstract class BaseGesture<
    */
   _continueWith: BaseGesture[] = [];
 
+  /**
+   * Fires when the gesture starts tracking a touch, before it's recognized:
+   * at touch-down for most gestures, and when the finger lifts for a fling.
+   *
+   * A continuous gesture doesn't need one for its `onStart` and `onEnd` to
+   * fire. LynxGestureDetector registers an empty `onBegin` when you don't, since
+   * Lynx's native handlers skip those callbacks without it. See
+   * gesture-detector.ts.
+   */
   onBegin(cb: GestureCallbackWithState<TEvent>): TSelf {
     this._callbacks['onBegin'] = cb as GestureCallback<TEvent>;
     return this as unknown as TSelf;
@@ -106,6 +121,12 @@ export abstract class BaseGesture<
     return this as unknown as TSelf;
   }
 
+  /**
+   * ⚠️ Not read by Lynx's native gesture handlers yet (as of Lynx 4.1, no
+   * handler looks up `enabled`), so a disabled gesture still fires on a
+   * device. Unbind the gesture from `[lynxGesture]` to turn it off. Kept for
+   * API parity with Lynx's gesture-runtime.
+   */
   enabled(value: boolean): TSelf {
     this._config['enabled'] = value;
     return this as unknown as TSelf;

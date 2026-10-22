@@ -37,7 +37,8 @@ const countInit = mainThreadFn(() => {
  * E2E fixture that replaces the `hello` component the component schematic
  * generates. Tapping "Increment" proves the round trip from a native event,
  * through change detection, to the renderer; "Open lazy page" proves that
- * lazy route chunks load.
+ * lazy route chunks load. "Open gestures" opens gestures.ts in the same place.
+ * The two share a row so this page gets no taller (see "Ask background").
  *
  * The views the tests tap are accessibility elements with labels, so native UI
  * tests (Maestro, in Layer 6) can find them by name. `<text>` is an
@@ -84,14 +85,25 @@ const countInit = mainThreadFn(() => {
       >
         <text>Increment</text>
       </view>
-      <view
-        [flatten]="false"
-        [accessibility-element]="true"
-        accessibility-label="Open lazy page"
-        style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
-        (bindtap)="openLazyPage()"
-      >
-        <text>Open lazy page</text>
+      <view style="display: flex; flex-direction: row; margin-top: 8px;">
+        <view
+          [flatten]="false"
+          [accessibility-element]="true"
+          accessibility-label="Open lazy page"
+          style="padding: 12px; background-color: #e0e0e0;"
+          (bindtap)="open('/lazy')"
+        >
+          <text>Open lazy page</text>
+        </view>
+        <view
+          [flatten]="false"
+          [accessibility-element]="true"
+          accessibility-label="Open gestures"
+          style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+          (bindtap)="open('/gestures')"
+        >
+          <text>Open gestures</text>
+        </view>
       </view>
       <input
         accessibility-label="Text field"
@@ -169,8 +181,8 @@ export class Hello implements OnInit {
     this.typed.set((event as CustomEvent<{ value: string }>).detail.value);
   }
 
-  openLazyPage() {
-    void this.#router.navigateByUrl('/lazy');
+  open(url: string) {
+    void this.#router.navigateByUrl(url);
   }
 
   /**

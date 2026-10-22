@@ -36,8 +36,8 @@ export const createGestureOrigin = (): GestureOrigin => ({ x: null, y: null });
  *   `undefined` → `NaN`.
  *
  * @param raw    The native event envelope.
- * @param name   The callback name (onBegin/onStart/onUpdate/onEnd/…) — used to
- *               seed the origin at gesture start and clear it at end.
+ * @param name   The callback name (onBegin/onStart/onUpdate/onEnd/…): `onBegin`
+ *               seeds the origin where the touch began, and `onEnd` clears it.
  * @param origin Per-gesture mutable origin; omit for stateless mapping (e.g.
  *               discrete gestures like tap where translation is meaningless).
  */
@@ -67,10 +67,13 @@ export const mapGestureEvent = (
   } as GestureEvent & { translationX?: number; translationY?: number };
 
   if (origin) {
-    // Anchor the origin at the gesture's first event (or an explicit begin/
-    // start), then report translation relative to it. Reset at end so the next
-    // gesture measures from its own start.
-    if (name === 'onBegin' || name === 'onStart' || origin.x === null) {
+    // Anchor the origin where the touch began, then report translation
+    // relative to it, like react-native-gesture-handler: a pan that activates
+    // after `minDistance` reports the distance moved before activating too.
+    // The directive registers an `onBegin` on every continuous gesture, so
+    // each touch re-anchors even when the previous one sent no `onEnd`. Any
+    // other gesture anchors on its first event, and resets at `onEnd`.
+    if (name === 'onBegin' || origin.x === null) {
       origin.x = absoluteX ?? 0;
       origin.y = absoluteY ?? 0;
     }

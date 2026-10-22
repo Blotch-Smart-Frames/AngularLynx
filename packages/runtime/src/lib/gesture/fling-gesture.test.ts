@@ -61,6 +61,7 @@ describe('FlingGesture', () => {
 
     expect(result).toBe(g);
     expect(g._config).toEqual({
+      enabled: true,
       direction: FlingDirection.LEFT,
       numberOfPointers: 1,
     });

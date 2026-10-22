@@ -58,13 +58,20 @@ Related native fact: `has-react-gesture` (which React Lynx sets alongside the de
 
 Also (Android-only): registering a gesture does **not** auto-mark the element non-flatten (unlike adding a DOM event listener, which does). A flattened view can't receive its own gestures, so the directive sets `flatten: false` explicitly, mirroring React Lynx. No-op on iOS.
 
+It has to be set **before Android first draws the element**: turning `flatten` off afterwards doesn't give an already-flattened element a View of its own. The directive used to set it in `ngOnChanges`, together with the gesture, and on the Android emulator that was too late in two cases, where the gesture then never fired, with no error:
+
+- a gesture bound after the first render (`[lynxGesture]="on() ? pan : []"`): the element's `onUpdate` never ran, and the same element with a static `flatten="false"` worked;
+- every gesture in a routed component (a lazy route's page), while the same component rendered directly in the root worked.
+
+The directive now sets it in its constructor, when the element is created (issue #56).
+
 **(3) The event payload is a nested envelope, and Lynx gives position — never translation.** Once callbacks fire, the object handed to them is `{ type, timestamp, target, currentTarget, params: {...}, detail: {...} }` (built by `GetCustomEventParam`), where the data lives under `params`. Critically, the iOS handlers (`LynxPanGestureHandler` / `LynxBaseGestureHandler`) populate `params` with the finger's **position** — `x`/`y` (element-relative), `pageX`/`pageY` (page-relative), `clientX`/`clientY` — plus `scrollX`/`scrollY`, which are the gesture member's **scroll offset** (0 for a non-scrolling `<view>`), NOT the drag distance. There is **no** native `translationX`/`translationY`. So a react-native-gesture-handler-style handler reading `event.translationX` gets `undefined` → `NaN`; and naively aliasing it to `scrollX` gives `0` forever (a static view never scrolls). Accumulated translation has to be computed by the framework.
 
 ### The fix
 
 1. `@blotch/rsbuild-plugin-angular-lynx` defaults `enableNewGesture` to **`true`** (unlike React Lynx, which defaults it `false` to keep its legacy gesture system — AngularLynx has no legacy gesture path, so nothing to preserve). Override only to explicitly disable: `pluginAngularLynx({ enableNewGesture: false })`.
 2. `LynxGestureDetector` wraps each callback as `{ _fn: (event) => … }` so it lands in `lepus_object_`, and `runtime.ts`'s `runWorklet` unwraps `_fn` and calls it. (Events registered via `__AddEvent` are a _different_ native path that does accept raw functions — which is why events worked but gestures didn't, obscuring the asymmetry.)
-3. `mapGestureEvent` (`gesture/event.ts`) adapts the native envelope into AngularLynx's flat event: it spreads `params` (so every native field stays reachable, incl. `x`/`y`, pinch `scale`, rotation `rotation`, `isAtStart`/`isAtEnd`), keeps raw `params` as an escape hatch, maps `pageX`/`pageY`→`absoluteX`/`absoluteY`, and **derives** `translationX`/`translationY` by anchoring a per-gesture origin (`createGestureOrigin`, held by the directive) at the gesture's first event and subtracting — resetting it on `onEnd`. This reproduces react-native-gesture-handler's translation semantics on top of Lynx's position-only events.
+3. `mapGestureEvent` (`gesture/event.ts`) adapts the native envelope into AngularLynx's flat event: it spreads `params` (so every native field stays reachable, incl. `x`/`y`, pinch `scale`, rotation `rotation`, `isAtStart`/`isAtEnd`), keeps raw `params` as an escape hatch, maps `pageX`/`pageY`→`absoluteX`/`absoluteY`, and **derives** `translationX`/`translationY` by anchoring a per-gesture origin (`createGestureOrigin`, held by the directive) where the touch began and subtracting. The anchor is `onBegin`, which the directive registers on every continuous gesture (see the `onBegin` entry below), so a pan's translation at `onStart` includes the distance moved before it activated; other gestures anchor on their first event and reset on `onEnd`. This reproduces react-native-gesture-handler's translation semantics on top of Lynx's position-only events.
 
 ---
 
@@ -86,9 +93,56 @@ Three separate Lynx gesture facts break naive `TapGesture`/`LongPressGesture` ha
 
 ### The fix
 
-1. **Always send a full default config.** `TapGesture` / `LongPressGesture` / `PanGesture` seed the complete default set into `_config` on construction (`gesture/const.ts`), so a partial config can never zero a native key. This mirrors Lynx's own gesture-runtime, which seeds defaults for the same reason.
+1. **Always send a full default config.** `TapGesture` / `LongPressGesture` / `PanGesture` seed the complete default set into `_config` on construction (`gesture/const.ts`), so a partial config can never zero a native key. This mirrors Lynx's own gesture-runtime, which seeds defaults for the same reason. Every other gesture starts from `BaseGesture`'s `{ enabled: true }`, as in the gesture-runtime. Fling, pinch and rotation have nothing to zero today: Lynx 4.1's fling handlers ignore their config (iOS `handleConfigMap` is a TODO, Android's is empty), and pinch and rotation have no handler (see the next entry).
 2. **`onEnd` normalized for discrete gestures.** `LynxGestureDetector` (`gesture/gesture-detector.ts`) observes `onStart` — registering its own observer when you didn't — to learn whether a tap/long-press was recognized, then drops the failed-gesture `onEnd`. `onEnd` now means "the gesture happened", matching react-native-gesture-handler. Continuous gestures (pan/fling/rotation/pinch) pass through unchanged.
 3. **`numberOfTaps` documented as a no-op.** Kept on `TapGesture` for API parity, with a JSDoc warning. For a double-tap, time taps in your own callback.
+
+---
+
+## Lynx's native gesture handlers read only five config keys, ignore `enabled`, and report no velocity
+
+### What you'd expect (web / react-native-gesture-handler)
+
+Every option on a gesture class does something: `enabled(false)` turns the gesture off, `activeOffsetX` and `failOffsetY` shape when a pan activates or fails, `direction` limits a fling, and pan and fling events carry `velocityX`/`velocityY`.
+
+### What Lynx does
+
+Lynx passes the config object from `__SetGestureDetector` straight to the platform handlers (`renderer_functions.cc InnerCreateGestureDetector`), and as of Lynx 4.1 they read only these keys (`objectForKey:` in `platform/darwin/ios/lynx/gesture/*.m`, `config.get*` in Android's `gesture/handler/*.java`):
+
+| Gesture    | Keys read                    |
+| ---------- | ---------------------------- |
+| Tap        | `maxDuration`, `maxDistance` |
+| Long press | `minDuration`, `maxDistance` |
+| Pan        | `minDistance`                |
+| Fling      | none                         |
+
+Nothing reads `enabled`, so a gesture set to `enabled(false)` still fires: verified on the iOS Simulator and the Android emulator in Lynx Explorer 4.1, where a disabled pan's `onUpdate` ran on every move. A pan's `activeOffsetX/Y`, `failOffsetX/Y`, `minPointers` and `maxPointers`, a fling's `direction` and `numberOfPointers`, and a tap's `numberOfTaps` (see above) are all sent and ignored. React Lynx's gesture-runtime declares the same options and has the same gap.
+
+The events carry no velocity. A pan's params are `clientX`, `clientY`, `pageX`, `pageY`, `x`, `y`, `scrollX`, `scrollY`, `isAtStart`, `isAtEnd` and `type`; a fling's are `deltaX`, `deltaY`, `scrollX`, `scrollY`, `isAtStart` and `isAtEnd` (both read from the events on both platforms). So `PanGestureEvent.velocityX` and `FlingGestureEvent.velocityX` are `undefined`.
+
+### The fix
+
+None in the runtime yet: the options are kept for API parity, with TSDoc warnings, and the gesture types docs list which ones work (`/api/gestures/gesture-types#options-lynx-doesnt-read-yet`). To turn a gesture off, unbind it from `[lynxGesture]`; to cede a drag to a scroll view, call `fail()` from `onUpdate`.
+
+---
+
+## A fling is the momentum after a drag: it needs a pan on the same element, and never fires `onStart`
+
+### What you'd expect (web / react-native-gesture-handler)
+
+A fling gesture recognizes a quick swipe on its own, fires `onStart` when it's recognized and `onEnd` when it's done.
+
+### What Lynx does
+
+Lynx's fling is the scroll-style momentum that follows a drag (`LynxFlingGestureHandler.m`, `FlingGestureHandler.java`, driven by `LynxGestureHandlerTrigger`'s fling trigger):
+
+- **While the finger is down, a fling ignores the touch.** On touch-up the trigger measures the velocity and flings only the arena's winner (`if (_winner && [_flinger startWithVelocity:velocity])`). A fling alone never wins the touch, so on a plain `<view>` it fires only when some earlier gesture left a winner behind: in Lynx Explorer it fired on one run and not on others. With a pan on the same element (`Gesture.Simultaneous(pan, fling)`) the element wins the touch and flings every time.
+- **`onStart` never fires after a touch.** On touch-up the handler calls `begin` and `onBegin`, which moves it to BEGAN. Each fling frame then reaches `onHandle` with the handler already BEGAN, and only the INIT or UNDETERMINED state leads to `activate` and `onStart`, so every frame goes to `onUpdate`. When the momentum runs out (or the release was too slow to fling) the handler calls `fail` and `onEnd`.
+- **`onUpdate` carries `deltaX`/`deltaY`**, the distance since the last frame, not positions. Verified on both platforms: a quick swipe gave 240 updates on iOS and 36 on Android, then one `onEnd`.
+
+### The fix
+
+The gesture docs describe a fling this way, tell you to pair it with a pan, and say `onStart` doesn't fire. The `onBegin` gate on its `onEnd` is covered by the `onBegin` entry below.
 
 ---
 
@@ -4161,7 +4215,7 @@ The same principle applies to the pan/zoom transform itself: it only ever writes
 
 ---
 
-## A continuous gesture's `onStart`/`onEnd` silently never fire unless `onBegin` is ALSO registered — breaking any handler that snapshots state at gesture-start
+## A fling's `onStart`/`onEnd` (and a pan's, before Lynx 3.9) silently never fire unless `onBegin` is registered
 
 ### What you'd expect (web / react-native-gesture-handler)
 
@@ -4169,36 +4223,20 @@ Registering `onStart`, `onUpdate`, and `onEnd` on a pan is enough — `onStart` 
 
 ### What Lynx does
 
-**Both iOS and Android gate `onStart` (and `onEnd`) behind `onBegin` having already fired** — and `onBegin` itself is a no-op unless a JS `onBegin` callback was registered:
+**The fling handlers gate `onStart` and `onEnd` behind `onBegin` having fired, and `onBegin` fires only when a JS `onBegin` callback is registered:**
 
-- iOS `LynxPanGestureHandler.m`: `onStart:` returns early if `!_isInvokedBegin`; `onEnd:` returns early on the same flag. `_isInvokedBegin` is set **only** inside `onBegin:`, which itself returns early unless `[self onBeginEnabled]` — an enable flag that defaults `NO` and is flipped on only when `onBegin` is in the JS callback list (`handleEnableGestureCallback:`).
-- Android `PanGestureHandler.java` mirrors this exactly: `onStart()` checks `!mIsInvokedBegin` (line 187), `mIsInvokedBegin` is set only in `onBegin()` (line 172), gated by `isOnBeginEnable()`.
+- iOS `LynxFlingGestureHandler.m`: `onStart:` and `onEnd:` return early if `!_isInvokedBegin`. `_isInvokedBegin` is set **only** inside `onBegin:`, which itself returns early unless `[self onBeginEnabled]`, an enable flag that is on only when `onBegin` is in the JS callback list (`handleEnableGestureCallback:`).
+- Android `FlingGestureHandler.java` mirrors it: `onStart()` and `onEnd()` check `!mIsInvokedBegin`, which only `onBegin()` sets, after its `isOnBeginEnable()` check.
 
-So: register `onStart`/`onUpdate`/`onEnd` but not `onBegin`, and on-device **`onStart` and `onEnd` never fire — with no error, no warning, no log.** `onUpdate` fires normally (it has no such gate), so the gesture _looks_ alive — it just never announces its start or end.
+So register `onStart`/`onUpdate`/`onEnd` on a fling but not `onBegin`, and **`onStart` and `onEnd` never fire — with no error, no warning, no log.** `onUpdate` has no such gate, so the gesture _looks_ alive. Verified in Lynx Explorer 4.1 on the iOS Simulator and the Android emulator: a fling composed with a pan ran `onUpdate` 240 and 36 times, and `onEnd` never.
 
-**Concrete symptom:** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading _current_ state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback. `<ui-chart>`'s `panGesture` (`packages/ui/src/lib/components/chart/chart.ts`) registers `onBegin` for this reason.
+**Pans had the same gate until Lynx 3.9.** Upstream commit `301c66caa8` ("fix pan begin-phase dispatch", April 2026) makes `LynxPanGestureHandler.m` and `PanGestureHandler.java` set the flag before checking `onBeginEnabled`, so on Lynx 3.9 and later a pan's `onStart`/`onEnd` fire without `onBegin`. Hosts on older Lynx still drop them. The default (scroll) gesture handler keeps the gate, but AngularLynx doesn't expose it.
+
+**Concrete symptom (pans on old Lynx):** a pan handler that snapshots state in `onStart` (e.g. "remember the value at gesture-start, then apply cumulative `event.translationX` against it in `onUpdate`") never takes that snapshot. If `onUpdate` then falls back to reading _current_ state instead of the missing snapshot, the transform is applied against a value that already moved last frame — the effect compounds every frame instead of tracking the finger 1:1. On a chart, this reads as "the pan doesn't move the same distance as the finger, like it's anchored to the middle and applying translation relative to a fixed origin" — a diagnosis that first looks like a coordinate-system bug (page vs. client vs. element-relative), but is actually a dropped lifecycle callback.
 
 ### The fix
 
-Always register `onBegin` on a continuous gesture (`PanGesture`/`PinchGesture`/`RotationGesture`/`FlingGesture`) if you register `onStart` or `onEnd` — even an empty callback is enough to flip the native enable flag:
-
-```ts
-new PanGesture()
-  .onBegin(() => {
-    /* snapshot start-of-gesture state HERE, not onStart */
-  })
-  .onStart(() => {
-    /* fallback anchor: ??= so it's a no-op if onBegin already ran */
-  })
-  .onUpdate((event) => {
-    /* apply cumulative event.translationX/Y against the snapshot */
-  })
-  .onEnd(() => {
-    /* clear the snapshot */
-  });
-```
-
-Belt-and-suspenders: also anchor defensively on the first `onUpdate` (`snapshot ??= currentValue`) so a platform that somehow skips both `onBegin` and `onStart` still can't compound — it just anchors one frame later.
+`LynxGestureDetector` registers an empty `onBegin` on every continuous gesture (`PanGesture`/`FlingGesture`/`PinchGesture`/`RotationGesture`) that has none (`buildGestureCallbacks` in `gesture/gesture-detector.ts`, issue #56), so apps never need one. With it, the fling's `onEnd` fires on both platforms, and pans work on any Lynx version. The callback also anchors the gesture's translation where the touch began (see the gesture entry at the top of this file). `<ui-chart>`'s `panGesture` (`packages/ui/src/lib/components/chart/chart.ts`) still registers its own `onBegin`, because it snapshots the scene there. The E2E flow `packages/e2e/native/gestures.yaml` checks the fling's `onEnd` on both platforms.
 
 ### Related: `PinchGesture` and `RotationGesture` have no native handler on ANY platform — they never fire
 

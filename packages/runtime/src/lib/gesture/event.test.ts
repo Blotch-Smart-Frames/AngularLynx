@@ -82,16 +82,33 @@ describe('mapGestureEvent', () => {
       expect(moved.translationY).toBe(-20);
     });
 
-    it('re-anchors on onBegin/onStart', () => {
+    it('re-anchors on onBegin, even when the previous touch sent no onEnd', () => {
       const origin = createGestureOrigin();
-      mapGestureEvent({ params: { pageX: 10, pageY: 10 } }, 'onUpdate', origin);
+      mapGestureEvent({ params: { pageX: 10, pageY: 10 } }, 'onBegin', origin);
+      mapGestureEvent({ params: { pageX: 60, pageY: 10 } }, 'onUpdate', origin);
 
       const begun = mapGestureEvent(
         { params: { pageX: 200, pageY: 200 } },
-        'onStart',
+        'onBegin',
         origin,
       ) as { translationX: number };
       expect(begun.translationX).toBe(0);
+    });
+
+    it('keeps measuring from onBegin when the gesture activates (onStart)', () => {
+      // A pan with minDistance activates after the finger has already moved:
+      // that distance is part of the translation, as in
+      // react-native-gesture-handler.
+      const origin = createGestureOrigin();
+      mapGestureEvent({ params: { pageX: 10, pageY: 10 } }, 'onBegin', origin);
+
+      const started = mapGestureEvent(
+        { params: { pageX: 30, pageY: 15 } },
+        'onStart',
+        origin,
+      ) as { translationX: number; translationY: number };
+      expect(started.translationX).toBe(20);
+      expect(started.translationY).toBe(5);
     });
 
     it('resets the origin on onEnd so the next gesture starts fresh', () => {
@@ -115,7 +132,7 @@ describe('mapGestureEvent', () => {
       expect(result.translationX).toBeUndefined();
     });
 
-    it('anchors on onBegin (parity with onStart)', () => {
+    it('anchors on onBegin', () => {
       const origin = createGestureOrigin();
 
       const begun = mapGestureEvent(

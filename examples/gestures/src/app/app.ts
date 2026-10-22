@@ -26,7 +26,7 @@ import {
           <view
             [lynxGesture]="panGesture"
             [style.transform]="panTransform()"
-            class="justify-content mb-2 h-[100px] w-[100px] items-center rounded-[10px] bg-indigo-500"
+            class="mb-2 h-[100px] w-[100px] items-center rounded-[10px] bg-indigo-500 justify-center"
           >
             <text class="text-sm font-medium text-white">Drag me</text>
           </view>
@@ -82,10 +82,12 @@ export class App {
     () => `translate(${this.panX()}px, ${this.panY()}px)`,
   );
 
-  // Where the box rests between drags. Lynx's translationX/Y is measured from
-  // each gesture's start, so we add it to this committed offset while dragging,
-  // then fold it in on release — that's what makes the box stay where dropped
-  // and the next drag continue from there (rather than snapping back).
+  // Where the box rests between drags. translationX/Y is measured from where
+  // each drag touched down, so we add it to this committed offset while
+  // dragging, then fold it in on release — that's what makes the box stay
+  // where dropped and the next drag continue from there (rather than snapping
+  // back). No onBegin is needed for onEnd to fire: LynxGestureDetector
+  // registers one.
   #baseX = 0;
   #baseY = 0;
 

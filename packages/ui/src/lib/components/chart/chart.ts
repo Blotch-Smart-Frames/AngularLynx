@@ -821,11 +821,10 @@ export class UiChart {
   #panStart: { scene: ChartScene<any, any, any> } | null = null;
 
   /**
-   * Drag to pan. Registering `onBegin` is required: Lynx only fires a pan's
-   * `onStart`/`onEnd` after an `onBegin` callback was registered and fired
-   * (see investigations/lynx-vs-web-differences.md). The pan works from the
-   * scene at touch-down and the gesture's cumulative translation, so it tracks
-   * the finger 1:1 without drift.
+   * Drag to pan. `onBegin` snapshots the scene at touch-down, where the
+   * gesture's translation is measured from, so the pan works from that scene
+   * and the cumulative translation and tracks the finger 1:1 without drift.
+   * `onStart` and `onUpdate` anchor too, in case a host skips `onBegin`.
    */
   protected readonly panGesture = new PanGesture()
     .maxPointers(1)

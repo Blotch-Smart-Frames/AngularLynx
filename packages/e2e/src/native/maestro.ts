@@ -54,6 +54,10 @@ export const FLOWS: readonly Flow[] = [
     file: 'background.yaml',
     description: 'runs Angular once and reaches the background thread',
   },
+  {
+    file: 'gestures.yaml',
+    description: 'measures a pan from the touch and ends a fling',
+  },
 ];
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */

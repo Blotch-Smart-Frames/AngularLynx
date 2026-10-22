@@ -132,6 +132,10 @@ enabled(value: boolean): TSelf;
 
 Turns the gesture on or off. Gestures start enabled.
 
+:::warning Lynx doesn't read it yet
+A gesture set to `enabled(false)` still fires on a device. To turn a gesture off, bind `[lynxGesture]` to a list without it, such as `[lynxGesture]="draggable() ? pan : []"`.
+:::
+
 These four methods are on every gesture class. `TSelf` is the gesture's own class, so calls chain. They change the gesture they're called on, as `Gesture.Exclusive` and `Gesture.Simultaneous` do.
 
 ## Constraints

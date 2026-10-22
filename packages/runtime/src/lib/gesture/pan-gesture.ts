@@ -25,6 +25,11 @@ export class PanGesture extends ContinuousGesture<PanGestureEvent, PanGesture> {
    * threshold. A number means "any direction" (symmetrical); a tuple [min, max]
    * means the offset must be within that range. Example: activeOffsetX(20)
    * activates after 20px of horizontal movement.
+   *
+   * ⚠️ Not read by Lynx's native pan handlers yet: as of Lynx 4.1 they read
+   * only `minDistance` (LynxPanGestureHandler.m / PanGestureHandler.java
+   * `handleConfigMap`). The same goes for activeOffsetY, failOffsetX/Y and
+   * min/maxPointers. Kept for API parity with Lynx's gesture-runtime.
    */
   activeOffsetX(offset: number | [number, number]): this {
     this._config['activeOffsetX'] = offset;
@@ -41,6 +46,9 @@ export class PanGesture extends ContinuousGesture<PanGestureEvent, PanGesture> {
    * direction, the gesture fails (ceding to a competing gesture). Example:
    * failOffsetY(10) on a horizontal pan: if the user moves >10px vertically
    * before activating, the gesture fails and a vertical scroll can take over.
+   *
+   * ⚠️ Not read by Lynx's native pan handlers yet (see `activeOffsetX`). Call
+   * the state manager's `fail()` from `onUpdate` instead.
    */
   failOffsetX(offset: number | [number, number]): this {
     this._config['failOffsetX'] = offset;

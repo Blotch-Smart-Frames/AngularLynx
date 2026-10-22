@@ -153,11 +153,11 @@ describe('BaseGesture', () => {
   });
 
   describe('initial state', () => {
-    it('starts with empty callbacks, config, and relation arrays', () => {
+    it('starts with empty callbacks and relation arrays, and an enabled config', () => {
       const g = new ConcreteGesture();
 
       expect(g._callbacks).toEqual({});
-      expect(g._config).toEqual({});
+      expect(g._config).toEqual({ enabled: true });
       expect(g._waitFor).toEqual([]);
       expect(g._simultaneousWith).toEqual([]);
       expect(g._continueWith).toEqual([]);

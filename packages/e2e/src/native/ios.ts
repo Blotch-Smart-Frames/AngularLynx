@@ -69,8 +69,7 @@ const bootSimulator = async (
     // Lynx Explorer's page ignored Maestro's taps, so every Explorer flow
     // failed on GitHub's 2026-10-22 runner image.
     const deviceType =
-      iPhones.find((type) => /^iPhone \d+ Pro$/.test(type.name)) ??
-      iPhones[0];
+      iPhones.find((type) => /^iPhone \d+ Pro$/.test(type.name)) ?? iPhones[0];
     if (!deviceType) {
       console.warn(
         `${runtime.name} supports no iPhone; trying an older runtime.`,

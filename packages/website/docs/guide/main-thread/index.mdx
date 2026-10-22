@@ -113,7 +113,7 @@ const dragMove = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 ```
 
-Each thread has its own copy of a ref, and the copies aren't synced. On the main thread, a ref works like a module-level variable that's labeled as script state.
+Each thread has its own copy of a ref, and the copies aren't synced. On the main thread, a ref works like a module-level variable that's labeled as script state. Pass a ref to a function on the other thread, and it arrives as that thread's copy.
 
 ## Call the background thread
 
@@ -138,7 +138,7 @@ const onTap = mainThreadFn((event: MainThread.TouchEvent) => {
 - **`runOnBackground()` is a global.** Call it from main-thread code: a main-thread script, or a template handler. It doesn't exist on the background thread, so don't call it from a constructor or `ngOnInit`, which run on both.
 - **Define `backgroundFn()` at module level**, for the same ID reason as main-thread scripts.
 - **Arguments and the return value are copied as JSON.**
-- **Return a value, not a Promise.** A returned Promise arrives as `{}`. So you can't fetch data this way yet (see [Network requests](/guide/concepts/javascript-environment#network-requests)).
+- **The function can be `async`.** `runOnBackground()` waits for a returned Promise, so the function can `fetch()` data (see [Network requests](/guide/concepts/javascript-environment#network-requests)). If it throws or rejects, the Promise `runOnBackground()` returned rejects with the same message.
 
 [Call element methods](/guide/selector-query) uses this to reach `lynx.createSelectorQuery()`.
 
@@ -188,7 +188,6 @@ Use scripts for visual effects that follow a gesture. Keep anything that must la
 ## Limitations
 
 - **No dependency injection.** A module-level script has no injection context, so `inject()` doesn't work in it.
-- **A `MainThreadRef` doesn't cross threads.** Passed to `runOnMainThread()` from the background thread, it arrives as a plain `{ _wvid }` object, not as the ref.
 - **Measure with `invoke('boundingClientRect')`.** Elements also have an untyped `getBoundingClientRect()`, but its `left` and `top` aren't the element's position.
 
 ## Related

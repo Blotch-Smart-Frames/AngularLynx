@@ -7,8 +7,11 @@ import type { MainThreadFnHandle } from './main-thread-fn';
  *
  *   background calls runOnMainThread(handle, ...args)
  *   → dispatches 'Lynx.Worklet.runWorkletCtx' with { worklet, params, resolveId }
- *   → main thread's listener (in runtime.ts) invokes the registered worklet fn
+ *   → main thread's listener (in global-callbacks.ts) invokes the registered
+ *     worklet fn, with any MainThreadRef params swapped for the main thread's
+ *     ref, and awaits it if it returns a promise
  *   → dispatches 'Lynx.Worklet.FunctionCallRet' with { resolveId, returnValue }
+ *     (or { resolveId, error } if it threw or rejected)
  *   → background thread's listener resolves the Promise
  *
  * This enables background-thread Angular code (services, effects) to trigger

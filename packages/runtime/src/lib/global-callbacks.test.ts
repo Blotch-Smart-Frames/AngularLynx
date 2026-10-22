@@ -26,6 +26,32 @@ const makeFakeJSContext = () => {
 };
 
 /**
+ * Sends a cross-thread call request to `listener` and returns the parsed
+ * reply of type `replyType`, waiting for it when the function is async.
+ */
+const call = async (
+  fake: ReturnType<typeof makeFakeJSContext>,
+  request: string,
+  replyType: string,
+  wkltId: string,
+  params: unknown[],
+): Promise<Record<string, unknown>> => {
+  fake.listeners[request]({
+    data: JSON.stringify({
+      worklet: { _wkltId: wkltId },
+      params,
+      resolveId: 9,
+    }),
+  });
+  const reply = await vi.waitFor(() => {
+    const event = fake.dispatched.find((e) => e.type === replyType);
+    if (!event) throw new Error('no reply yet');
+    return event;
+  });
+  return JSON.parse(reply.data);
+};
+
+/**
  * Fresh-import global-callbacks with the given thread + lynx globals in place.
  * __MAIN_THREAD__ and lynx are read at module-load time, so they must be stubbed
  * before the import runs.
@@ -495,6 +521,63 @@ describe('global-callbacks', () => {
       expect(JSON.parse(ret.data).error).toContain('kaboom');
     });
 
+    it("hands a MainThreadRef the background thread passed to the worklet as the main thread's ref", async () => {
+      const fake = makeFakeJSContext();
+      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
+      const ref = { current: 'main-copy' };
+      globalThis.__workletRefMap[3] = ref;
+      const worklet = vi.fn();
+      globalThis.registerWorklet('main-thread', 'uses-ref', worklet);
+
+      await call(
+        fake,
+        'Lynx.Worklet.runWorkletCtx',
+        'Lynx.Worklet.FunctionCallRet',
+        'uses-ref',
+        [{ _wvid: 3 }, { nested: { _wvid: 3 } }],
+      );
+
+      expect(worklet.mock.calls[0]![0]).toBe(ref);
+      expect(worklet.mock.calls[0]![1].nested).toBe(ref);
+    });
+
+    it('awaits an async worklet and replies with its result', async () => {
+      const fake = makeFakeJSContext();
+      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
+      globalThis.registerWorklet(
+        'main-thread',
+        'async-mt',
+        async () => 'later',
+      );
+
+      expect(
+        await call(
+          fake,
+          'Lynx.Worklet.runWorkletCtx',
+          'Lynx.Worklet.FunctionCallRet',
+          'async-mt',
+          [],
+        ),
+      ).toEqual({ resolveId: 9, returnValue: 'later' });
+    });
+
+    it('replies with an error for a worklet this thread never registered', async () => {
+      const fake = makeFakeJSContext();
+      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
+
+      const reply = await call(
+        fake,
+        'Lynx.Worklet.runWorkletCtx',
+        'Lynx.Worklet.FunctionCallRet',
+        'missing',
+        [],
+      );
+
+      expect(reply['error']).toContain(
+        'Main-thread worklet not found: missing',
+      );
+    });
+
     it('resolves a pending runOnBackground promise on BgFunctionCallRet', async () => {
       const fake = makeFakeJSContext();
       await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
@@ -705,6 +788,96 @@ describe('global-callbacks', () => {
         (e) => e.type === 'Lynx.Worklet.BgFunctionCallRet',
       )!;
       expect(JSON.parse(ret.data).error).toContain('bg boom');
+    });
+
+    // Regression: an async background function, such as one that awaits
+    // fetch(), used to resolve to {} for the caller, and its rejection went
+    // unhandled.
+    it('awaits an async background function and replies with its result', async () => {
+      const fake = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
+      globalThis.registerWorklet('background', 'fetches', async (n: number) => {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        return { doubled: n * 2 };
+      });
+
+      expect(
+        await call(
+          fake,
+          'Lynx.Worklet.runOnBackground',
+          'Lynx.Worklet.BgFunctionCallRet',
+          'fetches',
+          [21],
+        ),
+      ).toEqual({ resolveId: 9, returnValue: { doubled: 42 } });
+    });
+
+    it("sends an async background function's rejection back as the error", async () => {
+      const fake = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
+      globalThis.registerWorklet('background', 'rejects', async () => {
+        throw new Error('offline');
+      });
+
+      expect(
+        await call(
+          fake,
+          'Lynx.Worklet.runOnBackground',
+          'Lynx.Worklet.BgFunctionCallRet',
+          'rejects',
+          [],
+        ),
+      ).toEqual({ resolveId: 9, error: 'offline' });
+    });
+
+    it("hands a MainThreadRef the main thread passed to the function as the background thread's ref", async () => {
+      const fake = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
+      const ref = { current: 'bg-copy' };
+      globalThis.__workletRefMap[4] = ref;
+      const fn = vi.fn();
+      globalThis.registerWorklet('background', 'bg-ref', fn);
+
+      await call(
+        fake,
+        'Lynx.Worklet.runOnBackground',
+        'Lynx.Worklet.BgFunctionCallRet',
+        'bg-ref',
+        [{ _wvid: 4 }, { elementRefptr: 1 }],
+      );
+
+      expect(fn.mock.calls[0]![0]).toBe(ref);
+      // Element handles stay plain: MainThreadElement is main-thread only.
+      expect(fn.mock.calls[0]![1]).toEqual({ elementRefptr: 1 });
+    });
+
+    it('replies with an error for a background function this thread never registered', async () => {
+      const fake = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
+
+      const reply = await call(
+        fake,
+        'Lynx.Worklet.runOnBackground',
+        'Lynx.Worklet.BgFunctionCallRet',
+        'missing-bg',
+        [],
+      );
+
+      expect(reply['error']).toContain(
+        'Background function not found: missing-bg',
+      );
     });
 
     it('swallows a getCoreContext that throws during background listener setup', async () => {

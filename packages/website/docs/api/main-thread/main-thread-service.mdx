@@ -62,20 +62,20 @@ runOnMainThread<TArgs extends unknown[], TReturn>(
 
 - **`handle`**: a function from [`mainThreadFn()`](/api/main-thread/main-thread-fn).
 - **`args`**: its arguments, checked against its parameter types.
-- **Returns** a promise of the function's return value. It rejects if the function throws.
+- **Returns** a promise of the function's return value. It rejects if the function throws or its promise rejects.
 
 Where you call it changes what happens:
 
-| Called from                                    | What happens                                                                             |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| The main thread, such as a `(bindtap)` handler | Runs the function right away. Arguments aren't copied, and a returned promise is awaited |
-| The background thread                          | Sends the call to the main thread. Arguments and the return value are copied as JSON     |
+| Called from                                    | What happens                                                                                                            |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| The main thread, such as a `(bindtap)` handler | Runs the function right away. Arguments aren't copied, and a returned promise is awaited                                |
+| The background thread                          | Sends the call to the main thread. Arguments and the return value are copied as JSON, and a returned promise is awaited |
 
 ## Constraints
 
 - **Code that runs on both threads calls it twice.** A constructor, `ngOnInit` or `effect()` runs in both copies of your app (see [Threads](/guide/concepts/threads)), so the function runs once from each. Call it from an event handler instead.
 - **From the background thread, define the function at module scope.** The call finds the function by an ID, which matches on both threads only for module-level functions.
-- **From the background thread, use JSON-safe arguments and return values.** A development build throws on arguments that can't be serialized. A returned promise isn't awaited.
+- **From the background thread, use JSON-safe arguments and return values.** A development build throws on arguments that can't be serialized. A [`MainThreadRef`](/api/main-thread/main-thread-ref) argument is the exception: it arrives as the main thread's copy of the ref.
 
 ## Related
 

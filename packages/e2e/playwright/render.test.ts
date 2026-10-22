@@ -40,6 +40,23 @@ test('the generated app renders and handles taps', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// A tap handler awaits an async background function through runOnBackground().
+// The listener used to reply with the Promise itself, which JSON turned into
+// {}, and to hand the function a MainThreadRef as a plain { _wvid }
+// (issue #54).
+test("a tap handler gets an async background function's result", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await expect(page.getByText(appName, { exact: true })).toBeVisible();
+
+  await page.getByText('Ask background', { exact: true }).click();
+  await expect(page.getByText('Background: 42')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // Lynx for Web loads a lazy bundle by evaluating its main-thread half, which
 // the plugin never emitted, so this used to fail with "SyntaxError: Unexpected
 // token '}'". Dynamic imports are now inlined into the main bundle on every

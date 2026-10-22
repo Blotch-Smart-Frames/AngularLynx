@@ -107,7 +107,7 @@ const pause = backgroundFn((id: string) => {
 
 - **`#player` matches the element's `id`**, as in `<video id="player">`. A class (`.name`) or a tag name (`video`) also works.
 - **`exec()` sends the query.** Nothing runs until you call it.
-- **`success`** receives the method's result. It runs later, so the result can't come back through `runOnBackground()`. To use a result, call `invoke()` in a main-thread script, as shown above.
+- **`success`** receives the method's result. It runs later, so to get the result back through `runOnBackground()`, return a Promise that `success` resolves (below). In a main-thread script, `invoke()` as shown above is simpler.
 - **`fail`** receives `{ code, data }`. Without a `fail` callback, a failed call shows an error screen.
 
 | `code` | Meaning                                   |
@@ -118,6 +118,28 @@ const pause = backgroundFn((id: string) => {
 | `4`    | The parameters aren't valid               |
 | `5`    | The selector isn't supported              |
 | `6`    | The element has no native view to call it |
+
+`runOnBackground()` waits for a Promise the function returns, so a query can hand back its result:
+
+```typescript
+const measure = backgroundFn(
+  (id: string) =>
+    new Promise((resolve, reject) => {
+      lynx
+        .createSelectorQuery()
+        .select(`#${id}`)
+        .invoke({
+          method: 'boundingClientRect',
+          success: resolve,
+          fail: (res) => reject(new Error(`code ${res.code}`)),
+        })
+        .exec();
+    }),
+);
+
+// In a template handler:
+// runOnBackground(measure, 'card').then((rect) => console.log(rect));
+```
 
 `LynxAccessibility.requestFocus()` calls the `requestAccessibilityFocus` method through `createSelectorQuery()`, so the same thread rule applies to it.
 

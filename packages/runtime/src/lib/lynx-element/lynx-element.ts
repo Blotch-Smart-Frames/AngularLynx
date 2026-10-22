@@ -110,12 +110,12 @@ export class LynxElement implements BaseLynxElement {
   _virtualPrev: LynxElement | null = null;
   _virtualNext: LynxElement | null = null;
 
-  // Tracks IDs of animations started on this element via animate().
+  // Tracks animations started on this element via animate().
   // Canceled when the element is destroyed (see #doRemove) to clear stale
   // animation state from Lynx's native element pool — without this, pooled
   // elements retain animation values (e.g. opacity: 0) that poison
   // newly-created elements reusing the slot.
-  #activeAnimationIds: string[] = [];
+  #activeAnimations: LynxAnimation[] = [];
 
   // --- Recreation cache -------------------------------------------------------
   // Lynx destroys an element's native painting node when it is removed in one
@@ -748,19 +748,20 @@ export class LynxElement implements BaseLynxElement {
     // running (or fill:'forwards' persists the final frame), the stale animation
     // state transfers to whatever new element reuses this pool slot.
     // Canceling + resetting inline styles ensures the pooled element returns clean.
-    // Wire protocol constant 3 = ANIMATION_CANCEL (from animation.ts).
+    // Each animation cancels itself, because only it knows the key it was
+    // started under (its id, or a name it was given; see LynxAnimation).
     // Canceling a completed animation is harmless — a no-op at the native level.
-    for (const id of this.#activeAnimationIds) {
-      __ElementAnimate(this.element, [3, id]);
+    for (const anim of this.#activeAnimations) {
+      anim.cancel();
     }
-    if (this.#activeAnimationIds.length > 0) {
+    if (this.#activeAnimations.length > 0) {
       // Cancel clears the animation's active effect, but Lynx may leave
       // residual computed values on the element (observed: opacity stays at
       // the initial keyframe value 0 after cancel). Nulling the inline styles
       // forces a full reset so the pooled element has no lingering overrides.
       __AddInlineStyle(this.element, 'opacity', null);
       __AddInlineStyle(this.element, 'transform', null);
-      this.#activeAnimationIds.length = 0;
+      this.#activeAnimations.length = 0;
     }
     // Remove the whole subtree in one shot — no "parking" of children elsewhere.
     // This runs ONLY for a genuine destroy: a move (remove-then-reinsert in the
@@ -985,7 +986,7 @@ export class LynxElement implements BaseLynxElement {
     // Track the animation so remove() can cancel it before the element
     // returns to the native pool. Without this, the pool slot retains
     // stale animation state (e.g. opacity stuck at the FROM keyframe).
-    this.#activeAnimationIds.push(anim.id);
+    this.#activeAnimations.push(anim);
     return anim;
   }
 

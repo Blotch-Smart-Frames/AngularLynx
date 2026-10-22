@@ -957,6 +957,37 @@ The bottom sheet showed it. Its open slide holds the panel at `translateY(0%)`, 
 
 ---
 
+## Native Lynx and web-core find a named `element.animate()` by different keys
+
+### What you'd expect (web)
+
+`pause()`, `play()` and `cancel()` reach an animation whatever `name` it was given. A name only labels the animation, so two elements can use the same one.
+
+### What Lynx does
+
+`__ElementAnimate(element, [operation, key, …])` finds the animation by `key`, and the two renderers need different keys for a named animation.
+
+**Native** (`Element::AnimateV2` in `core/renderer/dom/element.cc`, Lynx 4.1):
+
+- `START` registers the keyframes under `options.name` when there is one, and under `key` otherwise. That's the name the element's `animationstart` and `animationend` events report, in `params.animation_name`.
+- `PAUSE` and `PLAY` write their `key` into the element's `animation-name`. So a named animation has to be paused and resumed by its name. On the iOS Simulator and an Android emulator, a named animation paused by its generated id ran on and ended on schedule, while an unnamed one paused.
+- `CANCEL` resets every animation property, whatever `key` it gets.
+- Animations belong to their element, so two elements can share a name.
+
+**web-core** (`web-core/ts/client/mainthread/elementAPIs/createElementAPI.ts`):
+
+- It ignores `options.name`. One map from `key` to DOM `Animation` serves every element on the page.
+- `START` cancels whatever is already under its `key`, so an element that starts an animation under another element's name cancels that element's animation.
+- It fires no `animationstart` or `animationend` for these animations.
+
+React Lynx's `Animation` always passes its generated id, so on native its named animations can't be paused or resumed.
+
+### The fix
+
+`LynxAnimation` (`packages/runtime/src/lib/animation/animation.ts`) passes `options.name`, or its id when there's no name, on native, and always its id on web (issue #57). It passes the same key to all four operations. When an element is removed, `LynxElement` cancels each of its animations through the animation's own `cancel()`, so the cleanup uses the same key.
+
+---
+
 ## No `:hover`, `:focus` pseudo-classes; no `::before`/`::after` pseudo-elements
 
 ### What you'd expect (web)
@@ -2342,6 +2373,7 @@ Set `flatten={false}` on elements that need:
 - Screenshot capture
 - `sticky` positioning inside `<x-scroll-view>`
 - Element method calls via `SelectorQuery`
+- **An `element.animate()` animation to show.** On the Android emulator, a `transform` animation on a plain `<view>` ran (its `animationstart` and `animationend` events fired on time) but the view never moved. Its only listeners were animation events. With `[flatten]="false"` it moved. Found while checking issue #57.
 - **Reliable `overflow: hidden` clipping of `position: absolute` children.** A
   plain `<view style="overflow: hidden">` with absolutely-positioned children
   can clip inconsistently on Android — the clip boundary appears to shift

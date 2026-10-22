@@ -38,7 +38,8 @@ const ANIMATION_CANCEL = 3 as const;
 /**
  * Represents a running animation on a Lynx element.
  * Created by calling `element.animate()` on a LynxElement.
- * Mirrors the Animation class from React Lynx's worklet-runtime.
+ * Mirrors the Animation class from React Lynx's worklet-runtime, except for
+ * the key a named animation is controlled by (see the constructor).
  */
 export class LynxAnimation implements Pick<
   LynxJsAnimation,
@@ -48,6 +49,8 @@ export class LynxAnimation implements Pick<
 
   readonly id: string;
   readonly #element: ElementRef;
+  // The string __ElementAnimate knows this animation by (see the constructor).
+  readonly #key: string;
   // The DOM Animation web-core started, on web only (see the constructor).
   readonly #webAnimation?: Animation;
 
@@ -58,6 +61,20 @@ export class LynxAnimation implements Pick<
   ) {
     this.#element = element;
     this.id = `__lynx-angular-animation-${LynxAnimation.#count++}`;
+    // __ElementAnimate finds an animation by the string after the operation,
+    // and native Lynx and web-core need different strings for a named one
+    // (issue #57):
+    // - Native starts it under `options.name`, which its animation events
+    //   report, and PLAY/PAUSE write their string into the element's
+    //   `animation-name`. So play() and pause() have to pass the name: given
+    //   the generated id they left a named animation running on iOS and
+    //   Android. React Lynx always passes the id, so its named animations
+    //   can't be paused either.
+    // - web-core ignores `options.name` and keys one map, shared by every
+    //   element on the page, by that string. Starting an animation cancels
+    //   whatever is already under its key, so two elements animating under
+    //   the same name would cancel each other. The unique id avoids that.
+    this.#key = __WEB__ ? this.id : (options.name ?? this.id);
 
     // Normalize Web Animation API property names to CSS animation property
     // names that @lynx-js/web-core's __ElementAnimate expects.
@@ -78,7 +95,7 @@ export class LynxAnimation implements Pick<
     // Immediately start the animation on the native element.
     __ElementAnimate(this.#element, [
       ANIMATION_START,
-      options.name ?? this.id,
+      this.#key,
       keyframes,
       wireOptions,
     ]);
@@ -104,15 +121,15 @@ export class LynxAnimation implements Pick<
   }
 
   play(): void {
-    __ElementAnimate(this.#element, [ANIMATION_PLAY, this.id]);
+    __ElementAnimate(this.#element, [ANIMATION_PLAY, this.#key]);
   }
 
   pause(): void {
-    __ElementAnimate(this.#element, [ANIMATION_PAUSE, this.id]);
+    __ElementAnimate(this.#element, [ANIMATION_PAUSE, this.#key]);
   }
 
   cancel(): void {
-    __ElementAnimate(this.#element, [ANIMATION_CANCEL, this.id]);
+    __ElementAnimate(this.#element, [ANIMATION_CANCEL, this.#key]);
     // Reaches the animation even after it finished (see the constructor).
     // Canceling an animation web-core already canceled is a no-op.
     this.#webAnimation?.cancel();

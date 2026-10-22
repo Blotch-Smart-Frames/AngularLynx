@@ -73,6 +73,7 @@ const options: LynxAnimationOptions = {
 - A number on its own is the duration: `animate(keyframes, 300)`.
 - Without `fill: 'forwards'`, the element goes back to its own styles when the animation ends.
 - AngularLynx also accepts Lynx's CSS-style names: `timingFunction`, `iterationCount` and `fillMode`.
+- `name` labels the animation in its element's events (see below).
 
 The [animation API reference](/api/angular-lynx/animation) lists every option.
 
@@ -141,6 +142,7 @@ export class Spinner {
 - **`pause()`** freezes the animation at its current frame, and **`play()`** resumes it.
 - **`cancel()`** stops the animation for good. Start a new one with `animate()`.
 - **There's no `finish()`**, no `finished` promise and no `onfinish` callback. To run code when an animation ends, start a `setTimeout` for its total length.
+- **On iOS and Android, the element's `(bindanimationstart)` and `(bindanimationend)` fire for it**, with its `name` in `$event.params.animation_name`. The web preview doesn't fire them, which is why a `setTimeout` is the way that works everywhere.
 - **Removing the element cancels its animations for you.** You don't need to clean up when a component is destroyed.
 
 ## Where it runs
@@ -152,6 +154,7 @@ The [background thread](/guide/glossary#background-thread) copy has no native el
 ## Limitations
 
 - **Don't call `animate()` from an event that the animation can fire again.** Starting or canceling an animation can re-run event handlers on the same element or one nearby. Fading an `<image>` in from its own `(bindload)` handler, for example, can loop until the app crashes. If you must, guard the handler so it runs once.
+- **On Android, an element may need `flatten="false"` to show its animation.** Android can draw a plain element straight into its parent instead of giving it a native view of its own. Such an element's animation runs and fires its events, but nothing moves. See [`flatten`](/api/elements/view).
 - **No Web Animations API extras.** There's no `document.getAnimations()`, `KeyframeEffect` or `currentTime`.
 
 ## Related

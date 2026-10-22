@@ -463,4 +463,31 @@ describe('LynxElement #doRemove animation-cancel and orphan paths', () => {
     // Clean up mock so subsequent tests don't inherit the parent wiring.
     (globalThis.__GetParent as ReturnType<typeof vi.fn>).mockReset();
   });
+
+  it('cancels a named animation under its name on removal', () => {
+    const parentRef = makeRef();
+    const childRef = makeRef();
+    // Registered so parentNode(child) resolves to it, as in the test above.
+    const _parent = new LynxElement(parentRef as unknown as ElementRef);
+    const child = new LynxElement(childRef as unknown as ElementRef);
+    (globalThis.__GetParent as ReturnType<typeof vi.fn>).mockImplementation(
+      (ref: object) => (ref === childRef ? parentRef : null),
+    );
+    child.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 200,
+      name: 'fade',
+    });
+
+    child.remove();
+    LynxElement.commitPendingRemovals();
+
+    // Native Lynx started it under the name, so the generated id would miss
+    // it (issue #57).
+    expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(childRef, [
+      3, // ANIMATION_CANCEL
+      'fade',
+    ]);
+
+    (globalThis.__GetParent as ReturnType<typeof vi.fn>).mockReset();
+  });
 });

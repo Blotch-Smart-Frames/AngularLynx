@@ -51,6 +51,22 @@ describe('LynxAnimation', () => {
       expect(anim.id).toMatch(/^__lynx-angular-animation-\d+$/);
     });
 
+    it('starts a named animation under its id on web', () => {
+      vi.stubGlobal('__WEB__', true);
+      const options = { name: 'my-animation', duration: 500 };
+      const anim = new LynxAnimation(fakeRef, [], options);
+      vi.unstubAllGlobals();
+
+      // web-core keys one map, shared by every element, by this string, so a
+      // shared name would let one element's animation cancel another's.
+      expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(fakeRef, [
+        0, // ANIMATION_START
+        anim.id,
+        [],
+        options,
+      ]);
+    });
+
     it('normalizes iterations to iterationCount for web-core compatibility', () => {
       const keyframes = [
         { transform: 'rotate(0deg)' },
@@ -130,6 +146,51 @@ describe('LynxAnimation', () => {
         2, // ANIMATION_PAUSE
         anim.id,
       ]);
+    });
+  });
+
+  describe('a named animation', () => {
+    const controls = [
+      ['play', 1], // ANIMATION_PLAY
+      ['pause', 2], // ANIMATION_PAUSE
+      ['cancel', 3], // ANIMATION_CANCEL
+    ] as const;
+
+    // Native Lynx writes this string into animation-name, so with the id
+    // play() and pause() left a named animation running (issue #57).
+    it.each(controls)(
+      '%s() targets the name it was started under',
+      (method, operation) => {
+        const anim = new LynxAnimation(fakeRef, [], { name: 'fade' });
+        vi.clearAllMocks();
+
+        anim[method]();
+
+        expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(fakeRef, [
+          operation,
+          'fade',
+        ]);
+      },
+    );
+
+    describe('on web', () => {
+      beforeEach(() => vi.stubGlobal('__WEB__', true));
+      afterEach(() => vi.unstubAllGlobals());
+
+      it.each(controls)(
+        '%s() targets the id it was started under',
+        (method, operation) => {
+          const anim = new LynxAnimation(fakeRef, [], { name: 'fade' });
+          vi.clearAllMocks();
+
+          anim[method]();
+
+          expect(globalThis.__ElementAnimate).toHaveBeenCalledWith(fakeRef, [
+            operation,
+            anim.id,
+          ]);
+        },
+      );
     });
   });
 

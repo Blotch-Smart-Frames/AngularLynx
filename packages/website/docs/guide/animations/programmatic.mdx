@@ -154,6 +154,7 @@ The [background thread](/guide/glossary#background-thread) copy has no native el
 ## Limitations
 
 - **Don't call `animate()` from an event that the animation can fire again.** Starting or canceling an animation can re-run event handlers on the same element or one nearby. Fading an `<image>` in from its own `(bindload)` handler, for example, can loop until the app crashes. If you must, guard the handler so it runs once.
+- **On Android, an element may need `flatten="false"` to show its animation.** Android can draw a plain element straight into its parent instead of giving it a native view of its own. Such an element's animation runs and fires its events, but nothing moves. See [`flatten`](/api/elements/view).
 - **No Web Animations API extras.** There's no `document.getAnimations()`, `KeyframeEffect` or `currentTime`.
 
 ## Related

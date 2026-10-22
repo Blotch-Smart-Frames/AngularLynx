@@ -2373,6 +2373,7 @@ Set `flatten={false}` on elements that need:
 - Screenshot capture
 - `sticky` positioning inside `<x-scroll-view>`
 - Element method calls via `SelectorQuery`
+- **An `element.animate()` animation to show.** On the Android emulator, a `transform` animation on a plain `<view>` ran (its `animationstart` and `animationend` events fired on time) but the view never moved. Its only listeners were animation events. With `[flatten]="false"` it moved. Found while checking issue #57.
 - **Reliable `overflow: hidden` clipping of `position: absolute` children.** A
   plain `<view style="overflow: hidden">` with absolutely-positioned children
   can clip inconsistently on Android — the clip boundary appears to shift

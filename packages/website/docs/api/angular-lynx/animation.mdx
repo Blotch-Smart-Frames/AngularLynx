@@ -216,19 +216,19 @@ type LynxAnimationOptions = AnimationOptions & {
 
 `AnimationOptions` comes from `@lynx-js/types`. Together they accept:
 
-| Option           | Type                                                          | Default     | Description                                                                                                                     |
-| ---------------- | ------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `duration`       | `number`                                                      | `0`         | Length of one iteration, in milliseconds.                                                                                       |
-| `delay`          | `number`                                                      | `0`         | Wait before starting, in milliseconds.                                                                                          |
-| `iterations`     | `number`                                                      | `1`         | How many times to run. `Infinity` loops forever.                                                                                |
-| `direction`      | `'normal' \| 'reverse' \| 'alternate' \| 'alternate-reverse'` | `'normal'`  | Playback direction for each iteration.                                                                                          |
-| `easing`         | `string`                                                      | `'linear'`  | A timing function, such as `'ease-in'` or `'cubic-bezier(…)'`.                                                                  |
-| `fill`           | `'none' \| 'forwards' \| 'backwards' \| 'both'`               | `'none'`    | Whether the first or last frame applies before or after playing.                                                                |
-| `name`           | `string`                                                      | Generated   | A name that animation events report. Setting it currently stops `play()`, `pause()` and `cancel()` from reaching the animation. |
-| `play-state`     | `'running' \| 'paused'`                                       | `'running'` | Starts the animation running or paused.                                                                                         |
-| `iterationCount` | `number \| string`                                            |             | CSS-style alias for `iterations`, such as `'infinite'`.                                                                         |
-| `fillMode`       | `string`                                                      |             | CSS-style alias for `fill`.                                                                                                     |
-| `timingFunction` | `string`                                                      |             | CSS-style alias for `easing`.                                                                                                   |
+| Option           | Type                                                          | Default     | Description                                                                                                    |
+| ---------------- | ------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `duration`       | `number`                                                      | `0`         | Length of one iteration, in milliseconds.                                                                      |
+| `delay`          | `number`                                                      | `0`         | Wait before starting, in milliseconds.                                                                         |
+| `iterations`     | `number`                                                      | `1`         | How many times to run. `Infinity` loops forever.                                                               |
+| `direction`      | `'normal' \| 'reverse' \| 'alternate' \| 'alternate-reverse'` | `'normal'`  | Playback direction for each iteration.                                                                         |
+| `easing`         | `string`                                                      | `'linear'`  | A timing function, such as `'ease-in'` or `'cubic-bezier(…)'`.                                                 |
+| `fill`           | `'none' \| 'forwards' \| 'backwards' \| 'both'`               | `'none'`    | Whether the first or last frame applies before or after playing.                                               |
+| `name`           | `string`                                                      | Generated   | The name the element's `(bindanimationstart)` and `(bindanimationend)` events report, on iOS and Android only. |
+| `play-state`     | `'running' \| 'paused'`                                       | `'running'` | Starts the animation running or paused.                                                                        |
+| `iterationCount` | `number \| string`                                            |             | CSS-style alias for `iterations`, such as `'infinite'`.                                                        |
+| `fillMode`       | `string`                                                      |             | CSS-style alias for `fill`.                                                                                    |
+| `timingFunction` | `string`                                                      |             | CSS-style alias for `easing`.                                                                                  |
 
 ### `BaseLynxAnimation`
 

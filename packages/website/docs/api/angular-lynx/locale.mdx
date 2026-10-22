@@ -33,6 +33,7 @@ function provideLocale(): EnvironmentProviders;
 Provides Angular's `LOCALE_ID` from `LynxLocale.locale()`, so pipes such as `DatePipe` and `CurrencyPipe` format for that locale.
 
 - **Read once.** `LOCALE_ID` takes the locale when the app starts. A later change doesn't reformat pipes.
+- **Falls back without locale data.** When Angular has no locale data for the locale, or for its language (`fr` for `fr-CA`), `LOCALE_ID` is the `sourceLocale` from your `angular.json`, or `'en-US'`, and a warning is logged. Angular's pipes would throw otherwise. The apps from `ng build --platform` send the phone's language, which your app may not support. Register the data of the languages you do support with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData). English always has data.
 
 ### `getLynxAppLocale()`
 

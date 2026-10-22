@@ -14,6 +14,15 @@ const extractAppLocale = (
 };
 
 /**
+ * The app's own locale: `sourceLocale` from angular.json, which the build
+ * injects as `__LYNX_SOURCE_LOCALE__`, or `'en-US'` without one.
+ */
+export const getSourceLocale = (): string =>
+  typeof __LYNX_SOURCE_LOCALE__ !== 'undefined'
+    ? __LYNX_SOURCE_LOCALE__
+    : 'en-US';
+
+/**
  * Reads `lynx.__globalProps.appLocale` directly, without Angular DI.
  *
  * Use this before `bootstrapApplication()` runs — e.g. to conditionally call
@@ -67,12 +76,6 @@ export class LynxLocale {
     const value = extractAppLocale(
       this.#globalData.globalData() as Record<string, unknown>,
     );
-    if (value) {
-      return value;
-    }
-    // Fall back to the compile-time source locale from angular.json
-    return typeof __LYNX_SOURCE_LOCALE__ !== 'undefined'
-      ? __LYNX_SOURCE_LOCALE__
-      : 'en-US';
+    return value ?? getSourceLocale();
   });
 }

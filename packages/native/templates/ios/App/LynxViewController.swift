@@ -30,6 +30,25 @@ final class LynxViewController: UIViewController {
     layoutLynxView()
     lynxView.updateGlobalProps(with: globalProps())
     lynxView.loadTemplate(fromURL: "main.lynx.bundle", initData: nil)
+
+    // Send the new theme when the phone switches between light and dark
+    // while the app is open. Before iOS 17, traitCollectionDidChange does.
+    if #available(iOS 17.0, *) {
+      registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+        (controller: LynxViewController, _: UITraitCollection) in
+        controller.lynxView?.updateGlobalProps(with: controller.globalProps())
+      }
+    }
+  }
+
+  @available(iOS, deprecated: 17.0, message: "registerForTraitChanges in viewDidLoad replaces it")
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    if #unavailable(iOS 17.0),
+      traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection)
+    {
+      lynxView?.updateGlobalProps(with: globalProps())
+    }
   }
 
   override func viewDidLayoutSubviews() {
@@ -39,7 +58,13 @@ final class LynxViewController: UIViewController {
 
   /// Keeps the LynxView inside the safe area, so a freshly generated app
   /// doesn't draw under the notch or the home indicator. The insets are also
-  /// passed as global props for apps that want to draw edge to edge later.
+  /// passed as global props for apps that want to know them.
+  ///
+  /// CSS env(safe-area-inset-*) is 0 on every side, which is right for a page
+  /// that's already inside the safe area, and matches Android, where Lynx
+  /// never sets it. Lynx reads it from the key window when a LynxView is
+  /// created, and viewDidLoad runs before SceneDelegate makes the window key.
+  /// Creating the LynxView later would make env() add the insets a second time.
   private func layoutLynxView() {
     guard let lynxView else { return }
     let frame = view.bounds.inset(by: view.safeAreaInsets)
@@ -54,15 +79,30 @@ final class LynxViewController: UIViewController {
     lynxView.triggerLayout()
   }
 
+  /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
+  /// (LynxSafeArea) and `appLocale` (LynxLocale), plus the safe-area insets.
+  /// The Android shell sends the same keys, and Lynx Explorer sends theme and
+  /// isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
-    return LynxTemplateData(dictionary: [
+    var props: [String: Any] = [
       "platform": "ios",
       "safeAreaTop": insets.top,
       "safeAreaBottom": insets.bottom,
       "safeAreaLeft": insets.left,
       "safeAreaRight": insets.right,
+      // Lynx Explorer's test: anything beyond a plain 20pt status bar, as on
+      // iPhones with a notch or Dynamic Island.
+      "isNotchScreen": insets.top > 20 || insets.bottom > 0 || insets.left > 0
+        || insets.right > 0,
       "theme": traitCollection.userInterfaceStyle == .dark ? "Dark" : "Light",
-    ])
+    ]
+    // The user's first language as a BCP 47 tag, such as "fr-FR". iOS
+    // restarts the app when the language changes, so there's no update to send.
+    if let language = Locale.preferredLanguages.first {
+      props["appLocale"] = language
+    }
+    // Without useBoolLiterals, Lynx turns a Bool into 1 or 0.
+    return LynxTemplateData(dictionary: props, useBoolLiterals: true)
   }
 }

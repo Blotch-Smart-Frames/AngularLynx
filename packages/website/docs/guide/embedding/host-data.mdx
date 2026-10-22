@@ -156,10 +156,15 @@ The [data-flow example](/examples/data-flow) sets fake values the same way, in i
 
 The apps `ng build --platform` makes are host apps too. They pass:
 
-| App     | InitData | GlobalData                                                                                                                                       |
-| ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| iOS     | None     | `platform` (`'ios'`), `theme` (`'Dark'` or `'Light'`), and the safe-area insets `safeAreaTop`, `safeAreaBottom`, `safeAreaLeft`, `safeAreaRight` |
-| Android | None     | None                                                                                                                                             |
+| Value                                                            | What it is                                                                                |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `platform`                                                       | `'ios'` or `'android'`                                                                    |
+| `theme`                                                          | `'Dark'` or `'Light'`, sent again whenever the phone switches                             |
+| `appLocale`                                                      | The phone's language, such as `'fr-FR'`                                                   |
+| `isNotchScreen`                                                  | `true` on a screen with a notch, Dynamic Island or camera cutout                          |
+| `safeAreaTop`, `safeAreaBottom`, `safeAreaLeft`, `safeAreaRight` | The safe-area insets, in the same units as CSS pixels. The page already sits inside them. |
+
+They pass no InitData.
 
 To pass anything else, [eject](/guide/native-apps#eject-the-native-projects) or [embed the app in your own](/guide/embedding/).
 

@@ -6,13 +6,14 @@ Match your app to the phone's light or dark appearance. **`LynxTheme`** gives yo
 
 `LynxTheme` doesn't ask the phone directly. It reads a `theme` value from the [**host app**](/guide/glossary#host-app), the native app that runs your bundle. The host app passes it in its **global props**, values it shares with every bundle it runs (see [GlobalData](/guide/glossary#globaldata)). The value is `'Dark'` or `'Light'`, and it's `'Light'` when the host app passes none.
 
-| Where the app runs                             | What `theme()` returns                              |
-| ---------------------------------------------- | --------------------------------------------------- |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | The phone's appearance setting                      |
-| iOS app from `ng build --platform ios`         | The phone's appearance setting when the app starts  |
-| Android app from `ng build --platform android` | Always `'Light'`: this app doesn't pass a theme yet |
-| [Web preview](/guide/glossary#web-preview)     | `'Light'`                                           |
-| Your own host app                              | Whatever it passes as `theme`                       |
+| Where the app runs                             | What `theme()` returns         |
+| ---------------------------------------------- | ------------------------------ |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | The phone's appearance setting |
+| Apps from `ng build --platform`                | The phone's appearance setting |
+| [Web preview](/guide/glossary#web-preview)     | `'Light'`                      |
+| Your own host app                              | Whatever it passes as `theme`  |
+
+The apps that `ng build --platform` makes send the new theme as soon as the phone switches between light and dark, so the app restyles while it's open.
 
 ## Switch colors with CSS variables
 
@@ -107,8 +108,7 @@ Use them for things CSS can't reach, such as picking an image or a chart palette
 ## Limitations
 
 - **`prefers-color-scheme` doesn't work.** AngularLynx apps don't support `@media`. Use `LynxTheme`.
-- **The generated apps don't report appearance changes yet.** `LynxTheme` updates whenever the host app sends a new theme, but the iOS app from `ng build --platform ios` sends one only at startup and when its layout changes. Switching the phone's appearance while the app is open may not restyle it until the app restarts. Your own native app can send the theme whenever it changes. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
-- **Android apps from `ng build --platform android` always report `'Light'`.** Lynx Explorer on Android reports the real setting.
+- **Your own native app has to send each change.** `LynxTheme` updates whenever the host app sends a new theme. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
 - **A `[style.--name]` binding can't set a CSS variable.** Set variables in a stylesheet, as above.
 
 ## Related

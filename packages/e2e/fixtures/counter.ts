@@ -45,6 +45,9 @@ const multiply = backgroundFn(async (ref: unknown, n: number) => {
  * the shells from `ng build --platform` have to as well.
  *
  * "Ask background" calls an async background function from a tap handler.
+ * It comes after the XElement elements so it doesn't push the input down:
+ * in Lynx Explorer, whose navigation bar sits above the app, the keyboard
+ * would then cover the "Typed:" line that native/xelement.yaml checks.
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
@@ -73,18 +76,6 @@ const multiply = backgroundFn(async (ref: unknown, n: number) => {
       >
         <text>Open lazy page</text>
       </view>
-      <view
-        [flatten]="false"
-        [accessibility-element]="true"
-        accessibility-label="Ask background"
-        style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
-        (bindtap)="askBackground()"
-      >
-        <text>Ask background</text>
-      </view>
-      <text flatten="false" style="margin-top: 8px;"
-        >Background: {{ answer() }}</text
-      >
       <input
         accessibility-label="Text field"
         placeholder="Type here"
@@ -125,6 +116,18 @@ const multiply = backgroundFn(async (ref: unknown, n: number) => {
           </view>
         </view>
       </overlay>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Ask background"
+        style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="askBackground()"
+      >
+        <text>Ask background</text>
+      </view>
+      <text flatten="false" style="margin-top: 8px;"
+        >Background: {{ answer() }}</text
+      >
       <app-tailwind-card />
     </view>
   `,

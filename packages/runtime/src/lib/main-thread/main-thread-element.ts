@@ -3,6 +3,7 @@ import {
   LynxAnimation,
   type LynxAnimationOptions,
 } from '../animation/animation';
+import type { MainThread } from './types';
 
 /**
  * Batched flush — coalesces multiple style/attribute mutations into a single
@@ -110,34 +111,23 @@ export class MainThreadElement {
   }
 
   /**
+   * Measures the element's layout box, by default from the top-left corner of
+   * the LynxView. `relativeTo` takes 'screen', or another element's `id`.
+   *
    * Not part of the official @lynx-js/types Element interface, but useful for
-   * touch-tracking calculations. Uses __GetComputedStyleByKey when available.
+   * touch tracking. Unlike the DOM's, it's asynchronous: native Lynx gives a
+   * main-thread script the layout position only through the
+   * `boundingClientRect` UI method. The computed `left` and `top` styles are
+   * CSS offsets, often 0, not where the element is.
    */
-  getBoundingClientRect(): {
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
-    width: number;
-    height: number;
-  } {
-    if (typeof __GetComputedStyleByKey !== 'function') {
-      return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
-    }
-    const width =
-      parseFloat(__GetComputedStyleByKey(this.#element, 'width')) || 0;
-    const height =
-      parseFloat(__GetComputedStyleByKey(this.#element, 'height')) || 0;
-    const left =
-      parseFloat(__GetComputedStyleByKey(this.#element, 'left')) || 0;
-    const top = parseFloat(__GetComputedStyleByKey(this.#element, 'top')) || 0;
-    return {
-      left,
-      top,
-      right: left + width,
-      bottom: top + height,
-      width,
-      height,
-    };
+  getBoundingClientRect(options?: {
+    relativeTo?: string;
+  }): Promise<MainThread.BoundingClientRect> {
+    return this.invoke('boundingClientRect', options).then((rect) => {
+      // The UI method also returns the element's id and dataset.
+      const { left, top, right, bottom, width, height } =
+        rect as MainThread.BoundingClientRect;
+      return { left, top, right, bottom, width, height };
+    });
   }
 }

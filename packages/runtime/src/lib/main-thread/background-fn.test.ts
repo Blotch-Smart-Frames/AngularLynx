@@ -1,17 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  __resetBgWorkletCounter,
-  backgroundFn,
-  type BackgroundFnHandle,
-} from './background-fn';
+import { backgroundFn, type BackgroundFnHandle } from './background-fn';
+
+/**
+ * The number in a handle's ID. The module-level counter carries on across
+ * tests in the same worker, so tests compare IDs rather than expect fixed ones.
+ */
+const idNumber = (handle: BackgroundFnHandle): number =>
+  Number(handle._wkltId.replace('__angular_bg_', ''));
 
 describe('backgroundFn', () => {
-  // The module-level ID counter persists across tests in the same worker, so
-  // every test resets it first to get a deterministic '__angular_bg_0' start.
-  beforeEach(() => {
-    __resetBgWorkletCounter();
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -26,11 +23,11 @@ describe('backgroundFn', () => {
       vi.stubGlobal('registerWorklet', registerWorklet);
       const fn = () => 'hi';
 
-      backgroundFn(fn);
+      const handle = backgroundFn(fn);
 
       expect(registerWorklet).toHaveBeenCalledWith(
         'background',
-        '__angular_bg_0',
+        handle._wkltId,
         fn,
       );
     });
@@ -41,7 +38,7 @@ describe('backgroundFn', () => {
       const handle: BackgroundFnHandle = backgroundFn(() => 1);
 
       expect(handle).toEqual({
-        _wkltId: '__angular_bg_0',
+        _wkltId: expect.stringMatching(/^__angular_bg_\d+$/),
         _workletType: 'background',
         __isBackgroundFn: true,
       });
@@ -53,8 +50,7 @@ describe('backgroundFn', () => {
       const first = backgroundFn(() => 1);
       const second = backgroundFn(() => 2);
 
-      expect(first._wkltId).toBe('__angular_bg_0');
-      expect(second._wkltId).toBe('__angular_bg_1');
+      expect(idNumber(second)).toBe(idNumber(first) + 1);
     });
   });
 
@@ -73,26 +69,14 @@ describe('backgroundFn', () => {
     });
 
     it('still returns a handle with an incrementing id', () => {
-      const handle = backgroundFn(() => 'hi');
+      const first = backgroundFn(() => 'hi');
+      const second = backgroundFn(() => 'there');
 
-      expect(handle).toEqual({
-        _wkltId: '__angular_bg_0',
+      expect(second).toEqual({
+        _wkltId: `__angular_bg_${idNumber(first) + 1}`,
         _workletType: 'background',
         __isBackgroundFn: true,
       });
-    });
-  });
-
-  describe('__resetBgWorkletCounter', () => {
-    it('resets the id counter back to 0', () => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
-
-      backgroundFn(() => 1);
-      backgroundFn(() => 2);
-      __resetBgWorkletCounter();
-      const handle = backgroundFn(() => 3);
-
-      expect(handle._wkltId).toBe('__angular_bg_0');
     });
   });
 });

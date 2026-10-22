@@ -3,25 +3,47 @@
 // package path directly — insulating them from package renames and tree-shaking
 // on the individual type imports.
 import type {
-  Element as MtElement,
-  TouchEvent as MtTouchEvent,
-  MouseEvent as MtMouseEvent,
-  WheelEvent as MtWheelEvent,
-  KeyEvent as MtKeyEvent,
-  AnimationEvent as MtAnimationEvent,
-  TransitionEvent as MtTransitionEvent,
-  LayoutChangeEvent as MtLayoutChangeEvent,
-  UIAppearanceEvent as MtUIAppearanceEvent,
-} from '@lynx-js/types/main-thread';
+  BaseAnimationEvent,
+  BaseKeyEvent,
+  BaseMouseEvent,
+  BaseTouchEvent,
+  BaseTransitionEvent,
+  BaseWheelEvent,
+  LayoutChangeDetailEvent,
+  UIAppearanceDetailEvent,
+} from '@lynx-js/types/events';
+import type { Element as MtElement } from '@lynx-js/types/main-thread';
 
 export namespace MainThread {
-  export type Element = MtElement;
-  export type TouchEvent = MtTouchEvent;
-  export type MouseEvent = MtMouseEvent;
-  export type WheelEvent = MtWheelEvent;
-  export type KeyEvent = MtKeyEvent;
-  export type AnimationEvent = MtAnimationEvent;
-  export type TransitionEvent = MtTransitionEvent;
-  export type LayoutChangeEvent = MtLayoutChangeEvent;
-  export type UIAppearanceEvent = MtUIAppearanceEvent;
+  /**
+   * An element's layout box, from `getBoundingClientRect()`, in pixels.
+   */
+  export type BoundingClientRect = {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    height: number;
+  };
+
+  /**
+   * Lynx's main-thread element, plus the `getBoundingClientRect()` that
+   * AngularLynx's MainThreadElement adds. The events below are Lynx's, built on
+   * this element type, so `event.currentTarget.getBoundingClientRect()` type
+   * checks without a cast.
+   */
+  export type Element = MtElement & {
+    getBoundingClientRect(options?: {
+      relativeTo?: string;
+    }): Promise<BoundingClientRect>;
+  };
+  export type TouchEvent = BaseTouchEvent<Element>;
+  export type MouseEvent = BaseMouseEvent<Element>;
+  export type WheelEvent = BaseWheelEvent<Element>;
+  export type KeyEvent = BaseKeyEvent<Element>;
+  export type AnimationEvent = BaseAnimationEvent<Element>;
+  export type TransitionEvent = BaseTransitionEvent<Element>;
+  export type LayoutChangeEvent = LayoutChangeDetailEvent<Element>;
+  export type UIAppearanceEvent = UIAppearanceDetailEvent<Element>;
 }

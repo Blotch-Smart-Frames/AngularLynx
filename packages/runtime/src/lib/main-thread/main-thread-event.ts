@@ -7,11 +7,14 @@ import {
   type SimpleChanges,
 } from '@angular/core';
 import type { BaseLynxElement } from '../lynx-element/types';
+import { __workletMap } from '../worklet-bridge';
 import type { MainThreadFnHandle } from './main-thread-fn';
 
 /**
- * Plain functions are also accepted because the worklet build plugin transforms
- * them into MainThreadFnHandle objects at compile time.
+ * Plain functions are also accepted: the worklet build plugin turns one with
+ * the 'main thread' directive into a MainThreadFnHandle at compile time, so
+ * TypeScript only sees the function, and the directive registers any other
+ * function itself.
  */
 type MaybeHandle =
   | MainThreadFnHandle
@@ -56,6 +59,31 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
   !!h &&
   '__isMainThreadFn' in h &&
   !!(h as MainThreadFnHandle).__isMainThreadFn;
+
+// IDs for the plain functions the directive registers itself. They have their
+// own prefix so they never shift the IDs mainThreadFn() gives module-level
+// functions, which must match between the threads.
+let nextHandlerId = 0;
+
+/**
+ * The __AddEvent value that removes a main-thread handler: a worklet with no
+ * ID, which runWorklet ignores. `undefined` works on the web, but native Lynx
+ * keeps the handler: Element::RemoveEvent erases from `static_events_`, while
+ * worklet handlers live in `lepus_events_` (attribute_holder.cc). React Lynx
+ * removes them the same way (updateWorkletEvent in workletEvent.ts).
+ */
+const noHandler = (): {
+  type: 'worklet';
+  value: { _workletType: 'main-thread' };
+} => ({ type: 'worklet', value: { _workletType: 'main-thread' } });
+
+/** A handler the directive has passed to __AddEvent for one of its inputs. */
+type Registration = {
+  eventType: string;
+  eventName: string;
+  /** The ID the directive registered a plain function under, and releases. */
+  ownId?: string;
+};
 
 /**
  * Bridges Angular template bindings like `(mainThreadBindtap)="handler"` to
@@ -118,7 +146,7 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
 })
 export class LynxMainThreadEvent implements OnChanges, OnDestroy {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
-  #registeredEvents: [string, string][] = [];
+  readonly #registrations = new Map<string, Registration>();
 
   mainThreadBindtap?: MaybeHandle;
   mainThreadCatchtap?: MaybeHandle;
@@ -158,24 +186,42 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
 
       const [eventType, eventName] = mapping;
       const handle = (this as any)[inputName] as MaybeHandle;
+      this.#release(inputName);
 
+      const registration: Registration = { eventType, eventName };
+      let workletId: string | undefined;
       if (isMainThreadHandle(handle)) {
-        // type: 'worklet' tells the Lynx engine to invoke this handler via the
-        // worklet system (runWorklet) on the main thread, NOT via the normal
-        // background-thread event dispatch. _workletType: 'main-thread' ensures
-        // the handler runs on the Lepus thread where it can call __AddInlineStyle,
-        // __SetAttribute, etc. for 60fps animations without cross-thread latency.
-        __AddEvent(elementRef, eventType, eventName, {
-          type: 'worklet',
-          value: { _wkltId: handle._wkltId, _workletType: 'main-thread' },
-        });
-        // Track (eventType, eventName) so ngOnDestroy can unregister the same
-        // pair. We deliberately don't deduplicate — re-binding the same input
-        // overwrites the previous registration at the native level, so a
-        // duplicate entry in the array is harmless (the second cleanup is a
-        // no-op).
-        this.#registeredEvents.push([eventType, eventName]);
+        workletId = handle._wkltId;
+      } else if (typeof handle === 'function') {
+        // A function the build didn't wrap, such as a method without the
+        // directive. This copy of the app runs on the main thread, where the
+        // function already lives, so registering it is all a handle would do.
+        // Skipping it would leave the element silently without a handler.
+        workletId = '__angular_mts_handler_' + nextHandlerId++;
+        registration.ownId = workletId;
+        __workletMap[workletId] = handle;
       }
+
+      if (workletId === undefined) {
+        // null or undefined removes the handler, as unbinding a DOM listener
+        // would. Leaving it registered would keep the old handler firing.
+        if (this.#registrations.delete(inputName)) {
+          __AddEvent(elementRef, eventType, eventName, noHandler());
+        }
+        continue;
+      }
+
+      // type: 'worklet' tells the Lynx engine to invoke this handler via the
+      // worklet system (runWorklet) on the main thread, NOT via the normal
+      // background-thread event dispatch. _workletType: 'main-thread' ensures
+      // the handler runs on the Lepus thread where it can call __AddInlineStyle,
+      // __SetAttribute, etc. for 60fps animations without cross-thread latency.
+      // A new handler for the same event replaces the old one natively.
+      __AddEvent(elementRef, eventType, eventName, {
+        type: 'worklet',
+        value: { _wkltId: workletId, _workletType: 'main-thread' },
+      });
+      this.#registrations.set(inputName, registration);
     }
   }
 
@@ -183,15 +229,26 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
     const elementRef = (this.#el as any).element;
     if (!elementRef) return;
 
-    // Lynx's PAPI unregisters an event handler by calling __AddEvent with
-    // `undefined` as the handler value — there is no separate __RemoveEvent.
-    // Without this cleanup, the worklet handle would keep its registration
-    // pointing at a destroyed component, and any subsequent native dispatch
-    // would invoke a stale closure (or, worse, leak a reference that pins
-    // the component graph).
-    for (const [eventType, eventName] of this.#registeredEvents) {
-      __AddEvent(elementRef, eventType, eventName, undefined);
+    // Lynx's PAPI has no __RemoveEvent: __AddEvent replaces the handler, here
+    // with one that does nothing (see noHandler). Without this cleanup, the
+    // worklet handle would keep its registration pointing at a destroyed
+    // component, and any subsequent native dispatch would invoke a stale
+    // closure (or, worse, leak a reference that pins the component graph).
+    for (const [inputName, { eventType, eventName }] of this.#registrations) {
+      __AddEvent(elementRef, eventType, eventName, noHandler());
+      this.#release(inputName);
     }
-    this.#registeredEvents = [];
+    this.#registrations.clear();
+  }
+
+  /**
+   * Unregisters the plain function the directive registered for an input, if
+   * any, so replacing or removing it doesn't leave the old one in the registry.
+   */
+  #release(inputName: string): void {
+    const ownId = this.#registrations.get(inputName)?.ownId;
+    if (ownId !== undefined) {
+      delete __workletMap[ownId];
+    }
   }
 }

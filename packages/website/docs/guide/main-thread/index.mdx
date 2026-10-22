@@ -86,7 +86,7 @@ The build wraps the function in `mainThreadFn()` and adds the import. Both forms
 
 Put main-thread scripts at the top level of a file, as above. A script is registered once, when its file loads. Both copies of your app load files in the same order, so the script gets the same ID on both threads. A call from the background thread needs that ID.
 
-A class property, such as `readonly fade = (event) => { 'main thread'; … }`, works for a `[mainThreadBind*]` input and can read `this`. Avoid it anyway: every component instance registers a new function that's never released, so a component you create many times stays in memory. Its ID can also differ between the threads.
+A class property, such as `readonly fade = (event) => { 'main thread'; … }`, works for a `[mainThreadBind*]` input and can read `this`. Each instance registers its own function, which is released when the component or service is destroyed. Its ID can differ between the threads, though, so don't pass it to `runOnMainThread()` from the background thread.
 
 A script runs in the main-thread copy of your file. It reads that copy's module-level variables. Data from the background thread reaches it only as copied JSON arguments.
 
@@ -188,7 +188,7 @@ Use scripts for visual effects that follow a gesture. Keep anything that must la
 ## Limitations
 
 - **No dependency injection.** A module-level script has no injection context, so `inject()` doesn't work in it.
-- **Measure with `invoke('boundingClientRect')`.** Elements also have an untyped `getBoundingClientRect()`, but its `left` and `top` aren't the element's position.
+- **Measuring is asynchronous.** `await element.getBoundingClientRect()` resolves with the element's position and size. A script can't read layout synchronously in Lynx, so measure once, on `touchstart` for example, and keep the result in a `MainThreadRef` for the `touchmove` events that follow.
 
 ## Related
 

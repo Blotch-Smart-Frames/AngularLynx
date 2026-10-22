@@ -16,7 +16,11 @@ type SimctlList = {
     isAvailable: boolean;
     platform?: string;
     /** Newest first. */
-    supportedDeviceTypes?: { identifier: string; productFamily?: string }[];
+    supportedDeviceTypes?: {
+      identifier: string;
+      name: string;
+      productFamily?: string;
+    }[];
   }[];
 };
 
@@ -56,9 +60,17 @@ const bootSimulator = async (
     // Each runtime runs only some device types, and the global device type
     // list isn't in release order: on GitHub's macOS 15 image its last iPhone
     // was the 6s Plus, which iOS 26 can't run (`simctl create` exit 147).
-    const deviceType = runtime.supportedDeviceTypes?.find(
-      (type) => type.productFamily === 'iPhone',
-    );
+    const iPhones =
+      runtime.supportedDeviceTypes?.filter(
+        (type) => type.productFamily === 'iPhone',
+      ) ?? [];
+    // A plain "iPhone <n> Pro" when there is one, the newest first. iOS
+    // 27.1's newest iPhone is the iPhone Duo, a new screen shape on which
+    // Lynx Explorer's page ignored Maestro's taps, so every Explorer flow
+    // failed on GitHub's 2026-10-22 runner image.
+    const deviceType =
+      iPhones.find((type) => /^iPhone \d+ Pro$/.test(type.name)) ??
+      iPhones[0];
     if (!deviceType) {
       console.warn(
         `${runtime.name} supports no iPhone; trying an older runtime.`,

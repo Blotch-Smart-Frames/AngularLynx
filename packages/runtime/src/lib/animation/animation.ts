@@ -16,13 +16,10 @@ export type LynxAnimationOptions = AnimationOptions & {
 };
 
 /**
- * Shared interface for all animation implementations (real and no-op).
- * Used by `BaseLynxElement.animate()` return type so both `LynxAnimation`
- * (main thread) and `NoopLynxAnimation` (background thread) are valid.
- * Required because LynxAnimation uses ES private fields (#element, #count)
- * which brand the class — TypeScript's structural typing won't accept
- * NoopLynxAnimation as assignable to LynxAnimation. This shared Pick type
- * extracts only the public API both implementations satisfy.
+ * The public API of an animation, which `BaseLynxElement.animate()` returns.
+ * LynxAnimation uses ES private fields (#element, #count), which brand the
+ * class, so a structural type lets other implementations, such as a test
+ * double, satisfy it.
  */
 export type BaseLynxAnimation = Pick<
   LynxJsAnimation,

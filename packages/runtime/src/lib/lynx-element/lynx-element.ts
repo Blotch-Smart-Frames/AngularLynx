@@ -1125,9 +1125,9 @@ let settleFlushScheduled = false;
  * flush.) This mirrors the `<list>` path's own guard for the exact same case —
  * see `LynxListElement.#scheduleUpdate`.
  *
- * Called from `LynxDocument`'s element creators — which only ever run on the
- * main thread (the background thread uses LynxBackgroundDocument, which does not
- * touch the native tree), so no thread guard is needed here. It schedules ONE
+ * Called from `LynxDocument`'s element creators, which only run on the main
+ * thread (Angular doesn't run on the background thread), so no thread guard is
+ * needed here. It schedules ONE
  * coalesced microtask (matching the list guard's `queueMicrotask`, not
  * `setTimeout` — flushing from a macrotask crashes the native engine), and is a
  * no-op while:

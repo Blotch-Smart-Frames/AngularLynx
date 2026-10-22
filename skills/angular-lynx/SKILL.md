@@ -90,7 +90,7 @@ Read [debugging.md](references/debugging.md)
 
 ## Threading Model
 
-Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (JS execution, Angular app). `__MAIN_THREAD__` global flag for branching. `fetch()` only available on background thread.
+Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (background-only APIs). The Angular app runs on the main thread only; the background thread runs your files' top-level code, such as `backgroundFn()`s. `__MAIN_THREAD__` global flag for branching. `fetch()` and `NativeModules` only available on background thread: use a `backgroundFn()`, or `LynxNativeModule`, which relays.
 
 Read [threading-model.md](references/threading-model.md)
 

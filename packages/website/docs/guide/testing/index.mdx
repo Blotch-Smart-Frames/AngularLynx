@@ -103,11 +103,11 @@ The [API reference](/api/testing-library/) lists every option and type.
 
 ## What jsdom tests can't cover
 
-The tests run your app's main-thread copy in jsdom, not on a phone. Some things only exist on a device:
+The tests run your app in jsdom, not on a phone. Some things only exist on a device:
 
-- **Native APIs.** `LynxNativeModule.call()` returns `undefined`, and `LynxTextMeasure.measure()` throws. Provide fakes, as in [Fake native APIs](./patterns#fake-native-apis).
+- **Native APIs.** `LynxNativeModule`'s calls never settle, and `LynxTextMeasure.measure()` throws. Provide fakes, as in [Fake native APIs](./patterns#fake-native-apis).
 - **Data from the host app.** No host app runs, so InitData and GlobalData hold nothing unless you provide them. See [Fake host data](./patterns#fake-host-data).
-- **Background-thread APIs.** Only the copy of your app that draws the screen runs in a test. See [Threads](/guide/concepts/threads).
+- **Background-thread APIs.** There's no background thread in a test, so calls AngularLynx sends there, and `runOnBackground()`, get no answer. See [Threads](/guide/concepts/threads).
 - **Main-thread scripts and gestures.** jsdom has no native elements to move, so test dragging and gestures on a device.
 - **Layout and native rendering.** jsdom computes no layout, so sizes and positions are unknown, and layout events don't fire by themselves.
 

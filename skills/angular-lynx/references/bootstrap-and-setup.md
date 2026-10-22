@@ -69,11 +69,11 @@ ng generate component my-feature  # A component with Lynx elements
 
 - **`provideZonelessChangeDetection()`** — Uses Angular's zoneless scheduler. Zone.js is incompatible with Lynx's runtime (no browser globals it depends on).
 
-- **`provideRenderer()`** — Replaces Angular's default DOM `RendererFactory2` with `LynxRendererFactory2`. Creates thread-aware document: `LynxDocument` on main thread (calls `__CreateElement`, `__SetAttribute`, etc.), `LynxBackgroundDocument` on background thread (virtual tree). Also provides `DOCUMENT` mock and `APP_BASE_HREF`.
+- **`provideRenderer()`** — Replaces Angular's default DOM `RendererFactory2` with `LynxRendererFactory2`. Provides `LynxDocument`, which calls `__CreateElement`, `__SetAttribute`, etc. Also provides `DOCUMENT` mock and `APP_BASE_HREF`.
 
-- **`provideRouter(routes)`** — Replaces browser routing with in-memory routing (`LynxLocationStrategy`). Includes `LynxRouteReuseStrategy` to prevent element pool exhaustion. Adds `withRouterConfig({ resolveNavigationPromiseOnError: true })` to prevent background thread crashes from unhandled navigation errors.
+- **`provideRouter(routes)`** — Replaces browser routing with in-memory routing (`LynxLocationStrategy`). Includes `LynxRouteReuseStrategy` to prevent element pool exhaustion. Adds `withRouterConfig({ resolveNavigationPromiseOnError: true })` so an unhandled navigation error can't leave a blank screen.
 
-- **`bootstrapApplication()`** — On main thread: waits for Lynx's `renderPage` callback before bootstrapping Angular. On background thread: bootstraps immediately. Also installs polyfills for `AbortController`, `queueMicrotask`, `setTimeout`/`setInterval` (from `lynx` global), and `document`/`window` mocks.
+- **`bootstrapApplication()`** — On main thread: waits for Lynx's `renderPage` callback before bootstrapping Angular. On background thread: doesn't bootstrap, and returns a promise that never settles; only top-level code runs there. Also installs polyfills for `AbortController`, `queueMicrotask`, `setTimeout`/`setInterval` (from `lynx` global), and `document`/`window` mocks.
 
 ## Root Component Pattern
 

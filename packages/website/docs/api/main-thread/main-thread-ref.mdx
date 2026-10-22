@@ -62,8 +62,8 @@ class MainThreadRef<T> {
 
 ## Constraints
 
-- **Each thread has its own copy.** A value written on the main thread isn't seen by code on the background thread, and the reverse. Use a ref only from main-thread functions.
-- **Passed to the other thread, it arrives as that thread's copy.** A function that gets a ref from `runOnMainThread()` or `runOnBackground()` receives the same ref it would reach through its closure.
+- **Each thread has its own copy.** The background thread runs your files' top-level code too, so a ref created at module scope also exists there. A value written on the main thread isn't seen by code on the background thread, and the reverse. Use a ref only from main-thread functions.
+- **Passed to a background function, it arrives as the background thread's copy**, the same ref the function would reach through its closure. A ref created in a component has no copy there.
 - **Create it at module scope**, next to the functions that use it.
 - **Changing it doesn't render anything.** It isn't a signal.
 

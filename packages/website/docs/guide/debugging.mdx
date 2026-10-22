@@ -58,7 +58,6 @@ Each call becomes one line with the time and the level:
 - **The file.** Lines go to `.dev-logs` in the folder you ran `ng serve` from. Each `ng serve` run starts the file fresh. Add `.dev-logs` to your `.gitignore`.
 - **The methods.** `log()`, `info()`, `warn()`, `error()` and `debug()`. The level shows in each line.
 - **Objects.** Each argument is turned into a string with `String()`, so an object prints as `[object Object]`. Pass `JSON.stringify(value)` instead.
-- **Logged twice?** Code that runs in both copies of your app, such as a constructor, logs once per copy. See [Threads](/guide/concepts/threads).
 - **Development only.** `LynxLogger` does nothing in production builds, so you can leave the calls in. A shipped app sends nothing.
 
 :::tip Nothing in `.dev-logs`?

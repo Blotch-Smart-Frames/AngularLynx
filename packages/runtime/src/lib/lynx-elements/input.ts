@@ -42,14 +42,10 @@ export class LynxInput extends LynxElementBase {
       // reach the native text field. The only supported path is the setValue
       // UIMethod (__InvokeUIMethod("setValue", {value})).
       //
-      // invoke? is an optional call: on the background thread (testing library)
-      // LynxBackgroundElement doesn't implement invoke, so it becomes a no-op
-      // there, which is correct — UIMethod calls are main-thread only.
-      //
       // We strip "value" from the changes object before forwarding to the base
       // class so that super.ngOnChanges doesn't also call setAttribute("value"),
       // which would be redundant and would not work anyway.
-      this.#el.invoke?.('setValue', {
+      this.#el.invoke('setValue', {
         value: changes['value'].currentValue ?? '',
       });
       const { value: _ignored, ...rest } = changes;
@@ -150,7 +146,7 @@ export class LynxTextarea extends LynxElementBase {
       // Android and iOS, so it has the same limitation: no @LynxProp for
       // "value", making __SetAttribute a no-op for live text updates.
       // The setValue UIMethod is required here for the same reason as LynxInput.
-      this.#el.invoke?.('setValue', {
+      this.#el.invoke('setValue', {
         value: changes['value'].currentValue ?? '',
       });
       const { value: _ignored, ...rest } = changes;

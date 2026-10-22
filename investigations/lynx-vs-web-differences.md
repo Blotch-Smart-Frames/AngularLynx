@@ -339,12 +339,12 @@ Vue-style transitions mount an element in a `-enter-from` state, then swap to `-
 
 ### What Lynx does
 
-The two-phase approach is unreliable on Lynx's background thread, where Angular runs, for two reasons:
+The two-phase approach is unreliable in AngularLynx, for two reasons:
 
 - **No frame boundary.** `requestAnimationFrame` is microtask-mapped or absent (React Lynx maps it to a microtask; AngularLynx only polyfills it when `lynx.requestAnimationFrame` exists). Microtasks drain within the same native call frame, so they never separate two paints.
 - **No flush.** Class changes made from an rAF/`setTimeout` callback skip change detection, so they never reliably flush to the main thread. The element tree is committed once per CD cycle in `LynxRendererFactory2.end()`, and calling `__FlushElementTree` from `setTimeout` crashes the engine.
 
-Native `element.animate()` can't drive them either: it's main-thread-only and a no-op on the background thread (`packages/runtime/src/lib/animation/noop-animation.ts`).
+Native `element.animate()` can't drive them either: an element can be removed before its animation finishes, and `animate()` has no way to hold the removal back.
 
 ### The fix
 
@@ -4260,7 +4260,7 @@ Still-latent hazard: any _other_ Angular internal that reads the bare `document`
 
 ## web-core does NOT implicitly flush after `renderPage`, so the first render must be flushed explicitly — otherwise every web app is blank
 
-After the `ImagePerformanceWarning` crash above is fixed, Angular bootstraps cleanly on both threads on web (you see two "Angular is running in development mode" logs, no errors) — yet the screen stays blank. `<lynx-view>` is `display:none` and the page is never attached to the DOM.
+After the `ImagePerformanceWarning` crash above is fixed, Angular bootstraps cleanly on web (no errors) — yet the screen stays blank. `<lynx-view>` is `display:none` and the page is never attached to the DOM.
 
 ### What you'd expect (web / native parity)
 
@@ -4539,6 +4539,10 @@ open() {
 ```
 
 Until October 2026 this didn't work either: the background thread listened for `runOnBackground` requests on `lynx.getJSContext()` instead of `lynx.getCoreContext()` (see the RuntimeProxy API summary above), so requests never arrived and the promise never settled. The fix is in `packages/runtime/src/lib/global-callbacks.ts`. It was found by running an Angular bundle in a Sparkling app on the iOS Simulator and an Android emulator.
+
+For the host's own native modules, `LynxNativeModule` now does this for you (issue #81): `call()`, `on()`, `getNativeModule()` and `getJSModule()` send their calls through `callOnBackground()` (`packages/runtime/src/lib/background-call.ts`), and callbacks come back to the main thread. A module from `getNativeModule()` is a proxy, so its methods return promises. A library that reads `NativeModules` itself, such as `sparkling-navigation`, still needs the `backgroundFn` above.
+
+Since issue #81, nothing of the Angular app runs on the background thread at all: before, a constructor that called `NativeModules` reached the host from the background thread's copy of the app, and the main thread's copy did nothing.
 
 ---
 

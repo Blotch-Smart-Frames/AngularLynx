@@ -23,9 +23,9 @@ import { ScreenHost } from '../screen-host';
 
 // ── Main-thread functions ──────────────────────────────────────────────────
 // These run on the MAIN thread with direct access to the native element via
-// event.currentTarget. Style writes here land with zero cross-thread latency,
-// which is what makes them ideal for touch-driven UI (color, opacity, transforms)
-// — the pixel updates before a round trip to Angular could ever complete.
+// event.currentTarget. Style writes here land straight away, with no change
+// detection, which is what makes them ideal for touch-driven UI (color,
+// opacity, transforms).
 
 // A main-thread ref persists state across taps *on the main thread* — it is not
 // reactive Angular state, so it never triggers change detection.
@@ -78,10 +78,12 @@ const handleTouchEnd = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 
 // ── Background functions ────────────────────────────────────────────────────
-// Registered with backgroundFn() and invoked from a main-thread handler via
-// runOnBackground(). This is the "instant feedback now, heavy work later" pattern:
-// paint on the main thread, then hand state updates / API calls / analytics off
-// to the background thread where Angular lives.
+// Registered with backgroundFn() at module level, so the background thread
+// registers them when it runs this file, and called with runOnBackground().
+// This is the "instant feedback now, background work later" pattern: paint on
+// the main thread, then hand API calls and other background-only work to the
+// background thread. The counter lives there, and its value comes back to
+// Angular as the call's result.
 let bgDispatchCount = 0;
 
 const incrementBgCounter = backgroundFn(() => {
@@ -89,25 +91,29 @@ const incrementBgCounter = backgroundFn(() => {
   return bgDispatchCount;
 });
 
-// Main → Background: instant visual feedback on the main thread, THEN dispatch to
-// the background thread to update app state.
-const handleCrossThreadTap = mainThreadFn((event: MainThread.TouchEvent) => {
-  const el = event.currentTarget;
-
-  // 1. Instant dip on the main thread — no latency.
-  el.setStyleProperty('opacity', '0.6');
-
-  // 2. Hand off to the background thread (see onCrossThreadTap for the visible
-  //    state update that runs there).
-  (
-    globalThis as unknown as { runOnBackground: (fn: unknown) => void }
-  ).runOnBackground(incrementBgCounter);
-
-  // 3. Settle back to full opacity.
-  setTimeout(() => el.setStyleProperty('opacity', '1'), 150);
+const resetBgCounter = backgroundFn(() => {
+  bgDispatchCount = 0;
 });
 
-// Background → Main: a main-thread function callable from Angular via
+// The background thread's count, as last reported. Module-level, so the
+// main-thread script below can set it: it runs on the main thread, like the
+// component.
+const crossThreadCount = signal(0);
+
+// Instant visual feedback on the main thread, with no change detection, then
+// the background thread bumps its count. The script asks for the count itself
+// because Lynx keeps one tap handler per element, so a (bindtap) next to
+// [mainThreadBindtap] would never run.
+const handleCrossThreadTap = mainThreadFn((event: MainThread.TouchEvent) => {
+  const el = event.currentTarget;
+  el.setStyleProperty('opacity', '0.6');
+  setTimeout(() => el.setStyleProperty('opacity', '1'), 150);
+  void runOnBackground(incrementBgCounter).then((count) =>
+    crossThreadCount.set(count as number),
+  );
+});
+
+// A main-thread function callable from Angular via
 // LynxMainThread.runOnMainThread(). Runs a native flash with no Angular re-render.
 const flashElement = mainThreadFn((color: string, elementSelector: string) => {
   const page = __GetPageElement();
@@ -145,7 +151,7 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
     <app-demo-screen
       heading="Main Thread"
       category="Platform"
-      description="Lynx runs on two threads. Drive instant, native UI on the main thread — then hop to Angular on the background thread when you need app state."
+      description="Lynx runs on two threads. Angular and your handlers run on the main thread, next to the native UI — hop to the background thread for APIs only it has."
     >
       <!-- ── Concept: the two threads ── -->
       <ui-card class="w-full">
@@ -160,8 +166,8 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
               </text>
             </view>
             <text class="text-xs text-muted-foreground">
-              Native UI. Style writes land the instant your finger moves — zero
-              cross-thread latency.
+              Native UI and your Angular app. Handlers and main-thread scripts
+              run here, with zero cross-thread latency.
             </text>
           </view>
           <view
@@ -174,7 +180,8 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
               </text>
             </view>
             <text class="text-xs text-muted-foreground">
-              Where Angular runs. App state, signals and logic live here.
+              Background-only APIs, such as fetch and native modules. Reach it
+              with runOnBackground().
             </text>
           </view>
         </ui-card-content>
@@ -251,15 +258,14 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
             <ui-badge [animated]="false">Main → BG</ui-badge>
           </view>
           <ui-card-description>
-            The tap dips instantly on the main thread, then dispatches to
-            Angular via runOnBackground() to bump the counter.
+            A main-thread script dips the box instantly, then asks a background
+            function to bump its counter with runOnBackground().
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
           <view
             class="items-center rounded-lg bg-violet-500 py-10 flex justify-center"
             [mainThreadBindtap]="handleCrossThreadTap"
-            (bindtap)="onCrossThreadTap()"
           >
             <text class="text-base font-semibold text-white">Tap me</text>
           </view>
@@ -278,19 +284,19 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
         </ui-card-content>
       </ui-card>
 
-      <!-- ── Background → Main (runOnMainThread) ── -->
+      <!-- ── Main-thread script from Angular (runOnMainThread) ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center flex justify-between">
             <view class="flex-row items-center gap-2 flex">
-              <ui-icon name="arrow-left" size="sm" />
-              <ui-card-title class="text-lg">Background → Main</ui-card-title>
+              <ui-icon name="zap" size="sm" />
+              <ui-card-title class="text-lg">Script from Angular</ui-card-title>
             </view>
-            <ui-badge [animated]="false">BG → Main</ui-badge>
+            <ui-badge [animated]="false">runOnMainThread</ui-badge>
           </view>
           <ui-card-description>
-            Angular calls runOnMainThread() to flash the target natively — no
-            component re-render involved.
+            Angular calls runOnMainThread() to run a main-thread script that
+            flashes the target natively — no component re-render involved.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
@@ -307,19 +313,19 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
         </ui-card-content>
       </ui-card>
 
-      <!-- ── Background thread only (comparison) ── -->
+      <!-- ── Template handler (comparison) ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center flex justify-between">
             <view class="flex-row items-center gap-2 flex">
               <ui-icon name="info" size="sm" />
-              <ui-card-title class="text-lg">Background only</ui-card-title>
+              <ui-card-title class="text-lg">Template handler</ui-card-title>
             </view>
-            <ui-badge variant="outline" [animated]="false">Background</ui-badge>
+            <ui-badge variant="outline" [animated]="false">(bindtap)</ui-badge>
           </view>
           <ui-card-description>
-            This handler runs entirely on the background thread — the tap makes
-            a round trip before anything updates.
+            A plain (bindtap) handler runs on the main thread too. It sets a
+            signal, and Angular re-renders after it returns.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
@@ -328,12 +334,12 @@ const flashElement = mainThreadFn((color: string, elementSelector: string) => {
             (bindtap)="onBackgroundTap()"
           >
             <text class="text-base font-medium text-muted-foreground">
-              Tap me (background thread)
+              Tap me
             </text>
           </view>
           <view class="flex-row items-center flex justify-between">
             <ui-badge variant="secondary" [animated]="false">
-              BG taps: {{ bgTapCount() }}
+              Handler taps: {{ bgTapCount() }}
             </ui-badge>
             <ui-button size="sm" variant="outline" (pressed)="resetBgTaps()">
               Reset
@@ -354,23 +360,15 @@ export class MainThreadDemo {
   readonly handleTouchEnd = handleTouchEnd;
   readonly handleCrossThreadTap = handleCrossThreadTap;
 
-  // Angular (background-thread) state.
-  readonly crossThreadCount = signal(0);
+  readonly crossThreadCount = crossThreadCount;
   readonly bgTapCount = signal(0);
 
-  /**
-   * Background-thread handler bound alongside the main-thread tap on the same box.
-   */
-  onCrossThreadTap(): void {
-    this.crossThreadCount.update((v) => v + 1);
-  }
-
   resetCrossThread(): void {
-    this.crossThreadCount.set(0);
+    void runOnBackground(resetBgCounter).then(() => crossThreadCount.set(0));
   }
 
   /**
-   * Background → Main: call a main-thread function from Angular code.
+   * Call a main-thread script from Angular code.
    */
   onFlashFromBackground(): void {
     const colors = ['#6366f1', '#14b8a6', '#f59e0b', '#f43f5e'];

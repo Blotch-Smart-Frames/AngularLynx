@@ -38,7 +38,7 @@ const START_POSITIONS: readonly Point[] = [
 
 // Drag state lives on the main thread, next to the native views. Handling the
 // touches there moves a blob on the same frame as the finger; routing them
-// through Angular on the background thread would add a round trip per frame.
+// through Angular would run change detection on every frame.
 const positions = createMainThreadRef<Point[]>(
   START_POSITIONS.map((p) => ({ ...p })),
 );

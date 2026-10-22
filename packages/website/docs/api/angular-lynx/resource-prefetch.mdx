@@ -48,8 +48,8 @@ class LynxResourcePrefetch {}
 
 Asks Lynx to fetch resources into its image and video caches.
 
-:::warning Background thread only
-Lynx provides prefetching only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers, both methods reject. A constructor runs on both threads, so the call in Usage reaches Lynx from the background copy. See [Threads](/guide/concepts/threads).
+:::info Runs on the background thread
+Lynx provides prefetching only on the [background thread](/guide/glossary#background-thread), and your app runs on the main thread. Both methods send their call there for you, and the result comes back as JSON. See [Threads](/guide/concepts/threads).
 :::
 
 ### `LynxResourcePrefetch.request()`

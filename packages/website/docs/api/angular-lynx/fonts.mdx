@@ -42,7 +42,7 @@ class LynxFont {}
 
 A registry of the fonts you add at runtime.
 
-Lynx adds fonts only on the [background thread](/guide/glossary#background-thread). A call from the main thread, such as from an event handler, is sent there for you, and the signals below update in the copy of your app that made the call. See [Threads](/guide/concepts/threads).
+Lynx adds fonts only on the [background thread](/guide/glossary#background-thread). Your app runs on the main thread, so each call is sent there for you, and the signals below update when it's done. See [Threads](/guide/concepts/threads).
 
 ### `LynxFont.addFont()`
 

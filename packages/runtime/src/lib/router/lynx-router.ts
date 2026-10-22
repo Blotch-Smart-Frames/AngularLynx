@@ -43,10 +43,8 @@ export const provideRouter = (
     { provide: RouteReuseStrategy, useClass: LynxRouteReuseStrategy },
     ngProvideRouter(
       routes,
-      // Lynx runs Angular on a background thread for layout calculation.
       // Unhandled navigation promise rejections (e.g. from unmatched routes or
-      // lazy chunk loading failures) crash the background thread, causing a blank
-      // screen with no errors. Resolving as false instead of rejecting prevents
+      // lazy chunk loading failures) left a blank screen with no errors. Resolving as false instead of rejecting prevents
       // this. Trade-off: lazy loading errors are silenced — navigation simply
       // doesn't happen rather than showing an error. Use Router.events with
       // NavigationError/NavigationCancel to detect these failures in app code.

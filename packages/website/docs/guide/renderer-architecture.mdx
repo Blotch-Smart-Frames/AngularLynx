@@ -11,22 +11,22 @@ Apps install `@blotch/angular-lynx-build`. Its builders add the internal build p
 | `main__main-thread` | Main       | `main-thread.js`       | `true`            |
 | `main`              | Background | `background-thread.js` | `false`           |
 
-Both are packed into one [bundle](/guide/glossary#bundle), `main.lynx.bundle`. `__MAIN_THREAD__` is a compile-time constant, so each half drops the other thread's branches.
+Both are packed into one [bundle](/guide/glossary#bundle), `main.lynx.bundle`. The plugin sets `__MAIN_THREAD__` at the top of each half, so shared code can check which thread it runs on.
 
 - **The [main thread](/guide/glossary#main-thread)** runs PrimJS, a QuickJS-based engine, and its code ships as bytecode. Older Lynx code calls this runtime **Lepus**.
 - **The [background thread](/guide/glossary#background-thread)** runs PrimJS on Android and JavaScriptCore on iOS.
 - **On the web**, `@lynx-js/web-core` runs the main thread in an iframe and the background thread in a Web Worker.
 
-## Both threads boot Angular
+## Angular boots on the main thread
 
-`bootstrapApplication()` from `@blotch/angular-lynx` runs in both halves of the bundle (see [Threads](/guide/concepts/threads) for what this means for app code):
+`bootstrapApplication()` from `@blotch/angular-lynx` runs in both halves of the bundle, but only the main thread's call starts Angular (see [Threads](/guide/concepts/threads) for what this means for app code):
 
 ```mermaid
 sequenceDiagram
     participant N as Lynx engine
     participant M as Main thread
     participant B as Background thread
-    B->>B: bootstrapApplication()<br/>LynxBackgroundDocument
+    B->>B: modules run, bridges listen<br/>bootstrapApplication() returns
     N->>M: renderPage()
     M->>M: bootstrapApplication()<br/>LynxDocument
     M->>N: __CreatePage, __CreateView, __AppendElement…
@@ -34,15 +34,25 @@ sequenceDiagram
     N->>N: flush after renderPage returns
 ```
 
-- **The background copy** bootstraps as soon as it loads. `provideRenderer()` gives it a `LynxBackgroundDocument`.
-- **The main copy** waits for the engine to call the global `renderPage()`, then bootstraps with a `LynxDocument`.
+- **The main thread** waits for the engine to call the global `renderPage()`, then bootstraps with a `LynxDocument`.
+- **The background thread** runs every module of the app, then `bootstrapApplication()` returns a promise that never settles. Module-level code is all it runs: each `backgroundFn()` registers, and the runtime's bridges start listening.
 - **Before either**, the runtime installs its globals: `onerror` handlers that forward to `_ReportError`, polyfills (timers from `lynx.setTimeout`, `URL`, `queueMicrotask`), and the registry for [main-thread scripts](/guide/glossary#main-thread-script).
 
-**`LynxDocument`** creates real native elements through Lynx's element functions (`__CreateView`, `__SetAttribute`, …). Its elements are the only ones you see, and the only ones that receive events.
+**`LynxDocument`** creates real native elements through Lynx's element functions (`__CreateView`, `__SetAttribute`, …).
 
-**`LynxBackgroundDocument`** builds a tree of `LynxBackgroundElement` objects in memory. Nothing reads it for layout, and nothing sends it to the main thread. It exists so the same Angular code runs on a thread with no element functions. Event listeners on it are stored but never registered with the engine, so background handlers never fire.
+Earlier versions booted a second copy of the app on the background thread, on an in-memory document. Nothing read its elements, but its constructors, `ngOnInit` hooks and effects ran, so shared side effects happened twice.
 
-The background copy is useful because the background thread has APIs the main thread lacks, such as `fetch`, native modules and `lynx.createSelectorQuery()`. `LynxLogger`, `backgroundFn()` and `runOnBackground()` reach them across threads with Lynx's event channels (`getJSContext()` / `getCoreContext()`).
+## Reaching the background thread
+
+The background thread has APIs the main thread lacks, such as `fetch`, `NativeModules`, `lynx.getJSModule()` and `lynx.requestResourcePrefetch()`. The main thread reaches them with Lynx's event channels: it dispatches on `lynx.getJSContext()`, and the background thread replies on `lynx.getCoreContext()`.
+
+- **`backgroundFn()` and `runOnBackground()`** call your own functions.
+- **`callOnBackground()`** (`background-call.ts`) calls the APIs AngularLynx's services use: fonts, accessibility, exposure, session storage, resource prefetching, native modules and JS modules. Function arguments, such as a native module's callback, are sent as markers, and the background thread calls them back on the main thread.
+- **`LynxLogger`** relays log entries to a listener that posts them to the dev server.
+
+The background thread finds a function by ID, so both threads must give it the same one. The build plugin gives each module-level `backgroundFn()` and `MainThreadRef` an ID from its file and position (`cross-thread-transform.ts`).
+
+The main thread's router loads lazy routes and `@defer` blocks, so the background thread wouldn't run their modules on its own. The plugin rewrites each `import()` in the app to tell the background thread its key, and the background thread runs the same import (`mirrored-imports.ts`). A call to a background function that isn't registered yet waits for those imports.
 
 ## How Renderer2 maps onto Lynx
 
@@ -84,14 +94,14 @@ The browser's emulated renderer adds `_ngcontent-*` and `_nghost-*` attributes, 
 
 ## The flush cycle
 
-Element functions change the engine's element tree right away, but nothing is laid out or drawn until **`__FlushElementTree()`** runs. Angular calls `begin()` and `end()` on the renderer factory around every change-detection cycle. On the main thread, `end()` runs, in this order:
+Element functions change the engine's element tree right away, but nothing is laid out or drawn until **`__FlushElementTree()`** runs. Angular calls `begin()` and `end()` on the renderer factory around every change-detection cycle. `end()` runs, in this order:
 
 1. **`processPendingRemovals()`** commits queued removals with `__RemoveElement`.
 2. **`processPendingTextNormalization()`** trims edge spaces from text runs that changed.
 3. **`__FlushElementTree()`** commits everything to the screen.
 4. **`processPendingListUpdates()`** tells each `<list>` that gained or lost children, then flushes that list.
 
-Reversing steps 3 and 4 leaves list items empty, or re-enters the flush and crashes. On the background thread, `end()` does nothing.
+Reversing steps 3 and 4 leaves list items empty, or re-enters the flush and crashes.
 
 **The first render isn't flushed by `end()`.** Bootstrap's change detection still runs inside the engine's `renderPage()` call. A promise continuation doesn't escape it, because the engine drains microtasks before the call returns. So `end()` skips step 3 until `markFirstRenderComplete()`, and the engine flushes once `renderPage()` returns. Work that must not run inside that call, such as a list's first layout, waits for a `setTimeout`. `@lynx-js/web-core` has no flush after `renderPage()`, so on the web the runtime schedules one.
 

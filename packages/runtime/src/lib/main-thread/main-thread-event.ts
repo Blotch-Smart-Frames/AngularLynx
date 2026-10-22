@@ -61,8 +61,7 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
   !!(h as MainThreadFnHandle).__isMainThreadFn;
 
 // IDs for the plain functions the directive registers itself. They have their
-// own prefix so they never shift the IDs mainThreadFn() gives module-level
-// functions, which must match between the threads.
+// own prefix so they never collide with the IDs mainThreadFn() gives.
 let nextHandlerId = 0;
 
 /**
@@ -90,14 +89,16 @@ type Registration = {
  * Lynx's main-thread (Lepus) event dispatch.
  *
  * Why a dedicated directive and not the renderer's listen() path:
- * - Normal `(bindtap)` events are delivered to the background JS thread and
- *   incur a thread hop on every dispatch — fine for one-shot taps, but too
- *   slow for gesture-driven UI (scroll-tracking, drag, pinch) where the
- *   handler needs to mutate styles at native frame rate.
- * - The `mainThreadBind*` / `mainThreadCatch*` family registers the handler
- *   as a *worklet* with `_workletType: 'main-thread'`, so Lynx invokes it
- *   directly on the Lepus thread where __AddInlineStyle / __SetAttribute are
- *   synchronous. There is no thread hop and no background JS involvement.
+ * - Normal `(bindtap)` handlers run on the main thread too (listen() registers
+ *   them as worklets), but each one goes through Angular's listener wrapper,
+ *   which marks the view for change detection on every dispatch: too much for
+ *   gesture-driven UI (scroll-tracking, drag, pinch) that mutates styles at
+ *   native frame rate. Their event's targets are also plain data.
+ * - The `mainThreadBind*` / `mainThreadCatch*` family registers the function
+ *   itself as a *worklet* with `_workletType: 'main-thread'`, so Lynx invokes
+ *   it directly, and runWorklet hands it MainThreadElement targets, whose
+ *   __AddInlineStyle / __SetAttribute calls are synchronous. Angular does no
+ *   work per event.
  * - These inputs cannot be expressed as @Output() because Angular would route
  *   them through its own event subscription system and the underlying
  *   worklet handle would never be passed to __AddEvent.
@@ -212,10 +213,11 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
       }
 
       // type: 'worklet' tells the Lynx engine to invoke this handler via the
-      // worklet system (runWorklet) on the main thread, NOT via the normal
-      // background-thread event dispatch. _workletType: 'main-thread' ensures
-      // the handler runs on the Lepus thread where it can call __AddInlineStyle,
-      // __SetAttribute, etc. for 60fps animations without cross-thread latency.
+      // worklet system (runWorklet) on the main thread, NOT via the
+      // background-thread event dispatch Lynx defaults to. _workletType:
+      // 'main-thread' ensures the handler runs on the Lepus thread where it can
+      // call __AddInlineStyle, __SetAttribute, etc. for 60fps animations
+      // without cross-thread latency.
       // A new handler for the same event replaces the old one natively.
       __AddEvent(elementRef, eventType, eventName, {
         type: 'worklet',

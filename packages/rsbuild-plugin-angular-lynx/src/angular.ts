@@ -26,6 +26,7 @@ import {
   buildTransformedCode,
   type ModuleStylesheets,
 } from './transform-module.js';
+import { transformCrossThread } from './cross-thread-transform.js';
 import { transformWorklets } from './worklet-transform.js';
 import { getAngularCliContext } from './angular-cli-context.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
@@ -481,9 +482,15 @@ export const applyAngularRules = async (
           },
         );
         return {
-          code: transformWorklets(
-            Buffer.from(contents).toString(),
+          // Only the app's own (Angular-compiled) modules mirror their lazy
+          // imports to the background thread: see cross-thread-transform.ts.
+          code: transformCrossThread(
+            transformWorklets(
+              Buffer.from(contents).toString(),
+              context.resourcePath,
+            ),
             context.resourcePath,
+            { root: api.context.rootPath, mirrorImports: false },
           ),
         };
       }
@@ -512,6 +519,7 @@ export const applyAngularRules = async (
           code,
           resourcePath: context.resourcePath,
           stylesheets: moduleStylesheets.get(context.resourcePath),
+          root: api.context.rootPath,
         }),
       };
     },

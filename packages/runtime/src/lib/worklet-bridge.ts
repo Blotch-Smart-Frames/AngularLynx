@@ -24,13 +24,12 @@ export const __workletMap: Record<string, Function> = {};
  * reconstitute a ref from this map when they see a `{ _wvid }` marker in
  * params, and MainThreadRef registers itself here on creation, on both threads.
  */
-export const __mainThreadRefMap: Record<number, { current: unknown }> = {};
+export const __mainThreadRefMap: Record<number | string, { current: unknown }> =
+  {};
 
 /**
- * Pending cross-thread RPC Promises keyed by `resolveId`. Both the main- and
- * background-thread RPC listeners settle entries here when a return value
- * arrives, and LynxMainThread parks its resolvers here while a call is in
- * flight.
+ * Pending runOnBackground() Promises keyed by `resolveId`. The main thread's
+ * listener settles an entry when the background thread's reply arrives.
  */
 export const __pendingResolvers: Record<
   number,
@@ -44,8 +43,8 @@ let __nextResolveId = 0;
 
 /**
  * Returns the next unique resolve id, advancing the counter. Exposed as a
- * function (not the raw `let`) so callers in other modules — and the
- * `__lynxMtsNextResolveId` global — share one monotonic sequence.
+ * function (not the raw `let`) so callers in other modules share one
+ * monotonic sequence.
  */
 export const nextResolveId = (): number => __nextResolveId++;
 
@@ -64,7 +63,7 @@ const transform = (value: unknown, elements: boolean): unknown => {
     return new MainThreadElement(obj['elementRefptr'] as any);
   }
   if ('_wvid' in obj) {
-    return __mainThreadRefMap[obj['_wvid'] as number] ?? obj;
+    return __mainThreadRefMap[obj['_wvid'] as number | string] ?? obj;
   }
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {

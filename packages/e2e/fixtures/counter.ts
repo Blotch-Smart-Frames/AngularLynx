@@ -1,9 +1,11 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, type OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import {
   backgroundFn,
   createMainThreadRef,
   LYNX_ELEMENTS,
+  LynxMainThread,
+  mainThreadFn,
   MainThreadRef,
 } from '@blotch/angular-lynx';
 
@@ -19,6 +21,16 @@ const factor = createMainThreadRef(2);
 const multiply = backgroundFn(async (ref: unknown, n: number) => {
   await Promise.resolve();
   return ref instanceof MainThreadRef ? n * (ref.current as number) : -1;
+});
+
+/**
+ * How many times Hello's ngOnInit has run `countInit` on the main thread. The
+ * lazy page shows it (lazy-route.ts), since this page has no room left.
+ */
+export const initRuns = signal(0);
+
+const countInit = mainThreadFn(() => {
+  initRuns.update((runs) => runs + 1);
 });
 
 /**
@@ -51,6 +63,11 @@ const multiply = backgroundFn(async (ref: unknown, n: number) => {
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
+ *
+ * ngOnInit counts itself through LynxMainThread.runOnMainThread(). The
+ * background thread used to start a second copy of the app, whose ngOnInit
+ * also reached the main thread and made the count 2 (issue #81). This page is
+ * on the first screen, which that copy rendered too.
  */
 @Component({
   selector: 'app-hello',
@@ -132,12 +149,17 @@ const multiply = backgroundFn(async (ref: unknown, n: number) => {
     </view>
   `,
 })
-export class Hello {
+export class Hello implements OnInit {
   readonly #router = inject(Router);
+  readonly #mainThread = inject(LynxMainThread);
   readonly count = signal(0);
   readonly typed = signal('');
   readonly overlayOpen = signal(false);
   readonly answer = signal('');
+
+  ngOnInit() {
+    void this.#mainThread.runOnMainThread(countInit);
+  }
 
   increment() {
     this.count.update((count) => count + 1);

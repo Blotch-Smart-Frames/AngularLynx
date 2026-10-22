@@ -23,8 +23,9 @@ describe('runtime bootstrapApplication', () => {
     mockNgBootstrap.mockResolvedValue(mockAppRef);
 
     // __MAIN_THREAD__ must be set before the module runs so module-level
-    // if (__MAIN_THREAD__) blocks are evaluated with a defined value.
-    vi.stubGlobal('__MAIN_THREAD__', false);
+    // if (__MAIN_THREAD__) blocks are evaluated with a defined value. Angular
+    // only boots on the main thread.
+    vi.stubGlobal('__MAIN_THREAD__', true);
     // bootstrapApplication installs `lynx.loadLazyBundle` on the Lynx global,
     // which doesn't exist in Node, so give it an empty host object.
     vi.stubGlobal('lynx', {});
@@ -45,10 +46,22 @@ describe('runtime bootstrapApplication', () => {
     delete (globalThis as any).__lynxLastError;
   });
 
+  /**
+   * Bootstraps on the main thread: starts bootstrapApplication(), then plays
+   * the Lynx engine calling renderPage(), which the first boot waits for.
+   */
+  const boot = (
+    ...args: Parameters<typeof BootstrapApplicationFn>
+  ): ReturnType<typeof BootstrapApplicationFn> => {
+    const result = bootstrapApplication(...args);
+    (globalThis as any).renderPage();
+    return result;
+  };
+
   it('calls ngBootstrapApplication with the root component and config', async () => {
     class App {}
     const config = { providers: [] };
-    await bootstrapApplication(App, config as any);
+    await boot(App, config as any);
     expect(mockNgBootstrap).toHaveBeenCalledWith(App, config);
   });
 
@@ -59,34 +72,49 @@ describe('runtime bootstrapApplication', () => {
       expect(typeof (globalThis as any).lynx.loadLazyBundle).toBe('function');
       return mockAppRef;
     });
-    await bootstrapApplication(App);
+    await boot(App);
     expect(mockNgBootstrap).toHaveBeenCalled();
   });
 
   it('returns the ApplicationRef', async () => {
     class App {}
-    const result = await bootstrapApplication(App);
+    const result = await boot(App);
     expect(result).toBe(mockAppRef);
   });
 
   it('stores the ApplicationRef on globalThis.__LYNX_ANGULAR_APP_REF__', async () => {
     class App {}
-    await bootstrapApplication(App);
+    await boot(App);
     expect((globalThis as any).__LYNX_ANGULAR_APP_REF__).toBe(mockAppRef);
   });
 
+  // The background thread used to boot a second copy of the app, which ran
+  // every constructor, ngOnInit and effect() twice (issue #81).
   describe('on the background thread (__MAIN_THREAD__ = false)', () => {
-    it('bootstraps immediately without waiting for renderPage', async () => {
+    beforeEach(() => {
+      vi.stubGlobal('__MAIN_THREAD__', false);
+    });
+
+    it('does not bootstrap Angular, and its promise never settles', async () => {
       class App {}
-      // __MAIN_THREAD__ is already false from beforeEach
-      await bootstrapApplication(App);
-      expect(mockNgBootstrap).toHaveBeenCalled();
+      const settled = vi.fn();
+      void bootstrapApplication(App).then(settled, settled);
+      (globalThis as any).renderPage();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockNgBootstrap).not.toHaveBeenCalled();
+      expect(settled).not.toHaveBeenCalled();
+    });
+
+    it('still installs lynx.loadLazyBundle, for the lazy chunks it mirrors', () => {
+      class App {}
+      void bootstrapApplication(App);
+      expect(typeof (globalThis as any).lynx.loadLazyBundle).toBe('function');
     });
   });
 
   describe('on the main thread (__MAIN_THREAD__ = true)', () => {
     it('waits for the renderPage callback before bootstrapping', async () => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
       class App {}
 
       let resolved = false;
@@ -134,8 +162,7 @@ describe('runtime bootstrapApplication', () => {
       expect(staleFn).not.toHaveBeenCalled();
     });
 
-    it('does not wait for renderPage even on the main thread', async () => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
+    it('does not wait for renderPage', async () => {
       (globalThis as any).__LYNX_ANGULAR_APP_REF__ = { destroy: vi.fn() };
 
       class App {}
@@ -161,7 +188,7 @@ describe('runtime bootstrapApplication', () => {
       (globalThis as any).__LYNX_HYDRATE_QUEUE__ = [1, 2];
 
       class App {}
-      await bootstrapApplication(App);
+      await boot(App);
 
       expect((globalThis as any).__LYNX_IS_HYDRATING__).toBe(false);
       expect((globalThis as any).__LYNX_HYDRATE_PAGE__).toBeUndefined();
@@ -171,12 +198,11 @@ describe('runtime bootstrapApplication', () => {
     it('forces the first element-tree flush on web after a non-hydrating bootstrap', async () => {
       vi.useFakeTimers();
       vi.stubGlobal('__WEB__', true);
-      vi.stubGlobal('__MAIN_THREAD__', true);
       vi.stubGlobal('__ENABLE_SSR__', false);
       const flush = vi.fn();
       vi.stubGlobal('__FlushElementTree', flush);
 
-      // Set a prev appRef so bootstrap skips the main-thread renderPage wait.
+      // Set a prev appRef so bootstrap skips the renderPage wait.
       (globalThis as any).__LYNX_ANGULAR_APP_REF__ = { destroy: vi.fn() };
 
       class App {}

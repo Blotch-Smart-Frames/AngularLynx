@@ -3,6 +3,7 @@ import {
   applyGlobalDataUpdate,
   applyInitDataUpdate,
 } from './data-flow/host-updates';
+import { whenImportsMirrored } from './lazy-bundle/mirrored-imports';
 import { ssrEncode, ssrHydrate } from './ssr/ssr-callbacks';
 import {
   __mainThreadRefMap,
@@ -26,6 +27,21 @@ const callWorklet = (id: string, args: unknown[], kind: string): unknown => {
     throw new Error(`[angular-lynx] ${kind} not found: ${id}`);
   }
   return fn(...args);
+};
+
+/**
+ * Calls a background function for the main thread. One that isn't registered
+ * yet may be in a lazy chunk the background thread is still loading, after the
+ * main thread loaded it (see mirrored-imports.ts), so the call waits for those
+ * loads and then looks again.
+ */
+const callBackgroundFunction = (id: string, args: unknown[]): unknown => {
+  if (__workletMap[id]) {
+    return __workletMap[id](...args);
+  }
+  return whenImportsMirrored().then(() =>
+    callWorklet(id, args, 'Background function'),
+  );
 };
 
 /**
@@ -215,40 +231,14 @@ globalThis.runWorklet = (ctx: unknown, params: unknown[]) => {
   }
 };
 
-// Cross-thread RPC system. Lynx's JSContext event system is bidirectional:
-//   Main → Background: 'Lynx.Worklet.runOnBackground' (request) + 'Lynx.Worklet.BgFunctionCallRet' (response)
-//   Background → Main: 'Lynx.Worklet.runWorkletCtx' (request) + 'Lynx.Worklet.FunctionCallRet' (response)
-// Each thread registers listeners for incoming requests AND for return values
-// from its own outgoing calls. resolveId ties each response to its Promise.
+// Cross-thread RPC: the main thread calls background functions with
+// 'Lynx.Worklet.runOnBackground', and the background thread replies with
+// 'Lynx.Worklet.BgFunctionCallRet'. resolveId ties each reply to its Promise.
+// There's no call the other way: Angular runs on the main thread only, so
+// LynxMainThread.runOnMainThread() runs its function in place (issue #81).
 if (__MAIN_THREAD__) {
   try {
     if (typeof lynx !== 'undefined' && (lynx as any).getJSContext) {
-      (lynx as any)
-        .getJSContext()
-        .addEventListener(
-          'Lynx.Worklet.runWorkletCtx',
-          (event: { data: string }) => {
-            const { worklet, params, resolveId } = JSON.parse(event.data);
-            // The params arrive as JSON, so a MainThreadRef the background
-            // thread passed is a `{ _wvid }` marker; transformParams swaps in
-            // the main thread's ref, as runWorklet does for event params.
-            answerCall(
-              resolveId,
-              () =>
-                callWorklet(
-                  worklet._wkltId,
-                  params.map(transformParams),
-                  'Main-thread worklet',
-                ),
-              (data) =>
-                (lynx as any).getJSContext().dispatchEvent({
-                  type: 'Lynx.Worklet.FunctionCallRet',
-                  data,
-                }),
-            );
-          },
-        );
-
       // Listen for return values from background-thread function calls
       (lynx as any)
         .getJSContext()
@@ -300,8 +290,8 @@ if (__MAIN_THREAD__) {
   };
 }
 
-// Cross-thread RPC: background thread listens for return values from main thread
-// AND for runOnBackground execution requests from main thread.
+// Cross-thread RPC: the background thread runs the main thread's
+// runOnBackground requests.
 //
 // The background thread reaches the main thread through getCoreContext(), not
 // getJSContext(): each thread talks to the *other* thread's context (see the
@@ -313,24 +303,6 @@ if (__MAIN_THREAD__) {
 if (!__MAIN_THREAD__) {
   try {
     if (typeof lynx !== 'undefined' && (lynx as any).getCoreContext) {
-      (lynx as any)
-        .getCoreContext()
-        .addEventListener(
-          'Lynx.Worklet.FunctionCallRet',
-          (event: { data: string }) => {
-            const { resolveId, returnValue, error } = JSON.parse(event.data);
-            const resolver = __pendingResolvers[resolveId];
-            if (resolver) {
-              delete __pendingResolvers[resolveId];
-              if (error) {
-                resolver.reject(new Error(error));
-              } else {
-                resolver.resolve(returnValue);
-              }
-            }
-          },
-        );
-
       // Listen for runOnBackground requests from main thread
       (lynx as any)
         .getCoreContext()
@@ -343,10 +315,9 @@ if (!__MAIN_THREAD__) {
             answerCall(
               resolveId,
               () =>
-                callWorklet(
+                callBackgroundFunction(
                   worklet._wkltId,
                   params.map(restoreRefs),
-                  'Background function',
                 ),
               (data) =>
                 (lynx as any).getCoreContext().dispatchEvent({
@@ -363,26 +334,13 @@ if (!__MAIN_THREAD__) {
 }
 
 /**
- * Exposed for LynxMainThread service (main-thread.ts) to dispatch cross-thread
- * calls. Can't use import because these globals bridge module-load side effects
- * (this file) with a DI-instantiated consumer (LynxMainThread).
- */
-globalThis.__lynxMtsPendingResolvers = __pendingResolvers;
-globalThis.__lynxMtsNextResolveId = nextResolveId;
-
-/**
  * Synchronously invoke a registered worklet by its _wkltId with raw,
- * already-in-process args. Used by LynxMainThread.runOnMainThread() when it is
- * called from code that is ALREADY running on the main thread — e.g. an Angular
- * `(bind*)`/`(catch*)` event handler, which the renderer registers as a
- * main-thread worklet and Lynx therefore invokes on the Lepus thread. In that
- * situation there is no background→main thread hop to perform, so we run the
- * target worklet in-place instead of dispatching a cross-thread RPC that would
- * have no counterpart to answer it. Unlike the cross-thread runWorkletCtx
- * listener above, it passes the args through untransformed: they never went
- * through JSON, so refs and element handles are still the real objects.
- * Exposed as a global (rather than imported) because the __workletMap is a
- * module-load side-effect while LynxMainThread is DI-instantiated later.
+ * already-in-process args. Used by LynxMainThread.runOnMainThread(): Angular
+ * code runs on the main thread, where the worklets are, so the call needs no
+ * thread hop. The args never go through JSON, so refs and element handles are
+ * still the real objects. Exposed as a global (rather than imported) because
+ * the __workletMap is a module-load side-effect while LynxMainThread is
+ * DI-instantiated later.
  */
 globalThis.__lynxRunMainThreadWorklet = (
   wkltId: string,

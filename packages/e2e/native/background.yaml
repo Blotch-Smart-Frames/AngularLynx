@@ -1,0 +1,24 @@
+# Layer 6: Angular runs on the main thread only, and the background thread
+# still runs what the main thread asks of it (issue #81). On the lazy page
+# (fixtures/lazy-route.ts): its ngOnInit counts once, a background function
+# defined in the lazy chunk answers, and a GlobalEventEmitter listener and
+# emit, which only the background thread can reach, go through
+# LynxNativeModule's relay and come back.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open lazy page
+- extendedWaitUntil:
+    visible: Lazy page loaded
+    timeout: 15000
+- tapOn: 'Echo:.*'
+- extendedWaitUntil:
+    visible: 'Echo: hi back'
+    timeout: 10000
+- tapOn: 'Emitter:.*'
+- extendedWaitUntil:
+    visible: 'Emitter: pong'
+    timeout: 10000
+# A second copy's ngOnInit would have counted by now.
+- assertVisible: 'Init runs: 1'
+- takeScreenshot: background

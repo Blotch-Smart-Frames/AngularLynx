@@ -1,6 +1,6 @@
 import { InjectionToken, Injector } from '@angular/core';
 import { describe, expect, it } from 'vitest';
-import { LynxBackgroundDocument } from '../lynx-document';
+import { InMemoryDocument } from '../testing/in-memory-document';
 import { LYNX_DOCUMENT } from './token';
 
 describe('LYNX_DOCUMENT', () => {
@@ -13,7 +13,7 @@ describe('LYNX_DOCUMENT', () => {
   });
 
   it('can be used to provide and inject a LynxDocumentBase value', () => {
-    const doc = new LynxBackgroundDocument();
+    const doc = new InMemoryDocument();
     const injector = Injector.create({
       providers: [{ provide: LYNX_DOCUMENT, useValue: doc }],
     });

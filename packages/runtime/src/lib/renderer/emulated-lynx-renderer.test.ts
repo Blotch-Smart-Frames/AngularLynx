@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LynxBackgroundDocument } from '../lynx-document';
-import { LynxBackgroundElement } from '../lynx-element';
+import { InMemoryDocument } from '../testing/in-memory-document';
+import { InMemoryElement } from '../testing/in-memory-element';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 
 describe('EmulatedLynxRenderer', () => {
   const createRenderer = (componentId: string) => {
-    const doc = new LynxBackgroundDocument();
+    const doc = new InMemoryDocument();
     return new EmulatedLynxRenderer(doc, componentId);
   };
 
   it('createElement adds the _ngcontent scope class', () => {
     // The plugin compiles `.title` in this component's styles to
     // `.title._ngcontent-<id>`, so every element its template creates needs it.
-    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addScopeClass');
+    const spy = vi.spyOn(InMemoryElement.prototype, 'addScopeClass');
     const renderer = createRenderer('abc123');
     renderer.createElement('view');
 
@@ -23,7 +23,7 @@ describe('EmulatedLynxRenderer', () => {
 
   it('applyToHost adds the _nghost scope class, for :host selectors', () => {
     const renderer = createRenderer('abc123');
-    const host = new LynxBackgroundDocument().createElement('view');
+    const host = new InMemoryDocument().createElement('view');
     const spy = vi.spyOn(host, 'addScopeClass');
 
     renderer.applyToHost(host);
@@ -32,7 +32,7 @@ describe('EmulatedLynxRenderer', () => {
   });
 
   it('selectRootElement adds _nghost class', () => {
-    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+    const spy = vi.spyOn(InMemoryElement.prototype, 'addClass');
     const renderer = createRenderer('abc123');
     renderer.selectRootElement();
 
@@ -41,14 +41,14 @@ describe('EmulatedLynxRenderer', () => {
   });
 
   it('different components get different host classes', () => {
-    const spy1 = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+    const spy1 = vi.spyOn(InMemoryElement.prototype, 'addClass');
     const renderer1 = createRenderer('comp1');
     renderer1.selectRootElement();
     expect(spy1).toHaveBeenCalledWith('_nghost-comp1');
     expect(spy1).not.toHaveBeenCalledWith('_nghost-comp2');
     spy1.mockRestore();
 
-    const spy2 = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+    const spy2 = vi.spyOn(InMemoryElement.prototype, 'addClass');
     const renderer2 = createRenderer('comp2');
     renderer2.selectRootElement();
     expect(spy2).toHaveBeenCalledWith('_nghost-comp2');
@@ -57,7 +57,7 @@ describe('EmulatedLynxRenderer', () => {
   });
 
   it('createComment does not add any classes', () => {
-    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+    const spy = vi.spyOn(InMemoryElement.prototype, 'addClass');
     const renderer = createRenderer('abc123');
     renderer.createComment('test');
 
@@ -66,7 +66,7 @@ describe('EmulatedLynxRenderer', () => {
   });
 
   it('createText does not add any classes', () => {
-    const spy = vi.spyOn(LynxBackgroundElement.prototype, 'addClass');
+    const spy = vi.spyOn(InMemoryElement.prototype, 'addClass');
     const renderer = createRenderer('abc123');
     renderer.createText('hello');
 

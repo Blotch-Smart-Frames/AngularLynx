@@ -27,7 +27,11 @@ export type {
   ObserverFrameRateOptions,
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
-export { loadLazyBundle } from './lib/lazy-bundle';
+export {
+  loadLazyBundle,
+  ɵmirrorImport,
+  ɵregisterMirroredImport,
+} from './lib/lazy-bundle';
 export { getLynxAppLocale, LynxLocale, provideLocale } from './lib/locale';
 export type {
   LynxFontEntry,

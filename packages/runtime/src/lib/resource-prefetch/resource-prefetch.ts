@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { callOnBackground } from '../background-call';
 import type {
   ResourcePrefetchData,
   ResourcePrefetchResult,
@@ -63,8 +64,9 @@ export type PrefetchResultDetail = {
  * with a Promise-based API for preloading images and videos into the native
  * cache before they're needed for display.
  *
- * Only available on the background thread — these APIs are not exposed on
- * the main thread.
+ * Lynx has these APIs only on the background thread, while Angular runs on
+ * the main thread, so the calls go through the background call relay
+ * (background-call.ts).
  *
  * @usageNotes
  * ```typescript
@@ -95,19 +97,10 @@ export class LynxResourcePrefetch {
    * when the download completes).
    */
   request(resources: PrefetchRequest[]): Promise<ResourcePrefetchResult> {
-    if (typeof lynx === 'undefined' || !lynx.requestResourcePrefetch) {
-      return Promise.reject(
-        new Error(
-          'lynx.requestResourcePrefetch is not available in this environment',
-        ),
-      );
-    }
-
-    const data = this.#toNativeData(resources);
-
-    return new Promise((resolve) => {
-      lynx.requestResourcePrefetch(data, resolve);
-    });
+    return callOnBackground(
+      'requestResourcePrefetch',
+      this.#toNativeData(resources),
+    ) as Promise<ResourcePrefetchResult>;
   }
 
   /**
@@ -115,19 +108,10 @@ export class LynxResourcePrefetch {
    * Useful when navigating away before prefetched content is needed.
    */
   cancel(resources: PrefetchRequest[]): Promise<ResourcePrefetchResult> {
-    if (typeof lynx === 'undefined' || !lynx.cancelResourcePrefetch) {
-      return Promise.reject(
-        new Error(
-          'lynx.cancelResourcePrefetch is not available in this environment',
-        ),
-      );
-    }
-
-    const data = this.#toNativeData(resources);
-
-    return new Promise((resolve) => {
-      lynx.cancelResourcePrefetch(data, resolve);
-    });
+    return callOnBackground(
+      'cancelResourcePrefetch',
+      this.#toNativeData(resources),
+    ) as Promise<ResourcePrefetchResult>;
   }
 
   #toNativeData(resources: PrefetchRequest[]): ResourcePrefetchData {

@@ -122,7 +122,7 @@ it('greets the user named in InitData', async () => {
 
 ## Fake native APIs
 
-Services that call the phone return nothing or throw in jsdom: `LynxNativeModule.call()` returns `undefined`, and `LynxTextMeasure.measure()` throws. Provide fakes:
+Services that call the phone never answer or throw in jsdom. `LynxNativeModule` sends its calls to the background thread, which a test doesn't have, so they never settle, and `LynxTextMeasure.measure()` throws. Provide fakes:
 
 ```typescript
 import { LynxNativeModule, LynxTextMeasure } from '@blotch/angular-lynx';

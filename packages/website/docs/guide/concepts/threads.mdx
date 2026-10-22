@@ -1,6 +1,6 @@
 # Threads: where your code runs
 
-Lynx runs JavaScript on two threads, and AngularLynx starts your app on both. You can write most components without thinking about this. It matters in two places: one rule for event handlers, and a few APIs that exist on only one thread.
+Lynx runs JavaScript on two threads. AngularLynx runs your app on one of them, and uses the other to reach APIs your app's thread doesn't have. You can write most components without thinking about this. It matters in two places: one rule for event handlers, and a few APIs that exist on only one thread.
 
 ## Two threads instead of one
 
@@ -15,7 +15,7 @@ The threads don't share memory. They can only send each other messages, and ever
 
 ## Where AngularLynx runs your code
 
-Your bundle contains your app twice, one copy for each thread. Both copies start when the app opens.
+Your Angular app runs on the main thread. The background thread loads the same code but doesn't start Angular. It runs only what the main thread asks of it.
 
 ```mermaid
 flowchart TB
@@ -26,17 +26,17 @@ flowchart TB
     end
     subgraph BG["Background thread"]
         direction TB
-        B1["Your Angular app"] --> B2["In-memory element tree<br/>(not shown)"]
-        B3["Background-only APIs<br/>such as fetch"]
+        B1["Your background functions"]
+        B2["Background-only APIs<br/>such as fetch"]
     end
     MT <-->|"messages (copied)"| BG
 ```
 
-- **The main-thread copy draws your UI.** Its templates become the native elements on screen.
+- **Your app draws the UI on the main thread.** Its templates become the native elements on screen.
 - **Your event handlers run on the main thread**, right when the native event fires. That's why a tap gets a response without waiting for the other thread.
-- **The background-thread copy builds its views in memory only.** AngularLynx uses it to reach APIs the main thread doesn't have. [`LynxLogger`](/guide/debugging), for example, sends your logs to the dev server from there.
+- **The background thread runs calls for your app.** Some AngularLynx services, such as [`LynxLogger`](/guide/debugging) and [`LynxNativeModule`](/api/angular-lynx/native-module), send calls there for you. Your own code gets there through a [background function](/api/main-thread/background-fn).
 
-Because both copies start, code in a constructor or `ngOnInit` runs once on each thread. Most code doesn't care. Be careful with one-time side effects, such as counting app launches.
+Constructors, `ngOnInit` and effects run once, like in a browser.
 
 ## The `setTimeout` rule
 
@@ -94,12 +94,13 @@ Template changes driven by signals, such as `@if`, `@for` and class bindings, ne
 | You want to                                 | Thread it needs | What to do                                                                                                                                              |
 | ------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Update the UI                               | Main            | Change signals. Angular does the rest                                                                                                                   |
-| Make network requests                       | Background      | Not supported from components yet. See [Network requests](/guide/concepts/javascript-environment#network-requests)                                      |
+| Make network requests                       | Background      | Fetch in a [background function](/api/main-thread/background-fn). See [Network requests](/guide/concepts/javascript-environment#network-requests)       |
 | Move an element on every frame, e.g. a drag | Main            | Use a [main-thread script](/guide/main-thread/)                                                                                                         |
 | Load a font at runtime                      | Background      | Call `LynxFont.addFont()` from anywhere. AngularLynx sends it to the background thread. See [Custom fonts](/guide/custom-fonts/#load-a-font-at-runtime) |
+| Call your host app's native code            | Background      | Use [`LynxNativeModule`](/api/angular-lynx/native-module). AngularLynx sends the calls to the background thread                                         |
 
 ## Related
 
 - [How a Lynx app runs](/guide/concepts/how-it-runs)
 - [Signals and change detection](/guide/concepts/signals)
-- [Renderer internals](/guide/renderer-architecture): how both threads boot, in detail.
+- [Renderer internals](/guide/renderer-architecture): how the app starts on each thread, in detail.

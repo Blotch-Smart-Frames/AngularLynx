@@ -7,14 +7,14 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 **Document** (`lynx-document.ts`):
 
 - `LynxDocument` (main thread) — wraps Lynx global `__Create*` functions (`__CreatePage`, `__CreateView`, `__CreateText`, `__CreateImage`, `__CreateScrollView`, `__CreateList`, `__CreateBlock`, `__CreateIf`, `__CreateFor`, `__CreateRawText`, `__CreateFrame`, `__CreateNonElement`)
-- `LynxBackgroundDocument` (background thread) — creates virtual `LynxBackgroundElement` nodes with tag metadata
+- `LynxHydrateDocument` (`ssr/hydrate-document.ts`) — reuses the elements of an SSR snapshot
 - `LynxDocumentBase` interface — shared contract for both
 
 **Element** (`lynx-element.ts`):
 
 - `BaseLynxElement` interface — common element API (setAttribute, setStyle, appendChild, insertBefore, remove, etc.)
 - `LynxElement` (main thread) — wraps `ElementRef`, delegates to global `__*` functions (`__SetAttribute`, `__AddInlineStyle`, `__AppendElement`, `__InsertElementBefore`, `__RemoveElement`, `__AddEvent`, `__AddClass`, `__GetParent`, `__NextElement`, etc.)
-- `LynxBackgroundElement` (background thread) — in-memory linked-list tree (no native calls), stores props/styles/classes in Maps/Sets
+- `InMemoryElement` / `InMemoryDocument` (`testing/`) — in-memory test doubles for renderer unit tests, never shipped
 
 **Renderer** (`renderer.ts`):
 
@@ -26,16 +26,16 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 **Bootstrap** (`runtime.ts`):
 
-- `bootstrapApplication(rootComponent, config?)` — on main thread, waits for `renderPage` callback before bootstrapping; on background thread, bootstraps immediately
+- `bootstrapApplication(rootComponent, config?)` — on main thread, waits for `renderPage` callback before bootstrapping. On the background thread it doesn't bootstrap and returns a promise that never settles: Angular runs on the main thread only (issue #81). The background thread runs module-level code: each module-level `backgroundFn()` registers, and the side-effect imports install its half of the bridges (`background-call.ts`, `lynx-logger`, `exposure/global-exposure-bridge.ts`, `lazy-bundle/mirrored-imports.ts`)
 - Registers global Lynx callbacks: `renderPage`, `updatePage`, `updateGlobalProps`, `processData`, `runWorklet`. Host data updates reach the main thread through `updatePage`/`updateGlobalProps` (and web-core's `__UpdateGlobalProps` engine event), and the background thread through the `updateCardData`/`updateGlobalProps` hooks on `lynx.getApp()`; both publish through `data-flow/host-updates.ts`
 
 **Providers** (`providers.ts`):
 
-- `provideRenderer()` — returns `EnvironmentProviders` that sets up `LYNX_DOCUMENT` (thread-aware factory: `LynxDocument` if `__MAIN_THREAD__`, else `LynxBackgroundDocument`) and `LynxRendererFactory2` as `RendererFactory2`
+- `provideRenderer()` — returns `EnvironmentProviders` that sets up `LYNX_DOCUMENT` (`LynxDocument`, or `LynxHydrateDocument` while SSR hydrates) and `LynxRendererFactory2` as `RendererFactory2`
 
 **DI Token** (`token.ts`):
 
-- `LYNX_DOCUMENT` — `InjectionToken<LynxDocumentBase>` for thread-aware document injection
+- `LYNX_DOCUMENT` — `InjectionToken<LynxDocumentBase>` for document injection
 
 ## Supported Lynx Elements
 
@@ -61,8 +61,8 @@ src/
   lib/
     renderer.ts                    # LynxRenderer (Renderer2 impl)
     lynx-renderer-factory2.ts      # LynxRendererFactory2 (RendererFactory2 impl)
-    lynx-document.ts               # LynxDocument + LynxBackgroundDocument
-    lynx-element.ts                # LynxElement + LynxBackgroundElement + BaseLynxElement
+    lynx-document.ts               # LynxDocument
+    lynx-element.ts                # LynxElement + BaseLynxElement
     runtime.ts                     # bootstrapApplication(), global callbacks
     providers.ts                   # provideRenderer()
     token.ts                       # LYNX_DOCUMENT injection token

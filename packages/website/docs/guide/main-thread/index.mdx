@@ -84,11 +84,11 @@ The build wraps the function in `mainThreadFn()` and adds the import. Both forms
 
 ## Define scripts at module level
 
-Put main-thread scripts at the top level of a file, as above. A script is registered once, when its file loads. Both copies of your app load files in the same order, so the script gets the same ID on both threads. A call from the background thread needs that ID.
+Put main-thread scripts at the top level of a file, as above. A script is registered once, when its file loads.
 
-A class property, such as `readonly fade = (event) => { 'main thread'; … }`, works for a `[mainThreadBind*]` input and can read `this`. Each instance registers its own function, which is released when the component or service is destroyed. Its ID can differ between the threads, though, so don't pass it to `runOnMainThread()` from the background thread.
+A class property, such as `readonly fade = (event) => { 'main thread'; … }`, works for a `[mainThreadBind*]` input and can read `this`. Each instance registers its own function, which is released when the component or service is destroyed.
 
-A script runs in the main-thread copy of your file. It reads that copy's module-level variables. Data from the background thread reaches it only as copied JSON arguments.
+A script runs on the main thread, like the rest of your app, so it reads the same module-level variables as your components. Data from the background thread reaches it only as copied JSON.
 
 ## Keep state between events
 
@@ -113,7 +113,7 @@ const dragMove = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 ```
 
-Each thread has its own copy of a ref, and the copies aren't synced. On the main thread, a ref works like a module-level variable that's labeled as script state. Pass a ref to a function on the other thread, and it arrives as that thread's copy.
+On the main thread, a ref works like a module-level variable that's labeled as script state. The background thread runs your files too, so a ref created at module level has a copy there, and the copies aren't synced. Pass a ref to a background function, and it arrives as the background thread's copy.
 
 ## Call the background thread
 
@@ -135,8 +135,8 @@ const onTap = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 ```
 
-- **`runOnBackground()` is a global.** Call it from main-thread code: a main-thread script, or a template handler. It doesn't exist on the background thread, so don't call it from a constructor or `ngOnInit`, which run on both.
-- **Define `backgroundFn()` at module level**, for the same ID reason as main-thread scripts.
+- **`runOnBackground()` is a global.** Call it from any of your Angular code, a main-thread script or a template handler: they all run on the main thread.
+- **Define `backgroundFn()` at module level.** The background thread runs your files, but not your components, so a function created in a class or a function never registers there. Files that load lazily, such as a lazy route's, work too: the background thread loads them when the main thread does.
 - **Arguments and the return value are copied as JSON.**
 - **The function can be `async`.** `runOnBackground()` waits for a returned Promise, so the function can `fetch()` data (see [Network requests](/guide/concepts/javascript-environment#network-requests)). If it throws or rejects, the Promise `runOnBackground()` returned rejects with the same message.
 
@@ -170,9 +170,8 @@ export class Double {
 }
 ```
 
-- **From a template handler**, which is already on the main thread, the script runs right away.
-- **From the background thread**, the call crosses threads and the arguments are copied as JSON.
-- **Not from code that runs on both threads.** A call in a constructor, `ngOnInit` or `effect()` runs the script twice: once from each copy of your app.
+- **The script runs right away.** Your Angular code is already on the main thread, so the call doesn't cross threads, and the arguments aren't copied.
+- **Call it from anywhere in your app,** including a constructor, `ngOnInit` or `effect()`. It runs once per call.
 
 To get from the main thread to the background thread, use `runOnBackground()`, not `runOnMainThread()`.
 

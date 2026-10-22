@@ -211,10 +211,11 @@ class AngularWebpackPlugin {
         });
 
       // Add the lynxProcessEvalResult runtime module to ALL chunks that need it,
-      // including background-thread chunks. Angular Router's loadComponent() runs
-      // on the background thread, so chunk installation must work there. An earlier
-      // version excluded :background chunks — that caused lazy routes to silently
-      // fail because the chunk installer was missing from the thread that needed it.
+      // including background-thread chunks. The background thread runs each lazy
+      // import the main thread's router runs (the runtime's mirrored-imports.ts),
+      // so chunk installation must work there. An earlier version excluded
+      // :background chunks — that caused lazy routes to silently fail because the
+      // chunk installer was missing from the thread that needed it.
       compilation.hooks.runtimeRequirementInTree
         .for(RuntimeGlobals.lynxProcessEvalResult)
         .tap('VanillaWebpackPlugin', (chunk) => {

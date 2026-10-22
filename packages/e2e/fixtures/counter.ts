@@ -1,8 +1,25 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  backgroundFn,
+  createMainThreadRef,
+  LYNX_ELEMENTS,
+  MainThreadRef,
+} from '@blotch/angular-lynx';
 
 import { TailwindCard } from './tailwind-card';
+
+const factor = createMainThreadRef(2);
+
+/**
+ * Runs on the background thread for "Ask background". It's async, and takes a
+ * MainThreadRef, so its answer only shows when runOnBackground() awaits the
+ * result and hands the ref over as the background thread's copy (issue #54).
+ */
+const multiply = backgroundFn(async (ref: unknown, n: number) => {
+  await Promise.resolve();
+  return ref instanceof MainThreadRef ? n * (ref.current as number) : -1;
+});
 
 /**
  * E2E fixture that replaces the `hello` component the component schematic
@@ -26,6 +43,11 @@ import { TailwindCard } from './tailwind-card';
  * either), with no error on screen, so native/xelement.yaml types into the
  * input, finds the svg and opens the overlay. Lynx Explorer bundles XElement;
  * the shells from `ng build --platform` have to as well.
+ *
+ * "Ask background" calls an async background function from a tap handler.
+ * It comes after the XElement elements so it doesn't push the input down:
+ * in Lynx Explorer, whose navigation bar sits above the app, the keyboard
+ * would then cover the "Typed:" line that native/xelement.yaml checks.
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
@@ -94,6 +116,18 @@ import { TailwindCard } from './tailwind-card';
           </view>
         </view>
       </overlay>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Ask background"
+        style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="askBackground()"
+      >
+        <text>Ask background</text>
+      </view>
+      <text flatten="false" style="margin-top: 8px;"
+        >Background: {{ answer() }}</text
+      >
       <app-tailwind-card />
     </view>
   `,
@@ -103,6 +137,7 @@ export class Hello {
   readonly count = signal(0);
   readonly typed = signal('');
   readonly overlayOpen = signal(false);
+  readonly answer = signal('');
 
   increment() {
     this.count.update((count) => count + 1);
@@ -114,5 +149,16 @@ export class Hello {
 
   openLazyPage() {
     void this.#router.navigateByUrl('/lazy');
+  }
+
+  /**
+   * Asks `multiply` for 21 times the ref. Tap handlers run on the main
+   * thread, where runOnBackground() exists.
+   */
+  askBackground() {
+    void runOnBackground(multiply, factor, 21).then(
+      (result) => this.answer.set(JSON.stringify(result)),
+      (error: unknown) => this.answer.set(String(error)),
+    );
   }
 }

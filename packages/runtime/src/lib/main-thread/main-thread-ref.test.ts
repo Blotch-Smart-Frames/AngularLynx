@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { __mainThreadRefMap } from '../worklet-bridge';
 import {
   __resetRefCounter,
   createMainThreadRef,
@@ -14,21 +15,22 @@ describe('MainThreadRef', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    for (const key of Object.keys(__mainThreadRefMap)) {
+      delete __mainThreadRefMap[key as unknown as number];
+    }
   });
 
-  describe('on the main thread (__MAIN_THREAD__ true)', () => {
-    let refMap: Record<number, unknown>;
-
+  // Both threads register, so a ref passed from the other thread as a
+  // { _wvid } marker resolves to this thread's instance.
+  describe.each([true, false])('with __MAIN_THREAD__ %s', (mainThread) => {
     beforeEach(() => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
-      refMap = {};
-      vi.stubGlobal('__workletRefMap', refMap);
+      vi.stubGlobal('__MAIN_THREAD__', mainThread);
     });
 
-    it('registers itself in __workletRefMap under its _wvid', () => {
+    it('registers itself in __mainThreadRefMap under its _wvid', () => {
       const ref = new MainThreadRef('initial');
 
-      expect(refMap[ref._wvid]).toBe(ref);
+      expect(__mainThreadRefMap[ref._wvid]).toBe(ref);
     });
 
     it('assigns incrementing _wvid values across instances', () => {
@@ -37,18 +39,6 @@ describe('MainThreadRef', () => {
 
       expect(first._wvid).toBe(0);
       expect(second._wvid).toBe(1);
-    });
-  });
-
-  describe('on the background thread (__MAIN_THREAD__ false)', () => {
-    beforeEach(() => {
-      vi.stubGlobal('__MAIN_THREAD__', false);
-    });
-
-    it('does not touch __workletRefMap', () => {
-      // No __workletRefMap global is stubbed at all here — if the constructor
-      // tried to register, it would throw on `undefined[this._wvid] = this`.
-      expect(() => new MainThreadRef('value')).not.toThrow();
     });
   });
 

@@ -35,9 +35,29 @@ Code that calls a missing API throws when it runs. That includes code inside lib
 
 Lynx provides `fetch` only on the [background thread](/guide/concepts/threads). Your components draw the UI and handle events on the main thread, which has no network access.
 
-As a result, **HTTP requests from Angular code aren't supported yet.** That covers `HttpClient`, `httpResource` and calling `fetch` directly. Lynx itself has no `XMLHttpRequest` or `WebSocket`.
+As a result, **`HttpClient`, `httpResource` and `fetch` in a component aren't supported yet.** Lynx itself has no `XMLHttpRequest` or `WebSocket`.
 
-Two ways to load data today:
+Three ways to load data today:
+
+- **Fetch in a background function.** Put the request in a [`backgroundFn()`](/api/main-thread/background-fn), and call it from a template handler with `runOnBackground()`. The result comes back to the main thread as a Promise, and setting a signal there updates the screen:
+
+  ```typescript
+  type Post = { id: number; title: string };
+
+  // Runs on the background thread, which has fetch().
+  const loadPosts = backgroundFn(async (): Promise<Post[]> => {
+    const response = await fetch('https://example.com/posts.json');
+    return response.json();
+  });
+
+  // In the component. A (bindtap) handler runs on the main thread,
+  // where runOnBackground() exists.
+  load(): void {
+    runOnBackground(loadPosts).then((posts) => this.posts.set(posts as Post[]));
+  }
+  ```
+
+  Lynx's `fetch` needs the HTTP service of the host app. Lynx Explorer and the apps `ng build --platform` makes have it.
 
 - **Ship data in the app.** Import JSON files, and they're built into the bundle.
 - **Call your native code.** A host app you control can expose a networking module. Call it with [`LynxNativeModule`](/api/angular-lynx/native-module).

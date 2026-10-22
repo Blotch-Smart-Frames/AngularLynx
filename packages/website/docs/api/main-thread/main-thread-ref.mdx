@@ -63,7 +63,7 @@ class MainThreadRef<T> {
 ## Constraints
 
 - **Each thread has its own copy.** A value written on the main thread isn't seen by code on the background thread, and the reverse. Use a ref only from main-thread functions.
-- **Use it from the function's closure.** Don't pass it as an argument to `runOnMainThread()` or `runOnBackground()`: from the other thread, the function receives a plain object instead of the ref.
+- **Passed to the other thread, it arrives as that thread's copy.** A function that gets a ref from `runOnMainThread()` or `runOnBackground()` receives the same ref it would reach through its closure.
 - **Create it at module scope**, next to the functions that use it.
 - **Changing it doesn't render anything.** It isn't a signal.
 

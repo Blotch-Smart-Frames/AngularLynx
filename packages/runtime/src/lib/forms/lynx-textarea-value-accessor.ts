@@ -18,7 +18,6 @@ import { type ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 @Directive({
   selector:
     'textarea[formControlName],textarea[formControl],textarea[ngModel],textarea[formField]',
-  standalone: true,
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,

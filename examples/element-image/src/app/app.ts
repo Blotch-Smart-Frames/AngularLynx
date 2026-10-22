@@ -17,7 +17,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           <text
             class="uppercase mb-3 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
           >
-            aspectFit (default)
+            aspectFit
           </text>
           <view class="items-center rounded-lg bg-zinc-100 p-4">
             <image

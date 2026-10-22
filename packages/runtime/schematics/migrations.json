@@ -5,6 +5,11 @@
       "version": "22.2.3",
       "description": "Adds .html templates to the Tailwind content glob, which the build now reads",
       "factory": "./migrations/tailwind-html-templates/index"
+    },
+    "accessibility-traits": {
+      "version": "22.2.3",
+      "description": "Renames accessibility-trait, which Lynx ignores, to accessibility-traits",
+      "factory": "./migrations/accessibility-traits/index"
     }
   }
 }

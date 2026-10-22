@@ -7,7 +7,11 @@ export type ExposureEventDetail = {
   'exposure-scene': string;
   exposureID: string;
   exposureScene: string;
-  'unique-id': number;
+  /**
+   * Identifies the native element. Lynx documents it as a string, which iOS
+   * and Android send; the web sends the element's numeric unique ID.
+   */
+  'unique-id': string | number;
 };
 
 /**

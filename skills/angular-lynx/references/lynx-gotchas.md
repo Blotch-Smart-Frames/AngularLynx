@@ -220,11 +220,10 @@ Use `rotateX()`/`rotateY()`/`rotateZ()` and `scaleX()`/`scaleY()`/`scaleZ()` sep
 
 ## Surprising Defaults
 
-| Property       | Web Default   | Lynx Default                   |
-| -------------- | ------------- | ------------------------------ |
-| `display`      | `block`       | `linear`                       |
-| `box-sizing`   | `content-box` | `border-box`                   |
-| `position`     | `static`      | `relative`                     |
-| `border-style` | `none`        | `solid`                        |
-| `font-size`    | `16px`        | `14px`                         |
-| `image mode`   | `fill`        | `aspectFit` (Angular renderer) |
+| Property       | Web Default   | Lynx Default |
+| -------------- | ------------- | ------------ |
+| `display`      | `block`       | `linear`     |
+| `box-sizing`   | `content-box` | `border-box` |
+| `position`     | `static`      | `relative`   |
+| `border-style` | `none`        | `solid`      |
+| `font-size`    | `16px`        | `14px`       |

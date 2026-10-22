@@ -3,10 +3,13 @@ import { LynxElementBase } from './base';
 
 /**
  * High-performance virtualized list, equivalent to RecyclerView / UITableView.
+ *
+ * Gaps between items aren't attributes: `list-main-axis-gap` and
+ * `list-cross-axis-gap` are CSS properties, which Lynx's list reads from its
+ * computed style, so set them in `style` (`[style.list-main-axis-gap]`).
  */
 @Directive({
   selector: 'list',
-  standalone: true,
   inputs: [
     'list-type',
     'span-count',
@@ -26,8 +29,6 @@ import { LynxElementBase } from './base';
     'preload-buffer-count',
     'item-snap',
     'update-animation',
-    'list-main-axis-gap',
-    'list-cross-axis-gap',
     'enable-async-list',
     'enable-insert-platform-view-operation',
     'experimental-search-ref-anchor-strategy',
@@ -96,14 +97,6 @@ export class LynxList extends LynxElementBase {
    */
   'update-animation'?: 'default' | 'none';
   /**
-   * Gap between items on the main axis (CSS length).
-   */
-  'list-main-axis-gap'?: string;
-  /**
-   * Gap between columns/rows on the cross axis (CSS length).
-   */
-  'list-cross-axis-gap'?: string;
-  /**
    * Required by Lynx's native list UI whenever the app uses the standard
    * dual-thread engine strategy (always true for AngularLynx) — without it
    * the native list silently never applies its data source, so
@@ -134,7 +127,6 @@ export class LynxList extends LynxElementBase {
  */
 @Directive({
   selector: 'list-item',
-  standalone: true,
   inputs: [
     'item-key',
     'full-span',
@@ -143,7 +135,6 @@ export class LynxList extends LynxElementBase {
     'recyclable',
     'reuse-identifier',
     'estimated-main-axis-size-px',
-    'defer',
   ],
 })
 export class LynxListItem extends LynxElementBase {
@@ -176,9 +167,4 @@ export class LynxListItem extends LynxElementBase {
    * Estimated item size in px for layout pre-calculation.
    */
   'estimated-main-axis-size-px'?: number;
-  /**
-   * Deferred rendering. Pass `true` to defer, or an object to control
-   * whether the item unmounts when recycled.
-   */
-  defer?: boolean | { unmountRecycled?: boolean };
 }

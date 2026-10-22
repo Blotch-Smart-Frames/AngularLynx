@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'image',
-  standalone: true,
   inputs: [
     'src',
     'mode',

@@ -91,7 +91,6 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
     '[mainThreadBindscroll],[mainThreadCatchscroll],' +
     '[mainThreadBindanimationstart],[mainThreadBindanimationend],' +
     '[mainThreadBindtransitionend],[mainThreadBindlayoutchange]',
-  standalone: true,
   inputs: [
     'mainThreadBindtap',
     'mainThreadCatchtap',

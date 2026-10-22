@@ -125,11 +125,11 @@ type ExposureEventDetail = {
   'exposure-scene': string;
   exposureID: string;
   exposureScene: string;
-  'unique-id': number;
+  'unique-id': string | number;
 };
 ```
 
-One element in a batch. Lynx sends the ID and scene twice, in kebab case and camel case. `unique-id` identifies the native element.
+One element in a batch. Lynx sends the ID and scene twice, in kebab case and camel case. `unique-id` identifies the native element: a string on iOS and Android, a number on the web.
 
 ### `GlobalExposureEvent`
 

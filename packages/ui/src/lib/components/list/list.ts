@@ -11,7 +11,6 @@ import { cn } from '../../utils/cn';
 
 @Component({
   selector: 'ui-list',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // `|| undefined` on boolean attributes removes the attribute entirely when
@@ -28,8 +27,6 @@ import { cn } from '../../utils/cn';
       [attr.sticky]="sticky() || undefined"
       [attr.sticky-offset]="stickyOffset()"
       [attr.preload-buffer-count]="preloadBufferCount()"
-      [attr.list-main-axis-gap]="mainAxisGap()"
-      [attr.list-cross-axis-gap]="crossAxisGap()"
       [attr.lower-threshold-item-count]="lowerThresholdItemCount()"
       [attr.upper-threshold-item-count]="upperThresholdItemCount()"
       [class]="listClass()"
@@ -63,9 +60,16 @@ export class UiList {
 
   protected readonly listClass = computed(() => cn('w-full', this.userClass()));
 
-  // Explicit height is required for list to scroll in Lynx
-  protected readonly listStyle = computed(() => {
-    const h = this.height();
-    return h ? `height: ${h};` : '';
-  });
+  // Explicit height is required for list to scroll in Lynx. The gaps go here
+  // too: they're CSS properties that Lynx's list reads from its style, and as
+  // attributes they did nothing.
+  protected readonly listStyle = computed(() =>
+    [
+      this.height() && `height: ${this.height()};`,
+      this.mainAxisGap() && `list-main-axis-gap: ${this.mainAxisGap()};`,
+      this.crossAxisGap() && `list-cross-axis-gap: ${this.crossAxisGap()};`,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 }

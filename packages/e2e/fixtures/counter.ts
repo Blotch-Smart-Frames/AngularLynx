@@ -61,9 +61,8 @@ import { TailwindCard } from './tailwind-card';
         (bindinput)="onInput($event)"
       />
       <text flatten="false" style="margin-top: 8px;">Typed: {{ typed() }}</text>
-      <!-- flatten is a plain attribute here: the svg directive has no flatten
-        input, and Angular treats <svg> as an SVG element, which has no
-        flatten property to bind. -->
+      <!-- Static flatten="false" here and on the <text>s, bound on the <view>s:
+        every element's flatten input takes both, and the build checks it. -->
       <svg
         flatten="false"
         [accessibility-element]="true"

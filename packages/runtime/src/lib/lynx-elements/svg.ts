@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'svg',
-  standalone: true,
   inputs: ['src', 'content', 'current-color'],
 })
 export class LynxSvg extends LynxElementBase {

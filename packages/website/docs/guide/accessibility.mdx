@@ -29,7 +29,6 @@ Use `id` unless you have a reason not to.
 
 - **`<text>` and `<image>` are read by default.** A `<text>` reads its own text, so most text needs nothing extra.
 - **`[accessibility-element]="true"` makes an element one stop** for the screen reader. Use it on a `<view>` that acts as a button or groups related content.
-- **Bind true/false attributes with brackets.** A plain `accessibility-element="true"` passes the string `"true"`, which Angular's strict template checks reject.
 - **`accessibility-label` is what gets read.** Give one to anything without readable text, such as an icon button.
 - **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`.
 

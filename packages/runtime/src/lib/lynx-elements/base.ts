@@ -8,6 +8,51 @@ import {
 import type { BaseLynxElement } from '../lynx-element/types';
 
 /**
+ * A length Lynx's exposure detection parses, such as `'20px'` or `'-10rpx'`.
+ * Lynx reads the margins as strings, so a bare number has no effect.
+ */
+export type ExposureMargin = `${number}px` | `${number}rpx`;
+
+/**
+ * Lets a true/false input also be written as a static attribute, as Lynx's
+ * guides and ours do: `flatten="false"`, or a bare `ignore-focus` for true.
+ * Angular type-checks a static attribute's string against the input, so
+ * without this `<text flatten="false">` stops compiling once `flatten` is an
+ * input. Unlike Angular's `booleanAttribute`, `undefined` stays `undefined`,
+ * so a binding can still remove the attribute and restore Lynx's default.
+ */
+// oxlint-disable-next-line func-style, @blotch/no-function-declaration -- Angular's compiler takes a named input transform only as a function declaration (NG1010)
+function booleanInput(
+  value: boolean | '' | 'true' | 'false' | undefined,
+): boolean | undefined {
+  return typeof value === 'string' ? value !== 'false' : value;
+}
+
+/**
+ * Lets `pan-intercept-direction` also be written as a static attribute,
+ * `pan-intercept-direction="1"`, and hands Lynx a number either way.
+ */
+// oxlint-disable-next-line func-style, @blotch/no-function-declaration -- Angular's compiler takes a named input transform only as a function declaration (NG1010)
+function panInterceptDirectionInput(
+  value: 0 | 1 | '0' | '1' | undefined,
+): 0 | 1 | undefined {
+  return typeof value === 'string' ? (Number(value) as 0 | 1) : value;
+}
+
+/**
+ * Lets `pan-intercept-scope` also be written as a static attribute,
+ * `pan-intercept-scope="5"`, and hands Lynx a number either way.
+ */
+// oxlint-disable-next-line func-style, @blotch/no-function-declaration -- Angular's compiler takes a named input transform only as a function declaration (NG1010)
+function panInterceptScopeInput(
+  value: 0 | 1 | 2 | 3 | 4 | 5 | '0' | '1' | '2' | '3' | '4' | '5' | undefined,
+): 0 | 1 | 2 | 3 | 4 | 5 | undefined {
+  return typeof value === 'string'
+    ? (Number(value) as 0 | 1 | 2 | 3 | 4 | 5)
+    : value;
+}
+
+/**
  * @Directive() is required so that ng-packagr's Angular partial compiler
  * recognizes this base class as an Angular artifact. The selector is left
  * empty — the class is never used directly as a directive.
@@ -39,25 +84,30 @@ import type { BaseLynxElement } from '../lynx-element/types';
   inputs: [
     'id',
     'name',
-    'accessibility-element',
+    { name: 'accessibility-element', transform: booleanInput },
     'accessibility-label',
     // The current value a screen reader reads after the label (a slider's
     // position, a chart's focused point), and custom actions it offers
     // (string[]; the chosen one arrives as the accessibility action event's detail.name).
     'accessibility-value',
     'accessibility-actions',
-    'accessibility-trait',
+    'accessibility-traits',
     'accessibility-elements',
-    'accessibility-elements-hidden',
-    'accessibility-exclusive-focus',
+    { name: 'accessibility-elements-hidden', transform: booleanInput },
+    { name: 'accessibility-exclusive-focus', transform: booleanInput },
     'a11y-id',
-    'user-interaction-enabled',
-    'native-interaction-enabled',
-    'event-through',
+    { name: 'user-interaction-enabled', transform: booleanInput },
+    { name: 'native-interaction-enabled', transform: booleanInput },
+    { name: 'event-through', transform: booleanInput },
     'hit-slop',
-    'block-native-event',
-    'ignore-focus',
-    'ios-enable-simultaneous-touch',
+    { name: 'block-native-event', transform: booleanInput },
+    { name: 'ignore-focus', transform: booleanInput },
+    { name: 'ios-enable-simultaneous-touch', transform: booleanInput },
+    { name: 'flatten', transform: booleanInput },
+    { name: 'pan-intercept-direction', transform: panInterceptDirectionInput },
+    { name: 'pan-intercept-scope', transform: panInterceptScopeInput },
+    'consume-slide-event',
+    { name: 'enable-touch-pseudo-propagation', transform: booleanInput },
     'exposure-id',
     'exposure-scene',
     'exposure-area',
@@ -69,6 +119,7 @@ import type { BaseLynxElement } from '../lynx-element/types';
     'exposure-ui-margin-bottom',
     'exposure-ui-margin-left',
     'exposure-ui-margin-right',
+    { name: 'enable-exposure-ui-margin', transform: booleanInput },
   ],
 })
 export class LynxElementBase implements OnChanges {
@@ -100,9 +151,29 @@ export class LynxElementBase implements OnChanges {
    * Text read aloud by screen readers.
    */
   'accessibility-label'?: string;
-  'accessibility-trait'?: 'none' | 'button' | 'image' | 'text';
   /**
-   * Comma-separated list of child element names that are accessibility nodes.
+   * The kind of element a screen reader announces. Plural, as Lynx reads it:
+   * iOS, Android and Harmony ignore `accessibility-trait`. @default 'none'
+   */
+  'accessibility-traits'?:
+    | 'text'
+    | 'image'
+    | 'button'
+    | 'link'
+    | 'header'
+    | 'search'
+    | 'selected'
+    | 'playable'
+    | 'keyboard'
+    | 'summary'
+    | 'disabled'
+    | 'updating'
+    | 'adjustable'
+    | 'tabbar'
+    | 'none';
+  /**
+   * Comma-separated `id`s of the child elements a screen reader visits, in
+   * order. iOS and Android look each one up as an `id` selector.
    */
   'accessibility-elements'?: string;
   'accessibility-elements-hidden'?: boolean;
@@ -144,6 +215,32 @@ export class LynxElementBase implements OnChanges {
    * Allow simultaneous touch recognition (iOS).
    */
   'ios-enable-simultaneous-touch'?: boolean;
+  /**
+   * Lets Lynx draw the element into its parent's native view instead of
+   * creating its own (Android). `false` gives it its own view, which sticky
+   * positioning, text selection and reliable clipping need. @default true
+   */
+  flatten?: boolean;
+  /**
+   * Direction in which the element takes pan gestures from native views
+   * outside Lynx: 0 = horizontal, 1 = vertical.
+   */
+  'pan-intercept-direction'?: 0 | 1;
+  /**
+   * Which views `pan-intercept-direction` takes pans from: 0 = self,
+   * 1 = ancestors, 2 = descendants, 3 = self and ancestors, 4 = self and
+   * descendants, 5 = all.
+   */
+  'pan-intercept-scope'?: 0 | 1 | 2 | 3 | 4 | 5;
+  /**
+   * Swipe angle ranges, `[start, end]` in degrees, that the element keeps
+   * from platform gestures.
+   */
+  'consume-slide-event'?: [number, number][];
+  /**
+   * Whether `:active` also applies to the ancestors on the touch's event path.
+   */
+  'enable-touch-pseudo-propagation'?: boolean;
 
   // ---- Exposure tracking -------------------------------------------------
   /**
@@ -155,39 +252,50 @@ export class LynxElementBase implements OnChanges {
    */
   'exposure-scene'?: string;
   /**
-   * Percentage of the element that must be visible (0–100) to trigger exposure.
+   * How much of the element must be visible to count as exposed, as a
+   * percentage string such as `'50%'`. @default '0%'
    */
-  'exposure-area'?: number;
+  'exposure-area'?: `${number}%`;
   /**
-   * Extends/shrinks the viewport detection zone (top edge, in px).
+   * Extends/shrinks the viewport detection zone (top edge).
    */
-  'exposure-screen-margin-top'?: number | string;
+  'exposure-screen-margin-top'?: ExposureMargin;
   /**
-   * Extends/shrinks the viewport detection zone (bottom edge, in px).
+   * Extends/shrinks the viewport detection zone (bottom edge).
    */
-  'exposure-screen-margin-bottom'?: number | string;
+  'exposure-screen-margin-bottom'?: ExposureMargin;
   /**
-   * Extends/shrinks the viewport detection zone (left edge, in px).
+   * Extends/shrinks the viewport detection zone (left edge).
    */
-  'exposure-screen-margin-left'?: number | string;
+  'exposure-screen-margin-left'?: ExposureMargin;
   /**
-   * Extends/shrinks the viewport detection zone (right edge, in px).
+   * Extends/shrinks the viewport detection zone (right edge).
    */
-  'exposure-screen-margin-right'?: number | string;
+  'exposure-screen-margin-right'?: ExposureMargin;
   /**
-   * Adjusts the element's own bounding rect for exposure detection (top, in px).
+   * Adjusts the element's own bounding rect for exposure detection (top).
+   * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-top'?: number | string;
+  'exposure-ui-margin-top'?: ExposureMargin;
   /**
-   * Adjusts the element's own bounding rect for exposure detection (bottom, in px).
+   * Adjusts the element's own bounding rect for exposure detection (bottom).
+   * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-bottom'?: number | string;
+  'exposure-ui-margin-bottom'?: ExposureMargin;
   /**
-   * Adjusts the element's own bounding rect for exposure detection (left, in px).
+   * Adjusts the element's own bounding rect for exposure detection (left).
+   * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-left'?: number | string;
+  'exposure-ui-margin-left'?: ExposureMargin;
   /**
-   * Adjusts the element's own bounding rect for exposure detection (right, in px).
+   * Adjusts the element's own bounding rect for exposure detection (right).
+   * iOS and Android apply it only with `enable-exposure-ui-margin`.
    */
-  'exposure-ui-margin-right'?: number | string;
+  'exposure-ui-margin-right'?: ExposureMargin;
+  /**
+   * Turns on `exposure-ui-margin-*` on iOS and Android (always on for Harmony
+   * and the web). It also changes how they apply `exposure-screen-margin-*`.
+   * @default false
+   */
+  'enable-exposure-ui-margin'?: boolean;
 }

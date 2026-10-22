@@ -1267,7 +1267,7 @@ The Lynx `<input>` element has a distinct API:
 | `aspectFill`  | `cover`                 | Scales to fill shortest side, may crop      |
 | `center`      | `none`                  | No scaling, centers image                   |
 
-Note: The AngularLynx renderer defaults images to `aspectFit` (see `lynx-document.ts`), while the Lynx native default is `scaleToFill`.
+The default is `scaleToFill` on iOS, Android and the web alike, the same as the web's `object-fit: fill`. AngularLynx leaves it there, as React Lynx does.
 
 ---
 
@@ -1556,20 +1556,67 @@ The AngularLynx renderer handles this transparently: `LynxListElement` intercept
 
 ---
 
-## `<x-scroll-view>` bounces defaults to `true`; `<x-image>` defaults to `aspectFit` in the renderer
+## `<x-list>` item gaps are CSS properties, not attributes
 
 ### What you'd expect
 
-Scrolling without bounce and images stretching to fill (web default `object-fit: fill` / Lynx native default `scaleToFill`).
+`list-main-axis-gap="8px"` on a `<list>` to space its items, like its other options (`span-count`, `list-type`), which are attributes.
 
 ### What Lynx does
 
-Two default behaviors set by the AngularLynx renderer differ from what you might expect:
+`list-main-axis-gap` and `list-cross-axis-gap` are CSS properties. The C++ list (`ListElement::ResolveListAxisGapStyle` in `core/renderer/dom/fiber/list_element.cc`) reads them from its computed style, and the web's `x-list` from the `--list-main-axis-gap` variable its CSS sets. As attributes they do nothing. Set them in `style`: `style="list-main-axis-gap: 8px"` or `[style.list-main-axis-gap]`. `LYNX_ELEMENTS` declared them as inputs until 22.2.3, and `UiList` bound them as attributes.
 
-- **`<x-scroll-view>`**: The native `bounces` property (iOS over-scroll bounce) defaults to `true` in the Lynx API.
-- **`<x-image>`**: The AngularLynx renderer's `LynxDocument` creates image elements with `mode: 'aspectFit'` by default (not `scaleToFill` which is the Lynx native default). This means images preserve their aspect ratio by default in the Angular renderer.
+---
 
-Be explicit with `mode` on every `<x-image>` to avoid surprising platform-specific defaults.
+## Exposure areas and margins are strings with units
+
+### What you'd expect
+
+`[exposure-area]="50"` or `[exposure-screen-margin-top]="20"`, numbers as in most layout APIs.
+
+### What Lynx does
+
+iOS and Android take `exposure-area` as a string (their setters are `NSString` and `String`), which `@lynx-js/types` documents as a percentage such as `'50%'`. The margins are lengths, `'20px'` or `'20rpx'`. `exposure-ui-margin-*` also needs `enable-exposure-ui-margin` on iOS and Android; the web and Harmony apply them without it.
+
+---
+
+## `<x-scroll-view>` bounces defaults to `true`
+
+### What you'd expect
+
+Scrolling without bounce.
+
+### What Lynx does
+
+The native `bounces` property (iOS over-scroll bounce) defaults to `true` in the Lynx API.
+
+---
+
+## `__SetConfig` doesn't set attributes
+
+### What you'd expect
+
+`__SetConfig(element, { mode: 'aspectFit' })` to give an element those properties, as its name suggests.
+
+### What Lynx does
+
+`Element::SetConfig` (`core/renderer/dom/element.cc`) only stores the table, which `__GetConfig` and `__GetElementConfig` read back. Nothing passes it to the native UI, and web-core keeps it in its own store, so `x-image` never sees it. Set element properties with `__SetAttribute`.
+
+AngularLynx used to create every `<image>` with `__SetConfig(element, { mode: 'aspectFit', fadeIn: true, loadingPlaceholder: '' })`, so images were documented as defaulting to `aspectFit` while they rendered with Lynx's `scaleToFill`. The renderer no longer sets anything on a new image.
+
+---
+
+## The renderer's inline styles beat the app's classes
+
+### What you'd expect
+
+A class such as `h-[120px]` or `border-zinc-200` on an element to apply, as it does on the web unless the element has an inline style for the same property.
+
+### What Lynx does
+
+Inline styles win over class selectors, as on the web. So any default the renderer sets with `__AddInlineStyle` overrides the app's classes. AngularLynx used to give every `<input>` `height: 40px; border: 1px solid` (80px for `<textarea>`): the element-textarea example's `h-[120px]` rendered 80px tall, and a `border-zinc-200` input drew a black border, because the `border` shorthand also reset the color.
+
+Native fields don't need the defaults: iOS and Android measure an `<input>` or `<textarea>` from its font (`LynxUIBaseInputShadowNode`), so it's one line of text tall. They have no border. The renderer now sets no inline styles on them, as React Lynx doesn't. Never give an element default styles inline: the app can only override them with inline styles of its own.
 
 ---
 
@@ -1934,8 +1981,8 @@ Lynx uses its own attribute system:
 
 - **`accessibility-element="true/false"`** — marks an element as an accessible node (default `true` for `<text>`/`<image>`, `false` for `<view>`).
 - **`accessibility-label`** — equivalent to `aria-label`.
-- **`accessibility-trait`** — element type hint: `'button' | 'image' | 'text'` (simpler than ARIA roles).
-- **`accessibility-elements`** — comma-separated IDs controlling focus order and limiting which children are accessible (no ARIA equivalent; closest is `aria-flowto`).
+- **`accessibility-traits`** — element type hint such as `'button'`, `'image'`, `'header'` or `'link'` (simpler than ARIA roles). The name is plural: iOS (`LynxUI.m`), Android (`PropsConstants.ACCESSIBILITY_TRAITS`) and Harmony ignore `accessibility-trait`. `LYNX_ELEMENTS` declared the singular until 22.2.3.
+- **`accessibility-elements`** — comma-separated `id`s (iOS looks each up with `uiWithIdSelector`) controlling focus order and limiting which children are accessible (no ARIA equivalent; closest is `aria-flowto`).
 - **`accessibility-elements-hidden`** — equivalent to `aria-hidden="true"` on a subtree.
 - **`accessibility-exclusive-focus`** — traps focus within the element (like a modal dialog's focus trap). No direct ARIA equivalent; ARIA requires `aria-modal` + JavaScript focus management.
 - **`lynx.accessibilityAnnounce(message)`** — programmatically sends an announcement to the screen reader (equivalent to an `aria-live` region update).
@@ -2181,14 +2228,14 @@ Lynx separates gestures into two independent layers:
 
 Platform gesture control attributes (no web equivalents):
 
-| Attribute                    | Purpose                                                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `native-interaction-enabled` | Toggle whether the element consumes platform gestures (defaults differ per platform: `true` on iOS, `false` on Android) |
-| `pan-intercept-direction`    | Block platform scroll gestures in a specific direction: `0` = horizontal, `1` = vertical, `2` = none                    |
-| `pan-intercept-scope`        | Which nodes' gestures are affected: `0`=self, `1`=ancestors, `2`=descendants, through `5`=all, `6`=none                 |
-| `block-native-event`         | Blocks platform-layer gestures entirely (e.g., iOS right-swipe-to-go-back)                                              |
-| `block-native-event-areas`   | Limits `block-native-event` to specific rectangular regions: `[['0px','0px','50%','100%']]`                             |
-| `consume-slide-event`        | Blocks platform scroll based on swipe angle (degrees): `[[-45, 45]]` blocks rightward swipes                            |
+| Attribute                    | Purpose                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `native-interaction-enabled` | Toggle whether the element consumes platform gestures (defaults differ per platform: `true` on iOS, `false` on Android)   |
+| `pan-intercept-direction`    | Block platform scroll gestures in a specific direction: `0` = horizontal, `1` = vertical                                  |
+| `pan-intercept-scope`        | Which nodes' gestures are affected: `0`=self, `1`=ancestors, `2`=descendants, through `5`=all. Android ignores `6` and up |
+| `block-native-event`         | Blocks platform-layer gestures entirely (e.g., iOS right-swipe-to-go-back)                                                |
+| `block-native-event-areas`   | Limits `block-native-event` to specific rectangular regions: `[['0px','0px','50%','100%']]`                               |
+| `consume-slide-event`        | Blocks platform scroll based on swipe angle (degrees): `[[-45, 45]]` blocks rightward swipes                              |
 
 These have no CSS or DOM equivalents. On web, `touch-action` and `preventDefault()` are the only gesture controls. In Lynx, the platform gesture recognizer runs independently at the native layer and must be managed through these element attributes.
 

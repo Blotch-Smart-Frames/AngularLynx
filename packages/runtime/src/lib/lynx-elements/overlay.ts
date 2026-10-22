@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'overlay',
-  standalone: true,
   inputs: [
     'visible',
     'level',
@@ -22,8 +21,9 @@ export class LynxOverlay extends LynxElementBase {
    */
   visible?: boolean;
   /**
-   * Z-order layer (higher = above other overlays).
-   * 1 = default, 2 = status bar level, 3 = keyboard level, 4 = top.
+   * The layer the overlay sits in when several are open: 1 is the top layer
+   * and 4 the lowest. Within a layer the last one shown is on top. Lynx reads
+   * it only while the overlay is hidden. @default 1
    */
   level?: 1 | 2 | 3 | 4;
   /**

@@ -12,7 +12,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'input',
-  standalone: true,
   inputs: [
     'type',
     'placeholder',
@@ -120,7 +119,6 @@ export class LynxInput extends LynxElementBase {
  */
 @Directive({
   selector: 'textarea',
-  standalone: true,
   inputs: [
     'type',
     'placeholder',

@@ -7,7 +7,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'webview',
-  standalone: true,
   inputs: [
     'src',
     'html',

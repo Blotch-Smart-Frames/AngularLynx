@@ -6,7 +6,6 @@ import { LynxElementBase } from './base';
  */
 @Directive({
   selector: 'scroll-view',
-  standalone: true,
   inputs: [
     'scroll-orientation',
     'enable-scroll',

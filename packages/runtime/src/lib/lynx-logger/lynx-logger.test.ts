@@ -108,49 +108,6 @@ describe('LynxLogger', () => {
       expect(body.logs[0].timestamp).toBeGreaterThanOrEqual(before);
       expect(body.logs[0].timestamp).toBeLessThanOrEqual(after);
     });
-
-    it('registers an IPC listener on lynx.getCoreContext() for main-thread relay', () => {
-      const addEventListenerMock = vi.fn();
-      vi.stubGlobal('lynx', {
-        getCoreContext: () => ({ addEventListener: addEventListenerMock }),
-      });
-
-      new LynxLogger();
-
-      expect(addEventListenerMock).toHaveBeenCalledWith(
-        '__lynx_log__',
-        expect.any(Function),
-      );
-    });
-
-    it('IPC listener parses the event and posts the entry to the server', () => {
-      let capturedHandler: ((e: any) => void) | undefined;
-      vi.stubGlobal('lynx', {
-        getCoreContext: () => ({
-          addEventListener: (_: string, fn: (e: any) => void) => {
-            capturedHandler = fn;
-          },
-        }),
-      });
-
-      new LynxLogger();
-
-      const relayedEntry = {
-        level: 'warn',
-        timestamp: 1000,
-        args: ['relayed'],
-      };
-      capturedHandler!({ data: JSON.stringify(relayedEntry) });
-
-      expect(fetchMock).toHaveBeenCalledOnce();
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-      expect(body.logs[0]).toEqual(relayedEntry);
-    });
-
-    it('does not register IPC listener when lynx is not available', () => {
-      // lynx global intentionally not stubbed
-      expect(() => new LynxLogger()).not.toThrow();
-    });
   });
 
   describe('dev mode — main thread (no fetch)', () => {
@@ -241,34 +198,101 @@ describe('LynxLogger', () => {
       const service = new LynxLogger();
       expect(() => service.log('main thread')).not.toThrow();
     });
+  });
 
-    it('swallows a malformed IPC payload from the main-thread relay', () => {
-      vi.stubGlobal('__DEV__', true);
-      vi.stubGlobal('__DEV_LOG_URL__', DEV_LOG_URL);
-      const fetchMock = vi.fn().mockResolvedValue({});
-      vi.stubGlobal('fetch', fetchMock);
+  // Angular runs on the main thread only, so no LynxLogger exists on the
+  // background thread: the relay that posts main-thread logs is installed when
+  // the module loads there.
+  describe('background-thread relay', () => {
+    /**
+     * Imports the module again, with the globals the relay reads at load time
+     * already stubbed.
+     */
+    const loadModule = async (): Promise<void> => {
+      vi.resetModules();
+      await import('./lynx-logger');
+    };
 
-      let capturedHandler: ((e: unknown) => void) | undefined;
+    /**
+     * A core context that records its listener, which the tests then call.
+     */
+    const stubCoreContext = (): {
+      handler: () => ((e: unknown) => void) | undefined;
+    } => {
+      let handler: ((e: unknown) => void) | undefined;
       vi.stubGlobal('lynx', {
         getCoreContext: () => ({
-          addEventListener: (_: string, fn: (e: unknown) => void) => {
-            capturedHandler = fn;
+          addEventListener: (type: string, fn: (e: unknown) => void) => {
+            if (type === '__lynx_log__') handler = fn;
           },
         }),
       });
+      return { handler: () => handler };
+    };
 
-      new LynxLogger();
-      // Invalid JSON in the IPC event data — the inner try/catch must swallow
-      // the parse error.
-      expect(() => capturedHandler!({ data: 'not-json' })).not.toThrow();
+    let fetchMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.stubGlobal('__DEV__', true);
+      vi.stubGlobal('__DEV_LOG_URL__', DEV_LOG_URL);
+      fetchMock = vi.fn().mockResolvedValue({});
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    it('posts each entry the main thread relays', async () => {
+      const core = stubCoreContext();
+      await loadModule();
+
+      const relayedEntry = {
+        level: 'warn',
+        timestamp: 1000,
+        args: ['relayed'],
+      };
+      core.handler()!({ data: JSON.stringify(relayedEntry) });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.logs[0]).toEqual(relayedEntry);
+    });
+
+    it('swallows a malformed relayed payload', async () => {
+      const core = stubCoreContext();
+      await loadModule();
+
+      expect(() => core.handler()!({ data: 'not-json' })).not.toThrow();
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('swallows an addEventListener that throws (defensive core context)', () => {
-      vi.stubGlobal('__DEV__', true);
-      vi.stubGlobal('__DEV_LOG_URL__', DEV_LOG_URL);
-      const fetchMock = vi.fn().mockResolvedValue({});
-      vi.stubGlobal('fetch', fetchMock);
+    it('is not installed on the main thread', async () => {
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      const core = stubCoreContext();
+      await loadModule();
+
+      expect(core.handler()).toBeUndefined();
+    });
+
+    it('is not installed without a dev server URL', async () => {
+      vi.stubGlobal('__DEV_LOG_URL__', undefined);
+      const core = stubCoreContext();
+      await loadModule();
+
+      expect(core.handler()).toBeUndefined();
+    });
+
+    it('is not installed without fetch', async () => {
+      vi.stubGlobal('fetch', undefined);
+      const core = stubCoreContext();
+      await loadModule();
+
+      expect(core.handler()).toBeUndefined();
+    });
+
+    it('is not installed outside Lynx', async () => {
+      vi.stubGlobal('lynx', undefined);
+      await expect(loadModule()).resolves.toBeUndefined();
+    });
+
+    it('swallows a core context that throws', async () => {
       vi.stubGlobal('lynx', {
         getCoreContext: () => ({
           addEventListener: () => {
@@ -276,8 +300,7 @@ describe('LynxLogger', () => {
           },
         }),
       });
-
-      expect(() => new LynxLogger()).not.toThrow();
+      await expect(loadModule()).resolves.toBeUndefined();
     });
   });
 });

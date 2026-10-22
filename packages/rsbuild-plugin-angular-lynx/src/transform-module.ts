@@ -1,5 +1,6 @@
 // cspell:words ɵcmp
 import path from 'node:path';
+import { transformCrossThread } from './cross-thread-transform.js';
 import { transformWorklets } from './worklet-transform.js';
 
 /**
@@ -26,6 +27,10 @@ export type ModuleStylesheets = {
  *   2. Appends a `Component.ɵcmp.id = '<scopeId>'` assignment for each
  *      Emulated component, which ties its scoped CSS to its renderer.
  *   3. Runs the worklet ("main thread" directive) transform over the result.
+ *   4. Runs the cross-thread transform (cross-thread-transform.ts), which gives
+ *      module-level background functions and refs IDs that match on both
+ *      threads and lets the background thread load the lazy chunks the main
+ *      thread loads.
  *
  * It deliberately does NOT make the bootstrap entry accept its own hot
  * updates (`module.hot.accept()`), which an earlier version did. On Lynx the
@@ -42,8 +47,10 @@ export const buildTransformedCode = (params: {
   code: string;
   resourcePath: string;
   stylesheets: ModuleStylesheets | undefined;
+  /** The project root, which cross-thread IDs are relative to. */
+  root: string;
 }): string => {
-  const { resourcePath, stylesheets } = params;
+  const { resourcePath, stylesheets, root } = params;
   let code = params.code;
 
   if (stylesheets) {
@@ -76,5 +83,9 @@ export const buildTransformedCode = (params: {
   for (const { className, scopeId } of stylesheets?.scopes ?? []) {
     code += `\n;${className}.ɵcmp.id = '${scopeId}';\n`;
   }
-  return transformWorklets(code, resourcePath);
+  return transformCrossThread(
+    transformWorklets(code, resourcePath),
+    resourcePath,
+    { root, mirrorImports: true },
+  );
 };

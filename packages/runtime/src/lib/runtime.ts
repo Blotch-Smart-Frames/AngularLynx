@@ -6,13 +6,18 @@ import { markFirstRenderComplete } from './lynx-render-lifecycle';
 // Side-effect imports install the runtime's global environment before bootstrap.
 // Order mirrors the original monolithic runtime.ts: crash diagnostics first, then
 // the browser-shaped environment polyfills, then the Lynx lifecycle/worklet
-// callbacks, the global exposure bridge and the background call relay. `pageReady` and `__workletMap` are the only values bootstrap itself
-// needs to reference (renderPage readiness + HMR worklet reset).
+// callbacks, the global exposure bridge, the background call relay, the log
+// relay and the lazy import mirror. They are all the background thread runs,
+// since Angular boots on the main thread only. `pageReady` and `__workletMap`
+// are the only values bootstrap itself needs to reference (renderPage
+// readiness + HMR worklet reset).
 import './error-reporting';
 import './polyfills';
 import { pageReady } from './global-callbacks';
 import './exposure/global-exposure-bridge';
 import './background-call';
+import './lynx-logger/lynx-logger';
+import './lazy-bundle/mirrored-imports';
 import { __workletMap } from './worklet-bridge';
 import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
 
@@ -20,6 +25,13 @@ import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
  * Bootstrap Angular application on the Lynx runtime. Waits for the main thread to
  * signal it's ready before initializing the framework, then registers global
  * callbacks for page updates and worklet invocations.
+ *
+ * Angular runs on the main thread only. The background thread evaluates the
+ * same bundle, so the imports above install its side of every bridge and each
+ * module-level `backgroundFn()` registers there, but it gets no app: the
+ * returned promise never settles on that thread. Booting a second copy there
+ * ran every constructor, `ngOnInit` and `effect()` twice, and its views went
+ * nowhere (issue #81).
  */
 export const bootstrapApplication = async (
   rootComponent: Type<unknown>,
@@ -27,10 +39,19 @@ export const bootstrapApplication = async (
 ): Promise<ApplicationRef> => {
   // Lazy routes and @defer blocks are loaded by Lynx's chunk-loading runtime
   // through `lynx.loadLazyBundle`, which the framework must provide. Install it
-  // on both threads before Angular can trigger any dynamic import. Placed before
-  // the HMR teardown and the renderPage wait so it is in place even if a
-  // re-bootstrap triggers an import immediately; re-installing is harmless.
+  // on both threads before Angular can trigger any dynamic import: the
+  // background thread loads each lazy chunk the main thread loads (see
+  // mirrored-imports.ts). Placed before the HMR teardown and the renderPage
+  // wait so it is in place even if a re-bootstrap triggers an import
+  // immediately; re-installing is harmless.
   installLazyBundleLoader();
+
+  if (!__MAIN_THREAD__) {
+    // A pending promise rather than a rejected one: main.ts usually ends in
+    // `.catch(console.error)`, which would log an error on every launch.
+    // Nothing that needs an ApplicationRef can run here anyway.
+    return new Promise<ApplicationRef>(() => {});
+  }
 
   // HMR re-bootstrap: destroy previous app so Angular's platform accepts a new one.
   // When webpack hot-updates a module and the entry re-evaluates, this function
@@ -48,9 +69,9 @@ export const bootstrapApplication = async (
     }
   }
 
-  // On first boot (main thread), wait for Lynx's renderPage callback.
+  // On first boot, wait for Lynx's renderPage callback.
   // On re-bootstrap (HMR), the page is already ready — skip the wait.
-  if (__MAIN_THREAD__ && !prev) {
+  if (!prev) {
     await firstValueFrom(pageReady);
   }
 
@@ -94,7 +115,7 @@ export const bootstrapApplication = async (
   // native behavior is unchanged. Skipped during SSR hydration, where the
   // snapshot tree already exists and web-core shows the view via its [ssr] CSS
   // attribute (mirrors end()'s hydration guard).
-  if (__WEB__ && __MAIN_THREAD__ && !wasHydrating) {
+  if (__WEB__ && !wasHydrating) {
     setTimeout(() => __FlushElementTree(), 0);
   }
 

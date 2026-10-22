@@ -39,8 +39,8 @@ function bootstrapApplication(
 
 Starts your app on Lynx. Use it instead of the `bootstrapApplication` from `@angular/platform-browser`, which needs a browser DOM.
 
-- **Runs twice.** Your bundle starts the app on both the [main thread](/guide/glossary#main-thread) and the [background thread](/guide/glossary#background-thread). See [Threads](/guide/concepts/threads).
-- **Waits for Lynx.** On the main thread, it waits until Lynx is ready to render the page.
+- **Starts the app on the [main thread](/guide/glossary#main-thread)**, once Lynx is ready to render the page.
+- **Starts nothing on the [background thread](/guide/glossary#background-thread).** Your `main.ts` runs there too, but only your files' top-level code runs. The promise it returns there never settles, so code chained on it runs once. See [Threads](/guide/concepts/threads).
 - **Hot reload.** Calling it again destroys the running app first, then starts the new one.
 - **Returns** the `ApplicationRef`, as Angular's version does.
 

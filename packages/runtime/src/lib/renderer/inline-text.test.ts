@@ -9,7 +9,7 @@
 //
 // Why an integration harness and not renderer.test.ts: the pass needs a real
 // text SUBTREE (nested <text> + raw-text leaves) and the end()/flush lifecycle,
-// neither of which the LynxBackgroundElement stand-in in renderer.test.ts has.
+// neither of which the InMemoryElement stand-in in renderer.test.ts has.
 //
 // Reading the displayed text: a raw-text is created via __CreateRawText (which
 // seeds FakeEl.text with the collapsed value) and the pass writes the trimmed

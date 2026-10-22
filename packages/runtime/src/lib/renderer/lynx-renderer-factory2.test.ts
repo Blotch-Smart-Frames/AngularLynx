@@ -5,7 +5,7 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LynxBackgroundDocument } from '../lynx-document';
+import { InMemoryDocument } from '../testing/in-memory-document';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
@@ -17,7 +17,7 @@ const createFactory = () => {
     providers: [
       {
         provide: LYNX_DOCUMENT,
-        useFactory: () => new LynxBackgroundDocument(),
+        useFactory: () => new InMemoryDocument(),
       },
     ],
   });
@@ -67,8 +67,8 @@ describe('LynxRendererFactory2', () => {
       styles: [],
       data: {},
     };
-    const first = new LynxBackgroundDocument().createElement('view');
-    const second = new LynxBackgroundDocument().createElement('view');
+    const first = new InMemoryDocument().createElement('view');
+    const second = new InMemoryDocument().createElement('view');
     const spies = [first, second].map((host) =>
       vi.spyOn(host, 'addScopeClass'),
     );
@@ -202,22 +202,9 @@ describe('LynxRendererFactory2', () => {
       vi.unstubAllGlobals();
     });
 
-    it('is a no-op on the background thread (no native flush)', () => {
-      // The whole __MAIN_THREAD__ block is skipped when the renderer runs on
-      // the background thread — no removals commit, no flush, no list-info
-      // update. Covers the else path of the outer main-thread guard.
-      vi.stubGlobal('__MAIN_THREAD__', false);
-      vi.stubGlobal('__FlushElementTree', vi.fn());
-
-      const factory = createFactory();
-      expect(() => factory.end?.()).not.toThrow();
-      expect(globalThis.__FlushElementTree).not.toHaveBeenCalled();
-    });
-
     it('flushes the element tree when the first render has completed', () => {
-      // Steady-state main-thread path: __FlushElementTree is called after the
-      // removal / normalization drains.
-      vi.stubGlobal('__MAIN_THREAD__', true);
+      // Steady-state path: __FlushElementTree is called after the removal /
+      // normalization drains.
       vi.stubGlobal('__FlushElementTree', vi.fn());
       // First-render latch is module-scoped in lynx-render-lifecycle; this
       // spec never bootstraps, so flip it manually to enter the steady-state
@@ -237,12 +224,11 @@ describe('LynxRendererFactory2', () => {
       // elements) but does not call the flush; native performs its own once
       // renderPage returns.
       vi.resetModules();
-      vi.stubGlobal('__MAIN_THREAD__', true);
       vi.stubGlobal('__FlushElementTree', vi.fn());
       const { LynxRendererFactory2: FreshFactory } =
         await import('./lynx-renderer-factory2');
-      const { LynxBackgroundDocument: FreshDoc } =
-        await import('../lynx-document');
+      const { InMemoryDocument: FreshDoc } =
+        await import('../testing/in-memory-document');
       const { LYNX_DOCUMENT: FRESH_LYNX_DOCUMENT } = await import('./token');
 
       const injector = Injector.create({

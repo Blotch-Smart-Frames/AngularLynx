@@ -29,14 +29,13 @@ export class App {
   readonly list = viewChild.required('list', { read: ElementRef });
 
   backToTop(): void {
-    this.list().nativeElement.invoke?.('scrollTo', { offset: 0, smooth: true });
+    this.list().nativeElement.invoke('scrollTo', { offset: 0, smooth: true });
   }
 }
 ```
 
 - **`viewChild(…, { read: ElementRef })`** gives you the element. **`nativeElement.invoke(method, params)`** calls a UI method on it.
 - **It's fire-and-forget.** `invoke()` returns nothing, and a failed call isn't reported.
-- **The `?.` matters outside handlers.** Your app's [background thread](/guide/glossary#background-thread) copy has no native elements, so its `nativeElement` has no `invoke`. Handlers run only on the [main thread](/guide/glossary#main-thread), but `?.` keeps the same call safe in a constructor or `ngOnInit`, which run on both.
 
 Each element's methods and their parameters are on its API page, such as [`<video>`](/api/elements/video). Lynx's [element reference](https://lynxjs.org/api/elements/built-in/scroll-view.html) lists more, such as `<scroll-view>`'s `scrollTo` and `autoScroll`.
 

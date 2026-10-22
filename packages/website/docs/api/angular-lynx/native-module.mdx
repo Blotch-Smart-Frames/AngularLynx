@@ -36,8 +36,14 @@ class LynxNativeModule {}
 
 Typed access to Lynx's native module bridge and its JavaScript module registry. Every method is safe to call outside Lynx: it does nothing, or returns `undefined`.
 
-:::warning Background thread only
-Lynx provides native modules and the module registry only on the [background thread](/guide/glossary#background-thread). On the main thread, which runs your event handlers and draws the UI, every method does nothing or returns `undefined`. A constructor runs on both threads, so the call in Usage reaches the host from the background copy. Results also arrive there, so showing them on screen isn't supported yet. See [Threads](/guide/concepts/threads).
+:::info Calls run on the background thread
+Lynx provides native modules and the module registry only on the [background thread](/guide/glossary#background-thread), and your app runs on the main thread. So every method sends its call there for you:
+
+- **Results are copied as JSON**, and arrive as a promise.
+- **Callbacks you pass,** such as a listener or a native method's callback, are called back on the main thread with their arguments copied as JSON. Setting a signal in one updates the screen.
+- **A module is a stand-in.** `getNativeModule()` and `getJSModule()` return an object whose methods each run on the background thread and return a promise of the result.
+
+See [Threads](/guide/concepts/threads).
 :::
 
 ### `LynxNativeModule.call()`
@@ -54,7 +60,7 @@ Calls the host's bridge method `name` with `params`, which defaults to `{}`. Res
 on(name: string, callback: (...args: unknown[]) => void): void;
 ```
 
-Listens for the bridge event `name` from the host. There's no way to stop listening.
+Listens for the bridge event `name` from the host. `callback` gets the event's arguments, copied as JSON. There's no way to stop listening.
 
 ### `LynxNativeModule.getNativeModule()`
 
@@ -64,7 +70,9 @@ getNativeModule<K extends string>(
 ): K extends keyof NativeModuleMap ? NativeModuleMap[K] : unknown;
 ```
 
-Returns the native module the host registered as `name`, or `undefined`. The return type comes from `NativeModuleMap`. Until you can extend that type (see below), cast the result to your module's interface.
+Returns a stand-in for the native module the host registered as `name`, or `undefined` outside Lynx. Each method you call on it runs on the background thread and returns a promise of the method's return value. The promise rejects if the host has no such module or method.
+
+The return type comes from `NativeModuleMap`. Until you can extend that type (see below), cast the result to your module's interface.
 
 ### `LynxNativeModule.getJSModule()`
 
@@ -72,7 +80,7 @@ Returns the native module the host registered as `name`, or `undefined`. The ret
 getJSModule<T = unknown>(name: string): T | undefined;
 ```
 
-Returns a JavaScript module registered in this page with `registerJSModule()`, or `undefined`.
+Returns a stand-in for a JavaScript module registered in this page, such as Lynx's `GlobalEventEmitter` or one from `registerJSModule()`, or `undefined` outside Lynx. Like `getNativeModule()`, its methods return promises, and reject if the module isn't registered.
 
 ### `LynxNativeModule.registerJSModule()`
 
@@ -80,7 +88,7 @@ Returns a JavaScript module registered in this page with `registerJSModule()`, o
 registerJSModule<T extends object>(name: string, module: T): void;
 ```
 
-Registers `module` under `name`, so other code in this page, including native callbacks, can find it.
+Registers `module` under `name`, so other code in this page, including native callbacks, can find it. The background thread registers a copy: its methods, including ones on `module`'s class, call yours on the main thread with their arguments copied as JSON, and their return values are dropped. Its other fields are copied once.
 
 ## Types
 

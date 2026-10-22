@@ -14,7 +14,8 @@ import {
 const tapCount = createMainThreadRef(0);
 
 /**
- * Registered on the background thread. Callable from main-thread via runOnBackground().
+ * Registered on the background thread when it runs this file. Callable from
+ * main-thread code, which includes every component, via runOnBackground().
  */
 let _lastColor = '';
 const notifyColorChange = backgroundFn((color: string) => {
@@ -96,17 +97,17 @@ const handleTouchEnd = mainThreadFn((event: MainThread.TouchEvent) => {
           <text
             class="uppercase mb-1 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
           >
-            Background Thread
+            Template Handler
           </text>
           <text class="mb-3 text-xs text-zinc-400">
-            For comparison — round-trip latency
+            For comparison — (bindtap) sets a signal, then Angular re-renders
           </text>
           <view
-            (bindtap)="onBgTap()"
+            (bindtap)="onHandlerTap()"
             class="h-[80px] items-center rounded-[10px] bg-zinc-500 justify-center"
           >
             <text class="text-[15px] font-medium text-white">
-              Background taps: {{ bgTapCount() }}
+              Handler taps: {{ handlerTapCount() }}
             </text>
           </view>
         </view>
@@ -119,9 +120,9 @@ export class App {
   readonly handleTap = handleTap;
   readonly handleTouchMove = handleTouchMove;
   readonly handleTouchEnd = handleTouchEnd;
-  readonly bgTapCount = signal(0);
+  readonly handlerTapCount = signal(0);
 
-  onBgTap(): void {
-    this.bgTapCount.update((v) => v + 1);
+  onHandlerTap(): void {
+    this.handlerTapCount.update((v) => v + 1);
   }
 }

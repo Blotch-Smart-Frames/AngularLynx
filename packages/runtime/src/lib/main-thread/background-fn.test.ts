@@ -52,6 +52,27 @@ describe('backgroundFn', () => {
 
       expect(idNumber(second)).toBe(idNumber(first) + 1);
     });
+
+    // The build passes an ID for a module-level call, so the handle matches
+    // the function on the other thread whatever order their modules run in
+    // (issue #81).
+    it('registers under the ID the build gives it, without taking a number', () => {
+      const registerWorklet = vi.fn();
+      vi.stubGlobal('registerWorklet', registerWorklet);
+      const fn = () => 1;
+
+      const before = backgroundFn(() => 0);
+      const tagged = backgroundFn(fn, 'abc123:0');
+      const after = backgroundFn(() => 0);
+
+      expect(tagged._wkltId).toBe('abc123:0');
+      expect(registerWorklet).toHaveBeenCalledWith(
+        'background',
+        'abc123:0',
+        fn,
+      );
+      expect(idNumber(after)).toBe(idNumber(before) + 1);
+    });
   });
 
   describe('on the main thread (__MAIN_THREAD__ true)', () => {

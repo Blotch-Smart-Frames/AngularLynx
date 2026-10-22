@@ -29,7 +29,20 @@ describe('MainThreadRef', () => {
       const first = new MainThreadRef(1);
       const second = new MainThreadRef(2);
 
-      expect(second._wvid).toBe(first._wvid + 1);
+      expect(second._wvid).toBe((first._wvid as number) + 1);
+    });
+
+    // The build passes an ID for a module-level ref, which both threads create,
+    // so it matches whatever order the threads' modules run in (issue #81).
+    it('uses the ID the build gives it, without taking a number', () => {
+      const before = new MainThreadRef(0);
+      const tagged = new MainThreadRef('initial', 'abc123:0');
+      const after = new MainThreadRef(0);
+
+      expect(tagged._wvid).toBe('abc123:0');
+      expect(__mainThreadRefMap['abc123:0']).toBe(tagged);
+      expect(tagged.toJSON()).toEqual({ _wvid: 'abc123:0' });
+      expect(after._wvid).toBe((before._wvid as number) + 1);
     });
   });
 
@@ -75,6 +88,10 @@ describe('MainThreadRef', () => {
 
       expect(ref).toBeInstanceOf(MainThreadRef);
       expect(ref.current).toBe(42);
+    });
+
+    it("passes on the build's ID", () => {
+      expect(createMainThreadRef(42, 'abc123:1')._wvid).toBe('abc123:1');
     });
   });
 });

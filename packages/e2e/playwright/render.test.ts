@@ -92,6 +92,34 @@ test('a main-thread handler set to null stops running', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// Angular runs on the main thread only. The background thread used to start a
+// second copy of the app, so the lazy page's ngOnInit ran twice, and a lazy
+// chunk's background function was there only because that copy's router loaded
+// the chunk too (issue #81).
+test('Angular runs once, and the background thread still answers', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open lazy page', { exact: true }).click();
+  await expect(page.getByText('Lazy page loaded')).toBeVisible();
+
+  // A background function defined in the lazy chunk.
+  await page.getByText('Echo:').click();
+  await expect(page.getByText('Echo: hi back')).toBeVisible();
+
+  // GlobalEventEmitter, a JS module only the background thread has, through
+  // LynxNativeModule's relay: the listener and the emit go there, and the
+  // event comes back.
+  await page.getByText('Emitter:').click();
+  await expect(page.getByText('Emitter: pong')).toBeVisible();
+
+  // By now a second copy's ngOnInit would have counted too.
+  await expect(page.getByText('Init runs: 1')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

@@ -113,16 +113,6 @@ describe('LynxInputValueAccessor', () => {
     });
   });
 
-  it('writeValue does not throw when invoke is unavailable (background thread)', () => {
-    nativeElement = {};
-    configure();
-    const dir = TestBed.runInInjectionContext(
-      () => new LynxInputValueAccessor(),
-    );
-
-    expect(() => dir.writeValue('anything')).not.toThrow();
-  });
-
   it('setDisabledState(true) sets the disabled attribute via the renderer', () => {
     const dir = TestBed.runInInjectionContext(
       () => new LynxInputValueAccessor(),

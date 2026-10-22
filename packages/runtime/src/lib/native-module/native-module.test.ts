@@ -173,4 +173,139 @@ describe('LynxNativeModule', () => {
       expect(registerModuleMock).toHaveBeenCalledWith('myState', module);
     });
   });
+
+  // Angular runs on the main thread, which has neither NativeModules nor the
+  // JS module registry, so every method goes through the background call relay
+  // there (issue #81).
+  describe('on the main thread', () => {
+    const dispatched: Array<{ type: string; data: string }> = [];
+
+    beforeEach(() => {
+      dispatched.length = 0;
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      (globalThis as any).lynx = {
+        getJSContext: () => ({
+          addEventListener: vi.fn(),
+          dispatchEvent: (event: { type: string; data: string }) =>
+            dispatched.push(event),
+        }),
+      };
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /**
+     * The calls sent to the background thread.
+     */
+    const sent = () =>
+      dispatched
+        .filter((event) => event.type === 'AngularLynx.BackgroundCall')
+        .map((event) => JSON.parse(event.data));
+
+    it('relays call()', () => {
+      void new LynxNativeModule().call('getDeviceId', { key: 'abc' });
+
+      expect(sent()[0]).toMatchObject({
+        name: 'nativeBridgeCall',
+        args: ['getDeviceId', { key: 'abc' }],
+      });
+    });
+
+    it('resolves call() undefined without a Lynx host to relay to', async () => {
+      delete (globalThis as any).lynx;
+
+      await expect(
+        new LynxNativeModule().call('getDeviceId'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('relays on() with the callback as a marker', () => {
+      new LynxNativeModule().on('onDeepLink', vi.fn());
+
+      expect(sent()[0]).toMatchObject({
+        name: 'nativeBridgeOn',
+        args: ['onDeepLink', { __angularLynxCallback: expect.any(Number) }],
+      });
+    });
+
+    it('swallows an on() the relay rejects', async () => {
+      (globalThis as any).lynx = {
+        getJSContext: () => {
+          throw new Error('no background thread');
+        },
+      };
+
+      expect(() => new LynxNativeModule().on('evt', vi.fn())).not.toThrow();
+      await Promise.resolve();
+    });
+
+    it('returns a proxy from getNativeModule() whose methods relay', () => {
+      const device = new LynxNativeModule().getNativeModule('DeviceModule') as {
+        getBatteryLevel(done: () => void): Promise<unknown>;
+      };
+
+      void device.getBatteryLevel(() => {});
+
+      expect(sent()[0]).toMatchObject({
+        name: 'callModule',
+        args: [
+          'native',
+          'DeviceModule',
+          'getBatteryLevel',
+          [expect.any(Object)],
+        ],
+      });
+    });
+
+    it('returns a proxy from getJSModule() whose methods relay', () => {
+      const emitter = new LynxNativeModule().getJSModule<{
+        emit(event: string, args: unknown[]): void;
+      }>('GlobalEventEmitter');
+
+      emitter!.emit('ping', ['pong']);
+
+      expect(sent()[0]).toMatchObject({
+        name: 'callModule',
+        args: ['js', 'GlobalEventEmitter', 'emit', ['ping', ['pong']]],
+      });
+    });
+
+    it('returns no module outside a Lynx host', () => {
+      delete (globalThis as any).lynx;
+      const service = new LynxNativeModule();
+
+      expect(service.getNativeModule('DeviceModule')).toBeUndefined();
+      expect(service.getJSModule('GlobalEventEmitter')).toBeUndefined();
+    });
+
+    it('relays registerJSModule() with its methods as markers', () => {
+      new LynxNativeModule().registerJSModule('shared', {
+        count: 1,
+        ping: () => {},
+      });
+
+      expect(sent()[0]).toMatchObject({
+        name: 'registerJSModule',
+        args: [
+          'shared',
+          { count: 1, ping: { __angularLynxCallback: expect.any(Number) } },
+        ],
+      });
+    });
+
+    it('swallows a registerJSModule() the relay rejects', async () => {
+      (globalThis as any).lynx = {
+        getJSContext: () => {
+          throw new Error('no background thread');
+        },
+      };
+
+      expect(() =>
+        new LynxNativeModule().registerJSModule('shared', {}),
+      ).not.toThrow();
+      await Promise.resolve();
+    });
+  });
 });

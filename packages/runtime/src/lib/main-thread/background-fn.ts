@@ -1,10 +1,16 @@
 /**
- * Counter stays in sync across threads because the build plugin produces
- * two bundles (main + background) from the same source. Both evaluate the
- * same module graph in the same order, so the N-th backgroundFn() call
- * produces ID '__angular_bg_N' on both threads. The main thread can then
- * dispatch a call to a background function by its _wkltId string, and the
- * background thread resolves it to the correct registered function.
+ * The main thread calls a background function by its `_wkltId`, and the
+ * background thread finds the function it registered under the same ID. Both
+ * bundles run every module (the background thread loads each lazy chunk the
+ * main thread loads, see mirrored-imports.ts), so a module-level
+ * backgroundFn() call runs on both threads. The build gives each such call an
+ * ID from its file and position (cross-thread-transform.ts in the build
+ * plugin), which matches on both threads whatever order their modules load in.
+ *
+ * A call the build doesn't tag, such as one inside a function, takes the next
+ * '__angular_bg_N' instead. That only matches if both threads make the same
+ * calls in the same order, and Angular code such as a constructor runs on the
+ * main thread only, so its handle reaches no function.
  */
 let nextBgWorkletId = 0;
 
@@ -22,17 +28,27 @@ export type BackgroundFnHandle<
   readonly __return?: TReturn;
 };
 
+/**
+ * Registers `fn` on the background thread and returns a handle that
+ * `runOnBackground()` calls it with from the main thread.
+ *
+ * @param fn - The function to run on the background thread.
+ * @param id - Set by the build for a module-level call, so the handle has the
+ *   same ID on both threads. Don't pass it yourself.
+ * @returns The handle.
+ */
 export const backgroundFn = <TArgs extends unknown[], TReturn>(
   fn: (...args: TArgs) => TReturn,
+  id?: string,
 ): BackgroundFnHandle<TArgs, TReturn> => {
-  const id = '__angular_bg_' + nextBgWorkletId++;
+  const workletId = id ?? '__angular_bg_' + nextBgWorkletId++;
 
   if (!__MAIN_THREAD__) {
-    globalThis.registerWorklet('background', id, fn);
+    globalThis.registerWorklet('background', workletId, fn);
   }
 
   return {
-    _wkltId: id,
+    _wkltId: workletId,
     _workletType: 'background',
     __isBackgroundFn: true,
   } as BackgroundFnHandle<TArgs, TReturn>;

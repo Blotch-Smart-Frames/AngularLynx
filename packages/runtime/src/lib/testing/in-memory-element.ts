@@ -1,20 +1,22 @@
-import type { LynxAnimationOptions } from '../animation/animation';
-import { NoopLynxAnimation } from '../animation/noop-animation';
-import type { BaseLynxElement } from './types';
+import type {
+  BaseLynxAnimation,
+  LynxAnimationOptions,
+} from '../animation/animation';
+import type { BaseLynxElement } from '../lynx-element/types';
 
 /**
- * Virtual element for the background thread where no native PAPI functions exist.
- * Maintains an in-memory linked-list tree (parent/child/sibling pointers) that
- * mirrors what LynxDocument builds on the main thread. Used by:
- * - Angular's change detection (reads parentNode/nextSibling for view insertion)
- * - querySelector/querySelectorAll (for testing and background-thread lookups)
- * - LynxBackgroundDocument (creates these instead of native elements)
+ * Test double for LynxElement: an in-memory linked-list tree (parent/child/
+ * sibling pointers) with no native PAPI calls, for unit tests that check what
+ * the renderer asks of its elements rather than what native does.
  *
- * Props, styles, classes, and events are stored in Maps/Sets but never sent to
- * native — they exist so component code can read back what it set without
- * crashing, and so the testing library can inspect element state.
+ * Props, styles, classes, and events are stored in Maps/Sets so a test can
+ * read back what the renderer set.
+ *
+ * Not exported from public-api.ts: this is test-only infrastructure, never
+ * shipped in the published package. It started as the background thread's
+ * element, before Angular stopped running there (issue #81).
  */
-export class LynxBackgroundElement implements BaseLynxElement {
+export class InMemoryElement implements BaseLynxElement {
   isRootPageElement = false;
   tagName = '';
 
@@ -22,11 +24,11 @@ export class LynxBackgroundElement implements BaseLynxElement {
   #styles = new Map<string, any>();
   #classes = new Set<string>();
   #events = new Map<string, (event: any) => any>();
-  #parent: LynxBackgroundElement | null = null;
-  #firstChild: LynxBackgroundElement | null = null;
-  #lastChild: LynxBackgroundElement | null = null;
-  #previousSibling: LynxBackgroundElement | null = null;
-  #nextSibling: LynxBackgroundElement | null = null;
+  #parent: InMemoryElement | null = null;
+  #firstChild: InMemoryElement | null = null;
+  #lastChild: InMemoryElement | null = null;
+  #previousSibling: InMemoryElement | null = null;
+  #nextSibling: InMemoryElement | null = null;
 
   setProperty(name: string, value: any): void {
     this.#props.set(name, value);
@@ -58,8 +60,8 @@ export class LynxBackgroundElement implements BaseLynxElement {
   }
 
   insertBefore(
-    newChild: LynxBackgroundElement,
-    refChild: LynxBackgroundElement | null,
+    newChild: InMemoryElement,
+    refChild: InMemoryElement | null,
   ): void {
     if (newChild.isRootPageElement) return;
     if (refChild == null) {
@@ -77,7 +79,7 @@ export class LynxBackgroundElement implements BaseLynxElement {
     newChild.#parent = this;
   }
 
-  appendChild(newChild: LynxBackgroundElement): void {
+  appendChild(newChild: InMemoryElement): void {
     if (newChild.isRootPageElement) return;
     if (!this.#firstChild) {
       this.#firstChild = newChild;
@@ -154,7 +156,7 @@ export class LynxBackgroundElement implements BaseLynxElement {
   }
 
   querySelectorAll(selector: string): BaseLynxElement[] {
-    const results: LynxBackgroundElement[] = [];
+    const results: InMemoryElement[] = [];
     this.#collectMatches(selector, results);
     return results;
   }
@@ -162,7 +164,7 @@ export class LynxBackgroundElement implements BaseLynxElement {
   /**
    * Collects all descendants (pre-order DFS) that match the selector.
    */
-  #collectMatches(selector: string, results: LynxBackgroundElement[]): void {
+  #collectMatches(selector: string, results: InMemoryElement[]): void {
     let child = this.#firstChild;
     while (child) {
       if (child.#matchesSelector(selector)) {
@@ -250,30 +252,33 @@ export class LynxBackgroundElement implements BaseLynxElement {
     return true;
   }
   /**
-   * Previously threw: `throw new Error('animate() is only available on the
-   * main thread')`. This crashed the Go web preview on the docs site because
-   * the animations example's (bindtap) handler calls el.nativeElement.animate()
-   * which lands here on the background thread. Returning a no-op is safe —
-   * the animation won't visually play, but the caller's code (including
-   * .cancel() / .pause() / .play() chains) continues without error.
+   * A no-op animation: there's no native element to animate.
    */
   animate(
     _keyframes: Record<string, string | number>[],
     _options?: number | LynxAnimationOptions,
-  ): NoopLynxAnimation {
-    // __ElementAnimate is a main-thread PAPI function — it does not exist
-    // on the background thread. Return a no-op animation so callers don't
-    // crash; the animation simply won't play. This matches web-core's
-    // behavior where __ElementAnimate is a no-op in preview environments.
-    /* v8 ignore next 6 -- build-time __DEV__ define is false in vitest, so the guarded warn is dead code from the test bundle's point of view. */
-    if (__DEV__) {
-      console.warn(
-        '[angular-lynx] animate() called on background thread — animation will not play. ' +
-          'Use a main-thread script for imperative animations.',
-      );
-    }
-    return new NoopLynxAnimation();
+  ): BaseLynxAnimation {
+    return {
+      id: `in-memory-animation-${InMemoryElement.#animations++}`,
+      play: () => {},
+      pause: () => {},
+      cancel: () => {},
+    };
   }
+
+  static #animations = 0;
+
+  /**
+   * Records the call so a test can check it; there's no native UI here.
+   */
+  invoke(methodName: string, params?: Record<string, unknown>): void {
+    this.invocations.push({ methodName, params });
+  }
+
+  readonly invocations: Array<{
+    methodName: string;
+    params?: Record<string, unknown>;
+  }> = [];
 
   addEventListener(name: string, cb: (event: any) => any): () => void {
     this.#events.set(name, cb);

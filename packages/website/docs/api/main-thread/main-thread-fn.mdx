@@ -66,10 +66,9 @@ The build wraps any function whose first statement is `'main thread'` (or `'main
 
 ## Constraints
 
-- **Define it at module scope.** Both copies of your app then give it the same ID, which a call from the background thread needs. A class property also works for a `[mainThreadBind*]` input. Each instance registers its own function, released when the instance is destroyed, but its ID can differ between the threads.
-- **It runs in the main-thread copy of your module.** Module-level variables it reads are that copy's, not the background thread's.
+- **Define it at module scope.** It's registered once, when its file loads. A class property also works for a `[mainThreadBind*]` input. Each instance registers its own function, released when the instance is destroyed.
+- **It runs on the main thread, like your components.** It reads the same module-level variables they do.
 - **Keep state between calls in a [`MainThreadRef`](/api/main-thread/main-thread-ref).**
-- **Arguments and return values from the background thread are copied as JSON.**
 
 ## Types
 

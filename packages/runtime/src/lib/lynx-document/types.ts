@@ -1,8 +1,8 @@
 import type { BaseLynxElement } from '../lynx-element';
 
 /**
- * Contract implemented by both LynxDocument (main thread, real PAPI calls)
- * and LynxBackgroundDocument (background thread, in-memory virtual elements).
+ * Contract implemented by LynxDocument (real PAPI calls) and
+ * LynxHydrateDocument (reuses the elements of an SSR snapshot).
  */
 export type LynxDocumentBase = {
   createRootElement(): BaseLynxElement;

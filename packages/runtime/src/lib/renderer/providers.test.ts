@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
-import { LynxBackgroundDocument, LynxDocument } from '../lynx-document';
+import { LynxDocument } from '../lynx-document';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { provideRenderer } from './providers';
 import { LYNX_DOCUMENT } from './token';
@@ -24,22 +24,12 @@ describe('provideRenderer', () => {
   });
 
   describe('LYNX_DOCUMENT', () => {
-    it('provides LynxDocument on the main thread', () => {
-      vi.stubGlobal('__MAIN_THREAD__', true);
+    it('provides LynxDocument', () => {
       const injector = createInjector();
 
       const doc = injector.get(LYNX_DOCUMENT);
 
       expect(doc).toBeInstanceOf(LynxDocument);
-    });
-
-    it('provides LynxBackgroundDocument on the background thread', () => {
-      vi.stubGlobal('__MAIN_THREAD__', false);
-      const injector = createInjector();
-
-      const doc = injector.get(LYNX_DOCUMENT);
-
-      expect(doc).toBeInstanceOf(LynxBackgroundDocument);
     });
   });
 

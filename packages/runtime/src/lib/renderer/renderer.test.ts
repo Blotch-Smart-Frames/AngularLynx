@@ -1,11 +1,11 @@
 import { RendererStyleFlags2 } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LynxBackgroundDocument } from '../lynx-document';
-import { LynxBackgroundElement } from '../lynx-element';
+import { InMemoryDocument } from '../testing/in-memory-document';
+import { InMemoryElement } from '../testing/in-memory-element';
 import { LynxRenderer } from './renderer';
 
 const createRenderer = () => {
-  const doc = new LynxBackgroundDocument();
+  const doc = new InMemoryDocument();
   return { renderer: new LynxRenderer(doc), doc };
 };
 
@@ -58,7 +58,7 @@ describe('LynxRenderer', () => {
     it('returns a BaseLynxElement', () => {
       const { renderer } = createRenderer();
       const el = renderer.createElement('view');
-      expect(el).toBeInstanceOf(LynxBackgroundElement);
+      expect(el).toBeInstanceOf(InMemoryElement);
     });
   });
 
@@ -139,8 +139,8 @@ describe('LynxRenderer', () => {
   describe('appendChild', () => {
     it('calls appendChild on the parent element', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const child = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const child = new InMemoryElement();
       const spy = vi.spyOn(parent, 'appendChild');
 
       renderer.appendChild(parent, child);
@@ -152,9 +152,9 @@ describe('LynxRenderer', () => {
   describe('insertBefore', () => {
     it('calls parent.insertBefore when refChild is provided', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const newChild = new LynxBackgroundElement();
-      const ref = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const newChild = new InMemoryElement();
+      const ref = new InMemoryElement();
       parent.appendChild(ref);
       const spy = vi.spyOn(parent, 'insertBefore');
 
@@ -165,8 +165,8 @@ describe('LynxRenderer', () => {
 
     it('calls parent.appendChild when refChild is null', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const newChild = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const newChild = new InMemoryElement();
       const spy = vi.spyOn(parent, 'appendChild');
 
       renderer.insertBefore(parent, newChild, null);
@@ -178,8 +178,8 @@ describe('LynxRenderer', () => {
   describe('removeChild', () => {
     it('calls remove() on the old child', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const child = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const child = new InMemoryElement();
       parent.appendChild(child);
       const spy = vi.spyOn(child, 'remove');
 
@@ -192,8 +192,8 @@ describe('LynxRenderer', () => {
   describe('parentNode', () => {
     it('returns the parent element', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const child = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const child = new InMemoryElement();
       parent.appendChild(child);
 
       expect(renderer.parentNode(child)).toBe(parent);
@@ -201,7 +201,7 @@ describe('LynxRenderer', () => {
 
     it('returns null for a root element', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       expect(renderer.parentNode(el)).toBeNull();
     });
   });
@@ -209,9 +209,9 @@ describe('LynxRenderer', () => {
   describe('nextSibling', () => {
     it('returns the next sibling', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const first = new LynxBackgroundElement();
-      const second = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const first = new InMemoryElement();
+      const second = new InMemoryElement();
       parent.appendChild(first);
       parent.appendChild(second);
 
@@ -220,8 +220,8 @@ describe('LynxRenderer', () => {
 
     it('returns null for the last child', () => {
       const { renderer } = createRenderer();
-      const parent = new LynxBackgroundElement();
-      const child = new LynxBackgroundElement();
+      const parent = new InMemoryElement();
+      const child = new InMemoryElement();
       parent.appendChild(child);
 
       expect(renderer.nextSibling(child)).toBeNull();
@@ -231,7 +231,7 @@ describe('LynxRenderer', () => {
   describe('setAttribute', () => {
     it('delegates to el.setAttribute', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'setAttribute');
 
       renderer.setAttribute(el, 'id', 'main');
@@ -243,7 +243,7 @@ describe('LynxRenderer', () => {
   describe('removeAttribute', () => {
     it('delegates to el.removeAttribute', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'removeAttribute');
 
       renderer.removeAttribute(el, 'id');
@@ -255,7 +255,7 @@ describe('LynxRenderer', () => {
   describe('addClass', () => {
     it('delegates to el.addClass', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'addClass');
 
       renderer.addClass(el, 'active');
@@ -267,7 +267,7 @@ describe('LynxRenderer', () => {
   describe('removeClass', () => {
     it('delegates to el.removeClass', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'removeClass');
 
       renderer.removeClass(el, 'active');
@@ -278,11 +278,11 @@ describe('LynxRenderer', () => {
 
   describe('setStyle', () => {
     let renderer: LynxRenderer;
-    let el: LynxBackgroundElement;
+    let el: InMemoryElement;
 
     beforeEach(() => {
       ({ renderer } = createRenderer());
-      el = new LynxBackgroundElement();
+      el = new InMemoryElement();
     });
 
     it('converts camelCase style name to dash-case', () => {
@@ -325,11 +325,11 @@ describe('LynxRenderer', () => {
 
   describe('removeStyle', () => {
     let renderer: LynxRenderer;
-    let el: LynxBackgroundElement;
+    let el: InMemoryElement;
 
     beforeEach(() => {
       ({ renderer } = createRenderer());
-      el = new LynxBackgroundElement();
+      el = new InMemoryElement();
     });
 
     it('converts camelCase to dash-case before removing', () => {
@@ -352,7 +352,7 @@ describe('LynxRenderer', () => {
   describe('setProperty', () => {
     it('delegates to el.setProperty', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'setProperty');
 
       renderer.setProperty(el, 'value', 42);
@@ -364,7 +364,7 @@ describe('LynxRenderer', () => {
   describe('setValue', () => {
     it('calls setAttribute with "text" key', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'setAttribute');
 
       renderer.setValue(el, 'hello world');
@@ -377,7 +377,7 @@ describe('LynxRenderer', () => {
     // preserved through this layer.
     it('collapses interior runs but preserves edges (trim deferred to flush)', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const spy = vi.spyOn(el, 'setAttribute');
 
       renderer.setValue(el, '  hello   world  ');
@@ -389,7 +389,7 @@ describe('LynxRenderer', () => {
   describe('listen', () => {
     it('delegates to target.addEventListener and returns the cleanup function', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const cb = vi.fn();
       const cleanup = vi.fn(() => () => {});
       const spy = vi.spyOn(el, 'addEventListener').mockImplementation(cleanup);
@@ -402,7 +402,7 @@ describe('LynxRenderer', () => {
 
     it('returned function calls the cleanup returned by addEventListener', () => {
       const { renderer } = createRenderer();
-      const el = new LynxBackgroundElement();
+      const el = new InMemoryElement();
       const cb = vi.fn();
       const innerCleanup = vi.fn();
       vi.spyOn(el, 'addEventListener').mockReturnValue(innerCleanup);

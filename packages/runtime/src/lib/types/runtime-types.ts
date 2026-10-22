@@ -56,25 +56,13 @@ declare global {
   // oxlint-disable-next-line typescript/consistent-type-definitions -- interface required for global augmentation
   interface Window {
     registerWorklet: (type: string, id: string, fn: Function) => void;
-    __workletRefMap: Record<number, { current: unknown }>;
-    __lynxMtsPendingResolvers: Record<
-      number,
-      { resolve: (v: unknown) => void; reject: (e: unknown) => void }
-    >;
-    __lynxMtsNextResolveId: () => number;
+    __workletRefMap: Record<number | string, { current: unknown }>;
     __lynxRunMainThreadWorklet: (wkltId: string, args: unknown[]) => unknown;
   }
   // eslint-disable-next-line no-var
   var registerWorklet: (type: string, id: string, fn: Function) => void;
   // eslint-disable-next-line no-var
-  var __workletRefMap: Record<number, { current: unknown }>;
-  // eslint-disable-next-line no-var
-  var __lynxMtsPendingResolvers: Record<
-    number,
-    { resolve: (v: unknown) => void; reject: (e: unknown) => void }
-  >;
-  // eslint-disable-next-line no-var
-  var __lynxMtsNextResolveId: () => number;
+  var __workletRefMap: Record<number | string, { current: unknown }>;
   // Synchronously runs a registered worklet by id — used when runOnMainThread()
   // is invoked from code already executing on the main thread (see runtime.ts).
   // eslint-disable-next-line no-var

@@ -4,13 +4,13 @@
 
 Lynx runs on two threads:
 
-|                       | Main Thread                               | Background Thread              |
-| --------------------- | ----------------------------------------- | ------------------------------ |
-| **Purpose**           | Native UI rendering                       | JS execution, Angular app      |
-| **JS Engine**         | PrimJS (ES2019)                           | PrimJS (ES2015)                |
-| **DOM access**        | `__CreateElement`, `__SetAttribute`, etc. | Virtual tree (no native calls) |
-| **`fetch()`**         | Not available                             | Available                      |
-| **Angular runs here** | No                                        | Yes (in most configurations)   |
+|                       | Main Thread                               | Background Thread                                        |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------- |
+| **Purpose**           | Native UI rendering, event handlers       | Background-only APIs                                     |
+| **JS Engine**         | PrimJS (ES2019)                           | PrimJS on Android, JavaScriptCore on iOS (ES2015)        |
+| **DOM access**        | `__CreateElement`, `__SetAttribute`, etc. | None                                                     |
+| **`fetch()`, `NativeModules`** | Not available                    | Available                                                |
+| **Angular runs here** | Yes: the whole app                        | No. Only your files' top-level code, such as `backgroundFn()`s |
 
 ## `__MAIN_THREAD__` Global
 
@@ -19,18 +19,34 @@ The rsbuild plugin injects a banner into each bundle:
 - Main-thread bundle: `globalThis["__MAIN_THREAD__"] = true`
 - Background bundle: `globalThis["__MAIN_THREAD__"] = false`
 
-The runtime uses this to create the correct document implementation:
-
-- Main thread → `LynxDocument` (calls native `__Create*` functions)
-- Background thread → `LynxBackgroundDocument` (in-memory virtual tree)
+`bootstrapApplication()` starts Angular only when it's `true`. On the background thread it returns a promise that never settles, so constructors, `ngOnInit` and effects run once.
 
 ## Why This Matters
 
 ### Event Handlers Run in Worklets
 
-When a user taps a button, the event handler executes in a synchronous native call frame (worklet) on whatever thread processes events. During this frame, **mutating the element tree is forbidden** — it corrupts internal state and crashes.
+When a user taps a button, the event handler executes in a synchronous native call frame (worklet) on the main thread. During this frame, **mutating the element tree is forbidden** — it corrupts internal state and crashes.
 
 This is why all DOM-mutating operations must be deferred with `setTimeout(() => { ... }, 0)` — it moves execution to the next macrotask, after the worklet returns.
+
+### Background-Only APIs
+
+Reach them from your app in one of two ways:
+
+- **AngularLynx services relay for you:** `LynxNativeModule`, `LynxResourcePrefetch`, `LynxFont.addFont()`, `LynxAccessibility.announce()` and `LynxLogger` send their calls to the background thread. Results and callbacks come back as JSON.
+- **Your own code:** define a `backgroundFn()` at the top level of a file, and call it with the `runOnBackground()` global. The background thread runs your files, but not your components, so a `backgroundFn()` created inside a class or function never registers there.
+
+```typescript
+import { backgroundFn } from '@blotch/angular-lynx';
+
+const loadPosts = backgroundFn(async () => {
+  const response = await fetch('https://example.com/posts.json');
+  return response.json();
+});
+
+// In a component, on the main thread:
+// runOnBackground(loadPosts).then((posts) => this.posts.set(posts));
+```
 
 ### Timer APIs Come from `lynx` Global
 
@@ -59,7 +75,7 @@ lynx.getCoreContext().addEventListener('my-event', (event) => {
 });
 ```
 
-The `LynxLogger` uses this pattern to relay logs from main-thread event handlers to the background thread where `fetch` is available.
+The `LynxLogger` uses this pattern to relay logs from the main thread, where your app runs, to the background thread, where `fetch` is available.
 
 ## ECMAScript Support
 

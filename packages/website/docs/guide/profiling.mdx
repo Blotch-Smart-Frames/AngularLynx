@@ -101,7 +101,6 @@ export class DebugOverlay {
 
 - **`stats()` updates only when you ask.** Call `refresh()` to read the latest counts, or `reset()` to set them back to zero. The counters change on every render, so updating the signal each time would cause renders of its own.
 - **`snapshot()`** returns the counts once, without a signal, e.g. to log them.
-- **The counts cover the copy of your app that draws the screen.** See [Threads](/guide/concepts/threads).
 
 ## Profiling in production builds
 

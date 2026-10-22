@@ -71,15 +71,15 @@ function runOnBackground(
 - **`args`**: its arguments. They aren't type-checked against the function.
 - **Returns** a promise of the function's return value, typed `unknown`. If the function returns a promise, it waits for it. If the function throws or its promise rejects, it rejects with an `Error` that has the same message.
 
-You can call it from a main-thread function or from a template event handler, since both run on the main thread.
+Call it from any of your Angular code, a main-thread function or a template event handler: they all run on the main thread.
 
 ## Constraints
 
-- **`runOnBackground` exists only on the main thread.** Code in a constructor or `ngOnInit` also runs on the background thread, where calling it throws.
-- **Define `backgroundFn` at module scope.** The call finds the function by an ID, which matches on both threads only for module-level functions.
-- **Arguments and the return value are copied as JSON.** A [`MainThreadRef`](/api/main-thread/main-thread-ref) argument arrives as the background thread's copy of the ref.
+- **`runOnBackground` exists only on the main thread.** A background function can't call another one with it.
+- **Define `backgroundFn` at module scope.** The background thread runs your files' top-level code, but not your components, so a function created in a class or another function never registers there. A file that loads lazily, such as a lazy route's, works: the background thread loads it when the main thread does.
+- **Arguments and the return value are copied as JSON.** A [`MainThreadRef`](/api/main-thread/main-thread-ref) argument arrives as the background thread's copy of the ref, which only refs created at module scope have.
 - **The function can be `async`.** It can `await fetch()`, for example (see [Network requests](/guide/concepts/javascript-environment#network-requests)).
-- **Signals it changes don't reach the screen.** It runs in the background copy of your app, which isn't shown. Return a value and set the signal on the main thread instead.
+- **Signals it changes don't reach the screen.** Your app doesn't run on the background thread, so its signals there aren't the ones on screen. Return a value and set the signal on the main thread instead.
 
 ## Types
 

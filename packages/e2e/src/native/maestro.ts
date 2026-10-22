@@ -50,6 +50,10 @@ export const FLOWS: readonly Flow[] = [
     file: 'main-thread.yaml',
     description: 'removes a main-thread handler set to null',
   },
+  {
+    file: 'background.yaml',
+    description: 'runs Angular once and reaches the background thread',
+  },
 ];
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */

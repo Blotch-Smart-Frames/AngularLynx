@@ -443,19 +443,9 @@ describe('global-callbacks', () => {
     });
   });
 
-  describe('MTS bridge globals', () => {
+  describe('the in-place worklet global', () => {
     beforeEach(async () => {
       await load({ mainThread: false });
-    });
-
-    it('__lynxMtsNextResolveId returns increasing ids', () => {
-      const a = globalThis.__lynxMtsNextResolveId();
-      const b = globalThis.__lynxMtsNextResolveId();
-      expect(b).toBe(a + 1);
-    });
-
-    it('__lynxMtsPendingResolvers is a shared object', () => {
-      expect(globalThis.__lynxMtsPendingResolvers).toBeTypeOf('object');
     });
 
     it('__lynxRunMainThreadWorklet runs a registered worklet in-place', () => {
@@ -474,110 +464,6 @@ describe('global-callbacks', () => {
   });
 
   describe('main-thread cross-thread RPC', () => {
-    it('registers listeners and answers runWorkletCtx requests', async () => {
-      const fake = makeFakeJSContext();
-      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
-
-      const worklet = vi.fn().mockReturnValue('answer');
-      globalThis.registerWorklet('main-thread', 'wc', worklet);
-
-      fake.listeners['Lynx.Worklet.runWorkletCtx']({
-        data: JSON.stringify({
-          worklet: { _wkltId: 'wc' },
-          params: ['p'],
-          resolveId: 1,
-        }),
-      });
-
-      expect(worklet).toHaveBeenCalledWith('p');
-      const ret = fake.dispatched.find(
-        (e) => e.type === 'Lynx.Worklet.FunctionCallRet',
-      )!;
-      expect(JSON.parse(ret.data)).toMatchObject({
-        resolveId: 1,
-        returnValue: 'answer',
-      });
-    });
-
-    it('captures a thrown worklet error in the runWorkletCtx response', async () => {
-      const fake = makeFakeJSContext();
-      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
-
-      globalThis.registerWorklet('main-thread', 'boom', () => {
-        throw new Error('kaboom');
-      });
-
-      fake.listeners['Lynx.Worklet.runWorkletCtx']({
-        data: JSON.stringify({
-          worklet: { _wkltId: 'boom' },
-          params: [],
-          resolveId: 2,
-        }),
-      });
-
-      const ret = fake.dispatched.find(
-        (e) => e.type === 'Lynx.Worklet.FunctionCallRet',
-      )!;
-      expect(JSON.parse(ret.data).error).toContain('kaboom');
-    });
-
-    it("hands a MainThreadRef the background thread passed to the worklet as the main thread's ref", async () => {
-      const fake = makeFakeJSContext();
-      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
-      const ref = { current: 'main-copy' };
-      globalThis.__workletRefMap[3] = ref;
-      const worklet = vi.fn();
-      globalThis.registerWorklet('main-thread', 'uses-ref', worklet);
-
-      await call(
-        fake,
-        'Lynx.Worklet.runWorkletCtx',
-        'Lynx.Worklet.FunctionCallRet',
-        'uses-ref',
-        [{ _wvid: 3 }, { nested: { _wvid: 3 } }],
-      );
-
-      expect(worklet.mock.calls[0]![0]).toBe(ref);
-      expect(worklet.mock.calls[0]![1].nested).toBe(ref);
-    });
-
-    it('awaits an async worklet and replies with its result', async () => {
-      const fake = makeFakeJSContext();
-      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
-      globalThis.registerWorklet(
-        'main-thread',
-        'async-mt',
-        async () => 'later',
-      );
-
-      expect(
-        await call(
-          fake,
-          'Lynx.Worklet.runWorkletCtx',
-          'Lynx.Worklet.FunctionCallRet',
-          'async-mt',
-          [],
-        ),
-      ).toEqual({ resolveId: 9, returnValue: 'later' });
-    });
-
-    it('replies with an error for a worklet this thread never registered', async () => {
-      const fake = makeFakeJSContext();
-      await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
-
-      const reply = await call(
-        fake,
-        'Lynx.Worklet.runWorkletCtx',
-        'Lynx.Worklet.FunctionCallRet',
-        'missing',
-        [],
-      );
-
-      expect(reply['error']).toContain(
-        'Main-thread worklet not found: missing',
-      );
-    });
-
     it('resolves a pending runOnBackground promise on BgFunctionCallRet', async () => {
       const fake = makeFakeJSContext();
       await load({ mainThread: true, lynx: { getJSContext: () => fake.ctx } });
@@ -676,7 +562,8 @@ describe('global-callbacks', () => {
       });
 
       expect(Object.keys(core.listeners).sort()).toEqual([
-        'Lynx.Worklet.FunctionCallRet',
+        // From mirrored-imports.ts, which global-callbacks imports.
+        'AngularLynx.MirrorImports',
         'Lynx.Worklet.runOnBackground',
       ]);
       expect(js.listeners).toEqual({});
@@ -686,55 +573,6 @@ describe('global-callbacks', () => {
       await expect(
         load({ mainThread: false, lynx: {} }),
       ).resolves.toBeDefined();
-    });
-
-    it('resolves pending promises on FunctionCallRet', async () => {
-      const fake = makeFakeJSContext();
-      await load({
-        mainThread: false,
-        lynx: { getCoreContext: () => fake.ctx },
-      });
-
-      const resolve = vi.fn();
-      const reject = vi.fn();
-      globalThis.__lynxMtsPendingResolvers[7] = { resolve, reject };
-
-      fake.listeners['Lynx.Worklet.FunctionCallRet']({
-        data: JSON.stringify({ resolveId: 7, returnValue: 'ok' }),
-      });
-
-      expect(resolve).toHaveBeenCalledWith('ok');
-    });
-
-    it('rejects pending promises on FunctionCallRet with an error', async () => {
-      const fake = makeFakeJSContext();
-      await load({
-        mainThread: false,
-        lynx: { getCoreContext: () => fake.ctx },
-      });
-
-      const resolve = vi.fn();
-      const reject = vi.fn();
-      globalThis.__lynxMtsPendingResolvers[8] = { resolve, reject };
-
-      fake.listeners['Lynx.Worklet.FunctionCallRet']({
-        data: JSON.stringify({ resolveId: 8, error: 'nope' }),
-      });
-
-      expect(reject).toHaveBeenCalled();
-    });
-
-    it('ignores a FunctionCallRet with no matching resolver', async () => {
-      const fake = makeFakeJSContext();
-      await load({
-        mainThread: false,
-        lynx: { getCoreContext: () => fake.ctx },
-      });
-      expect(() =>
-        fake.listeners['Lynx.Worklet.FunctionCallRet']({
-          data: JSON.stringify({ resolveId: 111, returnValue: 'x' }),
-        }),
-      ).not.toThrow();
     });
 
     it('executes runOnBackground requests from the main thread and replies', async () => {
@@ -866,6 +704,11 @@ describe('global-callbacks', () => {
         mainThread: false,
         lynx: { getCoreContext: () => fake.ctx },
       });
+      // The main thread's list of lazy imports: none, so none can still be
+      // loading.
+      fake.listeners['AngularLynx.MirrorImports']({
+        data: JSON.stringify({ keys: [], synced: true }),
+      });
 
       const reply = await call(
         fake,
@@ -878,6 +721,34 @@ describe('global-callbacks', () => {
       expect(reply['error']).toContain(
         'Background function not found: missing-bg',
       );
+    });
+
+    // A background function in a lazy chunk registers once this thread has
+    // loaded the chunk too, which can be after the main thread calls it.
+    it('waits for the lazy chunks the main thread loaded before giving up', async () => {
+      const fake = makeFakeJSContext();
+      await load({
+        mainThread: false,
+        lynx: { getCoreContext: () => fake.ctx },
+      });
+      const { ɵregisterMirroredImport } =
+        await import('./lazy-bundle/mirrored-imports');
+      ɵregisterMirroredImport('chunk:0', async () => {
+        globalThis.registerWorklet('background', 'in-chunk', () => 'late');
+      });
+
+      const reply = call(
+        fake,
+        'Lynx.Worklet.runOnBackground',
+        'Lynx.Worklet.BgFunctionCallRet',
+        'in-chunk',
+        [],
+      );
+      fake.listeners['AngularLynx.MirrorImports']({
+        data: JSON.stringify({ keys: ['chunk:0'], synced: true }),
+      });
+
+      expect((await reply)['returnValue']).toBe('late');
     });
 
     it('swallows a getCoreContext that throws during background listener setup', async () => {

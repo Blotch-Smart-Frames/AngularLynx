@@ -5,6 +5,7 @@ import { buildTransformedCode } from './transform-module';
 const base = {
   resourcePath: '/proj/src/app/app.component.ts',
   stylesheets: undefined,
+  root: '/proj',
 };
 
 describe('buildTransformedCode', () => {
@@ -110,9 +111,30 @@ describe('buildTransformedCode', () => {
     });
   });
 
+  // Angular runs on the main thread only, and the background thread runs each
+  // module for its background functions (issue #81).
+  describe('cross-thread transform', () => {
+    it('gives module-level background functions IDs and mirrors lazy imports', () => {
+      const result = buildTransformedCode({
+        ...base,
+        code: [
+          "import { backgroundFn } from '@blotch/angular-lynx';",
+          'const save = backgroundFn(() => 1);',
+          "export const routes = [{ loadComponent: () => import('./home') }];",
+        ].join('\n'),
+      });
+
+      expect(result).toMatch(/backgroundFn\(\(\) => 1, "[0-9a-f]{10}:0"\)/);
+      expect(result).toMatch(
+        /__ɵmirrorImport\("[0-9a-f]{10}:1", \(\) => import\('\.\/home'\)\)/,
+      );
+    });
+  });
+
   it('applies imports, scope id and worklet together in order', () => {
     const result = buildTransformedCode({
       resourcePath: '/proj/src/app/app.component.ts',
+      root: '/proj',
       code: 'bootstrapApplication(App);',
       stylesheets: {
         imports: ['/proj/src/app/a.css'],

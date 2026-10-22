@@ -1,4 +1,11 @@
 import { Injectable } from '@angular/core';
+import {
+  callOnBackground,
+  isMainThread,
+  relayedModule,
+  relayFunctions,
+  relayModuleObject,
+} from '../background-call';
 import type { NativeModuleMap } from './native-module.types';
 
 /**
@@ -11,6 +18,12 @@ import type { NativeModuleMap } from './native-module.types';
  * **JS modules** (`lynx.getJSModule` / `lynx.registerModule`) share JavaScript
  * values within a single LynxView. This is the same API used internally by
  * `LynxInitData` and `LynxGlobalData` (via `GlobalEventEmitter`).
+ *
+ * Lynx provides both only on the background thread, while Angular runs on the
+ * main thread. So on the main thread every method goes through the background
+ * call relay (background-call.ts): calls run on the background thread, their
+ * results and callbacks come back as JSON, and a module is a proxy whose
+ * methods return promises.
  *
  * @usageNotes
  * ```typescript
@@ -34,11 +47,7 @@ import type { NativeModuleMap } from './native-module.types';
 @Injectable({ providedIn: 'root' })
 export class LynxNativeModule {
   #hasNativeModules(): boolean {
-    return (
-      typeof NativeModules !== 'undefined' &&
-      NativeModules != null &&
-      typeof NativeModules.bridge?.call === 'function'
-    );
+    return typeof NativeModules !== 'undefined' && NativeModules != null;
   }
 
   #hasLynx(): boolean {
@@ -53,34 +62,33 @@ export class LynxNativeModule {
    * The native callback API is wrapped in a Promise for ergonomic
    * use with `async`/`await`.
    *
-   * Returns `undefined` when `NativeModules` is unavailable (web preview, tests).
+   * Resolves `undefined` when there is no bridge (web preview, tests).
    */
   call<T = unknown>(
     name: string,
     params: Record<string, unknown> = {},
   ): Promise<T | undefined> {
-    if (!this.#hasNativeModules()) {
+    if (isMainThread() && typeof lynx === 'undefined') {
+      // No background thread to relay to.
       return Promise.resolve(undefined);
     }
-
-    return new Promise<T>((resolve) => {
-      NativeModules.bridge.call(name, params, (...args: unknown[]) => {
-        resolve(args[0] as T);
-      });
-    });
+    return callOnBackground('nativeBridgeCall', name, params) as Promise<
+      T | undefined
+    >;
   }
 
   /**
-   * Subscribes to a native event via `NativeModules.bridge.on()`.
+   * Subscribes to a native event via `NativeModules.bridge.on()`. From the
+   * main thread, the callback gets the event's arguments copied as JSON.
    *
-   * No-op when `NativeModules` is unavailable.
+   * No-op when there is no bridge.
    */
   on(name: string, callback: (...args: unknown[]) => void): void {
-    if (!this.#hasNativeModules()) {
-      return;
-    }
-
-    NativeModules.bridge.on(name, callback);
+    callOnBackground('nativeBridgeOn', name, relayFunctions(callback)).catch(
+      () => {
+        // Without a background thread there's no bridge to listen to.
+      },
+    );
   }
 
   /**
@@ -98,13 +106,23 @@ export class LynxNativeModule {
    * const storage = modules.getNativeModule('NativeLocalStorageModule');
    * ```
    *
-   * Returns `undefined` when `NativeModules` is unavailable or the module
-   * is not registered.
+   * On the main thread, which can't reach native modules, it returns a proxy:
+   * each method call runs on the background thread and returns a promise of
+   * its result, and a call to a module or method the host doesn't have
+   * rejects.
+   *
+   * Returns `undefined` outside Lynx, or on the background thread when the
+   * module is not registered.
    */
   getNativeModule<K extends string>(
     name: K,
   ): K extends keyof NativeModuleMap ? NativeModuleMap[K] : unknown {
-    if (typeof NativeModules === 'undefined' || NativeModules == null) {
+    if (isMainThread()) {
+      return (
+        typeof lynx !== 'undefined' ? relayedModule('native', name) : undefined
+      ) as any;
+    }
+    if (!this.#hasNativeModules()) {
       return undefined as any;
     }
 
@@ -115,12 +133,18 @@ export class LynxNativeModule {
    * Retrieves a JS module registered within this LynxView.
    *
    * This wraps `lynx.getJSModule()` — the same API used internally
-   * for `GlobalEventEmitter`.
+   * for `GlobalEventEmitter`. On the main thread it returns a proxy, as
+   * getNativeModule() does.
    *
-   * Returns `undefined` when `lynx` is unavailable or the module
-   * is not registered.
+   * Returns `undefined` when `lynx` is unavailable or, on the background
+   * thread, when the module is not registered.
    */
   getJSModule<T = unknown>(name: string): T | undefined {
+    if (isMainThread()) {
+      return (
+        typeof lynx !== 'undefined' ? relayedModule('js', name) : undefined
+      ) as T | undefined;
+    }
     if (!this.#hasLynx()) {
       return undefined;
     }
@@ -132,15 +156,20 @@ export class LynxNativeModule {
    * Registers a JS module for sharing within this LynxView.
    *
    * Other code (including native callbacks) can retrieve it via
-   * `getJSModule()` or `lynx.getJSModule()`.
+   * `getJSModule()` or `lynx.getJSModule()`. From the main thread, the
+   * background thread registers a copy whose methods call this module's, with
+   * their arguments copied as JSON and their return values dropped.
    *
    * No-op when `lynx` is unavailable.
    */
   registerJSModule<T extends object>(name: string, module: T): void {
-    if (!this.#hasLynx()) {
+    if (typeof lynx === 'undefined') {
       return;
     }
-
-    lynx.registerModule(name, module);
+    callOnBackground('registerJSModule', name, relayModuleObject(module)).catch(
+      () => {
+        // Without a background thread there's no registry to add it to.
+      },
+    );
   }
 }

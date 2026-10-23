@@ -1,7 +1,9 @@
 import { LocationStrategy, PlatformLocation } from '@angular/common';
 import {
   type EnvironmentProviders,
+  inject,
   makeEnvironmentProviders,
+  provideEnvironmentInitializer,
 } from '@angular/core';
 import {
   provideRouter as ngProvideRouter,
@@ -10,6 +12,7 @@ import {
   type Routes,
   withRouterConfig,
 } from '@angular/router';
+import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
 import { LynxRouteReuseStrategy } from './lynx-route-reuse-strategy';
@@ -51,5 +54,8 @@ export const provideRouter = (
       withRouterConfig({ resolveNavigationPromiseOnError: true }),
       ...features,
     ),
+    // The Android back button goes back through this router's history, like
+    // the browser's back button on the web (see lynx-back-button.ts).
+    provideEnvironmentInitializer(() => inject(LynxBackButton)),
   ]);
 };

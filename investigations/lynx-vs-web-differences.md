@@ -4954,3 +4954,19 @@ Native Lynx keeps a handler registered as a worklet (`{ type: 'worklet', value }
 ### The fix
 
 `LynxMainThreadEvent` removes a handler by registering a worklet with no ID, `{ type: 'worklet', value: { _workletType: 'main-thread' } }`, which replaces the old one and which `runWorklet` ignores. React Lynx removes main-thread handlers the same way (`updateWorkletEvent` in `packages/react/runtime/src/snapshot/snapshot/workletEvent.ts`). Layer 6's `native/main-thread.yaml` checks it on device.
+
+---
+
+## The Android back button never reaches JavaScript unless the host app sends it
+
+### What you'd expect (web)
+
+The browser's back button fires `popstate`, and Angular's Router goes back a page. The app doesn't have to ask for it.
+
+### What Lynx does
+
+Lynx gives JavaScript no back event. On Android, the press goes to the activity holding the LynxView, whose default leaves the app. The one exception is XElement's `<overlay>`, a window of its own: while one shows, it takes the press and fires `requestclose`, and the activity never sees it (checked on an Android 14 emulator: the overlay stayed open and the route didn't change). Android also decides whether the activity handles back when the gesture starts, from `OnBackPressedCallback.isEnabled` (predictive back picks its animation from it), so the host can't ask JavaScript at press time. iOS has no back button.
+
+### The fix
+
+The Android app `ng build --platform android` generates registers an `AngularLynxShell` native module with `setBackHandlerEnabled(enabled)`, and while that's enabled sends each press as the `angularLynxBack` global event (`ShellModule.kt`, `MainActivity.kt`). `provideRouter()` starts `LynxBackButton` (`packages/runtime/src/lib/router/lynx-back-button.ts`), which keeps the handler enabled while `LynxLocationStrategy.canGoBack()` is true and calls `Location.back()` on each event, in a `setTimeout`. The router then navigates as for `popstate`, guards included, and back leaves the app from the first screen. Layer 6's `native/back-button.yaml` checks both ends on the Android shell (issue #59). An app embedding the bundle in its own Android app can register the same module and send the same event (`/guide/embedding/#connect-the-android-back-button`).

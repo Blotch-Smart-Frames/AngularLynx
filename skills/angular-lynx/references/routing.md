@@ -86,6 +86,6 @@ Lynx has a **finite element pool (~256 slots)**. `__RemoveElement` detaches elem
 ## Key Differences from Web Routing
 
 - **No URL bar** — users can't type URLs. All navigation is programmatic.
-- **No browser back button** — implement your own back navigation if needed.
+- **No browser back button** — use `Location.back()`. In the Android app `ng build --platform android` makes, the system back button goes back a screen through the router (and leaves the app from the first one).
 - **In-memory only** — the URL state exists only in `LynxLocationStrategy`'s internal signal. There's no `window.location` or `history.pushState`.
 - **Route reuse is mandatory** — without it, element pool exhaustion crashes the app after several navigations.

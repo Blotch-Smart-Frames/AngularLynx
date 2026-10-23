@@ -47,6 +47,7 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 - **Failed navigations** resolve to `false` instead of rejecting. Watch `Router.events` for `NavigationError` to detect them.
 - **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
 - **From an event handler,** wrap `router.navigate()` in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **The Android back button** calls `Location.back()` while `LynxLocationStrategy.canGoBack()` is `true`, and leaves the app when it's `false`. It works in the Android app `ng build --platform android` makes, and in [your own app](/guide/embedding/#connect-the-android-back-button) if it sends the same event. With a `LocationStrategy` of your own, the back button always leaves the app.
 
 ### `LynxRouteReuseStrategy`
 
@@ -166,6 +167,14 @@ forward(): void;
 
 Same as `historyGo(-1)` and `historyGo(1)`.
 
+### `LynxLocationStrategy.canGoBack`
+
+```typescript
+readonly canGoBack: Signal<boolean>;
+```
+
+`true` when there's an entry before the current one, so `back()` goes somewhere. A replaced entry doesn't count.
+
 ### `LynxLocationStrategy.historyGo()`
 
 ```typescript
@@ -265,7 +274,7 @@ onHashChange(fn: LocationChangeListener): VoidFunction;
 
 ## Types
 
-This page uses only Angular types: `Routes`, `RouterFeatures`, `ActivatedRouteSnapshot` and `DetachedRouteHandle` from `@angular/router`, and `LocationChangeListener` from `@angular/common`.
+This page uses only Angular types: `Routes`, `RouterFeatures`, `ActivatedRouteSnapshot` and `DetachedRouteHandle` from `@angular/router`, `LocationChangeListener` from `@angular/common`, and `Signal` from `@angular/core`.
 
 ## Related
 

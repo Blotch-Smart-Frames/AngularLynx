@@ -32,6 +32,11 @@ export type Flow = {
    * together with the fix (the same contract as Playwright's test.fail()).
    */
   readonly knownFailure?: Partial<Record<Platform, string>>;
+  /** The one platform and host it runs on, for a flow that can't run on all. */
+  readonly only?: {
+    readonly platform: Platform;
+    readonly host: NativeHost['kind'];
+  };
 };
 
 // No flow is a known failure on any platform. Android used to fail both flows
@@ -58,7 +63,23 @@ export const FLOWS: readonly Flow[] = [
     file: 'gestures.yaml',
     description: 'measures a pan from the touch and ends a fling',
   },
+  {
+    file: 'back-button.yaml',
+    description: 'goes back a screen with the back button',
+    // Only the app's own Android build has a back handler the runtime turns
+    // on (AngularLynxShell in the Android template). iOS has no back button,
+    // and Lynx Explorer's leaves the page.
+    only: { platform: 'android', host: 'shell' },
+  },
 ];
+
+/** The flows to run on a platform's host. */
+export const flowsFor = (platform: Platform, host: NativeHost): Flow[] =>
+  FLOWS.filter(
+    (flow) =>
+      !flow.only ||
+      (flow.only.platform === platform && flow.only.host === host.kind),
+  );
 
 /** Turns a flow's exit code into a failure message, or undefined if it's fine. */
 export const judgeFlow = (

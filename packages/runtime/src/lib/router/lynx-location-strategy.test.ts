@@ -107,6 +107,32 @@ describe('LynxLocationStrategy', () => {
     });
   });
 
+  describe('canGoBack', () => {
+    it('is false on the first entry', () => {
+      expect(strategy.canGoBack()).toBe(false);
+    });
+
+    it('is true after a push, and false again back on the first entry', () => {
+      strategy.pushState({}, '', '/a', '');
+      strategy.pushState({}, '', '/b', '');
+      expect(strategy.canGoBack()).toBe(true);
+
+      strategy.back();
+      expect(strategy.canGoBack()).toBe(true);
+
+      strategy.back();
+      expect(strategy.canGoBack()).toBe(false);
+
+      strategy.forward();
+      expect(strategy.canGoBack()).toBe(true);
+    });
+
+    it('stays false after a replace', () => {
+      strategy.replaceState({}, '', '/a', '');
+      expect(strategy.canGoBack()).toBe(false);
+    });
+  });
+
   describe('historyGo', () => {
     it('navigates by a relative position', () => {
       strategy.pushState({}, '', '/a', '');

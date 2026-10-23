@@ -94,7 +94,7 @@ export class Details {
 
 - **`Location.back()` and `Location.forward()`** move through the router's in-memory history.
 - **`history.back()` does nothing** on a device, because there's no browser history.
-- **The Android back button isn't connected to the router yet.** In an app built with `ng build --platform android`, pressing it leaves the app instead of going back a screen. See [Run on iOS and Android](/guide/native-apps).
+- **The Android back button goes back a screen** in an app built with `ng build --platform android`. The router handles it like the browser's back button on the web, so guards such as `canDeactivate` still run. On the first screen, it leaves the app.
 
 ## Read route parameters
 
@@ -154,15 +154,15 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 
 ## Differences from web Angular
 
-| Feature                   | Web Angular                           | AngularLynx                          |
-| ------------------------- | ------------------------------------- | ------------------------------------ |
-| URL                       | Shown in the address bar              | Kept in memory, never shown          |
-| Starting URL              | Any URL the browser opens             | Always `/`                           |
-| Links                     | `routerLink`                          | `(bindtap)` with `Router.navigate()` |
-| Going back                | Browser back button, `history.back()` | `Location.back()`                    |
-| Navigating from a handler | Call it directly                      | Wrap it in `setTimeout`              |
-| Lazy routes               | Separate files, downloaded on demand  | Part of the bundle                   |
-| Leaving a route           | Its component is destroyed            | Its view is kept and reused          |
+| Feature                   | Web Angular                           | AngularLynx                            |
+| ------------------------- | ------------------------------------- | -------------------------------------- |
+| URL                       | Shown in the address bar              | Kept in memory, never shown            |
+| Starting URL              | Any URL the browser opens             | Always `/`                             |
+| Links                     | `routerLink`                          | `(bindtap)` with `Router.navigate()`   |
+| Going back                | Browser back button, `history.back()` | Android back button, `Location.back()` |
+| Navigating from a handler | Call it directly                      | Wrap it in `setTimeout`                |
+| Lazy routes               | Separate files, downloaded on demand  | Part of the bundle                     |
+| Leaving a route           | Its component is destroyed            | Its view is kept and reused            |
 
 ## Good to know
 

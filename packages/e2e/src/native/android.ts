@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { FLOWS, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
+import { flowsFor, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
 
 /**
  * Layer 6 on Android: installs the app's own APK, or Lynx Explorer, on the
@@ -43,7 +43,7 @@ export const runOnAndroidEmulator = async ({
   const failures: string[] = [];
   try {
     const device = (await adb(['get-serialno'])).output.trim();
-    for (const flow of FLOWS) {
+    for (const flow of flowsFor('android', host)) {
       const result = await runFlow(flow, {
         device,
         appId,

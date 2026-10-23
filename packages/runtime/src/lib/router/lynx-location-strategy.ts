@@ -1,5 +1,5 @@
 import { type LocationChangeListener, LocationStrategy } from '@angular/common';
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 
 /**
  * In-memory LocationStrategy for Lynx — equivalent to React Router's MemoryRouter.
@@ -21,6 +21,14 @@ export class LynxLocationStrategy extends LocationStrategy {
   #history: { state: unknown; url: string }[] = [{ state: null, url: '/' }];
   #historyIndex = 0;
   #listeners: LocationChangeListener[] = [];
+  readonly #canGoBack = signal(false);
+
+  /**
+   * Whether there's an entry before the current one, so `back()` goes
+   * somewhere. The Android back button follows it (see lynx-back-button.ts):
+   * while it's false, back leaves the app, as on any root screen.
+   */
+  readonly canGoBack = this.#canGoBack.asReadonly();
 
   override path(): string {
     return this.#path;
@@ -49,6 +57,7 @@ export class LynxLocationStrategy extends LocationStrategy {
     this.#history.length = this.#historyIndex + 1;
     this.#history.push({ state, url: fullUrl });
     this.#historyIndex++;
+    this.#canGoBack.set(true);
     this.#path = fullUrl;
   }
 
@@ -75,6 +84,7 @@ export class LynxLocationStrategy extends LocationStrategy {
     const target = this.#historyIndex + relativePosition;
     if (target < 0 || target >= this.#history.length) return;
     this.#historyIndex = target;
+    this.#canGoBack.set(target > 0);
     this.#path = this.#history[target].url;
     for (const fn of this.#listeners) {
       fn({ type: 'popstate', state: this.#history[target].state });

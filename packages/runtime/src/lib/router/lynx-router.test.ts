@@ -1,22 +1,45 @@
+// @vitest-environment jsdom
 import '@angular/compiler';
 import { LocationStrategy, PlatformLocation } from '@angular/common';
-import { Injector } from '@angular/core';
+import { Injector, provideZonelessChangeDetection } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import {
+  BrowserTestingModule,
+  platformBrowserTesting,
+} from '@angular/platform-browser/testing';
 import {
   RouteReuseStrategy,
   ROUTES,
   type Routes,
   withRouterConfig,
 } from '@angular/router';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
 import { LynxRouteReuseStrategy } from './lynx-route-reuse-strategy';
 import { provideRouter } from './lynx-router';
 
-const createInjector = (...args: Parameters<typeof provideRouter>) =>
-  Injector.create({ providers: [provideRouter(...args)] });
+/**
+ * A root injector, as in an app: provideRouter() starts LynxBackButton, which
+ * needs root services such as Location.
+ */
+const createInjector = (...args: Parameters<typeof provideRouter>) => {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    providers: [provideZonelessChangeDetection(), provideRouter(...args)],
+  });
+  return TestBed.inject(Injector);
+};
 
 describe('provideRouter', () => {
+  beforeAll(() => {
+    TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
   describe('provider overrides', () => {
     it('provides LynxPlatformLocation as PlatformLocation', () => {
       const injector = createInjector([]);

@@ -91,6 +91,50 @@ Before you serve updates this way:
 - **Match the Lynx version.** A bundle only runs on a Lynx engine at least as new as its `targetSdkVersion`, an AngularLynx plugin option that defaults to `3.2`. Every installed version of your app must be able to run what you serve. So raise `targetSdkVersion` only when every installed version's engine is that new.
 - **Check the store rules.** Both stores have rules about code an app downloads after review. Read Apple's [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/) and Google Play's [Developer Program Policies](https://play.google.com/about/developer-content-policy/) before you rely on it.
 
+## Connect the Android back button
+
+In the Android app `ng build --platform android` generates, the back button goes back a screen through Angular's Router, and leaves the app from the first screen. Your own Android app can do the same in three steps:
+
+1. **Register a native module named `AngularLynxShell`**, with a `setBackHandlerEnabled(enabled: Boolean)` method. The runtime calls it with `true` while the router has a screen to go back to, and with `false` back on the first screen.
+2. **Handle back while it's enabled**, with an `OnBackPressedCallback` that starts disabled. Android decides whether your app handles back as soon as the gesture starts, too early to ask JavaScript, so the runtime tells your app ahead of time.
+3. **Send the `angularLynxBack` global event** to the LynxView when the callback runs. The runtime calls `Location.back()`.
+
+```kotlin
+class MainActivity : ComponentActivity() {
+    private val lynxView by lazy {
+        LynxViewBuilder().apply {
+            // Your loaders, as in Lynx's integration guide.
+            registerModule("AngularLynxShell", AngularLynxShell::class.java, this@MainActivity)
+        }.build(this)
+    }
+
+    // Disabled until the router has history, so back leaves the screen.
+    val backHandler = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            lynxView.sendGlobalEvent("angularLynxBack", JavaOnlyArray())
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this, backHandler)
+        // Show lynxView and load your bundle, as before.
+    }
+}
+
+class AngularLynxShell(context: Context, param: Any?) : LynxModule(context, param) {
+    private val activity = param as MainActivity
+
+    // Lynx calls native modules off the main thread.
+    @LynxMethod
+    fun setBackHandlerEnabled(enabled: Boolean) {
+        activity.runOnUiThread { activity.backHandler.isEnabled = enabled }
+    }
+}
+```
+
+Without the module, the back button does whatever your app already does. iOS has no back button, so there's nothing to connect there.
+
 ## Pass data from your app
 
 Your native app can send values into Angular, such as a signed-in user's ID or the app's theme. See [Pass data from your native app](/guide/embedding/host-data).

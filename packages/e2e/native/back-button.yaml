@@ -1,0 +1,26 @@
+# Layer 6, Android's own build only: the back button goes back a screen
+# through the router, and leaves the app from the first one (issue #59). The
+# counter stays on screen above the router outlet, and counts to 1 first, so
+# "Count: 1" after the first back shows the same app is still open. "Count: 0"
+# wouldn't: an app left open underneath, such as Lynx Explorer after an
+# Explorer run, can show the same page.
+# Lynx Explorer and iOS have no back handler for the runtime to turn on.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Increment
+- assertVisible: 'Count: 1'
+- tapOn: Open lazy page
+- extendedWaitUntil:
+    visible: Lazy page loaded
+    timeout: 15000
+- back
+- extendedWaitUntil:
+    notVisible: Lazy page loaded
+    timeout: 10000
+- assertVisible: 'Count: 1'
+- takeScreenshot: back-to-first
+- back
+- extendedWaitUntil:
+    notVisible: 'Count: 1'
+    timeout: 10000

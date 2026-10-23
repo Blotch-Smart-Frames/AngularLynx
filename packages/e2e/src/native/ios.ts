@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { check, run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { FLOWS, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
+import { flowsFor, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
 
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
@@ -189,7 +189,7 @@ export const runOnIosSimulator = async ({
 
   const failures: string[] = [];
   try {
-    for (const flow of FLOWS) {
+    for (const flow of flowsFor('ios', host)) {
       const result = await runFlow(flow, {
         device: udid,
         appId,

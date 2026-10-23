@@ -14,7 +14,9 @@ An ejected project (`ios/` or `android/` with a `.angular-lynx-ejected` marker, 
 
 ## The shells
 
-Both are one full-screen `LynxView` running `main.lynx.bundle`; Angular Router does all navigation inside it. Bundles and assets load from inside the app, so RSpeedy's default asset prefix (`/static/...`) works with no configuration. See [`templates/android/README.md`](templates/android/README.md) for the Android shell's details.
+Both are one full-screen `LynxView` running `main.lynx.bundle`; Angular Router does all navigation inside it. Bundles and assets load from inside the app, so RSpeedy's default asset prefix (`/static/...`) works with no configuration. The `LynxView` sits inside the safe area, so CSS `env(safe-area-inset-*)` is 0 in it.
+
+Both send the same global props, which the runtime's services read: `platform`, `theme` (again whenever the phone switches between light and dark), `appLocale` (the phone's language as a BCP 47 tag), `isNotchScreen`, and the safe-area insets `safeAreaTop`, `safeAreaBottom`, `safeAreaLeft` and `safeAreaRight`. Lynx Explorer sends `theme` and `isNotchScreen` too, but no `appLocale`. See [`templates/android/README.md`](templates/android/README.md) for the Android shell's details.
 
 Both link Lynx's XElement library, which holds `<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>` and `<video>`. Lynx's core doesn't include these, and a host that doesn't register them renders nothing for those tags (on Android, nothing after them either). XElement's AnimaX and Markdown elements are left out: the runtime doesn't support them.
 

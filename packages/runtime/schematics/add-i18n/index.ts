@@ -17,7 +17,7 @@ import type { Schema } from './schema';
 /**
  * Wires Angular's `@angular/localize` package into an AngularLynx app and
  * provides the Lynx-aware `provideLocale()` provider that reads the active
- * locale from Lynx's SystemInfo.
+ * locale from the host app's `appLocale` global prop.
  *
  * Four-step setup, each step idempotent so re-running is safe:
  *   1. **angular.json `i18n` block** — declares the source locale so any
@@ -28,8 +28,8 @@ import type { Schema } from './schema';
  *   3. **tsconfig `types`** — adds @angular/localize so $localize is typed
  *      and TypeScript doesn't flag it as an undefined global.
  *   4. **provideLocale() in app.config** — registers the runtime provider
- *      that reads SystemInfo.language / appLocale and applies it to Angular's
- *      LOCALE_ID token.
+ *      that reads `appLocale` (the apps `ng build --platform` makes send the
+ *      phone's language) and applies it to Angular's LOCALE_ID token.
  */
 export default (options: Schema): Rule =>
   async (tree: Tree) => {

@@ -3,7 +3,7 @@ import { bootstrapApplication, getLynxAppLocale } from '@blotch/angular-lynx';
 import { App } from './app/app';
 import { appConfig } from './app/app.config';
 
-if (getLynxAppLocale() === 'fr') {
+if (getLynxAppLocale()?.startsWith('fr')) {
   // cspell:disable
   loadTranslations({
     'app.greeting': 'Bonjour le monde !',

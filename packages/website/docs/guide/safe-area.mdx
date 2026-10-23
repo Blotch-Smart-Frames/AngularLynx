@@ -25,13 +25,17 @@ The **safe area** is the part of the screen that hardware and system bars don't 
 
 ## Where the insets come from
 
-| Where the app runs                                                   | What `env()` gives                                     |
-| -------------------------------------------------------------------- | ------------------------------------------------------ |
-| iPhone, in [Lynx Explorer](/guide/glossary#lynx-explorer) or any app | The window's insets, wherever your page sits on screen |
-| Android                                                              | 0 on every side: Lynx doesn't read insets on Android   |
-| [Web preview](/guide/glossary#web-preview)                           | 0                                                      |
+| Where the app runs                                       | What `env()` gives                                                   |
+| -------------------------------------------------------- | -------------------------------------------------------------------- |
+| Apps from `ng build --platform`                          | 0 on every side: the app already keeps the page inside the safe area |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) on iPhone | The window's insets, wherever your page sits on screen               |
+| Your own iOS app                                         | The window's insets when the LynxView was created (see below)        |
+| Android, in any app                                      | 0 on every side: Lynx doesn't read insets on Android                 |
+| [Web preview](/guide/glossary#web-preview)               | 0                                                                    |
 
-Apps you build with `ng build --platform ios` or `--platform android` already keep the whole page inside the safe area. The native app places it below the status bar and above the home indicator, so you don't need inset padding there. If you add it anyway, check the result on a device.
+Apps you build with `ng build --platform ios` or `--platform android` place the whole page below the status bar and above the home indicator, so you don't need inset padding there, and `env()` adds none. They still send the insets as numbers, with `isNotchScreen`: see [What the generated apps pass](/guide/embedding/host-data#what-the-generated-apps-pass).
+
+On iOS, Lynx reads the window's insets each time a LynxView is created. A LynxView created before its window is shown reads 0, which is how the generated iOS app keeps `env()` at 0.
 
 ## Tailwind utilities
 
@@ -57,10 +61,6 @@ The `<n>` takes any value from your spacing scale, as `p-<n>` does: `pb-safe-8`,
 ## Check for a notch in TypeScript
 
 Prefer CSS: `env()` adapts to every device without code. For logic CSS can't express, inject `LynxSafeArea`.
-
-:::warning Known issue
-On iOS and Android, `inject(LynxSafeArea)` currently throws on the [main thread](/guide/glossary#main-thread). It reads Lynx's `SystemInfo` object, which the main thread doesn't have. Until that's fixed, use the CSS approach on devices.
-:::
 
 ```typescript title="src/app/header.ts"
 import { Component, inject } from '@angular/core';
@@ -91,7 +91,7 @@ export class Header {
 }
 ```
 
-- **`isNotchScreen()`** is a signal that's `true` when the device has a notch or camera cutout. It comes from the [host app](/guide/glossary#host-app) (the native app that runs your bundle): Lynx Explorer passes it, and the apps that `ng build --platform` makes don't, so there it's always `false`.
+- **`isNotchScreen()`** is a signal that's `true` when the device has a notch or camera cutout. It comes from the [host app](/guide/glossary#host-app) (the native app that runs your bundle). Lynx Explorer and the apps that `ng build --platform` makes pass it.
 - **`platform`** is the operating system. On phones it's `'iOS'`, `'Android'` or `'Harmony'`, which is Huawei's HarmonyOS.
 - **`SAFE_AREA_INSET_TOP`**, `SAFE_AREA_INSET_RIGHT`, `SAFE_AREA_INSET_BOTTOM` and `SAFE_AREA_INSET_LEFT` are the `env()` strings, such as `'env(safe-area-inset-top)'`, for building styles in TypeScript.
 

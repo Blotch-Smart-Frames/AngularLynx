@@ -7,7 +7,7 @@ Translate your app with Angular's `@angular/localize`. Mark text with `i18n` or 
 ## What's different on Lynx
 
 - **Translations load at runtime.** Angular's build-time translation, with one build per language, isn't supported. Your app calls `loadTranslations()` before it starts.
-- **The language comes from the host app.** AngularLynx reads `appLocale` from the [host app](/guide/glossary#host-app)'s [GlobalData](/guide/glossary#globaldata). The iOS and Android apps that [`ng build --platform`](/guide/native-apps) generates don't set it yet, so your app uses the `sourceLocale` from angular.json.
+- **The language comes from the host app.** AngularLynx reads `appLocale` from the [host app](/guide/glossary#host-app)'s [GlobalData](/guide/glossary#globaldata). The iOS and Android apps that [`ng build --platform`](/guide/native-apps) generates send the phone's language as a tag such as `'fr-FR'`. Lynx Explorer sends none, so there your app uses the `sourceLocale` from angular.json.
 - **There's no `Intl`.** `$localize` and Angular's pipes don't need it. Code that calls `Intl` directly needs a [polyfill](#add-an-intl-polyfill).
 - **Switching language means restarting the app**, for most text. Template `i18n` text and `LOCALE_ID` don't change after they're first used. Some strings [can switch live](#switch-language-while-the-app-runs).
 
@@ -47,7 +47,7 @@ export const appConfig: ApplicationConfig = {
 };
 ```
 
-`provideLocale()` sets Angular's `LOCALE_ID` from `appLocale`, falling back to `sourceLocale`, then to `en-US`.
+`provideLocale()` sets Angular's `LOCALE_ID` from `appLocale`, falling back to `sourceLocale`, then to `en-US`. It also falls back, and logs a warning, when Angular has no locale data for `appLocale`: Angular's date and number pipes would throw for it. So a phone set to a language your app doesn't support gets your source language, as a native app does. Register the data of each language you support with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData).
 
 ## Mark text for translation
 
@@ -134,7 +134,7 @@ import { App } from './app/app';
 import { appConfig } from './app/app.config';
 import fr from './locale/messages.fr.json';
 
-if (getLynxAppLocale() === 'fr') {
+if (getLynxAppLocale()?.startsWith('fr')) {
   loadTranslations(fr.translations);
 }
 
@@ -142,6 +142,7 @@ bootstrapApplication(App, appConfig);
 ```
 
 - **`getLynxAppLocale()`** reads `appLocale` without Angular's dependency injection, so it works before the app starts. It returns `undefined` when the host app hasn't set one.
+- **Match the language, not the whole tag.** The phone may say `'fr-FR'`, `'fr-CA'` or `'fr'`.
 - **Load before bootstrap.** Angular translates template text and `$localize` strings when it creates each component, using whatever was loaded at that moment.
 - **Messages without a translation** show the source text and log a warning.
 
@@ -163,7 +164,7 @@ export class LocaleBadge {
 }
 ```
 
-`locale()` returns `appLocale`, or the same fallbacks as `provideLocale()`. Angular's pipes use `LOCALE_ID` instead. To format dates, numbers or currency for a locale other than `en-US`, register its data with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData).
+`locale()` returns `appLocale` as the host app sent it, or else `sourceLocale`, then `en-US`. Angular's pipes use `LOCALE_ID` instead, which also falls back when Angular has no data for `appLocale` (see [Set up](#set-up)). To format dates, numbers or currency for a locale other than `en-US`, register its data with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData).
 
 ## Switch language while the app runs
 

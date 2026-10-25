@@ -31,6 +31,7 @@ ng add @blotch/angular-lynx
   - `ng new`'s `initial` budget (500 kB warning, 1 MB error) becomes 2 MB and 5 MB. A Lynx bundle holds Angular twice, once per thread.
   - `serve` uses `@blotch/angular-lynx-build:dev-server`, keeping `buildTarget`, `port` and `host`.
   - `test` uses `@blotch/angular-lynx-build:unit-test`, keeping the options of an `@angular/build:unit-test` target.
+  - `extract-i18n` uses `@blotch/angular-lynx-build:extract-i18n`, so `ng extract-i18n` works. Angular CLI can't pick an extractor for the Lynx build by itself.
   - `cli.schematicCollections` lists `@blotch/angular-lynx` first, so `ng generate component` makes Lynx components.
 - **`package.json`**: `start` runs `ng serve` and `build` runs `ng build`. Adds `@blotch/angular-lynx-build` and `@lynx-js/types` as dev dependencies.
 - **Tailwind CSS**, unless `--tailwind=false`: the same changes as [`add-tailwind`](#add-tailwind).
@@ -130,7 +131,7 @@ Sets up `@angular/localize` with the device's language. See [Internationalizatio
 
 **What it changes:**
 
-- **`angular.json`**: adds an `i18n` block with `sourceLocale: 'en-US'` if there's none, and adds `@angular/localize/init` to the build's `polyfills`.
+- **`angular.json`**: adds an `i18n` block with `sourceLocale: 'en-US'` if there's none, and adds `@angular/localize/init` to the build's `polyfills`. Sets the `extract-i18n` target to write JSON, the format `loadTranslations()` takes, to `src/locale`, unless the target already sets a `format` or `outputPath`. An `extract-i18n` target of Angular's switches to `@blotch/angular-lynx-build:extract-i18n`.
 - **`tsconfig.app.json`**: adds `@angular/localize` to `compilerOptions.types`, so `$localize` is typed.
 - **`src/app/app.config.ts`**: adds `provideLocale()` as the first provider, unless the file already uses it.
 - **`package.json`**: adds `@angular/localize` as a dev dependency, at the same version range as your `@angular/core`.
@@ -169,7 +170,7 @@ Updates `@blotch/angular-lynx`, `@blotch/angular-lynx-build`, `@blotch/angular-l
 
 It also updates your app for changes that need one:
 
-- **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS. It also renames `accessibility-trait`, which Lynx ignores, to `accessibility-traits` in your templates.
+- **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS. It also renames `accessibility-trait`, which Lynx ignores, to `accessibility-traits` in your templates, and adds the `extract-i18n` target that `ng add` and `add-i18n` now write, so `ng extract-i18n` works.
 
 ## Related
 

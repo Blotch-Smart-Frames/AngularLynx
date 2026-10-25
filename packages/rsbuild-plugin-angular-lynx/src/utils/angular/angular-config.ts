@@ -45,18 +45,22 @@ export const applyAngularConfig = (
     // 1. Polyfills (AbortController, URL, etc.) must come first since Angular
     //    and user code assume they exist at import time
     // 2. @angular/localize/init (if i18n is configured) — registers $localize
-    //    which template strings may reference at module evaluation
+    //    which template strings may reference at module evaluation. Only when
+    //    the app's polyfills don't load it already, as they do after
+    //    `add-i18n`, which puts it there for `ng test` as Angular's own
+    //    `ng add @angular/localize` does.
     // 3. User polyfills from angular.json
     // 4. Global stylesheets — must load before components so CSS is available
     //    when the first component renders
     config.source.preEntry.push(path.resolve(__dirname, './polyfills'));
-    if (buildOptions.i18n.hasDefinedSourceLocale) {
+    const polyfills = buildOptions.polyfills ?? [];
+    if (
+      buildOptions.i18n.hasDefinedSourceLocale &&
+      !polyfills.some((polyfill) => polyfill.startsWith('@angular/localize'))
+    ) {
       config.source.preEntry.push('@angular/localize/init');
     }
-    const polyfills = buildOptions.polyfills;
-    if (polyfills) {
-      config.source.preEntry.push(...polyfills);
-    }
+    config.source.preEntry.push(...polyfills);
     config.source.preEntry.push(...buildOptions.styles);
     config.source.tsconfigPath = buildOptions.tsconfig;
     config.source.define ??= {};

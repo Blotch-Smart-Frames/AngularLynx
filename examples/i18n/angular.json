@@ -28,6 +28,13 @@
           "options": {
             "buildTarget": "i18n:build"
           }
+        },
+        "extract-i18n": {
+          "builder": "@blotch/angular-lynx-build:extract-i18n",
+          "options": {
+            "format": "json",
+            "outputPath": "src/locale"
+          }
         }
       }
     }

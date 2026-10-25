@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-build
 
-The Angular CLI builders behind `ng build`, `ng serve` and `ng test` on Lynx. It's the only build dependency your app needs, as `@angular/build` is for a web app. [RSpeedy](/guide/glossary#rspeedy) (the Lynx build tool), the AngularLynx plugin and the native app builder come with it.
+The Angular CLI builders behind `ng build`, `ng serve`, `ng test` and `ng extract-i18n` on Lynx. It's the only build dependency your app needs, as `@angular/build` is for a web app. [RSpeedy](/guide/glossary#rspeedy) (the Lynx build tool), the AngularLynx plugin and the native app builder come with it.
 
 ## Usage
 
@@ -20,15 +20,19 @@ The Angular CLI builders behind `ng build`, `ng serve` and `ng test` on Lynx. It
   },
   "test": {
     "builder": "@blotch/angular-lynx-build:unit-test"
+  },
+  "extract-i18n": {
+    "builder": "@blotch/angular-lynx-build:extract-i18n"
   }
 }
 ```
 
-| Builder       | Command    | What it does                                                                                               |
-| ------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| `application` | `ng build` | Builds the [bundles](/guide/glossary#bundle) into `dist/`, and with `--platform`, the iOS and Android apps |
-| `dev-server`  | `ng serve` | Serves the app to Lynx Explorer and the web preview, and prints the QR code that Lynx Explorer scans       |
-| `unit-test`   | `ng test`  | Runs your unit tests with Angular's own unit-test builder, set up for Lynx                                 |
+| Builder        | Command           | What it does                                                                                               |
+| -------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| `application`  | `ng build`        | Builds the [bundles](/guide/glossary#bundle) into `dist/`, and with `--platform`, the iOS and Android apps |
+| `dev-server`   | `ng serve`        | Serves the app to Lynx Explorer and the web preview, and prints the QR code that Lynx Explorer scans       |
+| `unit-test`    | `ng test`         | Runs your unit tests with Angular's own unit-test builder, set up for Lynx                                 |
+| `extract-i18n` | `ng extract-i18n` | Extracts the messages to translate with Angular's own extractor, set up for Lynx                           |
 
 They work like Angular's builders:
 
@@ -116,6 +120,14 @@ For Lynx, it also:
 - loads imported images, fonts and media as file URLs, as RSpeedy does in the app.
 
 It runs your project's own `@angular/build`, which must match your Angular version. See [Testing](/guide/testing/) for writing tests.
+
+## extract-i18n
+
+`ng extract-i18n` runs Angular's `@angular/build:extract-i18n` builder. It takes the [same options](https://angular.dev/cli/extract-i18n) (`format`, `outputPath`, `outFile`, ...). Angular CLI picks an extractor by itself only for Angular's own build builders, so an AngularLynx app needs this target in `angular.json`. `ng add` writes it, and [`add-i18n`](/api/schematics#add-i18n) sets it to write JSON to `src/locale`.
+
+For Lynx, it also loads imported images, fonts and media as file URLs, as in `ng test`. Angular's extractor stops at the first imported image otherwise.
+
+It needs `@angular/localize`, which `add-i18n` installs. See [Internationalization](/guide/i18n).
 
 ## lynx.config.ts
 

@@ -10,6 +10,11 @@
       "version": "22.2.3",
       "description": "Renames accessibility-trait, which Lynx ignores, to accessibility-traits",
       "factory": "./migrations/accessibility-traits/index"
+    },
+    "extract-i18n-target": {
+      "version": "22.2.3",
+      "description": "Adds the extract-i18n target that ng extract-i18n needs, with the AngularLynx builder",
+      "factory": "./migrations/extract-i18n-target/index"
     }
   }
 }

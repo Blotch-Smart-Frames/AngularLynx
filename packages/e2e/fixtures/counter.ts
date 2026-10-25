@@ -65,6 +65,10 @@ const countInit = mainThreadFn(() => {
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
  *
+ * "Increment" is marked for translation, so Layer 2's `ng extract-i18n` has a
+ * message to find, and the later layers render a template i18n block. With
+ * no translations loaded, it shows the source text.
+ *
  * ngOnInit counts itself through LynxMainThread.runOnMainThread(). The
  * background thread used to start a second copy of the app, whose ngOnInit
  * also reached the main thread and made the count 2 (issue #81). This page is
@@ -83,7 +87,7 @@ const countInit = mainThreadFn(() => {
         style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
         (bindtap)="increment()"
       >
-        <text>Increment</text>
+        <text i18n="@@e2e.increment">Increment</text>
       </view>
       <view style="display: flex; flex-direction: row; margin-top: 8px;">
         <view

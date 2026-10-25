@@ -123,7 +123,7 @@
 | IDE type support for Lynx elements       |                 ✅ (directive stubs)                 |             ✅              |    ✅ (Volar plugin)     |
 | HMR                                      |          ⚠️ (module HMR, re-bootstraps app)          |        ❌ (unclear)         |            ✅            |
 | Build diagnostics (invalid elements/CSS) |                          ✅                          |             ❌              |            ❌            |
-| DevTools integration                     | ✅ (`LynxPerformanceService`, `LynxDevToolsService`) | ⚠️ (profile hooks, logging) | ⚠️ (Vue devtools option) |
+| DevTools integration                     | ✅ (`LynxPerformance`, `LynxDevTools`) | ⚠️ (profile hooks, logging) | ⚠️ (Vue devtools option) |
 | Documentation site                       |                     ✅ (Rspress)                     |             ❌              |   ✅ (vue.lynxjs.org)    |
 | Example gallery                          |                   ✅ (12 examples)                   |             ❌              |     ✅ (26 examples)     |
 

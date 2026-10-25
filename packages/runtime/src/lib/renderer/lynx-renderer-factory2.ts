@@ -6,7 +6,7 @@ import {
   type RendererType2,
   ViewEncapsulation,
 } from '@angular/core';
-import { devStats } from '../devtools/stats';
+import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
 import {
   processPendingListUpdates,
@@ -73,6 +73,13 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    */
   begin?(): void {
     setInsideChangeDetection(true);
+    // Build-time `define` gate — false in the Vitest config, so this
+    // profiling call is dead code from the test bundle's point of view.
+    /* v8 ignore start */
+    if (__PROFILE__) {
+      startCdTiming();
+    }
+    /* v8 ignore stop */
   }
   /**
    * Called by Angular after every change detection cycle completes.
@@ -100,47 +107,63 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    * flush once renderPage returns, so skipping this is safe — element
    * creation/attribute calls above already mutate native elements directly,
    * independent of flushing.
+   *
+   * In development builds, the cycle's duration, timed from begin(), is
+   * recorded on every return path, the flush included: it's how long the
+   * cycle kept the main thread busy.
    */
   end?(): void {
-    // This change-detection cycle is finishing: clear the flag first, on EVERY
-    // return path, so mutations after this point are correctly seen as
-    // outside-a-cycle (see begin() / scheduleSettleFlush). The flush below is
-    // unconditional, so clearing the flag now does not affect it.
-    setInsideChangeDetection(false);
-    // During SSR hydration the native tree already exists from the snapshot
-    // — flushing would be redundant and could cause visual glitches.
-    // `__ENABLE_SSR__` is a build-time `define` (false in the Vitest config)
-    // so this guard is dead from the test bundle's point of view.
-    /* v8 ignore start */
-    if (__ENABLE_SSR__ && (globalThis as any).__LYNX_IS_HYDRATING__) {
-      return;
-    }
-    /* v8 ignore stop */
+    try {
+      // This change-detection cycle is finishing: clear the flag first, on
+      // EVERY return path, so mutations after this point are correctly seen
+      // as outside-a-cycle (see begin() / scheduleSettleFlush). The flush
+      // below is unconditional, so clearing the flag now does not affect it.
+      setInsideChangeDetection(false);
+      // During SSR hydration the native tree already exists from the snapshot
+      // — flushing would be redundant and could cause visual glitches.
+      // `__ENABLE_SSR__` is a build-time `define` (false in the Vitest config)
+      // so this guard is dead from the test bundle's point of view.
+      /* v8 ignore start */
+      if (__ENABLE_SSR__ && (globalThis as any).__LYNX_IS_HYDRATING__) {
+        return;
+      }
+      /* v8 ignore stop */
 
-    // Build-time `define` gate — false in the Vitest config, so this
-    // profiling block is dead code from the test bundle's point of view.
-    /* v8 ignore start */
-    if (__PROFILE__) {
-      devStats.cdCycles++;
-      devStats.flushCount++;
-    }
-    /* v8 ignore stop */
+      // Build-time `define` gate — false in the Vitest config, so this
+      // profiling block is dead code from the test bundle's point of view.
+      /* v8 ignore start */
+      if (__PROFILE__) {
+        devStats.cdCycles++;
+        devStats.flushCount++;
+      }
+      /* v8 ignore stop */
 
-    // Commit queued removals into this cycle's flush (see doc above). Drained
-    // even while the first-render flush is skipped: the __RemoveElement calls
-    // mutate native elements directly, and native performs its own flush once
-    // renderPage returns.
-    processPendingRemovals();
-    // Re-derive positional edge whitespace for texts mutated this cycle, after
-    // removals (so torn-down subtrees are skipped) and before the flush (so the
-    // corrected text is painted in the same pass). Runs even while the first
-    // render's explicit flush is skipped: it only mutates native `text`
-    // attributes directly, which native commits in its own post-renderPage
-    // flush — same rationale as processPendingRemovals above.
-    processPendingTextNormalization();
-    if (!isFirstRenderPending()) {
-      __FlushElementTree();
+      // Commit queued removals into this cycle's flush (see doc above).
+      // Drained even while the first-render flush is skipped: the
+      // __RemoveElement calls mutate native elements directly, and native
+      // performs its own flush once renderPage returns.
+      processPendingRemovals();
+      // Re-derive positional edge whitespace for texts mutated this cycle,
+      // after removals (so torn-down subtrees are skipped) and before the
+      // flush (so the corrected text is painted in the same pass). Runs even
+      // while the first render's explicit flush is skipped: it only mutates
+      // native `text` attributes directly, which native commits in its own
+      // post-renderPage flush — same rationale as processPendingRemovals
+      // above.
+      processPendingTextNormalization();
+      if (!isFirstRenderPending()) {
+        __FlushElementTree();
+      }
+      processPendingListUpdates();
+    } finally {
+      // In `finally` so a cycle that returns early or throws still ends its
+      // timing: the start times nest, so a missed end would pair every later
+      // cycle's end with the wrong start. Gated like the counters above.
+      /* v8 ignore start */
+      if (__PROFILE__) {
+        endCdTiming();
+      }
+      /* v8 ignore stop */
     }
-    processPendingListUpdates();
   }
 }

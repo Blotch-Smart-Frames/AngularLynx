@@ -2084,13 +2084,19 @@ There is no equivalent to `role`, `tabindex`, `aria-expanded`, `aria-selected`, 
 
 ### What Lynx does
 
-`performance.now()` is **not available** in Lynx. For profiling and performance tracing, use `lynx.performance`:
+`performance.now()` is **not available** in native Lynx: there's no `performance` global on the main thread or the background thread (checked in Lynx Explorer 4.1 on iOS). The web preview has one on both, since it runs in the browser. For simple timing, `Date.now()` is available everywhere, in whole milliseconds; `LynxDevTools`' `lastCdDurationMs` falls back to it.
 
-- `lynx.performance.profileStart(label)` — begin a named trace span
-- `lynx.performance.profileEnd(label)` — end the span
-- `lynx.performance.profileMark(label)` — instant marker
+For profiling and performance tracing, use `lynx.performance` (wrapped by `LynxPerformance`), which exists on both threads:
 
-These emit trace events in Perfetto format, not the Web Performance Timeline model. For simple timing, `Date.now()` is available as a lower-resolution alternative.
+- `lynx.performance.profileStart(name, option?)` — begin a named trace span
+- `lynx.performance.profileEnd()` — end the most recent span
+- `lynx.performance.profileMark(name, option?)` — instant marker
+- `lynx.performance.profileFlowId()` — a new ID to link spans and marks
+- `lynx.performance.isProfileRecording()` — whether a trace is recording
+
+`option` is `{ flowId?, flowIds?, args? }` for spans and marks alike. Native Lynx keeps only the string values of `args` and silently drops the rest (`HandleProfileNameAndOption` in `core/runtime/lepus/bindings/renderer_functions.cc` and `core/runtime/js/bindings/js_app.cc`). Release builds of the engine compile tracing out, so the calls cost almost nothing there.
+
+On a device, these emit trace events in Perfetto format, for Lynx DevTool's trace recording. Web-core maps them to the Web Performance Timeline instead: a span becomes a User Timing measure, and a mark a mark, with `option` as its `detail`. `isProfileRecording()` there is `true` whenever `performance` exists.
 
 ---
 

@@ -67,11 +67,20 @@ describe('LynxPerformance', () => {
 
     it('profileStart calls lynx.performance.profileStart', () => {
       const service = new LynxPerformance();
-      service.profileStart('MyTrace', { flowId: 1, args: { x: 10 } });
+      service.profileStart('MyTrace', { flowId: 1, args: { x: '10' } });
 
       expect(mockPerf.profileStart).toHaveBeenCalledWith('MyTrace', {
         flowId: 1,
-        args: { x: 10 },
+        args: { x: '10' },
+      });
+    });
+
+    it('profileStart passes flowIds through', () => {
+      const service = new LynxPerformance();
+      service.profileStart('MyTrace', { flowIds: [1, 2] });
+
+      expect(mockPerf.profileStart).toHaveBeenCalledWith('MyTrace', {
+        flowIds: [1, 2],
       });
     });
 
@@ -88,6 +97,19 @@ describe('LynxPerformance', () => {
 
       expect(mockPerf.profileMark).toHaveBeenCalledWith('loaded', {
         args: { source: 'cache' },
+      });
+    });
+
+    it('profileMark passes flowId and flowIds through', () => {
+      const service = new LynxPerformance();
+      service.profileMark('step', { flowId: 7 });
+      service.profileMark('fanOut', { flowIds: [7, 8] });
+
+      expect(mockPerf.profileMark).toHaveBeenNthCalledWith(1, 'step', {
+        flowId: 7,
+      });
+      expect(mockPerf.profileMark).toHaveBeenNthCalledWith(2, 'fanOut', {
+        flowIds: [7, 8],
       });
     });
 

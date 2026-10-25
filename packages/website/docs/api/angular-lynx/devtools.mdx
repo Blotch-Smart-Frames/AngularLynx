@@ -1,6 +1,6 @@
 # DevTools
 
-Renderer counters you can show on screen, and named traces for Lynx's performance timeline. `import { LynxDevTools, LynxPerformance, type DevToolsStats } from '@blotch/angular-lynx';`
+Renderer counters you can show on screen, and named traces for Lynx's performance timeline. `import { LynxDevTools, LynxPerformance, type DevToolsStats, type LynxTraceOptions } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -73,7 +73,9 @@ Sets every counter to `0` and updates `stats`.
 class LynxPerformance {}
 ```
 
-Adds your own named traces and marks to the performance recording that [Lynx DevTool](/guide/glossary#lynx-devtool) (the desktop debugger app) captures. Unlike the counters, it works in every build, not only development builds. Every method does nothing when Lynx's tracing API isn't available.
+Adds your own named traces and marks to the performance recording that [Lynx DevTool](/guide/glossary#lynx-devtool) (the desktop debugger app) captures. Unlike the counters, it works in every build, not only development builds, so you can trace the build you ship. Every method does nothing when Lynx's tracing API isn't available.
+
+In the web preview, the traces go to the browser's performance timeline instead: each trace becomes a User Timing measure, and each mark a User Timing mark, with the options in its `detail`. Chrome DevTools shows them in the Performance panel's **Timings** track.
 
 ### `LynxPerformance.isRecording()`
 
@@ -81,23 +83,15 @@ Adds your own named traces and marks to the performance recording that [Lynx Dev
 isRecording(): boolean;
 ```
 
-Returns `true` while a recording is running.
+Returns `true` while a recording is running. In the web preview, it always returns `true`, since the browser's performance timeline is always on.
 
 ### `LynxPerformance.profileStart()`
 
 ```typescript
-profileStart(
-  name: string,
-  options?: { flowId?: number; args?: Record<string, unknown> },
-): void;
+profileStart(name: string, options?: LynxTraceOptions): void;
 ```
 
-Starts a named trace. Pair each call with `profileEnd()`. Traces nest.
-
-| Option   | Description                                                          |
-| -------- | -------------------------------------------------------------------- |
-| `flowId` | Links this trace to others with the same ID, from `profileFlowId()`. |
-| `args`   | Extra values recorded with the trace.                                |
+Starts a named trace. Pair each call with `profileEnd()`. Traces nest. See [`LynxTraceOptions`](#lynxtraceoptions) for the options.
 
 ### `LynxPerformance.profileEnd()`
 
@@ -110,10 +104,10 @@ Ends the most recently started trace.
 ### `LynxPerformance.profileMark()`
 
 ```typescript
-profileMark(name: string, options?: { args?: Record<string, unknown> }): void;
+profileMark(name: string, options?: LynxTraceOptions): void;
 ```
 
-Records a single point in time, with optional `args`.
+Records a single point in time. It takes the same [options](#lynxtraceoptions) as `profileStart()`, so a `flowId` links a mark to traces too.
 
 ### `LynxPerformance.profileFlowId()`
 
@@ -137,13 +131,31 @@ type DevToolsStats = {
 };
 ```
 
-| Field              | Description                                              |
-| ------------------ | -------------------------------------------------------- |
-| `cdCycles`         | Change detection runs since start or the last `reset()`. |
-| `elementCreated`   | Lynx elements created.                                   |
-| `elementRemoved`   | Lynx elements removed.                                   |
-| `flushCount`       | Times the renderer sent a batch of changes to Lynx.      |
-| `lastCdDurationMs` | Always `0` for now: the renderer doesn't record it yet.  |
+| Field              | Description                                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cdCycles`         | Change detection runs since start or the last `reset()`.                                                                                                              |
+| `elementCreated`   | Lynx elements created.                                                                                                                                                |
+| `elementRemoved`   | Lynx elements removed.                                                                                                                                                |
+| `flushCount`       | Times the renderer sent a batch of changes to Lynx.                                                                                                                   |
+| `lastCdDurationMs` | How long the most recent change detection run took, in milliseconds, including sending its changes to Lynx. Whole milliseconds on a device, finer in the web preview. |
+
+### `LynxTraceOptions`
+
+```typescript
+type LynxTraceOptions = {
+  flowId?: number;
+  flowIds?: number[];
+  args?: Record<string, string>;
+};
+```
+
+The options of `profileStart()` and `profileMark()`, the same as Lynx's own `TraceOption`.
+
+| Option    | Description                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| `flowId`  | Links this trace to the others with the same ID, from `profileFlowId()`. Ignored when `flowIds` is set.             |
+| `flowIds` | Links this trace to several flows at once.                                                                          |
+| `args`    | Values recorded with the trace. Strings only: Lynx drops any other value, so convert numbers with `String()` first. |
 
 ## Related
 

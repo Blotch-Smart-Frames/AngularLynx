@@ -5,7 +5,7 @@
 export { LynxAccessibility } from './lib/accessibility';
 export { LynxAnimation } from './lib/animation/animation';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';
-export type { DevToolsStats } from './lib/devtools';
+export type { DevToolsStats, LynxTraceOptions } from './lib/devtools';
 export type {
   BaseLynxAnimation,
   LynxAnimationOptions,

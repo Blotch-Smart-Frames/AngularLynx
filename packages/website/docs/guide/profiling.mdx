@@ -52,11 +52,15 @@ export class Feed {
 
 - **`profileStart(name)` and `profileEnd()`** wrap a section. Sections nest: each `profileEnd()` closes the most recent `profileStart()`.
 - **`profileMark(name)`** adds a single point in time.
-- **`args`** attaches values you can read in the trace. Lynx expects strings.
+- **`args`** attaches values you can read in the trace. They must be strings: Lynx drops any other value, so convert numbers with `String()`.
 - **`isRecording()`** tells you whether a trace is recording. Check it before you compute expensive `args`.
-- **`profileFlowId()`** returns an ID. Pass it as `flowId` to link sections across threads.
+- **`profileFlowId()`** returns an ID. Pass it as `flowId` to `profileStart()` or `profileMark()` to link sections and marks, for example across threads. `flowIds` links one to several flows.
 
-The calls do nothing when no trace is recording, and outside Lynx, e.g. in tests.
+On a device, the calls do nothing while no trace is recording. Outside Lynx, e.g. in tests, they do nothing at all.
+
+### In the web preview
+
+The web preview has no Lynx DevTool trace. There, `LynxPerformance` writes to the browser's performance timeline instead: a section becomes a User Timing measure, and a mark a User Timing mark. Record in the Performance panel of Chrome DevTools, and find them in the **Timings** track. `isRecording()` always returns `true` there.
 
 ## Watch render counters
 
@@ -78,6 +82,7 @@ import { LYNX_ELEMENTS, LynxDevTools } from '@blotch/angular-lynx';
         }}
       </text>
       <text>Flushes: {{ devtools.stats().flushCount }}</text>
+      <text>Last run: {{ devtools.stats().lastCdDurationMs }} ms</text>
       <view (bindtap)="devtools.refresh()">
         <text>Refresh</text>
       </view>
@@ -92,12 +97,13 @@ export class DebugOverlay {
 }
 ```
 
-| Counter          | What it counts                                          |
-| ---------------- | ------------------------------------------------------- |
-| `cdCycles`       | Change detection runs                                   |
-| `elementCreated` | Native elements created                                 |
-| `elementRemoved` | Native elements removed                                 |
-| `flushCount`     | Times AngularLynx sent a batch of changes to the screen |
+| Counter            | What it shows                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `cdCycles`         | Change detection runs                                                                           |
+| `elementCreated`   | Native elements created                                                                         |
+| `elementRemoved`   | Native elements removed                                                                         |
+| `flushCount`       | Times AngularLynx sent a batch of changes to the screen                                         |
+| `lastCdDurationMs` | How long the last change detection run took, in ms, including sending its changes to the screen |
 
 - **`stats()` updates only when you ask.** Call `refresh()` to read the latest counts, or `reset()` to set them back to zero. The counters change on every render, so updating the signal each time would cause renders of its own.
 - **`snapshot()`** returns the counts once, without a signal, e.g. to log them.
@@ -107,7 +113,7 @@ export class DebugOverlay {
 AngularLynx's own profiling code is removed from production builds:
 
 - **The counters only count in development builds,** such as `ng serve` and `ng build -c development`. In a production build, `stats()` stays at zero.
-- **`LynxPerformance` calls stay in.** They cost little when no trace is recording, and the release Lynx engine records none.
+- **`LynxPerformance` calls stay in,** so you can trace the build you ship, without development mode's extra work in the timeline. They cost little when no trace is recording, and the release Lynx engine records none.
 
 ## Related
 

@@ -5,9 +5,10 @@ import { devStats } from './stats';
 /**
  * High-level DevTools service exposing performance stats as Angular signals.
  *
- * Stats are only meaningful when the app is built with `__PROFILE__` enabled.
- * In production builds, counters are never incremented (the instrumentation
- * code is dead-code-eliminated), so all values remain zero.
+ * Stats are only meaningful in development builds, where the build plugin sets
+ * `__PROFILE__` to true. In production builds, counters are never incremented
+ * (the instrumentation code is dead-code-eliminated), so all values remain
+ * zero.
  *
  * @usageNotes
  * ```typescript

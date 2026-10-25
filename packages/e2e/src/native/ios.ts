@@ -34,10 +34,10 @@ const simctl = async (args: string[], logFile: string) =>
   ).output;
 
 /**
- * Boots the E2E simulator, creating it on the newest iOS runtime first. On
- * GitHub's runners a simulator sometimes fails to boot ("Data Migration
- * Failed"); like Lynx's own CI (run_sparkling_smoke.sh), fall back to an
- * older runtime when that happens.
+ * Boots the E2E simulator, creating it on the newest iOS runtime that runs a
+ * plain iPhone Pro first. On GitHub's runners a simulator sometimes fails to
+ * boot ("Data Migration Failed"); like Lynx's own CI
+ * (run_sparkling_smoke.sh), fall back to the next runtime when that happens.
  */
 const bootSimulator = async (
   logFile: string,
@@ -46,33 +46,43 @@ const bootSimulator = async (
   const list = JSON.parse(
     await simctl(['list', '--json'], logFile),
   ) as SimctlList;
-  const runtimes = list.runtimes
+  /**
+   * Each runtime runs only some device types, and the global device type
+   * list isn't in release order: on GitHub's macOS 15 image its last iPhone
+   * was the 6s Plus, which iOS 26 can't run (`simctl create` exit 147).
+   */
+  const iPhonesOf = (runtime: SimctlList['runtimes'][number]) =>
+    runtime.supportedDeviceTypes?.filter(
+      (type) => type.productFamily === 'iPhone',
+    ) ?? [];
+  const isPlainPro = (type: { name: string }) =>
+    /^iPhone \d+ Pro$/.test(type.name);
+  const newestFirst = list.runtimes
     .filter(
       (runtime) => runtime.isAvailable && runtime.identifier.includes('iOS'),
     )
     .reverse();
   check(
-    runtimes.length > 0,
+    newestFirst.length > 0,
     'No iOS Simulator runtime is installed. Install one in Xcode → Settings → Components.',
   );
+  // Runtimes with a plain "iPhone <n> Pro" go first, even when a newer one
+  // has none. iOS 27.1 runs only the iPhone Duo, a new screen shape on which
+  // Lynx Explorer's page ignores Maestro's taps and `simctl io screenshot`
+  // exits 22. Picking a Pro within the newest runtime alone still landed on
+  // the Duo, so every nightly run on GitHub's 2026-10-23 xcode-27 image
+  // failed; iOS 27.0's iPhone 18 Pro passes.
+  const runtimes = [
+    ...newestFirst.filter((runtime) => iPhonesOf(runtime).some(isPlainPro)),
+    ...newestFirst.filter((runtime) => !iPhonesOf(runtime).some(isPlainPro)),
+  ];
 
   for (const runtime of runtimes) {
-    // Each runtime runs only some device types, and the global device type
-    // list isn't in release order: on GitHub's macOS 15 image its last iPhone
-    // was the 6s Plus, which iOS 26 can't run (`simctl create` exit 147).
-    const iPhones =
-      runtime.supportedDeviceTypes?.filter(
-        (type) => type.productFamily === 'iPhone',
-      ) ?? [];
-    // A plain "iPhone <n> Pro" when there is one, the newest first. iOS
-    // 27.1's newest iPhone is the iPhone Duo, a new screen shape on which
-    // Lynx Explorer's page ignored Maestro's taps, so every Explorer flow
-    // failed on GitHub's 2026-10-22 runner image.
-    const deviceType =
-      iPhones.find((type) => /^iPhone \d+ Pro$/.test(type.name)) ?? iPhones[0];
+    const iPhones = iPhonesOf(runtime);
+    const deviceType = iPhones.find(isPlainPro) ?? iPhones[0];
     if (!deviceType) {
       console.warn(
-        `${runtime.name} supports no iPhone; trying an older runtime.`,
+        `${runtime.name} supports no iPhone; trying another runtime.`,
       );
       continue;
     }
@@ -113,7 +123,7 @@ const bootSimulator = async (
       return udid;
     }
     console.warn(
-      `${DEVICE_NAME} failed to boot on ${runtime.name}; trying an older runtime.`,
+      `${DEVICE_NAME} failed to boot on ${runtime.name}; trying another runtime.`,
     );
     await runAllowFailure('xcrun', ['simctl', 'delete', udid], {
       cwd: process.cwd(),
@@ -202,15 +212,25 @@ export const runOnIosSimulator = async ({
         failures.push(failure);
       }
     }
-    await simctl(
+    // Only a debugging aid, so its failure mustn't fail the host or hide the
+    // flows' own results: on the iPhone Duo it exited 22, and the run
+    // reported only that, even for the host whose flows had all passed.
+    const screenshot = await runAllowFailure(
+      'xcrun',
       [
+        'simctl',
         'io',
         udid,
         'screenshot',
         path.join(artifactsDir, `ios-${host.kind}-final.png`),
       ],
-      logFile,
+      { cwd: process.cwd(), logFile, echo: false },
     );
+    if (screenshot.code !== 0) {
+      console.warn(
+        `The final screenshot failed (simctl exited with code ${screenshot.code}).`,
+      );
+    }
   } finally {
     stop(logStream.child);
     if (!keepRunning) {

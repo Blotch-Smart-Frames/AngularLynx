@@ -131,6 +131,8 @@ export const scaffoldApp = async (
   applyFixtures(appDir);
 
   if (!options.buildOnly) {
+    await extractMessages(appDir, exec, pm);
+
     // Step 6: the dev server takes code paths `build` doesn't, such as watch
     // mode and the Angular rebuild coordinator. It runs before the production
     // build because it writes its development bundles into dist/, which
@@ -152,6 +154,34 @@ export const scaffoldApp = async (
     distDir: path.join(appDir, 'dist'),
     tailwind: options.tailwind,
   };
+};
+
+/**
+ * `ng extract-i18n`, through the target add-i18n writes: Angular CLI can't
+ * pick an extractor for the Lynx build builder by itself. The counter fixture
+ * marks "Increment" for translation, so the messages file shows the extractor
+ * compiled the app, and that it wrote the JSON `loadTranslations()` takes.
+ */
+const extractMessages = async (
+  appDir: string,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+  pm: PackageManagerCommands,
+) => {
+  step('Layer 2: ng extract-i18n');
+  await exec(...pm.exec('ng', ['extract-i18n']));
+  const messagesFile = path.join(appDir, 'src/locale/messages.json');
+  check(
+    existsSync(messagesFile),
+    "ng extract-i18n didn't write src/locale/messages.json, where add-i18n's target puts the messages.",
+  );
+  const { translations } = readJson<{
+    translations?: Record<string, string>;
+  }>(messagesFile);
+  check(
+    translations?.['e2e.increment'] === 'Increment',
+    `src/locale/messages.json doesn't hold the counter's "Increment" message as JSON for loadTranslations(): ${JSON.stringify(translations)}`,
+  );
+  console.log('✓ ng extract-i18n wrote the messages as JSON to src/locale');
 };
 
 const addTestingAndRunTests = async (
@@ -475,6 +505,13 @@ const checkGeneratedProject = (appDir: string, version: string) => {
   check(
     architect['test']?.builder === '@blotch/angular-lynx-build:unit-test',
     `angular.json's test target uses ${JSON.stringify(architect['test']?.builder)}, not @blotch/angular-lynx-build:unit-test. \`ng add\` didn't switch it.`,
+  );
+  // Angular CLI picks an extractor by itself only for Angular's own build
+  // builders, so without this target `ng extract-i18n` can't run.
+  check(
+    architect['extract-i18n']?.builder ===
+      '@blotch/angular-lynx-build:extract-i18n',
+    `angular.json's extract-i18n target uses ${JSON.stringify(architect['extract-i18n']?.builder)}, not @blotch/angular-lynx-build:extract-i18n. \`ng add\` didn't add it.`,
   );
   check(
     workspace.cli?.schematicCollections?.[0] === '@blotch/angular-lynx',

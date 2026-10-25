@@ -24,6 +24,7 @@ This command:
 - adds `@angular/localize/init` to the build's `polyfills`, so `$localize` exists before your code runs
 - adds `@angular/localize` to `types` in tsconfig.app.json, so TypeScript knows `$localize`
 - adds `provideLocale()` to your app config
+- sets up `ng extract-i18n` to write your messages as JSON to `src/locale`
 
 ```typescript title="src/app/app.config.ts"
 import {
@@ -77,20 +78,6 @@ export class Greeting {
 
 ## Extract the messages
 
-`ng extract-i18n` needs a target in angular.json, because Angular can't pick an extractor for the AngularLynx builder on its own. Add one under `architect`:
-
-```json title="angular.json"
-"extract-i18n": {
-  "builder": "@angular/build:extract-i18n",
-  "options": {
-    "format": "json",
-    "outputPath": "src/locale"
-  }
-}
-```
-
-Then run it:
-
 ```bash
 ng extract-i18n
 ```
@@ -121,7 +108,21 @@ Copy it to one file per language, such as `messages.fr.json`, and translate the 
 }
 ```
 
-The JSON format's `translations` object is exactly what `loadTranslations()` takes. Angular's default XLIFF format also works with translation tools, but you then convert each file to an object yourself.
+The JSON format's `translations` object is exactly what `loadTranslations()` takes. That's why `add-i18n` picks it over Angular's default, XLIFF. To extract XLIFF for a translation tool, pass `--format xlf`, then convert each translated file to an object yourself.
+
+`ng extract-i18n` takes [Angular's options](https://angular.dev/cli/extract-i18n). `add-i18n` sets two of them on the `extract-i18n` target in angular.json:
+
+```json title="angular.json"
+"extract-i18n": {
+  "builder": "@blotch/angular-lynx-build:extract-i18n",
+  "options": {
+    "format": "json",
+    "outputPath": "src/locale"
+  }
+}
+```
+
+The builder runs Angular's own extractor. Angular CLI can't pick an extractor for the AngularLynx build by itself, so an app needs this target. `ng add` writes it, and `ng update @blotch/angular-lynx` adds it to apps made with 22.2.2 or older.
 
 ## Load a translation
 

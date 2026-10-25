@@ -14,6 +14,11 @@
       "implementation": "./unit-test/index",
       "schema": "./unit-test/schema.json",
       "description": "Runs the unit tests with Angular's unit-test builder, set up for AngularLynx"
+    },
+    "extract-i18n": {
+      "implementation": "./extract-i18n/index",
+      "schema": "./extract-i18n/schema.json",
+      "description": "Extracts the i18n messages with Angular's extract-i18n builder, set up for AngularLynx"
     }
   }
 }

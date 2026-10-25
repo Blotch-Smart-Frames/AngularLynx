@@ -10,8 +10,15 @@ import {
   InstallBehavior,
 } from '@schematics/angular/utility/dependency';
 import { JSONFile } from '@schematics/angular/utility/json-file';
-import { getWorkspace } from '@schematics/angular/utility/workspace';
+import {
+  getWorkspace,
+  updateWorkspace,
+} from '@schematics/angular/utility/workspace';
 
+import {
+  jsonMessagesOptions,
+  useLynxExtractI18n,
+} from '../utility/extract-i18n-target';
 import type { Schema } from './schema';
 
 /**
@@ -19,9 +26,10 @@ import type { Schema } from './schema';
  * provides the Lynx-aware `provideLocale()` provider that reads the active
  * locale from the host app's `appLocale` global prop.
  *
- * Four-step setup, each step idempotent so re-running is safe:
- *   1. **angular.json `i18n` block** — declares the source locale so any
- *      `ng extract-i18n` runs produce the right XLIFF.
+ * Five-step setup, each step idempotent so re-running is safe:
+ *   1. **angular.json `i18n` block** — declares the source locale, which
+ *      `ng extract-i18n` labels the messages with and `provideLocale()`
+ *      falls back to.
  *   2. **`@angular/localize/init` polyfill** — must run before the app boots
  *      so the global `$localize` function exists when components are
  *      instantiated.
@@ -30,6 +38,8 @@ import type { Schema } from './schema';
  *   4. **provideLocale() in app.config** — registers the runtime provider
  *      that reads `appLocale` (the apps `ng build --platform` makes send the
  *      phone's language) and applies it to Angular's LOCALE_ID token.
+ *   5. **`extract-i18n` target** — makes `ng extract-i18n` work, writing
+ *      JSON to `src/locale`.
  */
 export default (options: Schema): Rule =>
   async (tree: Tree) => {
@@ -52,11 +62,16 @@ export default (options: Schema): Rule =>
       );
     }
 
-    const sourceRoot = (project.sourceRoot ?? `${project.root}/src`) as string;
+    // Relative to the workspace root, as angular.json's paths are: the
+    // extract-i18n target's outputPath is one, so a root project's must be
+    // `src`, not `/src`.
+    const sourceRoot =
+      project.sourceRoot ?? (project.root ? `${project.root}/src` : 'src');
     const projectRoot = project.root as string;
 
     return chain([
       addI18nToAngularJson(projectName),
+      addExtractI18nTarget(projectName, sourceRoot),
       addLocalizeTypes(projectRoot),
       updateAppConfig(sourceRoot),
       addLocalizeDependency(),
@@ -96,6 +111,20 @@ const addI18nToAngularJson = (projectName: string): Rule => {
     }
   };
 };
+
+/**
+ * Gives the project an `extract-i18n` target (see useLynxExtractI18n) that
+ * writes JSON for `loadTranslations()`. `ng add` already wrote one with
+ * Angular's defaults (XLIFF at the workspace root), so this sets the format
+ * and path on it, unless the app set them itself.
+ */
+const addExtractI18nTarget = (projectName: string, sourceRoot: string): Rule =>
+  updateWorkspace((workspace) => {
+    useLynxExtractI18n(
+      workspace.projects.get(projectName)!,
+      jsonMessagesOptions(sourceRoot),
+    );
+  });
 
 const addLocalizeTypes = (projectRoot: string): Rule => {
   return (tree: Tree) => {

@@ -12,10 +12,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createRequire } from 'node:module';
 
+import { ANGULAR_BUILD_OPTIONS, ASSET_LOADERS } from './angular-build';
 import applicationSchema from './application/schema.json';
 import { runApplication } from './application/index';
 import { nativeCacheDir } from './application/native-cache';
 import { runDevServer } from './dev-server/index';
+import extractI18nSchema from './extract-i18n/schema.json';
+import {
+  type ExtractI18nBuilderDeps,
+  hasLocalize,
+  runExtractI18n,
+} from './extract-i18n/index';
 import { importFromProject } from './project-import';
 import {
   type RspeedyBuildResult,
@@ -25,8 +32,6 @@ import {
 } from './rspeedy';
 import unitTestSchema from './unit-test/schema.json';
 import {
-  ANGULAR_BUILD_OPTIONS,
-  ASSET_LOADERS,
   type AngularBuildModule,
   hasTestingLibrary,
   runUnitTest,
@@ -678,6 +683,24 @@ describe('dev-server builder', () => {
   });
 });
 
+/**
+ * A schema of @angular/build's, which its `exports` don't list.
+ */
+const angularSchema = (builder: string) =>
+  JSON.parse(
+    readFileSync(
+      path.join(
+        path.dirname(
+          createRequire(__filename).resolve('@angular/build/package.json'),
+        ),
+        'src/builders',
+        builder,
+        'schema.json',
+      ),
+      'utf8',
+    ),
+  );
+
 describe('unit-test builder', () => {
   /**
    * @angular/build's unit-test builder, recording what it was handed.
@@ -719,24 +742,6 @@ describe('unit-test builder', () => {
     );
     return { ...ctx, result, ...calls[0]! };
   };
-
-  /**
-   * A schema of @angular/build's, which its `exports` don't list.
-   */
-  const angularSchema = (builder: string) =>
-    JSON.parse(
-      readFileSync(
-        path.join(
-          path.dirname(
-            createRequire(__filename).resolve('@angular/build/package.json'),
-          ),
-          'src/builders',
-          builder,
-          'schema.json',
-        ),
-        'utf8',
-      ),
-    );
 
   const buildTarget = {
     project: 'my-app',
@@ -915,6 +920,119 @@ describe('unit-test builder', () => {
         exports: { '.': './index.js' },
       });
       expect(hasTestingLibrary(root)).toBe(true);
+    });
+  });
+});
+
+describe('extract-i18n builder', () => {
+  const test = async (
+    options: Record<string, unknown> = {},
+    deps: Partial<ExtractI18nBuilderDeps> = {},
+  ) => {
+    const calls: {
+      options: Record<string, unknown>;
+      context: BuilderContext;
+    }[] = [];
+    const ctx = fakeContext('my-app', {
+      'my-app:build': {
+        browser: 'src/main.ts',
+        polyfills: '@angular/localize/init',
+        appId: 'com.example.app',
+        platform: 'ios',
+      },
+    });
+    const result = await runExtractI18n(options as never, ctx.context, {
+      // @angular/build's extract-i18n builder, recording what it was handed.
+      importAngularBuild: async () => ({
+        executeExtractI18nBuilder: async (options, context) => {
+          calls.push({ options: options as never, context });
+          return { success: true };
+        },
+      }),
+      hasLocalize: () => true,
+      ...deps,
+    });
+    return { ...ctx, result, ...calls[0] };
+  };
+
+  it("runs Angular's extract-i18n builder with the options it was given", async () => {
+    const { result, options } = await test({
+      format: 'json',
+      outputPath: 'src/locale',
+    });
+    expect(result).toEqual({ success: true });
+    expect(options).toEqual({ format: 'json', outputPath: 'src/locale' });
+  });
+
+  it('hands Angular the Lynx build target as an Angular one, without the Lynx polyfills', async () => {
+    const { context } = await test();
+    const buildTarget = { project: 'my-app', target: 'build' };
+    expect(await context!.getBuilderNameForTarget(buildTarget)).toBe(
+      '@angular/build:application',
+    );
+    expect(await context!.getTargetOptions(buildTarget)).toEqual({
+      browser: 'src/main.ts',
+      // Angular's build fails on an imported image without a loader.
+      loader: ASSET_LOADERS,
+      // Nothing runs the extracted code, so the Lynx globals aren't needed.
+      polyfills: ['@angular/localize/init'],
+    });
+  });
+
+  it('says how to set up i18n in a project without @angular/localize', async () => {
+    const { result, options } = await test({}, { hasLocalize: () => false });
+    expect(result).toEqual({
+      success: false,
+      error: expect.stringContaining(
+        '`ng generate @blotch/angular-lynx:add-i18n`',
+      ),
+    });
+    expect(options).toBeUndefined();
+  });
+
+  it('reports a project without @angular/build', async () => {
+    const { result } = await test(
+      {},
+      {
+        importAngularBuild: async () => {
+          throw new Error('@angular/build is not installed.');
+        },
+      },
+    );
+    expect(result).toEqual({
+      success: false,
+      error: '@angular/build is not installed.',
+    });
+  });
+
+  it('needs a project', async () => {
+    expect(
+      await runExtractI18n({}, fakeContext(null as never).context),
+    ).toEqual({ success: false, error: 'The builder needs a project target.' });
+  });
+
+  it("takes the same options as Angular's extract-i18n builder", () => {
+    expect(extractI18nSchema.properties).toEqual(
+      angularSchema('extract-i18n').properties,
+    );
+  });
+
+  describe('hasLocalize', () => {
+    it('is false without the package', () => {
+      expect(hasLocalize(root)).toBe(false);
+    });
+
+    it("is true when it's installed", () => {
+      const dir = path.join(root, 'node_modules/@angular/localize');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({
+          name: '@angular/localize',
+          exports: { './package.json': './package.json' },
+        }),
+      );
+      expect(hasLocalize(root)).toBe(true);
     });
   });
 });

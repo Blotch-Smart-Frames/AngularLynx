@@ -57,6 +57,9 @@ AngularLynx apps build, serve and test with the Angular CLI. `ng build` and `ng 
         },
         "test": {
           "builder": "@blotch/angular-lynx-build:unit-test"
+        },
+        "extract-i18n": {
+          "builder": "@blotch/angular-lynx-build:extract-i18n"
         }
       }
     }
@@ -73,6 +76,8 @@ The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`
 Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default the build target's `development` configuration), so `ng serve -c production` serves a production build. It also takes `--port` and `--host`, and prints the QR code Lynx Explorer scans.
 
 `ng test` takes the options of Angular's unit-test builder. It finds `*.spec.ts` and `*.test.ts` files, compiles them ahead of time like the app, and loads `@blotch/angular-lynx-testing-library`'s setup when the project has it. Templates are checked strictly, so a component using Lynx elements imports `LYNX_ELEMENTS`.
+
+`ng extract-i18n` takes the options of Angular's extract-i18n builder. Angular CLI can't pick an extractor for the Lynx build builder by itself, so the app needs the `extract-i18n` target, which `ng add` writes. `ng generate @blotch/angular-lynx:add-i18n` sets it to write JSON to `src/locale`, the format `loadTranslations()` takes.
 
 ## Config File: `lynx.config.ts` (optional)
 

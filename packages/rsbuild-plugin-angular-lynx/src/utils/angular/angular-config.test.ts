@@ -269,6 +269,31 @@ describe('applyAngularConfig', () => {
       expect(config.source.preEntry).toContain('@angular/localize/init');
     });
 
+    it("loads @angular/localize/init once when the app's polyfills list it too", () => {
+      const { api, triggerHandler } = createMockApi();
+      const config = {} as any;
+
+      applyAngularConfig(
+        api as never,
+        createBuildOptions({
+          i18n: { sourceLocale: 'fr', hasDefinedSourceLocale: true },
+          polyfills: ['@angular/localize/init', 'my-polyfill'],
+        }) as never,
+      );
+      triggerHandler(config);
+
+      expect(
+        config.source.preEntry.filter(
+          (entry: string) => entry === '@angular/localize/init',
+        ),
+      ).toHaveLength(1);
+      // In the app's place for it, among its own polyfills.
+      expect(config.source.preEntry.slice(1, 3)).toEqual([
+        '@angular/localize/init',
+        'my-polyfill',
+      ]);
+    });
+
     it('does not push @angular/localize/init when i18n is not configured', () => {
       const { api, triggerHandler } = createMockApi();
       const config = {} as any;

@@ -22,16 +22,18 @@ import {
   updateWorkspace,
 } from '@schematics/angular/utility/workspace';
 
+import { useLynxExtractI18n } from '../utility/extract-i18n-target';
 import type { Schema } from './schema';
 import { VERSIONS, ownVersionRange } from './versions';
 
 /**
  * Transforms a standard `ng new` Angular project into a Lynx-native application.
  * The schematic replaces browser-specific bootstrap (main.ts, app.config.ts,
- * app.component.ts) with Lynx equivalents, points `ng build`, `ng serve` and
- * `ng test` at the AngularLynx builders and `ng generate` at its schematics,
- * and optionally sets up Tailwind with the Lynx preset. Everything else stays
- * as `ng new` left it: the app needs no build config besides angular.json.
+ * app.component.ts) with Lynx equivalents, points `ng build`, `ng serve`,
+ * `ng test` and `ng extract-i18n` at the AngularLynx builders and
+ * `ng generate` at its schematics, and optionally sets up Tailwind with the
+ * Lynx preset. Everything else stays as `ng new` left it: the app needs no
+ * build config besides angular.json.
  * This is a one-shot destructive transform — the old browser-Angular files
  * are deleted because they reference DOM APIs and HTML elements that don't
  * exist on the Lynx runtime.
@@ -362,12 +364,14 @@ const withLynxBudgets = (
 };
 
 /**
- * Points `ng build`, `ng serve` and `ng test` at the AngularLynx builders.
- * The first two run rspeedy with @blotch/rsbuild-plugin-angular-lynx added,
- * and `ng build --platform ios|android` also produces the native app; the
- * third runs Angular's unit-test builder set up for Lynx. The build target
- * keeps `ng new`'s Angular compiler options, which the build plugin and
- * `ng test` read, and gains the app's identity for native builds.
+ * Points `ng build`, `ng serve`, `ng test` and `ng extract-i18n` at the
+ * AngularLynx builders. The first two run rspeedy with
+ * @blotch/rsbuild-plugin-angular-lynx added, and
+ * `ng build --platform ios|android` also produces the native app; the other
+ * two run Angular's unit-test and extract-i18n builders set up for Lynx. The
+ * build target keeps `ng new`'s Angular compiler options, which the build
+ * plugin, `ng test` and `ng extract-i18n` read, and gains the app's identity
+ * for native builds.
  */
 const useLynxBuilders = (projectName: string): Rule =>
   updateWorkspace((workspace) => {
@@ -461,6 +465,8 @@ const useLynxBuilders = (projectName: string): Rule =>
         defaultConfiguration: test.defaultConfiguration,
       }),
     });
+
+    useLynxExtractI18n(project);
   });
 
 /**

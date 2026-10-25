@@ -513,6 +513,11 @@ const checkGeneratedProject = (appDir: string, version: string) => {
       '@blotch/angular-lynx-build:extract-i18n',
     `angular.json's extract-i18n target uses ${JSON.stringify(architect['extract-i18n']?.builder)}, not @blotch/angular-lynx-build:extract-i18n. \`ng add\` didn't add it.`,
   );
+  // `ng serve` writes LynxLogger's output to .dev-logs.
+  check(
+    /^\.dev-logs$/m.test(readFileSync(path.join(appDir, '.gitignore'), 'utf8')),
+    "`ng add` didn't add .dev-logs to .gitignore.",
+  );
   check(
     workspace.cli?.schematicCollections?.[0] === '@blotch/angular-lynx',
     `angular.json's cli.schematicCollections is ${JSON.stringify(workspace.cli?.schematicCollections)}, so \`ng generate component\` wouldn't make Lynx components.`,
@@ -802,6 +807,52 @@ const typeCheck = async (
   console.log('✓ the app type-checks, templates included');
 };
 
+/**
+ * `LynxLogger` in a development bundle posts to the dev server that served
+ * it, which writes each entry to `.dev-logs`. The bundle used to post to a
+ * second server on the next port, and lost every entry once that port was
+ * taken.
+ */
+const checkDevLogger = async (
+  appDir: string,
+  bundleUrl: string,
+  bundle: Buffer,
+) => {
+  const logUrl = `${new URL(bundleUrl).origin}/__dev_logs`;
+  check(
+    bundle.includes(logUrl),
+    `The development bundle doesn't post LynxLogger's entries to ${logUrl}, the dev server it came from.`,
+  );
+  const logFile = path.join(appDir, '.dev-logs');
+  const response = await fetch(logUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      logs: [
+        {
+          level: 'log',
+          timestamp: Date.now(),
+          args: ['E2E log entry', { from: 'Layer 2' }],
+        },
+      ],
+    }),
+  });
+  check(
+    response.ok,
+    `The dev server answered HTTP ${response.status} to a log entry at ${logUrl}.`,
+  );
+  await waitFor(
+    `${logFile} to hold the posted entry`,
+    () =>
+      existsSync(logFile) &&
+      /E2E log entry \{\s*"from": "Layer 2"\s*\}/.test(
+        readFileSync(logFile, 'utf8'),
+      ),
+    { timeoutMs: 10_000 },
+  );
+  console.log(`✓ the dev server wrote a log entry from ${logUrl} to .dev-logs`);
+};
+
 const smokeTestDevServer = async (
   appDir: string,
   pm: PackageManagerCommands,
@@ -833,15 +884,15 @@ const smokeTestDevServer = async (
     // The URL appears once the server listens, which can be before the first
     // compile finishes; the dev server answers bundle requests after it does.
     let status = 0;
-    let size = 0;
+    let bundle = Buffer.alloc(0);
     await waitFor(
       `${bundleUrl} to serve the bundle`,
       async () => {
         try {
           const response = await fetch(bundleUrl!);
           status = response.status;
-          size = (await response.arrayBuffer()).byteLength;
-          return response.ok && size > 0;
+          bundle = Buffer.from(await response.arrayBuffer());
+          return response.ok && bundle.byteLength > 0;
         } catch {
           return false;
         }
@@ -849,8 +900,9 @@ const smokeTestDevServer = async (
       { timeoutMs: 180_000, intervalMs: 2000 },
     );
     console.log(
-      `✓ dev server served ${bundleUrl} (HTTP ${status}, ${size} bytes)`,
+      `✓ dev server served ${bundleUrl} (HTTP ${status}, ${bundle.byteLength} bytes)`,
     );
+    await checkDevLogger(appDir, bundleUrl!, bundle);
   } finally {
     stop(child);
   }

@@ -38,8 +38,8 @@ export class AppErrorHandler extends LynxErrorHandler {
   override handleError(error: unknown): void {
     // Keep the default: save the error and report it to Lynx.
     super.handleError(error);
-    // Also write it to .dev-logs while `ng serve` runs.
-    this.#logger.error(String(error));
+    // Also write it, with its stack, to .dev-logs while `ng serve` runs.
+    this.#logger.error(error);
   }
 }
 ```

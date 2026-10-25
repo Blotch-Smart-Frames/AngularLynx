@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,17 +10,12 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-vi.mock('node:path', () => ({
-  default: {
-    resolve: vi.fn((_cwd: string, filename: string) => `/mock-cwd/${filename}`),
-  },
-}));
-
 import {
   createDevLoggerMiddleware,
   formatArg,
-  getLogFilePath,
 } from './dev-logger-middleware.js';
+
+const LOG_FILE = '/project/.dev-logs';
 
 type MockRes = {
   writeHead: ReturnType<typeof vi.fn>;
@@ -52,7 +48,7 @@ const makeRequest = (method: string, url: string) => {
 const makeRes = (): MockRes => ({ writeHead: vi.fn(), end: vi.fn() });
 
 const postLogs = (logs: unknown[]) => {
-  const middleware = createDevLoggerMiddleware();
+  const middleware = createDevLoggerMiddleware(LOG_FILE);
   const res = makeRes();
   const { req, sendBody } = makeRequest('POST', '/__dev_logs');
   middleware(req, res as unknown as ServerResponse, vi.fn());
@@ -71,13 +67,20 @@ describe('createDevLoggerMiddleware', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    middleware = createDevLoggerMiddleware();
+    middleware = createDevLoggerMiddleware(LOG_FILE);
     res = makeRes();
     next = vi.fn();
   });
 
   it('returns a function', () => {
     expect(typeof middleware).toBe('function');
+  });
+
+  it('creates the log file, or empties it, before any entry arrives', () => {
+    expect(fs.createWriteStream).toHaveBeenCalledWith(LOG_FILE, {
+      flags: 'w',
+    });
+    expect(mockWrite).not.toHaveBeenCalled();
   });
 
   describe('OPTIONS preflight for /__dev_logs', () => {
@@ -238,6 +241,32 @@ describe('formatArg', () => {
     expect(logArgs(errArg)).toContain('TypeError: oops\n  at foo:1');
   });
 
+  it('puts the name and message before a stack of frames only, as PrimJS gives', () => {
+    const errArg = {
+      __type: 'Error',
+      name: 'TypeError',
+      message: 'oops',
+      stack: '    at App (file:///main-thread.js:1:2)',
+    };
+    expect(logArgs(errArg)).toContain(
+      'TypeError: oops\n    at App (file:///main-thread.js:1:2)',
+    );
+  });
+
+  it('names an Error without a message by its name alone', () => {
+    expect(
+      formatArg({ __type: 'Error', name: 'AbortError', message: '' }),
+    ).toBe('AbortError');
+    expect(
+      formatArg({
+        __type: 'Error',
+        name: 'AbortError',
+        message: '',
+        stack: '    at abort (file:///main-thread.js:1:2)',
+      }),
+    ).toBe('AbortError\n    at abort (file:///main-thread.js:1:2)');
+  });
+
   it('renders Error objects without stack as "name: message"', () => {
     const errArg = {
       __type: 'Error',
@@ -281,13 +310,5 @@ describe('formatTimestamp', () => {
       { level: 'log', timestamp: Date.now(), args: [] },
     ]);
     expect(written).toMatch(/\d{2}:\d{2}:\d{2}\.\d{3}/);
-  });
-});
-
-describe('getLogFilePath', () => {
-  it('returns the resolved log file path after first write', () => {
-    vi.clearAllMocks();
-    postLogs([{ level: 'log', timestamp: Date.now(), args: ['init'] }]);
-    expect(getLogFilePath()).toBe('/mock-cwd/.dev-logs');
   });
 });

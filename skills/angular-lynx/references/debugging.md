@@ -6,7 +6,7 @@ Lynx apps run on-device (iPhone/Android via Lynx Explorer). There is no browser 
 
 ## LynxLogger
 
-Remote logger that sends logs from device to your dev terminal via the rspeedy dev server.
+Remote logger that sends logs from the device to the dev server, which writes them to `.dev-logs` in the folder `ng serve` runs from (`tail -f .dev-logs`).
 
 ```typescript
 import { inject } from '@angular/core';
@@ -25,8 +25,8 @@ export class MyComponent {
 
 ### How It Works
 
-- **Background thread**: sends logs directly via `fetch()` to the dev server
-- **Main thread** (event handlers): no `fetch` available. Relays logs to background thread via IPC (`lynx.getJSContext().dispatchEvent`)
+- **Main thread** (where Angular runs): no `fetch` available. Relays logs to the background thread via IPC (`lynx.getJSContext().dispatchEvent`), which posts them to the dev server the bundle came from
+- **Arguments**: objects and arrays print as indented JSON, an `Error` with its stack, anything else as `String()` makes it
 - **Production**: all methods are no-ops (dead-code eliminated via `__DEV__` guard)
 
 ### Methods
@@ -88,7 +88,7 @@ Read `globalThis.__lynxLastError` at any point to see the last uncaught error.
 ## Debugging Strategies
 
 1. **Render state on screen** — add `<text>{{ debugSignal() }}</text>` to see values in real-time
-2. **Use LynxLogger** — logs appear in your terminal where rspeedy is running
+2. **Use LynxLogger** — logs go to `.dev-logs` while `ng serve` runs; follow them with `tail -f .dev-logs`
 3. **Check `__lynxLastError`** — after operations that might fail (navigation, data loading)
 4. **Wrap in try/catch** — catch errors in event handlers and display them
 

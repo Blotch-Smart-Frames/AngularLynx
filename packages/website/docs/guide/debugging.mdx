@@ -54,14 +54,14 @@ Each call becomes one line with the time and the level:
 10:42:07.311 LOG Tapped, count is 1
 ```
 
-- **How it reaches you.** `ng serve` also starts a small log server on the next port up (3001 when the dev server uses 3000). The app sends each line there over your network. It works from any code, including event handlers.
-- **The file.** Lines go to `.dev-logs` in the folder you ran `ng serve` from. Each `ng serve` run starts the file fresh. Add `.dev-logs` to your `.gitignore`.
+- **How it reaches you.** The app sends each line to the dev server it loaded from, over your network, so it arrives wherever the app can load. It works from any code, including event handlers.
+- **The file.** Lines go to `.dev-logs` in the folder you ran `ng serve` from. `ng serve` prints its full path when it starts, and each run starts the file fresh. `ng add` adds `.dev-logs` to your `.gitignore`.
 - **The methods.** `log()`, `info()`, `warn()`, `error()` and `debug()`. The level shows in each line.
-- **Objects.** Each argument is turned into a string with `String()`, so an object prints as `[object Object]`. Pass `JSON.stringify(value)` instead.
+- **Objects and errors.** Objects and arrays print as indented JSON, and an `Error` prints with its stack. Other values print as `String()` makes them.
 - **Development only.** `LynxLogger` does nothing in production builds, so you can leave the calls in. A shipped app sends nothing.
 
 :::tip Nothing in `.dev-logs`?
-The phone must reach your computer on the log server's port as well as the dev server's. Check that both are on the same network, and that a firewall doesn't block the port.
+Check that `ng serve` builds a development build. `ng serve -c production`, or a build target without a `development` configuration, serves a production build, where `LynxLogger` does nothing.
 :::
 
 ## Inspect the app with Lynx DevTool

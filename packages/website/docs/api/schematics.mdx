@@ -34,6 +34,7 @@ ng add @blotch/angular-lynx
   - `extract-i18n` uses `@blotch/angular-lynx-build:extract-i18n`, so `ng extract-i18n` works. Angular CLI can't pick an extractor for the Lynx build by itself.
   - `cli.schematicCollections` lists `@blotch/angular-lynx` first, so `ng generate component` makes Lynx components.
 - **`package.json`**: `start` runs `ng serve` and `build` runs `ng build`. Adds `@blotch/angular-lynx-build` and `@lynx-js/types` as dev dependencies.
+- **`.gitignore`**: adds `.dev-logs`, where `ng serve` writes [`LynxLogger`](/guide/debugging#stream-logs-to-your-computer)'s output.
 - **Tailwind CSS**, unless `--tailwind=false`: the same changes as [`add-tailwind`](#add-tailwind).
 
 It doesn't write a `lynx.config.ts`. The builders read everything from `angular.json` (see [`@blotch/angular-lynx-build`](/api/build/)).
@@ -170,7 +171,7 @@ Updates `@blotch/angular-lynx`, `@blotch/angular-lynx-build`, `@blotch/angular-l
 
 It also updates your app for changes that need one:
 
-- **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS. It also renames `accessibility-trait`, which Lynx ignores, to `accessibility-traits` in your templates, and adds the `extract-i18n` target that `ng add` and `add-i18n` now write, so `ng extract-i18n` works.
+- **22.2.3**: adds `.html` to the Tailwind `content` glob that older versions of `ng add` and `add-tailwind` wrote (`./src/**/*.ts` becomes `./src/**/*.{html,ts}`), so classes in `.html` templates get CSS. It also renames `accessibility-trait`, which Lynx ignores, to `accessibility-traits` in your templates, adds the `extract-i18n` target that `ng add` and `add-i18n` now write, so `ng extract-i18n` works, and adds `.dev-logs` to your `.gitignore`.
 
 ## Related
 

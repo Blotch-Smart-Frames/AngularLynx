@@ -1,12 +1,16 @@
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import path from 'node:path';
 
 /**
  * Connect-style middleware that receives log batches from on-device and
  * writes them to a log file. Rspeedy's TUI uses the alternate screen buffer,
  * so stdout writes are hidden — a file + `tail -f` is more reliable.
- *
+ */
+
+/** The dev server path the app posts its log entries to. */
+export const DEV_LOGS_PATH = '/__dev_logs';
+
+/**
  * ANSI color codes (for the log file when viewed with `tail -f` in a terminal)
  */
 const RESET = '\x1b[0m';
@@ -50,7 +54,7 @@ export const formatArg = (arg: unknown): string => {
   if (arg === null || arg === undefined) return String(arg);
   if (typeof arg === 'string') return arg;
   // Error objects don't survive JSON.stringify (the message/stack are
-  // non-enumerable, so they'd serialize to `{}`). The client-side relay in
+  // non-enumerable, so they'd serialize to `{}`). `LynxLogger` in
   // `runtime/src/lib/lynx-logger` reshapes Errors into a plain object with a
   // `__type: 'Error'` marker so we can reconstruct a readable representation
   // here — preferring the full stack trace when available.
@@ -59,7 +63,11 @@ export const formatArg = (arg: unknown): string => {
     (arg as Record<string, unknown>).__type === 'Error'
   ) {
     const err = arg as { name: string; message: string; stack?: string };
-    return err.stack || `${err.name}: ${err.message}`;
+    const header = err.message ? `${err.name}: ${err.message}` : err.name;
+    if (!err.stack) return header;
+    // V8's stack (the web preview) starts with the name and message, but
+    // PrimJS's (the main thread on a device) holds only the frames.
+    return err.stack.startsWith(header) ? err.stack : `${header}\n${err.stack}`;
   }
   try {
     return JSON.stringify(arg, null, 2);
@@ -77,24 +85,7 @@ type LogEntry = {
   args: unknown[];
 };
 
-let logFile: fs.WriteStream | null = null;
-let logFilePath = '';
-
-export const getLogFilePath = (): string => {
-  return logFilePath;
-};
-
-const ensureLogFile = (): fs.WriteStream => {
-  if (!logFile) {
-    logFilePath = path.resolve(process.cwd(), '.dev-logs');
-    // Truncate on each dev server start so old logs don't accumulate
-    logFile = fs.createWriteStream(logFilePath, { flags: 'w' });
-  }
-  return logFile;
-};
-
-const writeLog = (entry: LogEntry): void => {
-  const stream = ensureLogFile();
+const writeLog = (stream: fs.WriteStream, entry: LogEntry): void => {
   const color = LEVEL_COLORS[entry.level] || WHITE;
   const label = LEVEL_LABELS[entry.level] || entry.level.toUpperCase();
   const time = formatTimestamp(entry.timestamp);
@@ -104,25 +95,24 @@ const writeLog = (entry: LogEntry): void => {
 };
 
 /**
- * Creates a connect-style middleware that handles POST /__dev_logs.
- * Other requests are passed through to the next middleware.
+ * Creates a connect-style middleware that handles POST /__dev_logs and writes
+ * the entries to `logFilePath`. Other requests are passed through to the next
+ * middleware.
+ *
+ * The file is created, or emptied, right away: each dev server start begins a
+ * fresh log, and `tail -f` can follow it before the first entry arrives.
  */
-/**
- * Creates a connect-style middleware that handles POST /__dev_logs.
- * Other requests are passed through to the next middleware.
- */
-export const createDevLoggerMiddleware = (): ((
-  req: IncomingMessage,
-  res: ServerResponse,
-  next: () => void,
-) => void) => {
+export const createDevLoggerMiddleware = (
+  logFilePath: string,
+): ((req: IncomingMessage, res: ServerResponse, next: () => void) => void) => {
+  const logFile = fs.createWriteStream(logFilePath, { flags: 'w' });
   return (req, res, next) => {
     // CORS preflight: the on-device Lynx runtime makes cross-origin POST
     // requests to the dev server (it runs at a different origin than the
     // bundled JS). Browsers/WebViews send an OPTIONS preflight first; without
     // a 204 response with these headers, the actual POST gets blocked and we
     // lose all on-device logs.
-    if (req.method === 'OPTIONS' && req.url === '/__dev_logs') {
+    if (req.method === 'OPTIONS' && req.url === DEV_LOGS_PATH) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -132,7 +122,7 @@ export const createDevLoggerMiddleware = (): ((
       return;
     }
 
-    if (req.method !== 'POST' || req.url !== '/__dev_logs') {
+    if (req.method !== 'POST' || req.url !== DEV_LOGS_PATH) {
       next();
       return;
     }
@@ -151,7 +141,7 @@ export const createDevLoggerMiddleware = (): ((
       try {
         const { logs } = JSON.parse(body) as { logs: LogEntry[] };
         for (const entry of logs) {
-          writeLog(entry);
+          writeLog(logFile, entry);
         }
       } catch {
         // Malformed payload — silently ignore. Throwing here would crash the

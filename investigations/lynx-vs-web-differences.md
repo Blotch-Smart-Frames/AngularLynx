@@ -4970,3 +4970,17 @@ Lynx gives JavaScript no back event. On Android, the press goes to the activity 
 ### The fix
 
 The Android app `ng build --platform android` generates registers an `AngularLynxShell` native module with `setBackHandlerEnabled(enabled)`, and while that's enabled sends each press as the `angularLynxBack` global event (`ShellModule.kt`, `MainActivity.kt`). `provideRouter()` starts `LynxBackButton` (`packages/runtime/src/lib/router/lynx-back-button.ts`), which keeps the handler enabled while `LynxLocationStrategy.canGoBack()` is true and calls `Location.back()` on each event, in a `setTimeout`. The router then navigates as for `popstate`, guards included, and back leaves the app from the first screen. Layer 6's `native/back-button.yaml` checks both ends on the Android shell (issue #59). An app embedding the bundle in its own Android app can register the same module and send the same event (`/guide/embedding/#connect-the-android-back-button`).
+
+## An `Error`'s `stack` holds only the frames, not its name and message
+
+### What you'd expect (web)
+
+In V8, `error.stack` starts with the same line `String(error)` gives, such as `TypeError: probe failure`, then the frames. Code that prints only the stack still shows what went wrong.
+
+### What Lynx does
+
+On the main thread, PrimJS's `stack` is only the frames (`    at App (file:///main-thread.js:9570:187)` and so on), with no name or message (checked in Lynx Explorer 4.1 on the iOS Simulator). The web preview runs the same bundle in the browser, so it shows V8's form.
+
+### The fix
+
+Print the name and message yourself when the stack doesn't start with them. The dev server's log writer does this for `LynxLogger` (`formatArg` in `packages/rsbuild-plugin-angular-lynx/src/logger/dev-logger-middleware.ts`, issue #61).

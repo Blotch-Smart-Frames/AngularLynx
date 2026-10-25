@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LynxLogger } from './lynx-logger';
 
-const DEV_LOG_URL = 'http://localhost:3001/__dev_logs';
+const DEV_LOG_URL = 'http://localhost:3000/__dev_logs';
 
 describe('LynxLogger', () => {
   afterEach(() => {
@@ -90,12 +90,60 @@ describe('LynxLogger', () => {
       },
     );
 
-    it('serializes all args as strings', () => {
-      const service = new LynxLogger();
-      service.log(42, true, { key: 'val' });
+    /**
+     * The arguments of the first entry posted.
+     */
+    const postedArgs = () =>
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).logs[0].args;
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-      expect(body.logs[0].args).toEqual(['42', 'true', '[object Object]']);
+    it('sends objects and arrays as JSON, for the dev server to print', () => {
+      const service = new LynxLogger();
+      service.log('cart', { items: [{ id: 1 }] }, [1, 'two']);
+
+      expect(postedArgs()).toEqual([
+        'cart',
+        { items: [{ id: 1 }] },
+        [1, 'two'],
+      ]);
+    });
+
+    it("sends other values as strings, which JSON can't always hold", () => {
+      const service = new LynxLogger();
+      service.log(42, true, null, undefined, Number.NaN, 10n);
+
+      expect(postedArgs()).toEqual([
+        '42',
+        'true',
+        'null',
+        'undefined',
+        'NaN',
+        '10',
+      ]);
+    });
+
+    it('sends an Error with its name, message and stack', () => {
+      const error = new TypeError('oops');
+      const service = new LynxLogger();
+      service.error('Failed:', error);
+
+      expect(postedArgs()).toEqual([
+        'Failed:',
+        {
+          __type: 'Error',
+          name: 'TypeError',
+          message: 'oops',
+          stack: error.stack,
+        },
+      ]);
+    });
+
+    it("sends an object JSON can't hold as a string, and the rest of the entry", () => {
+      const circular: Record<string, unknown> = {};
+      circular['self'] = circular;
+      const service = new LynxLogger();
+      service.log('before', circular, 'after');
+
+      expect(postedArgs()).toEqual(['before', '[object Object]', 'after']);
     });
 
     it('includes a numeric timestamp in the request body', () => {
@@ -142,6 +190,21 @@ describe('LynxLogger', () => {
       const data = JSON.parse(event.data);
       expect(data.level).toBe('warn');
       expect(data.args).toEqual(['a', 'b']);
+    });
+
+    it('relays objects and Errors in a form the dev server prints', () => {
+      const service = new LynxLogger();
+      service.error({ code: 7 }, new RangeError('too far'));
+
+      const data = JSON.parse(dispatchEventMock.mock.calls[0][0].data);
+      expect(data.args).toEqual([
+        { code: 7 },
+        expect.objectContaining({
+          __type: 'Error',
+          name: 'RangeError',
+          message: 'too far',
+        }),
+      ]);
     });
 
     it('does not throw when lynx is not available on main thread', () => {

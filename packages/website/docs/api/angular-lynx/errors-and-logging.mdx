@@ -1,6 +1,6 @@
 # Errors and logging
 
-The error handler that reports uncaught errors to Lynx, and a logger that prints device logs in your terminal. `import { LynxErrorHandler, LynxLogger } from '@blotch/angular-lynx';`
+The error handler that reports uncaught errors to Lynx, and a logger that sends device logs to a file on your computer. `import { LynxErrorHandler, LynxLogger } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -17,12 +17,12 @@ export class Cart {
   readonly #logger = inject(LynxLogger);
 
   checkout(): void {
-    this.#logger.info('Checkout tapped', JSON.stringify({ items: 3 }));
+    this.#logger.info('Checkout tapped', { items: 3 });
   }
 }
 ```
 
-The message appears in the terminal that runs `ng serve`.
+While `ng serve` runs, the message goes to `.dev-logs` in the folder you ran it from. Follow it with `tail -f .dev-logs`. See [Stream logs to your computer](/guide/debugging#stream-logs-to-your-computer).
 
 ## API
 
@@ -86,11 +86,11 @@ Angular calls this for a rendering error that an `@boundary` block caught. It re
 class LynxLogger {}
 ```
 
-Sends log messages from the device to the dev server, which prints them in your terminal. There's no browser console on a phone, so this is how you see logs from Lynx Explorer.
+Sends log messages from the device to the dev server, which writes them to `.dev-logs`. There's no browser console on a phone, so this is how you see logs from Lynx Explorer.
 
 - **Development builds only.** In a production build, every method does nothing.
-- **Sent through the background thread.** Your app runs on the main thread, which has no `fetch`, so each message goes to the background thread, which posts it to the dev server.
-- **Strings only.** Each argument goes through `String()`, so an object prints as `[object Object]`. Pass `JSON.stringify(value)` instead.
+- **Sent through the background thread.** Your app runs on the main thread, which has no `fetch`, so each message goes to the background thread, which posts it to the dev server the app loaded from.
+- **Objects and errors.** Objects and arrays print as indented JSON, and an `Error` prints with its stack. Other values, and an object JSON can't hold (such as a circular one), print as `String()` makes them.
 
 ### `LynxLogger.log()`, `info()`, `warn()`, `error()` and `debug()`
 
@@ -102,7 +102,7 @@ error(...args: unknown[]): void;
 debug(...args: unknown[]): void;
 ```
 
-Send one log entry at that level, with each argument converted to a string.
+Send one log entry at that level. The arguments print separated by spaces.
 
 ## Types
 

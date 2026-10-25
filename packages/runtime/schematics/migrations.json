@@ -15,6 +15,11 @@
       "version": "22.2.3",
       "description": "Adds the extract-i18n target that ng extract-i18n needs, with the AngularLynx builder",
       "factory": "./migrations/extract-i18n-target/index"
+    },
+    "dev-logs-gitignore": {
+      "version": "22.2.3",
+      "description": "Adds .dev-logs, where ng serve writes LynxLogger's output, to .gitignore",
+      "factory": "./migrations/dev-logs-gitignore/index"
     }
   }
 }

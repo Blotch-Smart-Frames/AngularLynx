@@ -22,6 +22,7 @@ import {
   updateWorkspace,
 } from '@schematics/angular/utility/workspace';
 
+import { ignoreDevLogs } from '../utility/dev-logs-gitignore';
 import { useLynxExtractI18n } from '../utility/extract-i18n-target';
 import type { Schema } from './schema';
 import { VERSIONS, ownVersionRange } from './versions';
@@ -31,9 +32,10 @@ import { VERSIONS, ownVersionRange } from './versions';
  * The schematic replaces browser-specific bootstrap (main.ts, app.config.ts,
  * app.component.ts) with Lynx equivalents, points `ng build`, `ng serve`,
  * `ng test` and `ng extract-i18n` at the AngularLynx builders and
- * `ng generate` at its schematics, and optionally sets up Tailwind with the
- * Lynx preset. Everything else stays as `ng new` left it: the app needs no
- * build config besides angular.json.
+ * `ng generate` at its schematics, git-ignores the `.dev-logs` file that
+ * `ng serve` writes `LynxLogger`'s output to, and optionally sets up Tailwind
+ * with the Lynx preset. Everything else stays as `ng new` left it: the app
+ * needs no build config besides angular.json.
  * This is a one-shot destructive transform — the old browser-Angular files
  * are deleted because they reference DOM APIs and HTML elements that don't
  * exist on the Lynx runtime.
@@ -83,6 +85,7 @@ export default (options: Schema): Rule =>
       useLynxBuilders(projectName),
       useLynxSchematics(),
       updatePackageScripts(),
+      ignoreDevLogs(),
       addCoreDependencies(),
     ];
 

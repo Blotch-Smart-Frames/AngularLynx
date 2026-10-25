@@ -17,7 +17,7 @@ type LogLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
 type LogEntry = {
   level: LogLevel;
   timestamp: number;
-  args: string[];
+  args: unknown[];
 };
 
 const LOG_EVENT = '__lynx_log__';
@@ -51,6 +51,36 @@ const resolveFetch = ():
     /* v8 ignore stop */
   } catch {}
   return undefined;
+};
+
+/**
+ * An argument as it travels to the dev server, which writes strings as they
+ * are, objects and arrays as indented JSON, and an Error as its stack.
+ *
+ * The entry crosses to the background thread and then to the dev server as
+ * JSON, which would turn an Error into `{}` (its message and stack aren't
+ * enumerable): it goes as a plain object the dev server recognizes by its
+ * `__type`. An object JSON can't hold, such as a circular one, goes as a
+ * string, so it can't make the whole entry fail to send. So does everything
+ * else: numbers, booleans, `undefined` and `null` print the same either way,
+ * and JSON would turn `undefined` and `NaN` into `null`.
+ */
+const toLogArg = (arg: unknown): unknown => {
+  if (arg instanceof Error) {
+    return {
+      __type: 'Error',
+      name: arg.name,
+      message: arg.message,
+      stack: arg.stack,
+    };
+  }
+  if (typeof arg === 'object' && arg !== null) {
+    try {
+      JSON.stringify(arg);
+      return arg;
+    } catch {}
+  }
+  return String(arg);
 };
 
 /**
@@ -127,7 +157,7 @@ export class LynxLogger {
     const entry: LogEntry = {
       level,
       timestamp: Date.now(),
-      args: args.map(String),
+      args: args.map(toLogArg),
     };
 
     if (this.#fetchFn) {

@@ -1,5 +1,6 @@
 import {
   type ElementRef,
+  type OnDestroy,
   Component,
   ViewEncapsulation,
   computed,
@@ -61,7 +62,7 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
     </overlay>
   `,
 })
-export class UiNavDrawer {
+export class UiNavDrawer implements OnDestroy {
   readonly open = model(false);
   readonly side = input<'left' | 'right'>('left');
   readonly userClass = input<string>('', { alias: 'class' });
@@ -86,6 +87,9 @@ export class UiNavDrawer {
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
+  // The open and close sequences' pending timers, so ngOnDestroy can stop
+  // them.
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor() {
     // `#hasBeenOpen` prevents the close animation from running on the initial
@@ -137,15 +141,37 @@ export class UiNavDrawer {
   }
 
   /**
+   * The drawer can be destroyed while its open or close sequence is still
+   * running, for example by an `@if` around it or a route change right after
+   * closing it. The rest of the sequence then ran on the destroyed component:
+   * it animated detached elements and emitted `closed` from a destroyed
+   * output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    for (const timer of this.#timers) clearTimeout(timer);
+  }
+
+  /**
+   * `setTimeout`, tracked so that ngOnDestroy can cancel it.
+   */
+  #later(callback: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      callback();
+    }, ms);
+    this.#timers.add(timer);
+  }
+
+  /**
    * Two-phase open: first make the overlay visible (so native elements exist),
    * then animate in on the next frame. Without the nested setTimeout, the
    * animate() call would target elements that haven't been flushed to native
    * yet — Lynx element.animate() requires the element to be in the tree.
    */
   #doOpen(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.overlayVisible.set(true);
-      setTimeout(() => this.#animateIn(), 0);
+      this.#later(() => this.#animateIn(), 0);
     }, 0);
   }
 
@@ -156,9 +182,9 @@ export class UiNavDrawer {
    * cause a visual glitch (elements disappear before fade completes).
    */
   #doClose(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.#animateOut();
-      setTimeout(() => {
+      this.#later(() => {
         this.overlayVisible.set(false);
         this.closed.emit();
       }, DURATION.normal + 20);

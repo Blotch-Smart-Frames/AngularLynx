@@ -65,7 +65,7 @@ export { LynxView } from './view';
 export { LynxViewPager, LynxViewPagerItem } from './viewpager';
 export { LynxWebView } from './webview';
 
-import { LYNX_FORM_ACCESSORS } from '../forms';
+import { LynxInputValueAccessor, LynxTextareaValueAccessor } from '../forms';
 import { LynxBlurView } from './blur-view';
 import { LynxCoverView } from './cover-view';
 import { LynxFrame } from './frame';
@@ -111,7 +111,12 @@ export const LYNX_ELEMENTS = [
   LynxTextarea,
   // CVA directives — activate on top of LynxInput/LynxTextarea when form attributes
   // (formControl, formControlName, ngModel, formField) are present on the element.
-  ...LYNX_FORM_ACCESSORS,
+  // The same pair as LYNX_FORM_ACCESSORS, listed rather than spread: a minifier
+  // keeps an array with a spread in it even when nothing uses the array, since
+  // the spread runs the array's iterator. That kept every directive here, and
+  // Angular with them, in the background bundle, which uses none of them.
+  LynxInputValueAccessor,
+  LynxTextareaValueAccessor,
   LynxOverlay,
   LynxRefresh,
   LynxRefreshHeader,

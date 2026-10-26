@@ -76,7 +76,7 @@ Call it from any of your Angular code, a main-thread function or a template even
 ## Constraints
 
 - **`runOnBackground` exists only on the main thread.** A background function can't call another one with it.
-- **Define `backgroundFn` at module scope.** The background thread runs your files' top-level code, but not your components, so a function created in a class or another function never registers there. A file that loads lazily, such as a lazy route's, works: the background thread loads it when the main thread does.
+- **Define `backgroundFn` at module scope.** The background thread loads each file that calls it there, with that file's imports, and none of your other code, so a function created in a class or another function never registers. The file's other top-level code runs on both threads. A file that loads lazily, such as a lazy route's, works: the background thread loads it at startup.
 - **Arguments and the return value are copied as JSON.** A [`MainThreadRef`](/api/main-thread/main-thread-ref) argument arrives as the background thread's copy of the ref, which only refs created at module scope have.
 - **The function can be `async`.** It can `await fetch()`, for example (see [Network requests](/guide/concepts/javascript-environment#network-requests)).
 - **Signals it changes don't reach the screen.** Your app doesn't run on the background thread, so its signals there aren't the ones on screen. Return a value and set the signal on the main thread instead.

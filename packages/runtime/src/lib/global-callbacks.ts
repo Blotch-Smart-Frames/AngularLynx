@@ -3,7 +3,6 @@ import {
   applyGlobalDataUpdate,
   applyInitDataUpdate,
 } from './data-flow/host-updates';
-import { whenImportsMirrored } from './lazy-bundle/mirrored-imports';
 import { ssrEncode, ssrHydrate } from './ssr/ssr-callbacks';
 import {
   __mainThreadRefMap,
@@ -27,21 +26,6 @@ const callWorklet = (id: string, args: unknown[], kind: string): unknown => {
     throw new Error(`[angular-lynx] ${kind} not found: ${id}`);
   }
   return fn(...args);
-};
-
-/**
- * Calls a background function for the main thread. One that isn't registered
- * yet may be in a lazy chunk the background thread is still loading, after the
- * main thread loaded it (see mirrored-imports.ts), so the call waits for those
- * loads and then looks again.
- */
-const callBackgroundFunction = (id: string, args: unknown[]): unknown => {
-  if (__workletMap[id]) {
-    return __workletMap[id](...args);
-  }
-  return whenImportsMirrored().then(() =>
-    callWorklet(id, args, 'Background function'),
-  );
 };
 
 /**
@@ -315,9 +299,10 @@ if (!__MAIN_THREAD__) {
             answerCall(
               resolveId,
               () =>
-                callBackgroundFunction(
+                callWorklet(
                   worklet._wkltId,
                   params.map(restoreRefs),
+                  'Background function',
                 ),
               (data) =>
                 (lynx as any).getCoreContext().dispatchEvent({

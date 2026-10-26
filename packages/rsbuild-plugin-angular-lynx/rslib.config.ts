@@ -17,7 +17,6 @@ export default defineConfig({
   source: {
     entry: {
       'loaders/ignore-css-loader': './src/loaders/ignore-css-loader.ts',
-      'loaders/thread-globals-loader': './src/loaders/thread-globals-loader.ts',
       polyfills: './src/polyfills.js',
       index: './src/index.ts',
     },

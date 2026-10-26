@@ -75,12 +75,12 @@ export const applySplitChunksRule = (
     // so rspack inlines all dynamic imports into the initial bundle. Routes still use
     // loadComponent() syntax but modules are synchronously available at runtime — this
     // avoids needing Lynx's async chunk loading (lynx.loadLazyBundle → QueryComponent),
-    // which needs a main-thread half in every lazy bundle. The plugin compiles both
-    // threads' modules into the same layer, so the two entries share one async chunk,
-    // and the lazy bundle encoded from it has no main-thread code. Applying this only to
-    // `lynx` once left `web` emitting such bundles: Lynx for Web evaluates a lazy
-    // bundle's main-thread root when loading it, so every lazy route and @defer block
-    // failed there with "SyntaxError: Unexpected token '}'".
+    // which can only load a bundle on the main thread synchronously, while a route's
+    // first navigation would need to wait for it to download (see BUG_LIST.md).
+    // Applying this only to `lynx` once left `web` emitting lazy bundles, which then
+    // had no main-thread code (both threads' modules shared a layer until issue #84):
+    // every lazy route and @defer block failed there with "SyntaxError: Unexpected
+    // token '}'".
     // When enabled, asyncChunks remains true and each loadComponent() produces a
     // separate lazy bundle loaded at runtime.
     rspackConfig.output = rspackConfig.output ?? {};

@@ -713,6 +713,27 @@ describe('AngularWebpackPlugin', () => {
         );
       });
 
+      // A lazy chunk's main-thread half isn't in mainThreadChunks.
+      it('prepends __MAIN_THREAD__=true for assets marked as main-thread code', () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin({ mainThreadChunks: ['main.js'] }).apply(
+          compiler as never,
+        );
+        const compilation = createMockCompilation();
+        compilation.addAsset('lazy/main-thread.js', 'code();', {
+          'lynx:main-thread': true,
+        });
+        triggerCompilation(compilation);
+
+        compilation.triggerProcessAssets(STAGE_ADDITIONS);
+
+        expect(
+          compilation.assets['lazy/main-thread.js'].source.source(),
+        ).toContain('globalThis["__MAIN_THREAD__"]=true;');
+      });
+
       it('prepends __MAIN_THREAD__=false for non-main-thread assets', () => {
         const { compiler, triggerCompilation } = createMockCompiler();
         setupBeforeEncodeHook();

@@ -15,7 +15,7 @@ The threads don't share memory. They can only send each other messages, and ever
 
 ## Where AngularLynx runs your code
 
-Your Angular app runs on the main thread. The background thread loads the same code but doesn't start Angular. It runs only what the main thread asks of it.
+Your Angular app runs on the main thread. The background thread doesn't load it: it loads AngularLynx's side of each bridge and your [background functions](/api/main-thread/background-fn), and runs only what the main thread asks of it.
 
 ```mermaid
 flowchart TB

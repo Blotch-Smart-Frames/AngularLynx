@@ -561,9 +561,7 @@ describe('global-callbacks', () => {
         lynx: { getCoreContext: () => core.ctx, getJSContext: () => js.ctx },
       });
 
-      expect(Object.keys(core.listeners).sort()).toEqual([
-        // From mirrored-imports.ts, which global-callbacks imports.
-        'AngularLynx.MirrorImports',
+      expect(Object.keys(core.listeners)).toEqual([
         'Lynx.Worklet.runOnBackground',
       ]);
       expect(js.listeners).toEqual({});
@@ -704,12 +702,6 @@ describe('global-callbacks', () => {
         mainThread: false,
         lynx: { getCoreContext: () => fake.ctx },
       });
-      // The main thread's list of lazy imports: none, so none can still be
-      // loading.
-      fake.listeners['AngularLynx.MirrorImports']({
-        data: JSON.stringify({ keys: [], synced: true }),
-      });
-
       const reply = await call(
         fake,
         'Lynx.Worklet.runOnBackground',
@@ -721,34 +713,6 @@ describe('global-callbacks', () => {
       expect(reply['error']).toContain(
         'Background function not found: missing-bg',
       );
-    });
-
-    // A background function in a lazy chunk registers once this thread has
-    // loaded the chunk too, which can be after the main thread calls it.
-    it('waits for the lazy chunks the main thread loaded before giving up', async () => {
-      const fake = makeFakeJSContext();
-      await load({
-        mainThread: false,
-        lynx: { getCoreContext: () => fake.ctx },
-      });
-      const { ɵregisterMirroredImport } =
-        await import('./lazy-bundle/mirrored-imports');
-      ɵregisterMirroredImport('chunk:0', async () => {
-        globalThis.registerWorklet('background', 'in-chunk', () => 'late');
-      });
-
-      const reply = call(
-        fake,
-        'Lynx.Worklet.runOnBackground',
-        'Lynx.Worklet.BgFunctionCallRet',
-        'in-chunk',
-        [],
-      );
-      fake.listeners['AngularLynx.MirrorImports']({
-        data: JSON.stringify({ keys: ['chunk:0'], synced: true }),
-      });
-
-      expect((await reply)['returnValue']).toBe('late');
     });
 
     it('swallows a getCoreContext that throws during background listener setup', async () => {

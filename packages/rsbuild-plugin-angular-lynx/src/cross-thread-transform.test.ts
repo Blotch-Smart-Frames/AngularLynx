@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { transformCrossThread } from './cross-thread-transform.js';
+import {
+  definesCrossThreadValues,
+  transformCrossThread,
+} from './cross-thread-transform.js';
 
 const ROOT = '/proj';
 const FILE = '/proj/src/app/page.ts';
@@ -12,13 +15,20 @@ const KEY = createHash('sha1')
 
 const IMPORT = `import { backgroundFn, createMainThreadRef, MainThreadRef } from '@blotch/angular-lynx';\n`;
 
-const tag = (code: string, mirrorImports = false): string =>
-  transformCrossThread(code, FILE, { root: ROOT, mirrorImports });
+const tag = (code: string): string =>
+  transformCrossThread(code, FILE, { root: ROOT });
 
 describe('transformCrossThread', () => {
   it('returns code without runtime calls or imports untouched', () => {
     const code = 'export const x = 1;';
-    expect(tag(code, true)).toBe(code);
+    expect(tag(code)).toBe(code);
+  });
+
+  // The background entry used to load each lazy chunk the main thread loaded,
+  // through rewritten imports. It now imports the modules up front.
+  it('leaves lazy imports alone', () => {
+    const code = `${IMPORT}const load = () => import('./x');`;
+    expect(tag(code)).toBe(code);
   });
 
   describe('IDs', () => {
@@ -56,7 +66,6 @@ describe('transformCrossThread', () => {
       const code = `${IMPORT}const a = backgroundFn(() => 1);`;
       const other = transformCrossThread(code, '/proj/src/app/other.ts', {
         root: ROOT,
-        mirrorImports: false,
       });
 
       expect(tag(code)).toBe(tag(code));
@@ -67,7 +76,6 @@ describe('transformCrossThread', () => {
       const code = `${IMPORT}const a = backgroundFn(() => 1);`;
       const moved = transformCrossThread(code, '/elsewhere/src/app/page.ts', {
         root: '/elsewhere',
-        mirrorImports: false,
       });
 
       expect(moved).toBe(tag(code));
@@ -108,68 +116,62 @@ describe('transformCrossThread', () => {
       expect(tag(code)).toBe(code);
     });
   });
+});
 
-  describe('lazy imports', () => {
-    it('mirrors an import() and registers its loader at the end of the module', () => {
-      const result = tag(
-        `export const routes = [{ loadComponent: () => import('./home').then((m) => m.Home) }];`,
-        true,
-      );
+describe('definesCrossThreadValues', () => {
+  it('finds a module-level backgroundFn(), createMainThreadRef() or new MainThreadRef()', () => {
+    expect(
+      definesCrossThreadValues(
+        `${IMPORT}const a = backgroundFn(() => 1);`,
+        FILE,
+      ),
+    ).toBe(true);
+    expect(
+      definesCrossThreadValues(
+        `${IMPORT}const a = createMainThreadRef(1);`,
+        FILE,
+      ),
+    ).toBe(true);
+    expect(
+      definesCrossThreadValues(
+        `${IMPORT}const a = new MainThreadRef(1);`,
+        FILE,
+      ),
+    ).toBe(true);
+  });
 
-      expect(result).toContain(
-        `loadComponent: () => __ɵmirrorImport("${KEY}:0", () => import('./home')).then((m) => m.Home)`,
-      );
-      expect(
-        result.startsWith(
-          `import { ɵmirrorImport as __ɵmirrorImport, ɵregisterMirroredImport as __ɵregisterMirroredImport } from '@blotch/angular-lynx';\n`,
-        ),
-      ).toBe(true);
-      expect(
-        result
-          .trimEnd()
-          .endsWith(
-            `;__ɵregisterMirroredImport("${KEY}:0", () => import('./home'));`,
-          ),
-      ).toBe(true);
-    });
+  // The background thread needs the module even when the build can't tag the
+  // call, so it still counts.
+  it('counts a call the transform leaves alone', () => {
+    expect(
+      definesCrossThreadValues(
+        `${IMPORT}const a = backgroundFn(...args);`,
+        FILE,
+      ),
+    ).toBe(true);
+  });
 
-    it("keeps an import's options and comments", () => {
-      const result = tag(
-        `const load = () => import(/* webpackChunkName: "x" */ './x', { with: { mode: 'sync' } });`,
-        true,
-      );
-
-      expect(result).toContain(
-        `__ɵmirrorImport("${KEY}:0", () => import(/* webpackChunkName: "x" */ './x', { with: { mode: 'sync' } }))`,
-      );
-    });
-
-    it('mirrors a template-literal specifier without substitutions', () => {
-      expect(tag('const load = () => import(`./x`);', true)).toContain(
-        `__ɵmirrorImport("${KEY}:0", () => import(\`./x\`))`,
-      );
-    });
-
-    // The registration at the end of the module can't see local variables.
-    it('leaves a computed specifier alone', () => {
-      const code = 'const load = (name) => import(`./pages/${name}`);';
-      expect(tag(code, true)).toBe(code);
-    });
-
-    it('leaves imports alone unless asked to mirror them', () => {
-      const code = "const load = () => import('./x');";
-      expect(tag(code)).toBe(code);
-    });
-
-    it('mirrors imports and tags IDs in the same module', () => {
-      const result = tag(
-        `${IMPORT}const a = backgroundFn(async () => (await import('./x')).run());`,
-        true,
-      );
-
-      expect(result).toContain(
-        `backgroundFn(async () => (await __ɵmirrorImport("${KEY}:1", () => import('./x'))).run(), "${KEY}:0")`,
-      );
-    });
+  it('ignores calls inside functions, other functions and modules without the runtime', () => {
+    expect(
+      definesCrossThreadValues(
+        `${IMPORT}function make() { return backgroundFn(() => 1); }`,
+        FILE,
+      ),
+    ).toBe(false);
+    expect(
+      definesCrossThreadValues(
+        `import { backgroundFn } from './local';\nconst a = backgroundFn(() => 1);`,
+        FILE,
+      ),
+    ).toBe(false);
+    expect(
+      definesCrossThreadValues('export const backgroundFn = 1;', FILE),
+    ).toBe(false);
+    expect(
+      definesCrossThreadValues(
+        `import { inject } from '@blotch/angular-lynx';\nconst a = 1;`,
+        FILE,
+      ),
+    ).toBe(false);
   });
 });

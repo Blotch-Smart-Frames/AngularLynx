@@ -922,6 +922,28 @@ const smokeTestDevServer = async (
     console.log(
       `✓ dev server served ${bundleUrl} (HTTP ${status}, ${bundle.byteLength} bytes)`,
     );
+    // The dev server serves whatever a failed compile emitted, so a served
+    // bundle doesn't mean the build worked: a syntax error in the background
+    // layer's development build once passed the check above. Rsbuild ends
+    // each environment's compile with "built in …" or "build failed in …".
+    const compiles = new Map<string, string>();
+    await waitFor(
+      'the lynx and web environments to finish their first compile',
+      () => {
+        for (const [, result, environment] of stripAnsi(output()).matchAll(
+          /(built|build failed) in [\d.]+ ?m?s \((\w+)\)/g,
+        )) {
+          compiles.set(environment!, result!);
+        }
+        return compiles.has('lynx') && compiles.has('web');
+      },
+      { timeoutMs: 180_000 },
+    );
+    check(
+      [...compiles.values()].every((result) => result === 'built'),
+      `The dev server's first build failed:\n${stripAnsi(output())}`,
+    );
+    console.log('✓ the dev server built the lynx and web environments');
     await checkDevLogger(appDir, bundleUrl!, bundle);
   } finally {
     stop(child);

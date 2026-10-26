@@ -24,6 +24,7 @@ import {
   WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
 import { applyEntry, BLUR_VIEW_STYLESHEET, getChunks } from './entry';
+import { LAYERS } from './layers';
 
 const entryOptions = {
   customCSSInheritanceList: [],
@@ -74,7 +75,19 @@ const createMockChain = (options: {
     return b;
   };
 
+  const rules: Record<string, any> = {};
+  const makeRuleBuilder = () => {
+    const b: any = {};
+    b.issuerLayer = vi.fn(() => b);
+    b.test = vi.fn(() => b);
+    b.sideEffects = vi.fn(() => b);
+    return b;
+  };
+
   const chain: any = {
+    module: {
+      rule: vi.fn((name: string) => (rules[name] ??= makeRuleBuilder())),
+    },
     entryPoints: {
       entries: vi.fn(() => options.entries),
       clear: vi.fn(),
@@ -85,8 +98,22 @@ const createMockChain = (options: {
     plugin: vi.fn((name: string) => makePluginBuilder(name)),
   };
 
-  return { chain, pluginUses, entryBuilders };
+  return { chain, pluginUses, entryBuilders, rules };
 };
+
+/**
+ * A stand-in for the background entries angular.ts writes: each entry's file
+ * is `/cache/<environment>/<entry>.js`.
+ */
+const createBackgroundEntries = () => ({
+  fileFor: vi.fn(
+    (environmentName: string, entryName: string) =>
+      `/cache/${environmentName}/${entryName}.js`,
+  ),
+  isBackgroundModule: vi.fn((file: string) => file === '/app/src/page.ts'),
+  isEntryFile: vi.fn(),
+  update: vi.fn(),
+});
 
 /**
  * A stand-in for the `LynxConfig` that `pluginLynx` exposes. The real one
@@ -135,9 +162,17 @@ const createMockApi = (
     lynxConfig,
     triggerChain: (
       chain: unknown,
-      environment: { name: string; config?: unknown },
+      environment: { name: string; config?: Record<string, unknown> },
       isDev: boolean,
-    ) => handler!(chain, { environment, isDev }),
+    ) =>
+      handler!(chain, {
+        // Rsbuild normalizes `source.preEntry` to an array.
+        environment: {
+          ...environment,
+          config: { source: { preEntry: [] }, ...environment.config },
+        },
+        isDev,
+      }),
   };
 };
 
@@ -149,7 +184,9 @@ describe('applyEntry', () => {
     // The lookup is deferred to the chain handler (pluginLynx exposes its
     // config during setup, possibly after this plugin), so applyEntry itself
     // must not throw.
-    expect(() => applyEntry(api as never, entryOptions)).not.toThrow();
+    expect(() =>
+      applyEntry(api as never, entryOptions, createBackgroundEntries()),
+    ).not.toThrow();
     expect(() =>
       triggerChain(chain, { name: 'lynx', config: {} }, false),
     ).toThrow('No Lynx config exposed');
@@ -164,7 +201,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     // dev undefined exercises the `environment.config.dev ?? {}` fallback.
     triggerChain(chain, { name: 'lynx', config: {} }, true);
 
@@ -196,7 +233,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     triggerChain(
       chain,
       { name: 'lynx', config: { dev: { hmr: false, liveReload: false } } },
@@ -213,7 +250,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(true);
@@ -224,18 +261,17 @@ describe('applyEntry', () => {
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
   });
 
-  it('adds the blur-view stylesheet first, to the native bundle only', () => {
+  it("starts the main thread from the app's entry, with the blur-view stylesheet first on native", () => {
     const imports = (name: string) => {
       const { api, triggerChain } = createMockApi();
       const { chain, entryBuilders } = createMockChain({
         entries: { main: { values: () => ['./src/styles.css', './main.ts'] } },
       });
-      applyEntry(api as never, entryOptions);
+      applyEntry(api as never, entryOptions, createBackgroundEntries());
       triggerChain(chain, { name, config: {} }, false);
-      const [background] = entryBuilders['main'].add.mock.calls[0];
       const [mainThread] = entryBuilders['main__main-thread'].add.mock.calls[0];
-      expect(mainThread.import).toEqual(background.import);
-      return background.import;
+      expect(mainThread.layer).toBe(LAYERS.MAIN_THREAD);
+      return mainThread.import;
     };
 
     expect(imports('lynx')).toEqual([
@@ -244,6 +280,58 @@ describe('applyEntry', () => {
       './main.ts',
     ]);
     expect(imports('web')).toEqual(['./src/styles.css', './main.ts']);
+  });
+
+  // Angular runs on the main thread only, so the background thread gets the
+  // pre-entries (polyfills) and the generated entry, never main.ts.
+  it('starts the background thread from the pre-entries and its generated entry', () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain, entryBuilders } = createMockChain({
+      entries: {
+        main: {
+          values: () => ['/polyfills.js', './src/styles.css', './main.ts'],
+        },
+        other: { values: () => ['/polyfills.js', './other.ts'] },
+      },
+    });
+    const backgroundEntries = createBackgroundEntries();
+    applyEntry(api as never, entryOptions, backgroundEntries);
+    triggerChain(
+      chain,
+      {
+        name: 'lynx',
+        config: { source: { preEntry: ['/polyfills.js', './src/styles.css'] } },
+      },
+      false,
+    );
+
+    const [main] = entryBuilders['main'].add.mock.calls[0];
+    expect(main.layer).toBe(LAYERS.BACKGROUND);
+    expect(main.import).toEqual([
+      '/polyfills.js',
+      './src/styles.css',
+      '/cache/lynx/main.js',
+    ]);
+    const [other] = entryBuilders['other'].add.mock.calls[0];
+    expect(other.import).toEqual(['/polyfills.js', '/cache/lynx/other.js']);
+    expect(backgroundEntries.fileFor).toHaveBeenCalledWith('lynx', 'main');
+    expect(backgroundEntries.fileFor).toHaveBeenCalledWith('lynx', 'other');
+  });
+
+  // A package or app with `"sideEffects": false` would otherwise lose the
+  // modules the generated entry imports for their side effects alone.
+  it("keeps the background entry's modules' side effects in the background layer", () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain, rules } = createMockChain({ entries: null });
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    triggerChain(chain, { name: 'lynx', config: {} }, false);
+
+    const rule = rules['lynx:background-modules'];
+    expect(rule.issuerLayer).toHaveBeenCalledWith(LAYERS.BACKGROUND);
+    expect(rule.sideEffects).toHaveBeenCalledWith(true);
+    const test = rule.test.mock.calls[0][0] as (file: string) => boolean;
+    expect(test('/app/src/page.ts')).toBe(true);
+    expect(test('/app/src/other.ts')).toBe(false);
   });
 
   // The runtime sets the variables and the stylesheet reads them, from two
@@ -269,7 +357,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     // pluginLynx owns filename/intermediate resolution so the template plugin
@@ -293,7 +381,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(lynxConfig!.resolveLazyBundleFilename).toHaveBeenCalledWith({
@@ -312,7 +400,7 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).lazyBundleFilename).toBe(
@@ -328,7 +416,11 @@ describe('applyEntry', () => {
 
     // It used to be hard-coded to true, so an app couldn't switch Android to
     // the accessibility path that UI test tools can read without TalkBack.
-    applyEntry(api as never, { ...entryOptions, enableA11y: false });
+    applyEntry(
+      api as never,
+      { ...entryOptions, enableA11y: false },
+      createBackgroundEntries(),
+    );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).enableA11y).toBe(false);
@@ -341,10 +433,11 @@ describe('applyEntry', () => {
     });
 
     // It used to be accepted and then dropped, so `false` had no effect.
-    applyEntry(api as never, {
-      ...entryOptions,
-      defaultOverflowVisible: false,
-    });
+    applyEntry(
+      api as never,
+      { ...entryOptions, defaultOverflowVisible: false },
+      createBackgroundEntries(),
+    );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).defaultOverflowVisible).toBe(false);
@@ -354,7 +447,7 @@ describe('applyEntry', () => {
     const { api, triggerChain } = createMockApi();
     const { chain } = createMockChain({ entries: null });
 
-    applyEntry(api as never, entryOptions);
+    applyEntry(api as never, entryOptions, createBackgroundEntries());
 
     expect(() =>
       triggerChain(chain, { name: 'lynx', config: {} }, false),

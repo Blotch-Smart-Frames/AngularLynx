@@ -27,11 +27,7 @@ export type {
   ObserverFrameRateOptions,
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
-export {
-  loadLazyBundle,
-  ɵmirrorImport,
-  ɵregisterMirroredImport,
-} from './lib/lazy-bundle';
+export { loadLazyBundle } from './lib/lazy-bundle';
 export { getLynxAppLocale, LynxLocale, provideLocale } from './lib/locale';
 export type {
   LynxFontEntry,
@@ -144,6 +140,6 @@ export { LynxLocationStrategy } from './lib/router/lynx-location-strategy';
 export { LynxPlatformLocation } from './lib/router/lynx-platform-location';
 export { LynxRouteReuseStrategy } from './lib/router/lynx-route-reuse-strategy';
 export { provideRouter } from './lib/router/lynx-router';
-export { bootstrapApplication } from './lib/runtime';
+export { bootstrapApplication, ɵstartBackgroundThread } from './lib/runtime';
 import './lib/types/runtime-types';
 import './lib/types/lynx';

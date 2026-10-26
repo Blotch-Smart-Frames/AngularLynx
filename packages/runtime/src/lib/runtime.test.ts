@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { bootstrapApplication as BootstrapApplicationFn } from './runtime';
+import type {
+  bootstrapApplication as BootstrapApplicationFn,
+  ɵstartBackgroundThread as StartBackgroundThreadFn,
+} from './runtime';
 
 /**
  * vi.hoisted creates the mock function before any imports run, so the same
@@ -15,6 +18,7 @@ vi.mock('@angular/platform-browser', () => ({
 
 describe('runtime bootstrapApplication', () => {
   let bootstrapApplication: typeof BootstrapApplicationFn;
+  let ɵstartBackgroundThread: typeof StartBackgroundThreadFn;
   let mockAppRef: { destroy: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -38,6 +42,7 @@ describe('runtime bootstrapApplication', () => {
     vi.resetModules();
     const mod = await import('./runtime');
     bootstrapApplication = mod.bootstrapApplication;
+    ɵstartBackgroundThread = mod.ɵstartBackgroundThread;
   });
 
   afterEach(() => {
@@ -89,7 +94,9 @@ describe('runtime bootstrapApplication', () => {
   });
 
   // The background thread used to boot a second copy of the app, which ran
-  // every constructor, ngOnInit and effect() twice (issue #81).
+  // every constructor, ngOnInit and effect() twice (issue #81). It starts
+  // from a generated entry now (issue #84), but a module it loads may still
+  // bootstrap, such as a main.ts that defines a backgroundFn() itself.
   describe('on the background thread (__MAIN_THREAD__ = false)', () => {
     beforeEach(() => {
       vi.stubGlobal('__MAIN_THREAD__', false);
@@ -105,10 +112,14 @@ describe('runtime bootstrapApplication', () => {
       expect(mockNgBootstrap).not.toHaveBeenCalled();
       expect(settled).not.toHaveBeenCalled();
     });
+  });
 
-    it('still installs lynx.loadLazyBundle, for the lazy chunks it mirrors', () => {
-      class App {}
-      void bootstrapApplication(App);
+  // The build's background entry calls it after importing the modules that
+  // define background functions.
+  describe('ɵstartBackgroundThread', () => {
+    it('installs lynx.loadLazyBundle, for an import() in a background function', () => {
+      delete (globalThis as any).lynx.loadLazyBundle;
+      ɵstartBackgroundThread();
       expect(typeof (globalThis as any).lynx.loadLazyBundle).toBe('function');
     });
   });

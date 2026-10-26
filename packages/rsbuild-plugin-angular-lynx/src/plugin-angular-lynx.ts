@@ -1,10 +1,12 @@
 import type { RsbuildPlugin } from '@lynx-js/rspeedy';
 import { ANGULAR_CLI_CONTEXT_PLUGIN_NAME } from './angular-cli-context.js';
 import { applyAngularRules } from './angular.js';
+import { createBackgroundEntries } from './background-entry.js';
 import { applyCSS } from './css.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyResolve } from './resolve.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyTailwind } from './tailwind.js';
@@ -29,10 +31,16 @@ export const pluginAngularLynx = (
         );
       }
       const normalizedOptions = normalizeOptions(options);
+      // Shared by entry.ts, which points each background entry at a generated
+      // file, and angular.ts, which writes the files after each Angular compile.
+      const backgroundEntries = createBackgroundEntries({
+        rootPath: api.context.rootPath,
+      });
       applyCSS(api, normalizedOptions);
       applyTailwind(api);
-      applyEntry(api, normalizedOptions);
+      applyEntry(api, normalizedOptions, backgroundEntries);
       applyLayers(api);
+      applyResolve(api);
       // applyAngularRules reads angular.json asynchronously and only then
       // registers its hooks (including the modifyRsbuildConfig that adds
       // polyfills, $localize init and global styles to `source.preEntry`).
@@ -42,7 +50,11 @@ export const pluginAngularLynx = (
       // (rspeedy 0.15+) does not, which dropped every global stylesheet.
       // It is started here and awaited last so the synchronous registrations
       // below keep their existing order.
-      const angularRules = applyAngularRules(api, normalizedOptions);
+      const angularRules = applyAngularRules(
+        api,
+        normalizedOptions,
+        backgroundEntries,
+      );
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);
       applyDevLogger(api);

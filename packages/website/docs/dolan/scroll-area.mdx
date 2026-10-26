@@ -76,7 +76,15 @@ The scroll area fills its parent's width in both orientations (`w-full`).
 
 ### Bounce and scroll bar
 
-`bounces` and `scrollBar` are on by default. Setting either to `false` doesn't turn it off yet. The component removes the attribute for `false`, and Lynx's default for both is on.
+`bounces` and `scrollBar` are on by default. Turn either off with `false`:
+
+```angular-html
+<ui-scroll-area height="300px" [bounces]="false" [scrollBar]="false">
+  …
+</ui-scroll-area>
+```
+
+Lynx documents both attributes of `<scroll-view>` for iOS only.
 
 ## API
 

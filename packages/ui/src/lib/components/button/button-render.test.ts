@@ -91,6 +91,25 @@ describe('UiButton (render)', () => {
     expect(inst.spinnerSize()).toBe('sm');
   });
 
+  it("colors the spinner like each variant's label", async () => {
+    // The template binding doesn't reach the spinner's input under JIT (see
+    // setInputSignal), so check the value the button passes it.
+    const { componentRef } = await render(UiButton);
+    const inst = componentRef.instance as unknown as UiButton & {
+      spinnerColor: () => string;
+    };
+    for (const [variant, color] of [
+      ['default', 'var(--primary-foreground)'],
+      ['destructive', 'var(--destructive-foreground)'],
+      ['outline', 'var(--foreground)'],
+      ['secondary', 'var(--secondary-foreground)'],
+      ['ghost', 'var(--foreground)'],
+    ] as const) {
+      setInputSignal(inst.variant, variant);
+      expect(inst.spinnerColor()).toBe(color);
+    }
+  });
+
   it('press handlers run cleanly (guarded by disabled/loading state)', async () => {
     // onPressStart/End are no-ops when the button is disabled/loading; the
     // active-press path relies on the ref being wired up on-device — assert

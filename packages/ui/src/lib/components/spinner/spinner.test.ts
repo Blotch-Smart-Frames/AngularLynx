@@ -1,6 +1,7 @@
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSpinner } from './spinner';
 
 describe('UiSpinner', () => {
@@ -20,6 +21,32 @@ describe('UiSpinner', () => {
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('content')).toContain('rgb(0, 0, 0)');
     expect(svg?.getAttribute('content')).not.toContain('currentColor');
+  });
+
+  it("draws in the theme's foreground when no color is set", async () => {
+    const { container } = await render(UiSpinner);
+    const content = container.querySelector('svg')?.getAttribute('content');
+    expect(content).toContain(ICON_LIGHT_COLORS['foreground']);
+    expect(content).not.toContain('currentColor');
+  });
+
+  it('resolves a theme token color', async () => {
+    const { container, componentRef } = await render(UiSpinner);
+    setInputSignal(
+      (componentRef.instance as UiSpinner).color,
+      'var(--primary-foreground)',
+    );
+    await waitForUpdate();
+    expect(container.querySelector('svg')?.getAttribute('content')).toContain(
+      ICON_LIGHT_COLORS['primary-foreground'],
+    );
+  });
+
+  it('applies the class input to the spinner', async () => {
+    const { container, componentRef } = await render(UiSpinner);
+    setInputSignal((componentRef.instance as UiSpinner).userClass, 'ml-2');
+    await waitForUpdate();
+    expect(container.querySelector('view')?.getAttribute('class')).toBe('ml-2');
   });
 
   it('resizes for each supported size', async () => {

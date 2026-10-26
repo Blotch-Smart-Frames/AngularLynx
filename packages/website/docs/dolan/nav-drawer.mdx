@@ -79,12 +79,13 @@ export class Shell {
 }
 ```
 
-- `<ui-nav-drawer-trigger>` is a menu button with a hamburger icon. It only emits `pressed`, so set your `open` signal there.
+- `<ui-nav-drawer-trigger>` is a menu button with a hamburger icon. It only emits `pressed`, so set your `open` signal there. Screen readers announce it as "Open navigation menu", or your own `label`.
 - The drawer covers 80% of the screen width and the full height, over a dimmed backdrop. A backdrop tap closes it.
 - Tapping an item emits its `pressed`, then closes the drawer.
 - `[active]` highlights the item for the current page. When the drawer opens, it scrolls the active item into view.
 - An item lays out its content in a row. Put an icon and a `<text>` in it.
 - The drawer draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+- When it opens, a screen reader moves into the drawer and stays inside it until it closes.
 
 ### Layout
 
@@ -114,6 +115,22 @@ protected go(url: string): void {
   <text class="text-sm text-foreground">Settings</text>
 </ui-nav-drawer-item>
 ```
+
+### A destructive item
+
+`variant="destructive"` draws an item's content in the theme's destructive color, for an action such as Log out:
+
+```angular-html
+<ui-nav-drawer-footer>
+  <ui-nav-drawer-item variant="destructive" (pressed)="logOut()">
+    <ui-icon name="x" size="sm" />
+    <text class="text-sm text-foreground">Log out</text>
+  </ui-nav-drawer-item>
+</ui-nav-drawer-footer>
+```
+
+- **Text styled `text-foreground` turns destructive.** Lynx doesn't pass `color` down to children, so the item points the `--foreground` variable at `--destructive` instead, and variables do pass down. Text with another color class keeps it.
+- **Icons without a `color` turn destructive.** An icon's own `color` wins.
 
 ### Open from the right
 
@@ -152,11 +169,11 @@ Set `autoClose` to `false` on an item that shouldn't close the drawer, such as o
 
 ### UiNavDrawerItem
 
-| Input       | Type                         | Default     | Description                                                                |
-| ----------- | ---------------------------- | ----------- | -------------------------------------------------------------------------- |
-| `active`    | `boolean`                    | `false`     | Highlight the item, and scroll to it when the drawer opens.                |
-| `autoClose` | `boolean`                    | `true`      | Close the drawer after a tap.                                              |
-| `variant`   | `'default' \| 'destructive'` | `'default'` | Accepted, but has no visual effect yet. Color the item's content yourself. |
+| Input       | Type                         | Default     | Description                                                                                                       |
+| ----------- | ---------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| `active`    | `boolean`                    | `false`     | Highlight the item, and scroll to it when the drawer opens.                                                       |
+| `autoClose` | `boolean`                    | `true`      | Close the drawer after a tap.                                                                                     |
+| `variant`   | `'default' \| 'destructive'` | `'default'` | `'destructive'` draws the item's content in the destructive color. See [A destructive item](#a-destructive-item). |
 
 | Output    | Type   | Description                                              |
 | --------- | ------ | -------------------------------------------------------- |
@@ -167,6 +184,10 @@ Set `autoClose` to `false` on an item that shouldn't close the drawer, such as o
 | `scrollIntoView()` | Scrolls the drawer's content so the item is centered. |
 
 ### UiNavDrawerTrigger
+
+| Input   | Type     | Default                  | Description                       |
+| ------- | -------- | ------------------------ | --------------------------------- |
+| `label` | `string` | `'Open navigation menu'` | What a screen reader says for it. |
 
 | Output    | Type   | Description                      |
 | --------- | ------ | -------------------------------- |

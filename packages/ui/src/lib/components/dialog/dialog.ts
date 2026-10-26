@@ -26,13 +26,17 @@ import { cn } from '../../utils/cn';
 
 @Component({
   selector: 'ui-dialog',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <view #backdrop [class]="backdropClass()" (bindtap)="onBackdropTap()">
-        <view #panel [class]="panelClass()" (catchtap)="onPanelTap()">
+        <view
+          #panel
+          [class]="panelClass()"
+          [accessibility-exclusive-focus]="overlayVisible()"
+          (catchtap)="onPanelTap()"
+        >
           <ng-content />
         </view>
       </view>
@@ -146,6 +150,11 @@ export class UiDialog {
 
     // Backdrop fades in first
     this.#backdropAnim = fadeIn(backdrop, { duration: DURATION.normal });
+    // Move a screen reader into the panel. It would otherwise stay on whatever
+    // opened it, which is now behind the overlay. With the panel's
+    // accessibility-exclusive-focus (see the template), it then can't leave
+    // the panel until it closes.
+    panel.invoke?.('requestAccessibilityFocus');
 
     // Panel scales in with gentle spring (staggered 30ms after backdrop)
     setTimeout(() => {
@@ -181,7 +190,6 @@ export class UiDialog {
 
 @Component({
   selector: 'ui-dialog-header',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -200,7 +208,6 @@ export class UiDialogHeader {
 
 @Component({
   selector: 'ui-dialog-title',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `<text [class]="textClass()"><ng-content /></text>`,
@@ -215,7 +222,6 @@ export class UiDialogTitle {
 
 @Component({
   selector: 'ui-dialog-description',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `<text [class]="textClass()"><ng-content /></text>`,
@@ -230,7 +236,6 @@ export class UiDialogDescription {
 
 @Component({
   selector: 'ui-dialog-footer',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `

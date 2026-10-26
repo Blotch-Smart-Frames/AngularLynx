@@ -1,4 +1,5 @@
 import {
+  type OnDestroy,
   type OnInit,
   Component,
   ElementRef,
@@ -53,7 +54,6 @@ const stackTransform = (depth: number): string =>
  */
 @Component({
   selector: 'ui-toast-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Styling + interaction live on the HOST element (a plain `view`, since the
@@ -86,7 +86,7 @@ const stackTransform = (depth: number): string =>
     }
   `,
 })
-export class UiToastItem implements OnInit {
+export class UiToastItem implements OnInit, OnDestroy {
   readonly data = input.required<ToastData>();
   // 0 = front (newest, interactive); higher = further back in the stack.
   readonly depth = input.required<number>();
@@ -96,6 +96,8 @@ export class UiToastItem implements OnInit {
   readonly #host = inject(ElementRef);
   #anim?: AnimationHandle;
   #dismissTimer: ReturnType<typeof setTimeout> | null = null;
+  // The one that emits `dismissed` once the exit animation has played.
+  #exitTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Hidden until the entrance animation runs, so the toast doesn't flash at its
   // resting position for a frame before sliding/fading in.
@@ -295,7 +297,22 @@ export class UiToastItem implements OnInit {
       this.#dismissTimer = null;
     }
     this.#animateOut();
-    setTimeout(() => this.dismissed.emit(), DURATION.fast + 20);
+    this.#exitTimer = setTimeout(
+      () => this.dismissed.emit(),
+      DURATION.fast + 20,
+    );
+  }
+
+  /**
+   * A toast can be destroyed before its timers fire: `dismissToast(id)` drops
+   * it from the queue straight away, and the toaster itself can be removed.
+   * Without this, the auto-dismiss timer later ran `dismiss()` on the destroyed
+   * component: it animated a detached element and emitted `dismissed` from a
+   * destroyed output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    if (this.#dismissTimer) clearTimeout(this.#dismissTimer);
+    if (this.#exitTimer) clearTimeout(this.#exitTimer);
   }
 
   #animateIn(): void {
@@ -447,7 +464,6 @@ export class UiToastItem implements OnInit {
  */
 @Component({
   selector: 'ui-toaster',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiToastItem],
   encapsulation: ViewEncapsulation.None,
   template: `

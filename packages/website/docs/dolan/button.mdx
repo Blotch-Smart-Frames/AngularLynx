@@ -14,7 +14,7 @@ npx @blotch/dolan add button
 import { UiButton } from '../components/ui/button';
 ```
 
-This also adds [Spinner](/dolan/spinner), which shows while the button is loading. Button imports `class-variance-authority` (see [Installation](/dolan/#installation)).
+This also adds [Spinner](/dolan/spinner), which shows while the button is loading, and the [Icon](/dolan/icon) colors it draws with. Button imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
@@ -70,7 +70,7 @@ export class App {
 <ui-button [loading]="true">Saving</ui-button>
 ```
 
-Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner.
+Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner in the label's color.
 
 ### Custom classes
 

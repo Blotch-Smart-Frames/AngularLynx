@@ -4825,9 +4825,13 @@ Inline SVG inherits the page's CSS: `fill="var(--primary)"` or `currentColor` fo
 
 `<svg content>` is a string the native engine parses on its own, with no access to the page's styles, and Lynx has no computed-style API to read a variable from JS. (`current-color` sets `currentColor` from an attribute, so it doesn't help either.)
 
+Lynx's main branch has since made native `<svg>` fall back to the CSS `color` for `currentColor` (lynx-family/lynx f88d423d9c, 2026-09-02), but no release has it yet: 4.1.x and 4.2.0 read only `current-color`. The web preview's `<x-svg>` turns `content` into an `<img>` (a blob URL), so there `currentColor` is always black.
+
 ### The fix
 
 `<ui-chart>` keeps CSS-shaped paints in its scene and resolves `var(--token)` against TypeScript copies of the theme (`chart-theme.ts`, checked against `default.css`/`dark.css` by a test) right before it writes the SVG. Which copy depends on the chart's color scheme, which defaults to light because the ui theme's dark mode is opt-in (`.dark` class); apps that toggle it set `'system'` or their own function. Text that must follow the theme exactly is native `<text>`, which reads the variables.
+
+`<ui-icon>`, `<ui-spinner>` and pagination's arrows do the same with `icon-theme.ts` (`provideIconTheme()`): their `color` takes `var(--token)`, and without one they draw in the foreground. A container can set the color for icons projected into it through DI (`UI_ICON_COLOR`), standing in for the `color` inheritance an icon would get on the web; a destructive nav drawer item uses it.
 
 ---
 
@@ -4922,3 +4926,19 @@ On the main thread, PrimJS's `stack` is only the frames (`    at App (file:///ma
 ### The fix
 
 Print the name and message yourself when the stack doesn't start with them. The dev server's log writer does this for `LynxLogger` (`formatArg` in `packages/rsbuild-plugin-angular-lynx/src/logger/dev-logger-middleware.ts`, issue #61).
+
+---
+
+## A container can't recolor projected text with `color`, but it can redefine a variable
+
+### What you'd expect (web)
+
+A component sets `color` on its wrapper (`text-destructive`), and whatever the app projects into it, text and `currentColor` icons alike, inherits it.
+
+### What Lynx does
+
+`color` doesn't inherit (inheritance is off by default, see above), so a class on the wrapper never reaches the app's `<text>`. CSS variables do inherit. A wrapper class that redefines a token the text already reads recolors it: `<ui-nav-drawer-item variant="destructive">` adds `[--foreground:var(--destructive)]`, and a projected `<text class="text-foreground">` turns red. Checked in Lynx Explorer 4.1 on the iOS Simulator: Tailwind's arbitrary-property class compiles (`.\[--foreground\:var\(--destructive\)\]{--foreground:var(--destructive)}`), and a variable defined as another variable resolves.
+
+### The fix
+
+Recolor through the token the content uses, and say which one in the docs (the nav drawer item recolors `text-foreground`). Text with another color class keeps it. SVG icons can't read variables at all, so the item hands its color to projected `<ui-icon>`s through DI (`UI_ICON_COLOR`) instead; see the `<svg>` entry above.

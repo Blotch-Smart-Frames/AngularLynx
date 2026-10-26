@@ -28,10 +28,10 @@ import {
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 import { UiIcon } from '../icon';
+import { UI_ICON_COLOR } from '../icon/icon-theme';
 
 @Component({
   selector: 'ui-nav-drawer',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -52,6 +52,7 @@ import { UiIcon } from '../icon';
           #panel
           [class]="panelClass()"
           [style]="panelPositionStyle()"
+          [accessibility-exclusive-focus]="overlayVisible()"
           (catchtap)="onPanelTap()"
         >
           <ng-content />
@@ -178,6 +179,11 @@ export class UiNavDrawer {
       duration: DURATION.slow,
       easing: EASING.sheet,
     });
+    // Move a screen reader into the panel. It would otherwise stay on whatever
+    // opened it, which is now behind the overlay. With the panel's
+    // accessibility-exclusive-focus (see the template), it then can't leave
+    // the panel until it closes.
+    panel.invoke?.('requestAccessibilityFocus');
   }
 
   #animateOut(): void {
@@ -199,7 +205,6 @@ export class UiNavDrawer {
 
 @Component({
   selector: 'ui-nav-drawer-header',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -229,7 +234,6 @@ export class UiNavDrawerHeader {
 
 @Component({
   selector: 'ui-nav-drawer-content',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Fixes: a long item list scrolled nowhere and spilled over the header and
@@ -326,9 +330,21 @@ export class UiNavDrawerContent {
 
 @Component({
   selector: 'ui-nav-drawer-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // Icons projected into the item (see the variant below) inject this through
+  // the item's element injector, which content projection keeps them under.
+  providers: [
+    {
+      provide: UI_ICON_COLOR,
+      useFactory: () => {
+        const item = inject(UiNavDrawerItem);
+        return computed(() =>
+          item.variant() === 'destructive' ? 'var(--destructive)' : undefined,
+        );
+      },
+    },
+  ],
   template: `
     <view
       #container
@@ -358,10 +374,18 @@ export class UiNavDrawerItem {
   readonly containerRef = viewChild<ElementRef>('container');
   #pressAnim?: AnimationHandle;
 
+  // `destructive` recolors the item's content, which the item doesn't render
+  // itself: the label and icon are projected. Lynx doesn't inherit `color`, so
+  // a text class here wouldn't reach the label. CSS variables do inherit, so
+  // the item points `--foreground` at `--destructive` for everything inside
+  // it: a label styled `text-foreground` (as items are) turns destructive.
+  // Icons draw with SVG, which can't read CSS, so they get the same color
+  // through UI_ICON_COLOR (see providers above).
   protected readonly containerClass = computed(() =>
     cn(
       'flex-row items-center gap-3 px-4 py-3 flex',
       this.active() ? 'bg-accent' : 'bg-transparent',
+      this.variant() === 'destructive' && '[--foreground:var(--destructive)]',
       this.userClass(),
     ),
   );
@@ -421,7 +445,6 @@ export class UiNavDrawerItem {
 
 @Component({
   selector: 'ui-nav-drawer-footer',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -449,13 +472,17 @@ export class UiNavDrawerFooter {
 
 @Component({
   selector: 'ui-nav-drawer-trigger',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiIcon],
   encapsulation: ViewEncapsulation.None,
   template: `
+    <!-- The trigger is only an icon, so it carries the words a screen reader
+         says for it. -->
     <view
       #container
       [class]="containerClass()"
+      [accessibility-element]="true"
+      accessibility-traits="button"
+      [accessibility-label]="label()"
       (bindtouchstart)="onPressStart()"
       (bindtouchend)="onPressEnd()"
       (bindtouchcancel)="onPressCancel()"
@@ -469,6 +496,8 @@ export class UiNavDrawerFooter {
   `,
 })
 export class UiNavDrawerTrigger {
+  /** What a screen reader says for the trigger. */
+  readonly label = input('Open navigation menu');
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly pressed = output<void>();

@@ -6,11 +6,29 @@ import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiList } from './list';
 
 @Component({
-  standalone: true,
   imports: [UiList, LYNX_ELEMENTS],
   template: `<ui-list><text>Item</text></ui-list>`,
 })
 class ListHost {}
+
+/**
+ * The values each boolean reached Lynx with, through `__SetAttribute`.
+ */
+const watchAttributes = () => {
+  const mainThread = (
+    globalThis as unknown as {
+      lynxTestingEnv: { mainThread: { globalThis: Record<string, unknown> } };
+    }
+  ).lynxTestingEnv.mainThread.globalThis;
+  const setAttribute = vi.spyOn(mainThread, '__SetAttribute' as never);
+  return {
+    last: (name: string): unknown =>
+      (setAttribute.mock.calls as unknown[][])
+        .filter((call) => call[1] === name)
+        .at(-1)?.[2],
+    restore: () => setAttribute.mockRestore(),
+  };
+};
 
 describe('UiList', () => {
   it('renders projected content', async () => {
@@ -61,5 +79,24 @@ describe('UiList', () => {
     );
     expect(element?.getAttribute('list-main-axis-gap')).toBeNull();
     addInlineStyle.mockRestore();
+  });
+
+  it('hands Lynx real booleans, so the defaults that are on can be turned off', async () => {
+    // A false used to remove the attribute, which leaves Lynx's default: on.
+    const attributes = watchAttributes();
+    const { componentRef } = await render(UiList);
+    const inst = componentRef.instance as UiList;
+    expect(attributes.last('bounces')).toBe(true);
+    expect(attributes.last('scroll-bar-enable')).toBe(true);
+    setInputSignal(inst.bounces, false);
+    setInputSignal(inst.scrollBar, false);
+    setInputSignal(inst.nestedScroll, true);
+    setInputSignal(inst.sticky, true);
+    await waitForUpdate();
+    expect(attributes.last('bounces')).toBe(false);
+    expect(attributes.last('scroll-bar-enable')).toBe(false);
+    expect(attributes.last('enable-nested-scroll')).toBe(true);
+    expect(attributes.last('sticky')).toBe(true);
+    attributes.restore();
   });
 });

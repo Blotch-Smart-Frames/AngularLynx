@@ -23,15 +23,15 @@ import { UiSpinner } from '../components/ui/spinner';
 @Component({
   selector: 'app-loading',
   imports: [UiSpinner],
-  template: `<ui-spinner color="rgba(113, 113, 122, 1)" />`,
+  template: `<ui-spinner color="var(--muted-foreground)" />`,
 })
 export class Loading {}
 ```
 
 - The spinner turns once every 1.6 seconds, for as long as it's on screen.
-- It's drawn with [Lynx](/guide/glossary#lynx)'s [`<svg>`](/api/elements/svg) element, which can't read your CSS. Pass `color` as a literal color, such as `#3b82f6` or `rgba(…)`. A theme variable such as `var(--primary)` won't work there.
-- Without `color`, the icon keeps the SVG's `currentColor` stroke, which doesn't follow your theme. Set `color` whenever the spinner sits on a dark background or the app has dark mode.
-- It has no `class` input. Wrap it in a `<view>` to position it.
+- Without `color`, it draws in your theme's foreground. `color` takes a theme token such as `var(--primary)` or a literal color such as `#3b82f6`.
+- It's drawn with [Lynx](/guide/glossary#lynx)'s [`<svg>`](/api/elements/svg) element, which can't read your CSS, so theme tokens are looked up the way [Icon](/dolan/icon#colors) does it. For dark mode, see [Icon](/dolan/icon#dark-mode): the same `provideIconTheme()` setting colors the spinner.
+- `class` takes Tailwind classes for the spinner, such as `class="ml-2"`.
 
 ### Sizes
 
@@ -46,16 +46,17 @@ export class Loading {}
 
 ### In a button
 
-[Button](/dolan/button) shows a spinner in place of its label while `loading` is `true`, so you don't need to add one yourself.
+[Button](/dolan/button) shows a spinner in place of its label while `loading` is `true`, in the label's color, so you don't need to add one yourself.
 
 ## API
 
 ### UiSpinner
 
-| Input   | Type                           | Default     | Description                                           |
-| ------- | ------------------------------ | ----------- | ----------------------------------------------------- |
-| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | Width and height: 16, 20, 24 or 32px.                 |
-| `color` | `string \| undefined`          | `undefined` | Stroke color, as a literal color. Not a CSS variable. |
+| Input   | Type                           | Default     | Description                                                                                                |
+| ------- | ------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | Width and height: 16, 20, 24 or 32px.                                                                      |
+| `color` | `string \| undefined`          | `undefined` | Stroke color: a theme token such as `var(--primary)`, or a literal color. The theme's foreground if unset. |
+| `class` | `string`                       | `''`        | Extra Tailwind classes for the spinner.                                                                    |
 
 No outputs.
 

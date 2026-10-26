@@ -137,13 +137,14 @@ describe('addCommand', () => {
   });
 
   it('surfaces auto-added transitive dependencies', async () => {
-    // button depends on spinner (registry.ts) — requesting only "button"
-    // should pull spinner in automatically and announce it.
+    // button depends on spinner, and spinner on icon (registry.ts) — requesting
+    // only "button" should pull both in automatically and announce them.
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       uiSource: {
         button: { 'button.ts': 'export const Button = {};' },
         spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        icon: { 'icon.ts': 'export const Icon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
@@ -162,6 +163,7 @@ describe('addCommand', () => {
     expect(
       readInstalledFile(fixture.dir, 'spinner', 'spinner.ts'),
     ).toBeDefined();
+    expect(readInstalledFile(fixture.dir, 'icon', 'icon.ts')).toBeDefined();
   });
 
   it('does not announce dependencies when they were already explicitly requested', async () => {
@@ -170,12 +172,13 @@ describe('addCommand', () => {
       uiSource: {
         button: { 'button.ts': 'export const Button = {};' },
         spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        icon: { 'icon.ts': 'export const Icon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const { addCommand } = await import('./add');
-    await addCommand(['button', 'spinner']);
+    await addCommand(['button', 'spinner', 'icon']);
 
     const p = await import('@clack/prompts');
     expect(p.log.info).not.toHaveBeenCalledWith(
@@ -255,7 +258,7 @@ describe('addCommand', () => {
       components: { card: { 'card.ts': cardOriginal } },
       uiSource: {
         card: { 'card.ts': 'export const Card = { v: 2 };' },
-        spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        skeleton: { 'skeleton.ts': 'export const Skeleton = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
@@ -264,15 +267,15 @@ describe('addCommand', () => {
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
     const { addCommand } = await import('./add');
-    await addCommand(['card', 'spinner']);
+    await addCommand(['card', 'skeleton']);
 
     // card declined — left untouched
     expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(
       cardOriginal,
     );
-    // spinner wasn't already installed, so it's unaffected by the decline
+    // skeleton wasn't already installed, so it's unaffected by the decline
     expect(
-      readInstalledFile(fixture.dir, 'spinner', 'spinner.ts'),
+      readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts'),
     ).toBeDefined();
   });
 

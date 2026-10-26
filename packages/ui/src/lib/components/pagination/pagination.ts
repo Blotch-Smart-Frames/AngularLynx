@@ -8,20 +8,40 @@ import {
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
 
 const CHEVRON_LEFT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`;
 const CHEVRON_RIGHT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`;
 
+/**
+ * What a screen reader says for a page button, unless `pageLabel` is set.
+ */
+const defaultPageLabel = (page: number, current: boolean): string =>
+  current ? `Page ${page}, current page` : `Page ${page}`;
+
 @Component({
   selector: 'ui-pagination',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // Each button is one accessibility element with a label: without them a
+  // screen reader found the arrows unlabeled (they're only an SVG) and read
+  // each number as plain text, with nothing saying it's a button or which page
+  // is current. The "..." gaps are hidden, since they aren't controls.
+  //
+  // The chevrons are drawn in the theme's foreground, like the page numbers
+  // next to them. An SVG can't read the text color classes, so the color is
+  // resolved and written into the markup (see icon-theme.ts).
   template: `
     <view [class]="containerClass()">
-      <view [class]="navButtonClass(page() <= 1)" (bindtap)="prev()">
+      <view
+        [class]="navButtonClass(page() <= 1)"
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        [accessibility-label]="previousLabel()"
+        (bindtap)="prev()"
+      >
         <svg
-          [attr.content]="chevronLeftSvg"
+          [attr.content]="chevronLeftSvg()"
           style="width: 16px; height: 16px;"
         />
       </view>
@@ -30,6 +50,11 @@ const CHEVRON_RIGHT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
         @if (item.type === 'page') {
           <view
             [class]="pageButtonClass(item.value === page())"
+            [accessibility-element]="true"
+            accessibility-traits="button"
+            [accessibility-label]="
+              pageLabel()(item.value, item.value === page())
+            "
             (bindtap)="goTo(item.value)"
           >
             <text [class]="pageTextClass(item.value === page())">{{
@@ -37,15 +62,24 @@ const CHEVRON_RIGHT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
             }}</text>
           </view>
         } @else {
-          <view class="h-8 w-8 items-center flex justify-center">
+          <view
+            class="h-8 w-8 items-center flex justify-center"
+            [accessibility-elements-hidden]="true"
+          >
             <text class="text-xs text-muted-foreground">...</text>
           </view>
         }
       }
 
-      <view [class]="navButtonClass(page() >= totalPages())" (bindtap)="next()">
+      <view
+        [class]="navButtonClass(page() >= totalPages())"
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        [accessibility-label]="nextLabel()"
+        (bindtap)="next()"
+      >
         <svg
-          [attr.content]="chevronRightSvg"
+          [attr.content]="chevronRightSvg()"
           style="width: 16px; height: 16px;"
         />
       </view>
@@ -56,10 +90,23 @@ export class UiPagination {
   readonly page = model(1);
   readonly totalPages = input.required<number>();
   readonly siblingCount = input(1);
+  /** Screen reader label for the previous arrow. */
+  readonly previousLabel = input('Previous page');
+  /** Screen reader label for the next arrow. */
+  readonly nextLabel = input('Next page');
+  /** Screen reader label for a page button, given its page and whether it's current. */
+  readonly pageLabel =
+    input<(page: number, current: boolean) => string>(defaultPageLabel);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly chevronLeftSvg = CHEVRON_LEFT;
-  protected readonly chevronRightSvg = CHEVRON_RIGHT;
+  readonly #resolveColor = injectIconColor();
+  // split/join, not replaceAll(): Lynx's main thread (PrimJS, ES2019) lacks it.
+  protected readonly chevronLeftSvg = computed(() =>
+    CHEVRON_LEFT.split('currentColor').join(this.#resolveColor(undefined)),
+  );
+  protected readonly chevronRightSvg = computed(() =>
+    CHEVRON_RIGHT.split('currentColor').join(this.#resolveColor(undefined)),
+  );
 
   // Sliding-window pagination algorithm:
   // Always shows page 1 and the last page. Around the current page, shows

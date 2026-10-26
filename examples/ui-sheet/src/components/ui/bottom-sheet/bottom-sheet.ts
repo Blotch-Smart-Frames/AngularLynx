@@ -59,7 +59,6 @@ const BACKDROP_CLEAR_DISTANCE = 500;
  */
 @Component({
   selector: 'ui-bottom-sheet',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -88,6 +87,7 @@ const BACKDROP_CLEAR_DISTANCE = 500;
           #panel
           [class]="panelClass()"
           [style]="panelPositionStyle()"
+          [accessibility-exclusive-focus]="overlayVisible()"
           (catchtap)="onPanelTap()"
         >
           <view
@@ -363,6 +363,11 @@ export class UiBottomSheet {
     this.#panelAnim?.cancel();
 
     this.#backdropAnim = fadeIn(backdrop, { duration: DURATION.normal });
+    // Move a screen reader into the panel. It would otherwise stay on whatever
+    // opened it, which is now behind the overlay. With the panel's
+    // accessibility-exclusive-focus (see the template), it then can't leave
+    // the panel until it closes.
+    panel.invoke?.('requestAccessibilityFocus');
     this.#panelAnim = slideIn(panel, 'up', {
       duration: DURATION.slow,
       easing: EASING.sheet,

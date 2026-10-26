@@ -65,6 +65,19 @@ const buttonTextVariants = cva('font-medium', {
   },
 });
 
+/**
+ * The spinner's color for each variant: the same token as the label's text
+ * class above. The spinner draws with SVG, which can't read the text classes,
+ * so it gets the token and resolves it itself (see icon-theme.ts).
+ */
+const SPINNER_COLORS = {
+  default: 'var(--primary-foreground)',
+  destructive: 'var(--destructive-foreground)',
+  outline: 'var(--foreground)',
+  secondary: 'var(--secondary-foreground)',
+  ghost: 'var(--foreground)',
+} as const;
+
 export type ButtonVariant = NonNullable<
   VariantProps<typeof buttonVariants>['variant']
 >;
@@ -74,7 +87,6 @@ export type ButtonSize = NonNullable<
 
 @Component({
   selector: 'ui-button',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiSpinner],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -100,7 +112,7 @@ export type ButtonSize = NonNullable<
       (bindtap)="onTap()"
     >
       @if (loading()) {
-        <ui-spinner [size]="spinnerSize()" />
+        <ui-spinner [size]="spinnerSize()" [color]="spinnerColor()" />
       } @else {
         <text [class]="labelClass()"><ng-content /></text>
       }
@@ -135,6 +147,10 @@ export class UiButton {
     const s = this.size();
     return s === 'sm' ? ('xs' as const) : ('sm' as const);
   });
+
+  protected readonly spinnerColor = computed(
+    () => SPINNER_COLORS[this.variant()],
+  );
 
   protected onPressStart(): void {
     if (this.disabled() || this.loading()) return;

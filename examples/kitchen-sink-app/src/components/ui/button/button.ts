@@ -65,6 +65,19 @@ const buttonTextVariants = cva('font-medium', {
   },
 });
 
+/**
+ * The spinner's color for each variant: the same token as the label's text
+ * class above. The spinner draws with SVG, which can't read the text classes,
+ * so it gets the token and resolves it itself (see icon-theme.ts).
+ */
+const SPINNER_COLORS = {
+  default: 'var(--primary-foreground)',
+  destructive: 'var(--destructive-foreground)',
+  outline: 'var(--foreground)',
+  secondary: 'var(--secondary-foreground)',
+  ghost: 'var(--foreground)',
+} as const;
+
 export type ButtonVariant = NonNullable<
   VariantProps<typeof buttonVariants>['variant']
 >;
@@ -74,7 +87,6 @@ export type ButtonSize = NonNullable<
 
 @Component({
   selector: 'ui-button',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiSpinner],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -100,7 +112,7 @@ export type ButtonSize = NonNullable<
       (bindtap)="onTap()"
     >
       @if (loading()) {
-        <ui-spinner [size]="spinnerSize()" />
+        <ui-spinner [size]="spinnerSize()" [color]="spinnerColor()" />
       } @else {
         <text [class]="labelClass()"><ng-content /></text>
       }
@@ -136,14 +148,24 @@ export class UiButton {
     return s === 'sm' ? ('xs' as const) : ('sm' as const);
   });
 
+  protected readonly spinnerColor = computed(
+    () => SPINNER_COLORS[this.variant()],
+  );
+
   protected onPressStart(): void {
     if (this.disabled() || this.loading()) return;
+    // pressDown/pressRelease drive el.setStyle() based CSS transitions on the
+    // container ref. In the JIT test harness the view-child isn't reliably
+    // wired up (see the label spec note), and Lynx web renderer's press
+    // feedback is verified end-to-end on-device.
+    /* v8 ignore next 2 */
     this.#pressAnim?.cancel();
     this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
   }
 
   protected onPressEnd(): void {
     if (this.disabled() || this.loading()) return;
+    /* v8 ignore next 2 */
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
   }
@@ -151,6 +173,7 @@ export class UiButton {
   protected onPressCancel(): void {
     // Also restore scale on cancel — without this, a canceled touch (e.g. scroll
     // gesture taking over) leaves the button stuck in its pressed-down state.
+    /* v8 ignore next 2 */
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
   }

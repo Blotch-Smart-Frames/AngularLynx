@@ -80,6 +80,8 @@ export class App {
 
 The [UI components](/dolan/) theme keeps its dark values in `dark.css`, under `page.dark`. Change that selector to `.dark` and bind the class as above. Classes like `bg-background` and `text-foreground` then follow the theme. See [Theming](/dolan/theming).
 
+Icons and charts draw with SVG, which can't read CSS, so tell them the theme too: `provideIconTheme({ colorScheme: 'system' })` and `provideChartTheme({ colorScheme: 'system' })`. See [Icon](/dolan/icon#dark-mode).
+
 ## Read the theme in TypeScript
 
 ```typescript title="src/app/status-bar.ts"

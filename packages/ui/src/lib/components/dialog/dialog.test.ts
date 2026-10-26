@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import {
   UiDialog,
@@ -12,7 +12,6 @@ import {
 } from './dialog';
 
 @Component({
-  standalone: true,
   imports: [
     UiDialog,
     UiDialogHeader,
@@ -36,6 +35,27 @@ class DialogHost {
 }
 
 describe('UiDialog', () => {
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const { componentRef, container } = await render(UiDialog);
+    const inst = componentRef.instance as UiDialog;
+    const panel = container.querySelector(
+      '[accessibility-exclusive-focus]',
+    ) as Element & { invoke?: unknown };
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
+    const invoke = vi.fn();
+    panel.invoke = invoke;
+    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
+      nativeElement: panel,
+    });
+    (inst as unknown as { panelRef: unknown }).panelRef = signal({
+      nativeElement: panel,
+    });
+    inst.open.set(true);
+    for (let i = 0; i < 5; i++) await waitForUpdate();
+    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
+  });
+
   it('renders header, title, description, and footer', async () => {
     const { getByText } = await render(DialogHost);
     expect(getByText('Title')).toBeTruthy();

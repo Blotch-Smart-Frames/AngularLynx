@@ -83,7 +83,7 @@ page {
 ```
 
 - Change the same tokens in `dark.css` if you use dark mode.
-- Charts draw with a TypeScript copy of these colors, because Lynx's SVG renderer can't read CSS variables. Pass your new values to `provideChartTheme()`, as shown on [Chart](/dolan/chart).
+- Charts and icons draw with a TypeScript copy of these colors, because Lynx's SVG renderer can't read CSS variables. Pass your new values to `provideChartTheme()` (see [Chart](/dolan/chart)) and `provideIconTheme()` (see [Icon](/dolan/icon#dark-mode)). The icon copy also colors Spinner and Pagination's arrows.
 - [`dolan update`](/dolan/cli#update) merges theme changes too, so your edits survive updates.
 
 ### Add a token
@@ -144,7 +144,7 @@ export class App {
 ```
 
 - `isDarkMode()` is a signal. The **host app** (the native app that runs your bundle, see [Glossary](/guide/glossary#host-app)) sets it from the device's appearance setting.
-- Charts default to light colors. Add `provideChartTheme({ colorScheme: 'system' })` to make them follow too (see [Chart](/dolan/chart)).
+- Charts and icons default to light colors. Add `provideChartTheme({ colorScheme: 'system' })` and `provideIconTheme({ colorScheme: 'system' })` to make them follow too (see [Chart](/dolan/chart) and [Icon](/dolan/icon#dark-mode)).
 - For a manual toggle, bind `[class.dark]` to your own signal instead. See [Dark mode](/guide/dark-mode) and [`LynxTheme`](/api/angular-lynx/theme).
 
 ## Variable reference

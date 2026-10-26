@@ -11,7 +11,6 @@ import {
 } from './action-sheet';
 
 @Component({
-  standalone: true,
   imports: [
     UiActionSheet,
     UiActionSheetTitle,
@@ -32,6 +31,27 @@ class ActionSheetHost {
 }
 
 describe('UiActionSheet', () => {
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const { componentRef, container } = await render(UiActionSheet);
+    const inst = componentRef.instance as UiActionSheet;
+    const panel = container.querySelector(
+      '[accessibility-exclusive-focus]',
+    ) as Element & { invoke?: unknown };
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
+    const invoke = vi.fn();
+    panel.invoke = invoke;
+    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
+      nativeElement: panel,
+    });
+    (inst as unknown as { panelRef: unknown }).panelRef = signal({
+      nativeElement: panel,
+    });
+    inst.open.set(true);
+    for (let i = 0; i < 5; i++) await waitForUpdate();
+    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
+  });
+
   const patchRefs = (inst: UiActionSheet, view: Element) => {
     (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
       nativeElement: view,

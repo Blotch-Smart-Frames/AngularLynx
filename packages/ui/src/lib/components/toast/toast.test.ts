@@ -154,6 +154,43 @@ describe('UiToastItem', () => {
     expect(dismissed).toHaveBeenCalled();
   });
 
+  it('stops its auto-dismiss timer when it is destroyed first', async () => {
+    // dismissToast(id) removes the toast at once. Its timer used to fire on
+    // the destroyed component anyway, and emit from a destroyed output.
+    const dismissed = vi.fn();
+    const warn = vi.spyOn(console, 'warn');
+    const { componentRef } = await render(UiToastItem);
+    const inst = componentRef.instance as UiToastItem;
+    inst.dismissed.subscribe(dismissed);
+    setInputSignal(inst.data, baseData({ duration: 30 }));
+    setInputSignal(inst.depth, 0);
+    await waitForUpdate();
+    inst.ngOnInit();
+    componentRef.destroy();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(dismissed).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('NG0953'));
+    warn.mockRestore();
+  });
+
+  it('stops its exit timer when it is destroyed mid-exit', async () => {
+    // A destroyed output drops the emit, so the warning is what shows it.
+    const dismissed = vi.fn();
+    const warn = vi.spyOn(console, 'warn');
+    const { componentRef } = await render(UiToastItem);
+    const inst = componentRef.instance as UiToastItem;
+    inst.dismissed.subscribe(dismissed);
+    setInputSignal(inst.data, baseData());
+    setInputSignal(inst.depth, 0);
+    await waitForUpdate();
+    inst.dismiss();
+    componentRef.destroy();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(dismissed).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('NG0953'));
+    warn.mockRestore();
+  });
+
   it('touch drag beyond threshold dismisses; below threshold snaps back', async () => {
     const { componentRef } = await render(UiToastItem);
     const inst = componentRef.instance as UiToastItem;

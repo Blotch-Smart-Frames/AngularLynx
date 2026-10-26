@@ -1,13 +1,18 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiIcon } from './icon';
+import {
+  ICON_DARK_COLORS,
+  ICON_LIGHT_COLORS,
+  UI_ICON_COLOR,
+  provideIconTheme,
+} from './icon-theme';
 import { ICONS, type IconName } from './icons';
 
 @Component({
-  standalone: true,
   imports: [UiIcon, LYNX_ELEMENTS],
   template: `<ui-icon [name]="name" [size]="size" [color]="color" />`,
 })
@@ -42,6 +47,50 @@ describe('UiIcon', () => {
     const svg = container.querySelector('svg');
     expect(svg?.getAttribute('content')).toContain('rgb(255, 0, 0)');
     expect(svg?.getAttribute('content')).not.toContain('currentColor');
+  });
+
+  it("draws in the light theme's foreground when no color is set", async () => {
+    const { componentRef, container } = await render(UiIcon);
+    setInputSignal((componentRef.instance as UiIcon).name, 'check' as IconName);
+    await waitForUpdate();
+    const content = container.querySelector('svg')?.getAttribute('content');
+    expect(content).toContain(ICON_LIGHT_COLORS['foreground']);
+    expect(content).not.toContain('currentColor');
+  });
+
+  it('resolves a theme token against the active color scheme', async () => {
+    const { componentRef, container } = await render(UiIcon, {
+      providers: [provideIconTheme({ colorScheme: 'dark' })],
+    });
+    const icon = componentRef.instance as UiIcon;
+    setInputSignal(icon.name, 'check' as IconName);
+    setInputSignal(icon.color, 'var(--primary)');
+    await waitForUpdate();
+    expect(container.querySelector('svg')?.getAttribute('content')).toContain(
+      ICON_DARK_COLORS['primary'],
+    );
+  });
+
+  it("takes its container's color when it sets none", async () => {
+    const { componentRef, container } = await render(UiIcon, {
+      providers: [
+        { provide: UI_ICON_COLOR, useValue: signal('var(--destructive)') },
+      ],
+    });
+    setInputSignal((componentRef.instance as UiIcon).name, 'x' as IconName);
+    await waitForUpdate();
+    expect(container.querySelector('svg')?.getAttribute('content')).toContain(
+      ICON_LIGHT_COLORS['destructive'],
+    );
+  });
+
+  it('applies the class input to the svg', async () => {
+    const { componentRef, container } = await render(UiIcon);
+    const icon = componentRef.instance as UiIcon;
+    setInputSignal(icon.name, 'check' as IconName);
+    setInputSignal(icon.userClass, 'mr-2');
+    await waitForUpdate();
+    expect(container.querySelector('svg')?.getAttribute('class')).toBe('mr-2');
   });
 });
 

@@ -129,6 +129,33 @@ describe('callOnBackground()', () => {
 
       expect(stopExposure.mock.calls).toEqual([[{}], [{ sendEvent: false }]]);
     });
+
+    it("runs the main thread's fetch on this thread's fetch, and aborts it by ID", async () => {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          (_url: string, init: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              signal = init.signal!;
+              signal.addEventListener('abort', () => reject(signal!.reason));
+            }),
+        ),
+      );
+      const { callOnBackground } = await load({ mainThread: false, lynx: {} });
+
+      const pending = callOnBackground('fetch', 3, {
+        url: 'https://example.com/',
+        method: 'GET',
+        headers: [],
+        body: null,
+        options: {},
+      });
+      await callOnBackground('abortFetch', 3);
+
+      expect(signal!.aborted).toBe(true);
+      await expect(pending).rejects.toBeDefined();
+    });
   });
 
   describe('the background thread relay', () => {

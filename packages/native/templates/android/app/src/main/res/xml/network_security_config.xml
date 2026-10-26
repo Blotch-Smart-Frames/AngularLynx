@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allows plain HTTP to this device's own loopback address, and nowhere else.
+  Loopback traffic never leaves the device, so there's nothing to intercept:
+  it reaches a server on the device itself, or one on the development machine
+  through `adb reverse`. Every other host keeps Android's default, which
+  blocks cleartext. Without this, fetch() to http://localhost failed with
+  "CLEARTEXT communication not permitted", which Lynx reports as status 499.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -132,13 +132,13 @@ Build custom selection UI with `<view>` and state.
 
 Use `lynx.setSessionStorage(key, value)` / `lynx.getSessionStorage(key)`.
 
-### No `fetch` on main thread
+### HTTP needs absolute URLs
 
-Only available on background thread. Use IPC to relay if needed.
+`HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. See [http-requests.md](http-requests.md).
 
-### No `TextEncoder` / `TextDecoder`
+### `TextEncoder` / `TextDecoder` are UTF-8 only
 
-Use `lynx.requireModule('TextCodecHelper')`.
+The runtime adds them to the main thread. Any other encoding label throws a `RangeError`.
 
 ### No `URL` constructor
 

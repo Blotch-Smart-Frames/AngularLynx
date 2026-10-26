@@ -1,14 +1,16 @@
 import path from 'node:path';
 
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
+import { HTTP_DATA } from '../static-server.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
 import { flowsFor, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
 
 /**
  * Layer 6 on Android: installs the app's own APK, or Lynx Explorer, on the
  * running emulator (CI starts it with android-emulator-runner) and runs the
- * same Maestro flows as iOS. For Explorer, `adb reverse` makes the host's
- * static server reachable at the same localhost URL as on iOS.
+ * same Maestro flows as iOS. `adb reverse` makes the host's static server,
+ * which serves Explorer's bundle and the counter fixture's JSON, reachable at
+ * the same localhost URL as on iOS.
  */
 export const runOnAndroidEmulator = async ({
   host,
@@ -32,7 +34,9 @@ export const runOnAndroidEmulator = async ({
     run('adb', args, { cwd: process.cwd(), logFile, echo: false });
   await adb(['wait-for-device']);
   await adb(['install', '-r', apk]);
-  await adb(['reverse', `tcp:${port}`, `tcp:${port}`]);
+  for (const reversed of new Set([port, HTTP_DATA.port])) {
+    await adb(['reverse', `tcp:${reversed}`, `tcp:${reversed}`]);
+  }
   await adb(['logcat', '-c']);
   const logcat = start('adb', ['logcat', '-v', 'time'], {
     cwd: process.cwd(),

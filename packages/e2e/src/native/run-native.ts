@@ -9,7 +9,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { CheckError, check, run, step } from '../process.ts';
-import { serveStatic } from '../static-server.ts';
+import { HTTP_DATA, serveStatic } from '../static-server.ts';
 import { runOnAndroidEmulator } from './android.ts';
 import { prepareIos, runOnIosSimulator } from './ios.ts';
 import type { NativeHost } from './maestro.ts';
@@ -90,54 +90,79 @@ const runFlows = (
     : runOnAndroidEmulator({ host, port, artifactsDir, logFile });
 
 /**
- * Lynx Explorer opening the app's bundle from a local static server: the dev
- * path, where `ng serve` hands Explorer a bundle URL. Returns the failures.
+ * Lynx Explorer opening the app's bundle from the local static server
+ * runNative() starts: the dev path, where `ng serve` hands Explorer a bundle
+ * URL. Returns the failures.
  */
 const runInExplorer = async (
   platform: Platform,
-  distDir: string,
+  requestLog: string,
   options: Parameters<typeof runFlows>[2],
 ): Promise<string[]> => {
-  const { artifactsDir, port } = options;
-  // The simulator shares the Mac's network, and the emulator reaches the host
-  // through `adb reverse`, so both load the bundle from localhost. Explorer
-  // allows plain HTTP.
-  // Which bundles the app actually requested is the first question when a
-  // native check fails, and Explorer doesn't log it.
-  const requestLog = path.join(artifactsDir, `${platform}-requests.log`);
-  writeFileSync(requestLog, '');
-  const server = await serveStatic(
-    [{ prefix: '/', dir: path.resolve(distDir) }],
-    {
-      port,
-      host: '127.0.0.1',
-      onRequest: (line) =>
-        appendFileSync(requestLog, `${new Date().toISOString()} ${line}\n`),
-    },
-  );
+  const { port } = options;
   // Explorer 4.1.0 reads everything after `url=` as-is, so the bundle URL is
   // passed unencoded. (The router on Lynx's main branch URL-decodes it;
   // re-check when bumping EXPLORER.version.)
   const bundleUrl = `http://127.0.0.1:${port}/main.lynx.bundle`;
-  try {
-    const failures = await runFlows(
-      platform,
-      { kind: 'explorer', bundleUrl },
-      options,
+  // Only this host's requests: the shell may have run first.
+  const logStart = readFileSync(requestLog, 'utf8').length;
+  const failures = await runFlows(
+    platform,
+    { kind: 'explorer', bundleUrl },
+    options,
+  );
+  // Independent of the flows, which would only report that they couldn't
+  // find an element: Explorer must at least have fetched the bundle.
+  if (
+    !readFileSync(requestLog, 'utf8')
+      .slice(logStart)
+      .includes('200 GET /main.lynx.bundle')
+  ) {
+    failures.push(
+      `Lynx Explorer never fetched ${bundleUrl}; the deep link didn't open it (see ${platform}-requests.log).`,
     );
-    // Independent of the flows, which would only report that they couldn't
-    // find an element: Explorer must at least have fetched the bundle.
-    if (
-      !readFileSync(requestLog, 'utf8').includes('200 GET /main.lynx.bundle')
-    ) {
-      failures.push(
-        `Lynx Explorer never fetched ${bundleUrl}; the deep link didn't open it (see ${platform}-requests.log).`,
-      );
-    }
-    return failures;
-  } finally {
-    server.close();
   }
+  return failures;
+};
+
+/**
+ * Serves the bundle for Lynx Explorer, and fixtures/http-data.json for the
+ * counter fixture's HTTP check in both hosts, on localhost: the simulator
+ * shares the Mac's network, and the emulator reaches the host through
+ * `adb reverse`. Explorer allows plain HTTP. Every request is logged, since
+ * which bundles the app actually requested is the first question when a
+ * native check fails, and Explorer doesn't log it.
+ */
+const startServers = async (
+  bundleDir: string | undefined,
+  port: number,
+  requestLog: string,
+) => {
+  writeFileSync(requestLog, '');
+  const options = {
+    host: '127.0.0.1',
+    onRequest: (line: string) =>
+      appendFileSync(requestLog, `${new Date().toISOString()} ${line}\n`),
+  };
+  const servers = [
+    await serveStatic(
+      [
+        HTTP_DATA.route,
+        ...(bundleDir ? [{ prefix: '/', dir: path.resolve(bundleDir) }] : []),
+      ],
+      { ...options, port },
+    ),
+  ];
+  // The fixture's URL has a fixed port.
+  if (port !== HTTP_DATA.port) {
+    servers.push(
+      await serveStatic([HTTP_DATA.route], {
+        ...options,
+        port: HTTP_DATA.port,
+      }),
+    );
+  }
+  return () => servers.forEach((server) => server.close());
 };
 
 const HOST_NAMES = {
@@ -194,33 +219,43 @@ export const runNative = async ({
     ...(explorer ? (['explorer'] as const) : []),
   ];
   check(hosts.length > 0, 'Nothing to test: pass --app, --dist or both.');
+  const requestLog = path.join(artifactsDir, `${platform}-requests.log`);
+  const stopServers = await startServers(
+    explorer ? bundleDir : undefined,
+    port,
+    requestLog,
+  );
   const failures: string[] = [];
-  for (const [index, kind] of hosts.entries()) {
-    const options = {
-      artifactsDir,
-      logFile,
-      port,
-      // The next host reuses the booted simulator instead of booting it again.
-      keepRunning: keepRunning || index < hosts.length - 1,
-    };
-    try {
-      const hostFailures =
-        kind === 'shell'
-          ? await runFlows(
-              platform,
-              await shellHost(platform, appDir!, logFile, prebuilt),
-              options,
-            )
-          : await runInExplorer(platform, bundleDir!, options);
-      failures.push(
-        ...hostFailures.map((failure) => `${HOST_NAMES[kind]}: ${failure}`),
-      );
-    } catch (error) {
-      if (!(error instanceof CheckError)) {
-        throw error;
+  try {
+    for (const [index, kind] of hosts.entries()) {
+      const options = {
+        artifactsDir,
+        logFile,
+        port,
+        // The next host reuses the booted simulator instead of booting it again.
+        keepRunning: keepRunning || index < hosts.length - 1,
+      };
+      try {
+        const hostFailures =
+          kind === 'shell'
+            ? await runFlows(
+                platform,
+                await shellHost(platform, appDir!, logFile, prebuilt),
+                options,
+              )
+            : await runInExplorer(platform, requestLog, options);
+        failures.push(
+          ...hostFailures.map((failure) => `${HOST_NAMES[kind]}: ${failure}`),
+        );
+      } catch (error) {
+        if (!(error instanceof CheckError)) {
+          throw error;
+        }
+        failures.push(`${HOST_NAMES[kind]}: ${error.message}`);
       }
-      failures.push(`${HOST_NAMES[kind]}: ${error.message}`);
     }
+  } finally {
+    stopServers();
   }
   const tested = hosts.map((kind) => HOST_NAMES[kind]).join(' and ');
   check(

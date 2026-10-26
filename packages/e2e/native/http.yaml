@@ -1,0 +1,12 @@
+# Layer 6: HttpClient and httpResource (fixtures/counter.ts). The counter page
+# loads fixtures/http-data.json through both when it starts, from the static
+# server run-native.ts starts on the Mac. Lynx has fetch on the background
+# thread only, and Angular runs on the main thread, where the runtime relays
+# each request to it (issue #85).
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- extendedWaitUntil:
+    visible: 'HTTP: pong/pong'
+    timeout: 15000
+- takeScreenshot: http

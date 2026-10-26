@@ -25,7 +25,7 @@ export class MyComponent {
 
 ### How It Works
 
-- **Main thread** (where Angular runs): no `fetch` available. Relays logs to the background thread via IPC (`lynx.getJSContext().dispatchEvent`), which posts them to the dev server the bundle came from
+- **Main thread** (where Angular runs): no network access of its own. Relays logs to the background thread via IPC (`lynx.getJSContext().dispatchEvent`), which posts them to the dev server the bundle came from
 - **Arguments**: objects and arrays print as indented JSON, an `Error` with its stack, anything else as `String()` makes it
 - **Production**: all methods are no-ops (dead-code eliminated via `__DEV__` guard)
 

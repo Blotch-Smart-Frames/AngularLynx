@@ -112,6 +112,31 @@ describe('polyfills', () => {
     });
   });
 
+  describe('network APIs', () => {
+    // The install guards themselves are tested in network/index.test.ts with
+    // a stand-in global. Node has fetch but no XMLHttpRequest, so XHR shows
+    // whether they were installed.
+    it("installs them on the main thread, keeping the platform's fetch", async () => {
+      const nativeFetch = globalThis.fetch;
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('XMLHttpRequest', undefined);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect((globalThis as any).XMLHttpRequest?.name).toBe(
+        'LynxXMLHttpRequest',
+      );
+      expect(globalThis.fetch).toBe(nativeFetch);
+    });
+
+    it('leaves the background thread alone', async () => {
+      vi.stubGlobal('__MAIN_THREAD__', false);
+      vi.stubGlobal('XMLHttpRequest', undefined);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect((globalThis as any).XMLHttpRequest).toBeUndefined();
+    });
+  });
+
   describe('queueMicrotask', () => {
     it('uses lynx.queueMicrotask when available', async () => {
       const lynxQueueMicrotask = vi.fn();

@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiText } from '../../components/ui/typography';
 import { UiBadge } from '../../components/ui/badge';
@@ -7,10 +7,9 @@ import { ScreenHost } from '../screen-host';
 @Component({
   selector: 'app-refresh-demo',
   hostDirectives: [ScreenHost],
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiText, UiBadge],
   template: `
-    <refresh class="h-full w-full" (bindstartrefresh)="onRefresh()">
+    <refresh #refresher class="h-full w-full" (bindstartrefresh)="onRefresh()">
       <refresh-header>
         <view class="h-[60px] items-center justify-center">
           <text class="text-sm text-gray-500">
@@ -41,19 +40,20 @@ import { ScreenHost } from '../screen-host';
 export class RefreshDemo {
   #counter = 0;
 
+  readonly refresher = viewChild.required('refresher', { read: ElementRef });
   refreshing = signal(false);
   refreshCount = signal(0);
   items = signal(this.#generateItems());
 
   onRefresh(): void {
     this.refreshing.set(true);
-    // Simulate a 1.5s network request. Signal updates here are safe: the
-    // `bindstartrefresh` handler fires on the background thread, not the
-    // main-thread event path, so no synchronous flush concern.
+    // Simulate a 1.5s network request.
     setTimeout(() => {
       this.items.set(this.#generateItems());
       this.refreshCount.update((c) => c + 1);
       this.refreshing.set(false);
+      // The header stays open until the finishRefresh UI method is called.
+      this.refresher().nativeElement.invoke?.('finishRefresh');
     }, 1500);
   }
 

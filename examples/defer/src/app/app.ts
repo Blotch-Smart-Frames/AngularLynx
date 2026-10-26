@@ -69,6 +69,6 @@ export class App {
   readonly visible = signal(false);
 
   loadDeferred(): void {
-    setTimeout(() => this.visible.set(true), 0);
+    this.visible.set(true);
   }
 }

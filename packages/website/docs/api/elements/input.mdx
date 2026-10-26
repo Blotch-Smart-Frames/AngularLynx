@@ -75,6 +75,10 @@ Read the payload from `$event.detail` (see [Handling taps and events](/guide/ele
 
 Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
+:::warning Restyling on focus
+On iOS, a focused field doesn't show style changes: a border or background color that `bindfocus` sets appears on Android and in the web preview, but not on iOS while the field has focus.
+:::
+
 ## Methods
 
 These **UI methods** ([Glossary](/guide/glossary#ui-method)) control the field from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.

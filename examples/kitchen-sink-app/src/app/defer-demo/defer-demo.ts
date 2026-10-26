@@ -26,8 +26,10 @@ type Stage = 'placeholder' | 'loading' | 'loaded';
  * to bind to), so we mirror the timing ourselves. This MUST stay in sync with
  * the `@loading (minimum 900ms)` literal in the template below — the loading
  * block shows for at least that long, so we flip the stepper to "loaded" after
- * the same window. On later loads the chunk is already cached and there is no
- * loading phase, so we skip this wait entirely (see showManual).
+ * the same window. Nothing downloads on Lynx, so without `minimum` the loading
+ * state would barely show. On later loads Angular has already loaded the code
+ * and there is no loading phase, so we skip this wait entirely (see
+ * showManual).
  */
 const MANUAL_LOADING_MS = 900;
 
@@ -38,12 +40,14 @@ const MANUAL_LOADING_MS = 900;
  * drive it by hand, then show it firing automatically.
  *
  *  1. Lifecycle — the placeholder → loading → loaded states, and the core idea
- *     (@defer ships the component in its own JS chunk, fetched on demand).
+ *     (@defer waits for a trigger before creating the component's views; on
+ *     Lynx its code is already in the bundle, so nothing is downloaded).
  *  2. Manual (`when`) — the interactive centerpiece. A live stepper tracks the
- *     current state as you Load and Reset. Resetting re-shows the placeholder
- *     but the chunk stays cached, so the second load skips loading entirely.
+ *     current state as you Load and Reset. Resetting re-shows the placeholder,
+ *     but Angular has already loaded the code, so the second load skips
+ *     loading entirely.
  *  3. Automatic (`on timer` / `on idle`) — two compact rows that load with no
- *     interaction, sharing the very same heavy.js chunk.
+ *     interaction, rendering the very same component.
  *
  * Only triggers that actually fire on Lynx are shown. Deliberately omitted:
  * `on interaction` and `on hover`. Angular implements those by registering DOM
@@ -55,7 +59,7 @@ const MANUAL_LOADING_MS = 900;
  *
  * `Heavy` is imported normally (not lazily) here on purpose: because it is
  * referenced *only* inside @defer blocks, Angular's compiler is what turns it
- * into a dynamic import() and splits it into its own chunk. See heavy.ts.
+ * into a dynamic import(). See heavy.ts.
  */
 @Component({
   selector: 'app-defer-demo',
@@ -79,7 +83,7 @@ const MANUAL_LOADING_MS = 900;
     <app-demo-screen
       heading="Defer"
       category="Platform"
-      description="@defer keeps a component out of the initial bundle, then lazy-loads it into its own JS chunk when a trigger fires."
+      description="@defer waits for a trigger before it creates a component. On Lynx the code is already in the bundle, so only creating its views is deferred."
     >
       <!-- ── 1. The lifecycle: concept + the three states ── -->
       <ui-card class="w-full">
@@ -89,9 +93,9 @@ const MANUAL_LOADING_MS = 900;
             <ui-card-title class="text-lg">The lifecycle</ui-card-title>
           </view>
           <ui-card-description>
-            A deferred block moves through three states. Angular ships the
-            component in its own chunk and fetches it with a dynamic import()
-            the moment a trigger fires — the initial bundle never pays for it.
+            A deferred block moves through three states. The component's code is
+            already in the bundle, so nothing downloads: &#64;defer saves the
+            work of creating its views until a trigger fires.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-3 p-4 pt-0 flex">
@@ -121,7 +125,7 @@ const MANUAL_LOADING_MS = 900;
                 >&#64;loading
               </text>
               <text class="text-xs text-muted-foreground">
-                While the chunk is fetched over the network
+                While Angular loads the code, which is brief on Lynx
               </text>
             </view>
           </view>
@@ -152,9 +156,9 @@ const MANUAL_LOADING_MS = 900;
             <ui-badge variant="outline" [animated]="false">when</ui-badge>
           </view>
           <ui-card-description>
-            Loads only after a signal you control flips true. Reset it and the
-            placeholder returns — but the chunk stays cached, so the second load
-            is instant.
+            Renders only after a signal you control flips true. Reset it and the
+            placeholder returns, but the code is already loaded, so the second
+            load skips the loading state.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
@@ -186,7 +190,7 @@ const MANUAL_LOADING_MS = 900;
                   Not loaded yet
                 </text>
                 <text class="text-xs text-muted-foreground">
-                  Tap "Load widget" to fetch heavy.js
+                  Tap "Load widget" to render it
                 </text>
               </view>
             </view>
@@ -195,16 +199,14 @@ const MANUAL_LOADING_MS = 900;
               class="flex-col items-center gap-3 rounded-lg border border-border bg-muted p-4 flex"
             >
               <ui-spinner size="md" />
-              <text class="text-sm text-muted-foreground">
-                Fetching heavy.js…
-              </text>
+              <text class="text-sm text-muted-foreground"> Loading… </text>
             </view>
           } @error {
             <view
               class="flex-row items-center gap-2 rounded-lg border border-destructive bg-destructive-subtle p-4 flex"
             >
               <ui-icon name="alert-triangle" size="sm" />
-              <text class="text-sm text-destructive">Failed to load chunk</text>
+              <text class="text-sm text-destructive">Failed to load</text>
             </view>
           }
 
@@ -225,7 +227,7 @@ const MANUAL_LOADING_MS = 900;
         </ui-card-content>
       </ui-card>
 
-      <!-- ── 3. Automatic (timer / idle): two compact rows, same chunk ── -->
+      <!-- ── 3. Automatic (timer / idle): two compact rows, same component ── -->
       <ui-card class="w-full">
         <ui-card-header class="gap-1 p-4">
           <view class="flex-row items-center gap-2 flex">
@@ -234,7 +236,7 @@ const MANUAL_LOADING_MS = 900;
           </view>
           <ui-card-description>
             Some triggers need no interaction — they fire on their own. Both
-            share the same heavy.js chunk as the manual demo above.
+            render the same component as the manual demo above.
           </ui-card-description>
         </ui-card-header>
         <ui-card-content class="flex-col gap-4 p-4 pt-0 flex">
@@ -265,9 +267,7 @@ const MANUAL_LOADING_MS = 900;
                 class="flex-row items-center gap-3 rounded-lg border border-border bg-muted p-3 flex"
               >
                 <ui-spinner size="sm" />
-                <text class="text-sm text-muted-foreground">
-                  Fetching heavy.js…
-                </text>
+                <text class="text-sm text-muted-foreground"> Loading… </text>
               </view>
             }
           </view>
@@ -299,9 +299,7 @@ const MANUAL_LOADING_MS = 900;
                 class="flex-row items-center gap-3 rounded-lg border border-border bg-muted p-3 flex"
               >
                 <ui-spinner size="sm" />
-                <text class="text-sm text-muted-foreground">
-                  Fetching heavy.js…
-                </text>
+                <text class="text-sm text-muted-foreground"> Loading… </text>
               </view>
             }
           </view>
@@ -318,11 +316,11 @@ export class DeferDemo {
   readonly stage = signal<Stage>('placeholder');
 
   /**
-   * Whether heavy.js has been fetched at least once this session. After the
-   * first load Angular keeps the chunk in memory, so re-showing the block skips
-   * the loading phase — we track that to keep the stepper honest.
+   * Whether the deferred code has been loaded once this session. After the
+   * first load Angular keeps it, so re-showing the block skips the loading
+   * phase — we track that to keep the stepper honest.
    */
-  #chunkFetched = false;
+  #codeLoaded = false;
 
   /** Ordered steps rendered by the live stepper. */
   protected readonly steps: readonly { key: Stage; label: string }[] = [
@@ -340,14 +338,14 @@ export class DeferDemo {
     // first. See App.navigateTo() for the same pattern.
     setTimeout(() => {
       this.deferManual.set(true);
-      if (this.#chunkFetched) {
-        // Chunk already in memory — Angular renders the component immediately
+      if (this.#codeLoaded) {
+        // Code already loaded — Angular renders the component immediately
         // with no @loading phase, so the stepper jumps straight to loaded.
         this.stage.set('loaded');
       } else {
         this.stage.set('loading');
         setTimeout(() => {
-          this.#chunkFetched = true;
+          this.#codeLoaded = true;
           this.stage.set('loaded');
         }, MANUAL_LOADING_MS);
       }

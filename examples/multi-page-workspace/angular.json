@@ -2,7 +2,7 @@
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
   "projects": {
-    "home": {
+    "main": {
       "projectType": "application",
       "root": ".",
       "sourceRoot": "src",
@@ -23,7 +23,7 @@
         "serve": {
           "builder": "@blotch/angular-lynx-build:dev-server",
           "options": {
-            "buildTarget": "home:build"
+            "buildTarget": "main:build"
           }
         }
       }

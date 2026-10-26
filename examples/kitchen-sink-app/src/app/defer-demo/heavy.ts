@@ -7,21 +7,21 @@ import { UiSeparator } from '../../components/ui/separator';
 /**
  * The "expensive" component sitting behind every @defer block on this screen.
  *
- * It lives in its own file for one reason: Angular only code-splits a deferred
- * dependency into a separate chunk when that dependency is referenced
- * *exclusively* inside @defer blocks. DeferDemo imports this component and uses
- * it only in its @defer blocks, so the compiler rewrites the reference to a
- * dynamic `import('./heavy')` and keeps it out of the initial bundle — which is
- * exactly the behavior this demo is meant to make visible. Inlining this markup
- * into DeferDemo instead would defeat the whole point (nothing to split out).
+ * It lives in its own file for one reason: Angular only defers loading a
+ * dependency when that dependency is referenced *exclusively* inside @defer
+ * blocks. DeferDemo imports this component and uses it only in its @defer
+ * blocks, so the compiler rewrites the reference to a dynamic
+ * `import('./heavy')`. On the web that becomes a separate chunk. Lynx's default
+ * build keeps it in the bundle, so here the import resolves at once and @defer
+ * only delays creating the views.
  *
- * Two render modes so the same chunk can headline the interactive card and also
+ * Two render modes so the same component can headline the interactive card and also
  * appear inline under the compact auto-trigger rows without doubling up chrome:
  *  - full (default) — a self-contained result panel with a stat readout.
  *  - compact        — a single row, for the tight timer/idle sections.
  *
  * `label` names how this instance was triggered ("manually", "on timer", …) so
- * every loaded state reads back the trigger that fetched it. Both inputs are
+ * every loaded state reads back the trigger that rendered it. Both inputs are
  * bound on a deferred component on purpose: it proves ordinary input bindings
  * survive Angular's dynamic-import rewrite of the @defer main block.
  */
@@ -39,12 +39,12 @@ import { UiSeparator } from '../../components/ui/separator';
           <ui-icon name="check" size="xs" color="#ffffff" />
         </view>
         <view class="flex-1 flex-col flex">
-          <text class="text-sm font-medium text-foreground">Chunk loaded</text>
+          <text class="text-sm font-medium text-foreground">Loaded</text>
           <text class="text-xs text-muted-foreground">
-            fetched {{ label() }}
+            rendered {{ label() }}
           </text>
         </view>
-        <ui-badge variant="secondary" [animated]="false">heavy.js</ui-badge>
+        <ui-badge variant="secondary" [animated]="false">heavy.ts</ui-badge>
       </view>
     } @else {
       <view
@@ -59,31 +59,33 @@ import { UiSeparator } from '../../components/ui/separator';
             </view>
             <view class="flex-col flex">
               <text class="text-base font-semibold text-foreground">
-                Chunk loaded
+                Loaded
               </text>
               <text class="text-xs text-muted-foreground">
-                fetched {{ label() }}
+                rendered {{ label() }}
               </text>
             </view>
           </view>
-          <ui-badge variant="secondary" [animated]="false">heavy.js</ui-badge>
+          <ui-badge variant="secondary" [animated]="false">heavy.ts</ui-badge>
         </view>
 
         <text class="text-sm text-muted-foreground">
-          Angular fetched this component with a dynamic import() the moment the
-          trigger fired — the initial bundle never paid for it.
+          Angular created this component the moment the trigger fired. Its code
+          was already in the bundle; only creating its views waited.
         </text>
 
         <ui-separator />
 
         <view class="flex-col gap-2 flex">
           <view class="flex-row items-center flex justify-between">
-            <text class="text-sm text-muted-foreground">Loaded via</text>
-            <text class="text-sm font-medium text-foreground">import()</text>
+            <text class="text-sm text-muted-foreground">Code</text>
+            <text class="text-sm font-medium text-foreground"
+              >in the bundle</text
+            >
           </view>
           <view class="flex-row items-center flex justify-between">
-            <text class="text-sm text-muted-foreground">Initial bundle</text>
-            <text class="text-sm font-medium text-foreground">unaffected</text>
+            <text class="text-sm text-muted-foreground">Views created</text>
+            <text class="text-sm font-medium text-foreground">on trigger</text>
           </view>
           <view class="flex-row items-center flex justify-between">
             <text class="text-sm text-muted-foreground">Trigger</text>

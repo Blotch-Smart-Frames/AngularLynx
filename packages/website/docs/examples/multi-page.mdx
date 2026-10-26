@@ -14,9 +14,9 @@ Build several pages into separate [bundles](/guide/glossary#bundle), set up two 
 
 <Go example="multi-page-workspace" defaultFile="lynx.config.ts" />
 
-- **A project per page** — `angular.json` defines `home` and `settings` application projects, each with its own `browser` entry file.
-- **`pages: 'all'`** — `pluginAngularLynx({ pages: 'all' })` builds every application project as a page, with its bundle named after the project. Pass `pages: ['home', 'settings']` to pick specific ones.
-- **One build for every page** — `ng build home` builds both pages.
+- **A project per page** — `angular.json` defines `main` and `settings` application projects, each with its own `browser` entry file.
+- **`pages: 'all'`** — `pluginAngularLynx({ pages: 'all' })` builds every application project as a page, with its bundle named after the project. Pass `pages: ['main', 'settings']` to pick specific ones.
+- **One build for every page** — `ng build main` builds both pages. The first project is named `main` because the app `ng build --platform` generates opens `main.lynx.bundle`.
 
 ## Related
 

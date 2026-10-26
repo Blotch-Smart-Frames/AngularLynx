@@ -4967,3 +4967,29 @@ A component sets `color` on its wrapper (`text-destructive`), and whatever the a
 ### The fix
 
 Recolor through the token the content uses, and say which one in the docs (the nav drawer item recolors `text-foreground`). Text with another color class keeps it. SVG icons can't read variables at all, so the item hands its color to projected `<ui-icon>`s through DI (`UI_ICON_COLOR`) instead; see the `<svg>` entry above.
+
+---
+
+## `<refresh>` draws nothing unless it has a size
+
+### What you'd expect (web)
+
+A container with no width or height takes the size of its content, so a pull-to-refresh wrapper around a full-height scroll view fills the screen.
+
+### What Lynx does
+
+`<refresh>` doesn't size itself from its children. Without a width and height, it and everything in it draw nothing: `examples/element-refresh` was a blank screen in Lynx Explorer 4.1 on both the iOS Simulator and an Android 14 emulator, even though its `<scroll-view>` had `h-screen`. Giving `<refresh>` `h-full w-full` (and the `<scroll-view>` `h-full w-full`) fixed it on both (issue #67). The kitchen-sink refresh demo already did this.
+
+The header also stays open after a refresh until something calls the element's `finishRefresh` UI method, and while it's open a second pull doesn't start another refresh. Call `invoke('finishRefresh')` on the element when the reload is done (`/api/elements/refresh`).
+
+---
+
+## On iOS, a focused `<input>` doesn't show style changes
+
+### What you'd expect (web)
+
+A `(focus)` handler can restyle the field it belongs to, for example to give it a colored border, and the field repaints straight away.
+
+### What Lynx does
+
+On the iOS Simulator (Lynx Explorer 4.1, iOS 27), a `(bindfocus)` handler that changes the focused `<input>`'s border color, through a class or an inline style, or its background color, has no visible effect while the field has focus. The change does reach the element: a `<text>` bound to the same signal updates in the same render, and the same bundle shows the new border on an Android 14 emulator and in the web preview. Found while fixing `examples/form-input`'s focus border (issue #67), which therefore shows on Android and the web only. Not investigated further: the cause is somewhere in the iOS input (`LynxUIBaseInput`), not in what AngularLynx sends.

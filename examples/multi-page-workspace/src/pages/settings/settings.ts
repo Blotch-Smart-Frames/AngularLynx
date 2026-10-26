@@ -14,7 +14,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
         </text>
 
         <view class="rounded-xl border border-zinc-200 bg-white p-4">
-          <view class="flex-row items-center py-1 justify-between">
+          <view class="flex-row items-center py-1 flex justify-between">
             <text class="text-[15px] text-zinc-900">Dark Mode</text>
             <view
               class="h-7 w-12 rounded-[14px] p-0.5"
@@ -30,7 +30,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
           <view class="my-3 h-px bg-zinc-200" />
 
-          <view class="flex-row items-center py-1 justify-between">
+          <view class="flex-row items-center py-1 flex justify-between">
             <text class="text-[15px] text-zinc-900">Notifications</text>
             <view
               class="h-7 w-12 rounded-[14px] p-0.5"

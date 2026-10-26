@@ -20,7 +20,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             Title Bar
           </text>
           <view
-            class="h-[44px] flex-row items-center rounded-lg bg-zinc-100 overflow-hidden"
+            class="h-[44px] flex-row items-center rounded-lg bg-zinc-100 flex overflow-hidden"
           >
             <title-bar-view
               [moveable]="true"

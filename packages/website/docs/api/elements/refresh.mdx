@@ -14,7 +14,11 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   selector: 'app-feed',
   imports: [LYNX_ELEMENTS],
   template: `
-    <refresh #refresher (bindstartrefresh)="reload()">
+    <refresh
+      #refresher
+      style="width: 100%; height: 100%;"
+      (bindstartrefresh)="reload()"
+    >
       <refresh-header>
         <view
           style="height: 60px; align-items: center; justify-content: center;"
@@ -22,7 +26,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           <text>Refreshing…</text>
         </view>
       </refresh-header>
-      <scroll-view scroll-orientation="vertical" style="height: 100vh;">
+      <scroll-view
+        scroll-orientation="vertical"
+        style="width: 100%; height: 100%;"
+      >
         <text>Pull down</text>
       </scroll-view>
     </refresh>
@@ -81,6 +88,8 @@ Give `<refresh>` two direct children, in this order:
 2. **One scrollable element**, such as a [`<scroll-view>`](/api/elements/scroll-view) or a [`<list>`](/api/elements/list).
 
 Only vertical pulls are supported.
+
+**Give `<refresh>` a size**, as the [Usage](#usage) example does. It doesn't size itself from its children, so without a width and height it draws nothing on iOS and Android.
 
 ## Related
 

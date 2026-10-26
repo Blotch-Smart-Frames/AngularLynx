@@ -34,8 +34,11 @@ type Todo = { id: number; text: string; done: boolean };
             class="mb-2 flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
             (bindtap)="toggle(todo.id)"
           >
+            <!-- Both border colors are bound: with border-zinc-200 always
+                 on, the stylesheet's order would keep it over the indigo. -->
             <view
-              class="mr-3 h-[22px] w-[22px] items-center rounded-[6px] border-2 border-zinc-200 justify-center"
+              class="mr-3 h-[22px] w-[22px] items-center rounded-[6px] border-2 justify-center"
+              [class.border-zinc-200]="!todo.done"
               [class.bg-indigo-500]="todo.done"
               [class.border-indigo-500]="todo.done"
             >
@@ -44,7 +47,8 @@ type Todo = { id: number; text: string; done: boolean };
               }
             </view>
             <text
-              class="flex-1 text-[15px] text-zinc-900"
+              class="flex-1 text-[15px]"
+              [class.text-zinc-900]="!todo.done"
               [class.text-zinc-400]="todo.done"
               [class.line-through]="todo.done"
             >

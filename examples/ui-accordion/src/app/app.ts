@@ -36,11 +36,10 @@ import {
 
         <ui-accordion type="single">
           <ui-accordion-item value="item-1">
-            <ui-accordion-trigger>Is it accessible?</ui-accordion-trigger>
+            <ui-accordion-trigger>Is it animated?</ui-accordion-trigger>
             <ui-accordion-content>
               <text class="text-sm text-muted-foreground">
-                Yes. All components follow WAI-ARIA patterns and support
-                keyboard navigation.
+                Yes. A section's content fades and slides in as it opens.
               </text>
             </ui-accordion-content>
           </ui-accordion-item>

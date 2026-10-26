@@ -19,9 +19,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             Name
           </text>
           <input
-            class="rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
-            [class.border-indigo-500]="focusedField() === 'name'"
-            [class.border-red-500]="submitted() && !name()"
+            class="rounded-lg border bg-white px-3.5 py-3 text-[15px]"
+            [class]="borderClass('name', submitted() && !name())"
             placeholder="Enter your name"
             [value]="name()"
             (bindinput)="name.set($any($event).detail.value)"
@@ -37,11 +36,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             Email
           </text>
           <input
-            class="rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
-            [class.border-indigo-500]="focusedField() === 'email'"
-            [class.border-red-500]="submitted() && !validEmail()"
+            class="rounded-lg border bg-white px-3.5 py-3 text-[15px]"
+            [class]="borderClass('email', submitted() && !validEmail())"
             placeholder="you@example.com"
-            input-type="email"
+            type="email"
             [value]="email()"
             (bindinput)="email.set($any($event).detail.value)"
             (bindfocus)="focusedField.set('email')"
@@ -56,8 +54,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             Bio
           </text>
           <textarea
-            class="h-[100px] rounded-lg border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
-            [class.border-indigo-500]="focusedField() === 'bio'"
+            class="h-[100px] rounded-lg border bg-white px-3.5 py-3 text-[15px]"
+            [class]="borderClass('bio', false)"
             placeholder="Tell us about yourself..."
             [value]="bio()"
             (bindinput)="bio.set($any($event).detail.value)"
@@ -98,6 +96,19 @@ export class App {
   readonly validEmail = computed(() =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email()),
   );
+
+  /**
+   * One border color per field: red when it's invalid, indigo while focused,
+   * zinc otherwise. Returning a single class keeps the choice here instead of
+   * in the stylesheet, which would pick between two color classes by its own
+   * order.
+   */
+  borderClass(field: string, invalid: boolean): string {
+    if (invalid) return 'border-red-500';
+    return this.focusedField() === field
+      ? 'border-indigo-500'
+      : 'border-zinc-200';
+  }
 
   submit(): void {
     this.submitted.set(true);

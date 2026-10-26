@@ -6,9 +6,10 @@ A list that reloads when you pull it down, built from the `<refresh>` and `<refr
 
 ## What it shows
 
-- **`<refresh>`** — wraps a header and a `<scroll-view>`, and adds the pull-down gesture. See [`<refresh>`](/api/elements/refresh).
+- **`<refresh>`** — wraps a header and a `<scroll-view>`, and adds the pull-down gesture. It has `h-full w-full`, because without a size it draws nothing. See [`<refresh>`](/api/elements/refresh).
 - **`<refresh-header>`** — the content revealed while you pull. Here it reads "Pull down to refresh" or "Refreshing...".
 - **`(bindstartrefresh)`** — fires when a refresh starts. The handler sets `refreshing`, then replaces the items after a delay.
+- **`finishRefresh`** — once the items are replaced, `invoke('finishRefresh')` on the `<refresh>` element hides the header. Without it, the header stays open. See [Call element methods](/guide/selector-query).
 - **`setTimeout` as a stand-in** — the delay simulates loading. Fetching data from a component isn't supported yet. See [Network requests](/guide/concepts/javascript-environment#network-requests).
 
 ## Related

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "ng serve home",
-    "build": "ng build home",
+    "start": "ng serve main",
+    "build": "ng build main",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

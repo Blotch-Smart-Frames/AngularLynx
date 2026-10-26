@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiAvatar } from '../components/ui/avatar';
 import { UiBadge } from '../components/ui/badge';
@@ -44,8 +44,8 @@ import { UiSeparator } from '../components/ui/separator';
     <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
       <view class="flex-col items-center gap-5 px-6 py-8 flex">
         <view class="flex-col items-center gap-2 flex">
-          <ui-avatar size="xl" src="" fallback="AJ" />
-          <text class="text-[24px] font-bold text-zinc-900">Alex Johnson</text>
+          <ui-avatar size="xl" src="" [fallback]="initials()" />
+          <text class="text-[24px] font-bold text-zinc-900">{{ name() }}</text>
           <view class="flex-row items-center gap-2 flex">
             <!-- cspell:disable-next-line -->
             <text class="text-sm text-zinc-500">@alexj</text>
@@ -72,7 +72,7 @@ import { UiSeparator } from '../components/ui/separator';
           </view>
         </view>
 
-        <ui-button class="w-full" (pressed)="editOpen.set(true)">
+        <ui-button class="w-full" (pressed)="openEdit()">
           Edit Profile
         </ui-button>
 
@@ -118,13 +118,33 @@ import { UiSeparator } from '../components/ui/separator';
 })
 export class App {
   readonly editOpen = signal(false);
+  readonly name = signal('Alex Johnson');
   readonly bio = signal(
     'Full-stack developer passionate about mobile UX and cross-platform apps. Building cool things with AngularLynx.',
   );
-  readonly editName = signal('Alex Johnson');
+  readonly initials = computed(() =>
+    this.name()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]!.toUpperCase())
+      .join(''),
+  );
+
+  // The sheet edits copies, so Cancel leaves the profile as it was.
+  readonly editName = signal(this.name());
   readonly editBio = signal(this.bio());
 
+  openEdit(): void {
+    // Start from the saved values, not from an edit that was cancelled.
+    this.editName.set(this.name());
+    this.editBio.set(this.bio());
+    this.editOpen.set(true);
+  }
+
   saveEdit(): void {
+    // An empty name would leave the header blank, so keep the old one.
+    this.name.set(this.editName().trim() || this.name());
     this.bio.set(this.editBio());
     this.editOpen.set(false);
   }

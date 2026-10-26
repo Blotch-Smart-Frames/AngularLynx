@@ -4,28 +4,10 @@ import { VideoDemo } from './video-demo';
 
 let destroyDemo: (() => void) | null = null;
 
-/**
- * Replaces the lynx global with a SelectorQuery stub that records each invoked
- * UI method, since jsdom has no native player.
- */
-const stubSelectorQuery = (): string[] => {
-  const methods: string[] = [];
-  const query = {
-    select: () => query,
-    invoke: ({ method }: { method: string }) => {
-      methods.push(method);
-      return query;
-    },
-    exec: () => {},
-  };
-  vi.stubGlobal('lynx', { createSelectorQuery: () => query });
-  return methods;
-};
-
 afterEach(() => {
   destroyDemo?.();
   destroyDemo = null;
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('VideoDemo', () => {
@@ -36,10 +18,11 @@ describe('VideoDemo', () => {
     expect(video?.getAttribute('src')).toContain('flower.mp4');
   });
 
-  it('drives playback through UI methods', async () => {
+  it('drives playback through UI methods on the video element', async () => {
     const { instance, destroy } = await renderOnce(VideoDemo);
     destroyDemo = destroy;
-    const methods = stubSelectorQuery();
+    // jsdom has no native player, so record the calls instead.
+    const invoke = vi.spyOn(instance.player().nativeElement, 'invoke');
 
     instance.togglePlay();
     expect(instance.playing()).toBe(true);
@@ -48,7 +31,12 @@ describe('VideoDemo', () => {
     instance.seekTo(0);
     instance.stop();
 
-    expect(methods).toEqual(['play', 'pause', 'seek', 'stop']);
+    expect(invoke.mock.calls).toEqual([
+      ['play', {}],
+      ['pause', {}],
+      ['seek', { position: 0 }],
+      ['stop', {}],
+    ]);
   });
 
   it('reports errors with and without a Lynx error payload', async () => {

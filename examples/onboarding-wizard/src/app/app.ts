@@ -96,18 +96,22 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
             <text class="text-sm text-zinc-500">Select all that apply.</text>
             <view class="flex-col gap-2.5 flex">
               @for (opt of interests; track opt.value) {
+                @let selected = selectedInterests().includes(opt.value);
+                <!-- The unselected colors are bound too, not static: with both
+                     border colors on the row, the stylesheet's order decides,
+                     and the selected ones lose. -->
                 <view
-                  class="flex-row items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
-                  [class.border-indigo-500]="
-                    selectedInterests().includes(opt.value)
-                  "
-                  [class.bg-indigo-50]="selectedInterests().includes(opt.value)"
+                  class="flex-row items-center gap-3 rounded-xl border px-4 py-3.5 flex"
+                  [class.border-zinc-200]="!selected"
+                  [class.bg-white]="!selected"
+                  [class.border-indigo-500]="selected"
+                  [class.bg-indigo-50]="selected"
                   (bindtap)="toggleInterest(opt.value)"
                 >
-                  <ui-checkbox
-                    [checked]="selectedInterests().includes(opt.value)"
-                    (checkedChange)="toggleInterest(opt.value)"
-                  />
+                  <!-- No (checkedChange) here: a tap on the box bubbles up to
+                       the row's (bindtap), so handling both would toggle the
+                       interest twice and leave it unchanged. -->
+                  <ui-checkbox [checked]="selected" />
                   <view class="flex-1 flex-col gap-0.5 flex">
                     <text class="text-sm font-medium text-zinc-900">{{
                       opt.label

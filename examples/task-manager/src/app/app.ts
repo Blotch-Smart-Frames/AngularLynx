@@ -127,8 +127,11 @@ type Task = {
                 [checked]="task.done"
                 (checkedChange)="toggle(task.id)"
               />
+              <!-- Both colors are bound: with text-zinc-900 always on, it
+                   would win over text-zinc-400 in the stylesheet. -->
               <text
-                class="flex-1 text-sm text-zinc-900"
+                class="flex-1 text-sm"
+                [class.text-zinc-900]="!task.done"
                 [class.text-zinc-400]="task.done"
                 [class.line-through]="task.done"
               >

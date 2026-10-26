@@ -217,16 +217,16 @@ describe('outdatedCommand', () => {
     expect(outroArg).toContain('component(s) need attention');
   });
 
-  it('handles a multi-file outdated component with no lockfile entry at all', async () => {
-    // lockfile.components['card'] is entirely absent (exercises the
-    // `lockfile.components[name] ?? {}` fallback) and one file is missing on
-    // disk (new-upstream, exercises the `currentContent === null` path).
+  it('handles a multi-file outdated component with no per-file hashes', async () => {
+    // lockfile.components['card'] tracks card but records no file hashes, and
+    // one file is missing on disk (new-upstream, exercises the
+    // `currentContent === null` path).
     // Two files also exercises the plural "N files" label in the listing.
     const mainContent = 'export const Card = {};';
     const newFileContent = 'export const CardNew = {};';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
-      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      lockfile: { version: 1, components: { card: {} }, utils: {}, theme: {} },
       components: { card: { 'card.ts': mainContent } },
       uiSource: {
         card: { 'card.ts': mainContent, 'card-new.ts': newFileContent },
@@ -269,5 +269,23 @@ describe('outdatedCommand', () => {
 
     const output = JSON.parse(consoleSpy.mock.calls[0][0]);
     expect(output.components).toHaveLength(0);
+  });
+
+  it("doesn't count an ejected component as outdated", async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      components: {
+        card: { 'card.ts': 'export const Card = { mine: true };' },
+      },
+      uiSource: { card: { 'card.ts': 'export const Card = { v: 2 };' } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    const { outdatedCommand } = await import('./outdated');
+    await outdatedCommand({});
+
+    expect(p.log.success).toHaveBeenCalledWith('No components installed.');
   });
 });

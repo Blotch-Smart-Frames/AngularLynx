@@ -65,10 +65,13 @@ Asks two questions, then sets up the project:
 | Where should theme files be installed? | `src/styles`        |
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
-- Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. It overwrites them if they're already there, so running `init` again resets your theme edits.
-- Creates the components folder and prints the next steps. The printed `@import` path starts at the project root. From `src/styles.css`, it's `./styles/default.css`.
+- Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
+- Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
+- Creates the components folder and prints the next steps: the Tailwind plugin, and the `@import` lines for `default.css` and `dark.css`, written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
 
-Options: none.
+| Argument or option | Description                                                               |
+| ------------------ | ------------------------------------------------------------------------- |
+| `-f, --force`      | Overwrite an existing `dolan.config.json` and theme files without asking. |
 
 ## add
 
@@ -80,9 +83,9 @@ Copies each component into `<components>/<name>/`. With no names, it shows a che
 
 - **Dependencies come too.** Adding `button` also adds `spinner`, and the CLI prints what it added.
 - **Imports are rewritten.** `cn()` and the animation helpers are imported from `@blotch/dolan/utils/cn` and `@blotch/dolan/utils/animate`.
-- **Unit tests are copied.** Each component brings its `<name>.test.ts`.
+- **Unit tests are copied if you can run them.** Each component's `<name>.test.ts` renders it with `@blotch/angular-lynx-testing-library`, so it's copied only when your `package.json` lists the library. Otherwise `add` leaves the tests out and says so: run `ng generate @blotch/angular-lynx:add-testing`, then `dolan update` adds them. The tests' helpers come from `@blotch/dolan/testing/*`.
 - **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise.
-- **npm packages are installed.** If a component imports a package your `package.json` lacks, `add` installs it with your package manager (npm, pnpm, yarn or bun, detected from the lockfile). Today only `chart` and the chart presets need any: `@tanstack/charts` and `d3-shape`.
+- **npm packages are installed.** If a component imports a package your `package.json` lacks, `add` installs it with your package manager (npm, pnpm, yarn or bun, detected from the lockfile): `class-variance-authority` for Alert, Badge, Button, Button Group, Toggle and Typography, and `@tanstack/charts` and `d3-shape` for `chart` and the chart presets.
 
 | Argument or option | Description                                                                  |
 | ------------------ | ---------------------------------------------------------------------------- |
@@ -157,7 +160,8 @@ Merges the bundled source into every installed component, file by file:
 | Edited    | Unchanged            | Keeps yours.                                                                                  |
 | Edited    | Changed              | Conflict. Asks per file: show the diff, keep yours, take upstream, or review it hunk by hunk. |
 
-- **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. That covers ejected components, and theme files you edited before your first `update`.
+- **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. That covers theme files you edited before your first `update`.
+- **Ejected components are left alone.** `update`, `list`, `diff` and `outdated` only look at the components in `dolan.lock.json`. See [`eject`](#eject).
 - **Theme files** (`default.css`, `dark.css`, `tailwind-plugin.ts`) are merged the same way. Themes you made with [`theme`](#theme) aren't.
 - **New dependencies are added.** If a component's new version needs another component, `update` copies it in.
 - **npm packages are installed** the same way [`add`](#add) does.
@@ -191,11 +195,9 @@ Alias: `rm`. Deletes the component's folder and its lockfile entry.
 npx @blotch/dolan eject <component>
 ```
 
-Removes the component's file hashes from `dolan.lock.json` and leaves its files alone. It asks first (default No).
+Removes the component from `dolan.lock.json` and leaves its files alone. It asks first (default No).
 
-:::warning
-`update`, `list`, `diff` and `outdated` still read every folder named after a component, ejected or not. With no hash recorded, `update` treats each file that differs from upstream as a conflict and asks you, and `update --force` overwrites it. To hide a component from dolan, rename its folder and the imports that point at it.
-:::
+The component is then yours: `update` doesn't touch it, even with `--force`, and `diff` and `outdated` skip it. `list` shows it as ejected. A component folder that isn't in `dolan.lock.json` counts as ejected, whatever put it there. To track it again, run `dolan add <component>`, which asks before overwriting it.
 
 | Argument or option | Description                     |
 | ------------------ | ------------------------------- |
@@ -224,17 +226,19 @@ npx @blotch/dolan doctor
 
 Runs these checks in order and exits with code 1 if any fail:
 
-| Check                                                                                                                              | If it doesn't pass |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `dolan.config.json` exists, is valid JSON and has `components`, `utils` and `theme` paths                                          | Fails and stops    |
-| The components and theme folders exist                                                                                             | Fails              |
-| The theme folder has `tailwind-plugin.ts`, and `default.css` or `dark.css`                                                         | Warns              |
-| `tailwind.config.ts` or `.js` exists and mentions `blotchPlugin`                                                                   | Warns              |
-| `package.json` lists `@angular/core`, `@angular/common`, `@angular/platform-browser`, `@angular/router` and `@blotch/angular-lynx` | Fails              |
-| `package.json` lists `tailwindcss`                                                                                                 | Warns              |
-| Every component folder is a known component, has all its files and has its dependencies                                            | Warns              |
+| Check                                                                                           | If it doesn't pass |
+| ----------------------------------------------------------------------------------------------- | ------------------ |
+| `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                | Fails and stops    |
+| The components and theme folders exist                                                          | Fails              |
+| The theme folder has `tailwind-plugin.ts`, and `default.css` or `dark.css`                      | Warns              |
+| `tailwind.config.ts` or `.js` exists and mentions `blotchPlugin`                                | Warns              |
+| `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                | Fails              |
+| `package.json` lists `tailwindcss`                                                              | Warns              |
+| Every component folder is a known component, has all its files and has its dependencies         | Warns              |
+| No component has tests without `@blotch/angular-lynx-testing-library` to run them               | Warns              |
+| `package.json` lists the npm packages the components import, such as `class-variance-authority` | Fails              |
 
-`init` doesn't write a `utils` path, and no other command reads one. To pass the first check, add `"utils": "src/lib/utils"` to `aliases`.
+An ejected component's files aren't checked. A `utils` path in an older config is allowed but not needed.
 
 Options: none.
 

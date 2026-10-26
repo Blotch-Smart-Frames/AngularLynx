@@ -14,6 +14,7 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { copiesTests, TESTING_LIBRARY } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
 import {
   getOrCreateLockfile,
@@ -133,6 +134,7 @@ export const addCommand = async (components: string[]) => {
 
   const componentsDir = resolve(cwd, config.aliases.components);
   const lockfile = getOrCreateLockfile(cwd);
+  const tests = copiesTests(cwd);
 
   for (const name of resolved) {
     const srcDir = getComponentSourceDir(name);
@@ -143,7 +145,7 @@ export const addCommand = async (components: string[]) => {
       lockfile.components[name] = {};
     }
 
-    const files = getComponentFiles(name);
+    const files = getComponentFiles(name, { tests });
     for (const file of files) {
       // Read from the registry source, then rewrite cross-component imports.
       // The registry uses workspace-relative imports like
@@ -170,6 +172,12 @@ export const addCommand = async (components: string[]) => {
   s.stop('Done!');
 
   installComponentPackages(cwd, resolved);
+
+  if (!tests) {
+    p.log.info(
+      `Left out the components' tests: they need ${pc.cyan(TESTING_LIBRARY)}. Run ${pc.bold('ng generate @blotch/angular-lynx:add-testing')}, then ${pc.bold('dolan update')} adds them.`,
+    );
+  }
 
   p.log.success(
     `Added ${resolved.length} component(s): ${resolved.map((c) => pc.green(c)).join(', ')}`,

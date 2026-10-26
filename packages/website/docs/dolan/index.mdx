@@ -13,28 +13,21 @@ The components are styled with Tailwind CSS. If you said yes to Tailwind when yo
 
 ## Installation
 
-**1. Install the CLI as a dependency.**
-
-```bash
-npm install @blotch/dolan class-variance-authority
-```
-
-- Copied components import `cn()` and animation helpers from `@blotch/dolan`, so your app needs it to build, not only to run commands.
-- Button, Button Group, Toggle, Typography, Badge and Alert also import `class-variance-authority`, which `dolan add` doesn't install for you.
-
-**2. Set up dolan.**
+**1. Set up dolan.**
 
 ```bash
 npx @blotch/dolan init
 ```
 
-Press Enter to accept both default folders. It writes `dolan.config.json` and copies three theme files into `src/styles/`:
+Press Enter to accept both default folders. It writes `dolan.config.json`, copies three theme files into `src/styles/`, and installs `@blotch/dolan` as a dependency:
 
 - `default.css`: the light theme's colors and corner radius
 - `dark.css`: the dark theme's colors
 - `tailwind-plugin.ts`: maps those colors to Tailwind classes such as `bg-primary`
 
-**3. Add the Tailwind plugin.**
+Copied components import `cn()` and animation helpers from `@blotch/dolan`, so your app needs it to build, not only to run commands. Once it's installed, `npx dolan` runs it too.
+
+**2. Add the Tailwind plugin.\*\***2. Add the Tailwind plugin.\*\*
 
 ```typescript title="tailwind.config.ts"
 import type { Config } from 'tailwindcss';
@@ -50,7 +43,7 @@ const config: Config = {
 export default config;
 ```
 
-**4. Import the theme.** Put the `@import` lines first, because CSS ignores an `@import` that comes after other rules.
+**3. Import the theme.** Put the `@import` lines first, because CSS ignores an `@import` that comes after other rules.
 
 ```css title="src/styles.css"
 @import './styles/default.css';
@@ -62,15 +55,15 @@ export default config;
 
 `dark.css` changes nothing until you turn dark mode on. See [Theming](/dolan/theming#dark-mode).
 
-**5. Add components.**
+**4. Add components.**
 
 ```bash
-npx @blotch/dolan add button card
+npx dolan add button card
 ```
 
-Each one lands in `src/components/ui/<name>/`. Components it depends on come too: `button` brings `spinner`.
+Each one lands in `src/components/ui/<name>/`. Components it depends on come too: `button` brings `spinner`. So do the npm packages they import: `button` installs `class-variance-authority`.
 
-**6. Use them.**
+**5. Use them.**
 
 ```typescript title="src/app/app.ts"
 import { Component, signal } from '@angular/core';

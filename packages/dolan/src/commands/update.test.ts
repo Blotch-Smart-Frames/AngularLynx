@@ -190,7 +190,7 @@ describe('updateCommand --selective', () => {
       config: DEFAULT_CONFIG,
       lockfile: {
         version: 1,
-        components: {},
+        components: { card: {} },
         utils: {},
         theme: {},
       },
@@ -469,14 +469,14 @@ describe('updateCommand --force', () => {
     );
   });
 
-  it('overwrites a drifted file with no lockfile entry (unknown base → conflict)', async () => {
+  it('overwrites a drifted file with no lockfile hash (unknown base → conflict)', async () => {
     // With no stored hash the base is unknown, so any local difference is
     // treated as a conflict. --force must still overwrite it.
     const userVersion = 'export const Card = { v: 1, local: true };';
     const upstream = 'export const Card = { v: 2 };';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
-      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      lockfile: { version: 1, components: { card: {} }, utils: {}, theme: {} },
       components: { card: { 'card.ts': userVersion } },
       uiSource: { card: { 'card.ts': upstream } },
     });
@@ -1153,15 +1153,15 @@ describe('updateCommand — config / no-op paths', () => {
     expect(lockfile.theme['default.css'].hash).toBe(hashContent(themeContent));
   });
 
-  it('advances the lockfile for an up-to-date component and theme file with no prior lockfile entries', async () => {
-    // Neither the component nor the theme file has ANY lockfile record at
-    // all (not just a missing hash) — buildLockfile() must create fresh
-    // entries for both from scratch on the "nothing to do" fast path.
+  it('advances the lockfile for an up-to-date component with no file hashes and a theme file with no entry', async () => {
+    // The component is tracked without file hashes, and the theme file has
+    // no lockfile record at all — buildLockfile() must create fresh entries
+    // for both on the "nothing to do" fast path.
     const cardContent = 'export const Card = {};';
     const themeContent = ':root { --primary: rgba(1, 1, 1, 1); }';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
-      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      lockfile: { version: 1, components: { card: {} }, utils: {}, theme: {} },
       components: { card: { 'card.ts': cardContent } },
       uiSource: { card: { 'card.ts': cardContent } },
       themeFiles: { 'default.css': themeContent },
@@ -1642,5 +1642,124 @@ describe('updateCommand dependencies', () => {
       'chart',
       'line-chart',
     ]);
+  });
+
+  it('leaves out a new dependency the user skips in selective mode', async () => {
+    const lineChart = "import { UiChart } from '../chart/chart';";
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          'line-chart': { 'line-chart.ts': { hash: hashContent(lineChart) } },
+        },
+        utils: {},
+        theme: {},
+      },
+      components: { 'line-chart': { 'line-chart.ts': lineChart } },
+      uiSource: {
+        'line-chart': { 'line-chart.ts': lineChart },
+        chart: { 'chart.ts': 'export const UiChart = {};' },
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ selective: true });
+
+    expect(
+      existsSync(
+        join(fixture.dir, DEFAULT_CONFIG.aliases.components, 'chart/chart.ts'),
+      ),
+    ).toBe(false);
+    expect(readLockfile(fixture.dir).components['chart']).toEqual({});
+  });
+});
+
+describe('updateCommand — ejected components', () => {
+  /**
+   * `dolan eject card` deleted card's lockfile entry and kept its files,
+   * which the app has since changed.
+   */
+  const ejectedCard = (lockfileComponents = {}) =>
+    createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: lockfileComponents,
+        utils: {},
+        theme: {},
+      },
+      components: {
+        card: { 'card.ts': 'export const Card = { mine: true };' },
+      },
+      uiSource: { card: { 'card.ts': 'export const Card = { v: 2 };' } },
+    });
+
+  it("doesn't overwrite or track them again, even with --force", async () => {
+    fixture = ejectedCard();
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true });
+
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(
+      'export const Card = { mine: true };',
+    );
+    expect(readLockfile(fixture.dir).components).not.toHaveProperty('card');
+  });
+
+  it("doesn't report them as a conflict", async () => {
+    fixture = ejectedCard();
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const p = await import('@clack/prompts');
+    (p.log.message as ReturnType<typeof vi.fn>).mockClear();
+    (p.select as ReturnType<typeof vi.fn>).mockClear();
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    const messages = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0])
+      .join('\n');
+    expect(messages).not.toContain('card');
+    expect(p.select).not.toHaveBeenCalled();
+  });
+
+  it('leaves an ejected dependency of a tracked component alone', async () => {
+    // select is tracked and depends on bottom-sheet, which was ejected.
+    const select = 'export const Select = {};';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { select: { 'select.ts': { hash: hashContent(select) } } },
+        utils: {},
+        theme: {},
+      },
+      components: {
+        select: { 'select.ts': select },
+        'bottom-sheet': {
+          'bottom-sheet.ts': 'export const BottomSheet = { mine: true };',
+        },
+      },
+      uiSource: {
+        select: { 'select.ts': select },
+        'bottom-sheet': { 'bottom-sheet.ts': 'export const BottomSheet = {};' },
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true });
+
+    expect(
+      readInstalledFile(fixture.dir, 'bottom-sheet', 'bottom-sheet.ts'),
+    ).toBe('export const BottomSheet = { mine: true };');
+    expect(readLockfile(fixture.dir).components).not.toHaveProperty(
+      'bottom-sheet',
+    );
   });
 });

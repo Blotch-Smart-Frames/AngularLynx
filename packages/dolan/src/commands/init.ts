@@ -1,19 +1,75 @@
 import * as p from '@clack/prompts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import pc from 'picocolors';
 import { configExists, writeConfig } from '../config.js';
 import { getUiSourceDir } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { printBanner } from '../utils/banner.js';
+import {
+  detectPackageManager,
+  installCommand,
+  installPackages,
+  missingPackages,
+} from '../utils/packages.js';
 
-export const initCommand = async () => {
+const THEME_FILES = ['default.css', 'dark.css', 'tailwind-plugin.ts'];
+
+/**
+ * The global stylesheet the theme gets imported into: the first `styles`
+ * entry of the first project in angular.json, as `ng new` writes it, or
+ * `src/styles.css`.
+ */
+export const globalStylesheet = (cwd: string): string => {
+  const fallback = 'src/styles.css';
+  try {
+    const workspace = JSON.parse(
+      readFileSync(join(cwd, 'angular.json'), 'utf-8'),
+    ) as {
+      projects?: Record<
+        string,
+        {
+          architect?: {
+            build?: { options?: { styles?: (string | { input: string })[] } };
+          };
+        }
+      >;
+    };
+    const project = Object.values(workspace.projects ?? {})[0];
+    const style = project?.architect?.build?.options?.styles?.[0];
+    if (!style) return fallback;
+    return typeof style === 'string' ? style : style.input;
+  } catch {
+    return fallback;
+  }
+};
+
+/**
+ * The path a CSS `@import` in `from` uses to reach `to` (both relative to
+ * the project root): `./styles/default.css` from `src/styles.css`.
+ */
+export const cssImportPath = (from: string, to: string): string => {
+  const path = relative(dirname(from), to).split(sep).join('/');
+  return path.startsWith('.') ? path : `./${path}`;
+};
+
+/**
+ * Sets up a project for dolan: writes `dolan.config.json`, copies the theme
+ * files, makes `@blotch/dolan` a dependency, and prints what's left to wire
+ * up by hand.
+ *
+ * `force` overwrites an existing config and theme files without asking.
+ * Without it, init asks first, as `add` does for components: theme files are
+ * the app's to edit, and init used to replace them silently.
+ */
+export const initCommand = async (options: { force?: boolean } = {}) => {
   const cwd = process.cwd();
 
   printBanner();
   p.intro(pc.bold('dolan init'));
 
-  if (configExists(cwd)) {
+  if (configExists(cwd) && !options.force) {
     const overwrite = await p.confirm({
       message: 'dolan.config.json already exists. Overwrite?',
       initialValue: false,
@@ -78,43 +134,97 @@ export const initCommand = async () => {
    * formatContent unchanged, and non-oxfmt projects get verbatim content, so
    * this is a no-op copy everywhere except the case it fixes.
    */
-  const installThemeFile = (file: string) => {
+  const themeFiles = THEME_FILES.flatMap((file) => {
     const src = join(uiSrc, 'theme', file);
-    if (!existsSync(src)) return;
+    if (!existsSync(src)) return [];
     const destPath = join(themeDir, file);
-    writeFileSync(
-      destPath,
-      formatContent(readFileSync(src, 'utf-8'), destPath),
-    );
-  };
+    const content = formatContent(readFileSync(src, 'utf-8'), destPath);
+    const current = existsSync(destPath)
+      ? readFileSync(destPath, 'utf-8')
+      : null;
+    return [{ file, destPath, content, current }];
+  });
 
-  for (const file of ['default.css', 'dark.css']) {
-    installThemeFile(file);
+  // A file that already matches needs no write and no question.
+  const changed = themeFiles.filter(
+    ({ content, current }) => current !== null && current !== content,
+  );
+  let overwrite = options.force === true;
+  if (changed.length > 0 && !overwrite) {
+    s.stop('Config written.');
+    // Default to "no", like `add`: these may hold the app's own colors.
+    const answer = await p.confirm({
+      message: `${changed.map(({ file }) => pc.yellow(file)).join(', ')} already exist in ${pc.dim(config.theme)} and differ. Overwrite?`,
+      initialValue: false,
+    });
+    overwrite = !p.isCancel(answer) && answer === true;
+    if (!overwrite) {
+      p.log.info(
+        `Kept your ${changed.map(({ file }) => pc.cyan(file)).join(', ')}. Run ${pc.bold('dolan init --force')} to replace them.`,
+      );
+    }
+    s.start('Copying theme files...');
   }
-  installThemeFile('tailwind-plugin.ts');
+
+  for (const { destPath, content, current } of themeFiles) {
+    if (current === content || (current !== null && !overwrite)) continue;
+    writeFileSync(destPath, content);
+  }
 
   s.stop('Setup complete!');
 
   const componentsDir = resolve(cwd, config.components);
   mkdirSync(componentsDir, { recursive: true });
 
-  p.note(
+  // The components import dolan's utilities (`@blotch/dolan/utils/cn`), so
+  // the app depends on it, which also makes `npx dolan` run this CLI: without
+  // a local install, npx finds an unrelated `dolan` package.
+  const { version } = createRequire(import.meta.url)('../../package.json') as {
+    version: string;
+  };
+  const dolanSpec = `@blotch/dolan@^${version}`;
+  let dolanInstalled = missingPackages(cwd, [dolanSpec]).length === 0;
+  if (!dolanInstalled) {
+    p.log.step(`Installing ${pc.cyan(dolanSpec)}`);
+    dolanInstalled = installPackages(cwd, [dolanSpec]);
+  }
+
+  const stylesheet = globalStylesheet(cwd);
+  // Each step: its sentence, then the lines to copy.
+  const steps: [string, ...string[]][] = [
+    ...(dolanInstalled
+      ? []
+      : [
+          [
+            `Add ${pc.cyan('@blotch/dolan')} to your dependencies. The components import its utilities, such as ${pc.cyan('@blotch/dolan/utils/cn')}:`,
+            installCommand(detectPackageManager(cwd), [dolanSpec]).join(' '),
+          ] as [string, string],
+        ]),
     [
-      `${pc.bold('1.')} Add ${pc.cyan('@blotch/dolan')} as a dependency in your ${pc.cyan('package.json')}`,
-      '',
-      `${pc.bold('2.')} Add the Tailwind plugin to your ${pc.cyan('tailwind.config.ts')}:`,
-      '',
-      `   ${pc.dim("import { blotchPlugin } from './")}${pc.dim(config.theme)}${pc.dim("/tailwind-plugin';")}`,
-      `   ${pc.dim('plugins: [blotchPlugin]')}`,
-      '',
-      `${pc.bold('3.')} Import a theme in your global styles:`,
-      '',
-      `   ${pc.dim("@import './")}${pc.dim(config.theme)}${pc.dim("/default.css';")}`,
-      '',
-      `${pc.bold('4.')} Add components:`,
-      '',
-      `   ${pc.dim('npx dolan add button card')}`,
-    ].join('\n'),
+      `Add the Tailwind plugin to your ${pc.cyan('tailwind.config.ts')}:`,
+      `import { blotchPlugin } from './${config.theme}/tailwind-plugin';`,
+      'plugins: [blotchPlugin]',
+    ],
+    [
+      `Import the theme in ${pc.cyan(stylesheet)}. ${pc.cyan('dark.css')} holds the dark mode colors, under ${pc.cyan('page.dark')}:`,
+      `@import '${cssImportPath(stylesheet, join(config.theme, 'default.css'))}';`,
+      `@import '${cssImportPath(stylesheet, join(config.theme, 'dark.css'))}';`,
+    ],
+    [
+      'Add components:',
+      `npx ${dolanInstalled ? 'dolan' : '@blotch/dolan'} add button card`,
+    ],
+  ];
+  p.note(
+    steps
+      .map(([sentence, ...lines], i) =>
+        [
+          `${pc.bold(`${i + 1}.`)} ${sentence}`,
+          '',
+          ...lines.map((line) => `   ${pc.dim(line)}`),
+        ].join('\n'),
+      )
+      .join('\n\n'),
     'Next steps',
   );
 

@@ -1,9 +1,10 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
-import { getComponentNames } from '../registry.js';
+import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import { copiesTests } from '../utils/packages.js';
 import {
   getComponentFiles,
   getComponentSourceDir,
@@ -74,14 +75,13 @@ export const listCommand = async (options: { json?: boolean }) => {
   // The installed set = intersection of "directories in components dir" and
   // "names known to the registry". Anything else (e.g. user-authored folders
   // colocated with components) is ignored so we don't accidentally report
-  // unrelated files as "missing upstream".
-  const allKnown = new Set(getComponentNames());
-  const installed = readdirSync(componentsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && allKnown.has(entry.name))
-    .map((entry) => entry.name)
-    .sort();
+  // unrelated files as "missing upstream". Ejected components (no lockfile
+  // entry) are listed apart: they're the app's code, with nothing to compare.
+  const lockfile = getOrCreateLockfile(cwd);
+  const installed = trackedComponents(componentsDir, lockfile);
+  const ejected = untrackedComponents(componentsDir, lockfile);
 
-  if (installed.length === 0) {
+  if (installed.length === 0 && ejected.length === 0) {
     if (options.json) {
       console.log(JSON.stringify({ components: [] }));
       return;
@@ -91,14 +91,14 @@ export const listCommand = async (options: { json?: boolean }) => {
     return;
   }
 
-  const lockfile = getOrCreateLockfile(cwd);
-
+  const tests = copiesTests(cwd);
   const results: { name: string; status: FileStatus; fileCount: number }[] = [];
 
   for (const name of installed) {
     const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name);
-    const lockedComponent = lockfile.components[name] ?? {};
+    const files = getComponentFiles(name, { tests });
+    // Only tracked components get here, and those have an entry.
+    const lockedComponent = lockfile.components[name]!;
 
     const fileAnalyses: FileAnalysis[] = [];
 
@@ -137,17 +137,33 @@ export const listCommand = async (options: { json?: boolean }) => {
   }
 
   if (options.json) {
-    console.log(JSON.stringify({ components: results }, null, 2));
+    console.log(
+      JSON.stringify(
+        ejected.length > 0
+          ? { components: results, ejected }
+          : { components: results },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
-  const maxNameLen = Math.max(...results.map((r) => r.name.length));
+  const maxNameLen = Math.max(
+    ...[...results.map((r) => r.name), ...ejected].map((name) => name.length),
+  );
 
   for (const { name, status, fileCount } of results) {
     const paddedName = name.padEnd(maxNameLen);
     const filesLabel = fileCount === 1 ? '1 file' : `${fileCount} files`;
     p.log.message(
       `  ${STATUS_ICONS[status]} ${pc.bold(paddedName)}  ${STATUS_SHORT_LABELS[status]}  ${pc.dim(`(${filesLabel})`)}`,
+    );
+  }
+
+  for (const name of ejected) {
+    p.log.message(
+      `  ${pc.dim('○')} ${pc.bold(name.padEnd(maxNameLen))}  ${pc.dim('ejected (not tracked)')}`,
     );
   }
 
@@ -164,6 +180,7 @@ export const listCommand = async (options: { json?: boolean }) => {
     outdated > 0 ? `${pc.blue(String(outdated))} outdated` : '',
     modified > 0 ? `${pc.yellow(String(modified))} modified` : '',
     conflicts > 0 ? `${pc.red(String(conflicts))} conflict(s)` : '',
+    ejected.length > 0 ? `${pc.dim(String(ejected.length))} ejected` : '',
   ].filter(Boolean);
 
   p.outro(parts.join(', '));

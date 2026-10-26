@@ -15,20 +15,26 @@ export type RegistryEntry = {
  */
 const CHART_PACKAGES = ['@tanstack/charts@^1.1.0', 'd3-shape@^3.2.0'];
 
+/**
+ * Builds the variant classes of the components that have `variant`/`size`
+ * inputs. Kept in step with packages/ui/package.json by the same test.
+ */
+const CVA_PACKAGES = ['class-variance-authority@^0.7.1'];
+
 export const registry: RegistryEntry[] = [
   { name: 'action-sheet', dependencies: [] },
   { name: 'accordion', dependencies: [] },
-  { name: 'alert', dependencies: [] },
+  { name: 'alert', dependencies: [], packages: CVA_PACKAGES },
   { name: 'alert-dialog', dependencies: [] },
   // The chart presets are TanStack Charts definitions drawn by <ui-chart>.
   { name: 'area-chart', dependencies: ['chart'] },
   { name: 'aspect-ratio', dependencies: [] },
   { name: 'avatar', dependencies: ['skeleton'] },
-  { name: 'badge', dependencies: [] },
+  { name: 'badge', dependencies: [], packages: CVA_PACKAGES },
   { name: 'bar-chart', dependencies: ['chart'] },
   { name: 'bottom-sheet', dependencies: [] },
-  { name: 'button', dependencies: ['spinner'] },
-  { name: 'button-group', dependencies: [] },
+  { name: 'button', dependencies: ['spinner'], packages: CVA_PACKAGES },
+  { name: 'button-group', dependencies: [], packages: CVA_PACKAGES },
   { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
   // Renders any TanStack Charts definition with Lynx elements; the presets
@@ -59,8 +65,8 @@ export const registry: RegistryEntry[] = [
   { name: 'tabs', dependencies: [] },
   { name: 'textarea', dependencies: [] },
   { name: 'toast', dependencies: [] },
-  { name: 'toggle', dependencies: [] },
-  { name: 'typography', dependencies: [] },
+  { name: 'toggle', dependencies: [], packages: CVA_PACKAGES },
+  { name: 'typography', dependencies: [], packages: CVA_PACKAGES },
   { name: 'icon', dependencies: [] },
 ];
 

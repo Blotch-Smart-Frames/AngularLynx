@@ -85,3 +85,18 @@ export const installPackages = (
   });
   return result.status === 0;
 };
+
+/**
+ * The library the components' tests render with. Apps get it from
+ * `ng generate @blotch/angular-lynx:add-testing`.
+ */
+export const TESTING_LIBRARY = '@blotch/angular-lynx-testing-library';
+
+/**
+ * Whether dolan copies components' tests into the project: only when it
+ * depends on the testing library, since the tests import it and `ng test`
+ * fails to compile them otherwise. Every command asks the same question, so
+ * a project without the library never sees the tests as missing or new.
+ */
+export const copiesTests = (cwd: string): boolean =>
+  missingPackages(cwd, [TESTING_LIBRARY]).length === 0;

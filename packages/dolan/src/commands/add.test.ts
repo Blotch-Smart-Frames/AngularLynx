@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 
@@ -30,9 +30,9 @@ let fixture: Fixture;
 vi.mock('../utils/resolve-paths.js', () => ({
   getComponentSourceDir: (name: string) =>
     join(fixture.uiDir, 'components', name),
-  getComponentFiles: (name: string) =>
-    readdirSync(join(fixture.uiDir, 'components', name)).filter((f) =>
-      f.endsWith('.ts'),
+  getComponentFiles: (name: string, { tests }: { tests: boolean }) =>
+    readdirSync(join(fixture.uiDir, 'components', name)).filter(
+      (f) => f.endsWith('.ts') && (tests || !f.endsWith('.test.ts')),
     ),
   rewriteImports: (content: string) => content,
 }));
@@ -59,6 +59,11 @@ afterEach(() => {
   fixture?.cleanup();
   vi.restoreAllMocks();
 });
+
+const readLockfile = (dir: string) =>
+  JSON.parse(readFileSync(join(dir, 'dolan.lock.json'), 'utf-8')) as {
+    components: Record<string, Record<string, { hash: string }>>;
+  };
 
 const readInstalledFile = (dir: string, component: string, file: string) =>
   readFileSync(
@@ -308,5 +313,59 @@ describe('addCommand', () => {
 
     const { addCommand } = await import('./add');
     await expect(addCommand(['card'])).rejects.toThrow('process.exit(0)');
+  });
+
+  describe("components' tests", () => {
+    const setup = (dependencies: Record<string, string>) => {
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        uiSource: {
+          card: {
+            'card.ts': 'export const Card = {};',
+            'card.test.ts': "import '@blotch/angular-lynx-testing-library';",
+          },
+        },
+      });
+      writeFileSync(
+        join(fixture.dir, 'package.json'),
+        JSON.stringify({ dependencies }),
+      );
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    };
+    const installed = (file: string) =>
+      existsSync(
+        join(fixture.dir, DEFAULT_CONFIG.aliases.components, 'card', file),
+      );
+
+    it('copies them when the project has the testing library', async () => {
+      setup({ '@blotch/angular-lynx-testing-library': '^22.0.0' });
+      const { addCommand } = await import('./add');
+      await addCommand(['card']);
+
+      expect(installed('card.test.ts')).toBe(true);
+      const p = await import('@clack/prompts');
+      expect(p.log.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('tests'),
+      );
+    });
+
+    it("leaves them out, and says how to get them, when it doesn't", async () => {
+      // They import the testing library, so `ng test` couldn't compile them.
+      setup({});
+      const { addCommand } = await import('./add');
+      await addCommand(['card']);
+
+      expect(installed('card.ts')).toBe(true);
+      expect(installed('card.test.ts')).toBe(false);
+      expect(readLockfile(fixture.dir).components.card).not.toHaveProperty(
+        'card.test.ts',
+      );
+      const p = await import('@clack/prompts');
+      expect(p.log.info).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /@blotch\/angular-lynx-testing-library.*add-testing.*dolan update/,
+        ),
+      );
+    });
   });
 });

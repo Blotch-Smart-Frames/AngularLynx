@@ -41,14 +41,24 @@ afterEach(() => {
 const writePackageJson = (dir: string, content: unknown) =>
   writeFileSync(join(dir, 'package.json'), JSON.stringify(content));
 
+// What doctor requires (no router: no component imports it), plus the
+// package button imports.
 const FULL_ANGULAR_DEPS = {
   '@angular/core': '^20.0.0',
-  '@angular/common': '^20.0.0',
-  '@angular/platform-browser': '^20.0.0',
-  '@angular/router': '^20.0.0',
   '@blotch/angular-lynx': '^0.0.1',
+  '@blotch/dolan': '^0.0.1',
+  'class-variance-authority': '^0.7.1',
   tailwindcss: '^4.0.0',
 };
+
+/**
+ * A lockfile that tracks the given components, as `dolan add` writes it.
+ */
+const tracking = (...names: string[]) => ({
+  version: 1,
+  components: Object.fromEntries(names.map((name) => [name, {}])),
+  theme: {},
+});
 
 describe('doctorCommand', () => {
   it('exits with error when no config exists', async () => {
@@ -260,10 +270,9 @@ describe('doctorCommand', () => {
 
     const p = await import('@clack/prompts');
     expect(p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('Missing Angular packages'),
-    );
-    expect(p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('@blotch/angular-lynx'),
+      expect.stringMatching(
+        /Missing packages: .*@angular\/core.*@blotch\/angular-lynx.*@blotch\/dolan/,
+      ),
     );
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining('tailwindcss'),
@@ -280,7 +289,9 @@ describe('doctorCommand', () => {
     await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
 
     const p = await import('@clack/prompts');
-    expect(p.log.success).toHaveBeenCalledWith('Angular packages found');
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('Required packages found'),
+    );
   });
 
   it('handles a components path that is not a directory when listing installed components', async () => {
@@ -331,6 +342,7 @@ describe('doctorCommand', () => {
       // resolve-paths mock above) — only providing card.ts leaves index.ts
       // missing.
       components: { card: { 'card.ts': '' } },
+      lockfile: tracking('card'),
     });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
 
@@ -357,6 +369,7 @@ describe('doctorCommand', () => {
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       components: { button: { 'button.ts': '' } },
+      lockfile: tracking('button'),
     });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
 
@@ -448,5 +461,106 @@ describe('doctorCommand', () => {
     const { doctorCommand } = await import('./doctor');
     // Missing components dir also fails checkDirectories, so overall exit is 1.
     await expect(doctorCommand()).rejects.toThrow('process.exit(1)');
+  });
+
+  it('accepts the config init writes, which has no utils alias', async () => {
+    fixture = createFixture({
+      config: {
+        aliases: { components: 'src/components/ui', theme: 'src/styles' },
+      },
+    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.success).toHaveBeenCalledWith('Config is valid');
+  });
+
+  it("fails when components import a package the project doesn't have", async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      components: { badge: { 'badge.ts': '' } },
+      lockfile: tracking('badge'),
+    });
+    const { 'class-variance-authority': _, ...withoutCva } = FULL_ANGULAR_DEPS;
+    writePackageJson(fixture.dir, { dependencies: withoutCva });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(1)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /class-variance-authority.*npm install class-variance-authority@\^0\.7\.1/,
+      ),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('component(s) healthy'),
+    );
+  });
+
+  it("warns about copied tests the project can't compile", async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      components: { badge: { 'badge.ts': '', 'badge.test.ts': '' } },
+      lockfile: tracking('badge'),
+    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /badge has tests that need @blotch\/angular-lynx-testing-library: badge\.test\.ts/,
+      ),
+    );
+  });
+
+  it('leaves copied tests alone when the project has the testing library', async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      components: { badge: { 'badge.ts': '', 'badge.test.ts': '' } },
+      lockfile: tracking('badge'),
+    });
+    writePackageJson(fixture.dir, {
+      dependencies: FULL_ANGULAR_DEPS,
+      devDependencies: { '@blotch/angular-lynx-testing-library': '^22.0.0' },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('component(s) healthy'),
+    );
+  });
+
+  it("doesn't check an ejected component's files", async () => {
+    // card is on disk without card's index.ts, but it has no lockfile entry:
+    // it was ejected, so its files are the app's call.
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      components: { card: { 'card.ts': '' } },
+      lockfile: tracking(),
+    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('is missing files'),
+    );
   });
 });

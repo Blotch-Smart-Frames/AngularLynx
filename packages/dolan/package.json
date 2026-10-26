@@ -27,6 +27,10 @@
     "./utils/animate": {
       "types": "./dist/utils/animate.d.ts",
       "default": "./dist/utils/animate.js"
+    },
+    "./testing/set-input-signal": {
+      "types": "./dist/testing/set-input-signal.d.ts",
+      "default": "./dist/testing/set-input-signal.js"
     }
   },
   "scripts": {

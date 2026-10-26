@@ -1,15 +1,9 @@
 import * as p from '@clack/prompts';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
-import { getComponentNames, resolveDependencies } from '../registry.js';
+import { resolveDependencies } from '../registry.js';
 import {
   getComponentFiles,
   getComponentSourceDir,
@@ -17,6 +11,8 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import { copiesTests } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
 import {
   getOrCreateLockfile,
@@ -312,22 +308,19 @@ export const updateCommand = async (options: {
   // destructive `--force` reset the user explicitly asked for. We compute the
   // installed list defensively (empty when the dir is absent) and let the
   // normal "nothing to do" checks below decide whether there's real work.
-  const allKnown = new Set(getComponentNames());
-  // v8 ignore-comment defensive fallback: tested paths always seed componentsDir
-  // via createFixture. The `[]` branch only fires in production when the app
-  // deletes the components/ tree by hand.
-  /* v8 ignore next 6 */
-  const onDisk = existsSync(componentsDir)
-    ? readdirSync(componentsDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && allKnown.has(entry.name))
-        .map((entry) => entry.name)
-    : [];
+  const lockfile = getOrCreateLockfile(cwd);
+  // Only the components dolan tracks. An ejected one is the app's own code
+  // now, so it's neither analyzed nor overwritten, even with --force.
+  const tracked = trackedComponents(componentsDir, lockfile);
+  const ejected = new Set(untrackedComponents(componentsDir, lockfile));
   // A component's new version can depend on one the project doesn't have yet
   // (the chart presets now build on `chart`). Bring those along, as `add`
-  // would: their files all show up as new, so they're simply written.
-  const installed = resolveDependencies(onDisk).sort();
-
-  const lockfile = getOrCreateLockfile(cwd);
+  // would: their files all show up as new, so they're simply written. An
+  // ejected dependency stays the app's.
+  const installed = resolveDependencies(tracked)
+    .filter((name) => !ejected.has(name))
+    .sort();
+  const tests = copiesTests(cwd);
 
   // --- Analysis phase ---
   const s = p.spinner();
@@ -337,7 +330,7 @@ export const updateCommand = async (options: {
 
   for (const name of installed) {
     const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name);
+    const files = getComponentFiles(name, { tests });
     const lockedComponent = lockfile.components[name] ?? {};
 
     const fileAnalyses: FileAnalysis[] = [];
@@ -763,14 +756,15 @@ const buildLockfile = (
   const lockfile: Lockfile = { ...existing };
 
   for (const comp of components) {
-    if (!lockfile.components[comp.name]) {
-      lockfile.components[comp.name] = {};
-    }
-    for (const file of comp.files) {
-      lockfile.components[comp.name][file.file] = {
-        hash: hashContent(file.newContent),
-      };
-    }
+    lockfile.components[comp.name] = {
+      ...lockfile.components[comp.name],
+      ...Object.fromEntries(
+        comp.files.map((file) => [
+          file.file,
+          { hash: hashContent(file.newContent) },
+        ]),
+      ),
+    };
   }
 
   for (const file of shared) {

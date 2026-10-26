@@ -36,6 +36,10 @@ program
 program
   .command('init')
   .description('Initialize dolan in your project')
+  .option(
+    '-f, --force',
+    'overwrite an existing config and theme files without asking',
+  )
   .action(initCommand);
 
 program

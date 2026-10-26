@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   getComponentNames,
   getEntry,
+  registry,
   resolveDependencies,
   resolvePackages,
 } from './registry';
@@ -24,6 +25,7 @@ describe('getEntry', () => {
     expect(entry).toEqual({
       name: 'button',
       dependencies: ['spinner'],
+      packages: ['class-variance-authority@^0.7.1'],
     });
   });
 
@@ -101,9 +103,44 @@ describe('resolvePackages', () => {
     const ui = JSON.parse(
       readFileSync(new URL('../../ui/package.json', import.meta.url), 'utf-8'),
     ) as { dependencies: Record<string, string> };
-    for (const spec of getEntry('chart')!.packages!) {
-      const at = spec.lastIndexOf('@');
-      expect(ui.dependencies[spec.slice(0, at)]).toBe(spec.slice(at + 1));
+    for (const entry of registry) {
+      for (const spec of entry.packages ?? []) {
+        const at = spec.lastIndexOf('@');
+        expect(ui.dependencies[spec.slice(0, at)], spec).toBe(
+          spec.slice(at + 1),
+        );
+      }
+    }
+  });
+
+  it('lists every npm package a component imports', () => {
+    // A component whose import isn't listed gets copied without the package,
+    // and the app doesn't build (class-variance-authority, #65). A package its
+    // dependencies list counts too (the chart presets use `chart`'s), since
+    // `add` installs those along with it. Angular, the runtime and dolan's own
+    // utils are already the app's dependencies; tests aren't checked, since
+    // their imports only matter to a test setup.
+    const provided = /^(@angular\/|@blotch\/angular-lynx|@blotch\/dolan\/)/;
+    const components = new URL('../../ui/src/lib/components/', import.meta.url);
+    for (const { name } of registry) {
+      const folder = new URL(`${name}/`, components);
+      const imported = new Set<string>();
+      for (const file of readdirSync(folder)) {
+        if (file.endsWith('.test.ts')) continue;
+        const source = readFileSync(new URL(file, folder), 'utf-8');
+        for (const [, specifier] of source.matchAll(/from '([^.'][^']*)'/g)) {
+          if (provided.test(specifier!)) continue;
+          // `@scope/name/sub/path` and `name/sub/path` → the package name.
+          const parts = specifier!.split('/');
+          imported.add(
+            parts.slice(0, specifier!.startsWith('@') ? 2 : 1).join('/'),
+          );
+        }
+      }
+      const listed = resolvePackages(resolveDependencies([name])).map((spec) =>
+        spec.slice(0, spec.lastIndexOf('@')),
+      );
+      expect(listed, name).toEqual(expect.arrayContaining([...imported]));
     }
   });
 });

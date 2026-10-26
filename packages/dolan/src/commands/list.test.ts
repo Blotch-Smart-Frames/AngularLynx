@@ -316,17 +316,16 @@ describe('listCommand', () => {
     expect(outroArg).toContain('outdated');
   });
 
-  it('handles a multi-file component with no lockfile entry at all', async () => {
-    // lockfile.components['card'] is entirely absent (not just missing a
-    // per-file hash) — exercises the `lockfile.components[name] ?? {}`
-    // fallback. Three files (one missing on disk) also exercises the plural
+  it('handles a multi-file component with no per-file hashes', async () => {
+    // lockfile.components['card'] tracks card but records no file hashes.
+    // Three files (one missing on disk) also exercises the plural
     // "N files" label and the new-upstream (currentContent === null) path.
     const mainContent = 'export const Card = {};';
     const iconContent = 'export const CardIcon = {};';
     const newFileContent = 'export const CardNew = {};';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
-      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      lockfile: { version: 1, components: { card: {} }, utils: {}, theme: {} },
       components: {
         card: { 'card.ts': mainContent, 'card-icon.ts': iconContent },
       },
@@ -349,5 +348,72 @@ describe('listCommand', () => {
       .map((c) => c[0])
       .join('\n');
     expect(messages).toContain('3 files');
+  });
+
+  describe('ejected components', () => {
+    const setup = () => {
+      const content = 'export const Card = {};';
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        lockfile: {
+          version: 1,
+          components: { card: { 'card.ts': { hash: hashContent(content) } } },
+          utils: {},
+          theme: {},
+        },
+        components: {
+          card: { 'card.ts': content },
+          spinner: { 'spinner.ts': 'export const Spinner = { mine: true };' },
+        },
+        uiSource: {
+          card: { 'card.ts': content },
+          spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    };
+
+    it('lists them apart, not as a conflict', async () => {
+      setup();
+      const p = await import('@clack/prompts');
+      const { listCommand } = await import('./list');
+      await listCommand({});
+
+      const messages = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => c[0] as string)
+        .join('\n');
+      expect(messages).toMatch(/spinner.*ejected \(not tracked\)/);
+      expect(messages).not.toMatch(/spinner.*conflict/);
+      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining('ejected'));
+    });
+
+    it('puts them in their own JSON field', async () => {
+      setup();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { listCommand } = await import('./list');
+      await listCommand({ json: true });
+
+      const output = JSON.parse(log.mock.calls[0][0] as string);
+      expect(output.ejected).toEqual(['spinner']);
+      expect(output.components.map((c: { name: string }) => c.name)).toEqual([
+        'card',
+      ]);
+    });
+
+    it('lists a project whose only component is ejected', async () => {
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        components: { card: { 'card.ts': 'export const Card = {};' } },
+        uiSource: { card: { 'card.ts': 'export const Card = {};' } },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+      const p = await import('@clack/prompts');
+      const { listCommand } = await import('./list');
+      await listCommand({});
+
+      expect(p.outro).toHaveBeenCalledWith(
+        expect.stringContaining('0 installed'),
+      );
+    });
   });
 });

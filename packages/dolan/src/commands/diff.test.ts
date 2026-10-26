@@ -129,6 +129,14 @@ describe('diffCommand', () => {
     const content = 'export const Spinner = {};';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          spinner: { 'spinner.ts': { hash: hashContent(content) } },
+        },
+        utils: {},
+        theme: {},
+      },
       components: { spinner: { 'spinner.ts': content } },
       uiSource: { spinner: { 'spinner.ts': content } },
     });
@@ -397,5 +405,41 @@ describe('diffCommand', () => {
     await diffCommand();
 
     expect(p.outro).toHaveBeenCalled();
+  });
+
+  describe('ejected components', () => {
+    const setup = () => {
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+        components: {
+          card: { 'card.ts': 'export const Card = { mine: true };' },
+        },
+        uiSource: { card: { 'card.ts': 'export const Card = { v: 2 };' } },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    };
+
+    it('says an ejected component has nothing to compare', async () => {
+      setup();
+      const p = await import('@clack/prompts');
+      (p.log.message as ReturnType<typeof vi.fn>).mockClear();
+      const { diffCommand } = await import('./diff');
+      await diffCommand('card');
+
+      expect(p.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining('ejected'),
+      );
+      expect(p.log.message).not.toHaveBeenCalled();
+    });
+
+    it('leaves them out of the summary', async () => {
+      setup();
+      const p = await import('@clack/prompts');
+      const { diffCommand } = await import('./diff');
+      await diffCommand();
+
+      expect(p.log.warn).toHaveBeenCalledWith('No components installed.');
+    });
   });
 });

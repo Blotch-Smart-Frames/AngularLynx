@@ -157,7 +157,7 @@ describe('buttonGroupItemVariants', () => {
 });
 ```
 
-Don't `vi.mock('@angular/core')` or `@blotch/angular-lynx`: `ng test` (Angular's unit-test builder) runs test files in one shared module graph, so the mock leaks into every other test and breaks them, and it doesn't support mocking relative imports at all. Test code is type-checked there too. `<name>.test.ts` is copied into examples too, so keep it self-contained (it imports only `./＜name＞`).
+Don't `vi.mock('@angular/core')` or `@blotch/angular-lynx`: `ng test` (Angular's unit-test builder) runs test files in one shared module graph, so the mock leaks into every other test and breaks them, and it doesn't support mocking relative imports at all. Test code is type-checked there too. `<name>.test.ts` is copied into apps too, so keep it self-contained: it imports only `./＜name＞`, the testing library and the test helpers (see the import rules below).
 
 ---
 
@@ -176,12 +176,15 @@ Add an entry to the `registry` array in `packages/dolan/src/registry.ts`, keepin
 { name: 'avatar', dependencies: ['skeleton'] },
 ```
 
+**Packages** are the npm packages it imports, as install specs matching `packages/ui/package.json` (`'class-variance-authority@^0.7.1'`). `dolan add` installs whichever the app lacks. Angular, `@blotch/angular-lynx` and `@blotch/dolan` are the app's already. A test in `registry.test.ts` fails when an import isn't listed.
+
 ### Import rules that make dependencies work
 
 The CLI's `rewriteImports` only rewrites shared-util imports; cross-component imports must be plain sibling paths:
 
 - **Shared utils** — import as `../../utils/cn` / `../../utils/animate`. The CLI rewrites these to `@blotch/dolan/utils/cn` etc. when scaffolding.
 - **Another UI component** — import as `../<dep>/<dep>` (e.g. `import { UiSpinner } from '../spinner/spinner'`). This relative form resolves once both are scaffolded into the user's project. Also add `<dep>` to `dependencies`.
+- **Test helpers** — `<name>.test.ts` may import `../../../test-utils/<helper>`. The CLI rewrites it to `@blotch/dolan/testing/<helper>`, so each helper needs a copy in `packages/dolan/src/testing/` and an export in its `package.json` (tests check both). Tests are copied only into apps with `@blotch/angular-lynx-testing-library`.
 - **Nothing else** may be a relative import out of the component folder.
 
 ---

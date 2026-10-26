@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   getUiSourceDir,
@@ -34,7 +34,7 @@ describe('getComponentFiles', () => {
   it('lists only .ts files for a real registry component', () => {
     // card/ ships card.ts + index.ts alongside no non-.ts files, so this also
     // pins that non-.ts assets (if any were added later) would be filtered.
-    const files = getComponentFiles('card');
+    const files = getComponentFiles('card', { tests: true });
     expect(files).toContain('card.ts');
     expect(files).toContain('index.ts');
     for (const file of files) {
@@ -44,9 +44,41 @@ describe('getComponentFiles', () => {
 
   it("leaves the library's render tests behind", () => {
     // line-chart has both: line-chart.test.ts ships, the render test doesn't.
-    const files = getComponentFiles('line-chart');
+    const files = getComponentFiles('line-chart', { tests: true });
     expect(files).toContain('line-chart.test.ts');
     expect(files).not.toContain('line-chart-render.test.ts');
+  });
+
+  it('leaves every test behind for an app without the testing library', () => {
+    const files = getComponentFiles('line-chart', { tests: false });
+    expect(files).toContain('line-chart.ts');
+    expect(files.filter((file) => file.endsWith('.test.ts'))).toEqual([]);
+  });
+
+  it('ships every test helper the copied tests import', () => {
+    // rewriteImports points `../../../test-utils/<name>` at
+    // `@blotch/dolan/testing/<name>`, so each one needs a file and an export.
+    const exports = (
+      JSON.parse(
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
+      ) as { exports: Record<string, unknown> }
+    ).exports;
+    const components = join(getUiSourceDir(), 'components');
+    for (const name of readdirSync(components)) {
+      for (const file of getComponentFiles(name, { tests: true })) {
+        const source = readFileSync(join(components, name, file), 'utf-8');
+        for (const [, helper] of source.matchAll(
+          /from '\.\.\/\.\.\/\.\.\/test-utils\/([^']+)'/g,
+        )) {
+          expect(exports, `${name}/${file}`).toHaveProperty([
+            `./testing/${helper}`,
+          ]);
+          expect(
+            existsSync(new URL(`../testing/${helper}.ts`, import.meta.url)),
+          ).toBe(true);
+        }
+      }
+    }
   });
 });
 
@@ -66,6 +98,14 @@ describe('rewriteImports', () => {
   it('leaves content without relative util imports untouched', () => {
     const content = "import { Foo } from './foo';\nexport const x = 1;\n";
     expect(rewriteImports(content)).toBe(content);
+  });
+
+  it('rewrites the test helpers to the ones @blotch/dolan ships', () => {
+    const content =
+      "import { setInputSignal } from '../../../test-utils/set-input-signal';";
+    expect(rewriteImports(content)).toBe(
+      "import { setInputSignal } from '@blotch/dolan/testing/set-input-signal';",
+    );
   });
 
   it('rewrites an import with no trailing semicolon', () => {

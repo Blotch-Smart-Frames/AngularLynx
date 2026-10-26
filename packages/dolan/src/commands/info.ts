@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { getEntry, getComponentNames, registry } from '../registry.js';
 import { getComponentFiles } from '../utils/resolve-paths.js';
+import { copiesTests } from '../utils/packages.js';
 
 export const infoCommand = async (component: string) => {
   p.intro(pc.bold('dolan info'));
@@ -41,8 +42,8 @@ export const infoCommand = async (component: string) => {
   p.log.message(`  ${pc.bold('Name:')}         ${component}`);
   p.log.message(`  ${pc.bold('Installed:')}    ${installLabel}`);
 
-  // Files
-  const files = getComponentFiles(component);
+  // Files: the ones `add` would copy into this project.
+  const files = getComponentFiles(component, { tests: copiesTests(cwd) });
   p.log.message(`  ${pc.bold('Files:')}        ${files.join(', ')}`);
 
   // Dependencies

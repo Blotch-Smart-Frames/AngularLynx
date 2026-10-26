@@ -1,5 +1,5 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
@@ -10,6 +10,8 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import { copiesTests } from '../utils/packages.js';
 import { getOrCreateLockfile, hashContent } from '../lockfile.js';
 import {
   analyzeFile,
@@ -61,19 +63,19 @@ export const diffCommand = async (component?: string) => {
     return;
   }
 
-  const allKnown = new Set(getComponentNames());
-  const installed = readdirSync(componentsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && allKnown.has(entry.name))
-    .map((entry) => entry.name)
-    .sort();
+  const lockfile = getOrCreateLockfile(cwd);
+  // Ejected components (no lockfile entry) are the app's code, with no
+  // upstream to diff against.
+  const installed = trackedComponents(componentsDir, lockfile);
+  const ejected = untrackedComponents(componentsDir, lockfile);
 
-  if (installed.length === 0) {
+  if (installed.length === 0 && !(component && ejected.includes(component))) {
     p.log.warn('No components installed.');
     p.outro('Done.');
     return;
   }
 
-  const lockfile = getOrCreateLockfile(cwd);
+  const tests = copiesTests(cwd);
 
   if (component) {
     // Show diff for a specific component
@@ -84,12 +86,20 @@ export const diffCommand = async (component?: string) => {
       process.exit(1);
     }
 
+    if (ejected.includes(component)) {
+      p.log.warn(
+        `${pc.bold(component)} is ejected: dolan doesn't track it, so there's no upstream to compare.`,
+      );
+      p.outro('');
+      return;
+    }
+
     if (!installed.includes(component)) {
       p.log.error(`${pc.bold(component)} is not installed.`);
       process.exit(1);
     }
 
-    showComponentDiff(component, componentsDir, lockfile);
+    showComponentDiff(component, componentsDir, lockfile, tests);
     p.outro('');
     return;
   }
@@ -98,7 +108,7 @@ export const diffCommand = async (component?: string) => {
   const changed: { name: string; status: FileStatus }[] = [];
 
   for (const name of installed) {
-    const analyses = analyzeComponent(name, componentsDir, lockfile);
+    const analyses = analyzeComponent(name, componentsDir, lockfile, tests);
     const overall = summarizeComponent({ name, files: analyses });
     if (overall !== 'up-to-date') {
       changed.push({ name, status: overall });
@@ -139,7 +149,7 @@ export const diffCommand = async (component?: string) => {
     choice === '__all__' ? changed.map((c) => c.name) : [choice as string];
 
   for (const name of toShow) {
-    showComponentDiff(name, componentsDir, lockfile);
+    showComponentDiff(name, componentsDir, lockfile, tests);
   }
 
   p.outro('');
@@ -149,10 +159,12 @@ const analyzeComponent = (
   name: string,
   componentsDir: string,
   lockfile: { components: Record<string, Record<string, { hash: string }>> },
+  tests: boolean,
 ): FileAnalysis[] => {
   const srcDir = getComponentSourceDir(name);
-  const files = getComponentFiles(name);
-  const lockedComponent = lockfile.components[name] ?? {};
+  const files = getComponentFiles(name, { tests });
+  // Only tracked components get here, and those have an entry.
+  const lockedComponent = lockfile.components[name]!;
   const destDir = resolve(componentsDir, name);
 
   const analyses: FileAnalysis[] = [];
@@ -191,8 +203,9 @@ const showComponentDiff = (
   name: string,
   componentsDir: string,
   lockfile: { components: Record<string, Record<string, { hash: string }>> },
+  tests: boolean,
 ) => {
-  const analyses = analyzeComponent(name, componentsDir, lockfile);
+  const analyses = analyzeComponent(name, componentsDir, lockfile, tests);
 
   p.log.message(`\n${pc.bold(name)}`);
 

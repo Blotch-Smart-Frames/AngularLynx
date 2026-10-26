@@ -3,7 +3,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig, type DolanConfig } from '../config.js';
-import { getEntry } from '../registry.js';
+import { getOrCreateLockfile } from '../lockfile.js';
+import { getEntry, resolvePackages } from '../registry.js';
+import {
+  copiesTests,
+  detectPackageManager,
+  installCommand,
+  missingPackages,
+  packageName,
+  TESTING_LIBRARY,
+} from '../utils/packages.js';
 import { getComponentFiles } from '../utils/resolve-paths.js';
 
 /**
@@ -68,7 +77,7 @@ export const doctorCommand = async () => {
 
   // --- 6. Component health ---
 
-  checkComponentHealth(cwd, config, pass, warn);
+  checkComponentHealth(cwd, config, pass, warn, fail);
 
   // --- Summary ---
 
@@ -106,12 +115,10 @@ const checkConfig = (
   try {
     const config = readConfig(cwd);
     const aliases = config?.aliases;
-    // The three alias keys dolan requires at runtime. We don't validate `utils`
-    // anywhere else because it's not actually used (utilities now ship from
-    // @blotch/dolan directly) — but it's still listed because old configs may
-    // have it and removing it from validation would silently accept broken
-    // configs that newer commands might assume.
-    const requiredKeys = ['components', 'utils', 'theme'] as const;
+    // The two alias keys dolan reads. `utils` isn't one of them: utilities
+    // ship from @blotch/dolan, and `init` doesn't write it, so requiring it
+    // failed every fresh project. Old configs that still have it are fine.
+    const requiredKeys = ['components', 'theme'] as const;
     const missing = requiredKeys.filter(
       (key) => typeof aliases?.[key] !== 'string' || aliases[key].length === 0,
     );
@@ -228,26 +235,20 @@ const checkPackageDeps = (
     ...(pkg.devDependencies as Record<string, string> | undefined),
   };
 
-  const required = [
-    '@angular/core',
-    '@angular/common',
-    '@angular/platform-browser',
-    '@angular/router',
-  ];
+  // What the copied components import: Angular itself, the renderer, and
+  // dolan's utilities (`@blotch/dolan/utils/cn`). Not the router: an app
+  // without routes doesn't depend on it, and no component imports it.
+  const required = ['@angular/core', '@blotch/angular-lynx', '@blotch/dolan'];
 
-  const missingAngular = required.filter((dep) => !deps[dep]);
-  if (missingAngular.length === 0) {
-    pass('Angular packages found');
+  const missingRequired = required.filter((dep) => !deps[dep]);
+  if (missingRequired.length === 0) {
+    pass(
+      `Required packages found: ${required.map((d) => pc.cyan(d)).join(', ')}`,
+    );
   } else {
     fail(
-      `Missing Angular packages: ${missingAngular.map((d) => pc.cyan(d)).join(', ')}`,
+      `Missing packages: ${missingRequired.map((d) => pc.cyan(d)).join(', ')}`,
     );
-  }
-
-  if (deps['@blotch/angular-lynx']) {
-    pass(`${pc.cyan('@blotch/angular-lynx')} found`);
-  } else {
-    fail(`${pc.cyan('@blotch/angular-lynx')} not found in dependencies`);
   }
 
   if (deps['tailwindcss']) {
@@ -264,6 +265,7 @@ const checkComponentHealth = (
   config: DolanConfig,
   pass: (msg: string) => void,
   warn: (msg: string) => void,
+  fail: (msg: string) => void,
 ) => {
   const componentsDir = resolve(cwd, config.aliases.components);
   if (!existsSync(componentsDir)) return;
@@ -279,6 +281,8 @@ const checkComponentHealth = (
 
   if (installed.length === 0) return;
 
+  const lockfile = getOrCreateLockfile(cwd);
+  const tests = copiesTests(cwd);
   let allHealthy = true;
 
   for (const name of installed) {
@@ -293,10 +297,13 @@ const checkComponentHealth = (
       continue;
     }
 
-    // Check that all expected source files are present
+    // Check that all expected source files are present. An ejected component
+    // (no lockfile entry) is the app's own code, so its files are its call.
     try {
-      const expectedFiles = getComponentFiles(name);
       const destDir = join(componentsDir, name);
+      const expectedFiles = lockfile.components[name]
+        ? getComponentFiles(name, { tests })
+        : [];
       const missingFiles = expectedFiles.filter(
         (f) => !existsSync(join(destDir, f)),
       );
@@ -306,6 +313,18 @@ const checkComponentHealth = (
         // deleted one by hand. Suggest `dolan add` to restore them.
         warn(
           `${pc.cyan(name)} is missing files: ${missingFiles.map((f) => pc.dim(f)).join(', ')}`,
+        );
+        allHealthy = false;
+      }
+
+      // Tests copied before dolan checked for the testing library import it,
+      // and `ng test` can't compile them without it.
+      const strandedTests = tests
+        ? []
+        : readdirSync(destDir).filter((f) => f.endsWith('.test.ts'));
+      if (strandedTests.length > 0) {
+        warn(
+          `${pc.cyan(name)} has tests that need ${pc.cyan(TESTING_LIBRARY)}: ${strandedTests.map((f) => pc.dim(f)).join(', ')}. Run ${pc.bold('ng generate @blotch/angular-lynx:add-testing')} or delete them.`,
         );
         allHealthy = false;
       }
@@ -326,6 +345,17 @@ const checkComponentHealth = (
         allHealthy = false;
       }
     }
+  }
+
+  // The npm packages the components import (class-variance-authority, the
+  // charts' @tanstack/charts). Without them the app doesn't build, so it's a
+  // failure, with the command that installs them.
+  const missing = missingPackages(cwd, resolvePackages(installed));
+  if (missing.length > 0) {
+    fail(
+      `Components import packages the project doesn't depend on: ${missing.map((spec) => pc.cyan(packageName(spec))).join(', ')} — run ${pc.bold(installCommand(detectPackageManager(cwd), missing).join(' '))}`,
+    );
+    allHealthy = false;
   }
 
   if (allHealthy) {

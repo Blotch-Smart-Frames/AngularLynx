@@ -1,9 +1,10 @@
 import * as p from '@clack/prompts';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
-import { getComponentNames } from '../registry.js';
+import { trackedComponents } from '../utils/installed.js';
+import { copiesTests } from '../utils/packages.js';
 import {
   getComponentFiles,
   getComponentSourceDir,
@@ -69,11 +70,10 @@ export const outdatedCommand = async (options: { json?: boolean }) => {
     return;
   }
 
-  const allKnown = new Set(getComponentNames());
-  const installed = readdirSync(componentsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && allKnown.has(entry.name))
-    .map((entry) => entry.name)
-    .sort();
+  // Ejected components (no lockfile entry) are the app's code, so they can't
+  // be out of date.
+  const lockfile = getOrCreateLockfile(cwd);
+  const installed = trackedComponents(componentsDir, lockfile);
 
   if (installed.length === 0) {
     if (options.json) {
@@ -85,15 +85,16 @@ export const outdatedCommand = async (options: { json?: boolean }) => {
     return;
   }
 
-  const lockfile = getOrCreateLockfile(cwd);
+  const tests = copiesTests(cwd);
 
   const outdated: { name: string; status: FileStatus; fileCount: number }[] =
     [];
 
   for (const name of installed) {
     const destDir = resolve(componentsDir, name);
-    const files = getComponentFiles(name);
-    const lockedComponent = lockfile.components[name] ?? {};
+    const files = getComponentFiles(name, { tests });
+    // Only tracked components get here, and those have an entry.
+    const lockedComponent = lockfile.components[name]!;
 
     const fileAnalyses: FileAnalysis[] = [];
 

@@ -9,47 +9,29 @@ const TAGGED_CALLS = new Set(['backgroundFn', 'createMainThreadRef']);
 /** Runtime classes whose module-level `new` expressions get an ID argument. */
 const TAGGED_CLASSES = new Set(['MainThreadRef']);
 
-const MIRROR_IMPORT = '__ɵmirrorImport';
-const REGISTER_MIRRORED_IMPORT = '__ɵregisterMirroredImport';
-
 export type CrossThreadTransformOptions = {
   /** The directory the file keys are relative to, the same for both bundles. */
   root: string;
-  /**
-   * Whether to rewrite `import()` so the background thread loads each lazy
-   * chunk the main thread loads. Only for the app's own files: a library's
-   * lazy chunk, such as the runtime's web-only glass renderer, can't run on
-   * the background thread.
-   */
-  mirrorImports: boolean;
 };
 
 type Edit = { start: number; end: number; text: string };
 
 /**
- * Prepares a module for running on both threads. Angular runs on the main
- * thread only, but the background thread runs every module too, for the
- * functions that main-thread code calls there. Two things tie a module's two
- * copies together, and this transform sets both up:
+ * Gives each module-level `backgroundFn(fn)`, `createMainThreadRef(value)` and
+ * `new MainThreadRef(value)` one more argument: an ID from the file and the
+ * call's position, such as `'3f9a1c2b7d:0'`.
  *
- * - **IDs.** `backgroundFn(fn)`, `createMainThreadRef(value)` and
- *   `new MainThreadRef(value)` at module level get one more argument: an ID
- *   from the file and the call's position, such as `'3f9a1c2b7d:0'`. The main
- *   thread sends a handle or ref across by this ID, and the other thread finds
- *   its own copy by it. The runtime's fallback is a counter, which only matches
- *   if both threads run the same calls in the same order. They don't: the
- *   main thread loads a lazy chunk before the background thread does, and
- *   Angular code (which also creates refs) runs on the main thread only.
- *   Calls inside a function or class are left alone, since one call site can
- *   run any number of times there.
+ * Angular runs on the main thread only, but the background thread runs the
+ * modules that make these calls too (see background-entry.ts), for the
+ * functions that main-thread code calls there. The main thread sends a handle
+ * or ref across by this ID, and the other thread finds its own copy by it.
+ * The runtime's fallback is a counter, which only matches if both threads run
+ * the same calls in the same order. They don't: the background thread runs
+ * only some of the app's modules, and in a different order, and Angular code
+ * (which also creates refs) runs on the main thread only.
  *
- * - **Lazy chunks** (`mirrorImports`). Only the main thread's router and
- *   `@defer` blocks run `import()`, so `import('./x')` becomes
- *   `__ɵmirrorImport(key, () => import('./x'))`, which also tells the
- *   background thread to load the chunk, and the module ends by registering
- *   the same loader there. See mirrored-imports.ts in the runtime. Only a
- *   string specifier is rewritten: a computed one may depend on local
- *   variables, which the registration can't see.
+ * Calls inside a function or class are left alone, since one call site can run
+ * any number of times there.
  *
  * @param code - The module's JavaScript.
  * @param filename - The module's path.
@@ -61,12 +43,57 @@ export const transformCrossThread = (
   filename: string,
   options: CrossThreadTransformOptions,
 ): string => {
-  const mightTag =
-    code.includes(RUNTIME_MODULE) &&
-    (code.includes('backgroundFn') || code.includes('MainThreadRef'));
-  const mightMirror = options.mirrorImports && code.includes('import(');
-  if (!mightTag && !mightMirror) {
+  const calls = findModuleLevelCalls(code, filename);
+  if (calls.length === 0) {
     return code;
+  }
+
+  const fileKey = keyForFile(filename, options.root);
+  const edits: Edit[] = [];
+  // Numbered in source order, so both bundles give a call the same ID.
+  calls.forEach((node, index) => {
+    const edit = tagEdit(node, JSON.stringify(`${fileKey}:${index}`), code);
+    if (edit) edits.push(edit);
+  });
+
+  // Apply from the end so earlier offsets stay valid. Edits never overlap:
+  // each goes after one call's arguments.
+  edits.sort((a, b) => b.start - a.start);
+  let result = code;
+  for (const { start, end, text } of edits) {
+    result = result.slice(0, start) + text + result.slice(end);
+  }
+  return result;
+};
+
+/**
+ * Whether the module calls `backgroundFn()`, `createMainThreadRef()` or
+ * `new MainThreadRef()` at module level, so the background thread has to run
+ * it too. These are the calls {@link transformCrossThread} tags.
+ *
+ * @param code - The module's JavaScript.
+ * @param filename - The module's path.
+ * @returns `true` when the module defines a value the main thread can send
+ *   across by ID.
+ */
+export const definesCrossThreadValues = (
+  code: string,
+  filename: string,
+): boolean => findModuleLevelCalls(code, filename).length > 0;
+
+/**
+ * The module-level calls of the runtime's tagged functions and classes, in
+ * source order.
+ */
+const findModuleLevelCalls = (
+  code: string,
+  filename: string,
+): Array<ts.CallExpression | ts.NewExpression> => {
+  if (
+    !code.includes(RUNTIME_MODULE) ||
+    (!code.includes('backgroundFn') && !code.includes('MainThreadRef'))
+  ) {
+    return [];
   }
 
   const sourceFile = ts.createSourceFile(
@@ -76,91 +103,47 @@ export const transformCrossThread = (
     true,
   );
   const runtime = runtimeBindings(sourceFile);
-  const fileKey = keyForFile(filename, options.root);
-  let nextIndex = 0;
-  const nextId = (): string => `${fileKey}:${nextIndex++}`;
-
-  const edits: Edit[] = [];
-  const registrations: string[] = [];
-
-  /**
-   * Inserts the ID after the call's arguments, or after an `undefined` first
-   * argument when there are none (`new MainThreadRef()`).
-   */
-  const tag = (node: ts.CallExpression | ts.NewExpression): void => {
-    const args = node.arguments ?? ts.factory.createNodeArray();
-    // A spread could fill the ID's parameter itself.
-    if (args.length > 1 || args.some(ts.isSpreadElement)) return;
-    const id = JSON.stringify(nextId());
-    if (args.length === 1) {
-      edits.push({ start: args[0].end, end: args[0].end, text: `, ${id}` });
-      return;
-    }
-    // `new MainThreadRef` without parentheses has nowhere to insert into.
-    const close = node.getEnd() - 1;
-    if (code[close] !== ')') return;
-    edits.push({ start: close, end: close, text: `undefined, ${id}` });
-  };
+  const calls: Array<ts.CallExpression | ts.NewExpression> = [];
 
   const visit = (node: ts.Node, topLevel: boolean): void => {
-    if (ts.isCallExpression(node)) {
-      if (
-        node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-        options.mirrorImports &&
-        node.arguments.length > 0 &&
-        ts.isStringLiteralLike(node.arguments[0])
-      ) {
-        const key = JSON.stringify(nextId());
-        const load = `() => ${node.getText(sourceFile)}`;
-        edits.push({
-          start: node.getStart(sourceFile),
-          end: node.getEnd(),
-          text: `${MIRROR_IMPORT}(${key}, ${load})`,
-        });
-        registrations.push(`${REGISTER_MIRRORED_IMPORT}(${key}, ${load});`);
-        // An import's own arguments hold nothing to rewrite.
-        return;
-      }
-      if (
-        topLevel &&
-        isRuntimeReference(node.expression, runtime, TAGGED_CALLS)
-      ) {
-        tag(node);
-      }
-    } else if (
-      ts.isNewExpression(node) &&
+    if (
       topLevel &&
-      isRuntimeReference(node.expression, runtime, TAGGED_CLASSES)
+      ((ts.isCallExpression(node) &&
+        isRuntimeReference(node.expression, runtime, TAGGED_CALLS)) ||
+        (ts.isNewExpression(node) &&
+          isRuntimeReference(node.expression, runtime, TAGGED_CLASSES)))
     ) {
-      tag(node);
+      calls.push(node);
     }
     const childTopLevel =
       topLevel && !ts.isFunctionLike(node) && !ts.isClassLike(node);
     ts.forEachChild(node, (child) => visit(child, childTopLevel));
   };
   visit(sourceFile, true);
+  return calls;
+};
 
-  if (edits.length === 0) {
-    return code;
+/**
+ * The edit that inserts `id` after the call's arguments, or after an
+ * `undefined` first argument when there are none (`new MainThreadRef()`).
+ * `undefined` when the call can't take one.
+ */
+const tagEdit = (
+  node: ts.CallExpression | ts.NewExpression,
+  id: string,
+  code: string,
+): Edit | undefined => {
+  const args = node.arguments ?? ts.factory.createNodeArray();
+  // A second argument is already an ID, and a spread could fill the ID's
+  // parameter itself.
+  if (args.length > 1 || args.some(ts.isSpreadElement)) return undefined;
+  if (args.length === 1) {
+    return { start: args[0].end, end: args[0].end, text: `, ${id}` };
   }
-
-  // Apply from the end so earlier offsets stay valid. Edits never overlap: an
-  // ID goes after a call's arguments, and an import's replacement ends no later
-  // than the argument it's in.
-  edits.sort((a, b) => b.start - a.start);
-  let result = code;
-  for (const { start, end, text } of edits) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  if (registrations.length > 0) {
-    // After the module's own code, so a nested function's import registers
-    // only once the module has run. On the main thread the runtime ignores it.
-    result =
-      `import { ɵmirrorImport as ${MIRROR_IMPORT}, ɵregisterMirroredImport as ${REGISTER_MIRRORED_IMPORT} } from '${RUNTIME_MODULE}';\n` +
-      result +
-      `\n;${registrations.join('\n')}\n`;
-  }
-  return result;
+  // `new MainThreadRef` without parentheses has nowhere to insert into.
+  const close = node.getEnd() - 1;
+  if (code[close] !== ')') return undefined;
+  return { start: close, end: close, text: `undefined, ${id}` };
 };
 
 /**

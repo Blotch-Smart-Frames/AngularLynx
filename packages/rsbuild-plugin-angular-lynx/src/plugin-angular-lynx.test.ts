@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as OptionsModule from './utils/options.js';
 
 vi.mock('./angular.js', () => ({ applyAngularRules: vi.fn() }));
+vi.mock('./background-entry.js', () => ({
+  createBackgroundEntries: vi.fn(() => ({ _backgroundEntries: true })),
+}));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
+vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./tailwind.js', () => ({ applyTailwind: vi.fn() }));
@@ -16,10 +20,12 @@ vi.mock('./utils/options.js', async (importOriginal) => ({
 }));
 
 import { applyAngularRules } from './angular.js';
+import { createBackgroundEntries } from './background-entry.js';
 import { applyCSS } from './css.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyResolve } from './resolve.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyTailwind } from './tailwind.js';
@@ -45,7 +51,7 @@ describe('pluginAngularLynx', () => {
   it('calls normalizeOptions with provided options', () => {
     const options = { experimental_isLazyBundle: true } as any;
     const plugin = pluginAngularLynx(options);
-    const mockApi = {} as any;
+    const mockApi = { context: { rootPath: '/proj' } } as any;
 
     plugin.setup(mockApi);
 
@@ -54,7 +60,7 @@ describe('pluginAngularLynx', () => {
 
   it('calls normalizeOptions with undefined when no options provided', () => {
     const plugin = pluginAngularLynx();
-    const mockApi = {} as any;
+    const mockApi = { context: { rootPath: '/proj' } } as any;
 
     plugin.setup(mockApi);
 
@@ -62,7 +68,8 @@ describe('pluginAngularLynx', () => {
   });
 
   describe('setup', () => {
-    const mockApi = {} as any;
+    const mockApi = { context: { rootPath: '/proj' } } as any;
+    const backgroundEntries = { _backgroundEntries: true };
 
     beforeEach(() => {
       vi.clearAllMocks();
@@ -112,14 +119,32 @@ describe('pluginAngularLynx', () => {
       expect(applyTailwind).toHaveBeenCalledWith(mockApi);
     });
 
-    it('calls applyEntry with api and normalized options', () => {
+    // entry.ts points the background entries at the files angular.ts writes,
+    // so both get the same instance.
+    it('creates the background entries for the project root and shares them', () => {
       const plugin = pluginAngularLynx();
       plugin.setup(mockApi);
 
+      expect(createBackgroundEntries).toHaveBeenCalledWith({
+        rootPath: '/proj',
+      });
       expect(applyEntry).toHaveBeenCalledWith(
         mockApi,
         expect.objectContaining({ _normalized: true }),
+        backgroundEntries,
       );
+      expect(applyAngularRules).toHaveBeenCalledWith(
+        mockApi,
+        expect.any(Object),
+        backgroundEntries,
+      );
+    });
+
+    it('calls applyResolve with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyResolve).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyLayers with api', () => {
@@ -136,6 +161,7 @@ describe('pluginAngularLynx', () => {
       expect(applyAngularRules).toHaveBeenCalledWith(
         mockApi,
         expect.any(Object),
+        backgroundEntries,
       );
     });
 

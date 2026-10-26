@@ -60,7 +60,7 @@ type MockChainConfig = {
 
 /**
  * A fluent rule builder recording the calls applyCSS makes on it. The same
- * shape serves parent rules, `oneOf` branches and the main-thread copy rules.
+ * shape serves parent rules, `oneOf` branches and the background copy rules.
  */
 const createRule = (
   key: string,
@@ -235,22 +235,23 @@ describe('applyCSS', () => {
     expect(mainBranch.uses.delete).toHaveBeenCalledWith('lightningcss');
     expect(inlineBranch.uses.delete).toHaveBeenCalledWith('lightningcss');
     expect(cssRule.uses.delete).not.toHaveBeenCalled();
-    // Background extraction is wired onto the main branch with the Rspack loader.
-    expect(mainBranch.issuerLayer).toHaveBeenCalledWith('background');
+    // Main-thread extraction is wired onto the main branch with the Rspack
+    // loader: the main-thread half imports every stylesheet.
+    expect(mainBranch.issuerLayer).toHaveBeenCalledWith('main');
     expect(mainBranch._useBuilder.loader).toHaveBeenCalledWith(
       'rspack-css-extract-loader',
     );
 
-    // The main-thread copy takes `test` from the parent rule (the branch has
+    // The background copy takes `test` from the parent rule (the branch has
     // none) and no `dependency` merge happens when the parent has none.
-    const mainThreadRule = rulesByName.get('css:main')!;
-    expect(mainThreadRule.test).toHaveBeenCalledWith(/\.css$/);
-    expect(mainThreadRule.issuerLayer).toHaveBeenCalledWith('main');
-    expect(mainThreadRule.merge).not.toHaveBeenCalledWith(
+    const backgroundRule = rulesByName.get('css:background')!;
+    expect(backgroundRule.test).toHaveBeenCalledWith(/\.css$/);
+    expect(backgroundRule.issuerLayer).toHaveBeenCalledWith('background');
+    expect(backgroundRule.merge).not.toHaveBeenCalledWith(
       expect.objectContaining({ dependency: expect.anything() }),
     );
     // css-loader is re-added with exportOnlyLocals forced on.
-    expect(mainThreadRule._useBuilder.options).toHaveBeenCalledWith({
+    expect(backgroundRule._useBuilder.options).toHaveBeenCalledWith({
       modules: { exportOnlyLocals: true },
     });
 
@@ -295,13 +296,13 @@ describe('applyCSS', () => {
     );
 
     // Without the parent's `dependency` (e.g. Rsbuild's `{ not: 'url' }`) the
-    // main-thread copy would also match `url` dependencies the parent excludes.
-    const mainThreadRule = rulesByName.get('sass:main')!;
-    expect(mainThreadRule.test).toHaveBeenCalledWith(/\.s[ac]ss$/);
-    expect(mainThreadRule.merge).toHaveBeenCalledWith({ dependency });
+    // background copy would also match `url` dependencies the parent excludes.
+    const backgroundRule = rulesByName.get('sass:background')!;
+    expect(backgroundRule.test).toHaveBeenCalledWith(/\.s[ac]ss$/);
+    expect(backgroundRule.merge).toHaveBeenCalledWith({ dependency });
   });
 
-  it('skips the main-thread copy when the branch has no css-loader', async () => {
+  it('skips the background copy when the branch has no css-loader', async () => {
     const { api, triggerBundlerChain } = createMockApi();
     const { chain, rulesByName } = createMockChain({
       presentRules: ['css', 'less'],
@@ -314,13 +315,13 @@ describe('applyCSS', () => {
     applyCSS(api as never, defaultOptions);
     await triggerBundlerChain(chain, 'lynx');
 
-    // Extraction is still wired on the background layer...
+    // Extraction is still wired on the main-thread layer...
     expect(
       rulesByName.get('css')!.getOneOf('css-main').issuerLayer,
-    ).toHaveBeenCalledWith('background');
-    // ...but there is nothing to rebuild for the main thread, so no copy rule.
-    expect(rulesByName.has('css:main')).toBe(false);
-    expect(rulesByName.has('less:main')).toBe(false);
+    ).toHaveBeenCalledWith('main');
+    // ...but there is nothing to rebuild for the background, so no copy rule.
+    expect(rulesByName.has('css:background')).toBe(false);
+    expect(rulesByName.has('less:background')).toBe(false);
     // The inline branches are still processed afterwards.
     expect(rulesByName.get('less')!.oneOf).toHaveBeenCalledWith('less-inline');
   });

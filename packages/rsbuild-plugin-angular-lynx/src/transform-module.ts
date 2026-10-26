@@ -29,8 +29,7 @@ export type ModuleStylesheets = {
  *   3. Runs the worklet ("main thread" directive) transform over the result.
  *   4. Runs the cross-thread transform (cross-thread-transform.ts), which gives
  *      module-level background functions and refs IDs that match on both
- *      threads and lets the background thread load the lazy chunks the main
- *      thread loads.
+ *      threads.
  *
  * It deliberately does NOT make the bootstrap entry accept its own hot
  * updates (`module.hot.accept()`), which an earlier version did. On Lynx the
@@ -86,6 +85,8 @@ export const buildTransformedCode = (params: {
   return transformCrossThread(
     transformWorklets(code, resourcePath),
     resourcePath,
-    { root, mirrorImports: true },
+    {
+      root,
+    },
   );
 };

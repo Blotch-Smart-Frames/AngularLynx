@@ -73,7 +73,7 @@ ng generate component my-feature  # A component with Lynx elements
 
 - **`provideRouter(routes)`** — Replaces browser routing with in-memory routing (`LynxLocationStrategy`). Adds `withRouterConfig({ resolveNavigationPromiseOnError: true })` so an unhandled navigation error can't leave a blank screen.
 
-- **`bootstrapApplication()`** — On main thread: waits for Lynx's `renderPage` callback before bootstrapping Angular. On background thread: doesn't bootstrap, and returns a promise that never settles; only top-level code runs there. Also installs polyfills for `AbortController`, `queueMicrotask`, `setTimeout`/`setInterval` (from `lynx` global), and `document`/`window` mocks.
+- **`bootstrapApplication()`** — On main thread: waits for Lynx's `renderPage` callback before bootstrapping Angular. The background thread doesn't load `main.ts`: it starts from an entry the build generates, with the runtime and the files that define `backgroundFn()`s or `MainThreadRef`s. If one of those files bootstraps, the call returns a promise that never settles there. Also installs polyfills for `AbortController`, `queueMicrotask`, `setTimeout`/`setInterval` (from `lynx` global), and `document`/`window` mocks.
 
 ## Root Component Pattern
 

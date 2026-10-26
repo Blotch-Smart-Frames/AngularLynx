@@ -21,7 +21,7 @@ const ignoreCssLoader = function (
     return 'export {}';
   }
 
-  // Preserve css modules export for background layer.
+  // Preserve the CSS module's class-name exports for the background layer.
   return source;
 };
 

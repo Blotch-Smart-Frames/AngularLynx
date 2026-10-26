@@ -4,23 +4,23 @@
 
 Lynx runs on two threads:
 
-|                       | Main Thread                                     | Background Thread                                              |
-| --------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| **Purpose**           | Native UI rendering, event handlers             | Background-only APIs                                           |
-| **JS Engine**         | PrimJS (ES2019)                                 | PrimJS on Android, JavaScriptCore on iOS (ES2015)              |
-| **DOM access**        | `__CreateElement`, `__SetAttribute`, etc.       | None                                                           |
-| **`fetch()`**         | Relayed to the background thread by the runtime | Available                                                      |
-| **`NativeModules`**   | Not available                                   | Available                                                      |
-| **Angular runs here** | Yes: the whole app                              | No. Only your files' top-level code, such as `backgroundFn()`s |
+|                       | Main Thread                                     | Background Thread                                                                 |
+| --------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Purpose**           | Native UI rendering, event handlers             | Background-only APIs                                                              |
+| **JS Engine**         | PrimJS (ES2019)                                 | PrimJS on Android, JavaScriptCore on iOS (ES2015)                                 |
+| **DOM access**        | `__CreateElement`, `__SetAttribute`, etc.       | None                                                                              |
+| **`fetch()`**         | Relayed to the background thread by the runtime | Available                                                                         |
+| **`NativeModules`**   | Not available                                   | Available                                                                         |
+| **Angular runs here** | Yes: the whole app                              | No. Only the files that define `backgroundFn()`s or `MainThreadRef`s at top level |
 
 ## `__MAIN_THREAD__` Global
 
-The rsbuild plugin injects a banner into each bundle:
+The rsbuild plugin replaces `__MAIN_THREAD__` with each bundle's value when it compiles, and also sets it on `globalThis`:
 
-- Main-thread bundle: `globalThis["__MAIN_THREAD__"] = true`
-- Background bundle: `globalThis["__MAIN_THREAD__"] = false`
+- Main-thread bundle: `__MAIN_THREAD__ === true`
+- Background bundle: `__MAIN_THREAD__ === false`
 
-`bootstrapApplication()` starts Angular only when it's `true`. On the background thread it returns a promise that never settles, so constructors, `ngOnInit` and effects run once.
+The background bundle doesn't start from `main.ts`: the build generates its entry, which imports the runtime and the files that define a `backgroundFn()`, `createMainThreadRef()` or `new MainThreadRef()` at top level. Angular and your components aren't in it, so constructors, `ngOnInit` and effects run once.
 
 ## Why This Matters
 
@@ -36,7 +36,7 @@ Reach them from your app in one of two ways:
 
 - **AngularLynx services relay for you:** `LynxNativeModule`, `LynxResourcePrefetch`, `LynxFont.addFont()`, `LynxAccessibility.announce()` and `LynxLogger` send their calls to the background thread. Results and callbacks come back as JSON.
 - **`fetch()`, `XMLHttpRequest`, `HttpClient` and `httpResource` relay too:** the runtime's main-thread `fetch` sends each request to the background thread's. See [http-requests.md](http-requests.md).
-- **Your own code:** define a `backgroundFn()` at the top level of a file, and call it with the `runOnBackground()` global. The background thread runs your files, but not your components, so a `backgroundFn()` created inside a class or function never registers there.
+- **Your own code:** define a `backgroundFn()` at the top level of a file, and call it with the `runOnBackground()` global. The background thread loads only the files that define one at top level (and their imports), so a `backgroundFn()` created inside a class or function never registers there.
 
 ```typescript
 import { backgroundFn } from '@blotch/angular-lynx';

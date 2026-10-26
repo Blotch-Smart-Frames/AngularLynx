@@ -113,7 +113,7 @@ const dragMove = mainThreadFn((event: MainThread.TouchEvent) => {
 });
 ```
 
-On the main thread, a ref works like a module-level variable that's labeled as script state. The background thread runs your files too, so a ref created at module level has a copy there, and the copies aren't synced. Pass a ref to a background function, and it arrives as the background thread's copy.
+On the main thread, a ref works like a module-level variable that's labeled as script state. The background thread also loads each file that creates a ref at module level, so the ref has a copy there, and the copies aren't synced. Pass a ref to a background function, and it arrives as the background thread's copy.
 
 ## Call the background thread
 
@@ -136,7 +136,7 @@ const onTap = mainThreadFn((event: MainThread.TouchEvent) => {
 ```
 
 - **`runOnBackground()` is a global.** Call it from any of your Angular code, a main-thread script or a template handler: they all run on the main thread.
-- **Define `backgroundFn()` at module level.** The background thread runs your files, but not your components, so a function created in a class or a function never registers there. Files that load lazily, such as a lazy route's, work too: the background thread loads them when the main thread does.
+- **Define `backgroundFn()` at module level.** The background thread loads only the files that define one there (and their imports), never your components, so a function created in a class or a function never registers. The rest of that file's top-level code runs on both threads. Files that load lazily, such as a lazy route's, work too: the background thread loads them at startup.
 - **Arguments and the return value are copied as JSON.**
 - **The function can be `async`.** `runOnBackground()` waits for a returned Promise, so the function can `fetch()` data (see [Network requests](/guide/concepts/javascript-environment#network-requests)). If it throws or rejects, the Promise `runOnBackground()` returned rejects with the same message.
 

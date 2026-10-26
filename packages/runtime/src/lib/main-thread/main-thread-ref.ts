@@ -9,8 +9,9 @@ import { __mainThreadRefMap } from '../worklet-bridge';
  * marker for its own instance from the map, so the function gets the ref it
  * would also reach through its closure.
  *
- * A ref created at module level exists on both threads, since both bundles run
- * every module. The build gives each such call an ID from its file and
+ * A ref created at module level exists on both threads: the background
+ * thread's entry imports every module that creates one (background-entry.ts
+ * in the build plugin). The build gives each such call an ID from its file and
  * position (cross-thread-transform.ts in the build plugin), so it matches on
  * both threads whatever order their modules run in. A ref created anywhere
  * else, such as in a component, exists only on the main thread, where Angular

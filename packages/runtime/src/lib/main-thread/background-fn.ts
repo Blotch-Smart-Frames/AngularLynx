@@ -1,11 +1,11 @@
 /**
  * The main thread calls a background function by its `_wkltId`, and the
- * background thread finds the function it registered under the same ID. Both
- * bundles run every module (the background thread loads each lazy chunk the
- * main thread loads, see mirrored-imports.ts), so a module-level
- * backgroundFn() call runs on both threads. The build gives each such call an
- * ID from its file and position (cross-thread-transform.ts in the build
- * plugin), which matches on both threads whatever order their modules load in.
+ * background thread finds the function it registered under the same ID. A
+ * module that calls backgroundFn() at module level runs on both threads: the
+ * background thread's entry imports every such module at startup
+ * (background-entry.ts in the build plugin). The build gives each such call an
+ * ID from its file and position (cross-thread-transform.ts there), which
+ * matches on both threads whatever order their modules load in.
  *
  * A call the build doesn't tag, such as one inside a function, takes the next
  * '__angular_bg_N' instead. That only matches if both threads make the same

@@ -211,9 +211,8 @@ class AngularWebpackPlugin {
         });
 
       // Add the lynxProcessEvalResult runtime module to ALL chunks that need it,
-      // including background-thread chunks. The background thread runs each lazy
-      // import the main thread's router runs (the runtime's mirrored-imports.ts),
-      // so chunk installation must work there. An earlier version excluded
+      // including background-thread chunks: an `import()` in a background
+      // function loads a background chunk. An earlier version excluded
       // :background chunks — that caused lazy routes to silently fail because the
       // chunk installer was missing from the thread that needed it.
       compilation.hooks.runtimeRequirementInTree
@@ -263,9 +262,11 @@ class AngularWebpackPlugin {
       );
 
       // Inject __MAIN_THREAD__ flag and globDynamicComponentEntry into chunks.
-      // The thread-globals-loader approach (via webpack layers/oneOf) is unreliable
-      // because Rsbuild's parent typescript rule processes modules before the oneOf
-      // rules match. Instead, inject the flag directly into the bundled output.
+      // SWC replaces `__MAIN_THREAD__` in each module with its layer's value
+      // (layers.ts); the global is for code that reads it from `globalThis`.
+      // A main-thread lazy chunk sets it too, so it's told apart by the
+      // `lynx:main-thread` info set at the ADDITIONAL stage above: setting
+      // `false` there would flip the main thread's global when it loads one.
       //
       // For lazy loading: __MAIN_THREAD__ is critical because the main thread (Lepus)
       // has NO async module loading capability — lynx.requireModuleAsync is background-
@@ -284,7 +285,9 @@ class AngularWebpackPlugin {
             for (const [name] of Object.entries(compilation.assets).filter(
               ([n]) => n.endsWith('.js'),
             )) {
-              const isMainThread = mainThreadChunkSet.has(name);
+              const isMainThread =
+                mainThreadChunkSet.has(name) ||
+                compilation.getAsset(name)?.info['lynx:main-thread'] === true;
               const prefix = `globalThis["__MAIN_THREAD__"]=${isMainThread};`;
               compilation.updateAsset(
                 name,

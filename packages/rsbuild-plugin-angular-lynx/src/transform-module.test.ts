@@ -111,10 +111,10 @@ describe('buildTransformedCode', () => {
     });
   });
 
-  // Angular runs on the main thread only, and the background thread runs each
-  // module for its background functions (issue #81).
+  // Angular runs on the main thread only, and the background thread runs the
+  // modules that define background functions (issues #81 and #84).
   describe('cross-thread transform', () => {
-    it('gives module-level background functions IDs and mirrors lazy imports', () => {
+    it('gives module-level background functions IDs and leaves lazy imports alone', () => {
       const result = buildTransformedCode({
         ...base,
         code: [
@@ -125,9 +125,7 @@ describe('buildTransformedCode', () => {
       });
 
       expect(result).toMatch(/backgroundFn\(\(\) => 1, "[0-9a-f]{10}:0"\)/);
-      expect(result).toMatch(
-        /__ɵmirrorImport\("[0-9a-f]{10}:1", \(\) => import\('\.\/home'\)\)/,
-      );
+      expect(result).toContain("loadComponent: () => import('./home')");
     });
   });
 

@@ -16,7 +16,7 @@ const createOneOfBuilder = () => {
   };
 
   const builder = {
-    layer: vi.fn().mockReturnThis(),
+    issuerLayer: vi.fn().mockReturnThis(),
     test: vi.fn().mockReturnThis(),
     use: vi.fn().mockReturnValue(useBuilder),
     _use: useBuilder,
@@ -111,14 +111,16 @@ describe('applyLayers', () => {
   });
 
   describe('background layer rule', () => {
-    it('sets layer to LAYERS.BACKGROUND', () => {
+    // Matching on the importer's layer keeps each module in its entry's
+    // layer. Setting the layer here put every module in the first branch's.
+    it('matches modules imported from LAYERS.BACKGROUND', () => {
       const { api, triggerHandler } = createMockApi();
       const { chain, getOneOf } = createMockChain();
 
       applyLayers(api as never);
       triggerHandler(chain);
 
-      expect(getOneOf(LAYERS.BACKGROUND).layer).toHaveBeenCalledWith(
+      expect(getOneOf(LAYERS.BACKGROUND).issuerLayer).toHaveBeenCalledWith(
         LAYERS.BACKGROUND,
       );
     });
@@ -159,7 +161,7 @@ describe('applyLayers', () => {
       );
     });
 
-    it('targets ES2015 for Lynx bytecode compatibility', () => {
+    it('targets ES2015 for Lynx bytecode compatibility and sets __MAIN_THREAD__ to false', () => {
       const { api, triggerHandler } = createMockApi();
       const { chain, getOneOf } = createMockChain();
 
@@ -170,20 +172,28 @@ describe('applyLayers', () => {
         jsc: {
           target: 'es2015',
           parser: { syntax: 'typescript' },
+          transform: {
+            optimizer: {
+              simplify: false,
+              globals: { vars: { __MAIN_THREAD__: 'false' } },
+            },
+          },
         },
       });
     });
   });
 
   describe('main-thread layer rule', () => {
-    it('sets layer to LAYERS.MAIN_THREAD', () => {
+    // Matching on the importer's layer keeps each module in its entry's
+    // layer. Setting the layer here put every module in the first branch's.
+    it('matches modules imported from LAYERS.MAIN_THREAD', () => {
       const { api, triggerHandler } = createMockApi();
       const { chain, getOneOf } = createMockChain();
 
       applyLayers(api as never);
       triggerHandler(chain);
 
-      expect(getOneOf(LAYERS.MAIN_THREAD).layer).toHaveBeenCalledWith(
+      expect(getOneOf(LAYERS.MAIN_THREAD).issuerLayer).toHaveBeenCalledWith(
         LAYERS.MAIN_THREAD,
       );
     });
@@ -224,7 +234,7 @@ describe('applyLayers', () => {
       );
     });
 
-    it('targets ES2019 for Lynx bytecode compatibility', () => {
+    it('targets ES2019 for Lynx bytecode compatibility and sets __MAIN_THREAD__ to true', () => {
       const { api, triggerHandler } = createMockApi();
       const { chain, getOneOf } = createMockChain();
 
@@ -235,6 +245,12 @@ describe('applyLayers', () => {
         jsc: {
           target: 'es2019',
           parser: { syntax: 'typescript' },
+          transform: {
+            optimizer: {
+              simplify: false,
+              globals: { vars: { __MAIN_THREAD__: 'true' } },
+            },
+          },
         },
       });
     });

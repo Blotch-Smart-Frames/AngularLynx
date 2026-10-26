@@ -82,16 +82,21 @@ export const applyCSS = (
       const mainRuleName =
         ruleName === CHAIN_ID.RULE.CSS ? CHAIN_ID.ONE_OF.CSS_MAIN : ruleName;
       const mainRule = rule.oneOf(mainRuleName);
-      // `test`/`dependency` now live on the parent rule, so the main-thread
+      // `test`/`dependency` now live on the parent rule, so the background
       // copy below has to take them from there rather than from the branch.
       const parentRuleEntries = rule.entries() as Rspack.RuleSetRule;
 
       removeLightningCSS(mainRule);
 
-      // Background layer: extract CSS to separate .css files for the Lynx
+      // Main-thread layer: extract CSS to separate .css files for the Lynx
       // template plugin. CSS is processed by css-loader → CssExtractPlugin.
+      // React Lynx extracts from the background layer, where its components
+      // run. Angular's components run on the main thread, and the background
+      // bundle holds only the modules that define background functions
+      // (background-entry.ts), so the main-thread half is the one that imports
+      // every stylesheet, in the app's order.
       mainRule
-        .issuerLayer(LAYERS.BACKGROUND)
+        .issuerLayer(LAYERS.MAIN_THREAD)
         .use(CHAIN_ID.USE.MINI_CSS_EXTRACT)
         .loader(CssExtractRspackPlugin.loader)
         .end();
@@ -107,7 +112,7 @@ export const applyCSS = (
       const ruleEntries = mainRule.entries();
 
       // A branch without css-loader (e.g. a preprocessor plugin that wires its
-      // main branch differently) has nothing to copy into the main-thread rule,
+      // main branch differently) has nothing to copy into the background rule,
       // and calling `.entries()` on the missing loader would crash the build.
       // Skip it, as React Lynx does, and leave that rule as Rsbuild built it.
       const cssLoader = uses[CHAIN_ID.USE.CSS];
@@ -116,26 +121,26 @@ export const applyCSS = (
       }
       const cssLoaderRule = cssLoader.entries() as Rspack.RuleSetRule;
 
-      // Main-thread layer: CSS is NOT extracted — the main thread JS has no
-      // CSS runtime. Use ignore-css-loader to return empty module exports.
+      // Background layer: CSS is NOT extracted, since the main-thread half
+      // already has it. Use ignore-css-loader to return empty module exports.
       // css-loader still runs (with exportOnlyLocals: true) so CSS module
       // class name bindings resolve, but no actual CSS is emitted.
-      const mainThreadLayerRule = chain.module
-        .rule(`${ruleName}:${LAYERS.MAIN_THREAD}`)
+      const backgroundLayerRule = chain.module
+        .rule(`${ruleName}:${LAYERS.BACKGROUND}`)
         .test(parentRuleEntries.test as RegExp)
         .merge(ruleEntries)
-        .issuerLayer(LAYERS.MAIN_THREAD);
-      // The main-thread rule is a standalone top-level rule, not a branch, so it
+        .issuerLayer(LAYERS.BACKGROUND);
+      // The background rule is a standalone top-level rule, not a branch, so it
       // needs the parent's conditions copied in explicitly. Without `test` it
       // would match every module (running css-loader on JS); without
       // `dependency: { not: 'url' }` it would also catch `url()` asset
       // references, which must stay with the asset rules.
       if (parentRuleEntries.dependency !== undefined) {
-        mainThreadLayerRule.merge({ dependency: parentRuleEntries.dependency });
+        backgroundLayerRule.merge({ dependency: parentRuleEntries.dependency });
       }
 
       // dprint-ignore
-      mainThreadLayerRule
+      backgroundLayerRule
         .use(CHAIN_ID.USE.IGNORE_CSS)
         .loader(path.resolve(__dirname, './loaders/ignore-css-loader'))
         .end()

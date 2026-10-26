@@ -15,6 +15,7 @@ import {
 } from '@lynx-js/template-webpack-plugin';
 import type { UndefinedOnPartialDeep } from 'type-fest';
 import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
+import type { BackgroundEntries } from './background-entry.js';
 import { LAYERS } from './layers.js';
 import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 
@@ -26,6 +27,7 @@ export const S_LYNX_CONFIG = Symbol.for('@lynx-js/rsbuild-plugin:config');
 const PLUGIN_NAME_TEMPLATE = 'lynx:template';
 const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';
+const RULE_BACKGROUND_MODULES = 'lynx:background-modules';
 
 /**
  * The `blur-view` rule that approximates iOS's blur materials on Android,
@@ -42,6 +44,7 @@ export const BLUR_VIEW_STYLESHEET = path.resolve(
 export const applyEntry = (
   api: RsbuildPluginAPI,
   options: NormalizedPluginAngularLynxOptions,
+  backgroundEntries: BackgroundEntries,
 ): void => {
   const {
     customCSSInheritanceList,
@@ -81,25 +84,36 @@ export const applyEntry = (
     const enabledHMR = isDev && !isWeb && hmr !== false;
     const enabledLiveReload = isDev && !isWeb && liveReload !== false;
 
-    // Dual-thread entry splitting: each user entry (e.g. "main") is duplicated
-    // into two webpack entries with different layers:
+    // Dual-thread entry splitting: each user entry (e.g. "main") becomes two
+    // webpack entries with different layers:
     //   "main__main-thread" → layer "main", outputs main-thread.js (Lepus)
     //   "main"              → layer "background", outputs background-thread.js
-    // Both entries compile the SAME source files. The layer determines which
-    // SWC target (ES2019 vs ES2015), CSS handling, and __MAIN_THREAD__ flag
-    // each bundle gets. LynxTemplatePlugin combines them into a single
+    // The main thread runs the app, so its entry is the app's own. The
+    // background thread runs no Angular, so its entry is a generated module
+    // that imports only the runtime and the modules that define a background
+    // function or a MainThreadRef (background-entry.ts). Both get the
+    // `source.preEntry` polyfills. The layer determines each module's SWC
+    // target (ES2019 vs ES2015), CSS handling and __MAIN_THREAD__ value
+    // (layers.ts, css.ts). LynxTemplatePlugin combines them into a single
     // .lynx.bundle file.
     const entries = chain.entryPoints.entries() ?? {};
     chain.entryPoints.clear();
+    const preEntry = new Set(environment.config.source.preEntry);
     const mainThreadChunks: string[] = [];
     for (const [entryName, entryPoint] of Object.entries(entries)) {
       const { imports: entryImports } = getChunks(
         entryName,
         entryPoint.values(),
       );
-      const imports = isLynx
+      // The app's CSS is extracted from the main-thread half (see css.ts), so
+      // only that half needs the blur-view rule.
+      const mainThreadImports = isLynx
         ? [BLUR_VIEW_STYLESHEET, ...entryImports]
         : entryImports;
+      const backgroundImports = [
+        ...entryImports.filter((entryImport) => preEntry.has(entryImport)),
+        backgroundEntries.fileFor(environment.name, entryName),
+      ];
 
       const templateFilename = lynxConfig.resolveBundleFilename({
         entryName,
@@ -126,7 +140,7 @@ export const applyEntry = (
         .entry(mainThreadEntry)
         .add({
           layer: LAYERS.MAIN_THREAD,
-          import: imports,
+          import: mainThreadImports,
           filename: mainThreadName,
         })
         .end();
@@ -135,7 +149,7 @@ export const applyEntry = (
         .entry(backgroundEntry)
         .add({
           layer: LAYERS.BACKGROUND,
-          import: imports,
+          import: backgroundImports,
           filename: backgroundThreadName,
         })
         .when(enabledHMR, (entry) => {
@@ -193,6 +207,15 @@ export const applyEntry = (
         ])
         .end();
     }
+    // The background entry imports its modules only for what they do when
+    // they load, so a package or app that declares `"sideEffects": false`
+    // would have them dropped. In the background layer they keep their side
+    // effects; tree shaking inside them is unaffected.
+    chain.module
+      .rule(RULE_BACKGROUND_MODULES)
+      .issuerLayer(LAYERS.BACKGROUND)
+      .test((file: string) => backgroundEntries.isBackgroundModule(file))
+      .sideEffects(true);
     if (isLynx) {
       chain
         .plugin(PLUGIN_NAME_RUNTIME_WRAPPER)

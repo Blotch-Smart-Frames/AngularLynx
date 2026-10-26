@@ -6,7 +6,9 @@ import {
   type AngularCompileResult,
   createAngularRebuildCoordinator,
 } from './angular-rebuild-coordinator.js';
+import type { BackgroundEntries } from './background-entry.js';
 import { applyBudgets } from './budgets-plugin.js';
+import { LAYERS } from './layers.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
   createTransformStylesheet,
@@ -21,12 +23,16 @@ import {
   filterAngularDiagnostics,
   toAngularDiagnosticError,
 } from './angular-diagnostics.js';
+import { wrapPureClasses } from './pure-classes.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
 import {
   buildTransformedCode,
   type ModuleStylesheets,
 } from './transform-module.js';
-import { transformCrossThread } from './cross-thread-transform.js';
+import {
+  definesCrossThreadValues,
+  transformCrossThread,
+} from './cross-thread-transform.js';
 import { transformWorklets } from './worklet-transform.js';
 import { getAngularCliContext } from './angular-cli-context.js';
 import { applyAngularConfig } from './utils/angular/angular-config.js';
@@ -81,6 +87,7 @@ import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 export const applyAngularRules = async (
   api: RsbuildPluginAPI,
   pluginOptions: NormalizedPluginAngularLynxOptions,
+  backgroundEntries: BackgroundEntries,
 ): Promise<void> => {
   // Set under `ng build` / `ng serve`: the project being built and its build
   // options as Angular CLI resolved them. Plain rspeedy reads angular.json.
@@ -172,6 +179,13 @@ export const applyAngularRules = async (
   // Project files seen by the previous compile. A rebuild re-parses only new
   // or changed files for schema injection instead of every component.
   let knownSourceFiles = new Set<string>();
+  // The compiled modules that call backgroundFn(), createMainThreadRef() or
+  // new MainThreadRef() at module level, which the background entry imports
+  // (background-entry.ts). Kept up to date from each compile's output.
+  const backgroundModules = new Set<string>();
+  // The files the latest compile read: program sources and the templates and
+  // stylesheets components use.
+  let angularInputs = new Set<string>();
   // Type and template diagnostics from the most recent Angular compile. They
   // stay until the next compile, because a rebuild that doesn't recompile
   // (e.g. a global CSS edit) still contains the code they point at.
@@ -322,6 +336,11 @@ export const applyAngularRules = async (
         }
         if (typeScriptFileCache.get(file) !== code) {
           changedOutputs.add(file);
+          if (definesCrossThreadValues(code, file)) {
+            backgroundModules.add(file);
+          } else {
+            backgroundModules.delete(file);
+          }
         }
         typeScriptFileCache.set(file, code);
       }
@@ -347,6 +366,7 @@ export const applyAngularRules = async (
       // diagnostics for code that no longer exists.
       if (!fs.existsSync(file)) {
         typeScriptFileCache.delete(file);
+        backgroundModules.delete(file);
         moduleStylesheets.delete(file);
         forgetComponentStyleSizes(componentStyleSizes, file);
       }
@@ -371,10 +391,14 @@ export const applyAngularRules = async (
       ),
     );
 
-    return {
-      changedOutputs,
-      inputFiles: result.referencedFiles.map((file) => path.normalize(file)),
-    };
+    const inputFiles = result.referencedFiles.map((file) =>
+      path.normalize(file),
+    );
+    angularInputs = new Set([
+      ...inputFiles,
+      ...[...componentResourceDependencies.values()].flat(),
+    ]);
+    return { changedOutputs, inputFiles };
   };
 
   // onBeforeEnvironmentCompile fires once per environment (web + lynx) on
@@ -434,17 +458,36 @@ export const applyAngularRules = async (
   let compilationClosed = false;
   api.onBeforeEnvironmentCompile(async ({ environment, isWatch }) => {
     const compiler = compilersByEnvironment.get(environment.name);
-    const outdatedFiles = await coordinator.prepare(environment.name, [
+    const changedFiles = [
       ...(compiler?.modifiedFiles ?? []),
       ...(compiler?.removedFiles ?? []),
-    ]);
-    if (compiler && outdatedFiles.size > 0) {
+    ];
+    const outdatedFiles = await coordinator.prepare(
+      environment.name,
+      changedFiles,
+    );
+    const changedEntries = backgroundEntries.update(environment.name, {
+      appModules: backgroundModules,
+      watch: isWatch,
+      // A change to a file Angular reads but whose output stayed the same,
+      // such as saving a file unchanged, changes nothing in the bundle.
+      rebuilt:
+        outdatedFiles.size > 0 ||
+        changedFiles.some(
+          (file) =>
+            !angularInputs.has(path.normalize(file)) &&
+            !backgroundEntries.isEntryFile(file),
+        ),
+    });
+    if (compiler && outdatedFiles.size + changedEntries.length > 0) {
       // rspack reads `modifiedFiles` after watchRun to decide which modules
       // to rebuild. Adding the files whose Angular output changed makes it
       // re-run the loader for them, not just for the files that were edited.
+      // The same goes for the background entries just rewritten.
       compiler.modifiedFiles = new Set([
         ...(compiler.modifiedFiles ?? []),
         ...outdatedFiles,
+        ...changedEntries,
       ]);
     }
 
@@ -458,70 +501,111 @@ export const applyAngularRules = async (
     }
   });
 
-  api.transform(
-    {
-      test: /\.[cm]?[jt]sx?$/,
+  /**
+   * Compiles one module for one thread. `background` is set for the
+   * background layer.
+   */
+  const transformModule = async (
+    context: {
+      code: string;
+      resourcePath: string;
+      addDependency: (file: string) => void;
     },
-    async (context) => {
-      const isJs = /\.[cm]?js$/.test(context.resourcePath);
-      if (isJs) {
-        // Plain JS files (third-party deps, .mjs/.cjs sources) bypass the
-        // Angular compiler — they don't carry component metadata. Run them
-        // through @angular/build's JavaScriptTransformer to apply the same
-        // advanced optimizations (pure annotations, async removal, etc.) as
-        // Angular's normal build, then run worklet transforms on top.
-        const contents = await javascriptTransformer.transformData(
-          context.resourcePath,
-          context.code,
-          {
-            skipLinker: false,
-            // Angular 22.2 turned this positional `false` into a lazy resolver;
-            // resolving to false still means "side-effect free", which lets the
-            // transformer add pure annotations and wrap tslib decorators.
-            sideEffects: () => Promise.resolve(false),
-          },
-        );
-        return {
-          // Only the app's own (Angular-compiled) modules mirror their lazy
-          // imports to the background thread: see cross-thread-transform.ts.
-          code: transformCrossThread(
-            transformWorklets(
-              Buffer.from(contents).toString(),
-              context.resourcePath,
-            ),
-            context.resourcePath,
-            { root: api.context.rootPath, mirrorImports: false },
-          ),
-        };
-      }
-      const content = typeScriptFileCache.get(context.resourcePath);
-      if (!content) {
-        // No entry in the cache means Angular's compiler never saw this file
-        // — usually because the user imported a .ts file that isn't in the
-        // tsconfig include list. Surface this as a hard error rather than
-        // silently passing through (which would let rspack try to parse raw
-        // TypeScript with @angular decorators, producing confusing errors).
-        throw new Error(`No compiled output found for ${context.resourcePath}`);
-      }
-      // Register the component's external template and stylesheets so rspack
-      // watches them. Their contents are compiled into this module's output,
-      // so an edit to one must rebuild this module, and the coordinator must
-      // hear about it to recompile with Angular first.
-      for (const dependency of componentResourceDependencies.get(
+    background: boolean,
+  ): Promise<{ code: string }> => {
+    const isJs = /\.[cm]?js$/.test(context.resourcePath);
+    if (isJs) {
+      // Plain JS files (third-party deps, .mjs/.cjs sources) bypass the
+      // Angular compiler — they don't carry component metadata. Run them
+      // through @angular/build's JavaScriptTransformer to apply the same
+      // advanced optimizations (pure annotations, async removal, etc.) as
+      // Angular's normal build, then run worklet transforms on top.
+      const contents = await javascriptTransformer.transformData(
         context.resourcePath,
-      ) ?? []) {
-        context.addDependency(dependency);
-      }
-      const code =
-        typeof content === 'string' ? content : Buffer.from(content).toString();
+        context.code,
+        {
+          skipLinker: false,
+          // Angular 22.2 turned this positional `false` into a lazy resolver;
+          // resolving to false still means "side-effect free", which lets the
+          // transformer add pure annotations and wrap tslib decorators.
+          sideEffects: () => Promise.resolve(false),
+        },
+      );
+      const code = transformCrossThread(
+        transformWorklets(
+          Buffer.from(contents).toString(),
+          context.resourcePath,
+        ),
+        context.resourcePath,
+        { root: api.context.rootPath },
+      );
       return {
-        code: buildTransformedCode({
-          code,
-          resourcePath: context.resourcePath,
-          stylesheets: moduleStylesheets.get(context.resourcePath),
-          root: api.context.rootPath,
-        }),
+        code: background ? wrapPureClasses(code, context.resourcePath) : code,
       };
-    },
+    }
+    const content = typeScriptFileCache.get(context.resourcePath);
+    if (!content) {
+      // No entry in the cache means Angular's compiler never saw this file
+      // — usually because the user imported a .ts file that isn't in the
+      // tsconfig include list. Surface this as a hard error rather than
+      // silently passing through (which would let rspack try to parse raw
+      // TypeScript with @angular decorators, producing confusing errors).
+      throw new Error(`No compiled output found for ${context.resourcePath}`);
+    }
+    // Register the component's external template and stylesheets so rspack
+    // watches them. Their contents are compiled into this module's output,
+    // so an edit to one must rebuild this module, and the coordinator must
+    // hear about it to recompile with Angular first.
+    for (const dependency of componentResourceDependencies.get(
+      context.resourcePath,
+    ) ?? []) {
+      context.addDependency(dependency);
+    }
+    const code = buildTransformedCode({
+      code:
+        typeof content === 'string' ? content : Buffer.from(content).toString(),
+      resourcePath: context.resourcePath,
+      stylesheets: moduleStylesheets.get(context.resourcePath),
+      root: api.context.rootPath,
+    });
+    if (!background) {
+      return { code };
+    }
+    // The background thread runs a module like this for its background
+    // functions and refs, never for its components, services or pipes.
+    // Angular's own build wraps each such class in a pure IIFE when it
+    // optimizes a library (`sideEffects: false`), so the minifier drops the
+    // ones nothing uses, and with them the Angular code they'd need. Doing the
+    // same here keeps a component file's background functions in the
+    // background bundle without the component. It runs after
+    // buildTransformedCode, so the cross-thread IDs come from the same code
+    // as the main thread's. Top-level calls in the app's files, such as
+    // backgroundFn() itself, aren't marked pure.
+    return {
+      code: wrapPureClasses(
+        Buffer.from(
+          await javascriptTransformer.transformData(
+            context.resourcePath,
+            code,
+            {
+              skipLinker: true,
+              sideEffects: () => Promise.resolve(false),
+            },
+          ),
+        ).toString(),
+        context.resourcePath,
+      ),
+    };
+  };
+
+  // One transform per layer, as the background layer compiles the app's
+  // modules differently (see transformModule).
+  api.transform(
+    { test: /\.[cm]?[jt]sx?$/, issuerLayer: LAYERS.MAIN_THREAD },
+    (context) => transformModule(context, false),
+  );
+  api.transform(
+    { test: /\.[cm]?[jt]sx?$/, issuerLayer: LAYERS.BACKGROUND },
+    (context) => transformModule(context, true),
   );
 };

@@ -86,7 +86,10 @@ describe('pluginAngularLynx', () => {
     });
 
     it('warns once for each deprecated option the config sets', () => {
-      const api = { logger: { warn: vi.fn() } } as any;
+      const api = {
+        context: { rootPath: '/proj' },
+        logger: { warn: vi.fn() },
+      } as any;
       const plugin = pluginAngularLynx({
         enableICU: true,
         pipelineSchedulerConfig: 0x00010000,
@@ -106,7 +109,10 @@ describe('pluginAngularLynx', () => {
     });
 
     it("doesn't warn without deprecated options", () => {
-      const api = { logger: { warn: vi.fn() } } as any;
+      const api = {
+        context: { rootPath: '/proj' },
+        logger: { warn: vi.fn() },
+      } as any;
       pluginAngularLynx({ enableA11y: false }).setup(api);
 
       expect(api.logger.warn).not.toHaveBeenCalled();

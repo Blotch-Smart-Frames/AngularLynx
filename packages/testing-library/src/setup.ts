@@ -50,6 +50,40 @@ if (typeof Element.prototype.animate !== 'function') {
     ({ cancel: () => {}, finished: Promise.resolve() }) as any;
 }
 
+// ─── lynx.reportError warnings ───────────────────────────────────────────────
+
+/**
+ * Makes `lynx.reportError` return for a warning, as Lynx does, instead of
+ * throwing it.
+ *
+ * The testing environment's `lynx.reportError` throws whatever it's given, so
+ * a reported error fails the test the way it would stop the app on a device.
+ * On a device, though, a `warning`-level report doesn't interrupt anything,
+ * and that's the level `LynxErrorHandler.onViewError()` reports an error that
+ * an `@boundary` caught at. Angular calls onViewError() before it swaps in the
+ * `@error` block, so the throw stopped the swap, and a test using the default
+ * error handler saw neither the content nor its fallback. Other reports still
+ * throw.
+ *
+ * The environment gives each thread a new `lynx` whenever it injects its
+ * globals: once when it's created, and again on every reset(), which runs
+ * after each test (see index.ts). So this runs from its inject hooks, which
+ * must be set before the environment is created below.
+ */
+const returnOnWarnings = (threadGlobals: any): void => {
+  const { lynx } = threadGlobals;
+  const reportError = lynx.reportError;
+  lynx.reportError = (
+    error: string | Error,
+    options?: { level?: 'error' | 'warning' },
+  ): void => {
+    if (options?.level === 'warning') return;
+    reportError(error, options);
+  };
+};
+(globalThis as any).onInjectMainThreadGlobals = returnOnWarnings;
+(globalThis as any).onInjectBackgroundThreadGlobals = returnOnWarnings;
+
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────
 
 /**

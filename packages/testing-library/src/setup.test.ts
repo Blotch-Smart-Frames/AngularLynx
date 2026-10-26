@@ -255,3 +255,52 @@ describe('thread switches keep their writes off the jsdom window', () => {
     expect(dom.window.document).toBe(document);
   });
 });
+
+describe('lynx.reportError', () => {
+  const threadLynx = (thread: 'main' | 'background'): any =>
+    (globalThis as any).lynxTestingEnv[`${thread}Thread`].globalThis.lynx;
+
+  it.each(['main', 'background'] as const)(
+    'returns for a warning on the %s thread',
+    (thread) => {
+      expect(() =>
+        threadLynx(thread).reportError(new Error('caught'), {
+          level: 'warning',
+        }),
+      ).not.toThrow();
+    },
+  );
+
+  it.each(['main', 'background'] as const)(
+    'still throws an error-level report on the %s thread',
+    (thread) => {
+      const err = new Error('fatal');
+      expect(() =>
+        threadLynx(thread).reportError(err, { level: 'error' }),
+      ).toThrow(err);
+      expect(() => threadLynx(thread).reportError(err)).toThrow(err);
+    },
+  );
+
+  it('returns for a warning after the environment resets', () => {
+    // reset() builds new thread globals, which auto-cleanup does after every
+    // test, so the change must come back with them.
+    const env = (globalThis as any).lynxTestingEnv;
+    const before = threadLynx('main');
+    env.reset();
+
+    expect(threadLynx('main')).not.toBe(before);
+    // The global the runtime reads: reset() leaves the main thread active.
+    expect((globalThis as any).lynx).toBe(threadLynx('main'));
+    expect(() =>
+      (globalThis as any).lynx.reportError(new Error('caught'), {
+        level: 'warning',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      threadLynx('background').reportError(new Error('caught'), {
+        level: 'warning',
+      }),
+    ).not.toThrow();
+  });
+});

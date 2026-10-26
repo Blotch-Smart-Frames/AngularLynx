@@ -337,6 +337,85 @@ describe('@boundary — nesting', () => {
   });
 });
 
+describe('@boundary — the default error handler', () => {
+  // LynxErrorHandler reports a caught error through lynx.reportError, which
+  // the testing environment used to throw from. These render with the error
+  // handler provideRenderer() registers, as an app's own tests do.
+  afterEach(() => {
+    delete (globalThis as any).__lynxLastError;
+  });
+
+  it('renders the @error fallback when a child constructor throws', async () => {
+    @Component({
+      selector: 'test-default-create-host',
+      template: `
+        @boundary {
+          <crash-on-create />
+        } @error {
+          <text>fallback</text>
+        }
+      `,
+      imports: [LYNX_ELEMENTS, CrashOnCreate],
+    })
+    class DefaultCreateHost {}
+
+    const { container } = await render(DefaultCreateHost);
+    await waitForUpdate();
+
+    expect(texts(container)).toEqual(['fallback']);
+    expect((globalThis as any).__lynxLastError).toContain(
+      'constructor exploded',
+    );
+  });
+
+  it('swaps in the @error fallback when an update throws', async () => {
+    @Component({
+      selector: 'test-default-update-host',
+      template: `
+        @boundary {
+          <fragile-widget />
+        } @error (let err) {
+          <text>failed: {{ err.message }}</text>
+        }
+      `,
+      imports: [LYNX_ELEMENTS, FragileWidget],
+    })
+    class DefaultUpdateHost {}
+
+    const { container, componentRef } = await render(DefaultUpdateHost);
+    expect(texts(container)).toEqual(['widget ok']);
+
+    failureSwitch(componentRef).mode.set('other');
+    await waitForUpdate();
+
+    expect(container.querySelector('.widget')).toBeNull();
+    expect(texts(container)).toEqual(['failed: widget broke']);
+    expect((globalThis as any).__lynxLastError).toContain('widget broke');
+  });
+
+  it('reports the caught error to Lynx as a warning', async () => {
+    @Component({
+      selector: 'test-default-report-host',
+      template: `
+        @boundary {
+          <crash-on-create />
+        } @error {
+          <text>fallback</text>
+        }
+      `,
+      imports: [LYNX_ELEMENTS, CrashOnCreate],
+    })
+    class DefaultReportHost {}
+
+    const reportError = vi.spyOn((globalThis as any).lynx, 'reportError');
+    await render(DefaultReportHost);
+    await waitForUpdate();
+
+    expect(reportError).toHaveBeenCalledOnce();
+    expect(reportError.mock.calls[0][1]).toEqual({ level: 'warning' });
+  });
+});
+
 describe('@boundary — resource() in the error state', () => {
   it('catches the throw from value() and recovers on reload', async () => {
     let failLoads = true;

@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it, vi } from 'vitest';
+import { DURATION } from '../../utils/animate';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiBottomSheet } from './bottom-sheet';
 
@@ -16,6 +17,26 @@ class BottomSheetHost {
 }
 
 describe('UiBottomSheet', () => {
+  it('stops its close timers when it is destroyed while closing', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    const { componentRef, unmount } = await render(UiBottomSheet);
+    const inst = componentRef.instance as UiBottomSheet;
+    inst.open.set(true);
+    for (let i = 0; i < 5; i++) await waitForUpdate();
+    inst.open.set(false);
+    await waitForUpdate();
+    // Destroyed during the close animation, as an `@if` around the sheet
+    // would do. Its close timer (DURATION.normal + 20) used to fire anyway
+    // and emit `closed` from the destroyed output.
+    unmount();
+    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
+    const warnings = warn.mock.calls.map(([message]) => String(message));
+    warn.mockRestore();
+    expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
+      [],
+    );
+  });
+
   it('moves a screen reader into the panel and keeps it there while open', async () => {
     const { componentRef, container } = await render(UiBottomSheet);
     const inst = componentRef.instance as UiBottomSheet;
@@ -88,12 +109,18 @@ describe('UiBottomSheet', () => {
   it('open effect bails when backdrop/panel refs are undefined', async () => {
     const { componentRef } = await render(UiBottomSheet);
     const inst = componentRef.instance as UiBottomSheet;
+    const closed = vi.fn();
+    inst.closed.subscribe(closed);
     inst.open.set(true);
     await waitForUpdate();
     await waitForUpdate();
     inst.open.set(false);
     await waitForUpdate();
+    // Wait out the close sequence, so #animateOut runs (and bails) while the
+    // component is still alive. Destroying it clears the sequence's timers.
+    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
     expect(inst.open()).toBe(false);
+    expect(closed).toHaveBeenCalledOnce();
   });
 
   it('drag beyond the dismiss threshold closes the sheet', async () => {
@@ -101,6 +128,10 @@ describe('UiBottomSheet', () => {
     const inst = componentRef.instance as UiBottomSheet;
     const view = container.querySelector('view') as Element;
     patchRefs(inst, view);
+    const animate = vi.spyOn(
+      view as Element & { animate: () => unknown },
+      'animate',
+    );
     inst.open.set(true);
     await waitForUpdate();
 
@@ -114,6 +145,15 @@ describe('UiBottomSheet', () => {
     cast.onDragEnd();
     await waitForUpdate();
     expect(inst.open()).toBe(false);
+    // The exit slide starts the next tick, from where the finger let go
+    // rather than from the docked position.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(
+      animate.mock.calls.some(
+        ([keyframes]) =>
+          (keyframes as Keyframe[])[0]?.transform === 'translateY(200px)',
+      ),
+    ).toBe(true);
   });
 
   it('drag below the dismiss threshold snaps back to open', async () => {

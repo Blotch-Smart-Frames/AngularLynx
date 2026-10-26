@@ -1,6 +1,7 @@
 // cspell:words WAAPI tweens
 import {
   type ElementRef,
+  type OnDestroy,
   Component,
   ViewEncapsulation,
   computed,
@@ -106,7 +107,7 @@ const BACKDROP_CLEAR_DISTANCE = 500;
     </overlay>
   `,
 })
-export class UiBottomSheet {
+export class UiBottomSheet implements OnDestroy {
   readonly open = model(false);
   readonly userClass = input<string>('', { alias: 'class' });
 
@@ -130,6 +131,9 @@ export class UiBottomSheet {
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
+  // The open and close sequences' pending timers, so ngOnDestroy can stop
+  // them.
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
   // --- Drag-to-dismiss state ---
   // Live downward drag distance (px), applied to the panel as a translateY via
@@ -324,14 +328,36 @@ export class UiBottomSheet {
   }
 
   /**
+   * The sheet can be destroyed while its open or close sequence is still
+   * running, for example by an `@if` around it or a route change right after
+   * closing it. The rest of the sequence then ran on the destroyed component:
+   * it animated detached elements and emitted `closed` from a destroyed
+   * output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    for (const timer of this.#timers) clearTimeout(timer);
+  }
+
+  /**
+   * `setTimeout`, tracked so that ngOnDestroy can cancel it.
+   */
+  #later(callback: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      callback();
+    }, ms);
+    this.#timers.add(timer);
+  }
+
+  /**
    * Two-phase open: make the overlay visible first so native elements exist
    * in the tree, then animate on the next frame. Without this, animate()
    * targets elements that haven't been flushed to native yet and silently fails.
    */
   #doOpen(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.overlayVisible.set(true);
-      setTimeout(() => this.#animateIn(), 0);
+      this.#later(() => this.#animateIn(), 0);
     }, 0);
   }
 
@@ -342,9 +368,9 @@ export class UiBottomSheet {
    * before the fade finishes.
    */
   #doClose(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.#animateOut();
-      setTimeout(() => {
+      this.#later(() => {
         this.overlayVisible.set(false);
         this.closed.emit();
         // Reset for the next open: the sheet returns to its docked position

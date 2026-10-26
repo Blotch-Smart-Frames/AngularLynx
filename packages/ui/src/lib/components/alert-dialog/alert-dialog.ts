@@ -1,5 +1,6 @@
 import {
   type ElementRef,
+  type OnDestroy,
   Component,
   ViewEncapsulation,
   computed,
@@ -43,7 +44,7 @@ import { cn } from '../../utils/cn';
     </overlay>
   `,
 })
-export class UiAlertDialog {
+export class UiAlertDialog implements OnDestroy {
   readonly open = model(false);
   readonly userClass = input<string>('', { alias: 'class' });
 
@@ -56,6 +57,9 @@ export class UiAlertDialog {
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
+  // The open and close sequences' pending timers, so ngOnDestroy can stop
+  // them.
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor() {
     // `#hasBeenOpen` prevents the close animation from running on the initial
@@ -111,14 +115,36 @@ export class UiAlertDialog {
   protected onPanelTap(): void {}
 
   /**
+   * The alert dialog can be destroyed while its open or close sequence is still
+   * running, for example by an `@if` around it or a route change right after
+   * closing it. The rest of the sequence then ran on the destroyed component:
+   * it animated detached elements and emitted `closed` from a destroyed
+   * output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    for (const timer of this.#timers) clearTimeout(timer);
+  }
+
+  /**
+   * `setTimeout`, tracked so that ngOnDestroy can cancel it.
+   */
+  #later(callback: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      callback();
+    }, ms);
+    this.#timers.add(timer);
+  }
+
+  /**
    * Two-phase open: make overlay visible first (so native elements exist in
    * the tree), then animate on the next frame. See nav-drawer for the same
    * pattern — Lynx animate() requires elements to be mounted before use.
    */
   #doOpen(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.overlayVisible.set(true);
-      setTimeout(() => this.#animateIn(), 0);
+      this.#later(() => this.#animateIn(), 0);
     }, 0);
   }
 
@@ -127,9 +153,9 @@ export class UiAlertDialog {
    * causing elements to disappear before the animation finishes.
    */
   #doClose(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.#animateOut();
-      setTimeout(() => {
+      this.#later(() => {
         this.overlayVisible.set(false);
         this.closed.emit();
       }, DURATION.normal + 20);
@@ -154,7 +180,7 @@ export class UiAlertDialog {
     // 30ms stagger: let the backdrop fade start first so the panel scale-in
     // feels like it's emerging from behind the dimmed overlay rather than
     // appearing simultaneously with it.
-    setTimeout(() => {
+    this.#later(() => {
       this.#panelAnim = scaleIn(panel, {
         duration: DURATION.slow,
         easing: EASING.springSubtle,

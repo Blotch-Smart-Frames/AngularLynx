@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it, vi } from 'vitest';
+import { DURATION } from '../../utils/animate';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import {
   UiActionSheet,
@@ -31,6 +32,26 @@ class ActionSheetHost {
 }
 
 describe('UiActionSheet', () => {
+  it('stops its close timers when it is destroyed while closing', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    const { componentRef, unmount } = await render(UiActionSheet);
+    const inst = componentRef.instance as UiActionSheet;
+    inst.open.set(true);
+    for (let i = 0; i < 5; i++) await waitForUpdate();
+    inst.open.set(false);
+    await waitForUpdate();
+    // Destroyed during the close animation, as an `@if` around the action sheet
+    // would do. Its close timer (DURATION.normal + 20) used to fire anyway
+    // and emit `closed` from the destroyed output.
+    unmount();
+    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
+    const warnings = warn.mock.calls.map(([message]) => String(message));
+    warn.mockRestore();
+    expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
+      [],
+    );
+  });
+
   it('moves a screen reader into the panel and keeps it there while open', async () => {
     const { componentRef, container } = await render(UiActionSheet);
     const inst = componentRef.instance as UiActionSheet;
@@ -113,12 +134,18 @@ describe('UiActionSheet', () => {
   it('open effect bails when backdrop/panel refs are undefined', async () => {
     const { componentRef } = await render(UiActionSheet);
     const inst = componentRef.instance as UiActionSheet;
+    const closed = vi.fn();
+    inst.closed.subscribe(closed);
     inst.open.set(true);
     await waitForUpdate();
     await waitForUpdate();
     inst.open.set(false);
     await waitForUpdate();
+    // Wait out the close sequence, so #animateOut runs (and bails) while the
+    // component is still alive. Destroying it clears the sequence's timers.
+    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
     expect(inst.open()).toBe(false);
+    expect(closed).toHaveBeenCalledOnce();
   });
 
   it('applies user class on the panel', async () => {

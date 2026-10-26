@@ -7,7 +7,7 @@ let destroyDemo: (() => void) | null = null;
 afterEach(() => {
   destroyDemo?.();
   destroyDemo = null;
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const flush = (): Promise<void> =>
@@ -34,17 +34,16 @@ describe('WebViewDemo', () => {
     expect(webview?.getAttribute('html')).toContain('Inline HTML');
   });
 
-  it('reloads through the reload UI method', async () => {
+  it('reloads through the reload UI method of the web view on screen', async () => {
     const { instance, destroy } = await renderOnce(WebViewDemo);
     destroyDemo = destroy;
-    const invoke = vi.fn();
-    const query = { select: () => query, invoke, exec: () => {} };
-    invoke.mockReturnValue(query);
-    vi.stubGlobal('lynx', { createSelectorQuery: () => query });
+    instance.select('html');
+    await flush();
+    const invoke = vi.spyOn(instance.browser()!.nativeElement, 'invoke');
 
     instance.reload();
 
-    expect(invoke).toHaveBeenCalledWith({ method: 'reload', params: {} });
+    expect(invoke).toHaveBeenCalledWith('reload', {});
     expect(instance.status()).toBe('Reloading…');
   });
 });

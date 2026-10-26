@@ -1,4 +1,10 @@
-import { Component, computed, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  computed,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiButton } from '../../components/ui/button';
 import {
@@ -22,7 +28,7 @@ type VideoErrorDetail = { errorCode: number; errorMsg: string };
 /**
  * Showcase for the native `<video>` element (experimental, Lynx 4.1+).
  * Attributes configure the player; playback only changes through the
- * `play`/`pause`/`stop`/`seek` UI methods, invoked via SelectorQuery.
+ * `play`/`pause`/`stop`/`seek` UI methods, invoked on the element.
  *
  * Uses the shared `<app-demo-screen>` frame (it owns the page scroll-view).
  */
@@ -48,7 +54,7 @@ type VideoErrorDetail = { errorCode: number; errorMsg: string };
     >
       <view class="w-full rounded-xl bg-black overflow-hidden">
         <video
-          id="kitchen-sink-video"
+          #player
           class="h-[200px] w-full"
           src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
           object-fit="cover"
@@ -134,6 +140,7 @@ type VideoErrorDetail = { errorCode: number; errorMsg: string };
 })
 export class VideoDemo {
   readonly speeds = [0.5, 1, 1.5, 2] as const;
+  readonly player = viewChild.required('player', { read: ElementRef });
 
   readonly muted = signal(true);
   readonly loop = signal(false);
@@ -198,19 +205,12 @@ export class VideoDemo {
 
   /**
    * <video> has no autoplay/paused attributes: playback state lives in the
-   * native player and only changes through its UI methods, so they go through
-   * SelectorQuery rather than a binding.
+   * native player and only changes through its UI methods. Template handlers
+   * run on the main thread, which has no lynx.createSelectorQuery(), so the
+   * method is called on the element itself. invoke() is fire-and-forget: the
+   * player's own events (bindplaying, bindpaused, …) report what happened.
    */
   #invoke(method: VideoMethod, params: Record<string, unknown> = {}): void {
-    lynx
-      .createSelectorQuery()
-      .select('#kitchen-sink-video')
-      .invoke({
-        method,
-        params,
-        fail: (res: { code: number }) =>
-          this.status.set(`${method} failed (code ${res.code})`),
-      })
-      .exec();
+    this.player().nativeElement.invoke?.(method, params);
   }
 }

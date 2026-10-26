@@ -1,10 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
   selector: 'app-root',
   template: `
-    <refresh (bindstartrefresh)="onRefresh()">
+    <refresh #refresher class="h-full w-full" (bindstartrefresh)="onRefresh()">
       <refresh-header>
         <view class="h-[60px] items-center justify-center">
           <text class="text-[13px] text-zinc-400">
@@ -12,7 +12,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           </text>
         </view>
       </refresh-header>
-      <scroll-view class="h-screen bg-zinc-50" scroll-orientation="vertical">
+      <scroll-view
+        class="h-full w-full bg-zinc-50"
+        scroll-orientation="vertical"
+      >
         <view class="p-6">
           <text class="mb-1 text-[28px] font-bold text-zinc-900">
             Refresh Element
@@ -42,14 +45,18 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class App {
   #counter = 0;
 
+  readonly refresher = viewChild.required('refresher', { read: ElementRef });
   readonly refreshing = signal(false);
   readonly items = signal(this.#generateItems());
 
   onRefresh(): void {
     this.refreshing.set(true);
+    // Stands in for a network request.
     setTimeout(() => {
       this.items.set(this.#generateItems());
       this.refreshing.set(false);
+      // The header stays open until the finishRefresh UI method is called.
+      this.refresher().nativeElement.invoke?.('finishRefresh');
     }, 1500);
   }
 

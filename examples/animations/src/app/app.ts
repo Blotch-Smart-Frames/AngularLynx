@@ -110,14 +110,17 @@ export class App {
   #anim: LynxAnimation | null = null;
 
   toggleTransition(): void {
-    setTimeout(() => this.transitionOn.update((v) => !v), 0);
+    this.transitionOn.update((v) => !v);
   }
 
   toggleSpin(): void {
-    setTimeout(() => this.spinOn.update((v) => !v), 0);
+    this.spinOn.update((v) => !v);
   }
 
   runAnimation(): void {
+    // Unlike the signal changes above, animate() changes the native element
+    // straight away, so it waits until the tap event has finished (see "The
+    // setTimeout rule" in the threads guide).
     setTimeout(() => {
       const el = this.animBoxRef();
       if (!el) return;

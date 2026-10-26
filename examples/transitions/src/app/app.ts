@@ -33,21 +33,15 @@ type Item = { id: number; label: string };
               showPanel() ? 'Hide Panel' : 'Show Panel'
             }}</text>
           </view>
-          <!-- Temporary on-screen diagnostics for the re-show freeze investigation.
-               Lynx has no console on-device, so we surface counters via <text>
-               instead (per project convention). Remove once confirmed fixed. -->
           <text class="mb-2 text-[11px] text-zinc-400">
-            taps={{ tapCount() }} enter={{ enterCount() }} leave={{
-              leaveCount()
-            }}
-            show={{ showPanel() }}
+            Last event: {{ lastEvent() }}
           </text>
           <lynx-transition
             [show]="showPanel()"
             name="fade"
             [duration]="300"
-            (afterEnter)="enterCount.set(enterCount() + 1)"
-            (afterLeave)="leaveCount.set(leaveCount() + 1)"
+            (afterEnter)="lastEvent.set('afterEnter')"
+            (afterLeave)="lastEvent.set('afterLeave')"
           >
             <view class="mb-2 rounded-lg bg-indigo-50 p-4">
               <text class="text-sm text-indigo-700">
@@ -78,7 +72,7 @@ type Item = { id: number; label: string };
             >
               <ng-template let-item>
                 <view
-                  class="mb-2 flex-row items-center rounded-lg bg-indigo-500 px-4 py-3 justify-between"
+                  class="mb-2 flex-row items-center rounded-lg bg-indigo-500 px-4 py-3 flex justify-between"
                 >
                   <text class="flex-1 text-sm font-semibold text-white">{{
                     item.label
@@ -159,6 +153,8 @@ type Item = { id: number; label: string };
 })
 export class App {
   readonly showPanel = signal(false);
+  // Set by (afterEnter) and (afterLeave), which fire when each animation ends.
+  readonly lastEvent = signal('none yet');
   readonly items = signal<Item[]>([
     { id: 1, label: 'Item 1' },
     { id: 2, label: 'Item 2' },
@@ -168,26 +164,16 @@ export class App {
 
   readonly trackById = (item: Item) => item.id;
 
-  // Diagnostics for the re-show freeze investigation — see the <text> above.
-  readonly tapCount = signal(0);
-  readonly enterCount = signal(0);
-  readonly leaveCount = signal(0);
-
   togglePanel(): void {
-    this.tapCount.update((v) => v + 1);
-    setTimeout(() => this.showPanel.update((v) => !v), 0);
+    this.showPanel.update((v) => !v);
   }
 
   addItem(): void {
-    setTimeout(() => {
-      const id = this.#nextId++;
-      this.items.update((items) => [...items, { id, label: `Item ${id}` }]);
-    }, 0);
+    const id = this.#nextId++;
+    this.items.update((items) => [...items, { id, label: `Item ${id}` }]);
   }
 
   removeItem(item: Item): void {
-    setTimeout(() => {
-      this.items.update((items) => items.filter((i) => i.id !== item.id));
-    }, 0);
+    this.items.update((items) => items.filter((i) => i.id !== item.id));
   }
 }

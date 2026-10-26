@@ -19,8 +19,10 @@ import { ScreenHost } from '../screen-host';
 // rsbuild plugin detects it at build time and compiles the function into a Lynx
 // main-thread worklet — the same result as wrapping it in `mainThreadFn()`, but
 // with zero boilerplate. Bound with `[mainThreadBindtap]` / `[mainThreadBind…]`,
-// they run natively on the UI thread, so touch feedback paints on the same frame
-// as the gesture instead of round-tripping to Angular's background thread.
+// they change the native element directly, so touch feedback paints on the same
+// frame as the gesture without waiting for Angular's change detection.
+// Template handlers such as (bindtap) run on the main thread too: what a
+// worklet skips is the signal write and re-render, not a trip between threads.
 //
 // They must live at module scope (not as methods) so the plugin can lift them
 // onto the main thread; the component exposes them as `readonly` fields for the
@@ -86,7 +88,8 @@ const springPress = (event: MainThread.TouchEvent) => {
 const flashCount = createMainThreadRef(0);
 
 /**
- * The main-thread half of the A/B test: recolor with no cross-thread hop.
+ * The worklet half of the A/B test: recolor the element directly, with no
+ * change detection.
  */
 const flashMain = (event: MainThread.TouchEvent) => {
   'main thread';
@@ -122,7 +125,7 @@ const flashMain = (event: MainThread.TouchEvent) => {
     <app-demo-screen
       heading="Worklet Directive"
       category="Platform"
-      description="Add 'main thread' as a function's first line and the build plugin compiles it into a UI-thread worklet — the ergonomic form of mainThreadFn(). Bound with [mainThreadBindtap], these handlers paint on the same frame you touch, with zero cross-thread latency."
+      description="Add 'main thread' as a function's first line and the build plugin compiles it into a UI-thread worklet — the ergonomic form of mainThreadFn(). Bound with [mainThreadBindtap], these handlers paint on the same frame you touch, without waiting for change detection."
     >
       <!-- ── The directive ──────────────────────────────────────────────────
            Lead with the concept: a plain function becomes a worklet purely
@@ -243,20 +246,21 @@ const flashMain = (event: MainThread.TouchEvent) => {
         </view>
       </ui-card>
 
-      <!-- ── Main vs. background (the "why") ─────────────────────────────────
-           Both tiles do the same recolor. The left runs in a worklet; the right
-           routes through Angular (a deferred signal write, cross-thread). On
-           device the latency gap is the point of the whole feature. -->
+      <!-- ── Worklet vs. template handler (the "why") ────────────────────────
+           Both tiles do the same recolor, and both run on the main thread. The
+           left sets the style from a worklet; the right sets a signal from a
+           (bindtap) handler, and the color changes when Angular re-renders. -->
       <ui-card class="p-4">
         <view class="mb-1 flex-row items-center flex justify-between">
           <view class="flex-row items-center gap-2 flex">
             <ui-icon name="info" size="sm" />
-            <ui-text variant="large">Main vs. background</ui-text>
+            <ui-text variant="large">Worklet vs. handler</ui-text>
           </view>
         </view>
         <ui-text variant="muted" class="mb-4">
-          Same action, two threads. Tap both and feel the difference — the
-          worklet paints immediately; the Angular handler round-trips first.
+          Same action, two paths, both on the main thread. The worklet sets the
+          color itself; the template handler sets a signal, and Angular
+          re-renders the tile.
         </ui-text>
 
         <view class="flex-row gap-3 flex">
@@ -264,9 +268,9 @@ const flashMain = (event: MainThread.TouchEvent) => {
             class="min-h-[128px] flex-1 items-center rounded-xl bg-[#6366f1] p-4 flex justify-center"
             [mainThreadBindtap]="flashMain"
           >
-            <text class="text-sm font-semibold text-white">Main thread</text>
+            <text class="text-sm font-semibold text-white">Worklet</text>
             <text class="mt-1 text-[11px] text-white/70 text-center">
-              worklet · zero latency
+              sets the style
             </text>
           </view>
 
@@ -276,10 +280,10 @@ const flashMain = (event: MainThread.TouchEvent) => {
             (bindtap)="onBgTap()"
           >
             <text class="text-sm font-semibold text-white">
-              Background thread
+              Template handler
             </text>
             <text class="mt-1 text-[11px] text-white/70 text-center">
-              {{ bgTaps() }} taps · cross-thread
+              {{ bgTaps() }} taps · signal
             </text>
           </view>
         </view>
@@ -317,8 +321,8 @@ const flashMain = (event: MainThread.TouchEvent) => {
         </view>
         <ui-text variant="muted" class="mt-4">
           It mirrors React Lynx's main-thread scripts: gesture and animation
-          handlers stay off the background thread, so they respond at native
-          frame rate.
+          handlers change the element directly instead of waiting for Angular to
+          re-render, so they keep up with the finger.
         </ui-text>
       </ui-card>
     </app-demo-screen>
@@ -333,12 +337,12 @@ export class WorkletDirectiveDemo {
   readonly springPress = springPress;
   readonly flashMain = flashMain;
 
-  /** The background-thread half of the A/B tile. */
+  /** The template-handler half of the A/B tile. */
   readonly bgTaps = signal(0);
   readonly bgColor = signal('#6366f1');
 
   // Same palette as the worklets, but here it drives an Angular signal binding
-  // so the recolor takes the full cross-thread path for the comparison.
+  // so the recolor goes through change detection for the comparison.
   readonly #bgPalette = [
     '#6366f1',
     '#8b5cf6',
@@ -349,14 +353,8 @@ export class WorkletDirectiveDemo {
   ];
 
   onBgTap(): void {
-    // Defer the signal writes out of the native bindtap callback: mutating state
-    // synchronously inside a Lynx event handler can flush the renderer mid-frame
-    // and crash. The setTimeout hop is itself part of what makes this path
-    // slower than the worklet — exactly the latency the demo contrasts.
-    setTimeout(() => {
-      const next = this.bgTaps() + 1;
-      this.bgTaps.set(next);
-      this.bgColor.set(this.#bgPalette[next % this.#bgPalette.length]!);
-    }, 0);
+    const next = this.bgTaps() + 1;
+    this.bgTaps.set(next);
+    this.bgColor.set(this.#bgPalette[next % this.#bgPalette.length]!);
   }
 }

@@ -8,10 +8,10 @@ Built with the [UI components](/dolan/): [Avatar](/dolan/avatar), [Badge](/dolan
 
 ## What it shows
 
-- **Avatar fallback** — `fallback="AJ"` shows initials when there's no photo.
+- **Avatar fallback** — `[fallback]="initials()"` shows initials when there's no photo. `initials` is a `computed()` from the saved name.
 - **Vertical separators** — `orientation="vertical"` divides the Posts, Followers and Following stats.
 - **Editing in a sheet** — Edit Profile opens a Sheet that slides up from the bottom, so there's no navigation to a new screen.
-- **Draft, then save** — the sheet edits a copy in `editBio`. Save copies it into `bio`, and Cancel closes the sheet without saving.
+- **Draft, then save** — the sheet edits copies in `editName` and `editBio`. Save copies them into `name` and `bio`, and Cancel closes the sheet without saving. Opening the sheet starts again from the saved values.
 - **Card sections** — a Card with a header and content groups the About text.
 
 ## Related

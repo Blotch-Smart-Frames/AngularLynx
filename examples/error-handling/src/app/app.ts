@@ -10,7 +10,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           Error Handling
         </text>
         <text class="mb-5 text-[13px] text-zinc-500">
-          Catch and display runtime errors via __lynxLastError.
+          Show the last uncaught error, which LynxErrorHandler saves in
+          __lynxLastError.
         </text>
 
         <view
@@ -27,12 +28,17 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             class="uppercase mb-2.5 text-[11px] font-bold tracking-[0.5px] text-zinc-400"
             >__lynxLastError
           </text>
+          <!-- Each color is bound on its own condition: with two
+               background (or text) colors on one element, the stylesheet's
+               order decides, not the binding. -->
           <view
-            class="rounded-lg bg-zinc-100 p-3.5"
+            class="rounded-lg p-3.5"
+            [class.bg-zinc-100]="!lastError()"
             [class.bg-red-50]="!!lastError()"
           >
             <text
-              class="text-xs text-zinc-500 break-all"
+              class="text-xs break-all"
+              [class.text-zinc-500]="!lastError()"
               [class.text-red-800]="!!lastError()"
             >
               {{ lastError() || '(none)' }}
@@ -48,15 +54,17 @@ export class App {
   readonly lastError = signal('');
 
   throwError(): void {
-    setTimeout(() => {
-      try {
-        throw new Error('Example error from component');
-      } catch (e) {
-        const err = e as Error;
-        (globalThis as any).__lynxLastError =
-          `${err.name}: ${err.message}\n${err.stack ?? ''}`;
-        this.lastError.set((globalThis as any).__lynxLastError);
-      }
-    }, 0);
+    // Nothing catches this error, so Angular hands it to LynxErrorHandler (set
+    // up by provideRenderer()), which saves it in __lynxLastError and reports
+    // it to Lynx. Lynx Explorer shows its error screen for that report.
+    //
+    // __lynxLastError is a plain global, so copying it into a signal is what
+    // re-renders the screen. Angular handles the error synchronously, as the
+    // throw leaves this handler, so a microtask queued first reads it after
+    // it has been saved.
+    queueMicrotask(() =>
+      this.lastError.set((globalThis as any).__lynxLastError ?? ''),
+    );
+    throw new Error('Example error from component');
   }
 }

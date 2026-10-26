@@ -7,7 +7,8 @@ A profile form built from plain `<input>` and `<textarea>` elements, with focus 
 ## What it shows
 
 - **`(bindinput)`** — fires on every keystroke, with the new value in `$event.detail.value`. See [`<input>`](/api/elements/input).
-- **`(bindfocus)` and `(bindblur)`** — track the focused field so its border can change color.
+- **`(bindfocus)` and `(bindblur)`** — track the focused field so its border can change color. `borderClass()` picks one border color per field, since two color classes on one element leave the choice to the stylesheet's order. On iOS, the focused field doesn't repaint, so the color shows on Android and in the web preview only.
+- **`type="email"`** — opens the keyboard for typing an email address.
 - **`confirm-type`** — sets the label of the on-screen keyboard's return key, here `next`.
 - **`<textarea>`** — multi-line input with the same events. See [`<textarea>`](/api/elements/textarea).
 - **Validation with `computed()`** — `validEmail` checks the address, and errors appear only after you tap Save Profile.

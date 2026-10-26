@@ -8,7 +8,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
       <view class="items-center p-6">
         <text class="mb-1 text-[28px] font-bold text-zinc-900">Home Page</text>
         <text class="mb-6 text-[13px] text-zinc-500 text-center">
-          This page is the "home" project in angular.json.
+          This page is the "main" project in angular.json.
         </text>
 
         <view

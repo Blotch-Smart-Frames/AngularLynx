@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
@@ -73,7 +73,7 @@ const SAMPLE_HTML = `
         -->
         @if (source() === 'url') {
           <webview
-            id="kitchen-sink-webview"
+            #browser
             class="h-full w-full"
             src="https://angular.dev"
             (bindload)="status.set('Loaded angular.dev')"
@@ -81,7 +81,7 @@ const SAMPLE_HTML = `
           ></webview>
         } @else {
           <webview
-            id="kitchen-sink-webview"
+            #browser
             class="h-full w-full"
             [html]="html"
             (bindload)="status.set('Loaded inline HTML')"
@@ -95,6 +95,10 @@ const SAMPLE_HTML = `
 export class WebViewDemo {
   readonly html = SAMPLE_HTML;
 
+  // Both branches of the @if name their web view #browser, so this is
+  // whichever one is on screen.
+  readonly browser = viewChild('browser', { read: ElementRef });
+
   readonly source = signal<Source>('url');
   readonly status = signal('Loading…');
 
@@ -105,16 +109,13 @@ export class WebViewDemo {
   }
 
   /**
-   * reload is a UI method of the native web view, not an attribute, so it is
-   * invoked through SelectorQuery.
+   * reload is a UI method of the native web view, not an attribute. Template
+   * handlers run on the main thread, which has no lynx.createSelectorQuery(),
+   * so the method is called on the element itself.
    */
   reload(): void {
     this.status.set('Reloading…');
-    lynx
-      .createSelectorQuery()
-      .select('#kitchen-sink-webview')
-      .invoke({ method: 'reload', params: {} })
-      .exec();
+    this.browser()?.nativeElement.invoke?.('reload', {});
   }
 
   onError(event: Event): void {

@@ -20,9 +20,9 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             Card Layout
           </text>
           <view class="rounded-[10px] bg-zinc-100 p-4">
-            <view class="flex-row items-center">
+            <view class="flex-row items-center flex">
               <view
-                class="h-10 w-10 items-center rounded-[20px] bg-indigo-500 justify-center"
+                class="h-10 w-10 items-center rounded-[20px] bg-indigo-500 flex justify-center"
               >
                 <text class="text-base font-bold text-white">A</text>
               </view>

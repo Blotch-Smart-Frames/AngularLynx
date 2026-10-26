@@ -38,7 +38,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
             @for (item of items(); track item.id) {
               <list-item [attr.item-key]="item.id">
                 <view
-                  class="flex-row items-center border-b border-zinc-200 py-3"
+                  class="flex-row items-center border-b border-zinc-200 py-3 flex"
                 >
                   <view
                     class="h-8 w-8 items-center rounded-[16px] bg-indigo-50 justify-center"

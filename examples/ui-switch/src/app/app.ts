@@ -29,12 +29,12 @@ import { UiLabel } from '../components/ui/label';
         <!-- Switch with description -->
         <view class="flex-row items-center flex justify-between">
           <view class="flex-col gap-1 flex">
-            <ui-label>Dark Mode</ui-label>
+            <ui-label>Low Power Mode</ui-label>
             <text class="text-xs text-muted-foreground">
-              Use dark color theme
+              Reduce background activity
             </text>
           </view>
-          <ui-switch [(checked)]="darkMode" />
+          <ui-switch [(checked)]="lowPower" />
         </view>
 
         <!-- Disabled switch (off) -->
@@ -59,7 +59,7 @@ import { UiLabel } from '../components/ui/label';
             Bluetooth: {{ bluetooth() }}
           </text>
           <text class="text-xs text-muted-foreground">
-            Dark Mode: {{ darkMode() }}
+            Low Power Mode: {{ lowPower() }}
           </text>
         </view>
       </view>
@@ -69,5 +69,5 @@ import { UiLabel } from '../components/ui/label';
 export class App {
   wifi = signal(true);
   bluetooth = signal(false);
-  darkMode = signal(false);
+  lowPower = signal(false);
 }

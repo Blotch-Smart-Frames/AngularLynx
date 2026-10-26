@@ -1,14 +1,14 @@
 # Error Handling
 
-Catch an error in a tap handler and show its message and stack on screen. On-screen errors help when no debugger is connected to the phone.
+Throw an uncaught error from a tap handler and show the text AngularLynx saved for it on screen. On-screen errors help when no debugger is connected to the phone.
 
 <Go example="error-handling" defaultFile="src/app/app.ts" />
 
 ## What it shows
 
-- **`try`/`catch` in a handler** — the error is caught, and its name, message and stack go into a signal.
-- **`__lynxLastError`** — a global where AngularLynx's error handler writes the last uncaught error. The example writes its caught error there too. See [`LynxErrorHandler`](/api/angular-lynx/errors-and-logging).
-- **Errors in a `<text>`** — the screen shows the saved text, or "(none)". See [Debugging](/guide/debugging).
+- **An uncaught error** — the tap handler throws, and nothing catches it. Angular passes it to `LynxErrorHandler`, which `provideRenderer()` sets up. In [Lynx Explorer](/guide/glossary#lynx-explorer), Lynx's error screen opens. See [Handling errors](/guide/error-handling).
+- **`__lynxLastError`** — a global where `LynxErrorHandler` saves the last uncaught error's name, message and stack as text. See [`LynxErrorHandler`](/api/angular-lynx/errors-and-logging).
+- **Errors in a `<text>`** — a microtask, queued before the throw, copies the saved text into a signal once the handler has saved it. The screen shows it, or "(none)". See [Debugging](/guide/debugging).
 
 ## Related
 

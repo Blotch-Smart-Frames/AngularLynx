@@ -10,7 +10,7 @@ Built with the [UI components](/dolan/): [Progress](/dolan/progress), [Radio Gro
 
 - **A step wizard** — `step()` and `@if` pick the visible panel, and `computed()` derives the Progress value.
 - **Single choice** — a Radio Group with `[(value)]` picks one role.
-- **Selectable cards** — each interest row is tappable and holds a Checkbox. Class bindings highlight the selected rows.
+- **Selectable cards** — each interest row is tappable and holds a Checkbox. A tap on the box bubbles up to the row, so only the row's `(bindtap)` toggles the interest. Class bindings highlight the selected rows.
 - **A summary** — the last step lists the choices in a Card, with their names looked up by `computed()`.
 
 ## Related

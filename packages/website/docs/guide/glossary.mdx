@@ -52,10 +52,6 @@ Lynx's name for a function that runs on the [main thread](#main-thread). Same as
 
 A function that a native element exposes, such as scrolling a `<scroll-view>` to a position or playing a `<video>`. You call it with the element's `invoke()` method. See [Call element methods](/guide/selector-query).
 
-### Element pool
-
-A limit on how many native elements an app can create, found in an on-device crash: about 256 slots, and removing an element doesn't free its slot. AngularLynx keeps the views of routes you leave alive to create fewer elements. See [Renderer internals](/guide/renderer-architecture#the-element-pool).
-
 ### Exposure
 
 Lynx's term for an element becoming visible on screen, and "disexposure" for it leaving. It's like `IntersectionObserver` or impression tracking on the web. See [Detect when elements are visible](/guide/exposure).

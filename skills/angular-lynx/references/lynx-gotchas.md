@@ -4,10 +4,6 @@ Curated list of Lynx-vs-web differences that cause bugs. Organized by severity.
 
 ## Critical (Will Crash or Break Your App)
 
-### Element pool exhaustion
-
-Lynx has ~256 native element slots. `__RemoveElement` detaches but doesn't free slots. After ~9 navigations (default Angular destroy-on-navigate), the app crashes. **Fix:** Use `LynxRouteReuseStrategy` (provided automatically by `provideRouter`).
-
 ### DOM mutations in event worklets
 
 Synchronous DOM mutations inside `bindtap`/`bindinput` handlers crash the app. **Fix:** Wrap all tree-mutating operations in `setTimeout(() => { ... }, 0)`.

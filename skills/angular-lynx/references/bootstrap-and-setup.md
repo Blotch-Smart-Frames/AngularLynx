@@ -71,7 +71,7 @@ ng generate component my-feature  # A component with Lynx elements
 
 - **`provideRenderer()`** — Replaces Angular's default DOM `RendererFactory2` with `LynxRendererFactory2`. Provides `LynxDocument`, which calls `__CreateElement`, `__SetAttribute`, etc. Also provides `DOCUMENT` mock and `APP_BASE_HREF`.
 
-- **`provideRouter(routes)`** — Replaces browser routing with in-memory routing (`LynxLocationStrategy`). Includes `LynxRouteReuseStrategy` to prevent element pool exhaustion. Adds `withRouterConfig({ resolveNavigationPromiseOnError: true })` so an unhandled navigation error can't leave a blank screen.
+- **`provideRouter(routes)`** — Replaces browser routing with in-memory routing (`LynxLocationStrategy`). Adds `withRouterConfig({ resolveNavigationPromiseOnError: true })` so an unhandled navigation error can't leave a blank screen.
 
 - **`bootstrapApplication()`** — On main thread: waits for Lynx's `renderPage` callback before bootstrapping Angular. On background thread: doesn't bootstrap, and returns a promise that never settles; only top-level code runs there. Also installs polyfills for `AbortController`, `queueMicrotask`, `setTimeout`/`setInterval` (from `lynx` global), and `document`/`window` mocks.
 

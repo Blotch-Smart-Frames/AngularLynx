@@ -8,25 +8,32 @@ import type {
 /**
  * Route reuse strategy that keeps component views alive across navigations.
  *
- * ## Why this is required on Lynx
+ * Opt-in: `provideRouter()` doesn't install it, so leaving a route destroys
+ * its components, as Angular does on the web. Provide it yourself to keep
+ * every visited route's component, and its state, alive:
  *
- * Lynx's native element APIs (`__CreateView`, `__CreateText`, etc.) allocate
- * elements in a fixed-size native pool. `__RemoveElement` detaches an element
- * from the tree but does NOT free its pool slot — there is no `__ReleaseElement`
- * API in Lynx's public surface. Angular's default `RouteReuseStrategy` destroys
- * components on every navigation, creating fresh native elements each time. Those
- * freed elements accumulate in the pool until it overflows (~256 slots on device),
- * causing a hard native crash on the 9th navigation in a back-and-forth pattern.
+ * ```typescript
+ * providers: [
+ *   provideRouter(routes),
+ *   { provide: RouteReuseStrategy, useClass: LynxRouteReuseStrategy },
+ * ]
+ * ```
  *
- * ## What this strategy does
+ * Nothing is ever evicted, and `ngOnDestroy()` doesn't run when you leave a
+ * route.
  *
- * Instead of destroying a component when navigating away, Angular calls
- * `ViewContainerRef.detach()`. The component's DOM elements are removed from the
- * native tree (the slots are occupied but unused). When navigating back,
- * `ViewContainerRef.insert()` re-adds those same native elements to the tree —
- * reusing their existing pool slots with no new allocations. The pool stays bounded
- * by (initial elements) + (max elements for any single route), regardless of how
- * many times the user navigates.
+ * ## Why it exists
+ *
+ * `provideRouter()` used to install it. A crash investigation in May 2026
+ * blamed a ~256-slot native element pool that `__RemoveElement` never freed,
+ * and detaching views was meant to reuse their elements. Neither holds on
+ * Lynx 4.1 (measured October 2026 on the iOS Simulator and an Android
+ * emulator, issue #68): 400 navigations between two 300-element routes
+ * created 121,527 native elements without a crash, with this strategy and
+ * with Angular's default alike. A re-attached view's native elements were
+ * destroyed when it was detached, so `LynxElement` rebuilds them from cache
+ * (`#recreateSubtree`), and a revisit creates as many elements as a fresh
+ * route.
  */
 @Injectable()
 export class LynxRouteReuseStrategy implements RouteReuseStrategy {
@@ -38,7 +45,7 @@ export class LynxRouteReuseStrategy implements RouteReuseStrategy {
   }
 
   shouldDetach(_route: ActivatedRouteSnapshot): boolean {
-    // Always detach instead of destroy — keeps native elements in the pool.
+    // Always detach instead of destroy, so the component and its state live on.
     return true;
   }
 

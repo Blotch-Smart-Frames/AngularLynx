@@ -1,13 +1,12 @@
 # Content projection
 
-`<ng-content>` lets a component wrap content that its parent passes in. Cards, labels and every [UI component](/dolan/) are built this way. It works on [Lynx](/guide/glossary#lynx), with four rules that come from Lynx's elements.
+`<ng-content>` lets a component wrap content that its parent passes in. Cards, labels and every [UI component](/dolan/) are built this way. It works on [Lynx](/guide/glossary#lynx), with three rules that come from Lynx's elements.
 
 ## The Lynx rules
 
 1. **Projected text must land inside a `<text>`.** Lynx renders text only inside `<text>`. If your component takes text, put the `<ng-content>` inside a `<text>`. Text projected into a `<view>` doesn't appear.
 2. **A nested `<text>` is inline.** When the parent passes `<text>` elements into your `<text>`, they flow as styled runs, like `<span>`s.
 3. **The host element is a real box.** `<app-card>` becomes a plain, unstyled `<view>` in the layout, between the parent and your template. When the component must fill or stretch, put the classes on the host with `host: { class: '…' }`.
-4. **Each projected element takes a native slot.** Lynx has a fixed number of slots for native elements, the [element pool](/guide/glossary#element-pool). To show hundreds of items, use [`<list>`](/api/elements/list), which only creates the rows on screen.
 
 ## Project into a view
 
@@ -175,5 +174,4 @@ export class ItemList {
 ## Related
 
 - [Elements and layout](/guide/elements/): the `<text>` and layout rules
-- [Glossary: element pool](/guide/glossary#element-pool)
 - [Content projection on angular.dev](https://angular.dev/guide/components/content-projection)

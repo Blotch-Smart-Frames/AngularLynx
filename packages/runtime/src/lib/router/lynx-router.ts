@@ -7,7 +7,6 @@ import {
 } from '@angular/core';
 import {
   provideRouter as ngProvideRouter,
-  RouteReuseStrategy,
   type RouterFeatures,
   type Routes,
   withRouterConfig,
@@ -15,7 +14,6 @@ import {
 import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
-import { LynxRouteReuseStrategy } from './lynx-route-reuse-strategy';
 
 /**
  * Provides Angular Router configured for the Lynx runtime.
@@ -37,13 +35,12 @@ export const provideRouter = (
     // so any access to `pathname`/`href` throws a TypeError that silently kills navigation.
     { provide: PlatformLocation, useClass: LynxPlatformLocation },
     { provide: LocationStrategy, useClass: LynxLocationStrategy },
-    // Lynx's native element pool is finite (~256 slots on device) and
-    // __RemoveElement only detaches elements — it does not free pool slots.
-    // Angular's default strategy destroys components on navigation, creating
-    // fresh elements each time and exhausting the pool (hard crash on ~9th nav).
-    // LynxRouteReuseStrategy detaches views instead: elements are removed from
-    // the tree but their pool slots are reused when the route is revisited.
-    { provide: RouteReuseStrategy, useClass: LynxRouteReuseStrategy },
+    // No RouteReuseStrategy: leaving a route destroys it, as Angular does on
+    // the web. This used to install LynxRouteReuseStrategy against a supposed
+    // ~256-slot native element pool. Measured on Lynx 4.1 (iOS and Android,
+    // October 2026), there's no such limit, and the strategy saved no
+    // elements anyway: a re-attached route rebuilds them (#recreateSubtree in
+    // lynx-element.ts). See lynx-route-reuse-strategy.ts.
     ngProvideRouter(
       routes,
       // Unhandled navigation promise rejections (e.g. from unmatched routes or

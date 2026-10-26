@@ -37,13 +37,13 @@ function provideRouter(
 
 Calls Angular's `provideRouter()` with your routes and features, and adds the Lynx pieces:
 
-| Provides             | As                                                            | Why                                         |
-| -------------------- | ------------------------------------------------------------- | ------------------------------------------- |
-| `PlatformLocation`   | `LynxPlatformLocation`                                        | Lynx has no URL bar and no browser history. |
-| `LocationStrategy`   | `LynxLocationStrategy`                                        | History lives in memory instead.            |
-| `RouteReuseStrategy` | `LynxRouteReuseStrategy`                                      | Keeps route views alive. See below.         |
-| Router config        | `withRouterConfig({ resolveNavigationPromiseOnError: true })` | A failed navigation can't crash the thread. |
+| Provides           | As                                                            | Why                                         |
+| ------------------ | ------------------------------------------------------------- | ------------------------------------------- |
+| `PlatformLocation` | `LynxPlatformLocation`                                        | Lynx has no URL bar and no browser history. |
+| `LocationStrategy` | `LynxLocationStrategy`                                        | History lives in memory instead.            |
+| Router config      | `withRouterConfig({ resolveNavigationPromiseOnError: true })` | A failed navigation can't crash the thread. |
 
+- **Leaving a route destroys its components,** as on the web: `provideRouter()` keeps Angular's own `RouteReuseStrategy`. To keep route views alive instead, provide [`LynxRouteReuseStrategy`](#lynxroutereusestrategy).
 - **Failed navigations** resolve to `false` instead of rejecting. Watch `Router.events` for `NavigationError` to detect them.
 - **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
 - **From an event handler,** wrap `router.navigate()` in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
@@ -56,10 +56,24 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 class LynxRouteReuseStrategy implements RouteReuseStrategy {}
 ```
 
-Keeps each route's component alive when you navigate away, and reattaches it when you come back. Lynx holds only a limited number of native elements (its [element pool](/guide/glossary#element-pool)), so recreating route views on every navigation crashes the app after a few round trips.
+Keeps each route's component alive when you navigate away, and reattaches it when you come back. `provideRouter()` doesn't install it. Provide it after `provideRouter()` to opt in:
+
+```typescript title="src/app/app.config.ts"
+import { RouteReuseStrategy } from '@angular/router';
+import { LynxRouteReuseStrategy, provideRouter } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    { provide: RouteReuseStrategy, useClass: LynxRouteReuseStrategy },
+  ],
+};
+```
 
 - `ngOnDestroy` doesn't run when you leave a route, and component state survives.
 - Views are stored by route path, so `/user/1` and `/user/2` share one stored view.
+- Nothing is ever evicted: every route you visit stays in memory.
+- It doesn't save native elements. A reattached route rebuilds its elements, as a new one creates them. See [Renderer internals](/guide/renderer-architecture#route-views).
 
 ### `LynxRouteReuseStrategy.shouldDetach()`
 

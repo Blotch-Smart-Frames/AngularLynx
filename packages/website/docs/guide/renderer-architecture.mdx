@@ -131,29 +131,18 @@ Angular moves a view by removing it and inserting it again in the same tick. `re
 
 A removal that isn't undone before the flush destroys the element's native view, and Lynx can't bring it back. So every `LynxElement` caches what was set on it: attributes, id, dataset, classes, styles, listeners, text and children. Inserting a destroyed element rebuilds it, and its subtree, from that cache. This is how content shown again by an `@if`, or a route you return to, still renders.
 
-## The element pool
+## Route views
 
-An on-device crash investigation found that Lynx keeps a fixed pool of native element slots, about 256 (see [Glossary](/guide/glossary#element-pool)). `__RemoveElement` doesn't free a slot, and Lynx has no public function that does. Angular's default router destroys a route's components on every navigation and creates new elements on return. The app crashed on about the ninth navigation.
+`provideRouter()` keeps Angular's own route reuse strategy, so leaving a route destroys its components, as on the web.
 
-**`LynxRouteReuseStrategy`** is the fix, and `provideRouter()` installs it:
-
-- **`shouldDetach()`** always returns `true`, so leaving a route detaches its view instead of destroying it.
-- **`store()` and `retrieve()`** keep detached views, keyed by the route's full path.
-- **`shouldReuseRoute()`** reuses a route when its config is the same.
-
-So component instances survive navigation, and `ngOnDestroy()` doesn't run when you leave a route.
-
-:::info Open question
-The strategy predates rebuilding on remount. A re-attached route now rebuilds its native elements from cache, so a revisit creates new elements. Whether the strategy still caps pool use hasn't been measured on a device since.
-:::
+It used to install `LynxRouteReuseStrategy`, which keeps every route's view alive. An early crash investigation had blamed a native element pool of about 256 slots that removing an element never freed. Measured on Lynx 4.1 in the iOS Simulator and an Android emulator, there's no such limit: 400 navigations between two pages of 300 elements created over 121,000 native elements, with no crash. The strategy saved none of them, because a reattached route rebuilds its elements from cache (see above). It's still exported, for apps that want route state to survive navigation.
 
 ## Routing without a browser
 
-`provideRouter()` from `@blotch/angular-lynx` wraps Angular's and swaps three providers:
+`provideRouter()` from `@blotch/angular-lynx` wraps Angular's and swaps two providers:
 
 - **`LynxPlatformLocation`** replaces `BrowserPlatformLocation`, which reads `window.location` and crashes on Lynx. It keeps location state in memory, parses URL strings by hand, and reports `href` as `lynx://app/…`. It needs its own `@Injectable()`: without one, Angular inherits `PlatformLocation`'s factory and builds the browser class.
 - **`LynxLocationStrategy`** replaces `PathLocationStrategy`. It keeps a history stack and an index in memory. `back()` and `forward()` move the index and notify `popstate` listeners.
-- **`LynxRouteReuseStrategy`**, described above.
 
 It also sets `resolveNavigationPromiseOnError: true`, so a failed navigation resolves to `false` instead of rejecting. Unhandled rejections there used to leave a blank screen. Listen for `NavigationError` to see failures.
 

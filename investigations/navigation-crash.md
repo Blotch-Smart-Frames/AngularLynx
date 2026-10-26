@@ -74,7 +74,7 @@ Since there is no console on the Lynx device, added on-screen error rendering:
 
 ---
 
-## Fix 3: `LynxRouteReuseStrategy` — Element Pool Exhaustion (2026-05-08)
+## Fix 3: `LynxRouteReuseStrategy` — Element Pool Exhaustion (2026-05-08, withdrawn)
 
 ### Root Cause Found
 
@@ -102,7 +102,12 @@ Wired into `provideRouter()` via `{ provide: RouteReuseStrategy, useClass: LynxR
 
 ### Status
 
-Fix applied. Testing on device required.
+Withdrawn (issue #68, 2026-10-26). The pool doesn't exist on Lynx 4.1, and the strategy never saved elements once the renderer rebuilt re-attached views:
+
+- A probe alternated 400 times between two routes of about 300 native elements each, on the iOS 27 Simulator and an Android API 34 emulator in Lynx Explorer 4.1. It created 121,527 native elements without a crash, more than 256 of them live at once.
+- The count was identical with `LynxRouteReuseStrategy` and with Angular's default strategy. A detached view's painting nodes die at the next flush, so re-inserting it rebuilds every element from cache (`#recreateSubtree` in `lynx-element.ts`).
+
+`provideRouter()` no longer installs the strategy; it's an opt-in for keeping route state. The 9th-navigation crash was most likely one of the other bugs in this file.
 
 ---
 

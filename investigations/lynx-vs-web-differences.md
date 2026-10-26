@@ -349,7 +349,7 @@ Navigate away from a route and back, and the whole view returns exactly as it wa
 
 ### What Lynx does
 
-`LynxRouteReuseStrategy` **detaches** a route on navigate-away and re-**inserts** the same view on return (to spare the finite native element pool — see the route-reuse entry below). Angular re-attaches a detached view by re-inserting only its **top-level** native node; nested `@if`/`@for` containers ride that node's subtree (`applyNodes` in `@angular/core` walks children only for `ng-container`/projection, not plain elements). On Lynx that subtree's painting nodes were destroyed on detach, so the renderer must rebuild the whole subtree from cache via `#recreateSubtree()`.
+`LynxRouteReuseStrategy` (opt-in since issue #68; `provideRouter()` used to install it) **detaches** a route on navigate-away and re-**inserts** the same view on return. Any `ViewContainerRef.detach()` + `insert()` takes the same path. Angular re-attaches a detached view by re-inserting only its **top-level** native node; nested `@if`/`@for` containers ride that node's subtree (`applyNodes` in `@angular/core` walks children only for `ng-container`/projection, not plain elements). On Lynx that subtree's painting nodes were destroyed on detach, so the renderer must rebuild the whole subtree from cache via `#recreateSubtree()`.
 
 That rebuild walks each wrapper's **canonical** `#children` — the wrapper list Angular stores in its LView. The break: `parentNode()`/`nextSibling()/querySelector()` used to mint a **throwaway** `LynxElement` for a native ref (there is no native-ref → wrapper lookup). Angular finds an embedded view's insertion parent via `renderer.parentNode(anchorComment)`, so `@if`/`@for` content was inserted through that throwaway and adopted into _its_ `#children`, not the canonical parent's. It rendered fine on first paint (the throwaway drives the same native ref), but was invisible to `#recreateSubtree` — so on route re-entry the containers rebuilt and the embedded content did not.
 
@@ -746,7 +746,7 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 ---
 
-## Native element pool is finite (~256 slots); `__RemoveElement` does not free slots
+## There is no ~256-slot native element pool — removed elements don't run the app out of anything
 
 ### What you'd expect (web)
 
@@ -754,11 +754,13 @@ DOM elements are garbage-collected when removed from the tree and no longer refe
 
 ### What Lynx does
 
-Lynx maintains a **fixed-size native element pool** (~256 slots on device). `__RemoveElement` detaches an element from the tree but **does not free its pool slot**. There is no public `__ReleaseElement` API (it exists in React Lynx source but is commented out). Once the pool is exhausted, the app crashes with a hard native crash — deterministically on around the 9th navigation when using Angular's default destroy-on-navigate behavior.
+The same, as far as an app can tell. A May 2026 crash investigation (`investigations/navigation-crash.md`) concluded that Lynx had a fixed pool of about 256 native element slots that `__RemoveElement` never freed, crashing on about the 9th navigation, and `provideRouter()` installed `LynxRouteReuseStrategy` to keep route views alive.
 
-### The fix
+Re-measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and Android API 34 emulator): a probe app alternated 400 times between two routes of 100 rows each (about 300 native elements per page, more than 256 live at once), counting every `__Create*` call on the main thread. Both platforms created **121,527** native elements with no crash, and the count was **identical** with `LynxRouteReuseStrategy` and with Angular's default strategy. The strategy saved nothing: a detached view's painting nodes die at the next flush, so re-inserting it rebuilds its elements from cache (recreate-on-remount, above), the same number a fresh route creates.
 
-Use `LynxRouteReuseStrategy` (see `packages/runtime/src/lib/lynx-route-reuse-strategy.ts`) to detach and reattach route component trees instead of destroying and recreating them. The same native elements are reused across navigations, preventing pool exhaustion.
+### What changed
+
+`provideRouter()` no longer installs a `RouteReuseStrategy`, so leaving a route destroys it, as on the web. `LynxRouteReuseStrategy` stays exported as an opt-in for apps that want route state to survive navigation. The original crash was probably one of the other causes in `navigation-crash.md`, such as the `x-list` use-after-free or mutating the tree inside a worklet.
 
 ---
 
@@ -1531,7 +1533,7 @@ When `display: linear` (the Lynx default), two custom properties control layout:
 
 ---
 
-## Network APIs (`fetch`, `XMLHttpRequest`, `WebSocket`) are not available
+## Network APIs: only `fetch`, and only on the background thread
 
 ### What you'd expect (web)
 
@@ -1539,7 +1541,19 @@ When `display: linear` (the Lynx default), two custom properties control layout:
 
 ### What Lynx does
 
-**None of these are available** in the Lynx JS runtime. There is no `fetch`, no `XHR`, no `WebSocket`. Network requests must be made via native bridge modules exposed through `lynx.requireModule()`. This means standard Angular `HttpClient` (which ultimately uses `fetch` or `XHR`) **cannot work without a custom HTTP adapter**.
+Measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and Android API 34 emulator), with `typeof` in app code on each thread:
+
+| Thread | `fetch` | `lynx.fetch` | `XMLHttpRequest` | `WebSocket` |
+| --- | --- | --- | --- | --- |
+| Main (where Angular runs) | `undefined` | — | `undefined` | `undefined` |
+| Background | `function` | `function` | `undefined` | `undefined` |
+
+- **`fetch` exists only on the background thread.** Lynx's docs tag it `BTS`. Background code is wrapped in a function whose parameters include `fetch`, `XMLHttpRequest` and `WebSocket` (`core/runtime/js/js_bundle.cc`), and rspeedy's runtime wrapper adds `fetch = fetch || lynx.fetch`. The wrapper's `XMLHttpRequest` and `WebSocket` parameters are `undefined` in Lynx Explorer.
+- **The main thread has none of them**, and since issue #81 every component, service, interceptor and `(bindtap)` handler runs there. So Angular's `HttpClient` fails as is: its default backend needs `XMLHttpRequest`, and `withFetch()` needs `fetch` (issue #85).
+- **To make a request,** call `fetch` in a `backgroundFn()` and await it from the main thread with `runOnBackground()`. Only JSON-serializable results come back.
+- **Lynx for Web** uses the browser's own `fetch`, with the web's rules (Lynx's `fetch` docs).
+
+How Lynx's `fetch` differs from the web's is in the next two entries.
 
 ---
 
@@ -1926,14 +1940,14 @@ The Fetch API is available with CORS enforcement, `FormData`, `Blob`, redirects,
 
 ### What Lynx does
 
-`fetch()` IS available in Lynx, but with important differences:
+On the background thread (the only one that has it; see "Network APIs" above), Lynx's `fetch()` differs from the web's (Lynx's `fetch` docs):
 
 - **No CORS** — Lynx runs as a native client, not a browser origin. All requests are allowed regardless of `Access-Control-Allow-Origin` headers.
 - **No `FormData`** — cannot send multipart form data.
 - **No `Blob`** — binary data handling is limited.
-- **No redirect** — redirect behavior may differ from web.
-- **Streaming IS supported** — `response.body.getReader()` works for server-sent streams.
-- **EventSource IS supported** — for Server-Sent Events.
+- **No redirect or `keepalive` options** — redirect behavior may differ from web.
+- **Streaming needs a page config flag** — `response.body.getReader()` is experimental and needs `enableFetchAPIStandardStreaming` (next entry).
+- **Server-Sent Events** use `lynx.EventSource`, not a global `EventSource`.
 
 ---
 
@@ -2440,11 +2454,11 @@ Tapping a non-focusable element may blur the current focus target (implementatio
 
 ---
 
-## Angular Renderer2 ignores namespaces, listener options, and style flags
+## Angular Renderer2 ignores namespaces and listener options
 
 ### What you'd expect (Angular web)
 
-`Renderer2.createElement()` supports SVG namespaces. `Renderer2.listen()` supports passive, capture, and once options. `Renderer2.setStyle()` supports `RendererStyleFlags2` for sanitization.
+`Renderer2.createElement()` supports SVG namespaces. `Renderer2.listen()` supports passive, capture, and once options. `Renderer2.setStyle()` supports `RendererStyleFlags2`.
 
 ### What Lynx does
 
@@ -2452,12 +2466,12 @@ The Lynx `Renderer2` implementation passes through element creation and style ch
 
 - **Namespace parameters** are silently ignored in `createElement()`, `setAttribute()`, and `removeAttribute()`. SVG element creation via namespace does not work through Angular's API (use the `<svg>` Lynx element directly).
 - **Listener options** (`passive`, `capture`, `once`) are ignored in `listen()`. All events are registered with default behavior.
-- **`RendererStyleFlags2`** flags (sanitization, important) are ignored in `setStyle()` and `removeStyle()`. No CSS sanitization is applied.
+- **`RendererStyleFlags2`**: `Important` appends `!important` to the value, and `DashCase` keeps the name as written (see the style-name entry). No CSS sanitization is applied.
 - **`setValue(node, value)`** sets `node.setAttribute('text', value)` rather than `node.textContent = value`. This works because Lynx text nodes use a `text` attribute internally.
 
 ---
 
-## CSS style property names are NOT transformed between camelCase and kebab-case
+## CSS style property names: the renderer converts camelCase to kebab-case
 
 ### What you'd expect (web)
 
@@ -2465,7 +2479,7 @@ The Lynx `Renderer2` implementation passes through element creation and style ch
 
 ### What Lynx does
 
-The AngularLynx renderer passes style property names to `__AddInlineStyle()` **without any transformation**. There is no camelCase-to-kebab-case conversion. If you use Angular's `[style.backgroundColor]="'red'"`, the property name `backgroundColor` is passed as-is to the Lynx native layer. Whether Lynx's CSS engine accepts camelCase names is implementation-dependent — use **kebab-case** (`background-color`) in all style bindings and CSS declarations to be safe.
+`__AddInlineStyle()` takes CSS property names as CSS writes them (`background-color`), and doesn't convert camelCase. So the renderer does: `setStyle()` and `removeStyle()` in `packages/runtime/src/lib/renderer/renderer.ts` turn `backgroundColor` into `background-color`, unless Angular passes `RendererStyleFlags2.DashCase`, which it does for any name that already has a dash (including custom properties such as `--myColor`, which keep their case). `[style.backgroundColor]` and `[style.background-color]` both work.
 
 ---
 
@@ -2735,7 +2749,7 @@ The default `position` is **`relative`**. This means `top`/`left`/`right`/`botto
 
 ---
 
-## `Intl` API is not available — i18n libraries require polyfills
+## `Intl` is missing where Angular runs — i18n libraries that need it require polyfills
 
 ### What you'd expect (web)
 
@@ -2743,11 +2757,18 @@ The default `position` is **`relative`**. This means `top`/`left`/`right`/`botto
 
 ### What Lynx does
 
-The `Intl` API is **not implemented** in Lynx's PrimJS runtime. This breaks any i18n or localization library that relies on it:
+Measured for issue #68 (2026-10-26, Lynx Explorer 4.1) with `typeof Intl`:
+
+| Thread | iOS | Android |
+| --- | --- | --- |
+| Main (PrimJS, where Angular runs) | `undefined` | `undefined` |
+| Background | `object` (JavaScriptCore) | `undefined` (PrimJS) |
+
+So any code that runs in a component, service or template handler has no `Intl`, on either platform. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
 
 - **i18next v24+** requires `Intl.PluralRules` — use v23 with `compatibilityJSON: 'v3'` or polyfill `@formatjs/intl-pluralrules`.
-- **Angular `@angular/common` pipes** (`DatePipe`, `DecimalPipe`, `CurrencyPipe`) use `Intl` internally — they will throw at runtime without polyfills.
-- Polyfills needed: `@formatjs/intl-numberformat`, `@formatjs/intl-datetimeformat`, `@formatjs/intl-pluralrules`, etc.
+- **Angular's own pipes don't need it.** `DatePipe`, `DecimalPipe`, `CurrencyPipe`, `PercentPipe` and `I18nPluralPipe` format from the locale data registered with `registerLocaleData()` (`en-US` is built in). `@angular/common` 22 never calls `Intl`.
+- Libraries that do need it: polyfill with `@formatjs/intl-numberformat`, `@formatjs/intl-datetimeformat`, `@formatjs/intl-pluralrules`, etc.
 
 ---
 
@@ -2849,7 +2870,7 @@ Background-thread code can still be split normally. This means main-thread bundl
 
 ### What Lynx does
 
-While `fetch()` is available, **streaming body reading** via `response.body.getReader()` requires the build-time flag `enableFetchAPIStandardStreaming` to be set to `true`. Without this flag, `response.body` may not support the Readable Streams API. Additionally, third-party HTTP libraries may need adjustments due to subtle differences in Lynx's fetch implementation compared to the web spec (no CORS, no FormData/Blob, no redirect support).
+**Streaming body reading** via `response.body.getReader()` is experimental, and Lynx's networking guide says it needs the page config `enableFetchAPIStandardStreaming: true`. Without it, Lynx keeps a non-standard streaming fallback (`lynx_config.yml`), so `response.body` may not support the Readable Streams API. `pluginAngularLynx()` has no option for this flag yet. Additionally, third-party HTTP libraries may need adjustments due to subtle differences in Lynx's fetch implementation compared to the web spec (no CORS, no FormData/Blob, no redirect support).
 
 ---
 
@@ -3270,22 +3291,6 @@ This is why all element manipulation in Lynx goes through global `__*` functions
 
 ---
 
-## `fetch()` and network calls only work on the background thread — main thread cannot make HTTP requests
-
-### What you'd expect (web)
-
-`fetch()` is available in any execution context — main thread, web workers, service workers.
-
-### What Lynx does
-
-`fetch()` is **only available on the background thread**. The main thread runs minimal JavaScript (element creation and worklet execution) and has **no network access**. Attempting to call `fetch()` on the main thread will fail silently or throw. This means:
-
-- Event handlers prefixed with `main-thread:` cannot make network calls
-- Any HTTP logic must run on the background thread (the default for Angular code)
-- The `lynx` global may also expose a `lynx.fetch` binding on the background thread as an alternative to `globalThis.fetch`
-
----
-
 ## `filter` CSS property only works on `<x-view>` elements — not on `<x-image>` or `<x-text>`
 
 ### What you'd expect (web)
@@ -3501,49 +3506,6 @@ IFR imposes constraints: main-thread code must be synchronous (no async/await), 
 
 ---
 
-## fetch() is only available on the background thread
-
-### What you'd expect (web)
-
-`fetch()` is a global function available everywhere — event handlers, constructors, async callbacks, etc.
-
-### What Lynx does
-
-`fetch` is injected by Lynx's `tt.define()` module wrapper as a **function parameter**, not a global. It is only available on the **background thread** (where the JavaScript engine runs Angular). The **main thread** (Lepus, handles native UI and event handlers) does not receive `fetch` in its module scope — `typeof fetch === 'undefined'` there.
-
-This means:
-
-- Angular component constructors → background thread → `fetch` available ✓
-- `(bindtap)` event handlers → main thread → `fetch` unavailable ✗
-- `setTimeout` callbacks set from a tap handler → still main thread → `fetch` unavailable ✗
-
-Neither `globalThis.fetch` nor `lynx.fetch` fills the gap — all are `undefined` on the main thread.
-
-### Cross-thread logging via IPC
-
-To log from event handlers (main thread), use Lynx's RuntimeProxy IPC to relay to the background thread which does the actual fetch:
-
-```typescript
-// Main thread → background thread (fire and forget):
-lynx
-  .getJSContext()
-  .dispatchEvent({ type: '__lynx_log__', data: JSON.stringify(entry) });
-
-// Background thread: receive and fetch:
-lynx.getCoreContext().addEventListener('__lynx_log__', (event) => {
-  fetch(logServerUrl, { method: 'POST', body: event.data });
-});
-```
-
-This is the same mechanism React Lynx uses internally for `runOnBackground()`. See `LynxLoggerService` in `packages/runtime/src/lib/lynx-logger.service.ts` for the full implementation.
-
-### RuntimeProxy API summary
-
-| Thread            | To send TO other thread                  | To receive FROM other thread                       |
-| ----------------- | ---------------------------------------- | -------------------------------------------------- |
-| Main thread       | `lynx.getJSContext().dispatchEvent(e)`   | `lynx.getJSContext().addEventListener(type, cb)`   |
-| Background thread | `lynx.getCoreContext().dispatchEvent(e)` | `lynx.getCoreContext().addEventListener(type, cb)` |
-
 ## Tailwind CSS with AngularLynx
 
 ### Setup
@@ -3586,16 +3548,9 @@ Lynx CSS inheritance is **off by default**. `text-white` on a parent `<view>` do
 </view>
 ```
 
-### CSS variables require `enableCSSInheritance: true`
+### CSS variables inherit without `enableCSSInheritance`
 
-If `tailwind.config.ts` extends colors via `var(--color-*)`, the cascade must be enabled for the variables to reach child elements:
-
-```ts
-// lynx.config.ts
-pluginAngularLynx({ enableCSSInheritance: true });
-```
-
-For runtime theme switching via Angular style bindings (`[style]="themeVars()"`), also add `enableCSSInlineVariables: true`.
+Unlike `color` or `font-size`, CSS custom properties reach descendants with the default `enableCSSInheritance: false`, as Lynx's docs say. Measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS and Android): a variable set by a class two levels up, and one set in an ancestor's inline `style="--x: …"`, both reached a grandchild's `background-color: var(--x)`. This is how the `@blotch/ui` theme's `var(--primary)` colors work with no build flags. Nothing extra is needed for runtime theme switching with `[style]` bindings either.
 
 ## `__AddClass` takes a single class name, not a space-separated list
 
@@ -3604,29 +3559,6 @@ For runtime theme switching via Angular style bindings (`[style]="themeVars()"`)
 **Always use `__SetClasses(element, classString)` when replacing the entire `class` attribute**, as it correctly parses space-separated class lists. `__AddClass` should only be called with a single class name at a time.
 
 This is why the Angular renderer's `setAttribute('class', value)` must call `__SetClasses`, not `__AddClass`. React Lynx does the same: it calls `__SetClasses(element, className)` when applying the `className` prop.
-
----
-
-## Angular's template `i18n` attribute does not work — use `$localize` in code instead
-
-### What you'd expect (web)
-
-Angular's `i18n` attribute on template elements (e.g. `<span i18n>Hello</span>`) is the standard way to mark translatable content. The AOT compiler extracts the text and generates `ɵɵi18n` instructions in the compiled template.
-
-### What Lynx does
-
-The `ɵɵi18n` instruction creates i18n DOM nodes (text nodes, comment nodes) using internal Angular APIs that bypass `Renderer2`. These operations assume a browser DOM environment. On Lynx, where elements are created via `__CreateElement`/`__CreateRawText` and there's no real DOM, the i18n instruction fails silently — the component renders blank and crashes the router.
-
-### Workaround
-
-Use `$localize` tagged template literals in TypeScript code and bind the result via `{{ }}` interpolation. This goes through the normal text interpolation path (`ɵɵtextInterpolate`) which correctly uses the Lynx renderer:
-
-```typescript
-// DON'T: <text i18n>Hello</text>
-// DO:
-get greeting() { return $localize`Hello`; }
-// Template: <text>{{ greeting }}</text>
-```
 
 ---
 

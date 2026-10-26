@@ -32,8 +32,6 @@ These prevent crashes and silent failures. Violating any will break your app on-
 
 5. **Import `LYNX_ELEMENTS` in components.** Without the element directives, Lynx elements silently fall through as unknown custom elements with no type-checking.
 
-6. **The element pool is limited (~256 slots).** `__RemoveElement` only detaches, it doesn't free slots. Use the built-in `LynxRouteReuseStrategy` (provided by `provideRouter`) to avoid pool exhaustion during navigation.
-
 ## Bootstrap & Project Setup
 
 How to create and configure an AngularLynx application. Covers `bootstrapApplication()`, `provideRenderer()`, `provideRouter()`, app config, and the builders `ng add` sets up in `angular.json`.
@@ -60,7 +58,7 @@ Read [styling-and-css.md](references/styling-and-css.md)
 
 ## Routing
 
-In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy` and `LynxRouteReuseStrategy`. Lazy-loaded routes with `loadComponent`. Navigation must use `setTimeout` to escape event worklets.
+In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy`. Leaving a route destroys it, as on the web; `LynxRouteReuseStrategy` is an opt-in that keeps route views alive. Lazy-loaded routes with `loadComponent`. Navigation must use `setTimeout` to escape event worklets.
 
 Read [routing.md](references/routing.md)
 

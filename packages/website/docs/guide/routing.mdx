@@ -162,15 +162,10 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 | Going back                | Browser back button, `history.back()` | Android back button, `Location.back()` |
 | Navigating from a handler | Call it directly                      | Wrap it in `setTimeout`                |
 | Lazy routes               | Separate files, downloaded on demand  | Part of the bundle                     |
-| Leaving a route           | Its component is destroyed            | Its view is kept and reused            |
 
 ## Good to know
 
-AngularLynx keeps the view of every route you visit, instead of destroying it when you leave. Lynx doesn't free a destroyed view's native elements, so an app that recreated views on every navigation would run out of them (see [element pool](/guide/glossary#element-pool), and [Renderer internals](/guide/renderer-architecture) for the details). As a result:
-
-- **`ngOnDestroy` and `DestroyRef.onDestroy` don't run** when you leave a route, and `ngOnInit` doesn't run again when you come back.
-- **Timers, subscriptions and effects keep running** while a route is hidden. Pause them in `<router-outlet (detach)="…">` and restart them in `(attach)`.
-- **Component state survives**, such as signals and form values, until the app closes.
+Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and its state is gone when you come back. To keep route views alive instead, provide [`LynxRouteReuseStrategy`](/api/angular-lynx/routing#lynxroutereusestrategy). Its views stay in memory, with their timers and subscriptions running, until the app closes.
 
 ## Related
 

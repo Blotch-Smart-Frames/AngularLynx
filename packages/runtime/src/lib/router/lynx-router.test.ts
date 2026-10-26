@@ -8,6 +8,7 @@ import {
   platformBrowserTesting,
 } from '@angular/platform-browser/testing';
 import {
+  BaseRouteReuseStrategy,
   RouteReuseStrategy,
   ROUTES,
   type Routes,
@@ -57,10 +58,26 @@ describe('provideRouter', () => {
       );
     });
 
-    it('provides LynxRouteReuseStrategy as RouteReuseStrategy', () => {
+    it("keeps Angular's own RouteReuseStrategy, which destroys a route you leave", () => {
       const injector = createInjector([]);
 
-      expect(injector.get(RouteReuseStrategy)).toBeInstanceOf(
+      // Angular's DefaultRouteReuseStrategy isn't exported; it extends this.
+      const strategy = injector.get(RouteReuseStrategy);
+      expect(strategy).toBeInstanceOf(BaseRouteReuseStrategy);
+      expect(strategy).not.toBeInstanceOf(LynxRouteReuseStrategy);
+    });
+
+    it('lets an app opt in to LynxRouteReuseStrategy', () => {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideZonelessChangeDetection(),
+          provideRouter([]),
+          { provide: RouteReuseStrategy, useClass: LynxRouteReuseStrategy },
+        ],
+      });
+
+      expect(TestBed.inject(RouteReuseStrategy)).toBeInstanceOf(
         LynxRouteReuseStrategy,
       );
     });

@@ -175,6 +175,7 @@ The builders use the plugin you list instead of adding their own. Import from `@
 | `customCSSInheritanceList`      | `string[]` | —       | Inherit only these properties. Needs `enableCSSInheritance`                                                                                                          |
 | `enableCSSInvalidation`         | `boolean`  | `false` | Re-match combinator selectors such as `.dark .title` when a class changes at runtime. Without it, they only match when classes are first set. Costs some performance |
 | `defaultDisplayLinear`          | `boolean`  | `true`  | Give elements Lynx's `display: linear` unless they set `display`. With `false`, `flex` is the default                                                                |
+| `defaultOverflowVisible`        | `boolean`  | `true`  | Let elements draw outside their bounds unless they set `overflow`, as on the web. With `false`, elements clip their children by default, Lynx's older behavior       |
 | `enableRemoveCSSScope`          | `boolean`  | `false` | Stop scoping CSS to the components that import it, so every rule applies app-wide                                                                                    |
 | `removeDescendantSelectorScope` | `boolean`  | `false` | Let descendant selectors match across CSS scopes                                                                                                                     |
 
@@ -186,9 +187,9 @@ The builders use the plugin you list instead of adding their own. Import from `@
 | `enableA11y`                 | `boolean` | `true`  | Use Android's own accessibility views while a screen reader is on. Set it to `false` so UI test tools such as Maestro and Appium always see the elements |
 | `enableAccessibilityElement` | `boolean` | `false` | Make every element an accessibility element by default, as if it set `accessibility-element`                                                             |
 
-**Accepted but not used yet**
+**Deprecated**
 
-The plugin accepts these options, but doesn't read them yet: `defaultOverflowVisible` (default `true`), `enableICU` (`false`), `enableParallelElement` (`true`) and `pipelineSchedulerConfig` (`65536`).
+`enableICU`, `enableParallelElement` and `pipelineSchedulerConfig` have no effect, and never did: the plugin never passed them to Lynx, and Lynx's own build plugin no longer takes them. The build warns when your config sets one. Remove them; a future release drops them.
 
 ### Without the Angular CLI
 

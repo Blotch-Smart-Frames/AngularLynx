@@ -29,6 +29,7 @@ const entryOptions = {
   customCSSInheritanceList: [],
   debugInfoOutside: true,
   defaultDisplayLinear: true,
+  defaultOverflowVisible: true,
   enableA11y: true,
   enableAccessibilityElement: true,
   enableCSSInheritance: false,
@@ -331,6 +332,22 @@ describe('applyEntry', () => {
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).enableA11y).toBe(false);
+  });
+
+  it('passes the defaultOverflowVisible option to the template plugin', () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain, pluginUses } = createMockChain({
+      entries: { main: { values: () => ['./src/main.ts'] } },
+    });
+
+    // It used to be accepted and then dropped, so `false` had no effect.
+    applyEntry(api as never, {
+      ...entryOptions,
+      defaultOverflowVisible: false,
+    });
+    triggerChain(chain, { name: 'lynx', config: {} }, false);
+
+    expect((pluginUses[0].args[0] as any).defaultOverflowVisible).toBe(false);
   });
 
   it('tolerates an empty entry set (entries() returns null)', () => {

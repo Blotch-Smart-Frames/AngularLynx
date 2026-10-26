@@ -6,7 +6,7 @@ import {
   relayFunctions,
   relayModuleObject,
 } from '../background-call';
-import type { NativeModuleMap } from './native-module.types';
+import type { NativeModuleMap, NativeModuleProxy } from './native-module.types';
 
 /**
  * Wraps the Lynx native module bridge and JS module registry as an Angular injectable.
@@ -97,6 +97,8 @@ export class LynxNativeModule {
    * Augment the {@link NativeModuleMap} interface for type-safe access:
    *
    * ```typescript
+   * export {};
+   *
    * declare module '@blotch/angular-lynx' {
    *   interface NativeModuleMap {
    *     NativeLocalStorageModule: { ... };
@@ -109,14 +111,18 @@ export class LynxNativeModule {
    * On the main thread, which can't reach native modules, it returns a proxy:
    * each method call runs on the background thread and returns a promise of
    * its result, and a call to a module or method the host doesn't have
-   * rejects.
+   * rejects. The return type says so: a module in {@link NativeModuleMap}
+   * comes back as a {@link NativeModuleProxy} of it, and any other name as
+   * `unknown`.
    *
    * Returns `undefined` outside Lynx, or on the background thread when the
    * module is not registered.
    */
   getNativeModule<K extends string>(
     name: K,
-  ): K extends keyof NativeModuleMap ? NativeModuleMap[K] : unknown {
+  ): K extends keyof NativeModuleMap
+    ? NativeModuleProxy<NativeModuleMap[K]> | undefined
+    : unknown {
     if (isMainThread()) {
       return (
         typeof lynx !== 'undefined' ? relayedModule('native', name) : undefined

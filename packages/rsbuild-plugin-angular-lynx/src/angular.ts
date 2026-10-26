@@ -47,7 +47,7 @@ import {
   scanSourcesForUnsupportedCss,
   scanSourcesForUnsupportedPatterns,
 } from './lynx-diagnostics.js';
-import type { PluginAngularLynxOptions } from './utils/options.js';
+import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 
 /**
  * Wires Angular's AOT/JIT compilation pipeline into the rsbuild/rspack build
@@ -80,7 +80,7 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
  */
 export const applyAngularRules = async (
   api: RsbuildPluginAPI,
-  pluginOptions: Required<PluginAngularLynxOptions>,
+  pluginOptions: NormalizedPluginAngularLynxOptions,
 ): Promise<void> => {
   // Set under `ng build` / `ng serve`: the project being built and its build
   // options as Angular CLI resolved them. Plain rspeedy reads angular.json.

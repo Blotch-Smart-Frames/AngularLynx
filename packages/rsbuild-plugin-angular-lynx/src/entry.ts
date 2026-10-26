@@ -16,7 +16,7 @@ import {
 import type { UndefinedOnPartialDeep } from 'type-fest';
 import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import { LAYERS } from './layers.js';
-import type { PluginAngularLynxOptions } from './utils/options.js';
+import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 
 /**
  * The key `pluginLynx` (the Lynx build engine, which Rspeedy registers) exposes
@@ -41,12 +41,13 @@ export const BLUR_VIEW_STYLESHEET = path.resolve(
 
 export const applyEntry = (
   api: RsbuildPluginAPI,
-  options: Required<PluginAngularLynxOptions>,
+  options: NormalizedPluginAngularLynxOptions,
 ): void => {
   const {
     customCSSInheritanceList,
     debugInfoOutside,
     defaultDisplayLinear,
+    defaultOverflowVisible,
     enableA11y,
     enableAccessibilityElement,
     enableCSSInheritance,
@@ -171,6 +172,7 @@ export const applyEntry = (
             customCSSInheritanceList,
             debugInfoOutside,
             defaultDisplayLinear,
+            defaultOverflowVisible,
             enableAccessibilityElement,
             enableCSSInheritance,
             enableCSSInvalidation,

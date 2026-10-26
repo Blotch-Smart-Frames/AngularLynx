@@ -1,6 +1,6 @@
 # LynxResourcePrefetch
 
-Download images and videos into the native cache before they're shown, so they appear without a delay. `import { LynxResourcePrefetch, type PrefetchRequest, type PrefetchPriority, type PrefetchCacheTarget, type PrefetchResultDetail } from '@blotch/angular-lynx';`
+Download images and videos into the native cache before they're shown, so they appear without a delay. `import { LynxResourcePrefetch, type PrefetchRequest, type PrefetchPriority, type PrefetchCacheTarget, type PrefetchResultDetail, type ResourcePrefetchResult, type ResourcePrefetchData } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -125,7 +125,7 @@ The result for one resource.
 ### `ResourcePrefetchResult`
 
 ```typescript
-// From @lynx-js/types. @blotch/angular-lynx doesn't re-export it.
+// Re-exported from @lynx-js/types.
 interface ResourcePrefetchResult {
   code: number;
   msg: string;
@@ -134,6 +134,26 @@ interface ResourcePrefetchResult {
 ```
 
 The overall result, with one `details` entry for each resource.
+
+### `ResourcePrefetchData`
+
+```typescript
+// Re-exported from @lynx-js/types.
+interface ResourcePrefetchData {
+  data: {
+    uri: string;
+    type: 'image' | 'video' | 'font';
+    param?: {
+      priority?: PrefetchPriority;
+      cacheTarget?: PrefetchCacheTarget;
+      preloadKey?: string;
+      size: number;
+    };
+  }[];
+}
+```
+
+The request in Lynx's own format, which `request()` and `cancel()` build from your `PrefetchRequest` list. You only need it to call `lynx.requestResourcePrefetch()` yourself, in a [`backgroundFn()`](/api/main-thread/background-fn).
 
 ## Related
 

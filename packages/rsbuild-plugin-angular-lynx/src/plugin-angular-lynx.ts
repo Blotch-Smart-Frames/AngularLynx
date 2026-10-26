@@ -9,6 +9,7 @@ import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyTailwind } from './tailwind.js';
 import {
+  deprecatedOptionsIn,
   normalizeOptions,
   type PluginAngularLynxOptions,
 } from './utils/options.js';
@@ -22,6 +23,11 @@ export const pluginAngularLynx = (
     // `ng serve`; Rsbuild ignores a `pre` entry that isn't registered.
     pre: ['lynx:rsbuild:plugin-api', ANGULAR_CLI_CONTEXT_PLUGIN_NAME],
     setup: async (api) => {
+      for (const name of deprecatedOptionsIn(options)) {
+        api.logger.warn(
+          `pluginAngularLynx(): the \`${name}\` option has no effect and will be removed in a future release. Remove it from your config.`,
+        );
+      }
       const normalizedOptions = normalizeOptions(options);
       applyCSS(api, normalizedOptions);
       applyTailwind(api);

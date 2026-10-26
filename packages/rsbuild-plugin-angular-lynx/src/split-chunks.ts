@@ -2,7 +2,7 @@
 // Licensed under the Apache License Version 2.0 that can be found in the
 // LICENSE file in the root directory of this source tree.
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
-import type { PluginAngularLynxOptions } from './utils/options.js';
+import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 
 // type CacheGroups = Rspack.Configuration extends {
 //   optimization?: {
@@ -30,7 +30,7 @@ import type { PluginAngularLynxOptions } from './utils/options.js';
 
 export const applySplitChunksRule = (
   api: RsbuildPluginAPI,
-  options: Required<PluginAngularLynxOptions>,
+  options: NormalizedPluginAngularLynxOptions,
 ): void => {
   // Per environment rather than global: `splitChunks` can be set per
   // environment (e.g. only for `web`), so each one needs its own decision.

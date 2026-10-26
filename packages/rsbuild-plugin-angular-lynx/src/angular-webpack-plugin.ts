@@ -282,8 +282,14 @@ class AngularWebpackPlugin {
             stage: compiler.webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONS,
           },
           () => {
+            this.#markMainThreadHotUpdates(compilation, mainThreadChunkSet);
             for (const [name] of Object.entries(compilation.assets).filter(
-              ([n]) => n.endsWith('.js'),
+              ([n]) =>
+                n.endsWith('.js') &&
+                // A hot update runs in a thread that already has the flag,
+                // and the value here would be wrong for the main thread's:
+                // only the initial chunks are in mainThreadChunkSet.
+                !compilation.getAsset(n)?.info.hotModuleReplacement,
             )) {
               const isMainThread =
                 mainThreadChunkSet.has(name) ||
@@ -379,6 +385,46 @@ class AngularWebpackPlugin {
         return args;
       });
     });
+  }
+
+  /**
+   * Marks the hot update chunks of the main thread's chunks as main-thread
+   * code, as their chunks are. The main thread loads them itself (see
+   * client/main-thread-hot-updates.ts), so they must stay plain CommonJS:
+   * RuntimeWrapperWebpackPlugin skips marked files, and wraps the rest in the
+   * background thread's module loader. LynxTemplatePlugin leaves hot updates
+   * out of the bundle either way.
+   *
+   * A chunk is the main thread's if one of its files is: an entry's
+   * main-thread file, or a file of a lazy chunk the main thread loads, which
+   * the processAssets hook above marked at an earlier stage. This runs before
+   * RuntimeWrapperWebpackPlugin's wrapping, at a later stage than that hook.
+   */
+  #markMainThreadHotUpdates(
+    compilation: Compilation,
+    mainThreadChunkSet: ReadonlySet<string>,
+  ) {
+    for (const chunk of compilation.chunks) {
+      const files = [...chunk.files];
+      if (
+        !files.some(
+          (file) =>
+            mainThreadChunkSet.has(file) ||
+            (!compilation.getAsset(file)?.info.hotModuleReplacement &&
+              compilation.getAsset(file)?.info['lynx:main-thread']),
+        )
+      ) {
+        continue;
+      }
+      for (const file of files) {
+        if (
+          file.endsWith('.js') &&
+          compilation.getAsset(file)?.info.hotModuleReplacement
+        ) {
+          this.#updateMainThreadInfo(compilation, file);
+        }
+      }
+    }
   }
 
   #updateMainThreadInfo(compilation: Compilation, name: string) {

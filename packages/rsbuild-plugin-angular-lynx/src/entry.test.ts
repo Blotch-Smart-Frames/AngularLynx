@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 // Recognizable plugin stand-ins so `.use(Plugin, [opts])` can be asserted and
@@ -23,7 +24,14 @@ import {
   LynxEncodePlugin,
   WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
-import { applyEntry, BLUR_VIEW_STYLESHEET, getChunks } from './entry';
+import {
+  applyEntry,
+  BLUR_VIEW_STYLESHEET,
+  CSS_HOT_UPDATE,
+  getChunks,
+  HMR_BACKGROUND_CLIENT,
+  HMR_MAIN_THREAD_CLIENT,
+} from './entry';
 import { LAYERS } from './layers';
 
 const entryOptions = {
@@ -84,7 +92,16 @@ const createMockChain = (options: {
     return b;
   };
 
+  const aliases = new Map<string, string>();
   const chain: any = {
+    resolve: {
+      alias: {
+        set: vi.fn((key: string, value: string) => {
+          aliases.set(key, value);
+          return chain.resolve.alias;
+        }),
+      },
+    },
     module: {
       rule: vi.fn((name: string) => (rules[name] ??= makeRuleBuilder())),
     },
@@ -98,8 +115,13 @@ const createMockChain = (options: {
     plugin: vi.fn((name: string) => makePluginBuilder(name)),
   };
 
-  return { chain, pluginUses, entryBuilders, rules };
+  return { chain, pluginUses, entryBuilders, rules, aliases };
 };
+
+/**
+ * Recognizable stand-in for Rspack's plugin, passed in the chain's utils.
+ */
+class NormalModuleReplacementPlugin {}
 
 /**
  * A stand-in for the background entries angular.ts writes: each entry's file
@@ -146,11 +168,12 @@ const createMockApi = (
   let handler:
     | ((
         chain: unknown,
-        utils: { environment: unknown; isDev: boolean },
+        utils: { environment: unknown; isDev: boolean; rspack: unknown },
       ) => void)
     | undefined;
 
   const api = {
+    context: { rootPath: '/app' },
     useExposed: vi.fn(() => lynxConfig ?? undefined),
     modifyBundlerChain: vi.fn((h: any) => {
       handler = h;
@@ -172,6 +195,7 @@ const createMockApi = (
           config: { source: { preEntry: [] }, ...environment.config },
         },
         isDev,
+        rspack: { NormalModuleReplacementPlugin },
       }),
   };
 };
@@ -185,7 +209,12 @@ describe('applyEntry', () => {
     // config during setup, possibly after this plugin), so applyEntry itself
     // must not throw.
     expect(() =>
-      applyEntry(api as never, entryOptions, createBackgroundEntries()),
+      applyEntry(
+        api as never,
+        entryOptions,
+        createBackgroundEntries(),
+        new Set(),
+      ),
     ).not.toThrow();
     expect(() =>
       triggerChain(chain, { name: 'lynx', config: {} }, false),
@@ -201,7 +230,12 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     // dev undefined exercises the `environment.config.dev ?? {}` fallback.
     triggerChain(chain, { name: 'lynx', config: {} }, true);
 
@@ -227,13 +261,103 @@ describe('applyEntry', () => {
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(false);
   });
 
+  it('adds the hot update clients to both threads in a dev build', () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain, entryBuilders, pluginUses, aliases } = createMockChain({
+      entries: { main: { values: () => ['./src/main.ts'] } },
+    });
+
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
+    triggerChain(chain, { name: 'lynx', config: {} }, true);
+
+    expect(entryBuilders['main__main-thread'].prepend).toHaveBeenCalledWith({
+      layer: LAYERS.MAIN_THREAD,
+      import: HMR_MAIN_THREAD_CLIENT,
+    });
+    // In place of `@rspack/core/hot/dev-server`, which only updates the
+    // background thread, and after the dev transport's client.
+    const background = entryBuilders['main'].prepend.mock.calls.map(
+      ([entry]: [{ import: string }]) => entry.import,
+    );
+    expect(background).toEqual([
+      HMR_BACKGROUND_CLIENT,
+      '@lynx-js/webpack-dev-transport/client',
+    ]);
+    expect(background).not.toContain('@rspack/core/hot/dev-server');
+    expect(aliases.get('@lynx-js/webpack-dev-transport/reloadApp')).toMatch(
+      /webpack-dev-transport[\\/]lib[\\/]client[\\/]reloadApp\.js$/,
+    );
+
+    const replacement = pluginUses.find(
+      (use) => use.Plugin === NormalModuleReplacementPlugin,
+    )!;
+    const [pattern, target] = replacement.args as [RegExp, string];
+    expect(target).toBe(CSS_HOT_UPDATE);
+    expect(
+      pattern.test(
+        '/app/node_modules/@lynx-js/css-extract-webpack-plugin/runtime/hotModuleReplacement.cjs',
+      ),
+    ).toBe(true);
+    expect(
+      pattern.test(
+        'C:\\app\\node_modules\\@lynx-js\\css-extract-webpack-plugin\\runtime\\hotModuleReplacement.cjs',
+      ),
+    ).toBe(true);
+    expect(
+      pattern.test(
+        '/app/node_modules/@lynx-js/css-extract-webpack-plugin/runtime/hotModuleReplacement.lepus.cjs',
+      ),
+    ).toBe(false);
+  });
+
+  it("records the app's own entry modules, which take hot updates", () => {
+    const { api, triggerChain } = createMockApi();
+    const { chain } = createMockChain({
+      entries: {
+        main: {
+          values: () => [
+            '@angular/localize/init',
+            './src/styles.css',
+            './src/main.ts',
+            '/abs/other.ts',
+          ],
+        },
+      },
+    });
+    const appEntries = new Set<string>();
+
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      appEntries,
+    );
+    triggerChain(chain, { name: 'lynx', config: {} }, true);
+
+    expect([...appEntries]).toEqual([
+      path.resolve('/app', './src/styles.css'),
+      path.resolve('/app', './src/main.ts'),
+      path.resolve('/abs/other.ts'),
+    ]);
+  });
+
   it('skips HMR/live-reload prepends when both are disabled', () => {
     const { api, triggerChain } = createMockApi();
     const { chain, entryBuilders } = createMockChain({
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(
       chain,
       { name: 'lynx', config: { dev: { hmr: false, liveReload: false } } },
@@ -250,7 +374,12 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(true);
@@ -267,7 +396,12 @@ describe('applyEntry', () => {
       const { chain, entryBuilders } = createMockChain({
         entries: { main: { values: () => ['./src/styles.css', './main.ts'] } },
       });
-      applyEntry(api as never, entryOptions, createBackgroundEntries());
+      applyEntry(
+        api as never,
+        entryOptions,
+        createBackgroundEntries(),
+        new Set(),
+      );
       triggerChain(chain, { name, config: {} }, false);
       const [mainThread] = entryBuilders['main__main-thread'].add.mock.calls[0];
       expect(mainThread.layer).toBe(LAYERS.MAIN_THREAD);
@@ -295,7 +429,7 @@ describe('applyEntry', () => {
       },
     });
     const backgroundEntries = createBackgroundEntries();
-    applyEntry(api as never, entryOptions, backgroundEntries);
+    applyEntry(api as never, entryOptions, backgroundEntries, new Set());
     triggerChain(
       chain,
       {
@@ -323,7 +457,12 @@ describe('applyEntry', () => {
   it("keeps the background entry's modules' side effects in the background layer", () => {
     const { api, triggerChain } = createMockApi();
     const { chain, rules } = createMockChain({ entries: null });
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     const rule = rules['lynx:background-modules'];
@@ -357,7 +496,12 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     // pluginLynx owns filename/intermediate resolution so the template plugin
@@ -381,7 +525,12 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(lynxConfig!.resolveLazyBundleFilename).toHaveBeenCalledWith({
@@ -400,7 +549,12 @@ describe('applyEntry', () => {
       entries: { main: { values: () => ['./src/main.ts'] } },
     });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
     expect((pluginUses[0].args[0] as any).lazyBundleFilename).toBe(
@@ -420,6 +574,7 @@ describe('applyEntry', () => {
       api as never,
       { ...entryOptions, enableA11y: false },
       createBackgroundEntries(),
+      new Set(),
     );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
@@ -437,6 +592,7 @@ describe('applyEntry', () => {
       api as never,
       { ...entryOptions, defaultOverflowVisible: false },
       createBackgroundEntries(),
+      new Set(),
     );
     triggerChain(chain, { name: 'lynx', config: {} }, false);
 
@@ -447,7 +603,12 @@ describe('applyEntry', () => {
     const { api, triggerChain } = createMockApi();
     const { chain } = createMockChain({ entries: null });
 
-    applyEntry(api as never, entryOptions, createBackgroundEntries());
+    applyEntry(
+      api as never,
+      entryOptions,
+      createBackgroundEntries(),
+      new Set(),
+    );
 
     expect(() =>
       triggerChain(chain, { name: 'lynx', config: {} }, false),

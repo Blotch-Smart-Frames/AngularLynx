@@ -5,7 +5,11 @@ import {
   scheduleSettleFlush,
 } from '../lynx-element';
 import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
-import { setPageElementRef } from './page-ref';
+import {
+  __pageElementRef,
+  setPageElementRef,
+  takePageHandOver,
+} from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
 import {
@@ -13,7 +17,28 @@ import {
   createListElement,
   createPageElement,
 } from './element-creators';
+import type { ElementRef } from '../types/lynx';
 import type { LynxDocumentBase } from './types';
+
+/**
+ * The page a previous app rendered into, emptied, when a hot update
+ * bootstraps the app again (see `handOverPageToNextApp`). A Lynx page has one
+ * page element, and the engine shows the first one created: a second
+ * `__CreatePage()` gives the new app a page that's never shown, while the old
+ * app's elements, whose views are gone, stay on screen. Angular's
+ * `ApplicationRef.destroy()` doesn't remove a root component's elements (in a
+ * browser they also stay in the page), so they're removed here.
+ *
+ * @returns The page element, or `null` when no re-bootstrap handed one over.
+ */
+const takeOverPage = (): ElementRef | null => {
+  const page = __pageElementRef;
+  if (!takePageHandOver() || !page) return null;
+  for (const child of __GetChildren(page) ?? []) {
+    __RemoveElement(page, child);
+  }
+  return page;
+};
 
 /**
  * Main-thread document that creates native Lynx elements via PAPI functions.
@@ -28,7 +53,7 @@ export class LynxDocument implements LynxDocumentBase {
 
   constructor() {}
   createRootElement(): LynxElement {
-    const pageElement = __CreatePage('0', 0);
+    const pageElement = takeOverPage() ?? __CreatePage('0', 0);
     this.page = new LynxElement(pageElement);
     this.page.tagName = 'page';
     // Prevent Angular from reparenting or removing the root page element

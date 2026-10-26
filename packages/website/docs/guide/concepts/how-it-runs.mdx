@@ -47,7 +47,11 @@ There are three kinds of host app:
 
 When `ng serve` runs, your computer serves the bundle over your network. The QR code in the terminal holds the bundle's URL. Lynx Explorer scans it, downloads the bundle and runs your app.
 
-When you save a file, the dev server rebuilds the bundle and tells Lynx Explorer to reload. That only works with **Lynx DevTool** turned on in Lynx Explorer's settings.
+When you save a file, the dev server rebuilds the bundle and sends the changes to Lynx Explorer, which applies them to the running app:
+
+- A changed template or stylesheet re-renders its component, which keeps its state.
+- Any other change restarts the app on the screen it was showing.
+- A change that can't be applied reloads the whole app. That needs **Lynx DevTool** turned on in Lynx Explorer's settings.
 
 ## The web preview
 

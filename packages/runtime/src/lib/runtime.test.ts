@@ -1,3 +1,5 @@
+// The runtime imports LynxLocationStrategy, a partially compiled injectable.
+import '@angular/compiler';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   bootstrapApplication as BootstrapApplicationFn,
@@ -148,39 +150,87 @@ describe('runtime bootstrapApplication', () => {
     });
   });
 
-  describe('HMR re-bootstrap', () => {
-    it('destroys the previous ApplicationRef before bootstrapping the new one', async () => {
-      const prevAppRef = { destroy: vi.fn() };
-      (globalThis as any).__LYNX_ANGULAR_APP_REF__ = prevAppRef;
+  // A hot update that no component can take in place re-runs the app's
+  // entry, which calls bootstrapApplication() again (see ɵhmrAccept).
+  describe('hot update re-bootstrap', () => {
+    const secondAppRef = () => {
+      const appRef = { destroy: vi.fn() };
+      mockNgBootstrap.mockResolvedValueOnce(appRef);
+      return appRef;
+    };
 
+    it('destroys the running app, then bootstraps without another renderPage', async () => {
       class App {}
+      await boot(App);
+      const next = secondAppRef();
+
+      // The engine calls renderPage once per page, so the second bootstrap
+      // must not wait for it.
       await bootstrapApplication(App);
 
-      expect(prevAppRef.destroy).toHaveBeenCalled();
+      expect(mockAppRef.destroy).toHaveBeenCalled();
+      expect(mockNgBootstrap).toHaveBeenCalledTimes(2);
+      expect((globalThis as any).__LYNX_ANGULAR_APP_REF__).toBe(next);
+    });
+
+    it('bootstraps after a first bootstrap that failed', async () => {
+      class App {}
+      mockNgBootstrap.mockRejectedValueOnce(new Error('constructor threw'));
+      await expect(boot(App)).rejects.toThrow('constructor threw');
+
+      await bootstrapApplication(App);
+
       expect((globalThis as any).__LYNX_ANGULAR_APP_REF__).toBe(mockAppRef);
     });
 
-    it('clears the worklet map so stale worklets are not invoked after reload', async () => {
-      const staleFn = vi.fn();
-      globalThis.registerWorklet('type', 'stale-worklet', staleFn);
-
-      (globalThis as any).__LYNX_ANGULAR_APP_REF__ = { destroy: vi.fn() };
-
+    it('leaves the latest bootstrap where the hot update client waits for it', async () => {
       class App {}
-      await bootstrapApplication(App);
+      await boot(App);
+      const first = (globalThis as any).__LYNX_ANGULAR_BOOTSTRAP__;
+      await expect(first).resolves.toBe(mockAppRef);
+      const next = secondAppRef();
 
-      (globalThis as any).runWorklet({ _wkltId: 'stale-worklet' }, []);
-      expect(staleFn).not.toHaveBeenCalled();
+      void bootstrapApplication(App);
+
+      const second = (globalThis as any).__LYNX_ANGULAR_BOOTSTRAP__;
+      expect(second).not.toBe(first);
+      await expect(second).resolves.toBe(next);
     });
 
-    it('does not wait for renderPage', async () => {
-      (globalThis as any).__LYNX_ANGULAR_APP_REF__ = { destroy: vi.fn() };
-
+    it('opens the new app on the screen the old one showed', async () => {
+      const { Injector } = await import('@angular/core');
+      const { LocationStrategy } = await import('@angular/common');
+      const { LynxLocationStrategy } =
+        await import('./router/lynx-location-strategy');
+      const injector = Injector.create({
+        providers: [
+          { provide: LocationStrategy, useClass: LynxLocationStrategy },
+        ],
+      });
+      injector.get(LocationStrategy).pushState(null, '', '/events', '');
+      mockNgBootstrap.mockResolvedValueOnce({ destroy: vi.fn(), injector });
       class App {}
-      // Should resolve without renderPage since prev is set
+      await boot(App);
+
       await bootstrapApplication(App);
 
-      expect(mockNgBootstrap).toHaveBeenCalled();
+      expect(new LynxLocationStrategy().path()).toBe('/events');
+    });
+
+    // A hot update re-runs only the changed modules and the ones that import
+    // them, so a module-level main-thread function elsewhere never registers
+    // again.
+    it('keeps the main-thread functions modules registered', async () => {
+      const moduleLevelFn = vi.fn();
+      globalThis.registerWorklet('main-thread', 'module-level', moduleLevelFn);
+      class App {}
+      await boot(App);
+      secondAppRef();
+
+      await bootstrapApplication(App);
+      (globalThis as any).runWorklet({ _wkltId: 'module-level' }, []);
+
+      expect(moduleLevelFn).toHaveBeenCalled();
     });
   });
 
@@ -213,11 +263,8 @@ describe('runtime bootstrapApplication', () => {
       const flush = vi.fn();
       vi.stubGlobal('__FlushElementTree', flush);
 
-      // Set a prev appRef so bootstrap skips the renderPage wait.
-      (globalThis as any).__LYNX_ANGULAR_APP_REF__ = { destroy: vi.fn() };
-
       class App {}
-      await bootstrapApplication(App);
+      await boot(App);
       vi.runAllTimers();
 
       expect(flush).toHaveBeenCalled();

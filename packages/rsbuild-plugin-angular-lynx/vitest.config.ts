@@ -17,6 +17,7 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/**/*.types.ts',
         'src/index.ts', // 1-line public re-export barrel
+        'src/client/testing/**', // test-only helpers for the hot update clients
         // Integration-only wrapper around `@angular/build` internals
         // (`createAngularCompilation`, `JavaScriptTransformer`) and `@lynx-js/rspeedy`
         // plugin API hooks. Its side effects (worker pool, tsconfig read, fs

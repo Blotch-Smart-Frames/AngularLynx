@@ -1,5 +1,42 @@
 import { type LocationChangeListener, LocationStrategy } from '@angular/common';
-import { Injectable, signal } from '@angular/core';
+import { Injectable, type Injector, signal } from '@angular/core';
+
+type HistoryEntry = { state: unknown; url: string };
+
+/**
+ * The history a hot update's re-bootstrap hands from the old app's strategy to
+ * the new one's (see {@link carryOverLocation}). It lives at module level
+ * because the runtime's module isn't re-run by a hot update, while the app's
+ * injectors, and the strategy in them, are.
+ */
+let carriedOver: HistorySnapshot | undefined;
+
+type HistorySnapshot = { history: HistoryEntry[]; index: number };
+
+/**
+ * Reads a strategy's history. Assigned in the class's static block, the only
+ * place outside its methods that can reach its private fields, which keeps the
+ * snapshot out of the class's public API.
+ */
+let snapshotOf: (strategy: LynxLocationStrategy) => HistorySnapshot;
+
+/**
+ * Keeps the app on the screen it was showing when a hot update re-bootstraps
+ * it. Called with the old app's injector before it's destroyed, it saves the
+ * old strategy's history, and the next strategy created starts from it. The
+ * router's initial navigation then goes to the current URL instead of `/`,
+ * and Back still has the screens before it.
+ *
+ * Does nothing for an app without the router, or with another strategy.
+ *
+ * @param injector - The injector of the app that's about to be destroyed.
+ */
+export const carryOverLocation = (injector: Injector | undefined): void => {
+  const strategy = injector?.get(LocationStrategy, null);
+  if (strategy instanceof LynxLocationStrategy) {
+    carriedOver = snapshotOf(strategy);
+  }
+};
 
 /**
  * In-memory LocationStrategy for Lynx — equivalent to React Router's MemoryRouter.
@@ -18,10 +55,28 @@ import { Injectable, signal } from '@angular/core';
 export class LynxLocationStrategy extends LocationStrategy {
   #path = '/';
   #baseHref = '/';
-  #history: { state: unknown; url: string }[] = [{ state: null, url: '/' }];
+  #history: HistoryEntry[] = [{ state: null, url: '/' }];
   #historyIndex = 0;
   #listeners: LocationChangeListener[] = [];
   readonly #canGoBack = signal(false);
+
+  constructor() {
+    super();
+    if (carriedOver) {
+      this.#history = carriedOver.history;
+      this.#historyIndex = carriedOver.index;
+      this.#path = this.#history[this.#historyIndex].url;
+      this.#canGoBack.set(this.#historyIndex > 0);
+      carriedOver = undefined;
+    }
+  }
+
+  static {
+    snapshotOf = (strategy) => ({
+      history: strategy.#history.map((entry) => ({ ...entry })),
+      index: strategy.#historyIndex,
+    });
+  }
 
   /**
    * Whether there's an entry before the current one, so `back()` goes

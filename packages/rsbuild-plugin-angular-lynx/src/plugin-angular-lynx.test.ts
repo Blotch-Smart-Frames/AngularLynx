@@ -138,12 +138,24 @@ describe('pluginAngularLynx', () => {
         mockApi,
         expect.objectContaining({ _normalized: true }),
         backgroundEntries,
+        expect.any(Set),
       );
       expect(applyAngularRules).toHaveBeenCalledWith(
         mockApi,
         expect.any(Object),
         backgroundEntries,
+        expect.any(Set),
       );
+    });
+
+    // entry.ts records the app's entry modules, and the Angular transform
+    // makes them take hot updates.
+    it('shares one set of app entries between entry.ts and the Angular rules', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      const appEntries = vi.mocked(applyEntry).mock.calls[0][3];
+      expect(vi.mocked(applyAngularRules).mock.calls[0][3]).toBe(appEntries);
     });
 
     it('calls applyResolve with api', () => {
@@ -168,6 +180,7 @@ describe('pluginAngularLynx', () => {
         mockApi,
         expect.any(Object),
         backgroundEntries,
+        expect.any(Set),
       );
     });
 

@@ -96,7 +96,7 @@ npm install && npm run build   # Build all packages
 npm run demo                   # Start dev server (ng serve)
 ```
 
-Scan the QR code with [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html) to run on your phone. Turn on Lynx DevTool in Explorer's settings tab so the app reloads when you save a file.
+Scan the QR code with [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html) to run on your phone. Saving a file updates the app in place. Turn on Lynx DevTool in Explorer's settings tab so it can also reload the app, for changes it can't apply in place.
 
 ## Credits
 

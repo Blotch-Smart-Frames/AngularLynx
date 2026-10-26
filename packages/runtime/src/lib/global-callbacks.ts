@@ -1,4 +1,4 @@
-import { Subject } from 'rxjs';
+import { ReplaySubject } from 'rxjs';
 import {
   applyGlobalDataUpdate,
   applyInitDataUpdate,
@@ -41,8 +41,13 @@ const callWorklet = (id: string, args: unknown[], kind: string): unknown => {
  * Resolves when the Lynx engine signals the page is ready to render.
  * `renderPage` (below) fires it; bootstrapApplication awaits it on the main
  * thread before handing control to Angular.
+ *
+ * It replays, because the engine calls renderPage once per page, and a hot
+ * update can bootstrap the app again after that. That includes after a first
+ * bootstrap that failed, which leaves no app to tell a re-bootstrap from a
+ * first boot by.
  */
-export const pageReady = new Subject<void>();
+export const pageReady = new ReplaySubject<void>(1);
 
 /**
  * Lynx lifecycle callbacks. The engine calls these globals at specific points:

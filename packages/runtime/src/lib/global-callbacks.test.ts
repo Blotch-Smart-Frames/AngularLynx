@@ -92,6 +92,18 @@ describe('global-callbacks', () => {
       expect(fired).toBe(true);
     });
 
+    // The engine calls renderPage once per page; a hot update bootstraps the
+    // app again later and must not wait for another.
+    it('pageReady replays to a later subscriber', async () => {
+      const mod = await import('./global-callbacks');
+      (globalThis as any).renderPage();
+      let fired = false;
+      mod.pageReady.subscribe(() => {
+        fired = true;
+      });
+      expect(fired).toBe(true);
+    });
+
     it('updatePage does not throw without a lynx global', () => {
       expect(() => (globalThis as any).updatePage({ a: 1 })).not.toThrow();
     });

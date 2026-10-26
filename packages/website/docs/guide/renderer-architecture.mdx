@@ -48,6 +48,7 @@ The background thread has APIs the main thread lacks, such as `fetch`, `NativeMo
 
 - **`backgroundFn()` and `runOnBackground()`** call your own functions.
 - **`callOnBackground()`** (`background-call.ts`) calls the APIs AngularLynx's services use: fonts, accessibility, exposure, session storage, resource prefetching, native modules and JS modules. Function arguments, such as a native module's callback, are sent as markers, and the background thread calls them back on the main thread.
+- **The main thread's `fetch` and `XMLHttpRequest`** (`network/`) send each request through `callOnBackground()` to the background thread's `fetch`. Bodies cross as text, or as base64 when they're bytes, and an `AbortSignal` aborts the background request too. `HttpClient` uses them like the browser's.
 - **`LynxLogger`** relays log entries to a listener that posts them to the dev server.
 
 The background thread finds a function by ID, so both threads must give it the same one. The build plugin gives each module-level `backgroundFn()` and `MainThreadRef` an ID from its file and position (`cross-thread-transform.ts`).

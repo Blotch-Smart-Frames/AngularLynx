@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { serveStatic } from '../src/static-server.ts';
+import { HTTP_DATA, serveStatic } from '../src/static-server.ts';
 
 /**
  * Static server for the Layer 3 render tests. It serves the host page, the
@@ -39,4 +39,11 @@ await serveStatic(
   ],
   { port, host: '127.0.0.1' },
 );
+// The counter fixture's HttpClient and httpResource requests go to a fixed
+// URL on another port (HTTP_DATA), so on the web they're cross-origin
+// requests, which the server allows.
+await serveStatic([HTTP_DATA.route], {
+  port: HTTP_DATA.port,
+  host: '127.0.0.1',
+});
 console.log(`Serving ${appDist} on http://127.0.0.1:${port}/`);

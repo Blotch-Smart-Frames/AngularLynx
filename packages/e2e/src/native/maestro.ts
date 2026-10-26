@@ -64,6 +64,10 @@ export const FLOWS: readonly Flow[] = [
     description: 'measures a pan from the touch and ends a fling',
   },
   {
+    file: 'http.yaml',
+    description: 'loads JSON with HttpClient and httpResource',
+  },
+  {
     file: 'back-button.yaml',
     description: 'goes back a screen with the back button',
     // Only the app's own Android build has a back handler the runtime turns

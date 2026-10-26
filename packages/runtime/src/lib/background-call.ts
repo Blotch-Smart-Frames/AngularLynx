@@ -1,4 +1,10 @@
 import type { ObserverFrameRateOptions } from './exposure/exposure.types';
+import {
+  abortFetchForMainThread,
+  fetchForMainThread,
+  type RelayedRequest,
+  type RelayedResponse,
+} from './network/background-fetch';
 
 /**
  * Some Lynx APIs exist only on the background thread's `lynx` object. The main
@@ -6,8 +12,8 @@ import type { ObserverFrameRateOptions } from './exposure/exposure.types';
  * `accessibilityAnnounce`, `addFont`, `setObserverFrameRate`,
  * `subscribeSessionStorage`, `requestResourcePrefetch` or `getJSModule`, and
  * web-core's has no `stopExposure` or `resumeExposure` either. `NativeModules`
- * exists only on the background thread too. Angular runs on the main thread,
- * so no service can reach them directly. callOnBackground() runs the call on
+ * exists only on the background thread too, as does `fetch`. Angular runs on
+ * the main thread, so no service can reach them directly. callOnBackground() runs the call on
  * the background thread and resolves with its result, from either thread.
  *
  * The relay uses the same cross-thread event channel as the worklet RPC in
@@ -320,6 +326,12 @@ const handlers = {
   registerJSModule: (name: string, module: unknown): void => {
     lynxApi('registerModule')(name, restoreFunctions(module));
   },
+
+  /** The main thread's `fetch` (network/fetch.ts) sends its requests here. */
+  fetch: (id: number, request: RelayedRequest): Promise<RelayedResponse> =>
+    fetchForMainThread(id, request),
+
+  abortFetch: (id: number): void => abortFetchForMainThread(id),
 };
 
 type Handlers = typeof handlers;

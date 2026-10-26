@@ -1,4 +1,15 @@
-import { Component, inject, signal, type OnInit } from '@angular/core';
+import {
+  HttpClient,
+  type HttpErrorResponse,
+  httpResource,
+} from '@angular/common/http';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  type OnInit,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import {
   backgroundFn,
@@ -34,6 +45,16 @@ const countInit = mainThreadFn(() => {
 });
 
 /**
+ * fixtures/http-data.json, which the E2E static server serves on this port in
+ * every layer that renders the app (playwright/serve.ts, native/run-native.ts).
+ * It's absolute because Lynx has no page URL to resolve a relative one
+ * against, and the app's own build loads its bundle from inside the app.
+ */
+const HTTP_DATA_URL = 'http://127.0.0.1:3210/e2e-http.json';
+
+type HttpData = { reply: string };
+
+/**
  * E2E fixture that replaces the `hello` component the component schematic
  * generates. Tapping "Increment" proves the round trip from a native event,
  * through change detection, to the renderer; "Open lazy page" proves that
@@ -61,6 +82,14 @@ const countInit = mainThreadFn(() => {
  * It comes after the XElement elements so it doesn't push the input down:
  * in Lynx Explorer, whose navigation bar sits above the app, the keyboard
  * would then cover the "Typed:" line that native/xelement.yaml checks.
+ *
+ * "HTTP" loads fixtures/http-data.json twice, through HttpClient and through
+ * httpResource, and shows both replies: "HTTP: pong/pong". Lynx has `fetch`
+ * on the background thread only, and Angular runs on the main thread, where
+ * the runtime relays requests to it (issue #85). It shares the "Background"
+ * row so this page gets no taller: the lazy and gestures pages render below
+ * it, and on CI's 320x640 Android emulator their checks are at the bottom of
+ * the screen.
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
@@ -158,9 +187,12 @@ const countInit = mainThreadFn(() => {
       >
         <text>Ask background</text>
       </view>
-      <text flatten="false" style="margin-top: 8px;"
-        >Background: {{ answer() }}</text
-      >
+      <view style="display: flex; flex-direction: row; margin-top: 8px;">
+        <text flatten="false">Background: {{ answer() }}</text>
+        <text flatten="false" style="margin-left: 12px;"
+          >HTTP: {{ httpReply() }}/{{ resourceReply() }}</text
+        >
+      </view>
       <app-tailwind-card />
     </view>
   `,
@@ -168,13 +200,25 @@ const countInit = mainThreadFn(() => {
 export class Hello implements OnInit {
   readonly #router = inject(Router);
   readonly #mainThread = inject(LynxMainThread);
+  readonly #http = inject(HttpClient);
   readonly count = signal(0);
   readonly typed = signal('');
   readonly overlayOpen = signal(false);
   readonly answer = signal('');
+  readonly httpReply = signal('');
+  readonly #resource = httpResource<HttpData>(() => HTTP_DATA_URL);
+  readonly resourceReply = computed(() =>
+    this.#resource.hasValue()
+      ? this.#resource.value().reply
+      : (this.#resource.error()?.message ?? ''),
+  );
 
   ngOnInit() {
     void this.#mainThread.runOnMainThread(countInit);
+    this.#http.get<HttpData>(HTTP_DATA_URL).subscribe({
+      next: (data) => this.httpReply.set(data.reply),
+      error: (error: HttpErrorResponse) => this.httpReply.set(error.message),
+    });
   }
 
   increment() {

@@ -89,7 +89,7 @@ class LynxLogger {}
 Sends log messages from the device to the dev server, which writes them to `.dev-logs`. There's no browser console on a phone, so this is how you see logs from Lynx Explorer.
 
 - **Development builds only.** In a production build, every method does nothing.
-- **Sent through the background thread.** Your app runs on the main thread, which has no `fetch`, so each message goes to the background thread, which posts it to the dev server the app loaded from.
+- **Sent through the background thread.** Your app runs on the main thread, which has no network access of its own, so each message goes to the background thread, which posts it to the dev server the app loaded from.
 - **Objects and errors.** Objects and arrays print as indented JSON, and an `Error` prints with its stack. Other values, and an object JSON can't hold (such as a circular one), print as `String()` makes them.
 
 ### `LynxLogger.log()`, `info()`, `warn()`, `error()` and `debug()`

@@ -1,0 +1,110 @@
+# Load data from a server
+
+Use Angular's `HttpClient` and `httpResource` the way you would on the web. Interceptors, timeouts and canceling work too.
+
+## Set up HttpClient
+
+Add `provideHttpClient()` to your app config:
+
+```typescript title="src/app/app.config.ts"
+import { provideHttpClient } from '@angular/common/http';
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideRenderer, provideRouter } from '@blotch/angular-lynx';
+
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideRouter(routes),
+    provideHttpClient(),
+  ],
+};
+```
+
+## Load data with httpResource
+
+```typescript title="src/app/posts.ts"
+import { httpResource } from '@angular/common/http';
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+type Post = { id: number; title: string };
+
+@Component({
+  selector: 'app-posts',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @if (posts.hasValue()) {
+      @for (post of posts.value(); track post.id) {
+        <text>{{ post.title }}</text>
+      }
+    } @else if (posts.error()) {
+      <text>Couldn't load the posts</text>
+    } @else {
+      <text>Loading…</text>
+    }
+  `,
+})
+export class Posts {
+  readonly posts = httpResource<Post[]>(
+    () => 'https://jsonplaceholder.typicode.com/posts',
+  );
+}
+```
+
+`httpResource` sends the request when the component is created, and again whenever a signal the URL function reads changes.
+
+## Send data with HttpClient
+
+```typescript
+import { HttpClient } from '@angular/common/http';
+import { inject } from '@angular/core';
+
+readonly #http = inject(HttpClient);
+
+save(post: Post): void {
+  this.#http
+    .post<Post>('https://jsonplaceholder.typicode.com/posts', post)
+    .subscribe({
+      next: (saved) => this.saved.set(saved),
+      error: () => this.failed.set(true),
+    });
+}
+```
+
+Angular's [HTTP guide](https://angular.dev/guide/http) covers the rest: headers, query parameters, interceptors and error handling.
+
+## How requests reach the network
+
+Lynx can make network requests only from the [background thread](/guide/concepts/threads), and your app runs on the main thread. So AngularLynx gives the main thread its own `fetch` and `XMLHttpRequest`. They pass each request to the background thread, which sends it, and bring the response back.
+
+- **Both of Angular's backends work.** `provideHttpClient()` uses `fetch`, and `provideHttpClient(withXhr())` uses `XMLHttpRequest`.
+- **Libraries that call `fetch` or `XMLHttpRequest` work too**, such as axios or a GraphQL client.
+- **In the [web preview](/guide/glossary#web-preview)**, requests use the browser's own `fetch`.
+
+## What's different on a device
+
+- **Use absolute URLs.** A Lynx app has no page URL, so there's nothing to resolve `/api/posts` against, and the request fails. Put your server's address in a constant, or add it in an interceptor.
+- **Use HTTPS.** The apps `ng build --platform` makes block plain `http://` URLs, except to the device itself (`localhost` and `127.0.0.1`). [Lynx Explorer](/guide/glossary#lynx-explorer) allows them for development.
+- **There's no CORS.** A device isn't a browser, so a server doesn't need `Access-Control-Allow-Origin` headers. The web preview is a browser, so it still applies there.
+- **Send strings, JSON, `URLSearchParams`, `ArrayBuffer`s or typed arrays.** Lynx has no `Blob` or `FormData`, so multipart uploads aren't possible, and `responseType: 'blob'` fails. Use `responseType: 'arraybuffer'` for binary data.
+- **Progress arrives once.** With `reportProgress`, the download (and, with `withXhr()`, the upload) reports its progress once, when it's complete.
+- **A request that never reaches the server fails with status 0**, as on the web. The error says why, for example "Could not connect to the server."
+- **Don't rely on `statusText`.** On iOS, Lynx reports `OK` for every status. Check `status` instead.
+- **Cookies belong to the host app.** `withCredentials` has no effect: the [host app](/guide/glossary#host-app)'s networking decides which cookies are sent.
+
+The host app has to provide Lynx's HTTP service. Lynx Explorer and the apps [`ng build --platform`](/guide/native-apps) makes have it. If you [embed](/guide/embedding/) your app in a native app of your own, register it there, as Lynx's [integration guide](https://lynxjs.org/guide/start/integrate-with-existing-apps) shows.
+
+## Test it
+
+`provideHttpClientTesting()` works as in any Angular app. Add it with `provideHttpClient()` to the providers of [`render()`](/guide/testing/), then answer requests with `HttpTestingController`.
+
+## Related
+
+- [The JavaScript environment](/guide/concepts/javascript-environment#network-requests): what else Lynx adds and lacks
+- [Threads](/guide/concepts/threads): why requests go through the background thread

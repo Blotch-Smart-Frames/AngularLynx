@@ -65,7 +65,7 @@ export const appConfig: ApplicationConfig = {
 ```
 
 - **Don't write signals directly in the handler.** Angular can call it in the middle of rendering, where a signal write throws `NG0600`. Defer the write with `queueMicrotask()`, as [Show errors on screen](/guide/debugging#show-errors-on-screen) does.
-- **To upload reports, fetch from a background function.** Most errors happen on the main thread, which has no network access. See [Network requests](/guide/concepts/javascript-environment#network-requests).
+- **To upload reports, call `fetch()`.** It works on the main thread, where most errors happen. See [HTTP requests](/guide/http).
 
 ## Contain failures with `@boundary`
 

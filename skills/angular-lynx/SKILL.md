@@ -88,9 +88,15 @@ Read [debugging.md](references/debugging.md)
 
 ## Threading Model
 
-Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (background-only APIs). The Angular app runs on the main thread only; the background thread runs your files' top-level code, such as `backgroundFn()`s. `__MAIN_THREAD__` global flag for branching. `fetch()` and `NativeModules` only available on background thread: use a `backgroundFn()`, or `LynxNativeModule`, which relays.
+Lynx runs on two threads: main thread (native UI rendering, PrimJS ES2019) and background thread (background-only APIs). The Angular app runs on the main thread only; the background thread runs your files' top-level code, such as `backgroundFn()`s. `__MAIN_THREAD__` global flag for branching. `NativeModules` only available on background thread: use `LynxNativeModule`, which relays, or a `backgroundFn()`.
 
 Read [threading-model.md](references/threading-model.md)
+
+## HTTP Requests
+
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute; no `Blob`/`FormData` bodies.
+
+Read [http-requests.md](references/http-requests.md)
 
 ## Build Configuration
 

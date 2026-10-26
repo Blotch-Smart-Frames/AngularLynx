@@ -182,6 +182,7 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'App Features' },
         { text: 'Routing', link: '/guide/routing' },
+        { text: 'HTTP Requests', link: '/guide/http' },
         { text: '@defer', link: '/guide/defer' },
         { text: 'Visibility Detection', link: '/guide/exposure' },
         { text: 'Internationalization', link: '/guide/i18n' },

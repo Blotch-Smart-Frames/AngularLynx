@@ -1969,6 +1969,31 @@ const decoded = helper.decode(uint8Array); // returns string
 
 ---
 
+## The main thread's `fetch` is AngularLynx's relay; Lynx's HTTP services report failures as status 499
+
+Found while relaying the main thread's requests (issue #85), in Lynx Explorer 4.1 on the iOS Simulator and an Android emulator, and in Lynx's sources.
+
+### What you'd expect (web)
+
+`fetch()` rejects with a `TypeError` when a request never reaches a server, resolves relative URLs against the page, and is a property of `globalThis`.
+
+### What Lynx does
+
+- **A failed request resolves, with status 499.** `LynxHttpService` (iOS: `SDK_ERROR_STATUS_CODE`; Android: `CODE_FAILED_INTERNALLY`) answers a refused connection, a bad host, a relative URL ("unsupported URL") or Android's cleartext block with status 499, the error's description as `statusText`, no headers and no body. The runtime treats a 499 with no headers as a network failure and rejects, so `HttpClient` reports status 0 as on the web.
+- **There's no page URL**, so relative URLs fail ("unsupported URL"). The runtime rejects them with a clear `TypeError` before sending.
+- **On iOS, `statusText` is `OK` for every status**, 404 included (`LynxHttpService.m` hard-codes it). Android uses the HTTP reason phrase, which is empty over HTTP/2.
+- **Requests get default headers:** Lynx's `Request` sets `Content-Type: text/plain;charset=UTF-8` when there's no body or a non-`ArrayBuffer` body without a type, so GETs carry it; on iOS, `NSURLSession` adds `application/x-www-form-urlencoded` to a POST of bytes without a type.
+- **`fetch` isn't on the background thread's `globalThis`.** The background bundle's wrapper (`RuntimeWrapperWebpackPlugin`'s `tt.define(..., function(..., fetch, XMLHttpRequest, ...)`) takes it as a parameter and falls back to `lynx.fetch`, so `globalThis.fetch` is `undefined` while the bare name `fetch` works. `Headers`, `Request`, `Response`, `AbortController`, `URL` and `TextCodecHelper` are real globals there. The main thread has none of them.
+- **No `TextEncoder`/`TextDecoder`, `atob`/`btoa`, `Blob` or `FormData` on either thread.** The background thread has `TextCodecHelper` (a global, not a module) and `__lynxArrayBufferToBase64`/`__lynxBase64ToArrayBuffer`.
+- **`response.redirected` and `response.type` are missing** (`undefined`). Redirects are followed; on Android, `response.url` is the request's URL.
+- **Aborting a request only rejects its promise.** The native request carries on.
+
+### AngularLynx
+
+The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `TextEncoder`, `TextDecoder` and `DOMException` on the main thread where they're missing (`packages/runtime/src/lib/network/`, issue #85). Its `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, so `HttpClient` (both backends), `httpResource` and fetch-based libraries work in components. The web preview's main thread is a browser frame and keeps the browser's own.
+
+---
+
 ## `text-maxline` attribute limits visible lines (no CSS equivalent)
 
 ### What you'd expect (web)

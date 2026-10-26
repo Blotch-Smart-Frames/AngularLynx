@@ -713,6 +713,7 @@ const applyFixtures = (appDir: string) => {
       path.join(appDir, 'src/app', file),
     );
   }
+  provideHttpClientInApp(appDir);
   // The generated test checks the generated template, which the fixture
   // replaced. It already passed in its own step.
   rmSync(path.join(appDir, 'src/app/hello/hello.spec.ts'), { force: true });
@@ -736,6 +737,25 @@ export const routes: Routes = [
 ];
 `,
   );
+};
+
+/**
+ * Adds `provideHttpClient()` to the app config `ng add` wrote, as an app that
+ * uses HttpClient does. The counter fixture loads JSON with it.
+ */
+const provideHttpClientInApp = (appDir: string) => {
+  const configPath = path.join(appDir, 'src/app/app.config.ts');
+  let config = readFileSync(configPath, 'utf8');
+  config = `import { provideHttpClient } from '@angular/common/http';\n${config}`;
+  config = config.replace(
+    'provideRouter(routes),',
+    'provideRouter(routes),\n    provideHttpClient(),',
+  );
+  check(
+    config.includes('provideHttpClient(),'),
+    "Couldn't add provideHttpClient() to src/app/app.config.ts; the config ng add generates has changed shape. Update provideHttpClientInApp() in packages/e2e/src/scaffold.ts.",
+  );
+  writeFileSync(configPath, config);
 };
 
 // Build tools color their output; match against plain text.

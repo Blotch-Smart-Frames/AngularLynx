@@ -57,6 +57,18 @@ test("a tap handler gets an async background function's result", async ({
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// The counter page loads fixtures/http-data.json through HttpClient and
+// httpResource when it starts. On the web, the main thread runs in a browser
+// frame, which has fetch; on Lynx it relays to the background thread's
+// (issue #85, checked by native/http.yaml).
+test('HttpClient and httpResource load JSON', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await expect(page.getByText('HTTP: pong/pong')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // Lynx for Web loads a lazy bundle by evaluating its main-thread half, which
 // the plugin never emitted, so this used to fail with "SyntaxError: Unexpected
 // token '}'". Dynamic imports are now inlined into the main bundle on every

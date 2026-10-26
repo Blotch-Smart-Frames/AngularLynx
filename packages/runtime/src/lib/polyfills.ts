@@ -13,6 +13,8 @@
  * requestIdleCallback), so keep these blocks in sequence.
  */
 
+import { isMainThread } from './background-call';
+import { installNetworkGlobals } from './network';
 import { installUrl } from './url';
 
 // Web-only: fail loud and clear when the page is not a secure context.
@@ -104,6 +106,16 @@ if (typeof AbortController === 'undefined') {
 // could be opened on device, lazy or not. HttpClient and NgOptimizedImage's
 // loaders use `URL` as well.
 installUrl(globalThis);
+
+// Lynx's main thread has no fetch, XMLHttpRequest, Headers, TextDecoder or
+// DOMException, and the background thread, which has fetch, runs no Angular.
+// So HttpClient, httpResource and fetch-based libraries failed wherever they
+// ran. These versions send each request to the background thread's fetch.
+// The background thread keeps its own globals: its fetch is passed into the
+// bundle's wrapper function, so it isn't on globalThis and would look missing.
+if (isMainThread()) {
+  installNetworkGlobals(globalThis as unknown as Record<string, unknown>);
+}
 
 // Angular core uses queueMicrotask for effect scheduling and change detection.
 // React Lynx polyfills this from lynx.queueMicrotask (see motion/src/polyfill/shim.ts).

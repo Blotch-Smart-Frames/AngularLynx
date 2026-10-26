@@ -64,6 +64,9 @@ export const serveStatic = (
       'Content-Type':
         MIME_TYPES[path.extname(file)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
+      // The web render tests load fixtures/http-data.json from another port
+      // than the page's (see HTTP_DATA in this file).
+      'Access-Control-Allow-Origin': '*',
     });
     createReadStream(file).pipe(response);
   });
@@ -72,3 +75,17 @@ export const serveStatic = (
     server.listen(port, host, () => resolve(server));
   });
 };
+
+/**
+ * The JSON the counter fixture loads through HttpClient and httpResource
+ * (fixtures/counter.ts), and where. The fixture's URL is fixed, since Lynx has
+ * no page URL to resolve a relative one against, so every layer that renders
+ * the app serves it there.
+ */
+export const HTTP_DATA = {
+  port: 3210,
+  route: {
+    path: '/e2e-http.json',
+    file: path.join(import.meta.dirname, '../fixtures/http-data.json'),
+  },
+} as const;

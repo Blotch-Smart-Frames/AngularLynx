@@ -26,6 +26,7 @@ Build commands and outputs (no flavors, so the names are fixed):
 ## How the shell loads the app
 
 - **Bundles** come from `assets/` (`ResourceFetchers.kt`, `BundleAssets.kt`). A URL without a scheme (`/static/…`, `static/…`), `asset:///…` and `file:///android_asset/…` all mean "the file at that path in `assets/`", so the bundle works with Rspeedy's default asset prefix (`/`) and doesn't need a platform-specific one. Absolute `http(s)` URLs are fetched with OkHttp.
+- **`fetch()` and `XMLHttpRequest`** go through Lynx's HTTP service (`LynxHttpService`, registered in `ShellApplication.kt`), which uses OkHttp. Plain HTTP is allowed to `localhost` and `127.0.0.1` only (`res/xml/network_security_config.xml`), for a server on the device or one on your machine through `adb reverse`; every other host needs HTTPS, Android's default.
 - **Images** are loaded by Fresco. The media fetcher rewrites bundled image URLs to `asset:///…`, which Fresco reads from the APK.
 - **Lazy routes** need nothing extra: the build plugin keeps each lazy chunk inside `main.lynx.bundle` (see `split-chunks.ts` in the build plugin). Bundles requested by URL at runtime still go through the template resource fetcher.
 

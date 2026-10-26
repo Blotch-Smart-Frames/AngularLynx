@@ -20,6 +20,7 @@ The setup:
 - Installs `LynxTestingEnv` on the jsdom window
 - Switches to the Lynx main thread (where PAPI functions live)
 - Polyfills PAPI functions the testing environment doesn't implement (`__GetParent`, `__QuerySelector`, etc.)
+- Makes `lynx.reportError` return for a warning, as Lynx does, instead of throwing it, so an `@boundary` shows its fallback with the default error handler
 - Installs `@testing-library/jest-dom` matchers
 
 `ng test` compiles the tests ahead of time, like the app, and checks templates strictly, as the Angular Language Service does: a component that uses Lynx elements imports `LYNX_ELEMENTS` from `@blotch/angular-lynx`. The examples below do.

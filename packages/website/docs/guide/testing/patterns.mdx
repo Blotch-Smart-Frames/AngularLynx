@@ -139,21 +139,12 @@ To test a service on its own, without rendering anything, use Angular's `TestBed
 
 ## Test an error fallback
 
-`@boundary` works in tests. Give the test an error handler that records caught errors. The default `LynxErrorHandler` reports them to Lynx, and the test environment's stand-in for Lynx throws them again.
+`@boundary` works in tests with the error handler that `provideRenderer()` registers. Make the content throw, then look for the fallback:
 
 ```typescript title="src/app/price.test.ts"
-import { Component, ErrorHandler, Injectable, signal } from '@angular/core';
-import { LYNX_ELEMENTS, LynxErrorHandler } from '@blotch/angular-lynx';
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-
-@Injectable()
-class RecordingErrorHandler extends LynxErrorHandler {
-  readonly caught: Error[] = [];
-
-  override onViewError(error: Error): void {
-    this.caught.push(error);
-  }
-}
 
 @Component({
   selector: 'app-price',
@@ -176,16 +167,40 @@ class Price {
 }
 
 it('shows the fallback when the price is bad', async () => {
+  const { getByText, componentRef } = await render(Price);
+
+  (componentRef.instance as Price).price.set(Number.NaN);
+  await waitForUpdate();
+
+  expect(getByText('Price unavailable')).toBeTruthy();
+});
+```
+
+The caught error doesn't fail the test, just as it doesn't stop the app on a device: `LynxErrorHandler` reports it to Lynx as a warning. To check which error the boundary caught, give the test an error handler that records it:
+
+```typescript title="src/app/price.test.ts"
+import { ErrorHandler, Injectable } from '@angular/core';
+import { LynxErrorHandler } from '@blotch/angular-lynx';
+
+@Injectable()
+class RecordingErrorHandler extends LynxErrorHandler {
+  readonly caught: Error[] = [];
+
+  override onViewError(error: Error): void {
+    this.caught.push(error);
+  }
+}
+
+it('catches the bad price', async () => {
   const handler = new RecordingErrorHandler();
-  const { getByText, componentRef } = await render(Price, {
+  const { componentRef } = await render(Price, {
     providers: [{ provide: ErrorHandler, useValue: handler }],
   });
 
   (componentRef.instance as Price).price.set(Number.NaN);
   await waitForUpdate();
 
-  expect(getByText('Price unavailable')).toBeTruthy();
-  expect(handler.caught).toHaveLength(1);
+  expect(handler.caught.map((error) => error.message)).toEqual(['Bad price']);
 });
 ```
 

@@ -9,11 +9,11 @@ import type { RsbuildPluginAPI, Rspack } from '@lynx-js/rspeedy';
 import { CSSPlugins } from '@lynx-js/template-webpack-plugin';
 import type { CSSLoaderOptions } from '@rsbuild/core';
 import { LAYERS } from './layers.js';
-import type { PluginAngularLynxOptions } from './utils/options.js';
+import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
 
 export const applyCSS = (
   api: RsbuildPluginAPI,
-  options: Required<PluginAngularLynxOptions>,
+  options: NormalizedPluginAngularLynxOptions,
 ): void => {
   const {
     enableRemoveCSSScope,

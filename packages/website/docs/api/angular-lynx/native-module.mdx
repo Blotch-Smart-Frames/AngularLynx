@@ -1,6 +1,6 @@
 # LynxNativeModule
 
-Call native code that the host app exposes, and share JavaScript modules within a page. `import { LynxNativeModule, type NativeModuleMap } from '@blotch/angular-lynx';`
+Call native code that the host app exposes, and share JavaScript modules within a page. `import { LynxNativeModule, type NativeModuleMap, type NativeModuleProxy } from '@blotch/angular-lynx';`
 
 A **native module** is an object that the [host app](/guide/glossary#host-app) (the native iOS or Android app that runs your bundle) registers, with methods written in Swift, Kotlin or another native language.
 
@@ -67,12 +67,14 @@ Listens for the bridge event `name` from the host. `callback` gets the event's a
 ```typescript
 getNativeModule<K extends string>(
   name: K,
-): K extends keyof NativeModuleMap ? NativeModuleMap[K] : unknown;
+): K extends keyof NativeModuleMap
+  ? NativeModuleProxy<NativeModuleMap[K]> | undefined
+  : unknown;
 ```
 
 Returns a stand-in for the native module the host registered as `name`, or `undefined` outside Lynx. Each method you call on it runs on the background thread and returns a promise of the method's return value. The promise rejects if the host has no such module or method.
 
-The return type comes from `NativeModuleMap`. Until you can extend that type (see below), cast the result to your module's interface.
+For a module you've added to [`NativeModuleMap`](#nativemodulemap), the return type is a [`NativeModuleProxy`](#nativemoduleproxy) of it. For any other name it's `unknown`.
 
 ### `LynxNativeModule.getJSModule()`
 
@@ -95,30 +97,56 @@ Registers `module` under `name`, so other code in this page, including native ca
 ### `NativeModuleMap`
 
 ```typescript
-type NativeModuleMap = {};
+interface NativeModuleMap {}
 ```
 
-Maps module names to their types for `getNativeModule()`. It's meant to be extended with your own modules, but it's declared as a `type`, which TypeScript can't merge with your declarations. Cast instead:
+Maps module names to their types for `getNativeModule()`. It's empty until you add your host's modules to it with [module augmentation](https://www.typescriptlang.org/docs/handbook/declaration-merging.html#module-augmentation). Write each method as the host implements it, returning what the native method returns:
+
+```typescript title="src/native-modules.d.ts"
+// This export makes the file a module, so the block below adds to
+// @blotch/angular-lynx's types instead of replacing them.
+export {};
+
+declare module '@blotch/angular-lynx' {
+  interface NativeModuleMap {
+    DeviceModule: {
+      getBatteryLevel(): number;
+      vibrate(durationMs: number): void;
+    };
+  }
+}
+```
+
+Then `getNativeModule('DeviceModule')` is typed, with no casting:
 
 ```typescript title="src/app/battery.ts"
 import { Injectable, inject } from '@angular/core';
 import { LynxNativeModule } from '@blotch/angular-lynx';
 
-type DeviceModule = {
-  getBatteryLevel(callback: (level: number) => void): void;
-};
-
 @Injectable({ providedIn: 'root' })
 export class Battery {
-  readonly #device = inject(LynxNativeModule).getNativeModule(
-    'DeviceModule',
-  ) as DeviceModule | undefined;
+  readonly #device = inject(LynxNativeModule).getNativeModule('DeviceModule');
 
-  read(callback: (level: number) => void): void {
-    this.#device?.getBatteryLevel(callback);
+  // Promise<number | undefined>: the call runs on the background thread.
+  async read(): Promise<number | undefined> {
+    return this.#device?.getBatteryLevel();
   }
 }
 ```
+
+### `NativeModuleProxy`
+
+```typescript
+type NativeModuleProxy<T> = {
+  [K in keyof T as T[K] extends (...args: any[]) => unknown
+    ? K
+    : never]: T[K] extends (...args: infer A) => infer R
+    ? (...args: A) => Promise<Awaited<R>>
+    : never;
+};
+```
+
+A native module as `getNativeModule()` returns it. Native modules exist only on the background thread, so each method call is sent there: it takes the same arguments and returns a promise of the method's result, copied as JSON. Callbacks you pass are called back on the main thread. Only methods are on it; other properties of the module aren't reachable.
 
 ## Related
 

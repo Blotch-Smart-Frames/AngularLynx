@@ -2,6 +2,10 @@
  * Extend this interface to type the raw data passed from native before processing.
  *
  * @example
+ * // This export makes the file a module, so the block below adds to
+ * // @blotch/angular-lynx's types instead of replacing them.
+ * export {};
+ *
  * declare module '@blotch/angular-lynx' {
  *   interface InitDataRaw { userId: string; }
  * }
@@ -13,6 +17,10 @@ export interface InitDataRaw extends Record<string, unknown> {}
  * Extend this interface to type the processed init data used throughout the app.
  *
  * @example
+ * // This export makes the file a module, so the block below adds to
+ * // @blotch/angular-lynx's types instead of replacing them.
+ * export {};
+ *
  * declare module '@blotch/angular-lynx' {
  *   interface InitData { userId: string; }
  * }
@@ -24,6 +32,10 @@ export interface InitData extends Record<string, unknown> {}
  * Extend this interface to type the global data passed from the native host.
  *
  * @example
+ * // This export makes the file a module, so the block below adds to
+ * // @blotch/angular-lynx's types instead of replacing them.
+ * export {};
+ *
  * declare module '@blotch/angular-lynx' {
  *   interface GlobalData { theme: 'light' | 'dark'; }
  * }

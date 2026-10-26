@@ -105,7 +105,7 @@ export { LynxLogger } from './lib/lynx-logger';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';
 export type { PortalConfig } from './lib/portal';
-export type { NativeModuleMap } from './lib/native-module';
+export type { NativeModuleMap, NativeModuleProxy } from './lib/native-module';
 export {
   mainThreadFn,
   backgroundFn,
@@ -130,6 +130,8 @@ export type {
   PrefetchPriority,
   PrefetchRequest,
   PrefetchResultDetail,
+  ResourcePrefetchData,
+  ResourcePrefetchResult,
 } from './lib/resource-prefetch';
 export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';

@@ -1,2 +1,2 @@
 export { LynxNativeModule } from './native-module';
-export type { NativeModuleMap } from './native-module.types';
+export type { NativeModuleMap, NativeModuleProxy } from './native-module.types';

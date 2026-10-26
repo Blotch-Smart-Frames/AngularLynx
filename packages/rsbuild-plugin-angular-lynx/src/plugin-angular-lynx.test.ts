@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as OptionsModule from './utils/options.js';
 
 vi.mock('./angular.js', () => ({ applyAngularRules: vi.fn() }));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
@@ -8,7 +9,9 @@ vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./tailwind.js', () => ({ applyTailwind: vi.fn() }));
-vi.mock('./utils/options.js', () => ({
+vi.mock('./utils/options.js', async (importOriginal) => ({
+  deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
+    .deprecatedOptionsIn,
   normalizeOptions: vi.fn((opts) => ({ _normalized: true, ...opts })),
 }));
 
@@ -73,6 +76,33 @@ describe('pluginAngularLynx', () => {
         mockApi,
         expect.objectContaining({ _normalized: true }),
       );
+    });
+
+    it('warns once for each deprecated option the config sets', () => {
+      const api = { logger: { warn: vi.fn() } } as any;
+      const plugin = pluginAngularLynx({
+        enableICU: true,
+        pipelineSchedulerConfig: 0x00010000,
+        enableA11y: false,
+      });
+      plugin.setup(api);
+
+      expect(api.logger.warn).toHaveBeenCalledTimes(2);
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('`enableICU` option has no effect'),
+      );
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '`pipelineSchedulerConfig` option has no effect',
+        ),
+      );
+    });
+
+    it("doesn't warn without deprecated options", () => {
+      const api = { logger: { warn: vi.fn() } } as any;
+      pluginAngularLynx({ enableA11y: false }).setup(api);
+
+      expect(api.logger.warn).not.toHaveBeenCalled();
     });
 
     it('calls applyTailwind with api', () => {

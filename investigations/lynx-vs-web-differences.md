@@ -1549,11 +1549,10 @@ Measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and Andr
 | Background | `function` | `function` | `undefined` | `undefined` |
 
 - **`fetch` exists only on the background thread.** Lynx's docs tag it `BTS`. Background code is wrapped in a function whose parameters include `fetch`, `XMLHttpRequest` and `WebSocket` (`core/runtime/js/js_bundle.cc`), and rspeedy's runtime wrapper adds `fetch = fetch || lynx.fetch`. The wrapper's `XMLHttpRequest` and `WebSocket` parameters are `undefined` in Lynx Explorer.
-- **The main thread has none of them**, and since issue #81 every component, service, interceptor and `(bindtap)` handler runs there. So Angular's `HttpClient` fails as is: its default backend needs `XMLHttpRequest`, and `withFetch()` needs `fetch` (issue #85).
-- **To make a request,** call `fetch` in a `backgroundFn()` and await it from the main thread with `runOnBackground()`. Only JSON-serializable results come back.
+- **The main thread has none of them**, and since issue #81 every component, service, interceptor and `(bindtap)` handler runs there. Angular's `HttpClient` needs `fetch` for its default backend and `XMLHttpRequest` for `withXhr()`, so the runtime installs both on the main thread, relayed to the background thread's `fetch` (issue #85). See "The main thread's `fetch` is AngularLynx's relay" below.
 - **Lynx for Web** uses the browser's own `fetch`, with the web's rules (Lynx's `fetch` docs).
 
-How Lynx's `fetch` differs from the web's is in the next two entries.
+How Lynx's `fetch` differs from the web's is in "`fetch` is available but without CORS, FormData, Blob, or redirect support" and "`fetch` streaming requires an explicit `enableFetchAPIStandardStreaming` flag" below.
 
 ---
 
@@ -1951,7 +1950,7 @@ On the background thread (the only one that has it; see "Network APIs" above), L
 
 ---
 
-## `TextEncoder` and `TextDecoder` are not available in PrimJS — use `TextCodecHelper`
+## `TextEncoder` and `TextDecoder` are missing; the runtime adds them to the main thread
 
 ### What you'd expect (web)
 
@@ -1959,13 +1958,18 @@ On the background thread (the only one that has it; see "Network APIs" above), L
 
 ### What Lynx does
 
-PrimJS does not provide `TextEncoder` or `TextDecoder`. Use Lynx's **`TextCodecHelper`** module instead:
+PrimJS provides neither, on either thread. The background thread has Lynx's `TextCodecHelper` global instead, a plain global rather than a native module, which converts UTF-8 between strings and `ArrayBuffer`s (Lynx's networking guide):
 
 ```ts
-const helper = lynx.requireModule('TextCodecHelper');
-const encoded = helper.encode('hello'); // returns Uint8Array
-const decoded = helper.decode(uint8Array); // returns string
+const str = TextCodecHelper.decode(arrayBuffer);
+const buffer = TextCodecHelper.encode(str); // an ArrayBuffer
 ```
+
+The main thread has no `TextCodecHelper` either (issue #85, Lynx Explorer 4.1 on the iOS Simulator).
+
+### AngularLynx
+
+The runtime installs UTF-8-only `TextEncoder` and `TextDecoder` on the main thread (`packages/runtime/src/lib/network/text-codec.ts`, issue #85), because Angular's `FetchBackend` decodes every `json` and `text` response with `new TextDecoder()`. Any other encoding label throws a `RangeError`, as in browsers.
 
 ---
 

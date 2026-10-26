@@ -136,9 +136,9 @@ Use `lynx.setSessionStorage(key, value)` / `lynx.getSessionStorage(key)`.
 
 The runtime adds them to the main thread. Any other encoding label throws a `RangeError`.
 
-### No `URL` constructor
+### `URL` and `URLSearchParams` come from the runtime
 
-Manual string parsing needed. `LynxPlatformLocation` handles this.
+PrimJS has neither on the main thread. The runtime installs standards-following versions, because Angular's Router, `HttpClient` and `NgOptimizedImage` loaders call `new URL()`. Use them as on the web.
 
 ---
 

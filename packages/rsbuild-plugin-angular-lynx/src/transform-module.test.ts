@@ -144,4 +144,54 @@ describe('buildTransformedCode', () => {
     expect(result.startsWith('import "./a.css";')).toBe(true);
     expect(result).toContain("App.ɵcmp.id = 'lzz';");
   });
+
+  // Set in a development build with hot updates (see hot-updates.ts).
+  describe('hot updates', () => {
+    const component = [
+      'export class Home {}',
+      'Home.ɵcmp = i0.ɵɵdefineComponent({ type: Home });',
+    ].join('\n');
+
+    it('makes an app entry accept its own updates, so it re-bootstraps', () => {
+      const result = buildTransformedCode({
+        ...base,
+        code: 'bootstrapApplication(App);',
+        hot: { entry: true, source: () => '' },
+      });
+
+      expect(result).toContain('import.meta.webpackHot.accept();');
+    });
+
+    it('hands a component module to the runtime with its source signature', () => {
+      const result = buildTransformedCode({
+        ...base,
+        code: component,
+        hot: {
+          entry: false,
+          source: () => "@Component({ template: 'x' }) export class Home {}",
+        },
+      });
+
+      expect(result).toMatch(
+        /\[Home\] = ɵɵangularLynxHmrAccept\(import\.meta\.webpackHot, \[Home\], "[0-9a-f]{16}", "[0-9a-f]{16}"\);/,
+      );
+    });
+
+    it('leaves a module without components to pass its updates on', () => {
+      const code = 'export const x = 1;';
+      expect(
+        buildTransformedCode({
+          ...base,
+          code,
+          hot: { entry: false, source: () => code },
+        }),
+      ).toBe(code);
+    });
+
+    it('adds nothing without hot updates', () => {
+      expect(buildTransformedCode({ ...base, code: component })).toBe(
+        component,
+      );
+    });
+  });
 });

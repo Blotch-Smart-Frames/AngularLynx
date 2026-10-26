@@ -152,6 +152,7 @@ const createMockCompilation = () => {
       },
     },
     chunkGroups: [] as unknown[],
+    chunks: [] as Array<{ files: Set<string> }>,
     assets,
     getAsset: vi.fn((name: string) => assets[name] ?? null),
     updateAsset: vi.fn(
@@ -750,6 +751,87 @@ describe('AngularWebpackPlugin', () => {
         const asset = compilation.assets['bg.js'];
         expect(asset.source.source()).toContain(
           'globalThis["__MAIN_THREAD__"]=false;',
+        );
+      });
+
+      // A hot update runs in a thread that already has the flag, and only
+      // the initial chunks are in mainThreadChunks, so the value would be
+      // wrong for the main thread's.
+      it('leaves hot update chunks without the flag', () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin({ mainThreadChunks: ['main.js'] }).apply(
+          compiler as never,
+        );
+        const compilation = createMockCompilation();
+        compilation.addAsset('main.abc.hot-update.js', 'update();', {
+          hotModuleReplacement: true,
+        });
+        triggerCompilation(compilation);
+
+        compilation.triggerProcessAssets(STAGE_ADDITIONS);
+
+        expect(
+          compilation.assets['main.abc.hot-update.js'].source.source(),
+        ).toBe('update();');
+      });
+
+      // The main thread loads its hot updates itself, as plain CommonJS, so
+      // RuntimeWrapperWebpackPlugin must skip them (it skips marked files).
+      it("marks the hot updates of the main thread's chunks as main-thread code", () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin({ mainThreadChunks: ['main.js'] }).apply(
+          compiler as never,
+        );
+        const compilation = createMockCompilation();
+        compilation.addAsset('main.js', 'main();');
+        compilation.addAsset('main__main-thread.abc.hot-update.js', 'u();', {
+          hotModuleReplacement: true,
+        });
+        compilation.addAsset('main__main-thread.abc.hot-update.json', '{}', {
+          hotModuleReplacement: true,
+        });
+        compilation.addAsset('lazy/main-thread.js', 'lazy();', {
+          'lynx:main-thread': true,
+        });
+        compilation.addAsset('lazy.abc.hot-update.js', 'u();', {
+          hotModuleReplacement: true,
+        });
+        compilation.addAsset('bg.js', 'bg();');
+        compilation.addAsset('main.abc.hot-update.js', 'u();', {
+          hotModuleReplacement: true,
+        });
+        compilation.chunks.push(
+          {
+            files: new Set([
+              'main.js',
+              'main__main-thread.abc.hot-update.js',
+              'main__main-thread.abc.hot-update.json',
+            ]),
+          },
+          { files: new Set(['lazy/main-thread.js', 'lazy.abc.hot-update.js']) },
+          { files: new Set(['bg.js', 'main.abc.hot-update.js']) },
+        );
+        triggerCompilation(compilation);
+
+        compilation.triggerProcessAssets(STAGE_ADDITIONS);
+
+        const info = (name: string) => compilation.assets[name].info;
+        expect(info('main__main-thread.abc.hot-update.js')).toMatchObject({
+          'lynx:main-thread': true,
+        });
+        expect(info('lazy.abc.hot-update.js')).toMatchObject({
+          'lynx:main-thread': true,
+        });
+        // Only the update chunks: the manifest isn't JavaScript.
+        expect(
+          info('main__main-thread.abc.hot-update.json'),
+        ).not.toHaveProperty('lynx:main-thread');
+        expect(info('main.abc.hot-update.js')).not.toHaveProperty(
+          'lynx:main-thread',
         );
       });
 

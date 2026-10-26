@@ -28,6 +28,9 @@ export type {
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
 export { loadLazyBundle } from './lib/lazy-bundle';
+// Called by code the build plugin adds to each component's module in a
+// development build (see the file).
+export { ɵhmrAccept } from './lib/hmr/hmr-accept';
 export { getLynxAppLocale, LynxLocale, provideLocale } from './lib/locale';
 export type {
   LynxFontEntry,

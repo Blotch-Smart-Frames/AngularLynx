@@ -2,6 +2,7 @@
 //   NormalizedEnvironmentConfig,
 // } from "@rsbuild/core";
 
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LynxConfig } from '@lynx-js/rsbuild-plugin';
@@ -28,6 +29,7 @@ const PLUGIN_NAME_TEMPLATE = 'lynx:template';
 const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';
 const RULE_BACKGROUND_MODULES = 'lynx:background-modules';
+const PLUGIN_NAME_CSS_HOT_UPDATE = 'lynx:css-hot-update';
 
 /**
  * The `blur-view` rule that approximates iOS's blur materials on Android,
@@ -41,10 +43,45 @@ export const BLUR_VIEW_STYLESHEET = path.resolve(
   './styles/blur-view.css',
 );
 
+/**
+ * The hot update clients (see client/). The background one stands in for
+ * `@rspack/core/hot/dev-server`; the main-thread one gives the main thread its
+ * own hot updates. Together they apply each update on both threads, or reload.
+ */
+export const HMR_BACKGROUND_CLIENT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './client/hmr-background.js',
+);
+export const HMR_MAIN_THREAD_CLIENT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './client/hmr-main-thread.js',
+);
+/**
+ * Applies stylesheet edits on the main thread, in place of css-extract's
+ * `runtime/hotModuleReplacement.cjs` (see client/css-hot-update.ts).
+ */
+export const CSS_HOT_UPDATE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './client/css-hot-update.cjs',
+);
+const CSS_EXTRACT_HOT_UPDATE =
+  /css-extract-webpack-plugin[\\/]runtime[\\/]hotModuleReplacement\.cjs$/;
+
+/**
+ * The dev transport's `reloadApp` module, which the background client reloads
+ * the page with. It's resolved from `@lynx-js/rsbuild-plugin`, which installs
+ * the transport, so the client gets the copy Rspeedy itself injects.
+ */
+const resolveReloadApp = (): string =>
+  createRequire(
+    createRequire(import.meta.url).resolve('@lynx-js/rsbuild-plugin'),
+  ).resolve('@lynx-js/webpack-dev-transport/reloadApp');
+
 export const applyEntry = (
   api: RsbuildPluginAPI,
   options: NormalizedPluginAngularLynxOptions,
   backgroundEntries: BackgroundEntries,
+  appEntries: Set<string>,
 ): void => {
   const {
     customCSSInheritanceList,
@@ -62,7 +99,7 @@ export const applyEntry = (
     targetSdkVersion,
   } = options;
 
-  api.modifyBundlerChain((chain, { environment, isDev }) => {
+  api.modifyBundlerChain((chain, { environment, isDev, rspack }) => {
     // The bundle filename and the intermediate directory are owned by the Lynx
     // build engine since Rspeedy 0.17. Resolving them through it (rather than
     // reading `output.filename` and hardcoding the old `.rspeedy` directory)
@@ -114,6 +151,14 @@ export const applyEntry = (
         ...entryImports.filter((entryImport) => preEntry.has(entryImport)),
         backgroundEntries.fileFor(environment.name, entryName),
       ];
+      // The app's own entry modules, which take the hot updates nothing else
+      // takes (see hot-updates.ts). Package imports such as polyfills aren't
+      // the app's, so only paths count.
+      for (const entryImport of entryImports) {
+        if (entryImport.startsWith('.') || path.isAbsolute(entryImport)) {
+          appEntries.add(path.resolve(api.context.rootPath, entryImport));
+        }
+      }
 
       const templateFilename = lynxConfig.resolveBundleFilename({
         entryName,
@@ -143,6 +188,14 @@ export const applyEntry = (
           import: mainThreadImports,
           filename: mainThreadName,
         })
+        .when(enabledHMR, (entry) => {
+          // Before the app's code, so the main thread can take a hot update
+          // as soon as the first one arrives.
+          entry.prepend({
+            layer: LAYERS.MAIN_THREAD,
+            import: HMR_MAIN_THREAD_CLIENT,
+          });
+        })
         .end();
 
       chain
@@ -156,10 +209,13 @@ export const applyEntry = (
           // Use prepend so the webpack HMR runtime executes before user code.
           // Adding after user code (with .add()) would mean module.hot is not yet
           // installed when components first run, breaking hot update acceptance.
+          //
+          // It's this plugin's client rather than `@rspack/core/hot/dev-server`
+          // (which Rspeedy aliases to Lynx's), which only updates the
+          // background thread. The app runs on the main thread.
           entry.prepend({
             layer: LAYERS.BACKGROUND,
-            // This is aliased to the correct path by rspeedy's dev plugin
-            import: '@rspack/core/hot/dev-server',
+            import: HMR_BACKGROUND_CLIENT,
           });
         })
         .when(enabledHMR || enabledLiveReload, (entry) => {
@@ -216,6 +272,23 @@ export const applyEntry = (
       .issuerLayer(LAYERS.BACKGROUND)
       .test((file: string) => backgroundEntries.isBackgroundModule(file))
       .sideEffects(true);
+    if (enabledHMR) {
+      chain.resolve.alias.set(
+        '@lynx-js/webpack-dev-transport/reloadApp',
+        resolveReloadApp(),
+      );
+      // Every CSS module css-extract generates calls this runtime when a hot
+      // update replaces it. Its version updates the stylesheet from the
+      // background thread, but the main thread takes the CSS modules' updates
+      // (and the background thread may not have them at all).
+      chain
+        .plugin(PLUGIN_NAME_CSS_HOT_UPDATE)
+        .use(rspack.NormalModuleReplacementPlugin, [
+          CSS_EXTRACT_HOT_UPDATE,
+          CSS_HOT_UPDATE,
+        ])
+        .end();
+    }
     if (isLynx) {
       chain
         .plugin(PLUGIN_NAME_RUNTIME_WRAPPER)

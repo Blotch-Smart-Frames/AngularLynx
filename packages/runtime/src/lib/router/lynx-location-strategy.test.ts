@@ -1,6 +1,11 @@
 import '@angular/compiler';
+import { LocationStrategy } from '@angular/common';
+import { Injector } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { LynxLocationStrategy } from './lynx-location-strategy';
+import {
+  carryOverLocation,
+  LynxLocationStrategy,
+} from './lynx-location-strategy';
 
 describe('LynxLocationStrategy', () => {
   let strategy: LynxLocationStrategy;
@@ -256,5 +261,58 @@ describe('LynxLocationStrategy', () => {
 
       expect(listener).not.toHaveBeenCalled();
     });
+  });
+});
+
+// A hot update that re-bootstraps the app hands the old strategy's history to
+// the new app's (see bootstrapApplication).
+describe('carryOverLocation', () => {
+  const injectorWith = (strategy: LocationStrategy): Injector =>
+    Injector.create({
+      providers: [{ provide: LocationStrategy, useValue: strategy }],
+    });
+
+  it('starts the next strategy on the current screen, with its history', () => {
+    const old = new LynxLocationStrategy();
+    old.pushState({ a: 1 }, '', '/list', '');
+    old.pushState({ b: 2 }, '', '/detail', 'id=3');
+    old.back();
+
+    carryOverLocation(injectorWith(old));
+    const next = new LynxLocationStrategy();
+
+    expect(next.path()).toBe('/list');
+    expect(next.getState()).toEqual({ a: 1 });
+    expect(next.canGoBack()).toBe(true);
+    next.forward();
+    expect(next.path()).toBe('/detail?id=3');
+  });
+
+  it("hands the history over once, and doesn't share it", () => {
+    const old = new LynxLocationStrategy();
+    old.pushState(null, '', '/list', '');
+
+    carryOverLocation(injectorWith(old));
+    const next = new LynxLocationStrategy();
+    next.replaceState(null, '', '/changed', '');
+
+    expect(old.path()).toBe('/list');
+    expect(new LynxLocationStrategy().path()).toBe('/');
+  });
+
+  it('keeps Back off on the first screen', () => {
+    carryOverLocation(injectorWith(new LynxLocationStrategy()));
+
+    expect(new LynxLocationStrategy().canGoBack()).toBe(false);
+  });
+
+  it('does nothing for an app without the router or with another strategy', () => {
+    carryOverLocation(undefined);
+    carryOverLocation(Injector.create({ providers: [] }));
+    carryOverLocation(
+      injectorWith({ path: () => '/other' } as unknown as LocationStrategy),
+    );
+
+    expect(new LynxLocationStrategy().path()).toBe('/');
   });
 });

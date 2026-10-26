@@ -38,7 +38,10 @@ export const pluginAngularLynx = (
       });
       applyCSS(api, normalizedOptions);
       applyTailwind(api);
-      applyEntry(api, normalizedOptions, backgroundEntries);
+      // The app's entry modules, which entry.ts finds and the Angular
+      // transform makes take hot updates (see hot-updates.ts).
+      const appEntries = new Set<string>();
+      applyEntry(api, normalizedOptions, backgroundEntries, appEntries);
       applyLayers(api);
       applyResolve(api);
       // applyAngularRules reads angular.json asynchronously and only then
@@ -54,6 +57,7 @@ export const pluginAngularLynx = (
         api,
         normalizedOptions,
         backgroundEntries,
+        appEntries,
       );
       applyGenerator(api);
       applySplitChunksRule(api, normalizedOptions);

@@ -4451,29 +4451,49 @@ The `z-index` must **not** apply on native. There, a `z-index` on a sticky scrol
 
 ---
 
-## Saving a file doesn't update the app on Lynx unless Lynx DevTool is on
+## Hot updates have to be applied on the main thread, which can't fetch them
 
 ### What you'd expect (web)
 
-The dev server rebuilds and the page updates: either a hot module update applies in place, or the HMR client falls back to `window.location.reload()`.
+The dev server rebuilds, and webpack's hot update client in the page loads the changed modules and runs them. If no module can take the update, it falls back to `window.location.reload()`.
 
 ### What Lynx does
 
-In AngularLynx, the screen is drawn by the Angular app on the **main thread**, but webpack HMR only runs on the **background thread**. Nothing loads the main-thread hot-update chunk (`main__main-thread.<hash>.hot-update.js`), so a hot update can never change what's on screen.
+The hot update client, and the dev server's connection, run on the **background thread**: Rspeedy adds them to the background half of each bundle. In an AngularLynx app the screen is drawn by the Angular app on the **main thread**, which only ever had webpack's hot update runtime with nothing to start it. Its update chunk (`main__main-thread.<hash>.hot-update.js`) was emitted and never loaded.
 
-There is no `window.location.reload()` either. `@lynx-js/webpack-dev-transport` falls back to a full reload through Lynx DevTool (`NativeModules.LynxDevToolSetModule.invokeCdp` with `Page.reload`). With DevTool off in Lynx Explorer, that call does nothing. Explorer logs the `invokeCdp` call, and then no reload follows.
+The main thread can't load it itself: it has no `fetch`, and webpack's Lynx chunk loading calls `lynx.requireModuleAsync()`, which only the background thread has. Some other facts that shaped the fix, checked in Lynx Explorer 4.1 (iOS):
 
-Two things used to hide this:
+- **The main thread can run code it receives.** In a development build, PrimJS runs `eval()` and `new Function()`. React Lynx relies on the same thing: its main thread `eval`s the snapshot code its hot updates send (`snapshotPatchApply.ts`). `__LoadLepusChunk()` only runs chunks that are in the bundle, so it can't load an update.
+- **`Function.prototype.toString()` returns `[native code]`** for main-thread functions from the bundle, which is compiled to bytecode. A runtime can't compare two versions of a class by their source.
+- **`lynx.getDevtool().replaceStyleSheetByIdWithBase64()` works on the main thread with Lynx DevTool off.** `getDevtool()` is in the main thread's `lynx` object in every build (`Utils::CreateLynx` in `renderer_ng.cc`). React Lynx's CSS hot updates use it.
+- **`clearTimeout(undefined)` throws on the main thread**, where the web and the background thread ignore it. css-extract's stylesheet updater does it on its first call.
+- **A second `__CreatePage()` gives a page Lynx never shows.** The first page stays on screen, with whatever was in it.
+- **The background thread has `fetch`** in Lynx Explorer, with Lynx DevTool on or off (the background engine is PrimJS or JavaScriptCore depending on the switch).
 
-- The rsbuild plugin made the bootstrap entry accept its own hot updates. The background thread applied the update and reported success, so the reload fallback never ran.
-- Before that, Angular never recompiled on watch rebuilds, so every hot update was empty anyway.
+The dev transport's reload fallback (`Page.reload` through `NativeModules.LynxDevToolSetModule.invokeCdp`) still needs Lynx DevTool: without it, the call does nothing.
 
 ### The fix
 
-- **Don't let any module accept hot updates** (`packages/rsbuild-plugin-angular-lynx/src/transform-module.ts`). An update with no accepting module aborts, and the client falls back to `Page.reload`, which re-runs both threads with the new bundle.
-- **Turn on Lynx DevTool** in Lynx Explorer's settings tab. Without it, the reload request goes nowhere.
+The rsbuild plugin's hot update clients (`packages/rsbuild-plugin-angular-lynx/src/client/`) apply each update on both threads:
 
-Each save is therefore a full reload: the app restarts on its initial route. Updating in place, the way React Lynx does for component edits, would need hot updates applied on the main thread as well.
+1. The background client stands in for `@rspack/core/hot/dev-server`. It applies the update on the background thread first, then asks the main thread to apply its half.
+2. The main-thread client gives the main thread a `lynx.requireModuleAsync()` that has the background thread fetch the file and runs it on the main thread with `new Function`. The hot update runtime already there then works unchanged.
+3. If either thread can't apply the update, the background client reloads the page through Lynx DevTool.
+
+Modules take their updates like this (`hot-updates.ts`, and `ɵhmrAccept` in the runtime):
+
+- **A component whose template or styles changed** is updated in place with Angular's `ɵɵreplaceMetadata()`, which Angular's own dev server uses for the same edits. Its views are re-rendered, and its instances, with their state, are kept.
+- **Any other change** (a class, an import, a service) passes the update on to the app's entry, which bootstraps the app again. The new app opens on the route the old one showed, with the same Back history (`carryOverLocation()`), and takes over the page (`LynxDocument.createRootElement()`).
+- **Stylesheet edits** are applied on the main thread with `replaceStyleSheetByIdWithBase64()` (`client/css-hot-update.ts` replaces css-extract's background-thread updater).
+- **On the background thread**, every update runs the changed modules again from the generated background entry, which registers their background functions again.
+
+Lynx DevTool is only needed for the reload fallback, when an update can't be applied (for example a module that throws while it loads).
+
+The web preview has no hot updates or reloads: web-core has neither `replaceStyleSheetByIdWithBase64()` nor a DevTool connection to reload with, and the preview page has no client of its own. Refresh the browser after a save.
+
+### Still open
+
+`Page.reload` from Lynx DevTool leaves an AngularLynx app blank in Lynx Explorer 4.1 on the iOS Simulator, on master too. The bundle loads, `renderPage` runs and Angular bootstraps (even with an explicit `__FlushElementTree()`), but nothing shows. So the reload fallback reloads, but to a blank page.
 
 To check what happened on the iOS Simulator, read Explorer's logs. JS `console` output doesn't appear there, but native module calls and script loads do:
 

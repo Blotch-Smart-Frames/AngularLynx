@@ -25,6 +25,7 @@ import {
 } from './angular-diagnostics.js';
 import { wrapPureClasses } from './pure-classes.js';
 import { seedCompilationSourceFiles } from './seed-compilation-source-files.js';
+import { addEntryHotAccept, hotUpdatesEnabled } from './hot-updates.js';
 import {
   buildTransformedCode,
   type ModuleStylesheets,
@@ -88,6 +89,7 @@ export const applyAngularRules = async (
   api: RsbuildPluginAPI,
   pluginOptions: NormalizedPluginAngularLynxOptions,
   backgroundEntries: BackgroundEntries,
+  appEntries: ReadonlySet<string>,
 ): Promise<void> => {
   // Set under `ng build` / `ng serve`: the project being built and its build
   // options as Angular CLI resolved them. Plain rspeedy reads angular.json.
@@ -510,9 +512,11 @@ export const applyAngularRules = async (
       code: string;
       resourcePath: string;
       addDependency: (file: string) => void;
+      environment: Parameters<typeof hotUpdatesEnabled>[0];
     },
     background: boolean,
   ): Promise<{ code: string }> => {
+    const hot = hotUpdatesEnabled(context.environment);
     const isJs = /\.[cm]?js$/.test(context.resourcePath);
     if (isJs) {
       // Plain JS files (third-party deps, .mjs/.cjs sources) bypass the
@@ -539,8 +543,17 @@ export const applyAngularRules = async (
         context.resourcePath,
         { root: api.context.rootPath },
       );
+      if (!background) return { code };
+      const wrapped = wrapPureClasses(code, context.resourcePath);
+      // The generated background entry takes every hot update the
+      // background thread's modules pass on to it: running it again runs the
+      // updated modules again, which registers their background functions
+      // and refs again. The background thread has no app to update.
       return {
-        code: background ? wrapPureClasses(code, context.resourcePath) : code,
+        code:
+          hot && backgroundEntries.isEntryFile(context.resourcePath)
+            ? addEntryHotAccept(wrapped)
+            : wrapped,
       };
     }
     const content = typeScriptFileCache.get(context.resourcePath);
@@ -567,6 +580,15 @@ export const applyAngularRules = async (
       resourcePath: context.resourcePath,
       stylesheets: moduleStylesheets.get(context.resourcePath),
       root: api.context.rootPath,
+      // Only the main thread's modules take hot updates themselves; the
+      // background thread's pass theirs on to its entry (above).
+      hot:
+        hot && !background
+          ? {
+              entry: appEntries.has(path.normalize(context.resourcePath)),
+              source: () => fs.readFileSync(context.resourcePath, 'utf-8'),
+            }
+          : undefined,
     });
     if (!background) {
       return { code };

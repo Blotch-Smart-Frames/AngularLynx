@@ -102,14 +102,18 @@ You should see the same screen as in the browser, drawn by the phone's own UI co
 
 ## 5. Make a change
 
-1. In Lynx Explorer, open **Settings** and turn on **Lynx DevTool**. This lets the dev server reload the app when you save.
-2. Open `src/app/app.ts` and change the line "Edit src/app/app.ts to get started".
-3. Save the file.
+1. Open `src/app/app.ts` and change the line "Edit src/app/app.ts to get started".
+2. Save the file.
 
-The browser and the phone both update within a second or two.
+The phone updates within a second or two, on the screen it was showing. Refresh the browser to see the change in the web preview.
 
-:::tip If the phone doesn't update
-Check that Lynx DevTool is on in Lynx Explorer's settings. Without it, the app keeps showing the old code until you open the link again.
+What stays as it was depends on what you edit:
+
+- **A template or a stylesheet:** only that component re-renders, and it keeps its state.
+- **Anything else**, such as a component's class or a service: the app restarts on the same screen. Its state starts over.
+
+:::tip If the phone shows a blank or old screen
+Some edits can't be applied to the running app, such as code that throws while it loads. Then the dev server reloads the whole app, which needs **Lynx DevTool** turned on in Lynx Explorer's settings. Otherwise, open the link again.
 :::
 
 ## What's in the project

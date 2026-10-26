@@ -1,6 +1,12 @@
 // cspell:words ɵcmp
 import path from 'node:path';
 import { transformCrossThread } from './cross-thread-transform.js';
+import {
+  addEntryHotAccept,
+  addHotAccept,
+  componentClassNames,
+  hotUpdateSignature,
+} from './hot-updates.js';
 import { transformWorklets } from './worklet-transform.js';
 
 /**
@@ -30,17 +36,17 @@ export type ModuleStylesheets = {
  *   4. Runs the cross-thread transform (cross-thread-transform.ts), which gives
  *      module-level background functions and refs IDs that match on both
  *      threads.
+ *   5. In a development build with hot updates (`hot` is set), makes the
+ *      module take them (hot-updates.ts): an entry module re-bootstraps the
+ *      app, and a module that defines components updates them in place when
+ *      only their templates or styles changed. Other modules pass their
+ *      updates on to the modules that import them.
  *
- * It deliberately does NOT make the bootstrap entry accept its own hot
- * updates (`module.hot.accept()`), which an earlier version did. On Lynx the
- * screen is drawn by the Angular app on the main thread, but webpack HMR only
- * runs on the background thread: nothing loads the main-thread hot-update
- * chunk. A self-accepting entry let the background thread apply the update
- * and re-bootstrap its own copy of the app, so HMR reported success and the
- * main thread kept rendering the old code until a manual reload. With no
- * module accepting, the update aborts and the Lynx HMR client
- * (`@lynx-js/webpack-dev-transport`) falls back to a full `Page.reload`, which
- * re-runs both threads with the new bundle.
+ * The hot update clients apply each update on both threads (see client/).
+ * Before they did, only the background thread took hot updates, so a
+ * self-accepting entry (which an earlier version had) re-bootstrapped the
+ * background thread's copy of the app while the main thread, which draws the
+ * screen, kept running the old code.
  */
 export const buildTransformedCode = (params: {
   code: string;
@@ -48,8 +54,14 @@ export const buildTransformedCode = (params: {
   stylesheets: ModuleStylesheets | undefined;
   /** The project root, which cross-thread IDs are relative to. */
   root: string;
+  /**
+   * Set in a development build with hot updates. `entry` says whether the
+   * module is one of the app's entries, and `source` reads its TypeScript
+   * source.
+   */
+  hot?: { entry: boolean; source: () => string };
 }): string => {
-  const { resourcePath, stylesheets, root } = params;
+  const { resourcePath, stylesheets, root, hot } = params;
   let code = params.code;
 
   if (stylesheets) {
@@ -82,11 +94,20 @@ export const buildTransformedCode = (params: {
   for (const { className, scopeId } of stylesheets?.scopes ?? []) {
     code += `\n;${className}.ɵcmp.id = '${scopeId}';\n`;
   }
-  return transformCrossThread(
+  const transformed = transformCrossThread(
     transformWorklets(code, resourcePath),
     resourcePath,
     {
       root,
     },
   );
+  if (!hot) return transformed;
+  if (hot.entry) return addEntryHotAccept(transformed);
+  const components = componentClassNames(params.code, resourcePath);
+  if (components.length === 0) return transformed;
+  return addHotAccept(transformed, {
+    components,
+    signature: hotUpdateSignature(hot.source(), resourcePath),
+    compiled: params.code,
+  });
 };

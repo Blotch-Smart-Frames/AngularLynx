@@ -29,6 +29,18 @@ Both halves contain the whole app, but Angular boots on the main thread only: th
 - `LynxEncodePlugin` — Encodes output for Lynx runtime (lynx environment only)
 - `AngularWebpackPlugin` — Thread banners, env vars (`__DEV__`, `__MAIN_THREAD__`), async chunk wrapping via `module.exports` injection, `lynxProcessEvalResult` runtime module
 
+## Hot Updates (development builds)
+
+The dev server's connection and webpack's hot update client run on the background thread, but the app runs on the main thread, which can't fetch anything. So `entry.ts` adds two clients (`src/client/`) that apply each update on both threads:
+
+- `hmr-background.js` (wiring) / `background-hot-updates.ts` — replaces `@rspack/core/hot/dev-server`: applies the update on the background thread, asks the main thread to apply its half, fetches files for it, and reloads the page (`Page.reload` through Lynx DevTool) if either thread fails
+- `hmr-main-thread.js` / `main-thread-hot-updates.ts` — gives the main thread a `lynx.requireModuleAsync()` that loads through the background thread and runs the chunk with `new Function`, then runs `module.hot.check()` when asked
+- `css-hot-update.cjs` / `css-hot-update.ts` — swapped in for css-extract's `runtime/hotModuleReplacement.cjs`: applies stylesheet edits on the main thread with `lynx.getDevtool().replaceStyleSheetByIdWithBase64()`
+
+The `.js`/`.cjs` wiring files are copied into `dist/client/` as they are, because the library build would compile away `import.meta.webpackHot` and `__webpack_hash__`. `angular-webpack-plugin.ts` keeps the main thread's hot update chunks out of the runtime wrapper and the thread-flag banner.
+
+`hot-updates.ts` makes modules take updates (via `buildTransformedCode`): an app entry self-accepts (re-running it re-bootstraps the app), and a component module calls the runtime's `ɵhmrAccept`, which swaps templates and styles in place when the source signature (the file without its templates and styles) is unchanged, and otherwise passes the update on. The background thread's modules pass theirs on to the generated background entry, which self-accepts. The web environment has no hot updates.
+
 ## Angular Integration (`angular.ts`)
 
 - Reads workspace config via `getAngularWorkspace()` / `getProjectByCwd()`
@@ -47,6 +59,8 @@ src/
   angular-rebuild-coordinator.ts       # Keeps the Angular compilation in sync with watch rebuilds
   angular-webpack-plugin.ts            # Webpack plugin: banners, defines, async chunk wrapping
   cross-thread-transform.ts            # Cross-thread IDs for module-level backgroundFn/MainThreadRef, mirrored lazy imports
+  hot-updates.ts                       # Hot update accept code for entries and component modules
+  client/                              # Hot update clients the dev bundles run (see Hot Updates)
   budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules

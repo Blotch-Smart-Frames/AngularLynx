@@ -12,6 +12,11 @@ import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
 import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
 import { LynxDocument } from './lynx-document';
+import {
+  __pageElementRef,
+  handOverPageToNextApp,
+  setPageElementRef,
+} from './page-ref';
 
 /**
  * Counter for generating unique fake ElementRef handles per test.
@@ -72,6 +77,9 @@ const setupGlobals = () => {
   globalThis.__SetDataset = mock(() => {});
   globalThis.__FlushElementTree = mock(() => {});
   globalThis.__UpdateListCallbacks = mock(() => {});
+  globalThis.__GetChildren = mock(() => []);
+  // Each test is a first boot: no previous app left a page to take over.
+  setPageElementRef(null);
 };
 
 describe('LynxDocument', () => {
@@ -87,6 +95,71 @@ describe('LynxDocument', () => {
       const doc = new LynxDocument();
       doc.createRootElement();
       expect(asMock(globalThis.__CreatePage)).toHaveBeenCalledWith('0', 0);
+    });
+
+    // A hot update bootstraps the app again, in a new document. A second
+    // __CreatePage() would give it a page Lynx never shows, while the old
+    // app's elements, whose views are gone, stayed on screen.
+    describe('when a re-bootstrap hands the page over', () => {
+      it('takes it over, without the old elements', () => {
+        const page = new LynxDocument().createRootElement().element;
+        const oldChildren = [makeRef(), makeRef()];
+        globalThis.__GetChildren = mock(() => oldChildren);
+        asMock(globalThis.__CreatePage).mockClear();
+
+        handOverPageToNextApp();
+        const root = new LynxDocument().createRootElement();
+
+        expect(asMock(globalThis.__CreatePage)).not.toHaveBeenCalled();
+        expect(root.element).toBe(page);
+        expect(__pageElementRef).toBe(page);
+        expect(asMock(globalThis.__RemoveElement).mock.calls).toEqual([
+          [page, oldChildren[0]],
+          [page, oldChildren[1]],
+        ]);
+      });
+
+      it('takes over a page Lynx reports no children for', () => {
+        const page = new LynxDocument().createRootElement().element;
+        globalThis.__GetChildren = mock(() => null);
+
+        handOverPageToNextApp();
+        const root = new LynxDocument().createRootElement();
+
+        expect(root.element).toBe(page);
+        expect(asMock(globalThis.__RemoveElement)).not.toHaveBeenCalled();
+      });
+
+      it('takes it over once', () => {
+        new LynxDocument().createRootElement();
+        handOverPageToNextApp();
+        new LynxDocument().createRootElement();
+        asMock(globalThis.__CreatePage).mockClear();
+
+        new LynxDocument().createRootElement();
+
+        expect(asMock(globalThis.__CreatePage)).toHaveBeenCalled();
+      });
+
+      it('creates the first page as usual', () => {
+        handOverPageToNextApp();
+
+        new LynxDocument().createRootElement();
+
+        expect(asMock(globalThis.__CreatePage)).toHaveBeenCalled();
+      });
+    });
+
+    // Each test's render() creates an app in a fresh Lynx environment, where
+    // the page from the last one is gone.
+    it('creates a new page for any other new app', () => {
+      new LynxDocument().createRootElement();
+      asMock(globalThis.__CreatePage).mockClear();
+
+      new LynxDocument().createRootElement();
+
+      expect(asMock(globalThis.__CreatePage)).toHaveBeenCalled();
+      expect(asMock(globalThis.__RemoveElement)).not.toHaveBeenCalled();
     });
 
     it('returns a LynxElement', () => {

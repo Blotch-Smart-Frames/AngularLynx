@@ -24,3 +24,26 @@ export const setPageElementRef = (ref: ElementRef | null): void => {
  */
 export const getPageId = (): number =>
   __pageElementRef ? __GetElementUniqueID(__pageElementRef) : 0;
+
+/**
+ * Set by a hot update's re-bootstrap (see `bootstrapApplication`), so the next
+ * root element takes over the page the old app rendered into rather than
+ * creating one (see `LynxDocument.createRootElement`). Only a re-bootstrap
+ * may: anything else that creates a new app, such as each test's `render()`,
+ * runs in a fresh Lynx environment, where the page this module remembers is
+ * gone.
+ */
+let handingOverPage = false;
+
+export const handOverPageToNextApp = (): void => {
+  handingOverPage = true;
+};
+
+/**
+ * Whether the next app takes over the current page. Reading it clears it.
+ */
+export const takePageHandOver = (): boolean => {
+  const handing = handingOverPage;
+  handingOverPage = false;
+  return handing;
+};

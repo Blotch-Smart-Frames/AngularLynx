@@ -8,17 +8,17 @@ import { markFirstRenderComplete } from './lynx-render-lifecycle';
 // the browser-shaped environment polyfills, then the Lynx lifecycle/worklet
 // callbacks, the global exposure bridge, the background call relay and the log
 // relay. They are all the background thread runs of the runtime, since Angular
-// boots on the main thread only. `pageReady` and `__workletMap` are the only
-// values bootstrap itself needs to reference (renderPage readiness + HMR
-// worklet reset).
+// boots on the main thread only. `pageReady` is the only value bootstrap itself
+// needs from them (renderPage readiness).
 import './error-reporting';
 import './polyfills';
 import { pageReady } from './global-callbacks';
 import './exposure/global-exposure-bridge';
 import './background-call';
 import './lynx-logger/lynx-logger';
-import { __workletMap } from './worklet-bridge';
 import { installLazyBundleLoader } from './lazy-bundle/chunk-loader';
+import { handOverPageToNextApp } from './lynx-document/page-ref';
+import { carryOverLocation } from './router/lynx-location-strategy';
 
 /**
  * Starts the background thread. The build calls it from the background
@@ -63,32 +63,53 @@ export const bootstrapApplication = async (
 
   // Lazy routes and @defer blocks are loaded by Lynx's chunk-loading runtime
   // through `lynx.loadLazyBundle`, which the framework must provide. Install it
-  // before Angular can trigger any dynamic import. Placed before the HMR
-  // teardown and the renderPage wait so it is in place even if a re-bootstrap
-  // triggers an import immediately; re-installing is harmless.
+  // before Angular can trigger any dynamic import. Placed before the hot
+  // update teardown and the renderPage wait so it is in place even if a
+  // re-bootstrap triggers an import immediately; re-installing is harmless.
   installLazyBundleLoader();
 
-  // HMR re-bootstrap: destroy previous app so Angular's platform accepts a new one.
-  // When webpack hot-updates a module and the entry re-evaluates, this function
-  // is called again. We destroy the old app (which removes its Lynx elements)
-  // and create a fresh one with the updated component definitions.
+  const bootstrap = bootstrapOnMainThread(rootComponent, options);
+  // A hot update that re-runs the app's entry calls this again (see
+  // `ɵhmrAccept`). The plugin's main-thread hot update client waits for this
+  // promise after applying an update, and reloads the page if it rejects:
+  // the old app is already gone by then, so a failed re-bootstrap would
+  // otherwise leave a blank screen.
+  (globalThis as any).__LYNX_ANGULAR_BOOTSTRAP__ = bootstrap;
+  return bootstrap;
+};
+
+const bootstrapOnMainThread = async (
+  rootComponent: Type<unknown>,
+  options: ApplicationConfig | undefined,
+): Promise<ApplicationRef> => {
+  // Hot update re-bootstrap: destroy the previous app so Angular's platform
+  // accepts a new one. A hot update whose changes no component could take in
+  // place re-runs the app's entry, which calls this again. The old app is
+  // destroyed (which removes its Lynx elements) and a fresh one is created
+  // from the updated modules.
   const prev = (globalThis as any).__LYNX_ANGULAR_APP_REF__ as
     | ApplicationRef
     | undefined;
   if (prev) {
+    // The new app opens on the screen the old one was showing, with the same
+    // Back history, instead of on the initial route.
+    carryOverLocation(prev.injector);
+    // ...in the page the old app rendered into (see createRootElement).
+    handOverPageToNextApp();
     prev.destroy();
     (globalThis as any).__LYNX_ANGULAR_APP_REF__ = undefined;
-    // Clear worklet registry so re-evaluated modules re-register with fresh IDs
-    for (const key of Object.keys(__workletMap)) {
-      delete __workletMap[key];
-    }
+    // The main-thread worklet registry is deliberately left alone. A hot
+    // update re-runs only the changed modules and the ones that import them,
+    // so a module-level `mainThreadFn()` elsewhere is never registered again,
+    // and clearing the registry (as an earlier version did) broke it. The
+    // re-run modules register new functions under new IDs (the IDs come from
+    // a counter), and the old app's per-instance functions were released by
+    // its DestroyRefs in destroy() above.
   }
 
-  // On first boot, wait for Lynx's renderPage callback.
-  // On re-bootstrap (HMR), the page is already ready — skip the wait.
-  if (!prev) {
-    await firstValueFrom(pageReady);
-  }
+  // Wait for Lynx's renderPage callback. After the first boot, pageReady has
+  // already fired, and replays it.
+  await firstValueFrom(pageReady);
 
   const appRef = await ngBootstrapApplication(rootComponent, options);
   // Signal that the initial render is done. This is the point where control

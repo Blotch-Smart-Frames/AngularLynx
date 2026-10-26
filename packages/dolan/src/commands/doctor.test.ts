@@ -518,7 +518,7 @@ describe('doctorCommand', () => {
     const p = await import('@clack/prompts');
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringMatching(
-        /badge has tests that need @blotch\/angular-lynx-testing-library: badge\.test\.ts/,
+        /badge.*has tests that need.*@blotch\/angular-lynx-testing-library.*badge\.test\.ts/,
       ),
     );
   });

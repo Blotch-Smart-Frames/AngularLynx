@@ -36,6 +36,20 @@ describe('wrapPureClasses', () => {
     expect(counter.next()).toBe(2);
   });
 
+  // Angular's development output keeps types, which SWC strips later. Read as
+  // JavaScript, `resource<Data>(…)` ended the class at the `>` (issue #84).
+  it('reads a .ts module as TypeScript', () => {
+    const code = [
+      'export class Page {',
+      '  readonly #resource = httpResource<Data>(() => URL, ...(ngDevMode ? [{ debugName: "#resource" }] : []));',
+      '  ask(ref: unknown): void {}',
+      '}',
+    ].join('\n');
+    expect(wrapPureClasses(code, '/proj/src/app/page.ts')).toBe(
+      `export let Page = /*#__PURE__*/ (() => ${code.slice('export '.length)})();`,
+    );
+  });
+
   it('wraps a class whose base is a reference', () => {
     expect(wrap('var B = class extends lib.A { #x; };')).toContain(
       '/*#__PURE__*/ (() => class extends lib.A',

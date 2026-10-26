@@ -26,7 +26,8 @@ const PURE_CONSTRUCTORS = new Set(['Map', 'Set', 'WeakMap', 'WeakSet']);
  * effects of their own (anything but literals, functions and new collections)
  * is left alone.
  *
- * @param code - The module's JavaScript, before SWC lowers it.
+ * @param code - The module's code, before SWC lowers it (and, for a `.ts`
+ *   file, strips its types).
  * @param filename - The module's path, for the parser.
  * @returns The transformed code, or `code` itself when nothing applies.
  */
@@ -34,12 +35,15 @@ export const wrapPureClasses = (code: string, filename: string): string => {
   if (!code.includes('class')) {
     return code;
   }
+  // The script kind comes from the file name. A `.ts` module can still hold
+  // TypeScript here: Angular's development output keeps type annotations and
+  // type arguments for SWC to strip, and parsed as JavaScript, a call such as
+  // `httpResource<Data>(…)` reads as comparisons and ends the class early.
   const sourceFile = ts.createSourceFile(
     filename,
     code,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.JS,
   );
 
   const edits: Edit[] = [];

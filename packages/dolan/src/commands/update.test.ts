@@ -1729,23 +1729,25 @@ describe('updateCommand — ejected components', () => {
   });
 
   it('leaves an ejected dependency of a tracked component alone', async () => {
-    // button is tracked and depends on spinner, which was ejected.
-    const button = 'export const Button = {};';
+    // select is tracked and depends on bottom-sheet, which was ejected.
+    const select = 'export const Select = {};';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       lockfile: {
         version: 1,
-        components: { button: { 'button.ts': { hash: hashContent(button) } } },
+        components: { select: { 'select.ts': { hash: hashContent(select) } } },
         utils: {},
         theme: {},
       },
       components: {
-        button: { 'button.ts': button },
-        spinner: { 'spinner.ts': 'export const Spinner = { mine: true };' },
+        select: { 'select.ts': select },
+        'bottom-sheet': {
+          'bottom-sheet.ts': 'export const BottomSheet = { mine: true };',
+        },
       },
       uiSource: {
-        button: { 'button.ts': button },
-        spinner: { 'spinner.ts': 'export const Spinner = { v: 2 };' },
+        select: { 'select.ts': select },
+        'bottom-sheet': { 'bottom-sheet.ts': 'export const BottomSheet = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
@@ -1753,9 +1755,11 @@ describe('updateCommand — ejected components', () => {
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
 
-    expect(readInstalledFile(fixture.dir, 'spinner', 'spinner.ts')).toBe(
-      'export const Spinner = { mine: true };',
+    expect(
+      readInstalledFile(fixture.dir, 'bottom-sheet', 'bottom-sheet.ts'),
+    ).toBe('export const BottomSheet = { mine: true };');
+    expect(readLockfile(fixture.dir).components).not.toHaveProperty(
+      'bottom-sheet',
     );
-    expect(readLockfile(fixture.dir).components).not.toHaveProperty('spinner');
   });
 });

@@ -30,11 +30,36 @@ export class App {}
 
 ### Colors
 
-Pass `color` a literal color, such as `#71717a` or `rgba(9, 9, 11, 1)`.
+Without `color`, an icon draws in your theme's foreground, like the text next to it. Pass `color` a theme token or a literal color:
 
-- The icon's SVG is drawn on its own, so it can't read CSS. `var(--primary)` and text color classes have no effect.
-- Without `color`, the icon keeps its SVG's `currentColor`, which doesn't follow your text color.
-- If you use dark mode, pick the color from your theme signal, for example `[color]="theme.isDarkMode() ? '#fafafa' : '#09090b'"`.
+```angular-html
+<ui-icon name="trash" color="var(--destructive)" />
+<ui-icon name="heart" color="#ef4444" />
+```
+
+- **Theme tokens are looked up in TypeScript.** Lynx's `<svg>` element can't read CSS, so `icon-theme.ts`, copied next to the icon, keeps the theme's colors. If you change a color in `default.css` or `dark.css`, pass the new value to `provideIconTheme()` too (see below). Text color classes such as `text-primary` have no effect on an icon.
+- **Some containers color the icons inside them.** A destructive [nav drawer item](/dolan/nav-drawer) draws its icons in `--destructive`. The icon's own `color` still wins.
+
+### Dark mode
+
+Icons draw with the light theme's colors until you say otherwise, so they stay visible in an app without dark mode. If your app [switches the `.dark` class](/guide/dark-mode) with the phone's appearance, tell the icons to follow it too:
+
+```typescript title="src/app/app.config.ts"
+import { provideIconTheme } from '../components/ui/icon/icon-theme';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    // ...
+    provideIconTheme({ colorScheme: 'system' }),
+  ],
+};
+```
+
+- **`'system'`** follows [`LynxTheme`](/api/angular-lynx/theme), the phone's appearance.
+- **A function** such as `() => (settings.dark() ? 'dark' : 'light')` follows a theme setting of your own.
+- **`light` and `dark`** take token values to override, if you changed your theme's colors.
+
+The same setting colors [Spinner](/dolan/spinner), [Pagination](/dolan/pagination)'s arrows and a loading [Button](/dolan/button)'s spinner. Charts have their own, [`provideChartTheme()`](/dolan/chart).
 
 ### Sizes
 
@@ -60,7 +85,7 @@ const current = signal<IconName>('check');
 
 ### Spacing
 
-`UiIcon` has no `class` input. A `class` you write on `<ui-icon>` lands on its outer element, which is enough for margins such as `class="mr-2"`.
+`class` takes Tailwind classes for the icon, such as `class="mr-2"`.
 
 ### Available icons
 
@@ -96,11 +121,12 @@ const current = signal<IconName>('check');
 
 ### UiIcon
 
-| Input   | Type                           | Default     | Description                                            |
-| ------- | ------------------------------ | ----------- | ------------------------------------------------------ |
-| `name`  | `IconName`                     | Required    | The icon to draw.                                      |
-| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | 16, 20, 24 or 32 pixels square.                        |
-| `color` | `string \| undefined`          | `undefined` | Stroke color. Must be a literal color, not `var(--x)`. |
+| Input   | Type                           | Default     | Description                                                                                                |
+| ------- | ------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
+| `name`  | `IconName`                     | Required    | The icon to draw.                                                                                          |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | 16, 20, 24 or 32 pixels square.                                                                            |
+| `color` | `string \| undefined`          | `undefined` | Stroke color: a theme token such as `var(--primary)`, or a literal color. The theme's foreground if unset. |
+| `class` | `string`                       | `''`        | Extra Tailwind classes for the icon.                                                                       |
 
 No outputs.
 
@@ -109,3 +135,4 @@ No outputs.
 - [`<svg>`](/api/elements/svg): the element that draws the icons
 - [Empty State](/dolan/empty-state): shows an icon above a message
 - [Theming](/dolan/theming): the colors to match
+- [Dark mode](/guide/dark-mode): switching the theme with the phone

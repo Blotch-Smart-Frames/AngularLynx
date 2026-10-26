@@ -3,6 +3,7 @@ import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it, vi } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { UI_ICON_COLOR } from '../icon/icon-theme';
 import {
   UiNavDrawer,
   UiNavDrawerContent,
@@ -13,7 +14,6 @@ import {
 } from './nav-drawer';
 
 @Component({
-  standalone: true,
   imports: [
     UiNavDrawer,
     UiNavDrawerHeader,
@@ -39,6 +39,27 @@ class NavDrawerHost {
 }
 
 describe('UiNavDrawer', () => {
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const { componentRef, container } = await render(UiNavDrawer);
+    const inst = componentRef.instance as UiNavDrawer;
+    const panel = container.querySelector(
+      '[accessibility-exclusive-focus]',
+    ) as Element & { invoke?: unknown };
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
+    const invoke = vi.fn();
+    panel.invoke = invoke;
+    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
+      nativeElement: panel,
+    });
+    (inst as unknown as { panelRef: unknown }).panelRef = signal({
+      nativeElement: panel,
+    });
+    inst.open.set(true);
+    for (let i = 0; i < 5; i++) await waitForUpdate();
+    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
+  });
+
   const patchRefs = (inst: UiNavDrawer, view: Element) => {
     (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
       nativeElement: view,
@@ -216,6 +237,25 @@ describe('UiNavDrawerItem', () => {
     expect(() => inst.onPressCancel()).not.toThrow();
   });
 
+  it("destructive points the content's foreground at the destructive color", async () => {
+    const { item, itemResult } = await renderItem();
+    const view = () => itemResult.container.querySelector('view');
+    expect(view()?.getAttribute('class')).not.toContain('--foreground');
+    setInputSignal(item.variant, 'destructive');
+    await waitForUpdate();
+    expect(view()?.getAttribute('class')).toContain(
+      '[--foreground:var(--destructive)]',
+    );
+  });
+
+  it('gives projected icons the destructive color', async () => {
+    const { item, itemResult } = await renderItem();
+    const iconColor = itemResult.componentRef.injector.get(UI_ICON_COLOR);
+    expect(iconColor()).toBeUndefined();
+    setInputSignal(item.variant, 'destructive');
+    expect(iconColor()).toBe('var(--destructive)');
+  });
+
   it('active item carries the accent background', async () => {
     const { item, itemResult } = await renderItem();
     setInputSignal(item.active, true);
@@ -242,6 +282,18 @@ describe('UiNavDrawerItem', () => {
 });
 
 describe('UiNavDrawerTrigger', () => {
+  it('is a labeled button for screen readers', async () => {
+    // Only the first render is checked: under JIT, the nested <ui-icon>'s
+    // static name="menu" never reaches its signal input, so its change
+    // detection throws NG0950 and later updates don't land.
+    const { container } = await render(UiNavDrawerTrigger);
+    const trigger = container.querySelector('[accessibility-element]');
+    expect(trigger?.getAttribute('accessibility-traits')).toBe('button');
+    expect(trigger?.getAttribute('accessibility-label')).toBe(
+      'Open navigation menu',
+    );
+  });
+
   it('onTap emits pressed', async () => {
     const { componentRef } = await render(UiNavDrawerTrigger);
     const inst = componentRef.instance as unknown as UiNavDrawerTrigger & {

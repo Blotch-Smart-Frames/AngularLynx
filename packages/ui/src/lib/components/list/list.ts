@@ -13,18 +13,20 @@ import { cn } from '../../utils/cn';
   selector: 'ui-list',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  // `|| undefined` on boolean attributes removes the attribute entirely when
-  // false. Passing the string "false" is treated as truthy by Lynx's native
-  // attribute parser, so absence is the only way to truly turn these off.
+  // The booleans are property bindings to <list>'s inputs, which hand Lynx a
+  // real `false`. They used to be `[attr.x]="x() || undefined"`, which removed
+  // the attribute when false, and a missing attribute means Lynx's default: on,
+  // for `bounces` and `scroll-bar-enable`. So neither could be turned off.
+  // (`[attr.x]` would send the string "false" instead.)
   template: `
     <list
       [attr.list-type]="listType()"
       [attr.span-count]="spanCount()"
       [attr.scroll-orientation]="orientation()"
-      [attr.bounces]="bounces() || undefined"
-      [attr.scroll-bar-enable]="scrollBar() || undefined"
-      [attr.enable-nested-scroll]="nestedScroll() || undefined"
-      [attr.sticky]="sticky() || undefined"
+      [bounces]="bounces()"
+      [scroll-bar-enable]="scrollBar()"
+      [enable-nested-scroll]="nestedScroll()"
+      [sticky]="sticky()"
       [attr.sticky-offset]="stickyOffset()"
       [attr.preload-buffer-count]="preloadBufferCount()"
       [attr.lower-threshold-item-count]="lowerThresholdItemCount()"

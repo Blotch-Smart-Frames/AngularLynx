@@ -131,10 +131,10 @@ describe('updateCommand --selective', () => {
   it('handles mixed decisions across multiple files', async () => {
     const cardOriginal = 'export const Card = { v: 1 };';
     const cardUpstream = 'export const Card = { v: 2 };';
-    const spinnerOriginal = 'export const Spinner = { v: 1 };';
-    const spinnerUpstream = 'export const Spinner = { v: 2 };';
+    const skeletonOriginal = 'export const Skeleton = { v: 1 };';
+    const skeletonUpstream = 'export const Skeleton = { v: 2 };';
     const cardHash = hashContent(cardOriginal);
-    const spinnerHash = hashContent(spinnerOriginal);
+    const skeletonHash = hashContent(skeletonOriginal);
 
     fixture = createFixture({
       config: DEFAULT_CONFIG,
@@ -142,18 +142,18 @@ describe('updateCommand --selective', () => {
         version: 1,
         components: {
           card: { 'card.ts': { hash: cardHash } },
-          spinner: { 'spinner.ts': { hash: spinnerHash } },
+          skeleton: { 'skeleton.ts': { hash: skeletonHash } },
         },
         utils: {},
         theme: {},
       },
       components: {
         card: { 'card.ts': cardOriginal },
-        spinner: { 'spinner.ts': spinnerOriginal },
+        skeleton: { 'skeleton.ts': skeletonOriginal },
       },
       uiSource: {
         card: { 'card.ts': cardUpstream },
-        spinner: { 'spinner.ts': spinnerUpstream },
+        skeleton: { 'skeleton.ts': skeletonUpstream },
       },
     });
 
@@ -172,16 +172,16 @@ describe('updateCommand --selective', () => {
       cardUpstream,
     );
 
-    // Spinner should be skipped (second select → keep)
-    expect(readInstalledFile(fixture.dir, 'spinner', 'spinner.ts')).toBe(
-      spinnerOriginal,
+    // Skeleton should be skipped (second select → keep)
+    expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
+      skeletonOriginal,
     );
 
     const lockfile = readLockfile(fixture.dir);
     expect(lockfile.components.card['card.ts'].hash).toBe(
       hashContent(cardUpstream),
     );
-    expect(lockfile.components.spinner['spinner.ts'].hash).toBe(spinnerHash);
+    expect(lockfile.components.skeleton['skeleton.ts'].hash).toBe(skeletonHash);
   });
 
   it('does not create new-upstream file when user chooses skip', async () => {
@@ -633,18 +633,18 @@ describe('updateCommand --force', () => {
         version: 1,
         components: {
           card: { 'card.ts': { hash: hashContent('card-base') } },
-          spinner: { 'spinner.ts': { hash: hashContent('spinner-base') } },
+          skeleton: { 'skeleton.ts': { hash: hashContent('skeleton-base') } },
         },
         utils: {},
         theme: {},
       },
       components: {
         card: { 'card.ts': 'card-local' },
-        spinner: { 'spinner.ts': 'spinner-local' },
+        skeleton: { 'skeleton.ts': 'skeleton-local' },
       },
       uiSource: {
         card: { 'card.ts': 'card-upstream' },
-        spinner: { 'spinner.ts': 'spinner-upstream' },
+        skeleton: { 'skeleton.ts': 'skeleton-upstream' },
       },
     });
 
@@ -656,8 +656,8 @@ describe('updateCommand --force', () => {
     expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(
       'card-upstream',
     );
-    expect(readInstalledFile(fixture.dir, 'spinner', 'spinner.ts')).toBe(
-      'spinner-upstream',
+    expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
+      'skeleton-upstream',
     );
   });
 

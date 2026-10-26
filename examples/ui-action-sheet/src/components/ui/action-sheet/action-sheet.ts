@@ -29,7 +29,6 @@ import { cn } from '@blotch/dolan/utils/cn';
 
 @Component({
   selector: 'ui-action-sheet',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -49,6 +48,7 @@ import { cn } from '@blotch/dolan/utils/cn';
           #panel
           [class]="panelClass()"
           [style]="panelPositionStyle()"
+          [accessibility-exclusive-focus]="overlayVisible()"
           (catchtap)="onPanelTap()"
         >
           <!-- The elevation shadow is an inline rgba() box-shadow rather than a
@@ -172,6 +172,11 @@ export class UiActionSheet {
     this.#panelAnim?.cancel();
 
     this.#backdropAnim = fadeIn(backdrop, { duration: DURATION.normal });
+    // Move a screen reader into the panel. It would otherwise stay on whatever
+    // opened it, which is now behind the overlay. With the panel's
+    // accessibility-exclusive-focus (see the template), it then can't leave
+    // the panel until it closes.
+    panel.invoke?.('requestAccessibilityFocus');
     this.#panelAnim = slideIn(panel, 'up', {
       duration: DURATION.slow,
       easing: EASING.sheet,
@@ -196,7 +201,6 @@ export class UiActionSheet {
 
 @Component({
   selector: 'ui-action-sheet-title',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -219,7 +223,6 @@ export class UiActionSheetTitle {
 
 @Component({
   selector: 'ui-action-sheet-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -289,7 +292,6 @@ export class UiActionSheetItem {
 
 @Component({
   selector: 'ui-action-sheet-cancel',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `

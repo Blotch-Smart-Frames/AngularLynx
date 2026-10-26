@@ -12,6 +12,8 @@ npx @blotch/dolan add pagination
 import { UiPagination } from '../components/ui/pagination';
 ```
 
+This also adds [Icon](/dolan/icon), whose theme colors draw the arrows.
+
 ## Usage
 
 ```typescript
@@ -32,6 +34,7 @@ export class ResultsFooter {
 - Tapping a number goes to that page. The arrows step one page back or forward, and dim at the first and last page.
 - The first and last pages always show. Around the current page, `siblingCount` pages show on each side, and `...` fills the gaps.
 - With `5 + 2 × siblingCount` pages or fewer, every page shows and there are no gaps.
+- The arrows draw in the theme's foreground, like the numbers. For dark mode, see [Icon](/dolan/icon#dark-mode).
 
 ### Show the current page's items
 
@@ -63,6 +66,25 @@ protected readonly pageItems = computed(() => {
 <ui-pagination [(page)]="page" [totalPages]="50" [siblingCount]="2" />
 ```
 
+### Screen readers
+
+Every arrow and number is a button with a label: "Previous page", "Next page", "Page 3", and "Page 4, current page" for the current one. The `...` gaps are skipped. Change the labels, for example to translate them, with `previousLabel`, `nextLabel` and `pageLabel`:
+
+```angular-html
+<ui-pagination
+  [(page)]="page"
+  [totalPages]="12"
+  previousLabel="Earlier results"
+  nextLabel="Later results"
+  [pageLabel]="pageLabel"
+/>
+```
+
+```typescript
+protected readonly pageLabel = (page: number, current: boolean) =>
+  current ? `Results page ${page}, showing now` : `Results page ${page}`;
+```
+
 ### React to a change
 
 Listen to `pageChange` to run code when the user changes page. It fires inside the tap, so changing signals there is safe, but wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
@@ -75,12 +97,15 @@ Listen to `pageChange` to run code when the user changes page. It fires inside t
 
 ### UiPagination
 
-| Input          | Type     | Default  | Description                                      |
-| -------------- | -------- | -------- | ------------------------------------------------ |
-| `page`         | `number` | `1`      | The current page, from `1`. Supports `[(page)]`. |
-| `totalPages`   | `number` | Required | The number of pages.                             |
-| `siblingCount` | `number` | `1`      | Pages shown on each side of the current one.     |
-| `class`        | `string` | `''`     | Extra Tailwind classes for the row.              |
+| Input           | Type                                         | Default                          | Description                                       |
+| --------------- | -------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| `page`          | `number`                                     | `1`                              | The current page, from `1`. Supports `[(page)]`.  |
+| `totalPages`    | `number`                                     | Required                         | The number of pages.                              |
+| `siblingCount`  | `number`                                     | `1`                              | Pages shown on each side of the current one.      |
+| `previousLabel` | `string`                                     | `'Previous page'`                | What a screen reader says for the previous arrow. |
+| `nextLabel`     | `string`                                     | `'Next page'`                    | What a screen reader says for the next arrow.     |
+| `pageLabel`     | `(page: number, current: boolean) => string` | `Page 3`, `Page 4, current page` | What a screen reader says for a page number.      |
+| `class`         | `string`                                     | `''`                             | Extra Tailwind classes for the row.               |
 
 | Output       | Type     | Description                                                                     |
 | ------------ | -------- | ------------------------------------------------------------------------------- |

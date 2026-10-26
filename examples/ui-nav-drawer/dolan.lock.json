@@ -6,18 +6,21 @@
         "hash": "51e43e6d441b7cab"
       },
       "nav-drawer.ts": {
-        "hash": "da1725f85de0352d"
+        "hash": "dc6fc8d3df93466e"
       }
     },
     "icon": {
       "icon.ts": {
-        "hash": "778fba0cd4584a6e"
+        "hash": "e7fa61d7a0337601"
       },
       "icons.ts": {
         "hash": "2d54632a5080d6fc"
       },
       "index.ts": {
         "hash": "d175df85291c8009"
+      },
+      "icon-theme.ts": {
+        "hash": "9234f03eb74114a7"
       }
     },
     "separator": {

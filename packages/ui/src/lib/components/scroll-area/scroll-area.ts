@@ -11,19 +11,19 @@ import { cn } from '../../utils/cn';
 
 @Component({
   selector: 'ui-scroll-area',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  // `|| undefined` on boolean attributes removes the attribute entirely when
-  // false. Passing the string "false" (what Angular produces for a false
-  // binding without `|| undefined`) is still treated as truthy by Lynx's
-  // native attribute parser, so absence is the only way to truly disable.
+  // The booleans are property bindings to <scroll-view>'s inputs, which hand
+  // Lynx a real `false`. They used to be `[attr.x]="x() || undefined"`, which
+  // removed the attribute when false, and a missing attribute means Lynx's
+  // default: on, for `bounces` and `scroll-bar-enable`. So neither could be
+  // turned off. (`[attr.x]` would send the string "false" instead.)
   template: `
     <scroll-view
       [attr.scroll-orientation]="orientation()"
-      [attr.bounces]="bounces() || undefined"
-      [attr.scroll-bar-enable]="scrollBar() || undefined"
-      [attr.enable-nested-scroll]="nestedScroll() || undefined"
+      [bounces]="bounces()"
+      [scroll-bar-enable]="scrollBar()"
+      [enable-nested-scroll]="nestedScroll()"
       [attr.upper-threshold]="upperThreshold()"
       [attr.lower-threshold]="lowerThreshold()"
       [class]="scrollClass()"

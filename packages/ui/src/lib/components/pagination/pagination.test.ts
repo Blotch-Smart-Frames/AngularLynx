@@ -1,7 +1,16 @@
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiPagination } from './pagination';
+
+/**
+ * The screen reader labels of the row's buttons, in order.
+ */
+const labels = (container: Element): (string | null)[] =>
+  Array.from(container.querySelectorAll('[accessibility-element]')).map((el) =>
+    el.getAttribute('accessibility-label'),
+  );
 
 describe('UiPagination', () => {
   const setup = async (totalPages: number, page = 1, siblingCount = 1) => {
@@ -92,5 +101,58 @@ describe('UiPagination', () => {
       el.getAttribute('class')?.includes('bg-primary'),
     );
     expect(primary).toBeTruthy();
+  });
+
+  it('labels every button for screen readers', async () => {
+    const { container } = await setup(3, 2);
+    expect(labels(container)).toEqual([
+      'Previous page',
+      'Page 1',
+      'Page 2, current page',
+      'Page 3',
+      'Next page',
+    ]);
+    const buttons = container.querySelectorAll('[accessibility-element]');
+    for (const button of Array.from(buttons)) {
+      expect(button.getAttribute('accessibility-traits')).toBe('button');
+    }
+  });
+
+  it('takes its own labels', async () => {
+    const { inst, container } = await setup(2, 1);
+    setInputSignal(inst.previousLabel, 'Back');
+    setInputSignal(inst.nextLabel, 'Forward');
+    setInputSignal(inst.pageLabel, (page: number, current: boolean) =>
+      current ? `Results ${page}, showing` : `Results ${page}`,
+    );
+    await waitForUpdate();
+    expect(labels(container)).toEqual([
+      'Back',
+      'Results 1, showing',
+      'Results 2',
+      'Forward',
+    ]);
+  });
+
+  it('hides the gaps from screen readers', async () => {
+    const { container } = await setup(10, 5);
+    const gaps = Array.from(container.querySelectorAll('text'))
+      .filter((el) => el.textContent === '...')
+      .map((el) =>
+        el.parentElement?.getAttribute('accessibility-elements-hidden'),
+      );
+    expect(gaps).toEqual(['true', 'true']);
+  });
+
+  it("draws the arrows in the theme's foreground", async () => {
+    const { container } = await setup(3, 2);
+    const arrows = Array.from(container.querySelectorAll('svg')).map((el) =>
+      el.getAttribute('content'),
+    );
+    expect(arrows).toHaveLength(2);
+    for (const arrow of arrows) {
+      expect(arrow).toContain(ICON_LIGHT_COLORS['foreground']);
+      expect(arrow).not.toContain('currentColor');
+    }
   });
 });

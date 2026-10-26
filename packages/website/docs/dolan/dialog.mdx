@@ -71,6 +71,7 @@ export class EditProfile {
 - A backdrop tap sets `open` back to `false`. Taps inside the panel don't reach the backdrop.
 - The backdrop fades in and the panel scales up. Closing plays the reverse.
 - The dialog draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
+- When it opens, a screen reader moves into the panel and stays inside it until the dialog closes.
 - `<ui-dialog-title>` and `<ui-dialog-description>` render `<text>`, so put plain text in them. The footer lays out its buttons in a row, aligned right.
 
 ### Run code after it closes

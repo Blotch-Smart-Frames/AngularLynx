@@ -391,14 +391,16 @@ describe('doctorCommand', () => {
   });
 
   it('does not warn about a dependency that is also installed', async () => {
-    // button depends on spinner (registry.ts) — installing both means the
-    // `!installed.includes(dep)` check in checkComponentHealth is false for
-    // every dependency, so no "requires ... run dolan add" warning fires.
+    // button depends on spinner, and spinner on icon (registry.ts) —
+    // installing all three means the `!installed.includes(dep)` check in
+    // checkComponentHealth is false for every dependency, so no "requires ...
+    // run dolan add" warning fires.
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       components: {
         button: { 'button.ts': '' },
         spinner: { 'spinner.ts': '' },
+        icon: { 'icon.ts': '' },
       },
     });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });

@@ -44,7 +44,8 @@ export const registry: RegistryEntry[] = [
   { name: 'list', dependencies: [] },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
-  { name: 'pagination', dependencies: [] },
+  // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.
+  { name: 'pagination', dependencies: ['icon'] },
   { name: 'progress', dependencies: [] },
   { name: 'radio-group', dependencies: [] },
   { name: 'scatter-chart', dependencies: ['chart'] },
@@ -53,7 +54,7 @@ export const registry: RegistryEntry[] = [
   { name: 'separator', dependencies: [] },
   { name: 'sheet', dependencies: ['bottom-sheet'] },
   { name: 'skeleton', dependencies: [] },
-  { name: 'spinner', dependencies: [] },
+  { name: 'spinner', dependencies: ['icon'] },
   { name: 'switch', dependencies: [] },
   { name: 'tabs', dependencies: [] },
   { name: 'textarea', dependencies: [] },

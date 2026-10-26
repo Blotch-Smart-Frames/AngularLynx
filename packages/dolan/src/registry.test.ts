@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   getComponentNames,
   getEntry,
@@ -39,12 +39,12 @@ describe('resolveDependencies', () => {
 
   it('resolves transitive dependencies in dependency-first order', () => {
     const resolved = resolveDependencies(['button']);
-    expect(resolved).toEqual(['spinner', 'button']);
+    expect(resolved).toEqual(['icon', 'spinner', 'button']);
   });
 
   it('deduplicates when dependency is also explicitly listed', () => {
     const resolved = resolveDependencies(['button', 'spinner']);
-    expect(resolved).toEqual(['spinner', 'button']);
+    expect(resolved).toEqual(['icon', 'spinner', 'button']);
   });
 
   it('handles empty input', () => {
@@ -84,6 +84,25 @@ describe('resolveDependencies', () => {
 
   it('skips unknown component names', () => {
     expect(resolveDependencies(['nonexistent'])).toEqual([]);
+  });
+
+  it("lists every component another one's files import", () => {
+    // A component that imports a sibling it doesn't list gets copied without
+    // it, and the app doesn't build. Tests count too: dolan copies them.
+    const components = new URL('../../ui/src/lib/components/', import.meta.url);
+    for (const name of getComponentNames()) {
+      const folder = new URL(`${name}/`, components);
+      const imported = new Set<string>();
+      for (const file of readdirSync(folder)) {
+        const source = readFileSync(new URL(file, folder), 'utf-8');
+        for (const [, sibling] of source.matchAll(/from '\.\.\/([\w-]+)/g)) {
+          imported.add(sibling!);
+        }
+      }
+      expect([...imported].sort(), name).toEqual(
+        [...getEntry(name)!.dependencies].sort(),
+      );
+    }
   });
 });
 

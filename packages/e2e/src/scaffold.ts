@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -128,7 +129,7 @@ export const scaffoldApp = async (
   // Swap in the fixtures Layer 3 and Layer 6 interact with: the counter
   // replaces the generated hello component, and a lazy route proves chunk
   // loading. Done after the tests, which expect hello's generated template.
-  applyFixtures(appDir);
+  applyFixtures(appDir, options.tailwind);
 
   if (!options.buildOnly) {
     await extractMessages(appDir, exec, pm);
@@ -696,7 +697,10 @@ const useHelloInApp = (appDir: string) => {
  * Replaces the generated hello component with the counter fixture and adds
  * two lazy-loaded routes, for the checks in Layers 3 and 6.
  */
-const applyFixtures = (appDir: string) => {
+const applyFixtures = (appDir: string, tailwind: boolean) => {
+  if (tailwind) {
+    addUiTheme(appDir);
+  }
   copyFileSync(
     path.join(FIXTURES_DIR, 'counter.ts'),
     path.join(appDir, 'src/app/hello/hello.ts'),
@@ -736,6 +740,45 @@ export const routes: Routes = [
   },
 ];
 `,
+  );
+};
+
+/**
+ * Adds the UI components' theme the way `dolan init` and its next steps do:
+ * copies default.css and tailwind-plugin.ts to src/styles, adds the plugin
+ * to tailwind.config.ts and imports default.css in styles.css. The files come
+ * from packages/ui, which dolan copies them from. tailwind-card.html uses a
+ * theme color with an opacity modifier, which needs both files and the
+ * app's own Tailwind build.
+ */
+const addUiTheme = (appDir: string) => {
+  const themeDir = path.join(appDir, 'src/styles');
+  mkdirSync(themeDir, { recursive: true });
+  for (const file of ['default.css', 'tailwind-plugin.ts']) {
+    copyFileSync(
+      path.join(REPO_ROOT, 'packages/ui/src/lib/theme', file),
+      path.join(themeDir, file),
+    );
+  }
+
+  const configPath = path.join(appDir, 'tailwind.config.ts');
+  let config = readFileSync(configPath, 'utf8');
+  config = `import { blotchPlugin } from './src/styles/tailwind-plugin';\n${config}`;
+  config = config.replace(
+    'presets: [preset],',
+    'presets: [preset],\n  plugins: [blotchPlugin],',
+  );
+  check(
+    config.includes('plugins: [blotchPlugin],'),
+    "Couldn't add the UI theme's plugin to tailwind.config.ts; the config ng add generates has changed shape. Update addUiTheme() in packages/e2e/src/scaffold.ts.",
+  );
+  writeFileSync(configPath, config);
+
+  // @import has to come before Tailwind's directives.
+  const stylesPath = path.join(appDir, 'src/styles.css');
+  writeFileSync(
+    stylesPath,
+    `@import './styles/default.css';\n${readFileSync(stylesPath, 'utf8')}`,
   );
 };
 

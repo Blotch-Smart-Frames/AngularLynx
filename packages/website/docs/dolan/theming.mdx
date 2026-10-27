@@ -23,17 +23,35 @@ page {
 
 The tokens are complete colors because of how Lynx parses them. Lynx accepts only comma-separated `hsl()`, while the usual shadcn/ui setup produces space-separated `hsl(var(--x) / 1)`. Lynx drops that value without a warning, and the element renders transparent. See [CSS on Lynx](/guide/styling) for the other color rules.
 
-## Opacity modifiers don't work
+## Opacity modifiers
 
-`bg-primary/50` and `border-destructive/50` don't work. The token is one finished color, so Tailwind has no separate channels to add alpha to.
+```angular-html
+<view class="bg-primary/50 border border-border/60">
+  <text class="text-foreground/70">Draft</text>
+</view>
+```
 
-Use one of these instead:
+Every color class takes Tailwind's opacity modifiers: `bg-primary/50`, `text-foreground/70`, `border-border/60`, `bg-destructive/10`. They follow dark mode like the plain classes.
 
-- **A translucent token.** The theme has `--destructive-subtle` (red at 10%), used as `bg-destructive-subtle`. Add your own the same way, as shown in [Add a token](#add-a-token).
-- **A solid token.** `bg-muted` makes a subtle track or background.
-- **`opacity-*` on the element.** This fades the element and its children together.
+A modifier needs the color's red, green and blue on their own, so each token has a twin ending in `-rgb`:
 
-Named Tailwind colors keep their modifiers. `bg-black/50` compiles to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
+```css title="src/styles/default.css"
+page {
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+}
+```
+
+- `bg-primary` reads `--primary`: `background-color: var(--primary)`.
+- `bg-primary/50` reads `--primary-rgb`: `background-color: rgba(var(--primary-rgb), 0.5)`.
+- **Keep each pair the same color.** If you change `--primary`, change `--primary-rgb` too. [`dolan doctor`](/dolan/cli#doctor) warns when a pair doesn't match.
+- **Write the channels with commas.** Lynx fills `rgba()` with the variable's text before it reads the color, so `24, 24, 27` becomes three arguments.
+
+`--destructive-subtle` (red at 10%) is already translucent, so it has no twin and takes no modifier. `bg-destructive-subtle` and `bg-destructive/10` draw the same color.
+
+### Themes from before opacity modifiers
+
+Themes copied by an older dolan have no `-rgb` variables. [`dolan update`](/dolan/cli#update) brings them in if you never edited the theme, and keeps your files if you did. Without the twins, the plain classes still work, and a modifier draws nothing. [`dolan doctor`](/dolan/cli#doctor) lists the missing twins with the line to add.
 
 ## Tokens
 
@@ -53,7 +71,7 @@ Named Tailwind colors keep their modifiers. `bg-black/50` compiles to `rgb(0 0 0
 | `ring-subtle`                            | none                                            | The soft outer focus ring, set inline by fields  |
 | `chart-1` … `chart-5`                    | `bg-chart-1` … `bg-chart-5`                     | Chart series colors, legend swatches             |
 
-Every color class works with `bg-`, `text-` and `border-`. The plugin also sets `border-color: var(--border)` on every element, so a plain `border` class draws in the theme's border color.
+Every color class works with `bg-`, `text-` and `border-`, and takes [opacity modifiers](#opacity-modifiers) such as `bg-primary/50`. The plugin also sets `border-color: var(--border)` on every element, so a plain `border` class draws in the theme's border color.
 
 ### Radius
 
@@ -69,13 +87,16 @@ The plugin also adds padding classes that keep content clear of the notch and ho
 
 ## Customize your brand
 
-Edit the values in `default.css`. Write each one as a complete `rgba()` or hex color.
+Edit the values in `default.css`. Write each one as a complete `rgba()` or hex color, and its `-rgb` twin as the same color's channels.
 
 ```css title="src/styles/default.css"
 page {
   --primary: rgba(37, 99, 235, 1);
+  --primary-rgb: 37, 99, 235;
   --primary-foreground: rgba(255, 255, 255, 1);
+  --primary-foreground-rgb: 255, 255, 255;
   --ring: rgba(37, 99, 235, 1);
+  --ring-rgb: 37, 99, 235;
   --ring-subtle: rgba(37, 99, 235, 0.4);
   --radius: 12px;
   /* …keep the other tokens… */
@@ -88,26 +109,23 @@ page {
 
 ### Add a token
 
-Add the variable to both theme files, then map it in the plugin:
+Add the variable and its channels to both theme files, then map it in the plugin with `themeColor()`:
 
 ```css title="src/styles/default.css"
 page {
   --success: rgba(22, 163, 74, 1);
-  --success-subtle: rgba(22, 163, 74, 0.1);
+  --success-rgb: 22, 163, 74;
 }
 ```
 
 ```typescript title="src/styles/tailwind-plugin.ts"
-colors: {
+const colors = {
   // …the existing colors…
-  success: {
-    DEFAULT: 'var(--success)', // [!code highlight]
-    subtle: 'var(--success-subtle)', // [!code highlight]
-  },
-},
+  success: themeColor('success'), // [!code highlight]
+};
 ```
 
-You can now use `bg-success`, `text-success` and `bg-success-subtle`.
+You can now use `bg-success`, `text-success` and `bg-success/10`. Without the `-rgb` line, the modifiers draw nothing. A color you only ever use whole can skip it and map to the variable instead: `success: 'var(--success)'`.
 
 ### Start a new theme
 
@@ -149,7 +167,7 @@ export class App {
 
 ## Variable reference
 
-Generated from `default.css` and `dark.css`.
+Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb` twin with its channels, such as `--primary-rgb: 24, 24, 27`, left out here.
 
 | Variable                   | Light (`default.css`)    | Dark (`dark.css`)          |
 | -------------------------- | ------------------------ | -------------------------- |

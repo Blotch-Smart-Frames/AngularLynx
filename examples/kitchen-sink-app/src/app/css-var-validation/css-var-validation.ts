@@ -21,7 +21,7 @@ import { ScreenHost } from '../screen-host';
  * render) exactly as it would in real app code — the whole point of this page
  * is to observe the round-trip through `__AddInlineStyle` on-device. `supported`
  * records the KNOWN outcome so the status pill can call out formats to avoid;
- * `tailwind` swatches use a utility class instead of an inline style to prove
+ * `tailwind` swatches use utility classes instead of an inline style to prove
  * the Tailwind → var() pipeline.
  */
 type Swatch = {
@@ -33,8 +33,8 @@ type Swatch = {
   readonly supported: boolean;
   /** Inline style applied to the chip. Omitted for `tailwind` swatches. */
   readonly style?: string;
-  /** Render the chip via the `bg-primary` utility instead of an inline style. */
-  readonly tailwind?: boolean;
+  /** Utility classes that color the chip instead of an inline style. */
+  readonly tailwind?: string;
 };
 
 type SwatchGroup = {
@@ -111,7 +111,7 @@ type SwatchGroup = {
                 <view
                   class="h-11 w-11 shrink-0 rounded-xl border border-border"
                   [attr.style]="s.style"
-                  [class.bg-primary]="s.tailwind"
+                  [class]="s.tailwind ?? ''"
                 ></view>
 
                 <view class="flex-1 flex-col gap-0.5 flex">
@@ -255,7 +255,38 @@ export class CssVarValidation {
           code: 'bg-primary',
           note: 'Tailwind class → var(--primary)',
           supported: true,
-          tailwind: true,
+          tailwind: 'bg-primary',
+        },
+      ],
+    },
+    {
+      title: 'Opacity Modifiers',
+      description:
+        "Theme colors at part opacity, read from each color's -rgb channels.",
+      swatches: [
+        {
+          code: 'rgba(var(--primary-rgb), 0.5)',
+          note: 'Comma-separated channels in one variable',
+          supported: true,
+          style: 'background-color: rgba(var(--primary-rgb), 0.5);',
+        },
+        {
+          code: 'bg-primary/50',
+          note: 'Tailwind modifier → rgba(var(--primary-rgb), 0.5)',
+          supported: true,
+          tailwind: 'bg-primary/50',
+        },
+        {
+          code: 'bg-destructive/10',
+          note: 'The same color as bg-destructive-subtle',
+          supported: true,
+          tailwind: 'bg-destructive/10',
+        },
+        {
+          code: 'rgba(var(--missing-rgb), 0.5)',
+          note: 'Undefined channels drop the value — a theme without -rgb',
+          supported: false,
+          style: 'background-color: rgba(var(--missing-rgb), 0.5);',
         },
       ],
     },
@@ -266,8 +297,8 @@ export class CssVarValidation {
   }
 
   protected pillClass(supported: boolean): string {
-    // Translucent named-color tint (bg-green-500/10) is safe in Lynx — opacity
-    // modifiers work on named colors, unlike on the opaque rgba() theme tokens.
+    // A named color's opacity modifier (bg-green-500/10) compiles to
+    // rgb(34 197 94 / 0.1), which Lynx accepts.
     return `flex flex-row items-center gap-1 self-start rounded-full px-2.5 py-1 ${
       supported ? 'bg-green-500/10' : 'bg-red-500/10'
     }`;

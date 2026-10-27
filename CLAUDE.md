@@ -52,18 +52,14 @@ Use Tailwind semantic color utilities (`bg-background`, `text-foreground`, `bord
 
 Never author raw HSL. Lynx's parser accepts only comma-separated `hsl(240, 5.9%, 10%)`, but Tailwind's shadcn-style `hsl(var(--x) / 1)` resolves to space-separated HSL, which Lynx silently drops (the element renders transparent, no warning). The theme uses `rgba()` values specifically to sidestep this.
 
-**Opacity modifiers on semantic colors do not work** (`bg-primary/50`, `border-destructive/50`). The value is an opaque `rgba()` with no separable channels for Tailwind to inject alpha into. Instead:
-
-- add a dedicated translucent variable (see `--destructive-subtle` → `bg-destructive-subtle` in `packages/ui/src/lib/theme/`), or
-- use a solid semantic token (e.g. `bg-muted` for a subtle track), or
-- apply `opacity-*` to the whole element.
+**Opacity modifiers on semantic colors work** (`bg-primary/50`, `text-foreground/70`, `border-border/60`). Each opaque theme color has a `-rgb` twin holding its channels comma-separated (`--primary-rgb: 24, 24, 27`). The plugin's `themeColor()` keeps plain classes on `var(--primary)` and turns a modifier into `rgba(var(--primary-rgb), 0.5)`: Lynx substitutes `var()` as text before parsing the color, so the list fills three arguments (verified on iOS, Android and web). When you change a theme color, change its twin too; `packages/ui/src/lib/theme/rgb-channels.test.ts` and `dolan doctor` catch a mismatch. A theme copied before the twins existed still draws plain classes, but not modifiers; that's why the alert keeps its pre-composed `bg-destructive-subtle` rather than `bg-destructive/10`.
 
 Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile to hex/rgb, and their opacity modifiers (`bg-black/50`) compile to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
 
 | Need                       | Use                                                    |
 | -------------------------- | ------------------------------------------------------ |
 | Themed color (preferred)   | `bg-background`, `text-foreground`, `bg-card`          |
-| Translucent semantic color | dedicated var (`bg-destructive-subtle`) or `opacity-*` |
+| Translucent semantic color | opacity modifier (`bg-primary/50`, `border-border/60`) |
 | One-off custom color       | `style="background-color: rgba(0, 0, 0, 0.5)"`         |
 | Named color (± opacity)    | `bg-white`, `bg-black/50`                              |
 

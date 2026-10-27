@@ -40,10 +40,10 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
       <!-- bg-black/50 dims the content behind the drawer. The fadeIn/fadeOut in
            #animateIn/#animateOut already tween this element's opacity over
            DURATION.normal, so the dim animates in lockstep with the panel slide —
-           matching the dialog/action-sheet/bottom-sheet backdrop. A named color
-           with an opacity modifier is required here: bg-black/50 compiles to
-           rgb(0 0 0 / 0.5), which Lynx accepts, whereas opacity modifiers on
-           semantic tokens don't. -->
+           matching the dialog/action-sheet/bottom-sheet backdrop. It's a named
+           color, not a theme one, because the dim is black in light and dark
+           mode alike; bg-black/50 compiles to rgb(0 0 0 / 0.5), which Lynx
+           accepts. -->
       <view
         #backdrop
         class="h-full w-full bg-black/50"

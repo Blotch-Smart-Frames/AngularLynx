@@ -14,6 +14,27 @@ import type { BaseLynxElement } from '../lynx-element/types';
 export type ExposureMargin = `${number}px` | `${number}rpx`;
 
 /**
+ * One trait of `accessibility-traits`, each of which iOS turns into a
+ * UIAccessibilityTraits flag (`LynxConverter+UI.m`).
+ */
+type AccessibilityTrait =
+  | 'text'
+  | 'image'
+  | 'button'
+  | 'link'
+  | 'header'
+  | 'search'
+  | 'selected'
+  | 'playable'
+  | 'keyboard'
+  | 'summary'
+  | 'disabled'
+  | 'updating'
+  | 'adjustable'
+  | 'tabbar'
+  | 'none';
+
+/**
  * Lets a true/false input also be written as a static attribute, as Lynx's
  * guides and ours do: `flatten="false"`, or a bare `ignore-focus` for true.
  * Angular type-checks a static attribute's string against the input, so
@@ -153,24 +174,14 @@ export class LynxElementBase implements OnChanges {
   'accessibility-label'?: string;
   /**
    * The kind of element a screen reader announces. Plural, as Lynx reads it:
-   * iOS, Android and Harmony ignore `accessibility-trait`. @default 'none'
+   * iOS, Android and Harmony ignore `accessibility-trait`. iOS also reads a
+   * comma-separated list with no spaces, such as `button,selected`, which
+   * is what LynxRouterLinkActive writes; Android and Harmony read a single
+   * trait. @default 'none'
    */
   'accessibility-traits'?:
-    | 'text'
-    | 'image'
-    | 'button'
-    | 'link'
-    | 'header'
-    | 'search'
-    | 'selected'
-    | 'playable'
-    | 'keyboard'
-    | 'summary'
-    | 'disabled'
-    | 'updating'
-    | 'adjustable'
-    | 'tabbar'
-    | 'none';
+    | AccessibilityTrait
+    | `${AccessibilityTrait},${string}`;
   /**
    * Comma-separated `id`s of the child elements a screen reader visits, in
    * order. iOS and Android look each one up as an `id` selector.

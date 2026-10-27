@@ -10,7 +10,8 @@
  *      → Angular renders tree → __CreateView/Text/… → JSDOM children
  *      → LynxRendererFactory2.end() → __FlushElementTree() (no-op in tests)
  *   3. appRef.tick() forces synchronous CD so all signal-driven updates land
- *   4. Return JSDOM container + @testing-library/dom queries
+ *   4. Return JSDOM container + queries (@testing-library/dom's, with the
+ *      Lynx-aware *ByRole and *ByAccessibilityLabel; see queries.ts)
  */
 
 import {
@@ -25,22 +26,22 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import {
   type BoundFunctions,
   type Queries,
-  queries as domQueries,
   getQueriesForElement,
 } from '@testing-library/dom';
 import { provideRenderer } from '@blotch/angular-lynx';
+import { type BoundLynxQueries, type LynxQueries, queries } from './queries.js';
 
-export type RenderOptions<Q extends Queries = typeof domQueries> = {
+export type RenderOptions<Q extends Queries = LynxQueries> = {
   providers?: (Provider | EnvironmentProviders)[];
   /**
-   * Custom query helpers to merge with the standard `@testing-library/dom` queries.
+   * Custom query helpers to merge with the library's queries (see queries.ts).
    * Each helper receives the container as its first argument when bound.
    * Workaround if omitted: call `getQueriesForElement(container, customQueries)` directly.
    */
   queries?: Q;
 };
 
-export type RenderResult<Q extends Queries = typeof domQueries> = {
+export type RenderResult<Q extends Queries = LynxQueries> = {
   /**
    * The JSDOM root element (page element) containing all rendered children.
    */
@@ -75,7 +76,7 @@ export type RenderResult<Q extends Queries = typeof domQueries> = {
    * expose writable signals on the component instance instead.
    */
   componentRef: ComponentRef<unknown>;
-} & BoundFunctions<typeof domQueries> &
+} & BoundLynxQueries &
   BoundFunctions<Q>;
 
 let currentAppRef: ApplicationRef | null = null;
@@ -88,7 +89,7 @@ export const cleanup = (): void => {
   }
 };
 
-export const render = async <Q extends Queries = typeof domQueries>(
+export const render = async <Q extends Queries = LynxQueries>(
   rootComponent: Type<unknown>,
   options: RenderOptions<Q> = {} as RenderOptions<Q>,
 ): Promise<RenderResult<Q>> => {
@@ -136,7 +137,7 @@ export const render = async <Q extends Queries = typeof domQueries>(
     ...getQueriesForElement(
       container as HTMLElement,
       {
-        ...domQueries,
+        ...queries,
         ...options.queries,
       } as any,
     ),

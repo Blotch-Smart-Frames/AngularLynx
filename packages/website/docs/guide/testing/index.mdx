@@ -91,6 +91,34 @@ it('lists the products', async () => {
 
 The library also exports `screen`, which runs queries against the whole document.
 
+### Find elements as a screen reader does
+
+Lynx elements describe themselves to screen readers with [`accessibility-*` attributes](/guide/accessibility), not ARIA. The queries read them:
+
+```typescript title="src/app/favorite.test.ts"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+import { Favorite } from './favorite';
+
+it('favorites the item', async () => {
+  await render(Favorite);
+
+  fireEvent.tap(screen.getByRole('button', { name: 'Add to favorites' }));
+  await waitForUpdate();
+
+  expect(screen.getByAccessibilityLabel('Remove from favorites')).toBeTruthy();
+});
+```
+
+- **`getByRole`** reads `accessibility-traits`: `button`, `link`, `image` as `img`, `header` as `heading`. The [API reference](/api/testing-library/#byrole) has the full list.
+- **`name`** is the `accessibility-label`, or a `<text>`'s own text.
+- **Screen readers must reach the element.** A `<view>` needs `accessibility-element="true"`, so the test fails when people using a screen reader couldn't find the button.
+- **`getByAccessibilityLabel`** finds any element by its `accessibility-label`.
+
 `render()` also returns:
 
 - **`container`:** the root `<page>` element that holds everything rendered.

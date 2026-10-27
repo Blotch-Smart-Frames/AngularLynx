@@ -129,6 +129,18 @@ export class Cart {
 
 The signatures are in the [API reference](/api/angular-lynx/accessibility).
 
+## Check it in unit tests
+
+The [testing library](/guide/testing/)'s queries read these attributes, so a test finds an element the way a screen reader does:
+
+```typescript title="src/app/cart.test.ts"
+const { getByRole } = await render(Cart);
+
+fireEvent.tap(getByRole('button', { name: 'Add to cart' }));
+```
+
+`getByRole` finds a `<view>` only with `[accessibility-element]="true"`, so a missing one fails the test. See [`*ByRole`](/api/testing-library/#byrole) and [`*ByAccessibilityLabel`](/api/testing-library/#byaccessibilitylabel).
+
 ## Test with a screen reader
 
 **On an iPhone:**

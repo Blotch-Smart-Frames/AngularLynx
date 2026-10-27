@@ -2,7 +2,29 @@ export { render, cleanup, waitForUpdate } from './render.js';
 export type { RenderOptions, RenderResult } from './render.js';
 export type { ComponentRef } from '@angular/core';
 export { fireEvent, eventMap } from './fire-event.js';
-export { screen, within, getQueriesForElement } from '@testing-library/dom';
+export { screen, within, getQueriesForElement, queries } from './queries.js';
+export type {
+  BoundAccessibilityLabelQueries,
+  BoundLynxQueries,
+  LynxQueries,
+  LynxScreen,
+} from './queries.js';
+export {
+  queryAllByAccessibilityLabel,
+  queryByAccessibilityLabel,
+  getAllByAccessibilityLabel,
+  getByAccessibilityLabel,
+  findAllByAccessibilityLabel,
+  findByAccessibilityLabel,
+} from './accessibility-label-queries.js';
+export {
+  queryAllByRole,
+  queryByRole,
+  getAllByRole,
+  getByRole,
+  findAllByRole,
+  findByRole,
+} from './role-queries.js';
 
 import { cleanup } from './render.js';
 

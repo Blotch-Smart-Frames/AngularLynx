@@ -95,6 +95,8 @@ Every Lynx element accepts these attributes. Set them as static attributes, or b
 
 `accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`. iOS also takes several, separated by commas with no spaces, such as `'button,selected'`. Android reads a single `'none'`, `'image'` or `'button'`, and ignores the rest. An active [`routerLinkActive`](/api/angular-lynx/routing#lynxrouterlinkactive) element gets `selected` added to its own traits.
 
+HarmonyOS, like Android, reads a single trait: `'button'`, `'image'` or `'text'`.
+
 Write the plural: Lynx ignores `accessibility-trait`. `ng update` renames it in apps written before 22.2.3, when `LYNX_ELEMENTS` declared the singular.
 
 ## Types

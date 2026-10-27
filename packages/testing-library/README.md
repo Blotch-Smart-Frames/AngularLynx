@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-testing-library
 
-Testing utilities for [AngularLynx](https://github.com/Blotch-Smart-Frames/AngularLynx) apps. Renders Angular standalone components through the Lynx PAPI pipeline into a JSDOM tree, then exposes the result via [@testing-library/dom](https://testing-library.com/docs/dom-testing-library/intro) queries.
+Testing utilities for [AngularLynx](https://github.com/Blotch-Smart-Frames/AngularLynx) apps. Renders Angular standalone components through the Lynx PAPI pipeline into a JSDOM tree, then exposes the result via [@testing-library/dom](https://testing-library.com/docs/dom-testing-library/intro) queries, which also read Lynx's `accessibility-*` attributes.
 
 ## Installation
 
@@ -75,11 +75,11 @@ const { container, getByText, queryByRole } = await render(MyComponent);
 
 **Return value:**
 
-| Property     | Type         | Description                                                                                                 |
-| ------------ | ------------ | ----------------------------------------------------------------------------------------------------------- |
-| `container`  | `Element`    | The JSDOM `<page>` root element. All rendered children are descendants.                                     |
-| `unmount`    | `() => void` | Destroys the Angular app.                                                                                   |
-| `...queries` | —            | All `@testing-library/dom` queries bound to `container` (`getByText`, `queryByRole`, `findByTestId`, etc.). |
+| Property     | Type         | Description                                                                                                            |
+| ------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `container`  | `Element`    | The JSDOM `<page>` root element. All rendered children are descendants.                                                |
+| `unmount`    | `() => void` | Destroys the Angular app.                                                                                              |
+| `...queries` | —            | Every query in [`queries`](#queries) bound to `container` (`getByText`, `getByRole`, `getByAccessibilityLabel`, etc.). |
 
 ### `cleanup()`
 
@@ -143,9 +143,53 @@ console.log(Object.keys(eventMap));
 // ['tap', 'longtap', 'touchstart', ...]
 ```
 
-### Re-exports from `@testing-library/dom`
+### `*ByAccessibilityLabel`
 
-`screen` · `within` · `getQueriesForElement`
+Find elements by their `accessibility-label`, the text a screen reader reads on Lynx. Testing Library's `*ByLabelText` reads `<label>` and `aria-*` attributes, which Lynx elements don't have.
+
+```ts
+const { getByAccessibilityLabel } = await render(Toolbar);
+
+fireEvent.tap(getByAccessibilityLabel('Close'));
+```
+
+They come in Testing Library's six variants (`getBy`, `getAllBy`, `queryBy`, `queryAllBy`, `findBy`, `findAllBy`) and take its TextMatch (a string, RegExp or function) and MatcherOptions (`exact`, `normalizer`).
+
+### `*ByRole`
+
+Testing Library's `*ByRole`, reading Lynx's accessibility attributes as a screen reader does. Elements Testing Library gives a role still match, such as an `<input>` as a `textbox`.
+
+```ts
+const { getByRole } = await render(Toolbar);
+
+fireEvent.tap(getByRole('button', { name: 'Save' }));
+expect(getByRole('button', { name: 'Week', selected: true })).toBeTruthy();
+```
+
+| `accessibility-traits` | Role        |
+| ---------------------- | ----------- |
+| `button`               | `button`    |
+| `link`                 | `link`      |
+| `image`                | `img`       |
+| `header`               | `heading`   |
+| `search`               | `searchbox` |
+| `adjustable`           | `slider`    |
+| `tabbar`               | `tablist`   |
+
+- **Role**: from each trait in the table. An `<image>` is an `img` unless it sets `accessibility-traits`.
+- **Reachable**: a screen reader reaches `<text>`, `<image>`, and other elements with `accessibility-element="true"`, outside `accessibility-elements-hidden`. A `tabbar` is read from the container around the tabs, so it needs no `accessibility-element`. Others match only with `hidden: true`.
+- **`name`**: the `accessibility-label`, or a `<text>`'s own text. A `<view>` gets no name from the text inside it, since iOS doesn't read it.
+- **`selected`**: the `selected` trait, as in `accessibility-traits="button,selected"`, which an active `routerLinkActive` element gets. iOS reads a comma-separated list. Android reads one trait (`button` or `image`) and treats a list as `none`.
+- **`value: { text }`**: the `accessibility-value`.
+- **Other ARIA states** (`checked`, `pressed`, `expanded`, `level`, …) have no Lynx attribute, so Lynx elements never match them.
+
+### `screen`, `within()` and `getQueriesForElement()`
+
+Testing Library's, with the queries above: `screen` binds every query to `document.body`, and `within(element)` binds them to `element`. `getQueriesForElement` is `within`.
+
+### `queries`
+
+Every query, unbound (each takes the container first). Spread it into your own queries to keep them next to these. Each query is also exported on its own, such as `getByAccessibilityLabel(container, 'Close')`.
 
 ## Usage
 

@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   waitForUpdate,
+  within,
 } from '@blotch/angular-lynx-testing-library';
 import { describe, expect, it } from 'vitest';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
@@ -60,8 +61,7 @@ const renderPagination = async (
     ...result,
     host,
     /** The button a screen reader reads as `label`. */
-    button: (label: string) =>
-      result.container.querySelector(`[accessibility-label="${label}"]`)!,
+    button: (label: string) => result.getByRole('button', { name: label }),
   };
 };
 
@@ -74,12 +74,14 @@ const shown = (container: Element): (string | null)[] =>
   );
 
 /**
- * The screen reader labels of the row's buttons, in order.
+ * The screen reader labels of the row's buttons, in order. getAllByRole()
+ * finds only what a screen reader reaches as a button, so this also checks
+ * each one's traits and accessibility-element.
  */
 const labels = (container: Element): (string | null)[] =>
-  Array.from(container.querySelectorAll('[accessibility-element]')).map((el) =>
-    el.getAttribute('accessibility-label'),
-  );
+  within(container as HTMLElement)
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('accessibility-label'));
 
 describe('UiPagination', () => {
   it('lists every page when they all fit, with the given class', async () => {
@@ -170,10 +172,6 @@ describe('UiPagination', () => {
       'Page 3',
       'Next page',
     ]);
-    const buttons = container.querySelectorAll('[accessibility-element]');
-    for (const button of Array.from(buttons)) {
-      expect(button.getAttribute('accessibility-traits')).toBe('button');
-    }
   });
 
   it('takes its own labels', async () => {

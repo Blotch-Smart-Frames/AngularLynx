@@ -477,10 +477,9 @@ describe('UiNavDrawerItem', () => {
 
 describe('UiNavDrawerTrigger', () => {
   it('is a labeled button for screen readers', async () => {
-    const { trigger } = await renderDrawer();
-    expect(trigger().getAttribute('accessibility-traits')).toBe('button');
-    expect(trigger().getAttribute('accessibility-label')).toBe(
-      'Open navigation menu',
+    const { trigger, getByRole } = await renderDrawer();
+    expect(getByRole('button', { name: 'Open navigation menu' })).toBe(
+      trigger(),
     );
   });
 

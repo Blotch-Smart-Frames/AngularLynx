@@ -1,6 +1,6 @@
 # @blotch/angular-lynx-testing-library
 
-Renders a component through the Lynx renderer in a unit test, then finds and taps its elements with Testing Library queries. `import { render } from '@blotch/angular-lynx-testing-library';`
+Renders a component through the Lynx renderer in a unit test, then finds and taps its elements with Testing Library queries that read Lynx's accessibility attributes. `import { render } from '@blotch/angular-lynx-testing-library';`
 
 ## Usage
 
@@ -12,7 +12,12 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   selector: 'app-counter',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view (bindtap)="increment()">
+    <view
+      [accessibility-element]="true"
+      accessibility-traits="button"
+      accessibility-label="Add one"
+      (bindtap)="increment()"
+    >
       <text>Taps: {{ taps() }}</text>
     </view>
   `,
@@ -38,9 +43,9 @@ import { Counter } from './counter';
 
 describe('Counter', () => {
   it('counts taps', async () => {
-    const { container, getByText } = await render(Counter);
+    const { getByRole, getByText } = await render(Counter);
 
-    fireEvent.tap(container.querySelector('view')!);
+    fireEvent.tap(getByRole('button', { name: 'Add one' }));
     await waitForUpdate();
 
     expect(getByText('Taps: 1')).toBeTruthy();
@@ -106,6 +111,69 @@ const eventMap: Record<string, { defaultInit: {} }>;
 
 The events that `fireEvent` has a method for, keyed by event name.
 
+### `*ByAccessibilityLabel`
+
+```typescript
+getByAccessibilityLabel(label: Matcher, options?: MatcherOptions): HTMLElement;
+// getAllBy…, queryBy…, queryAllBy…, findBy… and findAllBy… too
+```
+
+Finds elements by their `accessibility-label`, the text a screen reader reads for them. Testing Library's `*ByLabelText` reads `<label>` and `aria-*` attributes, which Lynx elements don't have.
+
+- **`label`**: a string, a RegExp or a function, as for `getByText`.
+- **`options`**: `exact: false` matches part of the label in any case. `normalizer` changes how whitespace is trimmed.
+- **Variants**: the same six as Testing Library's queries. `findBy…` waits for the element, 1 second by default.
+
+### `*ByRole`
+
+```typescript
+getByRole(role: ByRoleMatcher, options?: ByRoleOptions): HTMLElement;
+// getAllBy…, queryBy…, queryAllBy…, findBy… and findAllBy… too
+```
+
+Testing Library's `*ByRole`, reading Lynx's accessibility attributes as a screen reader does. It finds what Testing Library finds too, such as an `<input>` as a `textbox`.
+
+| `accessibility-traits` | Role        |
+| ---------------------- | ----------- |
+| `button`               | `button`    |
+| `link`                 | `link`      |
+| `image`                | `img`       |
+| `header`               | `heading`   |
+| `search`               | `searchbox` |
+| `adjustable`           | `slider`    |
+| `tabbar`               | `tablist`   |
+
+- **`<image>` is an `img`** unless it sets `accessibility-traits`. Other traits, such as `text`, give no role.
+- **Only reachable elements match.** A screen reader reaches `<text>`, `<image>`, and other elements with `accessibility-element="true"`, outside `accessibility-elements-hidden`. A `tabbar` is read from the container around the tabs, so it needs no `accessibility-element`. Pass `hidden: true` to include the rest.
+- **`name`** is the `accessibility-label`. A `<text>` without one is named by its text. A `<view>` isn't named by the text inside it, since iOS doesn't read it.
+- **`selected`** is the `selected` trait: `accessibility-traits="button,selected"`, which an active `routerLinkActive` element gets. iOS reads a comma-separated list, but Android reads only one trait.
+- **`value: { text }`** is the `accessibility-value`.
+- **Other ARIA states**, such as `checked` or `expanded`, have no Lynx attribute, so a Lynx element never has them.
+
+### `screen`
+
+Every query, bound to `document.body`, with Testing Library's `debug()` and `logTestingPlaygroundURL()`.
+
+### `within(element, queries?)`
+
+```typescript
+function within(element: HTMLElement): BoundLynxQueries;
+function within<Q extends Queries>(
+  element: HTMLElement,
+  queries: Q,
+): BoundFunctions<Q>;
+```
+
+Binds every query to `element`, to search one part of the tree. Pass `queries` to bind only those. `getQueriesForElement` is the same function.
+
+### `queries`
+
+```typescript
+const queries: LynxQueries;
+```
+
+Every query, unbound, each taking the container first: Testing Library's, with `*ByRole` and `*ByAccessibilityLabel` from this library. Each one is also exported on its own, such as `getByAccessibilityLabel(container, 'Close')`.
+
 ## Types
 
 ### `RenderOptions`
@@ -117,32 +185,38 @@ type RenderOptions<Q extends Queries = typeof queries> = {
 };
 ```
 
-| Property    | Description                                                                             |
-| ----------- | --------------------------------------------------------------------------------------- |
-| `providers` | Extra providers for the test app, such as `provideRouter(routes)`                       |
-| `queries`   | Custom queries to bind to `container`, next to the standard `@testing-library/dom` ones |
+| Property    | Description                                                                        |
+| ----------- | ---------------------------------------------------------------------------------- |
+| `providers` | Extra providers for the test app, such as `provideRouter(routes)`                  |
+| `queries`   | Custom queries to bind to `container`, next to the library's [`queries`](#queries) |
 
 ### `RenderResult`
 
-| Property       | Type                                             | Description                                                                          |
-| -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `container`    | `Element`                                        | The `<page>` element that holds everything rendered                                  |
-| `componentRef` | `ComponentRef<unknown>`                          | The root component. Use `componentRef.injector.get(Token)` to reach a service        |
-| `unmount`      | `() => void`                                     | Destroys the app, like `cleanup()`                                                   |
-| `rerender`     | `(component, options?) => Promise<RenderResult>` | Renders another component in its place                                               |
-| `asFragment`   | `() => DocumentFragment`                         | A copy of `container`, for snapshot tests                                            |
-| `getByText`, … | Query functions                                  | Every `@testing-library/dom` query, bound to `container`, plus your custom `queries` |
+| Property       | Type                                             | Description                                                                       |
+| -------------- | ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `container`    | `Element`                                        | The `<page>` element that holds everything rendered                               |
+| `componentRef` | `ComponentRef<unknown>`                          | The root component. Use `componentRef.injector.get(Token)` to reach a service     |
+| `unmount`      | `() => void`                                     | Destroys the app, like `cleanup()`                                                |
+| `rerender`     | `(component, options?) => Promise<RenderResult>` | Renders another component in its place                                            |
+| `asFragment`   | `() => DocumentFragment`                         | A copy of `container`, for snapshot tests                                         |
+| `getByText`, … | Query functions                                  | Every query in [`queries`](#queries), bound to `container`, plus your custom ones |
 
 `componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, it can't see signal inputs. Set a writable signal on `componentRef.instance` instead.
 
+### Query types
+
+| Type                             | Description                                                  |
+| -------------------------------- | ------------------------------------------------------------ |
+| `LynxQueries`                    | The type of [`queries`](#queries)                            |
+| `BoundLynxQueries`               | Every query bound to a container, as `within()` returns them |
+| `BoundAccessibilityLabelQueries` | The `*ByAccessibilityLabel` queries bound to a container     |
+| `LynxScreen`                     | The type of [`screen`](#screen)                              |
+
 ## Re-exports
 
-| Export                 | From                   | Description                          |
-| ---------------------- | ---------------------- | ------------------------------------ |
-| `screen`               | `@testing-library/dom` | Queries bound to `document.body`     |
-| `within`               | `@testing-library/dom` | Queries bound to an element you pass |
-| `getQueriesForElement` | `@testing-library/dom` | The same as `within`                 |
-| `ComponentRef`         | `@angular/core` (type) | The type of `componentRef`           |
+| Export         | From                   | Description                |
+| -------------- | ---------------------- | -------------------------- |
+| `ComponentRef` | `@angular/core` (type) | The type of `componentRef` |
 
 The package also has a `@blotch/angular-lynx-testing-library/setup` entry, which prepares the Lynx test environment. `ng test` loads it for you.
 

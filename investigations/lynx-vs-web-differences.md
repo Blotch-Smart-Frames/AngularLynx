@@ -2150,12 +2150,17 @@ Lynx uses its own attribute system:
 - **`accessibility-element="true/false"`** — marks an element as an accessible node (default `true` for `<text>`/`<image>`, `false` for `<view>`).
 - **`accessibility-label`** — equivalent to `aria-label`.
 - **`accessibility-traits`** — element type hint such as `'button'`, `'image'`, `'header'` or `'link'` (simpler than ARIA roles). The name is plural: iOS (`LynxUI.m`), Android (`PropsConstants.ACCESSIBILITY_TRAITS`) and Harmony ignore `accessibility-trait`. `LYNX_ELEMENTS` declared the singular until 22.2.3.
+  - **Only iOS reads a list** (see "`accessibility-traits` takes a comma list on iOS, and a single trait on Android" above). Harmony, like Android, reads one trait, and maps only `text`, `image` and `button` (`UIBase::GetAccessibilityType`). The `selected` trait is the closest thing to `aria-selected`, and it's iOS-only.
+  - **`tabbar` goes on a container.** VoiceOver reads the tab bar trait from a view that isn't an accessibility element itself, so the tabs inside it stay reachable (the `@blotch/ui` tab bar does this).
+  - **Defaults:** `<text>` has the static-text trait and `<image>` the image trait (`accessibilityTraitsByDefault` in `LynxUIText.m`, `LynxUIImage.mm`); setting `accessibility-traits` replaces the default.
+- **The accessible name** — iOS sets an element's `accessibilityLabel` from `accessibility-label` (with `accessibility-status` prepended as `"status, label"`), and a `<text>` without a label uses its own text. A `<view>` never takes a name from the text inside it: once it's an accessibility element, VoiceOver reads its label and skips its children. Give an `accessibility-element` view an `accessibility-label`.
+- **Testing:** `@blotch/angular-lynx-testing-library`'s `*ByRole` reads these (traits → ARIA roles, reachability, `accessibility-label` names, the `selected` trait, `accessibility-value`), and `*ByAccessibilityLabel` finds elements by label, since Testing Library's own queries read only ARIA and `<label>`.
 - **`accessibility-elements`** — comma-separated `id`s (iOS looks each up with `uiWithIdSelector`) controlling focus order and limiting which children are accessible (no ARIA equivalent; closest is `aria-flowto`).
 - **`accessibility-elements-hidden`** — equivalent to `aria-hidden="true"` on a subtree.
 - **`accessibility-exclusive-focus`** — traps focus within the element (like a modal dialog's focus trap). No direct ARIA equivalent; ARIA requires `aria-modal` + JavaScript focus management.
 - **`lynx.accessibilityAnnounce(message)`** — programmatically sends an announcement to the screen reader (equivalent to an `aria-live` region update).
 
-There is no equivalent to `role`, `tabindex`, `aria-expanded`, `aria-selected`, or most other ARIA attributes.
+There is no equivalent to `role`, `tabindex`, `aria-expanded`, or most other ARIA attributes, and only iOS has one for `aria-selected` (the `selected` trait).
 
 ---
 

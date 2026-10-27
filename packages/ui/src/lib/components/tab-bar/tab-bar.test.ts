@@ -166,6 +166,13 @@ describe('UiTabBar', () => {
     expect(iconOf('Inbox')).toContain(MUTED_FOREGROUND);
   });
 
+  it('reads to a screen reader as a tab bar, the current tab selected', async () => {
+    const { getByRole, queryByRole } = await renderTabBar();
+    expect(getByRole('tablist')).toBeTruthy();
+    expect(getByRole('button', { name: 'Home', selected: true })).toBeTruthy();
+    expect(queryByRole('button', { name: 'Inbox', selected: true })).toBeNull();
+  });
+
   it('navigates on a tap, and moves the selection to the tapped tab', async () => {
     const { tab, isActive, page, labelOf, item } = await renderTabBar();
     const pressed = vi.fn();

@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { getEntry, getComponentNames } from '../registry.js';
 import { getOrCreateLockfile, writeLockfile } from '../lockfile.js';
+import { isInteractive } from '../utils/interactive.js';
 
 /**
  * "Eject" removes a component from dolan's update tracking (the lockfile)
@@ -54,6 +55,15 @@ export const ejectCommand = async (
   }
 
   if (!options.force) {
+    // The default answer, "no", cancels. Without a terminal, fail instead, so
+    // a script learns that nothing was ejected.
+    if (!isInteractive()) {
+      p.log.error(
+        `Ejecting asks first. Run ${pc.bold(`dolan eject --force ${component}`)} to eject it without asking.`,
+      );
+      process.exit(1);
+    }
+
     const confirm = await p.confirm({
       message: `Stop tracking ${pc.bold(component)}? Updates will no longer detect changes. Files will remain untouched.`,
       initialValue: false,

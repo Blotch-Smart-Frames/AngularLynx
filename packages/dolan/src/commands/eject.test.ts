@@ -19,9 +19,20 @@ vi.mock('@clack/prompts', () => ({
   isCancel: vi.fn().mockReturnValue(false),
 }));
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 let fixture: Fixture;
 
 beforeEach(() => {
+  interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -199,5 +210,44 @@ describe('ejectCommand', () => {
 
     const { ejectCommand } = await import('./eject');
     await expect(ejectCommand('button', {})).rejects.toThrow('process.exit(0)');
+  });
+});
+
+// CI, agents and scripts: a question there would wait for input that never
+// comes.
+describe('ejectCommand without a terminal', () => {
+  it('fails without --force, since the default answer cancels', async () => {
+    interactive = false;
+    const content = 'export const Button = {};';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { button: { 'button.ts': { hash: hashContent(content) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { button: { 'button.ts': content } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const p = await import('@clack/prompts');
+
+    const { ejectCommand } = await import('./eject');
+    await expect(ejectCommand('button', {})).rejects.toThrow('process.exit(1)');
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('dolan eject --force button'),
+    );
+    const lockfile = JSON.parse(
+      readFileSync(join(fixture.dir, 'dolan.lock.json'), 'utf-8'),
+    );
+    expect(lockfile.components.button).toBeDefined();
+
+    await ejectCommand('button', { force: true });
+    expect(
+      JSON.parse(readFileSync(join(fixture.dir, 'dolan.lock.json'), 'utf-8'))
+        .components.button,
+    ).toBeUndefined();
   });
 });

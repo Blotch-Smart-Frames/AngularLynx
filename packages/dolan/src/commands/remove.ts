@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
 import { getEntry, getComponentNames, registry } from '../registry.js';
 import { getOrCreateLockfile, writeLockfile } from '../lockfile.js';
+import { isInteractive } from '../utils/interactive.js';
 
 /**
  * Removes one installed UI component from the user's project, and offers to
@@ -20,12 +21,17 @@ import { getOrCreateLockfile, writeLockfile } from '../lockfile.js';
  *
  * `--force` skips both prompts: dependents are removed anyway, and orphans
  * are auto-removed without asking.
+ *
+ * Without a terminal, each question takes its default: orphans are removed,
+ * and dependents stop the run with exit code 1, since "no" cancels it and a
+ * script that exited 0 would never learn that nothing was removed.
  */
 export const removeCommand = async (
   component: string,
   options: { force?: boolean },
 ) => {
   const cwd = process.cwd();
+  const interactive = isInteractive();
 
   p.intro(pc.bold('dolan remove'));
 
@@ -88,6 +94,12 @@ export const removeCommand = async (
     p.log.warn(
       `The following installed components depend on ${pc.bold(component)}: ${dependents.map((d) => pc.bold(d.name)).join(', ')}`,
     );
+    if (!interactive) {
+      p.log.error(
+        `Run ${pc.bold(`dolan remove --force ${component}`)} to remove it anyway.`,
+      );
+      process.exit(1);
+    }
     const proceed = await p.confirm({
       message: 'Remove anyway? This may break those components.',
       initialValue: false,
@@ -105,10 +117,13 @@ export const removeCommand = async (
     const orphans = findOrphans(component, installed, removalSet);
 
     if (orphans.length > 0 && !options.force) {
-      const removeOrphans = await p.confirm({
-        message: `Also remove orphaned dependencies? (${orphans.map((o) => pc.bold(o)).join(', ')})`,
-        initialValue: true,
-      });
+      // "Yes" is the default, and the answer when nobody can be asked.
+      const removeOrphans = interactive
+        ? await p.confirm({
+            message: `Also remove orphaned dependencies? (${orphans.map((o) => pc.bold(o)).join(', ')})`,
+            initialValue: true,
+          })
+        : true;
 
       if (!p.isCancel(removeOrphans) && removeOrphans) {
         for (const orphan of orphans) {

@@ -27,7 +27,9 @@ Press Enter to accept both default folders. It writes `dolan.config.json`, copie
 
 Copied components import `cn()` and animation helpers from `@blotch/dolan`, so your app needs it to build, not only to run commands. Once it's installed, `npx dolan` runs it too.
 
-**2. Add the Tailwind plugin.\*\***2. Add the Tailwind plugin.\*\*
+In CI, a script or an AI agent, `init` asks nothing and takes the default folders. Add `--yes` to skip the questions in a terminal too, and `--components` or `--theme` to choose other folders. See [`init`](/dolan/cli#init).
+
+**2. Add the Tailwind plugin.**
 
 ```typescript title="tailwind.config.ts"
 import type { Config } from 'tailwindcss';

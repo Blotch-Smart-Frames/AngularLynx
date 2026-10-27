@@ -12,6 +12,7 @@ import {
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import { isInteractive } from '../utils/interactive.js';
 import { copiesTests } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
 import {
@@ -276,6 +277,12 @@ const reviewFile = async (
  * `--force` bypasses all prompts and overwrites every file with upstream,
  * which is destructive but useful for resetting to a clean baseline.
  *
+ * Without a terminal nobody can answer, so auto-updates apply (the default
+ * answer) and conflicts are left as they are, file and lockfile hash, for an
+ * update in a terminal to ask about. Like a `git merge` with conflicts, the
+ * run then exits 1. Keeping the user's version instead would advance the base,
+ * so the upstream change would never be offered again, and nobody chose that.
+ *
  * After the apply phase, the lockfile is updated to record the new upstream
  * hash for every file — even ones the user chose to keep. This intentionally
  * "advances the base" so the user only sees the same conflict once: next
@@ -287,12 +294,21 @@ export const updateCommand = async (options: {
   selective?: boolean;
 }) => {
   const cwd = process.cwd();
+  const interactive = isInteractive();
 
   p.intro(pc.bold('dolan update'));
 
   if (!configExists(cwd)) {
     p.log.error(
       `No ${pc.cyan('dolan.config.json')} found. Run ${pc.bold('dolan init')} first.`,
+    );
+    process.exit(1);
+  }
+
+  // Selective mode is nothing but questions, and `--force` wins over it.
+  if (options.selective && !options.force && !interactive) {
+    p.log.error(
+      `${pc.bold('--selective')} asks about each file, so it needs a terminal.`,
     );
     process.exit(1);
   }
@@ -486,7 +502,7 @@ export const updateCommand = async (options: {
     return;
   }
 
-  if (!options.force && !isSelective && autoUpdateCount > 0) {
+  if (!options.force && !isSelective && autoUpdateCount > 0 && interactive) {
     const confirm = await p.confirm({
       message: `Apply ${autoUpdateCount} auto-update(s)?`,
       initialValue: true,
@@ -507,8 +523,11 @@ export const updateCommand = async (options: {
   // --- Resolve conflicts ---
   const resolutions = new Map<string, ReviewResult>();
   const partialContents = new Map<string, string>();
+  // Conflicts nobody could be asked about. They get no resolution, which the
+  // apply phase reads as "leave the file and its lockfile hash alone".
+  const unresolvedCount = options.force || interactive ? 0 : conflictCount;
 
-  if (!options.force) {
+  if (!options.force && interactive) {
     for (const comp of componentAnalyses) {
       for (const file of comp.files) {
         if (file.status === 'conflict') {
@@ -589,6 +608,13 @@ export const updateCommand = async (options: {
       const key = `${comp.name}/${file.file}`;
 
       const resolution = resolutions.get(key)?.decision;
+
+      // A conflict nobody was asked about: neither the file nor its lockfile
+      // hash changes (newLockfile was read from disk), so the next update
+      // still sees a conflict and asks.
+      if (file.status === 'conflict' && !resolution && !options.force) {
+        continue;
+      }
 
       // In selective mode, auto-update/new-upstream files need explicit
       // approval — "skip for now" means don't touch file OR lockfile hash
@@ -676,6 +702,10 @@ export const updateCommand = async (options: {
     const destPath = join(themeDir, fileName);
 
     const sharedResolution = resolutions.get(file.file)?.decision;
+    // As for components: a conflict nobody was asked about stays as it is.
+    if (file.status === 'conflict' && !sharedResolution && !options.force) {
+      continue;
+    }
 
     // Shared-file (theme) apply branches: the tested paths cover the common
     // apply, force-overwrite, and up-to-date flows. The remaining branch-level
@@ -740,6 +770,14 @@ export const updateCommand = async (options: {
     );
   } else if (skippedCount > 0) {
     p.log.info(`${pc.bold(String(skippedCount))} file(s) kept as-is.`);
+  }
+
+  if (unresolvedCount > 0) {
+    p.log.warn(
+      `${pc.bold(String(unresolvedCount))} conflict(s) left as they are. Run ${pc.bold('dolan update')} in a terminal to resolve them, or ${pc.bold('dolan update --force')} to take upstream's version.`,
+    );
+    p.outro('Update incomplete.');
+    process.exit(1);
   }
 
   p.outro('Update complete.');

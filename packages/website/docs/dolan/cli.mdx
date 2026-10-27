@@ -9,6 +9,7 @@ npx @blotch/dolan <command> [options]
 - Once `@blotch/dolan` is a dependency (see [installation](/dolan/#installation)), `npx` runs your installed copy. The shorter `npx dolan <command>` works too.
 - `npx @blotch/dolan --help` lists the commands, and `<command> --help` lists a command's options. `--version` prints the version.
 - Every command except `info` needs a `dolan.config.json`. Run [`init`](#init) first.
+- In CI, a script or an AI agent, the commands ask nothing. See [Without a terminal](#without-a-terminal).
 
 | Command                 | What it does                                            |
 | ----------------------- | ------------------------------------------------------- |
@@ -51,27 +52,61 @@ The CLI keeps two files at the project root. Commit both.
 
 If your project has an `.oxfmtrc.json` and oxfmt installed, dolan formats the `.ts` files it writes with your settings.
 
+## Without a terminal
+
+In CI, a script or an AI agent, a command's input isn't a terminal, so nobody can answer its questions. The commands then ask nothing, and each question takes its default answer. Where a question has no default, or its default would cancel the run, the command exits with code 1 before changing anything, and says what to pass instead.
+
+| Command             | Question                                    | Without a terminal                                                                 |
+| ------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`init`](#init)     | Where should components and theme files go? | Uses `--components` and `--theme`, or the defaults.                                |
+|                     | Overwrite `dolan.config.json`?              | Exits 1. Add `--force` to overwrite it.                                            |
+|                     | Overwrite theme files that differ?          | Keeps yours.                                                                       |
+| [`add`](#add)       | Which components? (no names given)          | Exits 1. Name them: `add button card`.                                             |
+|                     | Overwrite installed components?             | Skips them. Add `--force` to overwrite them.                                       |
+| [`update`](#update) | Apply the auto-updates?                     | Applies them.                                                                      |
+|                     | How should each conflict be resolved?       | Applies the rest, leaves the conflicts alone and exits 1. See [`update`](#update). |
+|                     | Every file, with `--selective`              | Exits 1.                                                                           |
+| [`diff`](#diff)     | Which component? (no name given)            | Shows every changed component.                                                     |
+| [`remove`](#remove) | Remove it, though others depend on it?      | Exits 1. Add `--force` to remove it anyway.                                        |
+|                     | Also remove orphaned dependencies?          | Removes them.                                                                      |
+| [`eject`](#eject)   | Stop tracking it?                           | Exits 1. Add `--force` to eject it.                                                |
+
+To get the same in a terminal, redirect the input, as in `npx @blotch/dolan update < /dev/null`. `init` also takes `--yes`.
+
 ## init
 
 ```bash
 npx @blotch/dolan init
 ```
 
-Asks two questions, then sets up the project:
+Asks two questions, then sets up the project. Pass an option to answer its question up front:
 
-| Prompt                                 | Default             |
-| -------------------------------------- | ------------------- |
-| Where should components be installed?  | `src/components/ui` |
-| Where should theme files be installed? | `src/styles`        |
+| Prompt                                 | Default             | Option         |
+| -------------------------------------- | ------------------- | -------------- |
+| Where should components be installed?  | `src/components/ui` | `--components` |
+| Where should theme files be installed? | `src/styles`        | `--theme`      |
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
 - Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
 - Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
 - Creates the components folder and prints the next steps: the Tailwind plugin, and the `@import` lines for `default.css` and `dark.css`, written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
 
-| Argument or option | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `-f, --force`      | Overwrite an existing `dolan.config.json` and theme files without asking. |
+**Without a terminal**, or with `--yes`, `init` asks nothing:
+
+- The folders come from `--components` and `--theme`, or are the defaults.
+- Theme files that differ are kept, and `init` lists them. Add `--force` to replace them.
+- An existing `dolan.config.json` stops `init` with exit code 1, before it changes anything. Add `--force` to overwrite it.
+
+```bash
+npx @blotch/dolan init --yes --components src/app/ui --theme src/app/theme
+```
+
+| Argument or option    | Description                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `--components <path>` | Install components here instead of asking.                                                          |
+| `--theme <path>`      | Install the theme files here instead of asking.                                                     |
+| `-y, --yes`           | Ask nothing: use the default folders, keep theme files that differ, and stop on an existing config. |
+| `-f, --force`         | Overwrite an existing `dolan.config.json` and theme files without asking.                           |
 
 ## add
 
@@ -79,17 +114,18 @@ Asks two questions, then sets up the project:
 npx @blotch/dolan add [components...]
 ```
 
-Copies each component into `<components>/<name>/`. With no names, it shows a checklist.
+Copies each component into `<components>/<name>/`. With no names, it shows a checklist. Without a terminal, there's no checklist, so name the components.
 
 - **Dependencies come too.** Adding `button` also adds `spinner`, and the CLI prints what it added.
 - **Imports are rewritten.** `cn()` and the animation helpers are imported from `@blotch/dolan/utils/cn` and `@blotch/dolan/utils/animate`.
 - **Unit tests are copied if you can run them.** Each component's `<name>.test.ts` renders it with `@blotch/angular-lynx-testing-library`, so it's copied only when your `package.json` lists the library. Otherwise `add` leaves the tests out and says so: run `ng generate @blotch/angular-lynx:add-testing`, then `dolan update` adds them. The tests' helpers come from `@blotch/dolan/testing/*`.
-- **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise.
+- **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise. Without a terminal it skips it, and says how to overwrite it. `--force` overwrites without asking.
 - **npm packages are installed.** If a component imports a package your `package.json` lacks, `add` installs it with your package manager (npm, pnpm, yarn or bun, detected from the lockfile): `class-variance-authority` for Alert, Badge, Button, Button Group, Toggle and Typography, and `@tanstack/charts` and `d3-shape` for `chart` and the chart presets.
 
 | Argument or option | Description                                                                  |
 | ------------------ | ---------------------------------------------------------------------------- |
 | `[components...]`  | Component names. An unknown name stops the command and lists the valid ones. |
+| `-f, --force`      | Overwrite installed components without asking.                               |
 
 ## list
 
@@ -128,7 +164,7 @@ Prints a component's files, the components it depends on, and the components tha
 npx @blotch/dolan diff [component]
 ```
 
-With a name, it prints every file that differs from the bundled source. Lines starting with `-` are yours, and lines starting with `+` are upstream. Without a name, it lists the changed components and asks which to show.
+With a name, it prints every file that differs from the bundled source. Lines starting with `-` are yours, and lines starting with `+` are upstream. Without a name, it lists the changed components and asks which to show. Without a terminal, it shows them all.
 
 | Argument or option | Description                         |
 | ------------------ | ----------------------------------- |
@@ -166,11 +202,12 @@ Merges the bundled source into every installed component, file by file:
 - **New dependencies are added.** If a component's new version needs another component, `update` copies it in.
 - **npm packages are installed** the same way [`add`](#add) does.
 - **You're asked about a conflict once.** After you choose, the lockfile records the new upstream hash. If you kept your version, the file shows as modified until upstream changes again.
+- **Without a terminal, conflicts wait for you.** `update` applies the auto-updates, but leaves each conflict's file and lockfile hash as they were, and exits with code 1. The next `update` in a terminal asks about them. Keeping your version instead would record the upstream hash, and you'd never be offered that change again. `--force` takes upstream's version of every conflict.
 
-| Argument or option | Description                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `-f, --force`      | Overwrite every file with upstream, discarding your changes. Wins over `--selective`.                  |
-| `-s, --selective`  | Review every changed file one at a time, including your own edits. "Skip for now" asks again next run. |
+| Argument or option | Description                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `-f, --force`      | Overwrite every file with upstream, discarding your changes. Wins over `--selective`.                                    |
+| `-s, --selective`  | Review every changed file one at a time, including your own edits. "Skip for now" asks again next run. Needs a terminal. |
 
 ## remove
 
@@ -180,8 +217,8 @@ npx @blotch/dolan remove <component>
 
 Alias: `rm`. Deletes the component's folder and its lockfile entry.
 
-- If other installed components depend on it, it warns and asks first (default No).
-- It offers to remove dependencies that nothing else uses (default Yes). It looks one level deep, so remove deeper dependencies yourself.
+- If other installed components depend on it, it warns and asks first (default No). Without a terminal, it stops with exit code 1 instead.
+- It offers to remove dependencies that nothing else uses (default Yes). It looks one level deep, so remove deeper dependencies yourself. Without a terminal, it removes them.
 - It doesn't uninstall npm packages.
 
 | Argument or option | Description                                                                                 |
@@ -195,7 +232,7 @@ Alias: `rm`. Deletes the component's folder and its lockfile entry.
 npx @blotch/dolan eject <component>
 ```
 
-Removes the component from `dolan.lock.json` and leaves its files alone. It asks first (default No).
+Removes the component from `dolan.lock.json` and leaves its files alone. It asks first (default No). Without a terminal, it stops with exit code 1 unless you pass `--force`.
 
 The component is then yours: `update` doesn't touch it, even with `--force`, and `diff` and `outdated` skip it. `list` shows it as ejected. A component folder that isn't in `dolan.lock.json` counts as ejected, whatever put it there. To track it again, run `dolan add <component>`, which asks before overwriting it.
 

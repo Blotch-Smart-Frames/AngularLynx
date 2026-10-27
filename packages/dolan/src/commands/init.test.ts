@@ -20,10 +20,10 @@ vi.mock('@clack/prompts', () => ({
   },
   spinner: vi.fn(() => spinnerMock),
   confirm: vi.fn(),
-  group: vi.fn(),
   text: vi.fn(),
   cancel: vi.fn(),
-  isCancel: vi.fn().mockReturnValue(false),
+  // As the real one: a canceled prompt resolves to a symbol.
+  isCancel: vi.fn((value: unknown) => typeof value === 'symbol'),
 }));
 
 // `printBanner` shells out to cfonts, which is noisy in test output and
@@ -57,11 +57,19 @@ const nextSteps = async (): Promise<string> => {
   return (text as string).replace(/\u001b\[\d+m/g, '');
 };
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
+  interactive = true;
 });
 
 afterEach(() => {
@@ -73,25 +81,14 @@ const THEME_CSS = 'page { --background: rgba(255, 255, 255, 1); }';
 const TAILWIND_PLUGIN = 'export const blotchPlugin = () => {};';
 
 /**
- * Configures the `p.group`/`p.text` mocks to behave like the real
- * @clack/prompts group: invoke each field's builder function and resolve
- * `p.text` to its `defaultValue`. This exercises init.ts's `components: () =>
- * p.text(...)` and `theme: () => p.text(...)` field closures directly,
- * instead of skipping past them with a hardcoded resolved object.
+ * Answers each folder question as pressing Enter does in the real
+ * @clack/prompts: with its `defaultValue`. That keeps the defaults coming from
+ * init.ts's own `p.text` calls instead of a hardcoded answer.
  */
-const useDefaultGroupAnswers = async () => {
+const useDefaultAnswers = async () => {
   const p = await import('@clack/prompts');
   (p.text as ReturnType<typeof vi.fn>).mockImplementation(
     (opts: { defaultValue?: string }) => Promise.resolve(opts.defaultValue),
-  );
-  (p.group as ReturnType<typeof vi.fn>).mockImplementation(
-    async (fields: Record<string, () => Promise<unknown>>) => {
-      const result: Record<string, unknown> = {};
-      for (const key of Object.keys(fields)) {
-        result[key] = await fields[key]();
-      }
-      return result;
-    },
   );
 };
 
@@ -105,7 +102,7 @@ describe('initCommand', () => {
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
-    await useDefaultGroupAnswers();
+    await useDefaultAnswers();
     const p = await import('@clack/prompts');
 
     const { initCommand } = await import('./init');
@@ -140,7 +137,7 @@ describe('initCommand', () => {
       themeFiles: { 'default.css': THEME_CSS },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
-    await useDefaultGroupAnswers();
+    await useDefaultAnswers();
 
     const { initCommand } = await import('./init');
     await initCommand();
@@ -162,7 +159,7 @@ describe('initCommand', () => {
       JSON.stringify({ aliases: { components: 'old', theme: 'old' } }),
     );
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
-    await useDefaultGroupAnswers();
+    await useDefaultAnswers();
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
@@ -210,23 +207,50 @@ describe('initCommand', () => {
     await expect(initCommand()).rejects.toThrow('process.exit(0)');
   });
 
-  it('cancels via the group onCancel handler when a prompt in the group is canceled', async () => {
+  it('cancels when a folder question is canceled', async () => {
     fixture = createFixture({ themeFiles: { 'default.css': THEME_CSS } });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    // Simulate @clack/prompts invoking the onCancel callback passed to
-    // p.group when one of the grouped prompts is canceled.
-    (p.group as ReturnType<typeof vi.fn>).mockImplementation(
-      async (_fields, config: { onCancel: () => void }) => {
-        config.onCancel();
-        return {};
-      },
-    );
+    (p.text as ReturnType<typeof vi.fn>).mockResolvedValue(Symbol('cancel'));
 
     const { initCommand } = await import('./init');
     await expect(initCommand()).rejects.toThrow('process.exit(0)');
     expect(p.cancel).toHaveBeenCalledWith('Init canceled.');
+    expect(existsSync(join(fixture.dir, 'dolan.config.json'))).toBe(false);
+  });
+
+  it('takes the folders from --components and --theme without asking', async () => {
+    fixture = createFixture({ themeFiles: { 'default.css': THEME_CSS } });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    await useDefaultAnswers();
+    const p = await import('@clack/prompts');
+
+    const { initCommand } = await import('./init');
+    await initCommand({ theme: 'src/theme' });
+
+    // Only the question without a flag is asked.
+    expect(p.text).toHaveBeenCalledTimes(1);
+    expect(p.text).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultValue: 'src/components/ui' }),
+    );
+    expect(
+      readFileSync(join(fixture.dir, 'src/theme/default.css'), 'utf-8'),
+    ).toBe(THEME_CSS);
+
+    vi.clearAllMocks();
+    await initCommand({
+      force: true,
+      components: 'src/ui',
+      theme: 'src/theme',
+    });
+
+    expect(p.text).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(readFileSync(join(fixture.dir, 'dolan.config.json'), 'utf-8')),
+    ).toEqual({ aliases: { components: 'src/ui', theme: 'src/theme' } });
+    expect(existsSync(join(fixture.dir, 'src/ui'))).toBe(true);
+    expect(await nextSteps()).toContain("@import './theme/default.css';");
   });
 
   describe('theme files that already exist', () => {
@@ -255,7 +279,7 @@ describe('initCommand', () => {
         'default.css': 'page { --mine: red; }',
         'dark.css': THEME_CSS,
       });
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
       const p = await import('@clack/prompts');
       (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
 
@@ -280,13 +304,10 @@ describe('initCommand', () => {
 
     it('keeps them when the question is canceled', async () => {
       seedTheme({ 'default.css': 'page { --mine: red; }' });
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
       const p = await import('@clack/prompts');
       (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(
         Symbol('cancel'),
-      );
-      (p.isCancel as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce(
-        true,
       );
 
       const { initCommand } = await import('./init');
@@ -297,7 +318,7 @@ describe('initCommand', () => {
 
     it('replaces them when confirmed', async () => {
       seedTheme({ 'default.css': 'page { --mine: red; }' });
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
       const p = await import('@clack/prompts');
       (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
@@ -314,13 +335,136 @@ describe('initCommand', () => {
         join(fixture.dir, 'dolan.config.json'),
         JSON.stringify({ aliases: { components: 'old', theme: 'old' } }),
       );
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
       const p = await import('@clack/prompts');
 
       const { initCommand } = await import('./init');
       await initCommand({ force: true });
 
       expect(p.confirm).not.toHaveBeenCalled();
+      expect(theme('default.css')).toBe(THEME_CSS);
+    });
+  });
+
+  // CI, agents and scripts: a question there would wait for input that never
+  // comes, so init takes each default instead.
+  describe.each([
+    {
+      when: 'stdin is not a terminal',
+      setup: () => {
+        interactive = false;
+      },
+      options: {},
+    },
+    { when: 'given --yes', setup: () => {}, options: { yes: true } },
+  ])('when $when', ({ setup, options }) => {
+    beforeEach(() => {
+      fixture = createFixture({
+        themeFiles: {
+          'default.css': THEME_CSS,
+          'dark.css': THEME_CSS,
+          'tailwind-plugin.ts': TAILWIND_PLUGIN,
+        },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+      setup();
+    });
+
+    const theme = (file: string) =>
+      readFileSync(join(fixture.dir, 'src/styles', file), 'utf-8');
+
+    it('asks nothing and uses the default folders', async () => {
+      const p = await import('@clack/prompts');
+
+      const { initCommand } = await import('./init');
+      await initCommand(options);
+
+      expect(p.text).not.toHaveBeenCalled();
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dir, 'dolan.config.json'), 'utf-8'),
+        ),
+      ).toEqual({
+        aliases: { components: 'src/components/ui', theme: 'src/styles' },
+      });
+      expect(theme('default.css')).toBe(THEME_CSS);
+      expect(existsSync(join(fixture.dir, 'src/components/ui'))).toBe(true);
+      expect(p.note).toHaveBeenCalled();
+    });
+
+    it('still takes the folders from --components and --theme', async () => {
+      const { initCommand } = await import('./init');
+      await initCommand({ ...options, components: 'src/ui', theme: 'theme' });
+
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dir, 'dolan.config.json'), 'utf-8'),
+        ),
+      ).toEqual({ aliases: { components: 'src/ui', theme: 'theme' } });
+      expect(readFileSync(join(fixture.dir, 'theme/dark.css'), 'utf-8')).toBe(
+        THEME_CSS,
+      );
+    });
+
+    it('keeps theme files that differ, and says how to replace them', async () => {
+      mkdirSync(join(fixture.dir, 'src/styles'), { recursive: true });
+      writeFileSync(
+        join(fixture.dir, 'src/styles/default.css'),
+        'page { --mine: red; }',
+      );
+      const p = await import('@clack/prompts');
+
+      const { initCommand } = await import('./init');
+      await initCommand(options);
+
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(theme('default.css')).toBe('page { --mine: red; }');
+      expect(theme('dark.css')).toBe(THEME_CSS);
+      expect(p.log.info).toHaveBeenCalledWith(
+        expect.stringMatching(/default\.css.*differ.*dolan init --force/),
+      );
+    });
+
+    it('fails on an existing config instead of canceling quietly', async () => {
+      const existing = JSON.stringify({
+        aliases: { components: 'old', theme: 'old' },
+      });
+      writeFileSync(join(fixture.dir, 'dolan.config.json'), existing);
+      const p = await import('@clack/prompts');
+
+      const { initCommand } = await import('./init');
+      await expect(initCommand(options)).rejects.toThrow('process.exit(1)');
+
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(p.log.error).toHaveBeenCalledWith(
+        expect.stringContaining('dolan init --force'),
+      );
+      expect(
+        readFileSync(join(fixture.dir, 'dolan.config.json'), 'utf-8'),
+      ).toBe(existing);
+      expect(existsSync(join(fixture.dir, 'src/styles'))).toBe(false);
+    });
+
+    it('overwrites an existing config and theme files with --force', async () => {
+      writeFileSync(
+        join(fixture.dir, 'dolan.config.json'),
+        JSON.stringify({ aliases: { components: 'old', theme: 'old' } }),
+      );
+      mkdirSync(join(fixture.dir, 'src/styles'), { recursive: true });
+      writeFileSync(
+        join(fixture.dir, 'src/styles/default.css'),
+        'page { --mine: red; }',
+      );
+
+      const { initCommand } = await import('./init');
+      await initCommand({ ...options, force: true });
+
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.dir, 'dolan.config.json'), 'utf-8'),
+        ).aliases.components,
+      ).toBe('src/components/ui');
       expect(theme('default.css')).toBe(THEME_CSS);
     });
   });
@@ -332,7 +476,7 @@ describe('initCommand', () => {
     });
 
     it('installs @blotch/dolan, which the components import', async () => {
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
       const { version } = JSON.parse(
         readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
       ) as { version: string };
@@ -354,7 +498,7 @@ describe('initCommand', () => {
         join(fixture.dir, 'package.json'),
         JSON.stringify({ dependencies: { '@blotch/dolan': '^22.0.0' } }),
       );
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
 
       const { initCommand } = await import('./init');
       await initCommand();
@@ -364,7 +508,7 @@ describe('initCommand', () => {
 
     it('says how to install it when the install fails, and why', async () => {
       installPackages.mockReturnValueOnce(false);
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
 
       const { initCommand } = await import('./init');
       await initCommand();
@@ -378,7 +522,7 @@ describe('initCommand', () => {
     });
 
     it('imports the theme relative to the global stylesheet, dark.css too', async () => {
-      await useDefaultGroupAnswers();
+      await useDefaultAnswers();
 
       const { initCommand } = await import('./init');
       await initCommand();

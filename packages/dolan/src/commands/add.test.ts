@@ -22,6 +22,13 @@ vi.mock('@clack/prompts', () => ({
   isCancel: vi.fn().mockReturnValue(false),
 }));
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 let fixture: Fixture;
 
 // `add` reads component source through resolve-paths — stub it to read from
@@ -45,6 +52,7 @@ vi.mock('./install-packages.js', () => ({
 }));
 
 beforeEach(() => {
+  interactive = true;
   // The @clack/prompts mock above is a module-level vi.fn() object shared by
   // every test in this file (vi.restoreAllMocks() in afterEach only restores
   // vi.spyOn spies, not plain vi.fn() mocks) — clear call history explicitly
@@ -316,6 +324,77 @@ describe('addCommand', () => {
 
     const { addCommand } = await import('./add');
     await expect(addCommand(['card'])).rejects.toThrow('process.exit(0)');
+  });
+
+  it('overwrites installed components without asking with --force', async () => {
+    const upstream = 'export const Card = { v: 2 };';
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      components: { card: { 'card.ts': 'export const Card = { v: 1 };' } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const p = await import('@clack/prompts');
+
+    const { addCommand } = await import('./add');
+    await addCommand(['card'], { force: true });
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+  });
+
+  // CI, agents and scripts: a question there would wait for input that never
+  // comes.
+  describe('without a terminal', () => {
+    beforeEach(() => {
+      interactive = false;
+    });
+
+    it('fails without component names, since the checklist has no default', async () => {
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        uiSource: { card: { 'card.ts': 'export const Card = {};' } },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+      const p = await import('@clack/prompts');
+
+      const { addCommand } = await import('./add');
+      await expect(addCommand([])).rejects.toThrow('process.exit(1)');
+
+      expect(p.multiselect).not.toHaveBeenCalled();
+      expect(p.log.error).toHaveBeenCalledWith(
+        expect.stringContaining('dolan add button card'),
+      );
+      expect(p.log.info).toHaveBeenCalledWith(expect.stringContaining('card'));
+    });
+
+    it('skips installed components, says how to overwrite them, and adds the rest', async () => {
+      const cardOriginal = 'export const Card = { v: 1 };';
+      fixture = createFixture({
+        config: DEFAULT_CONFIG,
+        components: { card: { 'card.ts': cardOriginal } },
+        uiSource: {
+          card: { 'card.ts': 'export const Card = { v: 2 };' },
+          skeleton: { 'skeleton.ts': 'export const Skeleton = {};' },
+        },
+      });
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+      const p = await import('@clack/prompts');
+
+      const { addCommand } = await import('./add');
+      await addCommand(['card', 'skeleton']);
+
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(
+        cardOriginal,
+      );
+      expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
+        'export const Skeleton = {};',
+      );
+      expect(p.log.info).toHaveBeenCalledWith(
+        expect.stringContaining('dolan add --force card'),
+      );
+    });
   });
 
   describe("components' tests", () => {

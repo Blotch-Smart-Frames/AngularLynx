@@ -19,9 +19,20 @@ vi.mock('@clack/prompts', () => ({
   isCancel: vi.fn().mockReturnValue(false),
 }));
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 let fixture: Fixture;
 
 beforeEach(() => {
+  interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -360,7 +371,6 @@ describe('removeCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { removeCommand } = await import('./remove');
     await removeCommand('empty-state', {});
@@ -395,7 +405,6 @@ describe('removeCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { removeCommand } = await import('./remove');
     await removeCommand('avatar', {});
@@ -453,5 +462,62 @@ describe('removeCommand', () => {
     );
     expect(lockfile.components.spinner).toBeUndefined();
     expect(lockfile.components.button).toBeUndefined();
+  });
+});
+
+// CI, agents and scripts: a question there would wait for input that never
+// comes.
+describe('removeCommand without a terminal', () => {
+  const buttonContent = 'export const Button = {};';
+  const spinnerContent = 'export const Spinner = {};';
+
+  beforeEach(() => {
+    interactive = false;
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          button: { 'button.ts': { hash: hashContent(buttonContent) } },
+          spinner: { 'spinner.ts': { hash: hashContent(spinnerContent) } },
+        },
+        utils: {},
+        theme: {},
+      },
+      components: {
+        button: { 'button.ts': buttonContent },
+        spinner: { 'spinner.ts': spinnerContent },
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  });
+
+  const installed = (name: string) =>
+    existsSync(join(fixture.dir, DEFAULT_CONFIG.aliases.components, name));
+
+  it('fails on a component others depend on, and says how to remove it anyway', async () => {
+    const p = await import('@clack/prompts');
+
+    const { removeCommand } = await import('./remove');
+    await expect(removeCommand('spinner', {})).rejects.toThrow(
+      'process.exit(1)',
+    );
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('dolan remove --force spinner'),
+    );
+    expect(installed('spinner')).toBe(true);
+  });
+
+  it('removes orphaned dependencies, the default answer', async () => {
+    const p = await import('@clack/prompts');
+
+    const { removeCommand } = await import('./remove');
+    await removeCommand('button', {});
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(installed('button')).toBe(false);
+    expect(installed('spinner')).toBe(false);
   });
 });

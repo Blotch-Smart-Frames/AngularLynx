@@ -18,6 +18,13 @@ vi.mock('@clack/prompts', () => ({
   isCancel: vi.fn().mockReturnValue(false),
 }));
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 let fixture: Fixture;
 
 vi.mock('../utils/resolve-paths.js', () => ({
@@ -32,6 +39,10 @@ vi.mock('../utils/resolve-paths.js', () => ({
 }));
 
 beforeEach(() => {
+  interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -350,28 +361,42 @@ describe('diffCommand', () => {
     expect(messages).toContain('spinner');
   });
 
-  it('handles a component with no lockfile entry at all', async () => {
-    // Installed and matches upstream, but was never recorded in the lockfile
-    // (e.g. lockfile predates this component) — lockfile.components[name] is
-    // undefined and must fall back to {} rather than throwing.
-    const content = 'export const Card = {};';
+  it('summary mode: shows every diff without a terminal to ask in', async () => {
+    const installed = 'export const C = { old: true };';
+    const upstream = 'export const C = { new: true };';
     fixture = createFixture({
       config: DEFAULT_CONFIG,
-      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
-      components: { card: { 'card.ts': content } },
-      uiSource: { card: { 'card.ts': content } },
+      lockfile: {
+        version: 1,
+        components: {
+          card: { 'card.ts': { hash: hashContent(installed) } },
+          spinner: { 'spinner.ts': { hash: hashContent(installed) } },
+        },
+        utils: {},
+        theme: {},
+      },
+      components: {
+        card: { 'card.ts': installed },
+        spinner: { 'spinner.ts': installed },
+      },
+      uiSource: {
+        card: { 'card.ts': upstream },
+        spinner: { 'spinner.ts': upstream },
+      },
     });
-
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    interactive = false;
+    const p = await import('@clack/prompts');
 
     const { diffCommand } = await import('./diff');
-    await diffCommand('card');
+    await diffCommand();
 
-    const p = await import('@clack/prompts');
+    expect(p.select).not.toHaveBeenCalled();
     const messages = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
       .map((c) => c[0])
       .join('\n');
-    expect(messages).toContain('All files up to date.');
+    expect(messages).toContain('card/card.ts');
+    expect(messages).toContain('spinner/spinner.ts');
   });
 
   it('summary mode: exits cleanly when the user cancels the selection', async () => {
@@ -423,7 +448,6 @@ describe('diffCommand', () => {
     it('says an ejected component has nothing to compare', async () => {
       setup();
       const p = await import('@clack/prompts');
-      (p.log.message as ReturnType<typeof vi.fn>).mockClear();
       const { diffCommand } = await import('./diff');
       await diffCommand('card');
 

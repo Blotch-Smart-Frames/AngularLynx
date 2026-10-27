@@ -23,6 +23,13 @@ vi.mock('@clack/prompts', () => ({
   isCancel: vi.fn().mockReturnValue(false),
 }));
 
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
+
 let fixture: Fixture;
 
 vi.mock('../utils/resolve-paths.js', () => ({
@@ -44,7 +51,10 @@ vi.mock('./install-packages.js', () => ({
 }));
 
 beforeEach(() => {
-  installComponentPackages.mockClear();
+  interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -236,7 +246,6 @@ describe('updateCommand --selective', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true, selective: true });
@@ -300,7 +309,6 @@ describe('updateCommand --selective', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -416,8 +424,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -455,7 +461,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -823,8 +828,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -1005,8 +1008,6 @@ describe('updateCommand — config / no-op paths', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -1125,7 +1126,6 @@ describe('updateCommand — config / no-op paths', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -1716,8 +1716,6 @@ describe('updateCommand — ejected components', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.log.message as ReturnType<typeof vi.fn>).mockClear();
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
     const { updateCommand } = await import('./update');
     await updateCommand({});
 
@@ -1760,6 +1758,152 @@ describe('updateCommand — ejected components', () => {
     ).toBe('export const BottomSheet = { mine: true };');
     expect(readLockfile(fixture.dir).components).not.toHaveProperty(
       'bottom-sheet',
+    );
+  });
+});
+
+// CI, agents and scripts: a question there would wait for input that never
+// comes.
+describe('updateCommand without a terminal', () => {
+  const base = 'export const Card = { v: 1 };';
+  const userVersion = 'export const Card = { v: 1, local: true };';
+  const upstream = 'export const Card = { v: 2 };';
+  const themeBase = ':root { --primary: rgba(1, 1, 1, 1); }';
+  const themeMine = ':root { --primary: rgba(9, 9, 9, 1); }';
+  const themeUpstream = ':root { --primary: rgba(2, 2, 2, 1); }';
+
+  /**
+   * `card` and `default.css` conflict (both sides changed), and `skeleton` is
+   * a plain auto-update.
+   */
+  const setup = () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: { 'card.ts': { hash: hashContent(base) } },
+          skeleton: { 'skeleton.ts': { hash: hashContent(base) } },
+        },
+        utils: {},
+        theme: { 'default.css': { hash: hashContent(themeBase) } },
+      },
+      components: {
+        card: { 'card.ts': userVersion },
+        skeleton: { 'skeleton.ts': base },
+      },
+      uiSource: {
+        card: { 'card.ts': upstream },
+        skeleton: { 'skeleton.ts': upstream },
+      },
+      themeFiles: { 'default.css': themeUpstream },
+    });
+    writeFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      themeMine,
+    );
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+  const readTheme = () =>
+    readFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+      'utf-8',
+    );
+
+  beforeEach(() => {
+    interactive = false;
+  });
+
+  it('applies auto-updates without asking', async () => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: { card: { 'card.ts': { hash: hashContent(base) } } },
+        utils: {},
+        theme: {},
+      },
+      components: { card: { 'card.ts': base } },
+      uiSource: { card: { 'card.ts': upstream } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+    expect(p.outro).toHaveBeenCalledWith('Update complete.');
+  });
+
+  it('leaves conflicts as they are for a terminal to ask about, and exits 1', async () => {
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(1)');
+
+    expect(p.select).not.toHaveBeenCalled();
+    // The count is bold, and CI turns colors on, so match the plain text.
+    const [warning] = (p.log.warn as ReturnType<typeof vi.fn>).mock.calls[0];
+    // oxlint-disable-next-line no-control-regex -- matching ANSI color codes
+    expect((warning as string).replace(/\u001b\[\d+m/g, '')).toMatch(
+      /2 conflict\(s\) left.*dolan update --force/,
+    );
+    // The auto-update still applies.
+    expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
+      upstream,
+    );
+    // The conflicts keep both their files and their lockfile base. Keeping
+    // the user's version would advance the base and lose the upstream change.
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(userVersion);
+    expect(readTheme()).toBe(themeMine);
+    const lockfile = readLockfile(fixture.dir);
+    expect(lockfile.components.card['card.ts'].hash).toBe(hashContent(base));
+    expect(lockfile.theme['default.css'].hash).toBe(hashContent(themeBase));
+
+    // So an update in a terminal still asks about both.
+    interactive = true;
+    vi.clearAllMocks();
+    // A reset drops answers an earlier test queued and never used.
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue('upstream');
+    await updateCommand({});
+
+    expect(p.select).toHaveBeenCalledTimes(2);
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+    expect(readTheme()).toBe(themeUpstream);
+  });
+
+  it("takes upstream's version of conflicts with --force, which wins over --selective", async () => {
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true, selective: true });
+
+    expect(p.log.error).not.toHaveBeenCalled();
+    expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+    expect(readTheme()).toBe(themeUpstream);
+    expect(p.outro).toHaveBeenCalledWith('Update complete.');
+  });
+
+  it('fails with --selective, which asks about each file', async () => {
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({ selective: true })).rejects.toThrow(
+      'process.exit(1)',
+    );
+
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('--selective'),
+    );
+    expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
+      base,
     );
   });
 });

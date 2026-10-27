@@ -93,6 +93,7 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },
+        { text: 'Tab Bar', link: '/dolan/tab-bar' },
         { text: 'Pagination', link: '/dolan/pagination' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Data Display' },

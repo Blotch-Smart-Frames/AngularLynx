@@ -63,6 +63,7 @@ export class NavComponent {}
 - `routerLinkActive` adds its classes as on the web, and `LYNX_ELEMENTS` (through `LynxRouterLinkActive`) adds `selected` to the element's `accessibility-traits` while the route is active, keeping the element's own traits (`button` becomes `button,selected`). Android reads a single trait and has no selected trait, so its traits are left alone there. Read the state with `#link="routerLinkActive"` and `link.isActive`.
 - On a component's host, use `hostDirectives: [RouterLink, RouterLinkActive, LynxRouterLinkActive]`: host directives don't match selectors, so `LYNX_ELEMENTS` can't add `LynxRouterLinkActive` there.
 - `LynxRouterLinkActive` finds `RouterLinkActive` through a token that `provideRouter()` from `@blotch/angular-lynx` provides, so `LYNX_ELEMENTS` doesn't pull the router into apps without routes.
+- For tabs along the bottom of the screen, don't build them by hand: `npx @blotch/dolan add tab-bar` adds `<ui-tab-bar>` with `<ui-tab-bar-item route="/inbox" icon="inbox" label="Inbox" [badge]="unread()" />` items, built on these directives (`routerLinkActiveOptions` and `RouterLink`'s inputs pass through). It pads for the bottom safe area and marks the active tab `selected`.
 
 Navigate from code with `Router` directly, also inside an event handler:
 

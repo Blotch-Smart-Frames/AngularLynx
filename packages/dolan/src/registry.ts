@@ -62,6 +62,9 @@ export const registry: RegistryEntry[] = [
   { name: 'skeleton', dependencies: [] },
   { name: 'spinner', dependencies: ['icon'] },
   { name: 'switch', dependencies: [] },
+  // The tab bar draws its items' icons from icon's set, in theme colors
+  // resolved by icon-theme.ts.
+  { name: 'tab-bar', dependencies: ['icon'] },
   { name: 'tabs', dependencies: [] },
   { name: 'textarea', dependencies: [] },
   { name: 'toast', dependencies: [] },

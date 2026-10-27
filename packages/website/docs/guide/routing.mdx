@@ -68,6 +68,10 @@ export class App {}
 - **`routerLinkActive` adds its classes while the link's route is active.** For styling a class can't do, read its state: `#link="routerLinkActive"`, then `link.isActive`.
 - **The active link is selected for screen readers.** While its route is active, `LYNX_ELEMENTS` adds `selected` to the element's `accessibility-traits`, after any traits of its own, and takes it away again after. iOS announces it as selected. Android has no selected trait, so there the element keeps its own traits.
 
+:::tip
+For tabs along the bottom of the screen, the [Tab Bar](/dolan/tab-bar) component does all of this: `npx @blotch/dolan add tab-bar`.
+:::
+
 ### Navigate from code
 
 ```typescript title="src/app/order-row.ts"
@@ -199,4 +203,5 @@ Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and
 - [Routing API reference](/api/angular-lynx/routing)
 - [Handling taps and events](/guide/elements/event-handling)
 - [Multi-page apps](/guide/multi-page): separate bundles, each its own Angular app, instead of routes
+- [Tab Bar](/dolan/tab-bar): a ready-made bottom tab bar that navigates between routes
 - [Angular routing guide](https://angular.dev/guide/routing)

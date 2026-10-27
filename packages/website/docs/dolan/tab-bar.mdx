@@ -1,0 +1,167 @@
+# Tab Bar
+
+Switch between your app's top-level screens from a row of icon-and-label tabs along the bottom of the screen, as most mobile apps do.
+
+<Go example="ui-tab-bar" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add tab-bar
+```
+
+```typescript
+import { UiTabBar, UiTabBarItem } from '../components/ui/tab-bar';
+```
+
+This also adds [Icon](/dolan/icon), whose icons and theme colors the tabs draw with.
+
+## Usage
+
+Give each tab a `route`, an `icon` and a `label`, and put the bar under your `<router-outlet>`:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiTabBar, UiTabBarItem } from '../components/ui/tab-bar';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
+  template: `
+    <view class="flex h-full flex-col bg-background">
+      <view class="flex flex-1 flex-col">
+        <router-outlet />
+      </view>
+      <ui-tab-bar>
+        <ui-tab-bar-item route="/home" icon="home" label="Home" />
+        <ui-tab-bar-item route="/search" icon="search" label="Search" />
+        <ui-tab-bar-item route="/profile" icon="user" label="Profile" />
+      </ui-tab-bar>
+    </view>
+  `,
+})
+export class App {}
+```
+
+- **A tap navigates** to the tab's `route`, with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
+- **The tab of the current route is selected:** its icon and label take the theme's `primary` color, and the others its `muted-foreground`.
+- **A tab stays selected on the routes under it.** The Inbox tab at `/inbox` is still selected at `/inbox/42`.
+- **The tabs share the bar's width equally,** and the bar pads itself by the bottom [safe area](/guide/safe-area), so the tabs sit above the iPhone's home indicator.
+- **The icon is any [Icon](/dolan/icon) name.**
+
+Give each routed screen's host `flex-1` so it fills the space above the bar, or its `<scroll-view>` grows to fit its content instead of scrolling:
+
+```typescript
+@Component({
+  selector: 'app-home',
+  host: { class: 'flex flex-1 flex-col' },
+  template: `
+    <scroll-view scroll-orientation="vertical" class="h-full w-full">
+      <text>Home</text>
+    </scroll-view>
+  `,
+})
+export class Home {}
+```
+
+### Badges
+
+`[badge]` shows a count or a short text over the tab's icon, such as unread messages:
+
+```angular-html
+<ui-tab-bar-item
+  route="/inbox"
+  icon="inbox"
+  label="Inbox"
+  [badge]="unreadCount()"
+/>
+```
+
+A count of `0`, an empty string, `null` or `undefined` shows no badge, so bind the count as it is.
+
+### A tab for the root route
+
+Every route starts with `/`, so a tab for `/` would stay selected everywhere. Match it exactly:
+
+```angular-html
+<ui-tab-bar-item
+  route="/"
+  icon="home"
+  label="Home"
+  [routerLinkActiveOptions]="{ exact: true }"
+/>
+```
+
+### Router options
+
+The item takes `RouterLink`'s inputs, which work as on the web: `queryParams`, `queryParamsHandling`, `fragment`, `preserveFragment`, `state`, `info`, `relativeTo`, `replaceUrl` and `skipLocationChange`.
+
+```angular-html
+<ui-tab-bar-item
+  route="/profile"
+  icon="user"
+  label="Profile"
+  [queryParams]="{ tab: 'posts' }"
+  [replaceUrl]="true"
+/>
+```
+
+- **Each tap adds a history entry,** as any `RouterLink` does, so Android's back button walks back through the tabs. Set `replaceUrl` to replace the entry instead.
+- **A relative `route` resolves from the component the bar is in.** A bar inside a routed screen can switch its child routes with `route="feed"`.
+
+### React to a tap
+
+`(pressed)` emits on every tap, including one on the tab that's already selected, where the route doesn't change. Native apps scroll the screen back to the top then:
+
+```angular-html
+<ui-tab-bar-item
+  route="/home"
+  icon="home"
+  label="Home"
+  (pressed)="onHomeTap()"
+/>
+```
+
+### Dark mode
+
+The icons draw with the light theme's colors until you say otherwise, as every icon does. If your app switches to dark mode, set the icons' color scheme with [`provideIconTheme()`](/dolan/icon#dark-mode).
+
+## API
+
+### UiTabBar
+
+| Input   | Type     | Default | Description                         |
+| ------- | -------- | ------- | ----------------------------------- |
+| `class` | `string` | `''`    | Extra Tailwind classes for the bar. |
+
+### UiTabBarItem
+
+| Input                     | Type                                                          | Default     | Description                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `route`                   | `string \| any[] \| UrlTree \| null`                          | —           | Where a tap navigates. `RouterLink`'s `routerLink`.                                                                                      |
+| `icon`                    | `IconName`                                                    | —           | Required. The [Icon](/dolan/icon) drawn above the label.                                                                                 |
+| `label`                   | `string`                                                      | —           | Required. The tab's name, shown and read by screen readers.                                                                              |
+| `badge`                   | `string \| number \| null \| undefined`                       | `undefined` | A count or short text over the icon. Hidden for `0`, `''`, `null` and `undefined`.                                                       |
+| `routerLinkActiveOptions` | `{ exact: boolean } \| IsActiveMatchOptions`                  | subset      | How the current route is matched. `RouterLinkActive`'s input.                                                                            |
+| `queryParams`, …          | See [`RouterLink`](https://angular.dev/api/router/RouterLink) | —           | `queryParams`, `queryParamsHandling`, `fragment`, `preserveFragment`, `state`, `info`, `relativeTo`, `replaceUrl`, `skipLocationChange`. |
+| `class`                   | `string`                                                      | `''`        | Extra Tailwind classes for the tab's content.                                                                                            |
+
+| Output    | Type   | Description                                              |
+| --------- | ------ | -------------------------------------------------------- |
+| `pressed` | `void` | Emits on every tap, including a tap on the selected tab. |
+
+## Accessibility
+
+- **Each tab is one button,** named by its `label` and then its badge: "Inbox, 3".
+- **The selected tab has the `selected` trait,** so iOS VoiceOver announces it as selected. Android has no selected trait, so TalkBack doesn't say which tab is selected.
+- **On iOS, the bar has the `tabbar` trait,** as a native tab bar does, which tells VoiceOver that its buttons are tabs.
+
+## Related
+
+- [Routing and navigation](/guide/routing): set up the router and its routes
+- [Safe area](/guide/safe-area): the inset the bar pads for
+- [Tabs](/dolan/tabs): switch panels within one screen instead of routed screens
+- [Nav Drawer](/dolan/nav-drawer): a side menu, for more destinations than a tab bar fits
+- [Icon](/dolan/icon): the icons a tab can show

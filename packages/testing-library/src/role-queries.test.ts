@@ -113,6 +113,25 @@ describe('what a screen reader reaches', () => {
     expect(queryByRole(container, 'button', { hidden: true })).not.toBeNull();
   });
 
+  it('reaches a tab bar on the container around its tabs, as VoiceOver reads it', () => {
+    const bar = el(
+      'view',
+      { 'accessibility-traits': 'tabbar' },
+      accessible('button,selected', 'Home'),
+      accessible('button', 'Inbox'),
+    );
+    const container = mount(
+      bar,
+      el(
+        'view',
+        { 'accessibility-elements-hidden': 'true' },
+        el('view', { 'accessibility-traits': 'tabbar' }),
+      ),
+    );
+    expect(getAllByRole(container, 'tablist')).toEqual([bar]);
+    expect(nameOf(getByRole(bar, 'button', { selected: true }))).toBe('Home');
+  });
+
   it('leaves out an element whose accessibility-element is false', () => {
     const container = mount(
       el('image', { 'accessibility-element': 'false' }),

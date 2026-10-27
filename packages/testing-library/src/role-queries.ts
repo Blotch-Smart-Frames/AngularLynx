@@ -13,10 +13,11 @@
  *   (`TRAIT_ROLES`), or the element's own default: an `<image>` is an image.
  * - Exposed: a screen reader reaches an element only when it's an
  *   accessibility element. `<text>` and `<image>` are by default; anything
- *   else needs `accessibility-element="true"`. `accessibility-elements-hidden`
- *   hides an element and everything inside it. With `hidden: false`, the
- *   default, the rest are left out, as Testing Library leaves out what's off
- *   the accessibility tree.
+ *   else needs `accessibility-element="true"`. The exception is a tab bar,
+ *   whose trait VoiceOver reads from the container around the tabs.
+ *   `accessibility-elements-hidden` hides an element and everything inside
+ *   it. With `hidden: false`, the default, the rest are left out, as Testing
+ *   Library leaves out what's off the accessibility tree.
  * - Name: `accessibility-label`, or a `<text>`'s own text when it has none.
  *   Lynx gives no other element a name from the text inside it: iOS reads an
  *   accessibility element's label and skips its children.
@@ -56,6 +57,14 @@ const TRAIT_ROLES: ReadonlyMap<string, string> = new Map([
   ['adjustable', 'slider'],
   ['tabbar', 'tablist'],
 ]);
+
+/**
+ * The roles a screen reader reads from a container, not from an
+ * accessibility element. VoiceOver reads the tab bar trait from the view
+ * around the tabs, which can't be an accessibility element itself: that
+ * would hide the tabs inside it.
+ */
+const CONTAINER_ROLES: ReadonlySet<string> = new Set(['tablist']);
 
 /**
  * Testing Library refuses a state that ARIA doesn't define for the role, such
@@ -117,28 +126,32 @@ const lynxRolesOf = (element: Element): string[] =>
   traitsOf(element).flatMap((trait) => TRAIT_ROLES.get(trait) ?? []);
 
 /**
- * Whether a screen reader can reach the element. Lynx makes `<text>` and
- * `<image>` accessibility elements by default and nothing else, so a
- * `<view>` is reached only with `accessibility-element="true"`. The
- * attributes hold strings, so any value but "false" is true, as the element
- * directives' boolean inputs read it.
+ * Whether the element is an accessibility element, one stop for a screen
+ * reader. Lynx makes `<text>` and `<image>` accessibility elements by default
+ * and nothing else, so a `<view>` is one only with
+ * `accessibility-element="true"`. The attribute holds a string, so any value
+ * but "false" is true, as the element directives' boolean inputs read it.
  */
-const isExposed = (element: Element): boolean => {
+const isAccessibilityElement = (element: Element): boolean => {
   const flag = element.getAttribute('accessibility-element');
-  const isAccessibilityElement =
-    flag === null
-      ? element.localName === 'text' || element.localName === 'image'
-      : flag !== 'false';
-  return (
-    isAccessibilityElement &&
-    element.closest(
-      '[accessibility-elements-hidden]:not([accessibility-elements-hidden="false"])',
-    ) === null &&
-    // Testing Library's own check catches what Lynx doesn't draw either, such
-    // as an element styled display: none.
-    !isInaccessible(element)
-  );
+  return flag === null
+    ? element.localName === 'text' || element.localName === 'image'
+    : flag !== 'false';
 };
+
+/**
+ * Whether a screen reader reads `role` on the element: from an accessibility
+ * element, or from a container for a container role, as long as nothing
+ * hides it.
+ */
+const exposesRole = (element: Element, role: string): boolean =>
+  (isAccessibilityElement(element) || CONTAINER_ROLES.has(role)) &&
+  element.closest(
+    '[accessibility-elements-hidden]:not([accessibility-elements-hidden="false"])',
+  ) === null &&
+  // Testing Library's own check catches what Lynx doesn't draw either, such
+  // as an element styled display: none.
+  !isInaccessible(element);
 
 /**
  * What a screen reader reads as the element's name: its
@@ -202,7 +215,7 @@ const queryAllByLynxRole = (
       const traits = traitsOf(element);
       return (
         traits.some((trait) => TRAIT_ROLES.get(trait) === role) &&
-        (hidden || isExposed(element)) &&
+        (hidden || exposesRole(element, role)) &&
         matchesState(element, traits, options) &&
         (name === undefined ||
           matchesText(lynxNameOf(element), element, name)) &&
@@ -288,8 +301,8 @@ const prettyRoles = (container: HTMLElement, hidden: boolean): string => {
     );
   };
   for (const element of Array.from(container.querySelectorAll('*'))) {
-    if (hidden || isExposed(element)) {
-      lynxRolesOf(element).forEach((role) => add(role, element));
+    for (const role of lynxRolesOf(element)) {
+      if (hidden || exposesRole(element, role)) add(role, element);
     }
   }
   // getRoles() takes the hidden option, though its types leave it out.
@@ -361,7 +374,7 @@ const getMissingError = (
   const unexposedHint =
     !hidden &&
     queryAllByLynxRole(searched, role, { hidden: true }).some(
-      (element) => !isExposed(element),
+      (element) => !exposesRole(element, role),
     )
       ? `\n\nSome elements with the role "${role}" are hidden from screen readers. Lynx reaches an element other than <text> and <image> only when it sets accessibility-element="true", and nothing inside accessibility-elements-hidden="true". Set the \`hidden\` option to \`true\` to include them.`
       : '';

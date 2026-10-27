@@ -144,9 +144,9 @@ Testing Library's `*ByRole`, reading Lynx's accessibility attributes as a screen
 | `tabbar`               | `tablist`   |
 
 - **`<image>` is an `img`** unless it sets `accessibility-traits`. Other traits, such as `text`, give no role.
-- **Only reachable elements match.** A screen reader reaches `<text>`, `<image>`, and other elements with `accessibility-element="true"`, outside `accessibility-elements-hidden`. Pass `hidden: true` to include the rest.
+- **Only reachable elements match.** A screen reader reaches `<text>`, `<image>`, and other elements with `accessibility-element="true"`, outside `accessibility-elements-hidden`. A `tabbar` is read from the container around the tabs, so it needs no `accessibility-element`. Pass `hidden: true` to include the rest.
 - **`name`** is the `accessibility-label`. A `<text>` without one is named by its text. A `<view>` isn't named by the text inside it, since iOS doesn't read it.
-- **`selected`** is the `selected` trait: `accessibility-traits="button,selected"`. iOS reads a comma-separated list, but Android reads only one trait.
+- **`selected`** is the `selected` trait: `accessibility-traits="button,selected"`, which an active `routerLinkActive` element gets. iOS reads a comma-separated list, but Android reads only one trait.
 - **`value: { text }`** is the `accessibility-value`.
 - **Other ARIA states**, such as `checked` or `expanded`, have no Lynx attribute, so a Lynx element never has them.
 

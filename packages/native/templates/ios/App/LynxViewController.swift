@@ -39,6 +39,21 @@ final class LynxViewController: UIViewController {
         controller.lynxView?.updateGlobalProps(with: controller.globalProps())
       }
     }
+
+    // Send the accessibility settings again when the user changes one while
+    // the app is open, so the components adapt at once.
+    for name in [
+      UIAccessibility.reduceMotionStatusDidChangeNotification,
+      UIAccessibility.reduceTransparencyStatusDidChangeNotification,
+      UIAccessibility.darkerSystemColorsStatusDidChangeNotification,
+    ] {
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(accessibilitySettingsDidChange), name: name, object: nil)
+    }
+  }
+
+  @objc private func accessibilitySettingsDidChange() {
+    lynxView?.updateGlobalProps(with: globalProps())
   }
 
   @available(iOS, deprecated: 17.0, message: "registerForTraitChanges in viewDidLoad replaces it")
@@ -80,9 +95,10 @@ final class LynxViewController: UIViewController {
   }
 
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
-  /// (LynxSafeArea) and `appLocale` (LynxLocale), plus the safe-area insets.
-  /// The Android shell sends the same keys, and Lynx Explorer sends theme and
-  /// isNotchScreen too.
+  /// (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
+  /// (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
+  /// safe-area insets. The Android shell sends the same keys, and Lynx
+  /// Explorer sends theme and isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
     var props: [String: Any] = [
@@ -96,6 +112,16 @@ final class LynxViewController: UIViewController {
       "isNotchScreen": insets.top > 20 || insets.bottom > 0 || insets.left > 0
         || insets.right > 0,
       "theme": traitCollection.userInterfaceStyle == .dark ? "Dark" : "Light",
+      // Lynx has no API for these. The glass components adapt what they draw
+      // to them, and follow Reduce Motion in their own animations.
+      "reduceMotion": UIAccessibility.isReduceMotionEnabled,
+      "reduceTransparency": UIAccessibility.isReduceTransparencyEnabled,
+      // Increase Contrast.
+      "increaseContrast": UIAccessibility.isDarkerSystemColorsEnabled,
+      // Lynx builds the main thread's SystemInfo, where Angular runs, without
+      // the OS version, so LynxSystemInfo reads it from here. The glass
+      // components need it: blur-view draws Liquid Glass only from iOS 26.
+      "osVersion": UIDevice.current.systemVersion,
     ]
     // The user's first language as a BCP 47 tag, such as "fr-FR". iOS
     // restarts the app when the language changes, so there's no update to send.

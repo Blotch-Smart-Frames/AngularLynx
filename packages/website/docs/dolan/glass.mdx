@@ -1,0 +1,211 @@
+# Glass
+
+Liquid Glass for the controls and bars that float over your content. One element draws Apple's glass on iOS 26, and the right fallback everywhere else.
+
+<Go example="ui-glass" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add glass
+```
+
+```typescript
+import { UiGlass, UiGlassGroup } from '../components/ui/glass';
+```
+
+:::tip
+This also adds [Icon](/dolan/icon), whose copy of the theme colors resolves the glass's tint.
+:::
+
+## Usage
+
+Put `ui-glass` on a `<blur-view>`:
+
+```angular-html
+<blur-view ui-glass class="flex-row items-center gap-2 px-4 py-2">
+  <ui-icon name="music" />
+  <text class="text-glass-foreground">Now playing</text>
+</blur-view>
+```
+
+- **The `<blur-view>` is the glass.** Size it, place it and lay out its content with classes, as you would a `<view>`. It's the Lynx element that blurs, so import `LYNX_ELEMENTS` in your component.
+- **Content goes inside it.** On iOS, interactive glass only reacts to touches on itself and what's in it.
+- **Color text with `text-glass-foreground`** (and `text-glass-muted-foreground`). The glass points them at the right color for its variant and the user's contrast setting. `<ui-icon>`s inside get the same color.
+- **Use glass sparingly,** on the controls and bars that float above the content, never on the content itself. Don't put glass on glass.
+
+### What each platform draws
+
+| Platform                                   | What you get                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| iOS 26 and later                           | Liquid Glass, drawn by iOS                                                 |
+| iOS 15 to 25                               | A frosted blur, Apple's design before Liquid Glass                         |
+| Android                                    | An opaque Material surface with a shadow, in the theme's `secondary` color |
+| Android, with `provideGlass()` (below)     | A blur with a white sheen, a tint and a rim: glass without the refraction  |
+| [Web preview](/guide/glossary#web-preview) | Liquid Glass, drawn with WebGL                                             |
+
+On Android, apps usually look like Android: Material 3 relies on color and shape rather than glass. To get glass there too, opt in for the whole app:
+
+```typescript title="src/app/app.config.ts"
+import { provideGlass } from '../components/ui/glass';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideGlass({ android: 'glass' }), // [!code highlight]
+  ],
+};
+```
+
+Android's glass blurs live, with `RenderEffect` from Android 12. On older phones the blur costs more.
+
+### Variants
+
+```angular-html
+<blur-view ui-glass>…</blur-view>
+<blur-view ui-glass variant="clear">…</blur-view>
+```
+
+- **`regular`** (the default) frosts what's behind it. It suits most controls.
+- **`clear`** barely frosts it, for controls over photos and video. Text on it turns white.
+- **Don't mix the two** on one screen.
+
+Clear glass over bright content needs a dark layer under it, at about a third, so the white stays legible. Put a `bg-glass-dim` view behind the glass:
+
+```angular-html
+<view class="h-[52px] w-[52px] rounded-full bg-glass-dim">
+  <blur-view ui-glass variant="clear" shape="circle" class="h-[52px] w-[52px]">
+    <ui-icon name="play" />
+  </blur-view>
+</view>
+```
+
+### Shapes
+
+```angular-html
+<blur-view ui-glass shape="capsule">…</blur-view>
+<blur-view ui-glass shape="circle" class="h-12 w-12">…</blur-view>
+<blur-view ui-glass shape="rounded" [radius]="24">…</blur-view>
+```
+
+- **`capsule`** (the default) has fully rounded ends, like most glass controls.
+- **`circle`** needs an equal width and height.
+- **`rounded`** has `radius` px corners, `20` by default.
+
+A shape nested inside a rounded one looks right when its corners share the outer corners' centers. `concentricRadius()` works out its radius: the outer radius minus the gap between them.
+
+```typescript
+import { concentricRadius } from '../components/ui/glass';
+
+// A card inset 8px inside 24px glass corners gets 16px corners.
+readonly innerRadius = concentricRadius(24, 8);
+```
+
+A capsule inset evenly inside a capsule is already concentric.
+
+### Tint
+
+```angular-html
+<blur-view ui-glass tint="var(--glass-tint)">
+  <text class="text-glass-tint-foreground">Save</text>
+</blur-view>
+```
+
+- **`tint`** takes a theme token, such as `var(--glass-tint)`, or any CSS color.
+- **Keep it for the screen's main action.** Color in glass controls should be rare.
+- **Without glass, the tint fills the control,** as a filled button does: on Android's Material surface, and on iOS 15 to 25's frosted material.
+
+### Interactive
+
+```angular-html
+<blur-view ui-glass interactive (bindtap)="play()">…</blur-view>
+```
+
+The glass swells and brightens under the finger, as iOS 26's glass controls do. It works on iOS 26 and in the web preview.
+
+### Groups
+
+`ui-glass-group` merges the glass inside it, as iOS draws a group of glass controls. Shapes closer than `spacing` px flow into each other:
+
+```angular-html
+<blur-view ui-glass-group [spacing]="16" class="flex-row items-center gap-3">
+  <blur-view ui-glass class="h-14 flex-1 flex-row">…</blur-view>
+  <blur-view ui-glass shape="circle" class="h-14 w-14">…</blur-view>
+</blur-view>
+```
+
+- **Put the glass directly inside the group.** A wrapper that draws anything itself comes between them.
+- **Shapes merge on iOS 26 and in the web preview.** Android's glass doesn't merge.
+- **Moving or resizing a shape morphs the glass with it,** with a CSS transition for example. A shape you add or remove appears or disappears at once.
+
+### Dark mode
+
+Glass follows your app's theme, not the phone's. It takes the color scheme you give [`provideIconTheme()`](/dolan/icon#dark-mode), `'light'` by default, so glass stays light under dark text when the phone is in dark mode. If your app switches to dark mode, set `provideIconTheme({ colorScheme: 'system' })`.
+
+## API
+
+### UiGlass
+
+Selector: `blur-view[ui-glass]`.
+
+| Input         | Type                                 | Default     | Description                                         |
+| ------------- | ------------------------------------ | ----------- | --------------------------------------------------- |
+| `variant`     | `'regular' \| 'clear'`               | `'regular'` | Frosted glass, or clear glass for over media.       |
+| `shape`       | `'capsule' \| 'circle' \| 'rounded'` | `'capsule'` | The glass's outline.                                |
+| `radius`      | `number`                             | `20`        | Corner radius of a `rounded` shape, in px.          |
+| `tint`        | `string`                             | —           | A theme token (`var(--glass-tint)`) or a CSS color. |
+| `interactive` | `boolean`                            | `false`     | Reacts to touch. iOS 26 and the web preview.        |
+
+Components built on the glass read these signals:
+
+| Signal       | Type                                 | Description                                                                  |
+| ------------ | ------------------------------------ | ---------------------------------------------------------------------------- |
+| `design`     | `'glass' \| 'frosted' \| 'material'` | The look on this platform (see `GlassDesign`), for the component's own form. |
+| `surface`    | `'glass' \| 'frosted' \| 'solid'`    | What this glass draws, after the user's settings.                            |
+| `foreground` | `string`                             | The `var()` of the color for text and icons on it.                           |
+
+### UiGlassGroup
+
+Selector: `blur-view[ui-glass-group]`.
+
+| Input     | Type     | Default | Description                                               |
+| --------- | -------- | ------- | --------------------------------------------------------- |
+| `spacing` | `number` | `0`     | How close two glass shapes come before they merge, in px. |
+
+### Functions
+
+| Function                         | Description                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `provideGlass({ android })`      | App-wide options. `android: 'glass'` gives Android glass instead of Material.                          |
+| `injectGlassDesign()`            | A signal of the platform's design, `'glass'`, `'frosted'` or `'material'`, for a component's own form. |
+| `injectSystemDrawsGlass()`       | `true` on iOS, which adapts its own glass to the user's settings.                                      |
+| `concentricRadius(outer, inset)` | The corner radius for a shape `inset` px inside `outer` px corners.                                    |
+
+### Theme colors
+
+| Token                                         | Tailwind classes                                       | Used for                                  |
+| --------------------------------------------- | ------------------------------------------------------ | ----------------------------------------- |
+| `glass-foreground` / `glass-muted-foreground` | `text-glass-foreground`, `text-glass-muted-foreground` | Text and icons on glass                   |
+| `glass-clear-foreground`                      | `text-glass-clear-foreground`                          | Text on clear glass, white in both themes |
+| `glass-tint` / `glass-tint-foreground`        | `bg-glass-tint`, `text-glass-tint-foreground`          | Tinted glass, and what sits on it         |
+| `glass-dim`                                   | `bg-glass-dim`                                         | The dimming layer under clear glass       |
+
+`dolan add glass` doesn't change your theme. A theme copied before these colors existed lacks them: run [`dolan update`](/dolan/cli#update) if you haven't edited it, and [`dolan doctor`](/dolan/cli#doctor) lists the lines to add if you have.
+
+## Accessibility
+
+Glass follows the user's display settings, which [`LynxAccessibilitySettings`](/api/angular-lynx/accessibility#lynxaccessibilitysettings) reads:
+
+- **Reduce Transparency** turns the glass into a solid surface. iOS does this to its own glass. On Android and the web, the component draws the solid surface.
+- **Increase Contrast** makes muted text full strength, and gives the glass a solid edge on Android and the web. iOS adds its own edge.
+- **Reduce Motion** is for the components built on glass: they slide, minimize and morph less or not at all. iOS calms its own glass.
+
+The apps `ng build --platform` makes send these settings. In Lynx Explorer, add them to the bundle URL to try them: `?reduceTransparency=true`.
+
+## Related
+
+- [`<blur-view>`](/api/elements/blur-view): the element under the glass
+- [Theming](/dolan/theming): the theme colors
+- [Tab Bar](/dolan/tab-bar): bottom navigation without glass
+- [Accessibility settings](/api/angular-lynx/accessibility#lynxaccessibilitysettings)

@@ -30,7 +30,7 @@ export class Device {
 class LynxSystemInfo {}
 ```
 
-Reads Lynx's global `SystemInfo`. Lynx fills it in once when the page starts, so the values never change and aren't signals.
+Reads Lynx's global `SystemInfo`. Lynx fills it in once when the page starts, so the values never change and aren't signals. `osVersion` is the exception, below.
 
 - **Creating it throws** outside Lynx, such as in unit tests.
 
@@ -48,7 +48,10 @@ The platform, such as `'iOS'` or `'Android'`.
 get osVersion(): string;
 ```
 
-The operating system's version.
+The operating system's version, such as `'26.1'` on iOS or `'15'` on Android. Empty while it isn't known.
+
+- **On iOS and Android, Lynx leaves it out of the SystemInfo your components see,** so it comes from elsewhere. The apps `ng build --platform` makes send it as the `osVersion` [global prop](/guide/embedding/host-data#what-the-generated-apps-pass). Your own native app can send it the same way.
+- **Without the global prop,** it's asked of the [background thread](/guide/glossary#background-thread), which has it, and arrives shortly after the first frame. Reading it in a `computed()` picks the answer up.
 
 ### `LynxSystemInfo.engineVersion`
 

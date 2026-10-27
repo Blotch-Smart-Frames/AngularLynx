@@ -14,6 +14,14 @@
  * A `:host` rule loses to every style from outside the shadow root, so a class
  * such as `flex` (which sets `--lynx-display-toggle`) or an inline style still
  * wins, exactly as it does over web-elements' own `x-view` rules.
+ *
+ * Its children need one more rule to lay out as flex items. web-elements
+ * sizes an item (`flex-1`, a linear weight) by container style queries on its
+ * parent's `--lynx-display` and `--lynx-linear-orientation`. A blur view's
+ * children sit in its shadow root's `<slot>`, which is the parent those
+ * queries see, and the variables don't inherit, so `flex-1` did nothing in a
+ * blur view: a glass capsule beside a button in a glass group stayed as
+ * narrow as its content. The slot takes them from the host.
  */
 export const BLUR_VIEW_LAYOUT_CSS =
   ':host{' +
@@ -37,7 +45,9 @@ export const BLUR_VIEW_LAYOUT_CSS =
   'flex-direction:var(--lynx-display-linear,var(--linear-flex-direction)) ' +
   'var(--lynx-display-flex,var(--flex-direction));' +
   'justify-content:var(--lynx-display-linear,var(--linear-justify-content))' +
-  '}';
+  '}' +
+  'slot{--lynx-display:inherit;--lynx-linear-orientation:inherit;' +
+  '--lynx-linear-weight-sum:inherit}';
 
 /**
  * Gives a `<blur-view>` on Lynx for Web the layout of a `<view>` (see

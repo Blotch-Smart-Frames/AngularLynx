@@ -66,7 +66,7 @@ describe('blotchPlugin colors in a Tailwind build', () => {
     expect(css).toContain('background-color: rgba(var(--chart-1-rgb), .35)');
   });
 
-  it('gives every mapped color a modifier, except the translucent destructive-subtle', async () => {
+  it('gives every mapped color a modifier, except the translucent destructive-subtle and glass-dim', async () => {
     const names = [
       'background',
       'foreground',
@@ -90,11 +90,17 @@ describe('blotchPlugin colors in a Tailwind build', () => {
       'chart-3',
       'chart-4',
       'chart-5',
+      'glass-tint',
+      'glass-tint-foreground',
+      'glass-foreground',
+      'glass-muted-foreground',
+      'glass-clear-foreground',
     ];
     const css = await compile(
       [
         ...names.map((name) => `bg-${name}/50`),
         'bg-destructive-subtle/50',
+        'bg-glass-dim/50',
       ].join(' '),
     );
 
@@ -103,5 +109,6 @@ describe('blotchPlugin colors in a Tailwind build', () => {
     }
     // Tailwind can't add alpha to a complete color, so it makes no class.
     expect(css).not.toContain('destructive-subtle');
+    expect(css).not.toContain('glass-dim');
   });
 });

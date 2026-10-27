@@ -163,3 +163,47 @@ describe('resolvePackages', () => {
     }
   });
 });
+
+describe('themeColors', () => {
+  it("names colors dolan's theme sets in both schemes and maps for both Tailwinds", () => {
+    // doctor checks an app's theme for these, and quotes dolan's lines.
+    const theme = new URL('../../ui/src/lib/theme/', import.meta.url);
+    const read = (file: string) => readFileSync(new URL(file, theme), 'utf-8');
+    const [light, dark, plugin, css] = [
+      'default.css',
+      'dark.css',
+      'tailwind-plugin.ts',
+      'tailwind.css',
+    ].map(read);
+    const colors = registry.flatMap((entry) => entry.themeColors ?? []);
+    expect(colors).toContain('glass-foreground');
+    for (const color of colors) {
+      expect(light, color).toContain(`--${color}:`);
+      expect(dark, color).toContain(`--${color}:`);
+      expect(plugin, color).toMatch(
+        new RegExp(`'${color}'|'var\\(--${color}\\)'`),
+      );
+      expect(css, color).toContain(`var(--${color})`);
+    }
+  });
+
+  it("lists every glass color the glass component's code names", () => {
+    const folder = new URL(
+      '../../ui/src/lib/components/glass/',
+      import.meta.url,
+    );
+    const named = new Set<string>();
+    for (const file of readdirSync(folder)) {
+      if (file.endsWith('.test.ts')) continue;
+      const source = readFileSync(new URL(file, folder), 'utf-8');
+      for (const [color] of source.matchAll(
+        /glass-(?:[a-z]+-)*foreground|glass-tint|glass-dim/g,
+      )) {
+        named.add(color);
+      }
+    }
+    expect(getEntry('glass')!.themeColors).toEqual(
+      expect.arrayContaining([...named]),
+    );
+  });
+});

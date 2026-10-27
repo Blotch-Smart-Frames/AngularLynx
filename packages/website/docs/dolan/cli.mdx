@@ -274,6 +274,7 @@ Runs these checks in order and exits with code 1 if any fail:
 | The components and theme folders exist                                                                                            | Fails              |
 | The theme folder has `tailwind.css` (`tailwind-plugin.ts` on Tailwind 3), and `default.css` or `dark.css`                         | Warns              |
 | Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                     | Warns              |
+| The theme sets and maps the colors the installed components read, such as Glass's `glass-*` colors                                | Warns              |
 | On Tailwind 4, the global stylesheet imports `tailwind.css`; on Tailwind 3, `tailwind.config.ts` or `.js` mentions `blotchPlugin` | Warns              |
 | `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                                                  | Fails              |
 | `package.json` lists `tailwindcss`                                                                                                | Warns              |
@@ -281,7 +282,7 @@ Runs these checks in order and exits with code 1 if any fail:
 | No component has tests without `@blotch/angular-lynx-testing-library` to run them                                                 | Warns              |
 | `package.json` lists the npm packages the components import, such as `class-variance-authority`                                   | Fails              |
 
-An ejected component's files aren't checked. A `utils` path in an older config is allowed but not needed. The `-rgb` twins are what [opacity modifiers](/dolan/theming#opacity-modifiers) such as `bg-primary/50` read; the check suggests the line to add for a missing one.
+An ejected component's files aren't checked. A `utils` path in an older config is allowed but not needed. The `-rgb` twins are what [opacity modifiers](/dolan/theming#opacity-modifiers) such as `bg-primary/50` read; the check suggests the line to add for a missing one. A component's colors are missing from a theme copied before the component existed; the check quotes dolan's lines for them.
 
 Options: none.
 

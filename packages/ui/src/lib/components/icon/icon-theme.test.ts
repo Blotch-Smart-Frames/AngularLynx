@@ -11,6 +11,7 @@ import {
   ICON_LIGHT_COLORS,
   UI_ICON_COLOR,
   UI_ICON_THEME,
+  injectColorScheme,
   injectIconColor,
   provideIconTheme,
   resolveIconColor,
@@ -89,6 +90,41 @@ describe('provideIconTheme', () => {
     });
     expect(provider.useValue['dark']).toEqual(ICON_DARK_COLORS);
     expect(provider.useValue['colorScheme']).toBe('dark');
+  });
+});
+
+describe('injectColorScheme', () => {
+  const scheme = (providers: Provider[], dark = signal(false)) =>
+    runInInjectionContext(
+      Injector.create({
+        providers: [
+          { provide: LynxTheme, useValue: { isDarkMode: dark } },
+          {
+            provide: UI_ICON_THEME,
+            useValue: { light: ICON_LIGHT_COLORS, dark: ICON_DARK_COLORS },
+          },
+          ...providers,
+        ],
+      }),
+      () => injectColorScheme(),
+    );
+
+  it("is light unless the theme says otherwise, whatever the device's appearance", () => {
+    expect(scheme([], signal(true))()).toBe('light');
+    expect(scheme([provideIconTheme({ colorScheme: 'dark' })])()).toBe('dark');
+  });
+
+  it("follows the device with 'system', or the app's own state", () => {
+    const dark = signal(false);
+    const system = scheme([provideIconTheme({ colorScheme: 'system' })], dark);
+    expect(system()).toBe('light');
+    dark.set(true);
+    expect(system()).toBe('dark');
+
+    const own = signal<'light' | 'dark'>('dark');
+    expect(scheme([provideIconTheme({ colorScheme: () => own() })])()).toBe(
+      'dark',
+    );
   });
 });
 

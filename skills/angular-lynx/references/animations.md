@@ -159,3 +159,4 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 - **`animation-iteration-count: 0`** still fires lifecycle events (unlike web where it's a no-op)
 - **Lynx-specific `frames(n)` easing** is available (like `steps()` with different semantics)
 - **Performance tip:** Set `overflow: hidden` on animated elements to reduce redraw region
+- **Respect Reduce Motion:** read `inject(LynxAccessibilitySettings).reduceMotion()` and swap slides and bounces for a fade or an instant change

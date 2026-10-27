@@ -80,6 +80,12 @@ export const ICON_LIGHT_COLORS: IconColorTokens = {
   'chart-3': 'rgba(39, 71, 84, 1)',
   'chart-4': 'rgba(232, 196, 104, 1)',
   'chart-5': 'rgba(244, 164, 98, 1)',
+  'glass-tint': 'rgba(24, 24, 27, 1)',
+  'glass-tint-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-foreground': 'rgba(9, 9, 11, 1)',
+  'glass-muted-foreground': 'rgba(63, 63, 70, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 export const ICON_DARK_COLORS: IconColorTokens = {
@@ -107,6 +113,12 @@ export const ICON_DARK_COLORS: IconColorTokens = {
   'chart-3': 'rgba(232, 140, 48, 1)',
   'chart-4': 'rgba(175, 87, 219, 1)',
   'chart-5': 'rgba(226, 54, 112, 1)',
+  'glass-tint': 'rgba(250, 250, 250, 1)',
+  'glass-tint-foreground': 'rgba(24, 24, 27, 1)',
+  'glass-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-muted-foreground': 'rgba(212, 212, 216, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 export const UI_ICON_THEME = new InjectionToken<UiIconTheme>('UI_ICON_THEME', {
@@ -176,6 +188,26 @@ export const resolveIconColor = (
 };
 
 /**
+ * The color scheme the app's theme is in, as {@link provideIconTheme} sets it
+ * (`'light'` unless it says otherwise). For what has to match the app's CSS
+ * theme but can't read it: icons pick their color table with it, and glass
+ * picks a light or dark material.
+ */
+export const injectColorScheme = (): Signal<IconColorScheme> => {
+  const option = inject(UI_ICON_THEME).colorScheme ?? 'light';
+  const appearance = inject(LynxTheme);
+  return computed(() =>
+    option === 'system'
+      ? appearance.isDarkMode()
+        ? 'dark'
+        : 'light'
+      : typeof option === 'function'
+        ? option()
+        : option,
+  );
+};
+
+/**
  * For an SVG component's constructor: a function that resolves its `color`
  * input (or, without one, the surrounding {@link UI_ICON_COLOR}, then the
  * foreground) against the active color table. It reads signals, so a
@@ -183,21 +215,12 @@ export const resolveIconColor = (
  */
 export const injectIconColor = (): ((color: string | undefined) => string) => {
   const theme = inject(UI_ICON_THEME);
-  const appearance = inject(LynxTheme);
+  const scheme = injectColorScheme();
   const inherited = inject(UI_ICON_COLOR, { optional: true });
 
-  const tokens = computed(() => {
-    const option = theme.colorScheme ?? 'light';
-    const scheme =
-      option === 'system'
-        ? appearance.isDarkMode()
-          ? 'dark'
-          : 'light'
-        : typeof option === 'function'
-          ? option()
-          : option;
-    return scheme === 'dark' ? theme.dark : theme.light;
-  });
+  const tokens = computed(() =>
+    scheme() === 'dark' ? theme.dark : theme.light,
+  );
 
   return (color) =>
     resolveIconColor(color ?? inherited?.() ?? DEFAULT_ICON_COLOR, tokens());

@@ -57,21 +57,34 @@ If your project has an `.oxfmtrc.json` and oxfmt installed, dolan formats the `.
 npx @blotch/dolan init
 ```
 
-Asks two questions, then sets up the project:
+Asks two questions, then sets up the project. Pass an option to answer its question up front:
 
-| Prompt                                 | Default             |
-| -------------------------------------- | ------------------- |
-| Where should components be installed?  | `src/components/ui` |
-| Where should theme files be installed? | `src/styles`        |
+| Prompt                                 | Default             | Option         |
+| -------------------------------------- | ------------------- | -------------- |
+| Where should components be installed?  | `src/components/ui` | `--components` |
+| Where should theme files be installed? | `src/styles`        | `--theme`      |
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
 - Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
 - Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
 - Creates the components folder and prints the next steps: the Tailwind plugin, and the `@import` lines for `default.css` and `dark.css`, written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
 
-| Argument or option | Description                                                               |
-| ------------------ | ------------------------------------------------------------------------- |
-| `-f, --force`      | Overwrite an existing `dolan.config.json` and theme files without asking. |
+**In CI, a script or an AI agent,** nobody can answer, so `init` asks nothing. It runs this way whenever its input isn't a terminal, or when you pass `--yes`:
+
+- The folders come from `--components` and `--theme`, or are the defaults.
+- Theme files that differ are kept, and `init` lists them. Add `--force` to replace them.
+- An existing `dolan.config.json` stops `init` with exit code 1, before it changes anything. Add `--force` to overwrite it.
+
+```bash
+npx @blotch/dolan init --yes --components src/app/ui --theme src/app/theme
+```
+
+| Argument or option    | Description                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `--components <path>` | Install components here instead of asking.                                                          |
+| `--theme <path>`      | Install the theme files here instead of asking.                                                     |
+| `-y, --yes`           | Ask nothing: use the default folders, keep theme files that differ, and stop on an existing config. |
+| `-f, --force`         | Overwrite an existing `dolan.config.json` and theme files without asking.                           |
 
 ## add
 

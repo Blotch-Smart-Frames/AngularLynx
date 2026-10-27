@@ -36,6 +36,20 @@ program
 program
   .command('init')
   .description('Initialize dolan in your project')
+  // No commander defaults on the folders: a value means the flag was given,
+  // which is how init knows to skip that question.
+  .option(
+    '--components <path>',
+    'where to install components (default: src/components/ui)',
+  )
+  .option(
+    '--theme <path>',
+    'where to install the theme files (default: src/styles)',
+  )
+  .option(
+    '-y, --yes',
+    'ask nothing: use the default folders and keep existing theme files',
+  )
   .option(
     '-f, --force',
     'overwrite an existing config and theme files without asking',

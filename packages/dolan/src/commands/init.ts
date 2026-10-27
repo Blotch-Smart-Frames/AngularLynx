@@ -54,6 +54,17 @@ export const cssImportPath = (from: string, to: string): string => {
   return path.startsWith('.') ? path : `./${path}`;
 };
 
+export type InitOptions = {
+  /** Overwrite an existing config and theme files without asking. */
+  force?: boolean;
+  /** Ask nothing, and take each question's default. */
+  yes?: boolean;
+  /** The components folder, instead of asking for it. */
+  components?: string;
+  /** The theme folder, instead of asking for it. */
+  theme?: string;
+};
+
 /**
  * Sets up a project for dolan: writes `dolan.config.json`, copies the theme
  * files, makes `@blotch/dolan` a dependency, and prints what's left to wire
@@ -62,14 +73,31 @@ export const cssImportPath = (from: string, to: string): string => {
  * `force` overwrites an existing config and theme files without asking.
  * Without it, init asks first, as `add` does for components: theme files are
  * the app's to edit, and init used to replace them silently.
+ *
+ * `components` and `theme` answer the folder questions. With `yes`, or when
+ * stdin isn't a terminal, init asks nothing and takes each default: the
+ * default folders, and existing theme files kept. An existing config stops it
+ * with exit code 1 instead: the default answer there cancels the run, and a
+ * script that exited 0 would never learn that nothing was set up.
  */
-export const initCommand = async (options: { force?: boolean } = {}) => {
+export const initCommand = async (options: InitOptions = {}) => {
   const cwd = process.cwd();
+  // Without a terminal on stdin (CI, an agent, a script), clack's prompts
+  // wait for input that never comes: init used to hang until stdin closed,
+  // then exit 0 having written nothing.
+  const interactive = !options.yes && process.stdin.isTTY === true;
 
   printBanner();
   p.intro(pc.bold('dolan init'));
 
   if (configExists(cwd) && !options.force) {
+    if (!interactive) {
+      p.log.error(
+        `${pc.cyan('dolan.config.json')} already exists. Run ${pc.bold('dolan init --force')} to overwrite it.`,
+      );
+      process.exit(1);
+    }
+
     const overwrite = await p.confirm({
       message: 'dolan.config.json already exists. Overwrite?',
       initialValue: false,
@@ -81,28 +109,40 @@ export const initCommand = async (options: { force?: boolean } = {}) => {
     }
   }
 
-  const config = await p.group(
-    {
-      components: () =>
-        p.text({
-          message: 'Where should components be installed?',
-          placeholder: 'src/components/ui',
-          defaultValue: 'src/components/ui',
-        }),
-      theme: () =>
-        p.text({
-          message: 'Where should theme files be installed?',
-          placeholder: 'src/styles',
-          defaultValue: 'src/styles',
-        }),
-    },
-    {
-      onCancel: () => {
-        p.cancel('Init canceled.');
-        process.exit(0);
-      },
-    },
-  );
+  /**
+   * A folder from its flag, else the answer to its question, else its default.
+   */
+  const folder = async (
+    flag: string | undefined,
+    message: string,
+    defaultValue: string,
+  ): Promise<string> => {
+    if (flag !== undefined) return flag;
+    if (!interactive) return defaultValue;
+    const answer = await p.text({
+      message,
+      placeholder: defaultValue,
+      defaultValue,
+    });
+    if (p.isCancel(answer)) {
+      p.cancel('Init canceled.');
+      process.exit(0);
+    }
+    return answer;
+  };
+
+  const config = {
+    components: await folder(
+      options.components,
+      'Where should components be installed?',
+      'src/components/ui',
+    ),
+    theme: await folder(
+      options.theme,
+      'Where should theme files be installed?',
+      'src/styles',
+    ),
+  };
 
   const s = p.spinner();
   s.start('Setting up dolan...');
@@ -152,15 +192,19 @@ export const initCommand = async (options: { force?: boolean } = {}) => {
   let overwrite = options.force === true;
   if (changed.length > 0 && !overwrite) {
     s.stop('Config written.');
-    // Default to "no", like `add`: these may hold the app's own colors.
-    const answer = await p.confirm({
-      message: `${changed.map(({ file }) => pc.yellow(file)).join(', ')} already exist in ${pc.dim(config.theme)} and differ. Overwrite?`,
-      initialValue: false,
-    });
-    overwrite = !p.isCancel(answer) && answer === true;
+    // Default to "no", like `add`: these may hold the app's own colors. That
+    // default is also the answer when nobody can be asked.
+    if (interactive) {
+      const answer = await p.confirm({
+        message: `${changed.map(({ file }) => pc.yellow(file)).join(', ')} already exist in ${pc.dim(config.theme)} and differ. Overwrite?`,
+        initialValue: false,
+      });
+      overwrite = !p.isCancel(answer) && answer === true;
+    }
     if (!overwrite) {
+      // Says why, since a run without the question never mentioned it.
       p.log.info(
-        `Kept your ${changed.map(({ file }) => pc.cyan(file)).join(', ')}. Run ${pc.bold('dolan init --force')} to replace them.`,
+        `Kept your ${changed.map(({ file }) => pc.cyan(file)).join(', ')}: the bundled theme differs. Run ${pc.bold('dolan init --force')} to replace yours.`,
       );
     }
     s.start('Copying theme files...');

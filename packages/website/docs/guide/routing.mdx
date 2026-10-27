@@ -69,7 +69,7 @@ export class App {}
 - **The active link is selected for screen readers.** While its route is active, `LYNX_ELEMENTS` adds `selected` to the element's `accessibility-traits`, after any traits of its own, and takes it away again after. iOS announces it as selected. Android has no selected trait, so there the element keeps its own traits.
 
 :::tip
-For tabs along the bottom of the screen, the [Tab Bar](/dolan/tab-bar) component does all of this: `npx @blotch/dolan add tab-bar`.
+For tabs along the bottom of the screen, the [Tab Bar](/dolan/tab-bar) component does all of this: `npx @blotch/dolan add tab-bar`. The [Dock](/dolan/dock) is the same as a floating Liquid Glass bar.
 :::
 
 ### Navigate from code
@@ -204,4 +204,5 @@ Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and
 - [Handling taps and events](/guide/elements/event-handling)
 - [Multi-page apps](/guide/multi-page): separate bundles, each its own Angular app, instead of routes
 - [Tab Bar](/dolan/tab-bar): a ready-made bottom tab bar that navigates between routes
+- [Dock](/dolan/dock): the same as a floating Liquid Glass bar
 - [Angular routing guide](https://angular.dev/guide/routing)

@@ -76,20 +76,17 @@ export class UiAlert {
   readonly description = input<string>('');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly containerRef = viewChild.required<ElementRef>('container');
 
-  constructor() {
-    // Subtle entrance animation on first render
-    effect(() => {
-      const el = this.containerRef()?.nativeElement;
-      // revealIn calls el.animate() which is inert in jsdom — the animation
-      // never plays and the effect can't be verified from a JIT render test.
-      /* v8 ignore next 3 */
-      if (el) {
-        revealIn(el, { fromY: 4 });
-      }
-    });
-  }
+  /**
+   * Reveals the alert with a subtle entrance on first render. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly entrance = effect(() => {
+    revealIn(this.containerRef().nativeElement, { fromY: 4 });
+  });
 
   protected readonly containerClass = computed(() =>
     cn(alertVariants({ variant: this.variant() }), this.userClass()),

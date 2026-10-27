@@ -71,21 +71,19 @@ export class UiBadge {
   readonly animated = input(true);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly containerRef = viewChild.required<ElementRef>('container');
 
-  constructor() {
-    effect(() => {
-      const el = this.containerRef()?.nativeElement;
-      // popIn calls el.animate() which is inert in jsdom (the offscreen web
-      // renderer path — see animate.ts's transitionTransform comment). The
-      // effect's rendering-adjacent work is not exercisable from a JIT test,
-      // so ignore the animation branch for coverage.
-      /* v8 ignore next 3 */
-      if (el && this.animated()) {
-        popIn(el, { duration: 200 });
-      }
-    });
-  }
+  /**
+   * Pops the badge in on first render, unless `animated` is off. A field
+   * rather than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly entrance = effect(() => {
+    if (this.animated()) {
+      popIn(this.containerRef().nativeElement, { duration: 200 });
+    }
+  });
 
   protected readonly containerClass = computed(() =>
     cn(badgeVariants({ variant: this.variant() }), this.userClass()),

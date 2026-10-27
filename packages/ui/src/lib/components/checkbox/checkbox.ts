@@ -43,34 +43,34 @@ export class UiCheckbox {
 
   readonly changed = output<boolean>();
 
-  readonly checkmarkRef = viewChild<ElementRef>('checkmark');
+  readonly checkmarkRef = viewChild.required<ElementRef>('checkmark');
   #checkAnim?: AnimationHandle;
   #previousChecked?: boolean;
 
-  constructor() {
-    // Animate the checkmark on state transitions (skip initial render).
-    // `#previousChecked === undefined` guards the first run — we don't want to
-    // pop-in the checkmark when the component mounts already-checked.
-    // The `isChecked === this.#previousChecked` guard prevents a second animation
-    // from firing if the effect re-runs without an actual state change.
-    effect(() => {
-      const isChecked = this.checked();
-      const el = this.checkmarkRef()?.nativeElement;
-      // popIn/popOut call el.animate() which is inert in jsdom — the
-      // check-mark animation is exercised on-device.
-      /* v8 ignore start */
-      if (!el || this.#previousChecked === undefined) {
-        this.#previousChecked = isChecked;
-        return;
-      }
-      if (isChecked === this.#previousChecked) return;
+  /**
+   * Pops the checkmark in when checked and out when unchecked. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#previousChecked === undefined` guards the first run: we don't want to
+   * pop in the checkmark when the component mounts already checked. The
+   * equality guard skips a run that isn't a change: `checked` set and set
+   * back before the effect runs (two taps in one frame) still re-runs it.
+   */
+  protected readonly checkmarkAnimation = effect(() => {
+    const isChecked = this.checked();
+    const el = this.checkmarkRef().nativeElement;
+    if (this.#previousChecked === undefined) {
       this.#previousChecked = isChecked;
+      return;
+    }
+    if (isChecked === this.#previousChecked) return;
+    this.#previousChecked = isChecked;
 
-      this.#checkAnim?.cancel();
-      this.#checkAnim = isChecked ? popIn(el) : popOut(el);
-      /* v8 ignore stop */
-    });
-  }
+    this.#checkAnim?.cancel();
+    this.#checkAnim = isChecked ? popIn(el) : popOut(el);
+  });
 
   protected readonly boxClass = computed(() =>
     cn(

@@ -129,7 +129,7 @@ export class App {
 ## Good to know
 
 - **Text color doesn't inherit.** CSS inheritance is off by default on Lynx, so put a color class such as `text-foreground` on each of your own `<text>` elements. The components color their own text.
-- **Tests come with the code.** `dolan add` copies each component's `<name>.test.ts`. Most use `@blotch/angular-lynx-testing-library`, so set up [testing](/guide/testing/) or delete those files.
+- **Tests come with the code.** Once you've set up [testing](/guide/testing/) (`@blotch/angular-lynx-testing-library`), `dolan add` copies each component's tests too. They cover every line of the component under `ng test --coverage`, so the copies can stay in your coverage report.
 - **Updates are merged, not forced.** Run [`dolan update`](/dolan/cli#update) after upgrading `@blotch/dolan`. It keeps your edits and asks when both sides changed.
 
 ## Components

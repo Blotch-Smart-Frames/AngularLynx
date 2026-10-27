@@ -28,8 +28,20 @@ import {
   springTranslateX,
 } from './animate';
 
+// The keyframes and options the helpers hand `animate()`, typed with the
+// fields the assertions read: the mock's calls are typed from its parameters.
+type Keyframe = { transform?: string; opacity?: number };
+type AnimateOptions = {
+  duration?: number;
+  easing?: string;
+  fill?: string;
+  iterations?: number;
+};
+
 const makeEl = () => ({
-  animate: vi.fn(() => ({ cancel: vi.fn() })),
+  animate: vi.fn((_keyframes: Keyframe[], _options: AnimateOptions) => ({
+    cancel: vi.fn(),
+  })),
   setStyle: vi.fn(),
 });
 

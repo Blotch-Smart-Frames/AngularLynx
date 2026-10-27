@@ -48,7 +48,7 @@ Create `packages/ui/src/lib/components/<name>/` with:
 
 - **`<name>.ts`** — the component(s)/directive(s)
 - **`index.ts`** — re-exports every public symbol
-- **`<name>.test.ts`** — a Vitest spec (recommended; see [Testing](#3-write-a-test))
+- **`<name>.test.ts`** — its spec, which must cover the component fully (see [Testing](#3-write-a-test))
 
 There is **no `packages/ui/src/index.ts` barrel** — the package's `exports` map exposes each component directly as `@blotch/ui/components/<name>` → `./src/lib/components/<name>/index.ts`. So you do **not** add a top-level barrel export; the `index.ts` inside the component folder is all that's needed.
 
@@ -71,6 +71,11 @@ Match the existing components exactly:
 - **Selector prefix `ui-`**.
 - **Press feedback**: for elements that respond to taps, wire `(bindtouchstart)`/`(bindtouchend)`/`(bindtouchcancel)`/`(bindtap)` to `pressDown`/`pressRelease` from `../../utils/animate`, holding an `AnimationHandle` in a `#pressAnim` field. Copy this verbatim from `button.ts` — including restoring scale on **cancel** (a touch stolen by a scroll gesture otherwise leaves the element stuck pressed-down).
 - **Comment the _why_.** Explain non-obvious CSS tricks and Lynx workarounds inline (repo rule).
+- **No `constructor()`.** Create effects and other injection-context work in fields: `protected readonly entrance = effect(() => …)`. For a class with a constructor, Angular's test build keeps a `() => []` in `ɵsetClassMetadata` that nothing calls, so every app's coverage report would show the component with an uncovered function. (`protected`, because lint rejects an unused `#private` field.)
+- **Query by template reference, or through a call.** `viewChild.required<ElementRef>('container')` for an element that's always in the template (no `if (!el)` guard to cover). A query by class (`contentChild(UiChartTooltip)`) gets an arrow function in the same metadata that nothing calls: query through a module-level `const tooltipDirectiveType = () => UiChartTooltip;` as `contentChild(tooltipDirectiveType())` (see `chart.ts`).
+- **No inline functions in the decorator.** The metadata keeps its own copy of the decorator's arguments, so an inline `useFactory: () => …` in `providers` is a second function nothing calls. Name it at module level (`useFactory: itemIconColor`).
+- **No `[(x)]` two-way bindings in a component's template.** For a signal, AOT compiles the listener to `ɵɵtwoWayBindingSet(ctx.x, $event) || (ctx.x = $event)`, whose right side never runs: an uncovered branch. Write `[x]="x()" (xChange)="x.set($event)"`.
+- **No `/* v8 ignore */` hints.** Angular's build strips them (even with `-- @preserve`), so they do nothing in an app. Cover the code, or restructure it so the unreachable branch doesn't exist.
 
 ### The group + item (DI) pattern
 
@@ -141,25 +146,23 @@ overflow-hidden rounded-md border border-border bg-border flex gap-px
 
 ## 3. Write a test
 
-Tests live next to the component as `<name>.test.ts` and run under Vitest here, and under `ng test` in apps that copy them. The established pattern **tests the exported `cva` variant function**, not the rendered component. Import it directly; importing the module loads Angular and the runtime, which both runners provide:
+`dolan add` copies the component's tests with it, and apps run them with `ng test`, which compiles ahead of time: every template listener, `@if` branch and binding becomes a function or branch in the component's file. So the tests must **cover every `.ts` file in the folder 100% (statements, branches, functions, lines), on their own**: an app can copy a component without the ones that render it. `packages/ui` runs its specs the same way (`ng test`, through `@blotch/angular-lynx-build:unit-test`), and `npm run test:ci:coverage -w @blotch/ui` (`scripts/test-coverage.ts`) enforces it: every spec together, then each component that another one imports with its own specs alone. Run one component the way an app sees it:
 
-```typescript
-import { describe, expect, it } from 'vitest';
-import { buttonGroupItemVariants } from './button-group';
-
-describe('buttonGroupItemVariants', () => {
-  it('returns default variant and size classes', () => {
-    const result = buttonGroupItemVariants();
-    expect(result).toContain('bg-secondary');
-    expect(result).toContain('h-10');
-  });
-  // …one assertion per variant/size…
-});
+```sh
+cd packages/ui
+npx ng test --no-watch --coverage --include src/lib/components/<name> --coverage-include 'src/lib/components/<name>/**/*.ts'
+node scripts/test-coverage.ts --all   # every component alone
 ```
 
-Don't `vi.mock('@angular/core')` or `@blotch/angular-lynx`: `ng test` (Angular's unit-test builder) runs test files in one shared module graph, so the mock leaks into every other test and breaks them, and it doesn't support mocking relative imports at all. Test code is type-checked there too. `<name>.test.ts` is copied into apps too, so keep it self-contained: it imports only `./＜name＞`, the testing library and the test helpers (see the import rules below).
+Write the test the way an app's developer would read it:
 
----
+- **Render it in a host component** whose signals are bound in the template (`[variant]="variant()"`), then `host.variant.set(…); await waitForUpdate();`. Bind every required input, and import `LYNX_ELEMENTS` for the host's own `<view>`/`<text>` (templates are checked strictly).
+- **Fire real events** on the rendered elements so the template's listeners run: `fireEvent.tap(el)`, `fireEvent.touchstart(el, { touches: [...] })`, `fireEvent.tap(el, { eventType: 'catchEvent' })` for `(catchtap)`, and `fireLynxEvent(el, 'mouseleave')` (from `../../../test-utils/fire-lynx-event`) for the events `fireEvent` has no shortcut for. Don't call protected handlers through casts.
+- **Assert what users see**: outputs, `model()` values, text, classes, inline styles. For what jsdom can't show (an animation, a value it drops), spy on Lynx's element functions with `vi.spyOn(lynxMainThread(), '__ElementAnimate')` (`../../../test-utils/lynx-main-thread`), inside the test or a `beforeEach`: the testing library resets the main thread after each test.
+- Each component's host renders as a `<view>` too, so find elements by class, text or attribute, not by being first.
+- Test the exported `cva` functions directly too (`buttonVariants({ variant: 'destructive' })`).
+
+The tests must compile in an `ng new` app: strict TypeScript (including `noPropertyAccessFromIndexSignature`), and both Vitest 4 (this repo) and Vitest 5 (new apps) types — give a `vi.fn()` whose calls you read typed parameters, and type the object you `vi.spyOn` rather than casting the key. Don't `vi.mock('@angular/core')` or `@blotch/angular-lynx`, and don't import `node:` modules: `ng test` runs every test file in one shared module graph, and the tests are copied into apps. Use only the testing library's published API (`render`, `waitForUpdate`, `fireEvent`, `screen`, `within`, …).
 
 ## 4. Register in `packages/dolan`
 
@@ -184,7 +187,7 @@ The CLI's `rewriteImports` only rewrites shared-util imports; cross-component im
 
 - **Shared utils** — import as `../../utils/cn` / `../../utils/animate`. The CLI rewrites these to `@blotch/dolan/utils/cn` etc. when scaffolding.
 - **Another UI component** — import as `../<dep>/<dep>` (e.g. `import { UiSpinner } from '../spinner/spinner'`). This relative form resolves once both are scaffolded into the user's project. Also add `<dep>` to `dependencies`.
-- **Test helpers** — `<name>.test.ts` may import `../../../test-utils/<helper>`. The CLI rewrites it to `@blotch/dolan/testing/<helper>`, so each helper needs a copy in `packages/dolan/src/testing/` and an export in its `package.json` (tests check both). Tests are copied only into apps with `@blotch/angular-lynx-testing-library`.
+- **Test helpers** — tests may import `../../../test-utils/<helper>` (`fire-lynx-event`, `lynx-main-thread`, `set-input-signal`). The CLI rewrites it to `@blotch/dolan/testing/<helper>`, so each helper needs a copy in `packages/dolan/src/testing/` and an export in its `package.json` (tests check both). Tests are copied only into apps with `@blotch/angular-lynx-testing-library`, and every `.test.ts` in the folder is copied.
 - **Nothing else** may be a relative import out of the component folder.
 
 ---
@@ -278,7 +281,7 @@ After `dolan:update:force`, **diff the example copy against upstream** — they 
 
 ## Checklist
 
-- [ ] `packages/ui/src/lib/components/<name>/` with `<name>.ts` + `index.ts` (+ `<name>.test.ts`)
+- [ ] `packages/ui/src/lib/components/<name>/` with `<name>.ts` + `index.ts` + `<name>.test.ts`, covering the folder 100% on its own under `ng test`
 - [ ] Conventions followed: standalone, `ViewEncapsulation.None`, `LYNX_ELEMENTS`, signals, `cn` + `cva`, `class` alias, `#`-private, `ui-` prefix
 - [ ] No positional CSS selectors; semantic colors only; opacity-modifier caveat respected
 - [ ] Registry entry in `packages/dolan/src/registry.ts` with correct `dependencies`

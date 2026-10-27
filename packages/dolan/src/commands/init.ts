@@ -15,6 +15,7 @@ import { formatContent } from '../utils/format.js';
 import { printBanner } from '../utils/banner.js';
 import { isInteractive } from '../utils/interactive.js';
 import {
+  copiesTests,
   detectPackageManager,
   installCommand,
   installPackages,
@@ -176,16 +177,18 @@ export const initCommand = async (options: InitOptions = {}) => {
    * formatContent unchanged, and non-oxfmt projects get verbatim content, so
    * this is a no-op copy everywhere except the case it fixes.
    */
-  const themeFiles = themeFilesFor(cwd).flatMap((file) => {
-    const src = join(uiSrc, 'theme', file);
-    if (!existsSync(src)) return [];
-    const destPath = join(themeDir, file);
-    const content = formatContent(readFileSync(src, 'utf-8'), destPath);
-    const current = existsSync(destPath)
-      ? readFileSync(destPath, 'utf-8')
-      : null;
-    return [{ file, destPath, content, current }];
-  });
+  const themeFiles = themeFilesFor(cwd, { tests: copiesTests(cwd) }).flatMap(
+    (file) => {
+      const src = join(uiSrc, 'theme', file);
+      if (!existsSync(src)) return [];
+      const destPath = join(themeDir, file);
+      const content = formatContent(readFileSync(src, 'utf-8'), destPath);
+      const current = existsSync(destPath)
+        ? readFileSync(destPath, 'utf-8')
+        : null;
+      return [{ file, destPath, content, current }];
+    },
+  );
 
   // A file that already matches needs no write and no question.
   const changed = themeFiles.filter(

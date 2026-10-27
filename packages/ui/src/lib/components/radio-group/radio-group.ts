@@ -70,36 +70,36 @@ export class UiRadioGroupItem {
   readonly itemValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly dotRef = viewChild<ElementRef>('dot');
+  readonly dotRef = viewChild.required<ElementRef>('dot');
   #dotAnim?: AnimationHandle;
-  #previousSelected?: boolean;
+  #mounted = false;
 
   protected readonly isSelected = computed(
     () => this.#group.value() === this.itemValue(),
   );
 
-  constructor() {
-    // Same guard pattern as UiCheckbox: `#previousSelected === undefined` skips
-    // the first run so a pre-selected item doesn't animate in on mount.
-    // The equality guard prevents duplicate animations if the effect re-runs.
-    effect(() => {
-      const selected = this.isSelected();
-      const el = this.dotRef()?.nativeElement;
-      if (!el || this.#previousSelected === undefined) {
-        this.#previousSelected = selected;
-        return;
-      }
-      // Defensive early return: with only `isSelected()` as a reactive input,
-      // Angular's computed equality dedupes same-value emissions so the effect
-      // never re-runs with an unchanged `selected`. Kept for safety on-device.
-      /* v8 ignore next 1 */
-      if (selected === this.#previousSelected) return;
-      this.#previousSelected = selected;
+  /**
+   * Pops the dot in when the item is selected and out when it's deselected.
+   * A field rather than a constructor: Angular's test build keeps a function
+   * for a constructor that nothing calls, which an app's coverage report
+   * would show as uncovered.
+   *
+   * The first run is the mount, skipped so a pre-selected item doesn't
+   * animate in. Every later run is a change of selection: `isSelected` is a
+   * computed, which only notifies when its value changes, and the dot is
+   * always in the template, so its query never changes.
+   */
+  protected readonly dotAnimation = effect(() => {
+    const selected = this.isSelected();
+    const el = this.dotRef().nativeElement;
+    if (!this.#mounted) {
+      this.#mounted = true;
+      return;
+    }
 
-      this.#dotAnim?.cancel();
-      this.#dotAnim = selected ? popIn(el) : popOut(el);
-    });
-  }
+    this.#dotAnim?.cancel();
+    this.#dotAnim = selected ? popIn(el) : popOut(el);
+  });
 
   protected readonly itemClass = computed(() =>
     cn(

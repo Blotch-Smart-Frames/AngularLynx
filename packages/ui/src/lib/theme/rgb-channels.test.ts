@@ -1,3 +1,6 @@
+/// <reference types="node" />
+// Not copied into apps (it reads the theme's CSS with Node), like the other
+// theme checks next to it.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -12,7 +15,9 @@ import { blotchPlugin } from './tailwind-plugin';
  */
 const variables = (file: string): Map<string, string> => {
   // Comments mention variables too, so they go first.
-  const css = readFileSync(new URL(file, import.meta.url), 'utf8').replace(
+  // Relative to the package, where `ng test` runs: the test runs from a build
+  // of it elsewhere, so `import.meta.url` doesn't point next to the CSS.
+  const css = readFileSync(`src/lib/theme/${file}`, 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
   );

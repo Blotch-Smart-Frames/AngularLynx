@@ -52,8 +52,11 @@ export class UiDialog implements OnDestroy {
 
   protected readonly overlayVisible = signal(false);
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay hides with
+  // display:none rather than leaving the tree), and the sequences only read
+  // them from timers that start after the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -61,21 +64,26 @@ export class UiDialog implements OnDestroy {
   // them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // very first run would call #doClose() immediately, resulting in a no-op
-    // animation that still hides the overlay and emits `closed` unexpectedly.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Plays the open or close sequence whenever `open` changes. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * very first run would call #doClose() immediately, resulting in a no-op
+   * animation that still hides the overlay and emits `closed` unexpectedly.
+   */
+  protected readonly openAndClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   /**
    * Hide the overlay with `display:none` on web where `visible` attr has no
@@ -167,9 +175,8 @@ export class UiDialog implements OnDestroy {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -194,9 +201,8 @@ export class UiDialog implements OnDestroy {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();

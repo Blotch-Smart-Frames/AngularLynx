@@ -1,66 +1,84 @@
+import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { describe, expect, it, vi } from 'vitest';
+import { lynxMainThread } from '../../../test-utils/lynx-main-thread';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSpinner } from './spinner';
 
+@Component({
+  imports: [UiSpinner],
+  template: `
+    <ui-spinner [size]="size()" [color]="color()" [class]="className()" />
+  `,
+})
+class SpinnerHost {
+  readonly size = signal<'xs' | 'sm' | 'md' | 'lg'>('md');
+  readonly color = signal<string | undefined>(undefined);
+  readonly className = signal('');
+}
+
+const renderSpinner = async () => {
+  const result = await render(SpinnerHost);
+  return {
+    ...result,
+    host: result.componentRef.instance as SpinnerHost,
+    // The spinner's own view: the one that holds the svg.
+    spinner: () => result.container.querySelector('svg')!.parentElement!,
+    svgContent: () =>
+      result.container.querySelector('svg')!.getAttribute('content'),
+  };
+};
+
 describe('UiSpinner', () => {
-  it('renders the SVG at the default size', async () => {
-    const { container } = await render(UiSpinner);
-    expect(container).toBeTruthy();
-    // The default size is 'md' → sizeStyle should render at 24px.
-    const view = container.querySelector('view');
-    expect(view?.getAttribute('style')).toContain('24px');
-  });
-
-  it('substitutes currentColor when the color input is set', async () => {
-    const { container, componentRef } = await render(UiSpinner);
-    setInputSignal((componentRef.instance as UiSpinner).color, 'rgb(0, 0, 0)');
-    // Flush CD so the computed re-runs and the `content` attribute updates.
-    await waitForUpdate();
-    const svg = container.querySelector('svg');
-    expect(svg?.getAttribute('content')).toContain('rgb(0, 0, 0)');
-    expect(svg?.getAttribute('content')).not.toContain('currentColor');
-  });
-
-  it("draws in the theme's foreground when no color is set", async () => {
-    const { container } = await render(UiSpinner);
-    const content = container.querySelector('svg')?.getAttribute('content');
-    expect(content).toContain(ICON_LIGHT_COLORS['foreground']);
-    expect(content).not.toContain('currentColor');
-  });
-
-  it('resolves a theme token color', async () => {
-    const { container, componentRef } = await render(UiSpinner);
-    setInputSignal(
-      (componentRef.instance as UiSpinner).color,
-      'var(--primary-foreground)',
-    );
-    await waitForUpdate();
-    expect(container.querySelector('svg')?.getAttribute('content')).toContain(
-      ICON_LIGHT_COLORS['primary-foreground'],
-    );
-  });
-
-  it('applies the class input to the spinner', async () => {
-    const { container, componentRef } = await render(UiSpinner);
-    setInputSignal((componentRef.instance as UiSpinner).userClass, 'ml-2');
-    await waitForUpdate();
-    expect(container.querySelector('view')?.getAttribute('class')).toBe('ml-2');
+  it('renders the loader at the default size', async () => {
+    const { spinner } = await renderSpinner();
+    expect(spinner().getAttribute('style')).toContain('width: 24px');
+    expect(spinner().getAttribute('style')).toContain('height: 24px');
   });
 
   it('resizes for each supported size', async () => {
-    const { componentRef, container } = await render(UiSpinner);
+    const { host, spinner } = await renderSpinner();
     for (const [size, px] of [
       ['xs', 16],
       ['sm', 20],
       ['md', 24],
       ['lg', 32],
     ] as const) {
-      setInputSignal((componentRef.instance as UiSpinner).size, size);
+      host.size.set(size);
       await waitForUpdate();
-      const view = container.querySelector('view');
-      expect(view?.getAttribute('style')).toContain(`${px}px`);
+      expect(spinner().getAttribute('style')).toContain(`width: ${px}px`);
     }
+  });
+
+  it("draws in the theme's foreground when no color is set", async () => {
+    // Lynx's SVG parser reads neither `currentColor` nor CSS variables.
+    const { svgContent } = await renderSpinner();
+    expect(svgContent()).toContain(ICON_LIGHT_COLORS['foreground']);
+    expect(svgContent()).not.toContain('currentColor');
+  });
+
+  it('draws in a literal color or a theme token', async () => {
+    const { host, svgContent } = await renderSpinner();
+    host.color.set('rgb(0, 0, 0)');
+    await waitForUpdate();
+    expect(svgContent()).toContain('rgb(0, 0, 0)');
+
+    host.color.set('var(--primary-foreground)');
+    await waitForUpdate();
+    expect(svgContent()).toContain(ICON_LIGHT_COLORS['primary-foreground']);
+  });
+
+  it('takes the class input', async () => {
+    const { host, spinner } = await renderSpinner();
+    host.className.set('ml-2');
+    await waitForUpdate();
+    expect(spinner().getAttribute('class')).toBe('ml-2');
+  });
+
+  it('turns continuously', async () => {
+    const animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+    const { spinner } = await renderSpinner();
+    expect(animate).toHaveBeenCalledWith(spinner(), expect.any(Array));
+    animate.mockRestore();
   });
 });

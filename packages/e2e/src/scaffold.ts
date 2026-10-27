@@ -13,6 +13,7 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 
 import type { RunContext } from './context.ts';
+import { getComponentNames } from '../../dolan/src/registry.ts';
 import { REPO_ROOT } from '../../release/src/packages.ts';
 import type { Registry } from './registry.ts';
 import { check, run, start, step, stop, waitFor } from './process.ts';
@@ -116,6 +117,11 @@ export const scaffoldApp = async (
   if (!options.buildOnly) {
     await buildApp(appDir, pm, registry, context, ['lynx']);
     await addTestingAndRunTests(appDir, pm, exec, options.version);
+    // dolan's theme maps its colors for Tailwind, so it needs Tailwind: on
+    // Tailwind 3, the plugin it copies imports it.
+    if (options.tailwind) {
+      await addComponentsAndRunTests(appDir, pm, exec, options.version);
+    }
   }
 
   // i18n is part of every app the later layers test, so the native tests run
@@ -254,6 +260,73 @@ const addTestingAndRunTests = async (
 };
 
 /**
+ * dolan copies each component with its tests, and an app keeps the copies in
+ * its coverage report: their own tests have to cover them fully under the
+ * app's `ng test`, which compiles them ahead of time (issue #111). packages/ui
+ * checks the coverage against its sources; this checks the copies an app
+ * really gets, with their rewritten imports, against the published packages
+ * and the app's own Vitest.
+ */
+const addComponentsAndRunTests = async (
+  appDir: string,
+  pm: PackageManagerCommands,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+  version: string,
+) => {
+  step(
+    "Layer 2: dolan init and dolan add every component, then their tests' coverage",
+  );
+  await exec(...pm.add([`@blotch/dolan@${version}`]));
+  await exec(...pm.exec('dolan', ['init', '--yes']));
+  const components = getComponentNames();
+  await exec(...pm.exec('dolan', ['add', ...components]));
+  // `ng test --coverage` asks for a coverage provider that `ng new` doesn't
+  // install, matching the app's Vitest.
+  const vitest = readJson<PackageJson>(
+    path.join(appDir, 'node_modules/vitest/package.json'),
+  ).version;
+  await exec(...pm.add([`@vitest/coverage-v8@${vitest}`], { dev: true }));
+  await exec(
+    ...pm.exec('ng', [
+      'test',
+      '--no-watch',
+      '--coverage',
+      '--coverage-include=src/components/ui/**/*.ts',
+      '--coverage-include=src/styles/**/*.ts',
+      '--coverage-reporters=json-summary',
+    ]),
+  );
+  const summary = readJson<
+    Record<string, Record<string, { pct: number | string }>>
+  >(path.join(appDir, 'coverage', APP_NAME, 'coverage-summary.json'));
+  const uncovered = Object.entries(summary)
+    .filter(([file]) => file !== 'total')
+    .filter(([, metrics]) =>
+      ['statements', 'branches', 'functions', 'lines'].some(
+        (metric) => Number(metrics[metric]?.pct) < 100,
+      ),
+    )
+    .map(([file]) => path.relative(appDir, file));
+  // On Tailwind 3, the theme comes with a plugin and its test. Tailwind 4
+  // takes tailwind.css instead, with no code to cover.
+  const plugin = path.join(appDir, 'src/styles/tailwind-plugin.ts');
+  check(
+    !existsSync(plugin) ||
+      Object.keys(summary).some((file) =>
+        file.endsWith('src/styles/tailwind-plugin.ts'),
+      ),
+    "`ng test --coverage` didn't report on dolan's theme plugin (src/styles/tailwind-plugin.ts).",
+  );
+  check(
+    uncovered.length === 0,
+    `The tests dolan copies don't cover these copies fully under \`ng test --coverage\` (see coverage/${APP_NAME}): ${uncovered.join(', ')}. Run \`node scripts/test-coverage.ts --all\` in packages/ui.`,
+  );
+  console.log(
+    `✓ the ${components.length} components' tests pass and cover them${existsSync(plugin) ? ', and the theme plugin,' : ''} fully`,
+  );
+};
+
+/**
  * Checks what `ng generate component <name>` produced: Angular's files, made
  * Lynx ones by AngularLynx's schematic, and the test it should have written.
  */
@@ -318,6 +391,14 @@ type Command = [command: string, args: string[]];
 
 const packageManagerCommands = (packageManager: PackageManager) => ({
   install: (): Command => [packageManager, ['install']],
+  add: (specs: string[], { dev = false } = {}): Command => [
+    packageManager,
+    [
+      packageManager === 'npm' ? 'install' : 'add',
+      ...(dev ? ['-D'] : []),
+      ...specs,
+    ],
+  ],
   run: (script: string): Command => [packageManager, ['run', script]],
   exec: (bin: string, args: string[]): Command => {
     switch (packageManager) {

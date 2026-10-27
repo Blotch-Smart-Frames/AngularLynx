@@ -44,8 +44,10 @@ export class UiTabs {
   // When the active tab changes, we compare the old and new index in this
   // list to determine slide direction (1 = right, -1 = left). This creates
   // a spatial relationship: tabs feel like they're arranged left-to-right,
-  // with content sliding in from the direction of the selected tab.
-  readonly #tabOrder: string[] = [];
+  // with content sliding in from the direction of the selected tab. A Set
+  // keeps the order tabs first registered in and ignores a re-registration
+  // (a trigger re-created by `@if` or `@for`).
+  readonly #tabOrder = new Set<string>();
   #previousValue: string | undefined;
   readonly direction = signal<1 | -1>(1);
 
@@ -53,43 +55,38 @@ export class UiTabs {
     cn('flex-col flex', this.userClass()),
   );
 
-  constructor() {
-    // Reactively compute direction when the active value changes.
-    // This handles both internal select() calls and external model changes.
-    effect(() => {
-      const currentValue = this.value();
-      if (this.#previousValue === undefined) {
-        this.#previousValue = currentValue;
-        return;
-      }
-      // Defensive: signal dedupes same-value writes so the effect never re-runs
-      // with an unchanged `currentValue`. Kept for safety on-device.
-      /* v8 ignore next 1 */
-      if (currentValue === this.#previousValue) return;
-
-      const prevIndex = this.#tabOrder.indexOf(this.#previousValue);
-      const nextIndex = this.#tabOrder.indexOf(currentValue);
-      // The `prevIndex !== nextIndex` check is defensive — the earlier
-      // `if (currentValue === this.#previousValue) return;` guard makes an
-      // equal-index case unreachable in normal flow.
-      if (
-        prevIndex !== -1 &&
-        nextIndex !== -1 &&
-        /* v8 ignore next 1 */ prevIndex !== nextIndex
-      ) {
-        this.direction.set(nextIndex > prevIndex ? 1 : -1);
-      }
+  /**
+   * Computes the slide direction when the active value changes, whether from
+   * select() or from the model being set. A field rather than a constructor:
+   * Angular's test build keeps a function for a constructor that nothing
+   * calls, which an app's coverage report would show as uncovered.
+   */
+  protected readonly trackingDirection = effect(() => {
+    const currentValue = this.value();
+    if (this.#previousValue === undefined) {
       this.#previousValue = currentValue;
-    });
-  }
+      return;
+    }
+    // The value can change and change back before the effect runs (two taps
+    // in one frame): the tab didn't move, so the direction stays.
+    if (currentValue === this.#previousValue) return;
+
+    const order = [...this.#tabOrder];
+    const prevIndex = order.indexOf(this.#previousValue);
+    const nextIndex = order.indexOf(currentValue);
+    // A value with no trigger has no place in the order to slide from or to.
+    // Two different registered values always have different indexes.
+    if (prevIndex !== -1 && nextIndex !== -1) {
+      this.direction.set(nextIndex > prevIndex ? 1 : -1);
+    }
+    this.#previousValue = currentValue;
+  });
 
   /**
    * Called by UiTabsTrigger to register ordering for direction detection.
    */
   registerTab(value: string): void {
-    if (!this.#tabOrder.includes(value)) {
-      this.#tabOrder.push(value);
-    }
+    this.#tabOrder.add(value);
   }
 
   select(value: string): void {
@@ -143,7 +140,7 @@ export class UiTabsTrigger {
   readonly triggerValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly triggerRef = viewChild<ElementRef>('trigger');
+  readonly triggerRef = viewChild.required<ElementRef>('trigger');
   #anim?: AnimationHandle;
   #previousActive?: boolean;
 
@@ -151,57 +148,52 @@ export class UiTabsTrigger {
     () => this.#tabs.value() === this.triggerValue(),
   );
 
-  constructor() {
-    // Register this trigger with the parent for direction detection
-    effect(() => {
-      this.#tabs.registerTab(this.triggerValue());
-    });
+  /** Registers this trigger with the parent for direction detection. */
+  protected readonly registering = effect(() => {
+    this.#tabs.registerTab(this.triggerValue());
+  });
 
-    // Animate trigger background on selection change
-    effect(() => {
-      const active = this.isActive();
-      const el = this.triggerRef()?.nativeElement;
-      if (!el || this.#previousActive === undefined) {
-        this.#previousActive = active;
-        return;
-      }
-      // Defensive: `isActive` computed dedupes same-value emissions so the
-      // effect never re-runs with an unchanged `active`. Kept for safety.
-      /* v8 ignore next 1 */
-      if (active === this.#previousActive) return;
-      this.#previousActive = active;
+  /** Animates the trigger's background when it's selected or deselected. */
+  protected readonly animatingSelection = effect(() => {
+    const active = this.isActive();
+    const el = this.triggerRef().nativeElement;
+    const wasActive = this.#previousActive;
+    this.#previousActive = active;
+    // The first run only records the starting state, and only a change has
+    // anything to animate. (`isActive` is a computed, so the effect only
+    // re-runs once it changes; the second check is a safeguard.)
+    if (wasActive === undefined || wasActive === active) return;
 
-      this.#anim?.cancel();
+    this.#anim?.cancel();
 
-      if (active) {
-        // Activation: spring-based scale + opacity for a lively entrance
-        this.#anim = el.animate(
-          [
-            { transform: 'scaleX(0.95)', opacity: 0.7 },
-            { transform: 'scaleX(1)', opacity: 1 },
-          ],
-          {
-            duration: DURATION.normal,
-            easing: EASING.springSubtle,
-            fill: 'forwards',
-          },
-        );
-      } else {
-        // Deactivation: quick shrink + fade for a graceful exit
-        this.#anim = el.animate(
-          [
-            { transform: 'scaleX(1)', opacity: 1 },
-            { transform: 'scaleX(0.97)', opacity: 0.7 },
-          ],
-          {
-            duration: DURATION.fast,
-            easing: EASING.accelerate,
-            fill: 'forwards',
-          },
-        );
-      }
-    });
-  }
+    if (active) {
+      // Activation: spring-based scale + opacity for a lively entrance
+      this.#anim = el.animate(
+        [
+          { transform: 'scaleX(0.95)', opacity: 0.7 },
+          { transform: 'scaleX(1)', opacity: 1 },
+        ],
+        {
+          duration: DURATION.normal,
+          easing: EASING.springSubtle,
+          fill: 'forwards',
+        },
+      );
+    } else {
+      // Deactivation: quick shrink + fade for a graceful exit
+      this.#anim = el.animate(
+        [
+          { transform: 'scaleX(1)', opacity: 1 },
+          { transform: 'scaleX(0.97)', opacity: 0.7 },
+        ],
+        {
+          duration: DURATION.fast,
+          easing: EASING.accelerate,
+          fill: 'forwards',
+        },
+      );
+    }
+  });
 
   protected readonly triggerClass = computed(() =>
     cn(
@@ -263,7 +255,7 @@ export class UiTabsContent {
   readonly contentValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly contentRef = viewChild<ElementRef>('content');
+  readonly contentRef = viewChild.required<ElementRef>('content');
   #anim?: AnimationHandle;
   #isFirstRender = true;
 
@@ -271,43 +263,43 @@ export class UiTabsContent {
     () => this.#tabs.value() === this.contentValue(),
   );
 
-  constructor() {
-    // Animate content reveal when tab becomes active.
-    //
-    // The panel is ALWAYS rendered and shown/hidden via the host's `display`
-    // (see the `host` block) rather than wrapped in `@if`. On Lynx, destroying a
-    // subtree that holds projected `<ng-content>` sends that content through the
-    // renderer's "park on the page root" path (it must keep still-alive
-    // projected nodes from dying), which drops inactive panels at the bottom of
-    // the page and made re-showing them unreliable — the symptom was tab content
-    // that vanished and never came back. Keeping every panel mounted and only
-    // toggling `display` never destroys or re-parents anything: inactive panels
-    // collapse to 0×0 (Lynx `display: none`) so they take no space, and the
-    // active one simply reappears in place.
-    effect(() => {
-      if (!this.isActive()) return;
-      // Defer one tick so the display flip to 'flex' has applied before we animate.
-      setTimeout(() => {
-        const el = this.contentRef()?.nativeElement;
-        if (!el) return;
+  /**
+   * Animates the content's reveal when its tab becomes active.
+   *
+   * The panel is ALWAYS rendered and shown/hidden via the host's `display`
+   * (see the `host` block) rather than wrapped in `@if`. On Lynx, destroying a
+   * subtree that holds projected `<ng-content>` sends that content through the
+   * renderer's "park on the page root" path (it must keep still-alive
+   * projected nodes from dying), which drops inactive panels at the bottom of
+   * the page and made re-showing them unreliable — the symptom was tab content
+   * that vanished and never came back. Keeping every panel mounted and only
+   * toggling `display` never destroys or re-parents anything: inactive panels
+   * collapse to 0×0 (Lynx `display: none`) so they take no space, and the
+   * active one simply reappears in place. That also means the content view
+   * always exists, so `contentRef` is required.
+   */
+  protected readonly revealing = effect(() => {
+    if (!this.isActive()) return;
+    // Defer one tick so the display flip to 'flex' has applied before we animate.
+    setTimeout(() => {
+      const el = this.contentRef().nativeElement;
 
-        this.#anim?.cancel();
+      this.#anim?.cancel();
 
-        if (this.#isFirstRender) {
-          // First render: subtle vertical reveal (no directional context yet)
-          this.#isFirstRender = false;
-          this.#anim = revealIn(el, { fromY: 6, duration: DURATION.normal });
-        } else {
-          // Subsequent renders: direction-aware horizontal slide
-          const dir = this.#tabs.direction();
-          this.#anim = directionalSlideIn(el, dir, {
-            distance: 24,
-            duration: 300,
-          });
-        }
-      }, 0);
-    });
-  }
+      if (this.#isFirstRender) {
+        // First render: subtle vertical reveal (no directional context yet)
+        this.#isFirstRender = false;
+        this.#anim = revealIn(el, { fromY: 6, duration: DURATION.normal });
+      } else {
+        // Subsequent renders: direction-aware horizontal slide
+        const dir = this.#tabs.direction();
+        this.#anim = directionalSlideIn(el, dir, {
+          distance: 24,
+          duration: 300,
+        });
+      }
+    }, 0);
+  });
 
   // Visibility is controlled at the host (see `host` block); the inner view is
   // always a normal flex column that fills the shown host.

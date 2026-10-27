@@ -33,11 +33,12 @@ npm run test:coverage -w <workspace-name>              # one package
 npm run test:ui -w <workspace-name>                    # interactive UI + coverage
 ```
 
-Use Node 22 (`nvm use 22`). The lcov report lands at `packages/<dir>/coverage/lcov.info`.
+Use Node 22 (`nvm use 22`). The lcov report lands at `packages/<dir>/coverage/lcov.info` (`packages/ui/coverage/ui/lcov.info` for ui, which runs `ng test`).
 
 ## How it works
 
-- Each package's vitest config has a `coverage` block: `provider: 'v8'`,
+- **ui is the exception**: its specs are copied into apps, so it runs them as apps do, with `ng test` (Angular's unit-test builder, compiled ahead of time, through `@blotch/angular-lynx-build:unit-test`). The thresholds are in its `angular.json`, and `scripts/test-coverage.ts` also runs each component another one imports with only its own specs, since an app may copy it alone (`--all` runs every component alone).
+- Each other package's vitest config has a `coverage` block: `provider: 'v8'`,
   `reporter: ['text','html','lcov']`, `include: ['src/**/*.ts']` (oxlint-plugin
   uses `src/**/*.mjs`), and `thresholds: { statements/branches/functions/lines: 100 }`.
 - `coverage.all` defaults to true, so **every** source file matching `include`
@@ -56,12 +57,16 @@ Use Node 22 (`nvm use 22`). The lcov report lands at `packages/<dir>/coverage/lc
   `renderer/inline-text.test.ts`, `renderer/teardown.test.ts`). Services: `new Service()`
   + `vi.stubGlobal(...)`.
 - **testing-library** — its own `render()` / `screen` / `fireEvent` / `waitForUpdate`.
-- **ui** — the `render()` idiom from `@blotch/angular-lynx-testing-library` (its
-  `vitest.config.ts` aliases the packages to source and loads the library's setup),
-  plus direct pure-function assertions (`buttonVariants`, chart geometry), imported
-  directly — never by mocking `@angular/core`: the copies `dolan` puts in apps run
-  under `ng test`, whose test files share one module graph. Extract branchy logic
-  into exported helpers (e.g. `toast-state.ts`) for heavy components.
+- **ui** — the `render()` idiom from `@blotch/angular-lynx-testing-library` in a host
+  component that binds the inputs, real events (`fireEvent`, `fireLynxEvent`) so the
+  template's listeners run, and spies on `lynxMainThread()` for animations, plus direct
+  pure-function assertions (`buttonVariants`, chart geometry) — never by mocking
+  `@angular/core`: `ng test`'s test files share one module graph. Under AOT, a
+  component's template listeners, `@if` blocks and bindings count as its functions and
+  branches; `/* v8 ignore */` hints don't survive Angular's build, and an explicit
+  `constructor()` leaves an uncovered function (see the `ui-component` skill for the
+  rules). Extract branchy logic into exported helpers (e.g. `toast-state.ts`) for
+  heavy components.
 - **rsbuild-plugin / dolan** — plain node/vitest with tmp-dir fixtures; mock
   build-tool / prompt internals with `vi.mock`.
 - **oxlint-plugin** — drive each rule IN-PROCESS: `rule.create(fakeContext)` with

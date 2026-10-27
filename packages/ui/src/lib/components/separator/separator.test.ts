@@ -1,26 +1,27 @@
+import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiSeparator } from './separator';
 
-describe('UiSeparator', () => {
-  it('renders horizontally (default)', async () => {
-    const { componentRef } = await render(UiSeparator);
-    // The class binding lands on the host element, which is the component's
-    // location.nativeElement (a real DOM node representing the ui-separator
-    // host). Read the class directly from that node.
-    const host = componentRef.location.nativeElement as HTMLElement;
-    expect(host.getAttribute('class')).toContain('h-px');
-  });
+@Component({
+  imports: [UiSeparator],
+  template: `<ui-separator [orientation]="orientation()" class="my-2" />`,
+})
+class SeparatorHost {
+  readonly orientation = signal<'horizontal' | 'vertical'>('horizontal');
+}
 
-  it('renders vertically when the orientation input is flipped', async () => {
-    const { componentRef } = await render(UiSeparator);
-    setInputSignal(
-      (componentRef.instance as UiSeparator).orientation,
-      'vertical',
-    );
+describe('UiSeparator', () => {
+  it('draws a horizontal line by default, and a vertical one when asked', async () => {
+    const { componentRef, container } = await render(SeparatorHost);
+    // The classes are on the host element, the separator's only element.
+    const line = container.querySelector('.bg-border')!;
+    expect(line.classList).toContain('h-px');
+    expect(line.classList).toContain('my-2');
+
+    (componentRef.instance as SeparatorHost).orientation.set('vertical');
     await waitForUpdate();
-    const host = componentRef.location.nativeElement as HTMLElement;
-    expect(host.getAttribute('class')).toContain('w-px');
+    expect(line.classList).toContain('w-px');
+    expect(line.classList).not.toContain('h-px');
   });
 });

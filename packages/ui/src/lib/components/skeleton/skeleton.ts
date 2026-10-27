@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-import { type AnimationHandle, pulse } from '../../utils/animate';
+import { pulse } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
 @Component({
@@ -22,22 +22,16 @@ import { cn } from '../../utils/cn';
 export class UiSkeleton {
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly skeletonRef = viewChild<ElementRef>('skeleton');
-  #pulseAnim?: AnimationHandle;
+  readonly skeletonRef = viewChild.required<ElementRef>('skeleton');
 
-  constructor() {
-    // Start the pulse animation once the element is available
-    effect(() => {
-      const el = this.skeletonRef()?.nativeElement;
-      // pulse() calls el.animate() which is inert in jsdom — coverage
-      // for the pulsing loop is exercised on-device.
-      /* v8 ignore start */
-      if (!el) return;
-      this.#pulseAnim?.cancel();
-      this.#pulseAnim = pulse(el);
-      /* v8 ignore stop */
-    });
-  }
+  /**
+   * Pulses the skeleton. A field rather than a constructor: Angular's test
+   * build keeps a function for a constructor that nothing calls, which an
+   * app's coverage report would show as uncovered.
+   */
+  protected readonly pulsing = effect(() => {
+    pulse(this.skeletonRef().nativeElement);
+  });
 
   protected readonly skeletonClass = computed(() =>
     cn('rounded-md bg-muted', this.userClass()),

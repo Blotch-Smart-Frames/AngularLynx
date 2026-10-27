@@ -1,3 +1,6 @@
+/// <reference types="node" />
+// Not copied into apps (it reads the theme's CSS with Node), like the other
+// theme checks next to it.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -9,7 +12,9 @@ import { blotchPlugin } from './tailwind-plugin';
  * keep every color it maps backed by the theme files.
  */
 const read = (file: string): string =>
-  readFileSync(new URL(file, import.meta.url), 'utf8');
+  // Relative to the package, where `ng test` runs: the test runs from a build
+  // of it elsewhere, so `import.meta.url` doesn't point next to the CSS.
+  readFileSync(`src/lib/theme/${file}`, 'utf8');
 
 const tailwindCss = (): string =>
   read('./tailwind.css').replace(/\/\*[\s\S]*?\*\//g, '');

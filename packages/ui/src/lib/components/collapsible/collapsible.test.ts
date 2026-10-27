@@ -1,8 +1,23 @@
 import { Component, signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import {
   UiCollapsible,
   UiCollapsibleContent,
@@ -10,103 +25,165 @@ import {
 } from './collapsible';
 
 @Component({
-  standalone: true,
-  imports: [UiCollapsible, LYNX_ELEMENTS],
-  template: `<ui-collapsible><text>Content</text></ui-collapsible>`,
+  imports: [
+    UiCollapsible,
+    UiCollapsibleTrigger,
+    UiCollapsibleContent,
+    LYNX_ELEMENTS,
+  ],
+  template: `
+    <ui-collapsible [(open)]="open" [disabled]="disabled()" class="gap-2">
+      <ui-collapsible-trigger class="px-2">
+        <text>Toggle</text>
+      </ui-collapsible-trigger>
+      <ui-collapsible-content class="pt-1">
+        <text>Details</text>
+      </ui-collapsible-content>
+    </ui-collapsible>
+  `,
 })
-class CollapsibleHost {}
+class CollapsibleHost {
+  readonly open = signal(false);
+  readonly disabled = signal(false);
+}
+
+const renderCollapsible = async () => {
+  const result = await render(CollapsibleHost);
+  return {
+    ...result,
+    host: result.componentRef.instance as CollapsibleHost,
+    // The trigger's own view holds the tap listener; the projected text is
+    // inside it.
+    trigger: () => result.getByText('Toggle').parentElement!,
+    // The content's own view wraps the projected text while it's open.
+    content: () => result.queryByText('Details')?.parentElement ?? null,
+  };
+};
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
 
 describe('UiCollapsible', () => {
-  it('renders projected content', async () => {
-    const { getByText } = await render(CollapsibleHost);
-    expect(getByText('Content')).toBeTruthy();
+  it("merges each part's class with its own", async () => {
+    const { container, host, trigger, content } = await renderCollapsible();
+    // The host element carries the class too, so look for the view that has
+    // both its own and the given class.
+    expect(container.querySelector('.flex-col.gap-2')).not.toBeNull();
+    expect(trigger().classList).toContain('flex-row');
+    expect(trigger().classList).toContain('px-2');
+
+    host.open.set(true);
+    await waitForUpdate();
+    expect(content()!.classList).toContain('flex-col');
+    expect(content()!.classList).toContain('pt-1');
   });
 
-  it('toggle() flips the open state', async () => {
-    const { componentRef } = await render(UiCollapsible);
-    const inst = componentRef.instance as UiCollapsible;
-    expect(inst.open()).toBe(false);
-    inst.toggle();
-    expect(inst.open()).toBe(true);
-    inst.toggle();
-    expect(inst.open()).toBe(false);
+  it('opens and closes when the trigger is tapped', async () => {
+    const { host, trigger, content } = await renderCollapsible();
+    // Closed, the content isn't mounted at all.
+    expect(content()).toBeNull();
+
+    fireEvent.tap(trigger());
+    await waitForUpdate();
+    expect(content()).not.toBeNull();
+    expect(host.open()).toBe(true);
+
+    fireEvent.tap(trigger());
+    await waitForUpdate();
+    expect(content()).toBeNull();
+    expect(host.open()).toBe(false);
   });
 
-  it('toggle() is a no-op when disabled', async () => {
-    const { componentRef } = await render(UiCollapsible);
-    const inst = componentRef.instance as UiCollapsible;
-    setInputSignal(inst.disabled, true);
-    inst.toggle();
-    expect(inst.open()).toBe(false);
+  it('opens when its `open` is set', async () => {
+    const { host, content } = await renderCollapsible();
+    host.open.set(true);
+    await waitForUpdate();
+    expect(content()).not.toBeNull();
   });
-});
 
-describe('UiCollapsibleTrigger', () => {
-  it('onTap delegates to the parent collapsible.toggle()', async () => {
-    const parentResult = await render(UiCollapsible);
-    const parent = parentResult.componentRef.instance as UiCollapsible;
+  it('dims its trigger and ignores taps while disabled', async () => {
+    const { host, trigger, content } = await renderCollapsible();
+    expect(trigger().classList).not.toContain('opacity-50');
 
-    const triggerResult = await render(UiCollapsibleTrigger, {
-      providers: [{ provide: UiCollapsible, useValue: parent }],
+    host.disabled.set(true);
+    await waitForUpdate();
+    expect(trigger().classList).toContain('opacity-50');
+
+    fireEvent.tap(trigger());
+    await waitForUpdate();
+    expect(content()).toBeNull();
+    expect(host.open()).toBe(false);
+  });
+
+  describe('reveal animation', () => {
+    // Watched per test: the testing library resets the main thread after each.
+    let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+    beforeEach(() => {
+      animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
     });
-    const trigger = triggerResult.componentRef.instance as UiCollapsibleTrigger;
-    (trigger as unknown as { onTap: () => void }).onTap();
-    expect(parent.open()).toBe(true);
-  });
+    afterEach(() => animate.mockRestore());
 
-  it('applies disabled dim class when parent is disabled', async () => {
-    const parentResult = await render(UiCollapsible);
-    const parent = parentResult.componentRef.instance as UiCollapsible;
-    setInputSignal(parent.disabled, true);
+    /**
+     * The keys of the animations started on an element.
+     */
+    const startedOn = (element: Element | null) =>
+      animate.mock.calls
+        .filter(
+          ([target, [operation]]) => target === element && operation === START,
+        )
+        .map(([, [, key]]) => key);
 
-    const triggerResult = await render(UiCollapsibleTrigger, {
-      providers: [{ provide: UiCollapsible, useValue: parent }],
+    it('slides the content down into place each time it opens', async () => {
+      const { trigger, content } = await renderCollapsible();
+
+      fireEvent.tap(trigger());
+      // The first update runs the effect, which waits a macrotask so the
+      // content is committed to Lynx's tree; the second lets that run.
+      await waitForUpdate();
+      await waitForUpdate();
+      expect(animate).toHaveBeenCalledWith(content(), [
+        START,
+        expect.any(String),
+        [
+          { transform: 'translateY(-8px)', opacity: 0 },
+          { transform: 'translateY(0)', opacity: 1 },
+        ],
+        // No fill: once it ends, the content's inline resting style applies.
+        expect.objectContaining({ fill: 'none' }),
+      ]);
+      const [firstKey] = startedOn(content());
+
+      fireEvent.tap(trigger());
+      await waitForUpdate();
+      fireEvent.tap(trigger());
+      await waitForUpdate();
+      await waitForUpdate();
+      // Reopening stops the previous reveal before it plays a new one on the
+      // content's new view.
+      expect(animate).toHaveBeenCalledWith(expect.anything(), [
+        CANCEL,
+        firstKey,
+      ]);
+      expect(startedOn(content())).toHaveLength(1);
     });
-    await waitForUpdate();
-    const view = triggerResult.container.querySelector('view');
-    expect(view?.getAttribute('class')).toContain('opacity-50');
-  });
-});
 
-describe('UiCollapsibleContent', () => {
-  it('runs the reveal animation on open via setTimeout', async () => {
-    const parentResult = await render(UiCollapsible);
-    const parent = parentResult.componentRef.instance as UiCollapsible;
+    it("doesn't animate content that closed before its reveal began", async () => {
+      const { componentRef, trigger, content } = await renderCollapsible();
 
-    const contentResult = await render(UiCollapsibleContent, {
-      providers: [{ provide: UiCollapsible, useValue: parent }],
+      fireEvent.tap(trigger());
+      // The effect has scheduled the reveal for the next macrotask.
+      await waitForUpdate();
+      // Close it before then, and render that straight away.
+      fireEvent.tap(trigger());
+      componentRef.changeDetectorRef.detectChanges();
+      expect(content()).toBeNull();
+
+      await waitForUpdate();
+      expect(
+        animate.mock.calls.filter(([, [operation]]) => operation === START),
+      ).toEqual([]);
     });
-    const content = contentResult.componentRef.instance as UiCollapsibleContent;
-    // JIT + jsdom doesn't populate the `#content` viewChild — patch it with a
-    // signal returning the outer view so the setTimeout body's `el` check
-    // passes and revealIn actually runs.
-    const view = contentResult.container.querySelector('view') as Element;
-    (content as unknown as { contentRef: unknown }).contentRef = signal({
-      nativeElement: view,
-    });
-
-    parent.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate(); // wait for the effect's setTimeout(_, 0) to fire
-
-    // Toggle off then on again to hit the cancel path with `#anim` already set.
-    parent.open.set(false);
-    await waitForUpdate();
-    parent.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    expect(parent.open()).toBe(true);
-  });
-
-  it('bails out inside setTimeout when contentRef is undefined', async () => {
-    const parentResult = await render(UiCollapsible);
-    const parent = parentResult.componentRef.instance as UiCollapsible;
-    await render(UiCollapsibleContent, {
-      providers: [{ provide: UiCollapsible, useValue: parent }],
-    });
-    parent.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    expect(parent.open()).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createFixture, type Fixture } from '../test-utils';
 import { hashContent, type Lockfile } from '../lockfile';
 import type * as Packages from '../utils/packages.js';
+import type * as ResolvePaths from '../utils/resolve-paths.js';
 
 const spinnerMock = { start: vi.fn(), stop: vi.fn() };
 
@@ -36,7 +37,8 @@ let fixture: Fixture;
 // Point the "copy theme files from @blotch/ui" step at the fixture's
 // __ui_source tree instead of the real dist/ui, same pattern as other command
 // tests that need controlled theme file content.
-vi.mock('../utils/resolve-paths.js', () => ({
+vi.mock('../utils/resolve-paths.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof ResolvePaths>()),
   getUiSourceDir: () => fixture.uiDir,
 }));
 
@@ -172,6 +174,37 @@ describe('initCommand', () => {
       version: 1,
       components: { card },
       theme: { 'default.css': { hash: hashContent(THEME_CSS) } },
+    });
+  });
+
+  it("copies the Tailwind plugin's test when the project has the testing library", async () => {
+    // The test renders nothing, but dolan copies tests along with the testing
+    // library, as for components: it covers tailwind-plugin.ts in the app's
+    // coverage report.
+    const PLUGIN_TEST = "import { blotchPlugin } from './tailwind-plugin';";
+    fixture = createFixture({
+      themeFiles: {
+        'tailwind-plugin.ts': TAILWIND_PLUGIN,
+        'tailwind-plugin.test.ts': PLUGIN_TEST,
+      },
+    });
+    const pluginTest = join(fixture.dir, 'src/styles/tailwind-plugin.test.ts');
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const { initCommand } = await import('./init');
+
+    await initCommand({ yes: true });
+    expect(existsSync(pluginTest)).toBe(false);
+
+    writeFileSync(
+      join(fixture.dir, 'package.json'),
+      JSON.stringify({
+        devDependencies: { '@blotch/angular-lynx-testing-library': '^22.2.3' },
+      }),
+    );
+    await initCommand({ yes: true, force: true });
+    expect(readFileSync(pluginTest, 'utf-8')).toBe(PLUGIN_TEST);
+    expect(readLockfile().theme['tailwind-plugin.test.ts']).toEqual({
+      hash: hashContent(PLUGIN_TEST),
     });
   });
 

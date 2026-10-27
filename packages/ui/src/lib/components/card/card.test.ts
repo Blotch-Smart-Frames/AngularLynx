@@ -1,8 +1,11 @@
-import { Component } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
 import {
   UiCard,
   UiCardContent,
@@ -13,7 +16,6 @@ import {
 } from './card';
 
 @Component({
-  standalone: true,
   imports: [
     UiCard,
     UiCardHeader,
@@ -24,20 +26,47 @@ import {
     LYNX_ELEMENTS,
   ],
   template: `
-    <ui-card>
-      <ui-card-header>
-        <ui-card-title>Title</ui-card-title>
-        <ui-card-description>Desc</ui-card-description>
+    <ui-card [pressable]="pressable()" class="w-full">
+      <ui-card-header class="gap-1">
+        <ui-card-title class="text-lg">Title</ui-card-title>
+        <ui-card-description class="italic">Desc</ui-card-description>
       </ui-card-header>
-      <ui-card-content><text>Body</text></ui-card-content>
-      <ui-card-footer><text>Actions</text></ui-card-footer>
+      <ui-card-content class="pt-2"><text>Body</text></ui-card-content>
+      <ui-card-footer class="justify-end"><text>Actions</text></ui-card-footer>
     </ui-card>
   `,
 })
-class CardHost {}
+class CardHost {
+  readonly pressable = signal(false);
+}
+
+/**
+ * The card's own view. Each component's host element renders as a view too,
+ * so it's found by the card's class rather than by being the first.
+ */
+const cardView = (container: Element) => container.querySelector('.bg-card')!;
+
+/**
+ * Fires a Lynx event `fireEvent` has no shortcut for, as Lynx dispatches it:
+ * `mouseleave` is the mouse's `touchcancel`.
+ */
+const fireLynxEvent = (element: Element, name: string) =>
+  fireEvent(
+    element,
+    Object.assign(new Event(`bindEvent:${name}`), {
+      eventType: 'bindEvent',
+      eventName: name,
+    }),
+  );
+
+/**
+ * The scale the card's inline style holds, if any.
+ */
+const scaleOf = (view: Element) =>
+  (view as HTMLElement).style.getPropertyValue('transform');
 
 describe('UiCard', () => {
-  it('renders each sub-component with projected content', async () => {
+  it('renders each part with its projected content', async () => {
     const { getByText } = await render(CardHost);
     expect(getByText('Title')).toBeTruthy();
     expect(getByText('Desc')).toBeTruthy();
@@ -45,66 +74,57 @@ describe('UiCard', () => {
     expect(getByText('Actions')).toBeTruthy();
   });
 
-  it('renders without a host wrapper', async () => {
-    const { container } = await render(UiCard);
-    expect(container).toBeTruthy();
+  it("merges each part's class with its own", async () => {
+    const { container, getByText } = await render(CardHost);
+    expect(cardView(container).getAttribute('class')).toContain('bg-card');
+    expect(cardView(container).getAttribute('class')).toContain('w-full');
+    expect(getByText('Title').getAttribute('class')).toContain('text-lg');
+    expect(getByText('Desc').getAttribute('class')).toContain('italic');
   });
 
-  it('press handlers are no-ops when pressable is false', async () => {
-    const { componentRef } = await render(UiCard);
-    const inst = componentRef.instance as unknown as {
-      onPressStart: () => void;
-      onPressEnd: () => void;
-      onPressCancel: () => void;
-    };
-    expect(() => inst.onPressStart()).not.toThrow();
-    expect(() => inst.onPressEnd()).not.toThrow();
-    expect(() => inst.onPressCancel()).not.toThrow();
+  it("doesn't respond to presses unless it's pressable", async () => {
+    const { container } = await render(CardHost);
+    const view = cardView(container);
+    fireEvent.touchstart(view);
+    fireEvent.mousedown(view);
+    expect(scaleOf(view)).toBe('');
+    fireEvent.touchend(view);
+    fireEvent.touchcancel(view);
+    fireEvent.mouseup(view);
+    fireLynxEvent(view, 'mouseleave');
+    expect(scaleOf(view)).toBe('');
   });
 
-  it('press handlers fire animations when pressable is true', async () => {
-    const { componentRef } = await render(UiCard);
-    const inst = componentRef.instance as UiCard;
-    setInputSignal(inst.pressable, true);
+  it('scales down while pressed by touch, and back on release', async () => {
+    const { container, componentRef } = await render(CardHost);
+    (componentRef.instance as CardHost).pressable.set(true);
     await waitForUpdate();
-    const cast = inst as unknown as {
-      onPressStart: () => void;
-      onPressEnd: () => void;
-      onPressCancel: () => void;
-    };
-    // Run twice so `#pressAnim?.cancel()` gets exercised on the second call.
-    cast.onPressStart();
-    cast.onPressStart();
-    cast.onPressEnd();
-    cast.onPressCancel();
-    // No assertion — coverage-only paths. Confirm no throw.
-    expect(true).toBe(true);
-  });
-});
+    const view = cardView(container);
 
-describe('Card sub-components', () => {
-  it('UiCardHeader renders projected content', async () => {
-    const { container } = await render(UiCardHeader);
-    expect(container.querySelector('view')).toBeTruthy();
+    fireEvent.touchstart(view);
+    expect(scaleOf(view)).toBe('scale(0.985)');
+    fireEvent.touchend(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+
+    // A scroll that takes the touch over cancels it: the card scales back.
+    fireEvent.touchstart(view);
+    fireEvent.touchcancel(view);
+    expect(scaleOf(view)).toBe('scale(1)');
   });
 
-  it('UiCardTitle renders projected content', async () => {
-    const { container } = await render(UiCardTitle);
-    expect(container.querySelector('text')).toBeTruthy();
-  });
+  it('scales down while pressed by mouse, and back on release or leave', async () => {
+    const { container, componentRef } = await render(CardHost);
+    (componentRef.instance as CardHost).pressable.set(true);
+    await waitForUpdate();
+    const view = cardView(container);
 
-  it('UiCardDescription renders projected content', async () => {
-    const { container } = await render(UiCardDescription);
-    expect(container.querySelector('text')).toBeTruthy();
-  });
+    fireEvent.mousedown(view);
+    expect(scaleOf(view)).toBe('scale(0.985)');
+    fireEvent.mouseup(view);
+    expect(scaleOf(view)).toBe('scale(1)');
 
-  it('UiCardContent renders projected content', async () => {
-    const { container } = await render(UiCardContent);
-    expect(container.querySelector('view')).toBeTruthy();
-  });
-
-  it('UiCardFooter renders projected content', async () => {
-    const { container } = await render(UiCardFooter);
-    expect(container.querySelector('view')).toBeTruthy();
+    fireEvent.mousedown(view);
+    fireLynxEvent(view, 'mouseleave');
+    expect(scaleOf(view)).toBe('scale(1)');
   });
 });

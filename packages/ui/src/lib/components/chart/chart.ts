@@ -131,6 +131,13 @@ export class UiChartTooltip {
   }
 }
 
+/**
+ * `UiChartTooltip`, for `contentChild()`. A call rather than the class itself:
+ * for a class, Angular's test build keeps an arrow function that nothing calls,
+ * which an app's coverage report would show as uncovered.
+ */
+const tooltipDirectiveType = () => UiChartTooltip;
+
 /** Default height, like the browser's 150px replaced-element default, but roomier. */
 const DEFAULT_HEIGHT = 200;
 /** A touch that moves less than this is a tap, not a drag. */
@@ -352,7 +359,7 @@ export class UiChart {
   /** The point a tap landed on, or `null` for a tap on empty space. */
   readonly pointSelect = output<ChartPoint | null>();
 
-  protected readonly tooltipTemplate = contentChild(UiChartTooltip);
+  protected readonly tooltipTemplate = contentChild(tooltipDirectiveType());
 
   readonly #theme = inject(UI_CHART_THEME);
   readonly #appearance = inject(LynxTheme);
@@ -405,6 +412,15 @@ export class UiChart {
     });
   });
 
+  /**
+   * The scene, for what the template draws inside `@if (scene())`: those
+   * bindings, and the values below derived for them, are only read while there
+   * is one, so they need no fallback for a chart without a size.
+   */
+  #drawnScene(): ChartScene<any, any, any> {
+    return this.scene()!;
+  }
+
   readonly #focusModel = computed(() => {
     const scene = this.scene();
     return scene ? createChartFocusModel(scene, this.definition()) : null;
@@ -424,24 +440,23 @@ export class UiChart {
   });
 
   /** The scene with mark states (e.g. dim the unfocused bars) resolved. */
-  readonly #presented = computed(() => {
-    const scene = this.scene();
-    return scene
-      ? resolveMarkStateScene(scene, this.#focusState(), this.#pointer()).scene
-      : null;
-  });
+  readonly #presented = computed(
+    () =>
+      resolveMarkStateScene(
+        this.#drawnScene(),
+        this.#focusState(),
+        this.#pointer(),
+      ).scene,
+  );
 
-  readonly #focusPresentation = computed(() => {
-    const scene = this.#presented();
-    return scene
-      ? resolveFocusPresentation(
-          scene,
-          this.#focusState(),
-          this.#pointer(),
-          null,
-        )
-      : { under: [], over: [] };
-  });
+  readonly #focusPresentation = computed(() =>
+    resolveFocusPresentation(
+      this.#presented(),
+      this.#focusState(),
+      this.#pointer(),
+      null,
+    ),
+  );
 
   readonly #colors = computed(() => {
     const option = this.colorScheme() ?? this.#theme.colorScheme ?? 'light';
@@ -457,12 +472,12 @@ export class UiChart {
   });
 
   readonly #svgOptions = computed(() => {
-    const scene = this.scene();
+    const scene = this.#drawnScene();
     const colors = this.#colors();
     return {
-      width: scene?.width ?? 0,
-      height: scene?.height ?? 0,
-      gradients: scene?.gradients,
+      width: scene.width,
+      height: scene.height,
+      gradients: scene.gradients,
       idPrefix: this.#idPrefix,
       resolvePaint: (paint: string) => resolveChartPaint(paint, colors),
     };
@@ -475,8 +490,7 @@ export class UiChart {
   );
   protected readonly marksSvg = computed(
     () =>
-      renderChartSvg(this.#presented()?.nodes ?? [], this.#svgOptions()) ||
-      EMPTY_SVG,
+      renderChartSvg(this.#presented().nodes, this.#svgOptions()) || EMPTY_SVG,
   );
   protected readonly overSvg = computed(
     () =>
@@ -485,18 +499,14 @@ export class UiChart {
   );
 
   protected readonly layerStyle = computed(() => {
-    const scene = this.scene();
-    return `position: absolute; left: 0px; top: 0px; width: ${scene?.width ?? 0}px; height: ${scene?.height ?? 0}px;`;
+    const scene = this.#drawnScene();
+    return `position: absolute; left: 0px; top: 0px; width: ${scene.width}px; height: ${scene.height}px;`;
   });
 
   readonly #labels = computed<readonly ChartLabel[]>(() => {
     const presentation = this.#focusPresentation();
     return collectChartLabels(
-      [
-        ...presentation.under,
-        ...(this.#presented()?.nodes ?? []),
-        ...presentation.over,
-      ],
+      [...presentation.under, ...this.#presented().nodes, ...presentation.over],
       {
         defaultColor: this.#theme.chart.foreground ?? 'var(--foreground)',
         focus: this.#focusState(),
@@ -600,18 +610,21 @@ export class UiChart {
   protected readonly zoomButtonClass =
     'flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card';
 
-  constructor() {
-    // A new scene (data, size or zoom changed) has new point objects. Keep the
-    // focus on the same datum when it's still there, as TanStack's hosts do.
-    effect(() => {
-      const model = this.#focusModel();
-      const previous = untracked(this.#focused);
-      if (!model || previous.length === 0) return;
-      const restored = model.restore(previous[0]!);
-      this.#focused.set(restored ? model.group(restored) : EMPTY_POINTS);
-      if (!restored) this.#pinned.set(false);
-    });
-  }
+  /**
+   * Keeps the focus on the same datum when a new scene (data, size or zoom
+   * changed) brings new point objects, as TanStack's hosts do. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly restoringFocus = effect(() => {
+    const model = this.#focusModel();
+    const previous = untracked(this.#focused);
+    if (!model || previous.length === 0) return;
+    const restored = model.restore(previous[0]!);
+    this.#focused.set(restored ? model.group(restored) : EMPTY_POINTS);
+    if (!restored) this.#pinned.set(false);
+  });
 
   /**
    * ---------------------------------------------------------------------------

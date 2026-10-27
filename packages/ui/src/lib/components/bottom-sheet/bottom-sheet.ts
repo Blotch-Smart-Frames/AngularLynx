@@ -126,8 +126,10 @@ export class UiBottomSheet implements OnDestroy {
       : 'position: fixed; overflow: visible; width: 100vw; height: 100vh; top: 0; left: 0; z-index: 999; display: none;',
   );
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay is hidden, never
+  // removed), and nothing reads them before the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -154,21 +156,25 @@ export class UiBottomSheet implements OnDestroy {
   // followed by a click. A moved touch produces no tap.
   #mouseDragMoved = false;
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // first run would call #doClose() and emit `closed` before the sheet
-    // has ever been opened.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Opens or closes the sheet as `open` changes. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * first run would call #doClose() and emit `closed` before the sheet
+   * has ever been opened.
+   */
+  protected readonly openOrClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   protected readonly panelClass = computed(() =>
     cn(
@@ -381,9 +387,8 @@ export class UiBottomSheet implements OnDestroy {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -401,9 +406,8 @@ export class UiBottomSheet implements OnDestroy {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -437,17 +441,14 @@ export class UiBottomSheet implements OnDestroy {
    * continuing smoothly from wherever the finger let go (px → 0px).
    */
   #snapBack(fromOffset: number): void {
-    const panel = this.panelRef()?.nativeElement;
     this.#panelAnim?.cancel();
-    if (panel) {
-      this.#panelAnim = panel.animate(
-        [
-          { transform: `translateY(${fromOffset}px)` },
-          { transform: 'translateY(0px)' },
-        ],
-        { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
-      );
-    }
+    this.#panelAnim = this.panelRef().nativeElement.animate(
+      [
+        { transform: `translateY(${fromOffset}px)` },
+        { transform: 'translateY(0px)' },
+      ],
+      { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
+    );
     // Match the inline transform to the animation's resting state so the two
     // agree once fill:'forwards' hands control back to the style binding.
     this.dragOffset.set(0);

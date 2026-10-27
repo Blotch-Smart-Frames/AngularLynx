@@ -1,10 +1,26 @@
-import { Component, signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import { Component, signal, viewChild } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { DURATION } from '../../utils/animate';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
-import { UI_ICON_COLOR } from '../icon/icon-theme';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
+import { UiIcon } from '../icon/icon';
 import {
   UiNavDrawer,
   UiNavDrawerContent,
@@ -22,325 +38,471 @@ import {
     UiNavDrawerItem,
     UiNavDrawerFooter,
     UiNavDrawerTrigger,
+    UiIcon,
     LYNX_ELEMENTS,
   ],
   template: `
-    <ui-nav-drawer [(open)]="open">
-      <ui-nav-drawer-header><text>Nav</text></ui-nav-drawer-header>
-      <ui-nav-drawer-content>
-        <ui-nav-drawer-item>Home</ui-nav-drawer-item>
-      </ui-nav-drawer-content>
-      <ui-nav-drawer-footer><text>Foot</text></ui-nav-drawer-footer>
-    </ui-nav-drawer>
-    <ui-nav-drawer-trigger>Open</ui-nav-drawer-trigger>
+    <ui-nav-drawer-trigger class="ml-2" (pressed)="open.set(true)" />
+    @if (shown()) {
+      <ui-nav-drawer
+        [(open)]="open"
+        [side]="side()"
+        class="shadow-lg"
+        (closed)="closes.set(closes() + 1)"
+      >
+        <ui-nav-drawer-header class="gap-3">
+          <text>Menu</text>
+        </ui-nav-drawer-header>
+        <ui-nav-drawer-content class="pt-2">
+          <ui-nav-drawer-item
+            [active]="active() === 'home'"
+            (pressed)="presses.set(presses() + 1)"
+          >
+            <text class="text-foreground">Home</text>
+          </ui-nav-drawer-item>
+          <!-- A group: items nested in other elements count too. -->
+          <view class="group">
+            <ui-nav-drawer-item #settings [active]="active() === 'settings'">
+              <text class="text-foreground">Settings</text>
+            </ui-nav-drawer-item>
+          </view>
+          <ui-nav-drawer-item
+            [variant]="deleteVariant()"
+            [autoClose]="false"
+            class="mt-4"
+          >
+            <ui-icon name="trash" size="sm" />
+            <text class="text-foreground">Delete account</text>
+          </ui-nav-drawer-item>
+        </ui-nav-drawer-content>
+        <ui-nav-drawer-footer class="gap-4">
+          <text>Version 1</text>
+        </ui-nav-drawer-footer>
+      </ui-nav-drawer>
+    }
+    <!-- What the trash icon looks like plain, and in the destructive color. -->
+    <ui-icon name="trash" size="sm" class="plain-trash" />
+    <ui-icon
+      name="trash"
+      size="sm"
+      color="var(--destructive)"
+      class="destructive-trash"
+    />
   `,
 })
 class NavDrawerHost {
-  open = true;
+  readonly open = signal(false);
+  readonly side = signal<'left' | 'right'>('left');
+  readonly active = signal('settings');
+  readonly deleteVariant = signal<'default' | 'destructive'>('destructive');
+  // Takes the drawer out of the tree, as an `@if` or a route change would.
+  readonly shown = signal(true);
+  readonly closes = signal(0);
+  readonly presses = signal(0);
+  readonly drawer = viewChild.required(UiNavDrawer);
+  readonly settings = viewChild.required<UiNavDrawerItem>('settings');
 }
 
+const renderDrawer = async () => {
+  const result = await render(NavDrawerHost);
+  const { container, getByText } = result;
+  const panel = () =>
+    container.querySelector('[accessibility-exclusive-focus]')!;
+  return {
+    ...result,
+    host: result.componentRef.instance as NavDrawerHost,
+    overlay: () => container.querySelector('overlay')!,
+    panel,
+    backdrop: () => panel().parentElement!,
+    scrollView: () => container.querySelector('scroll-view')!,
+    trigger: () => container.querySelector('[accessibility-element]')!,
+    // An item's own view, which holds its projected label.
+    item: (label: string) => getByText(label).parentElement!,
+    svg: (selector: string) => container.querySelector(`svg${selector}`)!,
+  };
+};
+
+/**
+ * Waits for the drawer's open or close sequence, which runs on timers, then
+ * renders what it changed.
+ */
+const after = async (ms: number) => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  await waitForUpdate();
+};
+
+/** Long enough for the open sequence. */
+const OPENED = 50;
+/** Long enough for the close animation and the hide after it. */
+const CLOSED = DURATION.normal + 50;
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
+
+/**
+ * The scale a pressable view's inline style holds, if any.
+ */
+const scaleOf = (view: Element) =>
+  (view as HTMLElement).style.getPropertyValue('transform');
+
 describe('UiNavDrawer', () => {
-  it('stops its close timers when it is destroyed while closing', async () => {
-    const warn = vi.spyOn(console, 'warn');
-    const { componentRef, unmount } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    inst.open.set(false);
+  // Watched per test: the testing library resets the main thread after each.
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+  });
+  afterEach(() => animate.mockRestore());
+
+  it('renders each part with its projected content', async () => {
+    const { getByText, trigger } = await renderDrawer();
+    expect(getByText('Menu')).toBeTruthy();
+    expect(getByText('Home')).toBeTruthy();
+    expect(getByText('Settings')).toBeTruthy();
+    expect(getByText('Version 1')).toBeTruthy();
+    expect(trigger().querySelector('svg')).toBeTruthy();
+  });
+
+  it("merges each part's class with its own, the given class winning", async () => {
+    const { container, panel, scrollView, item, trigger } =
+      await renderDrawer();
+    expect(panel().classList).toContain('bg-background');
+    expect(panel().classList).toContain('shadow-lg');
+    expect(scrollView().classList).toContain('h-full');
+    expect(scrollView().classList).toContain('pt-2');
+    expect(item('Delete account').classList).toContain('mt-4');
+    expect(trigger().classList).toContain('h-10');
+    expect(trigger().classList).toContain('ml-2');
+    // Each part's own view, not its host element, which keeps the bare class.
+    const header = container.querySelector('.border-b');
+    expect(header?.classList).toContain('gap-3');
+    expect(header?.classList).not.toContain('gap-1.5');
+    const footer = container.querySelector('.border-t');
+    expect(footer?.classList).toContain('gap-4');
+    expect(footer?.classList).not.toContain('gap-2');
+  });
+
+  it('stays hidden until it is opened', async () => {
+    const { host, overlay, panel } = await renderDrawer();
+    await after(CLOSED);
+    expect(overlay().getAttribute('style')).toContain('display: none');
+    expect(panel().getAttribute('accessibility-exclusive-focus')).toBe('false');
+    expect(animate).not.toHaveBeenCalled();
+    // Starting closed isn't closing: `closed` waits for a real close.
+    expect(host.closes()).toBe(0);
+  });
+
+  it('opens when the trigger is tapped', async () => {
+    const { host, trigger, overlay } = await renderDrawer();
+    fireEvent.tap(trigger());
+    await after(OPENED);
+    expect(host.open()).toBe(true);
+    expect(overlay().getAttribute('style')).not.toContain('display: none');
+  });
+
+  it('slides in from the left and back out', async () => {
+    const { host, overlay, backdrop, panel } = await renderDrawer();
+    expect(panel().getAttribute('style')).toContain('left: 0');
+    expect(panel().classList).toContain('border-r');
+
+    host.open.set(true);
+    await after(OPENED);
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      START,
+      expect.any(String),
+      [{ opacity: 0 }, { opacity: 1 }],
+      expect.objectContaining({ duration: DURATION.normal }),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(-100%)', opacity: 0.8 },
+        { transform: 'translateX(0%)', opacity: 1 },
+      ],
+      expect.objectContaining({ duration: DURATION.slow }),
+    ]);
+
+    host.open.set(false);
+    await after(CLOSED);
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      START,
+      expect.any(String),
+      [{ opacity: 1 }, { opacity: 0 }],
+      expect.any(Object),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(0%)', opacity: 1 },
+        { transform: 'translateX(-100%)', opacity: 0.8 },
+      ],
+      expect.any(Object),
+    ]);
+    expect(overlay().getAttribute('style')).toContain('display: none');
+    expect(host.closes()).toBe(1);
+  });
+
+  it('slides in from the right and back out', async () => {
+    const { host, panel } = await renderDrawer();
+    host.side.set('right');
     await waitForUpdate();
-    // Destroyed during the close animation, as an `@if` around the drawer
-    // would do. Its close timer (DURATION.normal + 20) used to fire anyway
-    // and emit `closed` from the destroyed output.
-    unmount();
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
+    expect(panel().getAttribute('style')).toContain('right: 0');
+    expect(panel().classList).toContain('border-l');
+
+    host.open.set(true);
+    await after(OPENED);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(100%)', opacity: 0.8 },
+        { transform: 'translateX(0%)', opacity: 1 },
+      ],
+      expect.any(Object),
+    ]);
+
+    host.open.set(false);
+    await after(CLOSED);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(0%)', opacity: 1 },
+        { transform: 'translateX(100%)', opacity: 0.8 },
+      ],
+      expect.any(Object),
+    ]);
+  });
+
+  it('cancels the previous animations when it opens again', async () => {
+    const { host, backdrop, panel } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    host.open.set(false);
+    await after(CLOSED);
+    animate.mockClear();
+
+    host.open.set(true);
+    await after(OPENED);
+    // The close animations hold their last frame (fill: forwards) until
+    // they're canceled, which would hide the panel being opened.
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      CANCEL,
+      expect.any(String),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [CANCEL, expect.any(String)]);
+  });
+
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const { host, panel } = await renderDrawer();
+    const invoke = vi.spyOn(host.drawer().panelRef().nativeElement, 'invoke');
+    host.open.set(true);
+    await after(OPENED);
+    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
+    expect(panel().getAttribute('accessibility-exclusive-focus')).toBe('true');
+  });
+
+  it('closes when the backdrop is tapped', async () => {
+    const { host, backdrop } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    fireEvent.tap(backdrop());
+    expect(host.open()).toBe(false);
+    await after(CLOSED);
+    expect(host.closes()).toBe(1);
+  });
+
+  it('stays open when the panel is tapped', async () => {
+    const { host, panel } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    // The panel catches its taps, so they don't reach the backdrop.
+    fireEvent.tap(panel(), { eventType: 'catchEvent' });
+    await waitForUpdate();
+    expect(host.open()).toBe(true);
+  });
+
+  it('stops its close sequence when it is destroyed while closing', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    const { host } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    host.open.set(false);
+    await after(0);
+    // Destroyed during the close animation. Its close timer
+    // (DURATION.normal + 20) used to fire anyway and emit `closed` from the
+    // destroyed output, which Angular warns about in dev builds.
+    host.shown.set(false);
+    await waitForUpdate();
+    await after(CLOSED);
     const warnings = warn.mock.calls.map(([message]) => String(message));
     warn.mockRestore();
     expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
       [],
     );
-  });
-
-  it('moves a screen reader into the panel and keeps it there while open', async () => {
-    const { componentRef, container } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    const panel = container.querySelector(
-      '[accessibility-exclusive-focus]',
-    ) as Element & { invoke?: unknown };
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
-    const invoke = vi.fn();
-    panel.invoke = invoke;
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: panel,
-    });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: panel,
-    });
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
-  });
-
-  const patchRefs = (inst: UiNavDrawer, view: Element) => {
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: view,
-    });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: view,
-    });
-  };
-
-  it('renders header, content items, footer, and trigger', async () => {
-    const { container } = await render(NavDrawerHost);
-    expect(container).toBeTruthy();
-  });
-
-  it('backdrop tap closes the drawer', async () => {
-    const { componentRef } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    inst.open.set(true);
-    await waitForUpdate();
-    (inst as unknown as { onBackdropTap: () => void }).onBackdropTap();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('close() sets open to false', async () => {
-    const { componentRef } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    inst.open.set(true);
-    inst.close();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('panel tap is a no-op', async () => {
-    const { componentRef } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    expect(() =>
-      (inst as unknown as { onPanelTap: () => void }).onPanelTap(),
-    ).not.toThrow();
-  });
-
-  it('open effect runs the animate-in and animate-out lifecycles (left side)', async () => {
-    const { componentRef, container } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    await waitForUpdate();
-
-    inst.open.set(false);
-    await new Promise((r) => setTimeout(r, 320));
-    await waitForUpdate();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('open effect runs correctly for the right side', async () => {
-    const { componentRef, container } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    setInputSignal(inst.side, 'right');
-    await waitForUpdate();
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    await waitForUpdate();
-    inst.open.set(false);
-    await new Promise((r) => setTimeout(r, 320));
-    expect(inst.open()).toBe(false);
-    expect(
-      Array.from(container.querySelectorAll('view')).some((el) =>
-        el.getAttribute('class')?.includes('border-l'),
-      ),
-    ).toBe(true);
-  });
-
-  it('open effect bails when backdrop/panel refs are undefined', async () => {
-    const { componentRef } = await render(UiNavDrawer);
-    const inst = componentRef.instance as UiNavDrawer;
-    const closed = vi.fn();
-    inst.closed.subscribe(closed);
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    inst.open.set(false);
-    await waitForUpdate();
-    // Wait out the close sequence, so #animateOut runs (and bails) while the
-    // component is still alive. Destroying it clears the sequence's timers.
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
-    expect(inst.open()).toBe(false);
-    expect(closed).toHaveBeenCalledOnce();
-  });
-});
-
-describe('UiNavDrawerHeader / Footer', () => {
-  it('render projected content', async () => {
-    const header = await render(UiNavDrawerHeader);
-    const footer = await render(UiNavDrawerFooter);
-    expect(header.container.querySelector('view')).toBeTruthy();
-    expect(footer.container.querySelector('view')).toBeTruthy();
+    expect(host.closes()).toBe(0);
   });
 });
 
 describe('UiNavDrawerContent', () => {
-  it('renders the scroll-view', async () => {
-    const parentResult = await render(UiNavDrawer);
-    const parent = parentResult.componentRef.instance as UiNavDrawer;
-    const contentResult = await render(UiNavDrawerContent, {
-      providers: [{ provide: UiNavDrawer, useValue: parent }],
-    });
-    expect(contentResult.container.querySelector('scroll-view')).toBeTruthy();
+  it('scrolls the active item into view when the drawer opens', async () => {
+    const { host } = await renderDrawer();
+    const scroll = vi.spyOn(
+      host.settings().containerRef()!.nativeElement,
+      'invoke',
+    );
+    host.open.set(true);
+    await after(OPENED);
+    // Instantly and centered, so the drawer slides in already scrolled.
+    expect(scroll).toHaveBeenCalledWith(
+      'scrollIntoView',
+      expect.objectContaining({ block: 'center', behavior: 'auto' }),
+    );
   });
 
-  it('onContentLayout scrolls active item into view when drawer is open', async () => {
-    const parentResult = await render(UiNavDrawer);
-    const parent = parentResult.componentRef.instance as UiNavDrawer;
-    parent.open.set(true);
-    await waitForUpdate();
-
-    const contentResult = await render(UiNavDrawerContent, {
-      providers: [{ provide: UiNavDrawer, useValue: parent }],
-    });
-    const content = contentResult.componentRef.instance as UiNavDrawerContent;
-    (content as unknown as { onContentLayout: () => void }).onContentLayout();
-    expect(parent.open()).toBe(true);
+  it('scrolls the active item into view once its content is laid out', async () => {
+    const { host, scrollView } = await renderDrawer();
+    host.open.set(true);
+    await after(OPENED);
+    const scroll = vi.spyOn(
+      host.settings().containerRef()!.nativeElement,
+      'invoke',
+    );
+    fireEvent.contentsizechanged(scrollView());
+    expect(scroll).toHaveBeenCalledWith('scrollIntoView', expect.any(Object));
   });
 
-  it('onContentLayout is a no-op when drawer is closed', async () => {
-    const parentResult = await render(UiNavDrawer);
-    const parent = parentResult.componentRef.instance as UiNavDrawer;
-    const contentResult = await render(UiNavDrawerContent, {
-      providers: [{ provide: UiNavDrawer, useValue: parent }],
-    });
-    const content = contentResult.componentRef.instance as UiNavDrawerContent;
-    expect(() =>
-      (content as unknown as { onContentLayout: () => void }).onContentLayout(),
-    ).not.toThrow();
+  it("doesn't scroll while the drawer is closed", async () => {
+    const { host, scrollView } = await renderDrawer();
+    const scroll = vi.spyOn(
+      host.settings().containerRef()!.nativeElement,
+      'invoke',
+    );
+    // Content collapsing as the overlay hides relays out too.
+    fireEvent.contentsizechanged(scrollView());
+    await after(OPENED);
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it("doesn't scroll when no item is active", async () => {
+    const { host } = await renderDrawer();
+    host.active.set('');
+    const scroll = vi.spyOn(
+      host.settings().containerRef()!.nativeElement,
+      'invoke',
+    );
+    host.open.set(true);
+    await after(OPENED);
+    expect(scroll).not.toHaveBeenCalled();
   });
 });
 
 describe('UiNavDrawerItem', () => {
-  const renderItem = async (autoClose = true) => {
-    const parentResult = await render(UiNavDrawer);
-    const parent = parentResult.componentRef.instance as UiNavDrawer;
-    parent.open.set(true);
-    await waitForUpdate();
+  it('marks the active item with the accent background', async () => {
+    const { host, item } = await renderDrawer();
+    expect(item('Settings').classList).toContain('bg-accent');
+    expect(item('Home').classList).toContain('bg-transparent');
 
-    const itemResult = await render(UiNavDrawerItem, {
-      providers: [{ provide: UiNavDrawer, useValue: parent }],
-    });
-    const item = itemResult.componentRef.instance as UiNavDrawerItem;
-    setInputSignal(item.autoClose, autoClose);
+    host.active.set('home');
     await waitForUpdate();
-    return { parent, item, itemResult };
-  };
-
-  it('onTap emits pressed and auto-closes the drawer by default', async () => {
-    const { parent, item } = await renderItem();
-    const emitted = vi.fn();
-    item.pressed.subscribe(emitted);
-    (item as unknown as { onTap: () => void }).onTap();
-    expect(emitted).toHaveBeenCalledTimes(1);
-    expect(parent.open()).toBe(false);
+    expect(item('Home').classList).toContain('bg-accent');
+    expect(item('Settings').classList).toContain('bg-transparent');
   });
 
-  it('onTap does not auto-close when autoClose is false', async () => {
-    const { parent, item } = await renderItem(false);
-    (item as unknown as { onTap: () => void }).onTap();
-    expect(parent.open()).toBe(true);
-  });
-
-  it('press handlers run cleanly', async () => {
-    const { item } = await renderItem();
-    const inst = item as unknown as {
-      onPressStart: () => void;
-      onPressEnd: () => void;
-      onPressCancel: () => void;
-    };
-    expect(() => inst.onPressStart()).not.toThrow();
-    expect(() => inst.onPressEnd()).not.toThrow();
-    expect(() => inst.onPressCancel()).not.toThrow();
-  });
-
-  it("destructive points the content's foreground at the destructive color", async () => {
-    const { item, itemResult } = await renderItem();
-    const view = () => itemResult.container.querySelector('view');
-    expect(view()?.getAttribute('class')).not.toContain('--foreground');
-    setInputSignal(item.variant, 'destructive');
+  it('emits pressed and closes the drawer when tapped', async () => {
+    const { host, item } = await renderDrawer();
+    host.open.set(true);
     await waitForUpdate();
-    expect(view()?.getAttribute('class')).toContain(
+    fireEvent.tap(item('Home'));
+    expect(host.presses()).toBe(1);
+    expect(host.open()).toBe(false);
+  });
+
+  it('leaves the drawer open when tapped without autoClose', async () => {
+    const { host, item } = await renderDrawer();
+    host.open.set(true);
+    await waitForUpdate();
+    fireEvent.tap(item('Delete account'));
+    expect(host.open()).toBe(true);
+  });
+
+  it('scales down while pressed, and back on release', async () => {
+    const { item } = await renderDrawer();
+    const view = item('Home');
+
+    fireEvent.touchstart(view);
+    expect(scaleOf(view)).toBe('scale(0.985)');
+    fireEvent.touchend(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+
+    // A scroll that takes the touch over cancels it.
+    fireEvent.touchstart(view);
+    fireEvent.touchcancel(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+
+    // The mouse, on the web.
+    fireEvent.mousedown(view);
+    expect(scaleOf(view)).toBe('scale(0.985)');
+    fireEvent.mouseup(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+    fireEvent.mousedown(view);
+    fireLynxEvent(view, 'mouseleave');
+    expect(scaleOf(view)).toBe('scale(1)');
+  });
+
+  it('turns its label and icons destructive', async () => {
+    const { host, item, svg } = await renderDrawer();
+    const icon = () => item('Delete account').querySelector('svg')!;
+    // Labels styled text-foreground follow the redirected variable.
+    expect(item('Delete account').classList).toContain(
       '[--foreground:var(--destructive)]',
     );
-  });
+    expect(icon().getAttribute('content')).toBe(
+      svg('.destructive-trash').getAttribute('content'),
+    );
 
-  it('gives projected icons the destructive color', async () => {
-    const { item, itemResult } = await renderItem();
-    const iconColor = itemResult.componentRef.injector.get(UI_ICON_COLOR);
-    expect(iconColor()).toBeUndefined();
-    setInputSignal(item.variant, 'destructive');
-    expect(iconColor()).toBe('var(--destructive)');
-  });
-
-  it('active item carries the accent background', async () => {
-    const { item, itemResult } = await renderItem();
-    setInputSignal(item.active, true);
+    host.deleteVariant.set('default');
     await waitForUpdate();
-    const view = itemResult.container.querySelector('view');
-    expect(view?.getAttribute('class')).toContain('bg-accent');
-  });
-
-  it('scrollIntoView calls invoke() on the container ref when populated', async () => {
-    const { item, itemResult } = await renderItem();
-    const invoke = vi.fn();
-    (item as unknown as { containerRef: unknown }).containerRef = signal({
-      nativeElement: { invoke },
-    });
-    item.scrollIntoView();
-    expect(invoke).toHaveBeenCalledWith('scrollIntoView', expect.any(Object));
-
-    // No-container path: containerRef is undefined so `?.` short-circuits.
-    (item as unknown as { containerRef: () => undefined }).containerRef = () =>
-      undefined;
-    expect(() => item.scrollIntoView()).not.toThrow();
-    void itemResult;
+    expect(item('Delete account').classList).not.toContain(
+      '[--foreground:var(--destructive)]',
+    );
+    expect(icon().getAttribute('content')).toBe(
+      svg('.plain-trash').getAttribute('content'),
+    );
   });
 });
 
 describe('UiNavDrawerTrigger', () => {
   it('is a labeled button for screen readers', async () => {
-    // Only the first render is checked: under JIT, the nested <ui-icon>'s
-    // static name="menu" never reaches its signal input, so its change
-    // detection throws NG0950 and later updates don't land.
-    const { container } = await render(UiNavDrawerTrigger);
-    const trigger = container.querySelector('[accessibility-element]');
-    expect(trigger?.getAttribute('accessibility-traits')).toBe('button');
-    expect(trigger?.getAttribute('accessibility-label')).toBe(
+    const { trigger } = await renderDrawer();
+    expect(trigger().getAttribute('accessibility-traits')).toBe('button');
+    expect(trigger().getAttribute('accessibility-label')).toBe(
       'Open navigation menu',
     );
   });
 
-  it('onTap emits pressed', async () => {
-    const { componentRef } = await render(UiNavDrawerTrigger);
-    const inst = componentRef.instance as unknown as UiNavDrawerTrigger & {
-      onTap: () => void;
-    };
-    const emitted = vi.fn();
-    inst.pressed.subscribe(emitted);
-    inst.onTap();
-    expect(emitted).toHaveBeenCalledTimes(1);
-  });
+  it('scales down while pressed, and back on release', async () => {
+    const { trigger } = await renderDrawer();
+    const view = trigger();
 
-  it('press handlers run cleanly', async () => {
-    const { componentRef } = await render(UiNavDrawerTrigger);
-    const inst = componentRef.instance as unknown as {
-      onPressStart: () => void;
-      onPressEnd: () => void;
-      onPressCancel: () => void;
-    };
-    expect(() => inst.onPressStart()).not.toThrow();
-    expect(() => inst.onPressEnd()).not.toThrow();
-    expect(() => inst.onPressCancel()).not.toThrow();
+    fireEvent.touchstart(view);
+    expect(scaleOf(view)).toBe('scale(0.97)');
+    fireEvent.touchend(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+
+    fireEvent.touchstart(view);
+    fireEvent.touchcancel(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+
+    fireEvent.mousedown(view);
+    expect(scaleOf(view)).toBe('scale(0.97)');
+    fireEvent.mouseup(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+    fireEvent.mousedown(view);
+    fireLynxEvent(view, 'mouseleave');
+    expect(scaleOf(view)).toBe('scale(1)');
   });
 });

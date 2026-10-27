@@ -43,26 +43,23 @@ export class UiSpinner {
 
   readonly #resolveColor = injectIconColor();
 
-  readonly spinnerRef = viewChild<ElementRef>('spinner');
+  readonly spinnerRef = viewChild.required<ElementRef>('spinner');
 
-  constructor() {
-    effect(() => {
-      const el = this.spinnerRef()?.nativeElement;
-      // el.animate() is inert in jsdom (see animate.ts's transitionTransform
-      // rationale). The continuous rotation is exercised on-device.
-      /* v8 ignore start */
-      if (!el) return;
-      el.animate(
-        [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-        {
-          duration: 1600,
-          iterations: Infinity,
-          easing: 'linear',
-        },
-      );
-      /* v8 ignore stop */
-    });
-  }
+  /**
+   * Turns the spinner for as long as it's shown. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   */
+  protected readonly rotation = effect(() => {
+    this.spinnerRef().nativeElement.animate(
+      [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+      {
+        duration: 1600,
+        iterations: Infinity,
+        easing: 'linear',
+      },
+    );
+  });
 
   // Lynx SVG elements don't inherit the CSS `color` property into their stroke
   // attributes, so we substitute the literal `currentColor` in the SVG string

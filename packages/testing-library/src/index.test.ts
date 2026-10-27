@@ -27,16 +27,38 @@ describe('index exports', () => {
     expect(typeof lib.eventMap).toBe('object');
   });
 
-  it('exports screen from @testing-library/dom', () => {
+  it('exports screen, with the Lynx queries', () => {
     expect(lib.screen).toBeDefined();
     expect(typeof lib.screen.getByText).toBe('function');
+    expect(typeof lib.screen.getByAccessibilityLabel).toBe('function');
   });
 
-  it('exports within from @testing-library/dom', () => {
+  it('exports within', () => {
     expect(typeof lib.within).toBe('function');
   });
 
-  it('exports getQueriesForElement from @testing-library/dom', () => {
+  it('exports getQueriesForElement', () => {
     expect(typeof lib.getQueriesForElement).toBe('function');
+  });
+
+  it('exports the queries object', () => {
+    expect(typeof lib.queries.getByAccessibilityLabel).toBe('function');
+  });
+
+  it.each([
+    'queryAllByAccessibilityLabel',
+    'queryByAccessibilityLabel',
+    'getAllByAccessibilityLabel',
+    'getByAccessibilityLabel',
+    'findAllByAccessibilityLabel',
+    'findByAccessibilityLabel',
+    'queryAllByRole',
+    'queryByRole',
+    'getAllByRole',
+    'getByRole',
+    'findAllByRole',
+    'findByRole',
+  ] as const)('exports %s', (name) => {
+    expect(lib[name]).toBe(lib.queries[name]);
   });
 });

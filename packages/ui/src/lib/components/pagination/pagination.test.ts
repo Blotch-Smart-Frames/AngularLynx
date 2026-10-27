@@ -1,16 +1,22 @@
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import {
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { describe, expect, it } from 'vitest';
 import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiPagination } from './pagination';
 
 /**
- * The screen reader labels of the row's buttons, in order.
+ * The screen reader labels of the row's buttons, in order. getAllByRole()
+ * finds only what a screen reader reaches as a button, so this also checks
+ * each one's traits and accessibility-element.
  */
-const labels = (container: Element): (string | null)[] =>
-  Array.from(container.querySelectorAll('[accessibility-element]')).map((el) =>
-    el.getAttribute('accessibility-label'),
-  );
+const labels = (): (string | null)[] =>
+  screen
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('accessibility-label'));
 
 describe('UiPagination', () => {
   const setup = async (totalPages: number, page = 1, siblingCount = 1) => {
@@ -104,29 +110,25 @@ describe('UiPagination', () => {
   });
 
   it('labels every button for screen readers', async () => {
-    const { container } = await setup(3, 2);
-    expect(labels(container)).toEqual([
+    await setup(3, 2);
+    expect(labels()).toEqual([
       'Previous page',
       'Page 1',
       'Page 2, current page',
       'Page 3',
       'Next page',
     ]);
-    const buttons = container.querySelectorAll('[accessibility-element]');
-    for (const button of Array.from(buttons)) {
-      expect(button.getAttribute('accessibility-traits')).toBe('button');
-    }
   });
 
   it('takes its own labels', async () => {
-    const { inst, container } = await setup(2, 1);
+    const { inst } = await setup(2, 1);
     setInputSignal(inst.previousLabel, 'Back');
     setInputSignal(inst.nextLabel, 'Forward');
     setInputSignal(inst.pageLabel, (page: number, current: boolean) =>
       current ? `Results ${page}, showing` : `Results ${page}`,
     );
     await waitForUpdate();
-    expect(labels(container)).toEqual([
+    expect(labels()).toEqual([
       'Back',
       'Results 1, showing',
       'Results 2',

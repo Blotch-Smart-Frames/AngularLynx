@@ -95,6 +95,10 @@ Every Lynx element accepts these attributes. Set them as static attributes, or b
 
 `accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`.
 
+- **iOS** reads every trait and also takes a comma-separated list without spaces, such as `'button,selected'`.
+- **Android** reads only `'button'` and `'image'`, and treats a list as `'none'`.
+- **HarmonyOS** reads only `'button'`, `'image'` and `'text'`.
+
 Write the plural: Lynx ignores `accessibility-trait`. `ng update` renames it in apps written before 22.2.3, when `LYNX_ELEMENTS` declared the singular.
 
 ## Types

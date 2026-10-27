@@ -313,12 +313,8 @@ describe('UiNavDrawerTrigger', () => {
     // Only the first render is checked: under JIT, the nested <ui-icon>'s
     // static name="menu" never reaches its signal input, so its change
     // detection throws NG0950 and later updates don't land.
-    const { container } = await render(UiNavDrawerTrigger);
-    const trigger = container.querySelector('[accessibility-element]');
-    expect(trigger?.getAttribute('accessibility-traits')).toBe('button');
-    expect(trigger?.getAttribute('accessibility-label')).toBe(
-      'Open navigation menu',
-    );
+    const { getByRole } = await render(UiNavDrawerTrigger);
+    expect(getByRole('button', { name: 'Open navigation menu' })).toBeTruthy();
   });
 
   it('onTap emits pressed', async () => {

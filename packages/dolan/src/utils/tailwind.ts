@@ -39,9 +39,23 @@ export const usesTailwind4 = (cwd: string): boolean => {
  * The theme files a project takes: the colors, and what maps them to
  * Tailwind's utilities, `tailwind.css` for Tailwind 4 (imported in the
  * stylesheet) or `tailwind-plugin.ts` for Tailwind 3 (a config plugin).
+ *
+ * With `tests`, the plugin comes with its test, for the same reason as a
+ * component's (see getComponentFiles): it covers the plugin in the app's
+ * coverage report. `tailwind.css` has no code to cover. The theme folder's
+ * other tests stay behind: they check the theme in packages/ui with Node,
+ * against the components and Tailwind's own builds, which an app's `ng test`
+ * can't do.
  */
-export const themeFilesFor = (cwd: string): string[] => [
-  'default.css',
-  'dark.css',
-  usesTailwind4(cwd) ? 'tailwind.css' : 'tailwind-plugin.ts',
-];
+export const themeFilesFor = (
+  cwd: string,
+  { tests = false }: { tests?: boolean } = {},
+): string[] =>
+  usesTailwind4(cwd)
+    ? ['default.css', 'dark.css', 'tailwind.css']
+    : [
+        'default.css',
+        'dark.css',
+        'tailwind-plugin.ts',
+        ...(tests ? ['tailwind-plugin.test.ts'] : []),
+      ];

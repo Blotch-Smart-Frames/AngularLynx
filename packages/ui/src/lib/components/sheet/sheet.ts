@@ -26,8 +26,16 @@ import { cn } from '../../utils/cn';
   standalone: true,
   imports: [LYNX_ELEMENTS, UiBottomSheet],
   encapsulation: ViewEncapsulation.None,
+  // `open` is bound both ways by hand rather than with `[(open)]`: for a
+  // two-way binding Angular also compiles a fallback that assigns the field,
+  // which never runs for a signal and so shows as an uncovered branch in an
+  // app's coverage report.
   template: `
-    <ui-bottom-sheet [(open)]="open" (closed)="closed.emit()">
+    <ui-bottom-sheet
+      [open]="open()"
+      (openChange)="open.set($event)"
+      (closed)="closed.emit()"
+    >
       <view [class]="contentClass()">
         <ng-content />
       </view>

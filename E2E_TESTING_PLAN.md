@@ -181,6 +181,7 @@ Set `CI=true` and `NG_CLI_ANALYTICS=false`. CI has no terminal attached, so `ng 
 5. **Run each schematic, and build after each one:**
    - `ng generate @blotch/angular-lynx:component hello`: creates `hello.ts` and `hello.test.ts`, and the app still builds after `<app-hello />` is added to it.
    - `ng generate @blotch/angular-lynx:add-testing`, then `npm test`: the generated component's test passes using `@blotch/angular-lynx-testing-library`.
+   - `dolan init --yes` and `dolan add` with every component (with Tailwind), then `ng test --coverage`: the tests dolan copies pass and cover every copied component and theme file 100%.
    - `ng generate @blotch/angular-lynx:add-i18n`, then build.
    - Tailwind is added by `ng add` by default. Also cover `ng add ... --tailwind=false` in the nightly matrix.
 6. **Smoke-test the dev server:** start `npm start` in the background, wait for "ready", request the bundle URL, then stop it. The dev server takes code paths that `build` doesn't (watch mode, the Angular rebuild coordinator).

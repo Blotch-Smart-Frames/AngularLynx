@@ -1,38 +1,25 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
 import { UiLabel } from './label';
 
 @Component({
-  standalone: true,
-  imports: [UiLabel, LYNX_ELEMENTS],
-  template: `<ui-label>{{ label }}</ui-label>`,
+  imports: [UiLabel],
+  template: `<ui-label [disabled]="disabled()">Name</ui-label>`,
 })
 class LabelHost {
-  label = 'Name';
+  readonly disabled = signal(false);
 }
 
 describe('UiLabel', () => {
-  it('renders projected text', async () => {
-    const { getByText } = await render(LabelHost);
-    expect(getByText('Name')).toBeTruthy();
-  });
+  it('renders its text, dimmed while disabled', async () => {
+    const { componentRef, getByText } = await render(LabelHost);
+    const label = getByText('Name');
+    expect(label.classList).toContain('font-medium');
+    expect(label.classList).not.toContain('opacity-50');
 
-  it('renders standalone with no host wrapper (default disabled=false)', async () => {
-    const { container } = await render(UiLabel);
-    const textEl = container.querySelector('text');
-    expect(textEl?.getAttribute('class')).toContain('font-medium');
-  });
-
-  it('applies opacity when disabled flips to true', async () => {
-    // JIT template bindings don't wire signal inputs — drive the input
-    // directly to exercise the `disabled() && 'opacity-50'` truthy branch.
-    const { componentRef, container } = await render(UiLabel);
-    setInputSignal((componentRef.instance as UiLabel).disabled, true);
+    (componentRef.instance as LabelHost).disabled.set(true);
     await waitForUpdate();
-    const textEl = container.querySelector('text');
-    expect(textEl?.getAttribute('class')).toContain('opacity-50');
+    expect(label.classList).toContain('opacity-50');
   });
 });

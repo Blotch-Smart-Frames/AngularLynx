@@ -1,9 +1,4 @@
-import {
-  Component,
-  Directive,
-  HostAttributeToken,
-  inject,
-} from '@angular/core';
+import { Component, signal, viewChildren } from '@angular/core';
 import { Router, RouterOutlet, type Routes } from '@angular/router';
 import {
   fireEvent,
@@ -12,7 +7,7 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, provideRouter } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { UiTabBar, UiTabBarItem } from './tab-bar';
 
 @Component({
@@ -43,30 +38,8 @@ const routes: Routes = [
   { path: 'profile', component: ProfilePage },
 ];
 
-/** The items the host rendered, in template order. */
-let items: UiTabBarItem[] = [];
-
-/**
- * Gives each item the label and icon its template sets, and collects it for
- * the tests. `ng test`, which apps run this spec with, compiles ahead of time
- * and binds them itself. Plain Vitest compiles just in time, and there a
- * template's bindings don't reach signal inputs (see set-input-signal.ts),
- * so a spec run that way would find the required inputs empty.
- */
-@Directive({ selector: 'ui-tab-bar-item' })
-class TrackItem {
-  constructor() {
-    const item = inject(UiTabBarItem);
-    const label = inject(new HostAttributeToken('label'), { optional: true });
-    const icon = inject(new HostAttributeToken('icon'), { optional: true });
-    if (label !== null) setInputSignal(item.label, label);
-    if (icon !== null) setInputSignal(item.icon, icon);
-    items.push(item);
-  }
-}
-
 @Component({
-  imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem, TrackItem],
+  imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
   template: `
     <router-outlet />
     <ui-tab-bar>
@@ -76,7 +49,13 @@ class TrackItem {
         label="Home"
         [routerLinkActiveOptions]="{ exact: true }"
       />
-      <ui-tab-bar-item route="/inbox" icon="inbox" label="Inbox" />
+      <ui-tab-bar-item
+        route="/inbox"
+        icon="inbox"
+        label="Inbox"
+        [badge]="inboxBadge()"
+        [class]="inboxClass()"
+      />
       <ui-tab-bar-item
         route="/profile"
         icon="user"
@@ -86,7 +65,11 @@ class TrackItem {
     </ui-tab-bar>
   `,
 })
-class TabBarHost {}
+class TabBarHost {
+  readonly inboxBadge = signal<string | number | null | undefined>(undefined);
+  readonly inboxClass = signal('');
+  readonly items = viewChildren(UiTabBarItem);
+}
 
 /** The theme's light colors, as icon-theme.ts resolves them for an SVG. */
 const PRIMARY = 'rgba(24, 24, 27, 1)';
@@ -104,11 +87,11 @@ const until = async (done: () => boolean): Promise<void> => {
 };
 
 const renderTabBar = async () => {
-  items = [];
   const result = await render(TabBarHost, {
     providers: [provideRouter(routes)],
   });
   const { container } = result;
+  const host = result.componentRef.instance as TabBarHost;
   const router = result.componentRef.injector.get(Router);
   /**
    * An item's host is the accessibility element, named by its label.
@@ -120,10 +103,12 @@ const renderTabBar = async () => {
   await until(() => isActive('Home'));
   return {
     ...result,
+    host,
     router,
     tab,
     isActive,
-    item: (label: string) => items.find((item) => item.label() === label)!,
+    item: (label: string) =>
+      host.items().find((item) => item.label() === label)!,
     labelOf: (label: string) =>
       Array.from(tab(label).querySelectorAll('text')).find(
         (text) => text.textContent === label,
@@ -152,7 +137,7 @@ describe('UiTabBar', () => {
     expect(bar.classList).toContain('pb-safe');
     expect(bar.classList).toContain('border-t');
 
-    setInputSignal((componentRef.instance as UiTabBar).userClass, 'border-t-0');
+    componentRef.setInput('class', 'border-t-0');
     await waitForUpdate();
     expect(bar.classList).toContain('border-t-0');
     expect(bar.classList).not.toContain('border-t');
@@ -224,27 +209,26 @@ describe('UiTabBar', () => {
   });
 
   it("shows a badge over the icon, and says it after the tab's name", async () => {
-    const { tab, item } = await renderTabBar();
-    const inbox = item('Inbox');
+    const { host, tab } = await renderTabBar();
     const badge = () =>
       Array.from(tab('Inbox').querySelectorAll('text')).find(
         (text) => text.textContent !== 'Inbox',
       );
     expect(badge()).toBeUndefined();
 
-    setInputSignal(inbox.badge, 3);
+    host.inboxBadge.set(3);
     await waitForUpdate();
     expect(badge()?.textContent).toBe('3');
     expect(badge()?.parentElement?.classList).toContain('bg-destructive');
     expect(tab('Inbox').getAttribute('accessibility-label')).toBe('Inbox, 3');
 
-    setInputSignal(inbox.badge, 'New');
+    host.inboxBadge.set('New');
     await waitForUpdate();
     expect(badge()?.textContent).toBe('New');
 
     // A count of 0 and an empty value show nothing, so a count binds as is.
     for (const empty of [0, '', null, undefined]) {
-      setInputSignal(inbox.badge, empty);
+      host.inboxBadge.set(empty);
       await waitForUpdate();
       expect(badge()).toBeUndefined();
       expect(tab('Inbox').getAttribute('accessibility-label')).toBe('Inbox');
@@ -255,17 +239,6 @@ describe('UiTabBar', () => {
     const { tab } = await renderTabBar();
     const inbox = tab('Inbox') as HTMLElement;
     const scale = () => inbox.style.getPropertyValue('transform');
-    /**
-     * Fires a Lynx event the testing library's fireEvent has no shortcut
-     * for.
-     */
-    const fire = (name: string) =>
-      inbox.dispatchEvent(
-        Object.assign(new Event(`bindEvent:${name}`), {
-          eventType: 'bindEvent',
-          eventName: name,
-        }),
-      );
 
     fireEvent.touchstart(inbox);
     expect(scale()).toBe('scale(0.97)');
@@ -283,16 +256,16 @@ describe('UiTabBar', () => {
     fireEvent.mouseup(inbox);
     expect(scale()).toBe('scale(1)');
     fireEvent.mousedown(inbox);
-    fire('mouseleave');
+    fireLynxEvent(inbox, 'mouseleave');
     expect(scale()).toBe('scale(1)');
   });
 
   it("merges an item's class into its content, the given class winning", async () => {
-    const { tab, item } = await renderTabBar();
+    const { host, tab } = await renderTabBar();
     const content = () => tab('Inbox').querySelector('view')!;
     expect(content().classList).toContain('pt-2');
 
-    setInputSignal(item('Inbox').userClass, 'pt-3');
+    host.inboxClass.set('pt-3');
     await waitForUpdate();
     expect(content().classList).toContain('pt-3');
     expect(content().classList).not.toContain('pt-2');

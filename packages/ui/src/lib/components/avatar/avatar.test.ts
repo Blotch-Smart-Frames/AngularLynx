@@ -1,69 +1,113 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { UiAvatar } from './avatar';
 
+type AvatarSize = 'default' | 'sm' | 'lg' | 'xl' | '2xl';
+
 @Component({
-  standalone: true,
-  imports: [UiAvatar, LYNX_ELEMENTS],
-  template: `<ui-avatar [src]="src" [fallback]="fallback" />`,
+  imports: [UiAvatar],
+  template: `
+    <ui-avatar [src]="src()" fallback="AB" [size]="size()" class="border" />
+  `,
 })
 class AvatarHost {
-  src = '';
-  fallback = 'AB';
+  readonly src = signal('');
+  readonly size = signal<AvatarSize>('default');
 }
 
+const renderAvatar = async (src = '') => {
+  const result = await render(AvatarHost);
+  const host = result.componentRef.instance as AvatarHost;
+  host.src.set(src);
+  await waitForUpdate();
+  return {
+    ...result,
+    host,
+    avatar: () => result.container.querySelector('.overflow-hidden')!,
+    image: () => result.container.querySelector('image'),
+    /** The pulsing placeholder over the image while it loads. */
+    skeleton: () => result.container.querySelector('.inset-0'),
+    initials: () => result.queryByText('AB'),
+  };
+};
+
 describe('UiAvatar', () => {
-  it('renders the fallback branch when src is empty', async () => {
-    const { container } = await render(AvatarHost);
-    expect(container).toBeTruthy();
+  it('shows the initials in a muted circle without an image', async () => {
+    const { avatar, image, initials } = await renderAvatar();
+    expect(image()).toBeNull();
+    expect(initials()?.parentElement?.classList).toContain('bg-muted');
+    expect(avatar().classList).toContain('border');
   });
 
-  it('renders without a src (default fallback path)', async () => {
-    const { container } = await render(UiAvatar);
-    expect(container).toBeTruthy();
-  });
-
-  it('renders the image branch when src is programmatically set', async () => {
-    // JIT template bindings are inert against input(); drive src directly so
-    // the @if(src()) branch fires and the image + skeleton render.
-    const { componentRef, container } = await render(UiAvatar);
-    setInputSignal(
-      (componentRef.instance as UiAvatar).src,
+  it('covers the image with a placeholder while it loads', async () => {
+    const { image, skeleton, initials } = await renderAvatar(
       'https://example.com/avatar.png',
     );
+    expect(image()?.getAttribute('src')).toBe('https://example.com/avatar.png');
+    expect(skeleton()).not.toBeNull();
+    expect(initials()).toBeNull();
+  });
+
+  it('reveals the image once it loads', async () => {
+    const { image, skeleton, initials } = await renderAvatar(
+      'https://example.com/avatar.png',
+    );
+    fireLynxEvent(image()!, 'load');
     await waitForUpdate();
-    expect(container.querySelector('image')).toBeTruthy();
+    expect(skeleton()).toBeNull();
+    expect(image()).not.toBeNull();
+
+    // Lynx can dispatch `load` again as the placeholder's animation stops:
+    // the avatar stays as it is.
+    fireLynxEvent(image()!, 'load');
+    await waitForUpdate();
+    expect(skeleton()).toBeNull();
+    expect(image()).not.toBeNull();
+    expect(initials()).toBeNull();
   });
 
-  it('keeps the image load / error handlers idempotent', async () => {
-    // Directly invoke the protected handlers via the instance to cover the
-    // re-entrancy latches — Lynx's on-device behavior re-dispatches the load
-    // event when the skeleton animation tears down.
-    const { componentRef } = await render(UiAvatar);
-    const inst = componentRef.instance as unknown as {
-      onImageLoad: () => void;
-      onImageError: () => void;
-      loaded: () => boolean;
-      errored: () => boolean;
-    };
-    inst.onImageLoad();
-    inst.onImageLoad(); // second call is a no-op (loaded latch)
-    expect(inst.loaded()).toBe(true);
-
-    inst.onImageError();
-    inst.onImageError(); // second call is a no-op (errored latch)
-    expect(inst.errored()).toBe(true);
+  it('falls back to the initials when the image fails to load', async () => {
+    const { image, skeleton, initials } = await renderAvatar(
+      'https://example.com/missing.png',
+    );
+    // Lynx can dispatch the event again before the avatar updates, as the
+    // placeholder's animation stops: the second one changes nothing.
+    fireLynxEvent(image()!, 'error', { detail: { errMsg: 'Not found' } });
+    fireLynxEvent(image()!, 'error', { detail: { errMsg: 'Not found' } });
+    await waitForUpdate();
+    expect(image()).toBeNull();
+    expect(skeleton()).toBeNull();
+    expect(initials()).not.toBeNull();
   });
 
-  it('applies size-specific classes for each supported size', async () => {
-    const { componentRef, container } = await render(UiAvatar);
-    for (const size of ['sm', 'default', 'lg', 'xl', '2xl'] as const) {
-      setInputSignal((componentRef.instance as UiAvatar).size, size);
-      await waitForUpdate();
-      expect(container).toBeTruthy();
-    }
+  it.each<[AvatarSize, string, string]>([
+    ['sm', 'h-8', 'text-sm'],
+    ['default', 'h-10', 'text-sm'],
+    ['lg', 'h-14', 'text-lg'],
+    ['xl', 'h-20', 'text-2xl'],
+    ['2xl', 'h-28', 'text-3xl'],
+  ])('sizes a %s avatar and its initials', async (size, height, text) => {
+    const { host, avatar, initials } = await renderAvatar();
+    host.size.set(size);
+    await waitForUpdate();
+    expect(avatar().classList).toContain(height);
+    expect(initials()?.classList).toContain(text);
+  });
+
+  it.each<[AvatarSize, string]>([
+    ['sm', 'h-8'],
+    ['default', 'h-10'],
+    ['lg', 'h-14'],
+    ['xl', 'h-20'],
+    ['2xl', 'h-28'],
+  ])('sizes the image of a %s avatar', async (size, height) => {
+    const { host, image } = await renderAvatar(
+      'https://example.com/avatar.png',
+    );
+    host.size.set(size);
+    await waitForUpdate();
+    expect(image()?.classList).toContain(height);
   });
 });

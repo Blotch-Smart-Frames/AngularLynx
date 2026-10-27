@@ -1,4 +1,4 @@
-import { cpSync } from 'node:fs';
+import { cpSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vitest/config';
 
@@ -6,6 +6,9 @@ const copyUiPlugin = (): Plugin => {
   return {
     name: 'copy-ui',
     configResolved() {
+      // Start from an empty copy: a file deleted from packages/ui would
+      // otherwise stay in dist/ui, and `dolan add` would still copy it.
+      rmSync(resolve(__dirname, 'dist/ui'), { recursive: true, force: true });
       cpSync(
         resolve(__dirname, '../ui/src/lib'),
         resolve(__dirname, 'dist/ui'),

@@ -174,6 +174,13 @@ export const minSpacing = (values: readonly number[]): number => {
 };
 
 /**
+ * `UiChart`, for `viewChild()`. A call rather than the class itself: for a
+ * class, Angular's test build keeps an arrow function that nothing calls,
+ * which an app's coverage report would show as uncovered.
+ */
+const chartType = () => UiChart;
+
+/**
  * The inputs and zoom API every cartesian preset shares. A preset extends this
  * and adds its own data and mark inputs, and renders `<ui-chart #chart>`
  * with the shared bindings.
@@ -212,7 +219,7 @@ export abstract class UiCartesianPreset<TDatum> {
   readonly zoomStep = input(1.4);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly chart = viewChild.required(UiChart);
+  protected readonly chart = viewChild.required(chartType());
 
   /**
    * The shared inputs, as the options every preset's definition takes.

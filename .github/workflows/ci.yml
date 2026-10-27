@@ -197,12 +197,14 @@ jobs:
           flags: testing-library
           disable_search: true
           fail_ci_if_error: false
+      # ui runs its specs with `ng test`, as apps do, which reports under the
+      # angular.json project's name.
       - name: Upload ui coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: packages/ui/coverage/lcov.info
+          files: packages/ui/coverage/ui/lcov.info
           flags: ui
           disable_search: true
           fail_ci_if_error: false

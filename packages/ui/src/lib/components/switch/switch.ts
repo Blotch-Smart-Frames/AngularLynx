@@ -52,7 +52,8 @@ export class UiSwitch {
 
   readonly changed = output<boolean>();
 
-  readonly thumbRef = viewChild<ElementRef>('thumb');
+  /** The thumb is always in the template, so toggle() can always slide it. */
+  readonly thumbRef = viewChild.required<ElementRef>('thumb');
   #activeAnimation?: AnimationHandle;
 
   protected readonly trackClass = computed(() =>
@@ -76,21 +77,15 @@ export class UiSwitch {
   toggle(): void {
     if (this.disabled()) return;
 
-    const thumb = this.thumbRef()?.nativeElement;
+    const thumb = this.thumbRef().nativeElement;
     const wasChecked = this.checked();
     const next = !wasChecked;
 
-    // springTranslateX calls thumb.animate() which is inert in jsdom (see
-    // animate.ts). The spring physics of the thumb is exercised on-device.
-    /* v8 ignore start */
-    if (thumb) {
-      this.#activeAnimation?.cancel();
-      const from = wasChecked ? THUMB_OFFSET_ON : THUMB_OFFSET_OFF;
-      const to = next ? THUMB_OFFSET_ON : THUMB_OFFSET_OFF;
-      // Spring translate with squish effect at midpoint
-      this.#activeAnimation = springTranslateX(thumb, from, to);
-    }
-    /* v8 ignore stop */
+    this.#activeAnimation?.cancel();
+    const from = wasChecked ? THUMB_OFFSET_ON : THUMB_OFFSET_OFF;
+    const to = next ? THUMB_OFFSET_ON : THUMB_OFFSET_OFF;
+    // Spring translate with squish effect at midpoint
+    this.#activeAnimation = springTranslateX(thumb, from, to);
 
     this.checked.set(next);
     this.changed.emit(next);

@@ -14,12 +14,12 @@ export const getComponentSourceDir = (componentName: string): string => {
 
 /**
  * The files a component ships: its `.ts` sources and, when `tests` is set,
- * its `<name>.test.ts`. Tests render with
+ * every one of its tests. Together they cover the component fully under an
+ * app's `ng test`, so the app can keep the copies in its coverage report
+ * (packages/ui runs them the same way, and checks that). Tests render with
  * `@blotch/angular-lynx-testing-library`, so the commands pass
  * `copiesTests(cwd)`: an app without the library would fail to compile them
- * in `ng test`. `*-render.test.ts` always stays behind: those render the
- * component through the library's own JIT test harness, so in an app they
- * wouldn't compile either.
+ * in `ng test`.
  */
 export const getComponentFiles = (
   componentName: string,
@@ -27,10 +27,7 @@ export const getComponentFiles = (
 ): string[] => {
   const dir = getComponentSourceDir(componentName);
   return readdirSync(dir).filter(
-    (f) =>
-      f.endsWith('.ts') &&
-      !f.endsWith('-render.test.ts') &&
-      (tests || !f.endsWith('.test.ts')),
+    (f) => f.endsWith('.ts') && (tests || !f.endsWith('.test.ts')),
   );
 };
 

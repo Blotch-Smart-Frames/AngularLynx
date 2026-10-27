@@ -15,7 +15,12 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { type AnimationHandle, DURATION, EASING } from '../../utils/animate';
 import { cn } from '../../utils/cn';
-import { type ToastData, dismissToast, toasts } from './toast-state';
+import {
+  type ToastAction,
+  type ToastData,
+  dismissToast,
+  toasts,
+} from './toast-state';
 
 // --- Drag-to-dismiss tuning (front toast only) ---
 // Minimum downward travel (px) before releasing dismisses the toast instead of
@@ -80,7 +85,7 @@ const stackTransform = (depth: number): string =>
       }
     </view>
     @if (data().action; as action) {
-      <view [class]="actionClass()" (catchtap)="onAction()">
+      <view [class]="actionClass()" (catchtap)="onAction(action)">
         <text [class]="actionTextClass()">{{ action.label }}</text>
       </view>
     }
@@ -111,28 +116,25 @@ export class UiToastItem implements OnInit, OnDestroy {
   // unspecified order, and the timer can race both.
   #isDismissing = false;
 
-  constructor() {
-    // Restack: when a toast in front is dismissed (or a new one is pushed) this
-    // toast's depth changes — animate it to its new slot. `effect` runs after
-    // inputs are set, so the first run just records the starting depth.
-    let prevDepth: number | null = null;
-    /* v8 ignore start -- JIT reads input.required<number>() before the value is
-       set, so the first effect run throws NG0950 before `depth()` is tracked
-       as a dependency; subsequent depth changes therefore don't re-fire the
-       effect. On device (AOT) inputs are wired before the constructor runs. */
-    effect(() => {
-      const d = this.depth();
-      if (prevDepth === null) {
-        prevDepth = d;
-        return;
-      }
-      if (d === prevDepth) return;
-      const from = prevDepth;
-      prevDepth = d;
-      this.#animateRestack(from, d);
-    });
-    /* v8 ignore stop */
-  }
+  // The depth the restack effect last saw, so it knows where to animate from.
+  #stackedDepth: number | null = null;
+
+  /**
+   * Restack: when a toast in front is dismissed (or a new one is pushed) this
+   * toast's depth changes — animate it to its new slot. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   */
+  protected readonly restacking = effect(() => {
+    const depth = this.depth();
+    const from = this.#stackedDepth;
+    this.#stackedDepth = depth;
+    // `effect` runs after inputs are set, so the first run just records the
+    // starting depth. After that it only re-runs once the depth changes; the
+    // second check is a safeguard.
+    if (from === null || from === depth) return;
+    this.#animateRestack(from, depth);
+  });
 
   ngOnInit(): void {
     // Start the auto-dismiss countdown when the toast mounts — i.e. when it is
@@ -230,8 +232,12 @@ export class UiToastItem implements OnInit, OnDestroy {
     this.dismiss();
   }
 
-  protected onAction(): void {
-    this.data().action?.onAction();
+  /**
+   * Runs the toast's action, then dismisses it. The action button only
+   * renders for a toast that has an action, which it passes in.
+   */
+  protected onAction(action: ToastAction): void {
+    action.onAction();
     this.dismiss();
   }
 
@@ -317,8 +323,6 @@ export class UiToastItem implements OnInit, OnDestroy {
 
   #animateIn(): void {
     const el = this.#host.nativeElement;
-    /* v8 ignore next 1 -- host is always mounted when animateIn runs in tests */
-    if (!el) return;
     this.#anim?.cancel();
     // Reveal now that the animation owns opacity (0 → 1 below); afterwards the
     // host style keeps it at 1. Without this the resting-position frame before
@@ -358,32 +362,24 @@ export class UiToastItem implements OnInit, OnDestroy {
   }
 
   /**
-   *   * Move to a new stack slot when depth changes (a toast in front popped, or a
-   *   * new one pushed this one back). This is what makes the stack slide forward
-   *   * when the front toast is dismissed.
-   * v8 ignore start -- only invoked from the restack effect, which never
-   *     re-runs in JIT (see the effect body above); exercised on device.
+   * Move to a new stack slot when depth changes (a toast in front popped, or a
+   * new one pushed this one back). This is what makes the stack slide forward
+   * when the front toast is dismissed.
    */
   #animateRestack(from: number, to: number): void {
     // A toast pushed while this one is animating out would shift its depth and
     // restack it back into view — let the exit win instead.
     if (this.#isDismissing) return;
     const el = this.#host.nativeElement;
-    if (!el) return;
     this.#anim?.cancel();
     this.#anim = el.animate(
       [{ transform: stackTransform(from) }, { transform: stackTransform(to) }],
       { duration: DURATION.normal, easing: EASING.standard, fill: 'forwards' },
     );
   }
-  /**
-   * v8 ignore stop
-   */
 
   #animateOut(): void {
     const el = this.#host.nativeElement;
-    /* v8 ignore next 1 -- host is always mounted when animateOut runs in tests */
-    if (!el) return;
     this.#anim?.cancel();
 
     const d = this.depth();
@@ -431,18 +427,13 @@ export class UiToastItem implements OnInit, OnDestroy {
   #snapBack(fromOffset: number): void {
     const el = this.#host.nativeElement;
     this.#anim?.cancel();
-    /* v8 ignore start -- host is always mounted when snapBack runs in tests;
-       the else branch is defensive against a host-not-yet-committed race */
-    if (el) {
-      this.#anim = el.animate(
-        [
-          { transform: `translateY(${fromOffset}px) scale(1)` },
-          { transform: 'translateY(0px) scale(1)' },
-        ],
-        { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
-      );
-    }
-    /* v8 ignore stop */
+    this.#anim = el.animate(
+      [
+        { transform: `translateY(${fromOffset}px) scale(1)` },
+        { transform: 'translateY(0px) scale(1)' },
+      ],
+      { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
+    );
     // Match the inline transform to the animation's resting state so the two
     // agree once fill:'forwards' hands control back to the style binding.
     this.dragOffset.set(0);

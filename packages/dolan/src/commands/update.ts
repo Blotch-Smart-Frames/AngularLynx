@@ -449,7 +449,7 @@ export const updateCommand = async (options: {
 
   // Theme files
   const themeDir = resolve(cwd, config.aliases.theme);
-  for (const file of themeFilesFor(cwd)) {
+  for (const file of themeFilesFor(cwd, { tests })) {
     const src = join(uiSrc, 'theme', file);
     if (!existsSync(src)) continue;
 

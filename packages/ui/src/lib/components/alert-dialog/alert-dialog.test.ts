@@ -1,9 +1,24 @@
-import { Component, signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import { Component, signal, viewChild } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { DURATION } from '../../utils/animate';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import {
   UiAlertDialog,
   UiAlertDialogDescription,
@@ -22,167 +37,215 @@ import {
     LYNX_ELEMENTS,
   ],
   template: `
-    <ui-alert-dialog [(open)]="open">
-      <ui-alert-dialog-header>
-        <ui-alert-dialog-title>Sure?</ui-alert-dialog-title>
-        <ui-alert-dialog-description>Cannot undo</ui-alert-dialog-description>
-      </ui-alert-dialog-header>
-      <ui-alert-dialog-footer><text>Buttons</text></ui-alert-dialog-footer>
-    </ui-alert-dialog>
+    @if (shown()) {
+      <ui-alert-dialog
+        [(open)]="open"
+        class="max-w-sm"
+        (closed)="closes.set(closes() + 1)"
+      >
+        <ui-alert-dialog-header class="gap-2">
+          <ui-alert-dialog-title class="text-xl">Sure?</ui-alert-dialog-title>
+          <ui-alert-dialog-description class="italic">
+            Cannot undo
+          </ui-alert-dialog-description>
+        </ui-alert-dialog-header>
+        <ui-alert-dialog-footer class="justify-start">
+          <text>Buttons</text>
+        </ui-alert-dialog-footer>
+      </ui-alert-dialog>
+    }
   `,
 })
 class AlertDialogHost {
-  open = true;
+  readonly open = signal(false);
+  // Takes the alert dialog out of the tree, as an `@if` or a route change
+  // would.
+  readonly shown = signal(true);
+  readonly closes = signal(0);
+  readonly dialog = viewChild.required(UiAlertDialog);
 }
 
+const renderAlertDialog = async () => {
+  const result = await render(AlertDialogHost);
+  const panel = () =>
+    result.container.querySelector('[accessibility-exclusive-focus]')!;
+  return {
+    ...result,
+    host: result.componentRef.instance as AlertDialogHost,
+    overlay: () => result.container.querySelector('overlay')!,
+    panel,
+    backdrop: () => panel().parentElement!,
+  };
+};
+
+/**
+ * Waits for the alert dialog's open or close sequence, which runs on timers, then
+ * renders what it changed.
+ */
+const after = async (ms: number) => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  await waitForUpdate();
+};
+
+/** Long enough for the open sequence, including the panel's 30ms stagger. */
+const OPENED = 50;
+/** Long enough for the close animation and the hide after it. */
+const CLOSED = DURATION.normal + 50;
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
+
 describe('UiAlertDialog', () => {
-  it('stops its close timers when it is destroyed while closing', async () => {
-    const warn = vi.spyOn(console, 'warn');
-    const { componentRef, unmount } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    inst.open.set(false);
-    await waitForUpdate();
-    // Destroyed during the close animation, as an `@if` around the alert dialog
-    // would do. Its close timer (DURATION.normal + 20) used to fire anyway
-    // and emit `closed` from the destroyed output.
-    unmount();
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
-    const warnings = warn.mock.calls.map(([message]) => String(message));
-    warn.mockRestore();
-    expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
-      [],
-    );
+  // Watched per test: the testing library resets the main thread after each.
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
   });
+  afterEach(() => animate.mockRestore());
 
-  it('moves a screen reader into the panel and keeps it there while open', async () => {
-    const { componentRef, container } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    const panel = container.querySelector(
-      '[accessibility-exclusive-focus]',
-    ) as Element & { invoke?: unknown };
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
-    const invoke = vi.fn();
-    panel.invoke = invoke;
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: panel,
-    });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: panel,
-    });
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
-  });
-
-  it('renders header, title, description, and footer', async () => {
-    const { getByText } = await render(AlertDialogHost);
+  it('renders each part with its projected content', async () => {
+    const { getByText } = await renderAlertDialog();
     expect(getByText('Sure?')).toBeTruthy();
     expect(getByText('Cannot undo')).toBeTruthy();
     expect(getByText('Buttons')).toBeTruthy();
   });
 
-  it('panel tap is a no-op (catchtap stops bubbling)', async () => {
-    const { componentRef } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    expect(() =>
-      (inst as unknown as { onPanelTap: () => void }).onPanelTap(),
-    ).not.toThrow();
+  it("merges each part's class with its own, the given class winning", async () => {
+    const { container, getByText, panel } = await renderAlertDialog();
+    expect(panel().classList).toContain('bg-background');
+    expect(panel().classList).toContain('max-w-sm');
+    expect(getByText('Sure?').classList).toContain('font-semibold');
+    expect(getByText('Sure?').classList).toContain('text-xl');
+    expect(getByText('Cannot undo').classList).toContain('text-sm');
+    expect(getByText('Cannot undo').classList).toContain('italic');
+    // Each part's own view, not its host element, which keeps the bare class.
+    const header = container.querySelector('.flex-col.gap-2');
+    expect(header?.classList).not.toContain('gap-1.5');
+    const footer = container.querySelector('.pt-4');
+    expect(footer?.classList).toContain('justify-start');
+    expect(footer?.classList).not.toContain('justify-end');
   });
 
-  it('open effect: showing then hiding runs the animate-in/out lifecycles', async () => {
-    // Monkey-patch backdrop/panel refs so #animateIn / #animateOut execute in
-    // full instead of bailing on !backdrop || !panel.
-    const { componentRef, container } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    const view = container.querySelector('view') as Element;
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: view,
-    });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: view,
-    });
-
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    await waitForUpdate();
-
-    inst.open.set(false);
-    await new Promise((r) => setTimeout(r, 320));
-    await waitForUpdate();
-    expect(inst.open()).toBe(false);
+  it('stays hidden until it is opened', async () => {
+    const { host, overlay, panel } = await renderAlertDialog();
+    await after(CLOSED);
+    expect(overlay().getAttribute('style')).toContain('display: none');
+    expect(panel().getAttribute('accessibility-exclusive-focus')).toBe('false');
+    expect(animate).not.toHaveBeenCalled();
+    // Starting closed isn't closing: `closed` waits for a real close.
+    expect(host.closes()).toBe(0);
   });
 
-  it('open effect bails when backdrop/panel refs are undefined', async () => {
-    // Covers the early-return branches in #animateIn / #animateOut.
-    const { componentRef } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    const closed = vi.fn();
-    inst.closed.subscribe(closed);
-    inst.open.set(true);
+  it('shows the overlay and animates the backdrop, then the panel, in', async () => {
+    const { host, overlay, backdrop, panel } = await renderAlertDialog();
+    host.open.set(true);
+    await after(OPENED);
+    expect(overlay().getAttribute('style')).not.toContain('display: none');
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      START,
+      expect.any(String),
+      [{ opacity: 0 }, { opacity: 1 }],
+      expect.objectContaining({ duration: DURATION.normal }),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'scale(0.9) translateY(10px)', opacity: 0 },
+        { transform: 'scale(1) translateY(0px)', opacity: 1 },
+      ],
+      expect.objectContaining({ duration: DURATION.slow }),
+    ]);
+  });
+
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const { host, panel } = await renderAlertDialog();
+    const invoke = vi.spyOn(host.dialog().panelRef().nativeElement, 'invoke');
+    host.open.set(true);
+    await after(OPENED);
+    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
+    expect(panel().getAttribute('accessibility-exclusive-focus')).toBe('true');
+  });
+
+  it('animates out, then hides and emits closed', async () => {
+    const { host, overlay, backdrop, panel } = await renderAlertDialog();
+    host.open.set(true);
+    await after(OPENED);
+    animate.mockClear();
+
+    host.open.set(false);
+    await after(CLOSED);
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      START,
+      expect.any(String),
+      [{ opacity: 1 }, { opacity: 0 }],
+      expect.any(Object),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'scale(1) translateY(0px)', opacity: 1 },
+        { transform: 'scale(0.95) translateY(10px)', opacity: 0 },
+      ],
+      expect.any(Object),
+    ]);
+    expect(overlay().getAttribute('style')).toContain('display: none');
+    expect(panel().getAttribute('accessibility-exclusive-focus')).toBe('false');
+    expect(host.closes()).toBe(1);
+  });
+
+  it('cancels the previous animations when it opens again', async () => {
+    const { host, backdrop, panel } = await renderAlertDialog();
+    host.open.set(true);
+    await after(OPENED);
+    host.open.set(false);
+    await after(CLOSED);
+    animate.mockClear();
+
+    host.open.set(true);
+    await after(OPENED);
+    // The close animations hold their last frame (fill: forwards) until
+    // they're canceled, which would hide the panel being opened.
+    expect(animate).toHaveBeenCalledWith(backdrop(), [
+      CANCEL,
+      expect.any(String),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel(), [CANCEL, expect.any(String)]);
+  });
+
+  it('stays open when the backdrop or the panel is tapped', async () => {
+    const { host, backdrop, panel } = await renderAlertDialog();
+    host.open.set(true);
+    await after(OPENED);
+    // Unlike a dialog, an alert dialog waits for an answer from its actions.
+    fireEvent.tap(backdrop());
+    // The panel catches its taps, so they don't reach the backdrop either.
+    fireEvent.tap(panel(), { eventType: 'catchEvent' });
     await waitForUpdate();
+    expect(host.open()).toBe(true);
+  });
+
+  it('stops its close sequence when it is destroyed while closing', async () => {
+    const warn = vi.spyOn(console, 'warn');
+    const { host } = await renderAlertDialog();
+    host.open.set(true);
+    await after(OPENED);
+    host.open.set(false);
+    await after(0);
+    // Destroyed during the close animation. Its close timer
+    // (DURATION.normal + 20) used to fire anyway and emit `closed` from the
+    // destroyed output, which Angular warns about in dev builds.
+    host.shown.set(false);
     await waitForUpdate();
-    inst.open.set(false);
-    await waitForUpdate();
-    // Wait out the close sequence, so #animateOut runs (and bails) while the
-    // component is still alive. Destroying it clears the sequence's timers.
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
-    expect(inst.open()).toBe(false);
-    expect(closed).toHaveBeenCalledOnce();
-  });
-
-  it('overlayStyle switches between visible and hidden variants', async () => {
-    const { componentRef, container } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    let overlay = container.querySelector('overlay');
-    expect(overlay?.getAttribute('style')).toContain('display: none');
-
-    const view = container.querySelector('view') as Element;
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: view,
-    });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: view,
-    });
-    inst.open.set(true);
-    for (let i = 0; i < 10; i++) await waitForUpdate();
-    overlay = container.querySelector('overlay');
-    expect(overlay?.getAttribute('style')).not.toContain('display: none');
-  });
-
-  it('accepts a user class on the panel', async () => {
-    const { componentRef, container } = await render(UiAlertDialog);
-    const inst = componentRef.instance as UiAlertDialog;
-    setInputSignal(inst.userClass, 'custom-panel');
-    await waitForUpdate();
-    const views = Array.from(container.querySelectorAll('view'));
-    expect(
-      views.some((el) => el.getAttribute('class')?.includes('custom-panel')),
-    ).toBe(true);
-  });
-});
-
-describe('Alert dialog sub-components', () => {
-  it('UiAlertDialogHeader renders projected content', async () => {
-    const { container } = await render(UiAlertDialogHeader);
-    expect(container.querySelector('view')).toBeTruthy();
-  });
-
-  it('UiAlertDialogTitle renders projected content', async () => {
-    const { container } = await render(UiAlertDialogTitle);
-    expect(container.querySelector('text')).toBeTruthy();
-  });
-
-  it('UiAlertDialogDescription renders projected content', async () => {
-    const { container } = await render(UiAlertDialogDescription);
-    expect(container.querySelector('text')).toBeTruthy();
-  });
-
-  it('UiAlertDialogFooter renders projected content', async () => {
-    const { container } = await render(UiAlertDialogFooter);
-    expect(container.querySelector('view')).toBeTruthy();
+    await after(CLOSED);
+    const warnings = warn.mock.calls.map(([message]) => String(message));
+    warn.mockRestore();
+    expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
+      [],
+    );
+    expect(host.closes()).toBe(0);
   });
 });

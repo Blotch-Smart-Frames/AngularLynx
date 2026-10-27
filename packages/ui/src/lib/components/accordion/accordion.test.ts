@@ -1,8 +1,23 @@
-import { Component, signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import { Component, signal, viewChild } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import {
   UiAccordion,
   UiAccordionContent,
@@ -11,7 +26,6 @@ import {
 } from './accordion';
 
 @Component({
-  standalone: true,
   imports: [
     UiAccordion,
     UiAccordionItem,
@@ -20,175 +34,175 @@ import {
     LYNX_ELEMENTS,
   ],
   template: `
-    <ui-accordion [type]="type">
-      <ui-accordion-item value="a">
-        <ui-accordion-trigger>A</ui-accordion-trigger>
-        <ui-accordion-content><text>Alpha</text></ui-accordion-content>
+    <ui-accordion [type]="type()" class="w-80">
+      <ui-accordion-item value="a" class="px-1">
+        <ui-accordion-trigger class="gap-2">Alpha</ui-accordion-trigger>
+        <ui-accordion-content class="pt-1">
+          <text>Alpha body</text>
+        </ui-accordion-content>
       </ui-accordion-item>
       <ui-accordion-item value="b">
-        <ui-accordion-trigger>B</ui-accordion-trigger>
-        <ui-accordion-content><text>Beta</text></ui-accordion-content>
+        <ui-accordion-trigger>Beta</ui-accordion-trigger>
+        <ui-accordion-content>
+          <text>Beta body</text>
+        </ui-accordion-content>
       </ui-accordion-item>
     </ui-accordion>
   `,
 })
 class AccordionHost {
-  type: 'single' | 'multiple' = 'single';
+  readonly type = signal<'single' | 'multiple'>('single');
+  readonly accordion = viewChild.required(UiAccordion);
 }
 
-describe('UiAccordion', () => {
-  it('renders each item trigger', async () => {
-    const { getByText } = await render(AccordionHost);
-    expect(getByText('A')).toBeTruthy();
-    expect(getByText('B')).toBeTruthy();
-  });
-
-  it('toggle() in single mode replaces the expanded value', async () => {
-    const { componentRef } = await render(UiAccordion);
-    const acc = componentRef.instance as UiAccordion;
-    acc.toggle('a');
-    expect(acc.isExpanded('a')).toBe(true);
-    acc.toggle('b');
-    expect(acc.isExpanded('a')).toBe(false);
-    expect(acc.isExpanded('b')).toBe(true);
-    acc.toggle('b');
-    expect(acc.isExpanded('b')).toBe(false);
-  });
-
-  it('renders type="multiple" host without throwing', async () => {
-    @Component({
-      standalone: true,
-      imports: [UiAccordion, LYNX_ELEMENTS],
-      template: `<ui-accordion type="multiple" />`,
-    })
-    class MultiHost {}
-    const { container } = await render(MultiHost);
-    expect(container).toBeTruthy();
-  });
-
-  it('type="multiple" retains previously expanded items', async () => {
-    // Directly exercises the multiple-mode branch of `toggle()`. Without this,
-    // the `.clear()`-skip branch stays uncovered.
-    const { componentRef } = await render(UiAccordion);
-    const acc = componentRef.instance as UiAccordion;
-    setInputSignal(acc.type, 'multiple');
-    await waitForUpdate();
-    acc.toggle('a');
-    acc.toggle('b');
-    expect(acc.isExpanded('a')).toBe(true);
-    expect(acc.isExpanded('b')).toBe(true);
-  });
-});
-
-describe('UiAccordionItem / Trigger / Content', () => {
+const renderAccordion = async () => {
+  const result = await render(AccordionHost);
   /**
-   * Render UiAccordionItem directly with a UiAccordion instance provided via
-   * DI. Using `render(UiAccordionItem, { providers: [...] })` alone would fail
-   * because the required `value` input has no template binding and the
-   * component's initial computed reads it — so we set the input before any
-   * effect fires. The parent instance comes from rendering UiAccordion (which
-   * sets up the internal injection context inputs) and stashing its instance.
+   * An item's trigger: its own view, which holds the tap listener, around
+   * its label.
    */
-  const renderItemWithParent = async () => {
-    // Render the accordion first so we have an instance with initialized signals.
-    const parentResult = await render(UiAccordion);
-    const parent = parentResult.componentRef.instance as UiAccordion;
-
-    // Now render the child with the parent as a DI value. This unmounts the
-    // previous render but the parent instance object (a plain JS class) still
-    // holds its signals.
-    const childResult = await render(UiAccordionItem, {
-      providers: [{ provide: UiAccordion, useValue: parent }],
-    });
-    const item = childResult.componentRef.instance as UiAccordionItem;
-    setInputSignal(item.itemValue, 'a');
-    await waitForUpdate();
-    return { parent, item, result: childResult };
+  const trigger = (label: string) => result.getByText(label).parentElement!;
+  return {
+    ...result,
+    host: result.componentRef.instance as AccordionHost,
+    trigger,
+    tap: async (label: string) => {
+      fireEvent.tap(trigger(label));
+      await waitForUpdate();
+    },
+    /** The chevron beside an item's label. */
+    chevron: (label: string) => result.getByText(label).nextElementSibling!,
+    /** An item's content view, which is only mounted while it's expanded. */
+    content: (text: string) => result.queryByText(text)?.parentElement ?? null,
   };
+};
 
-  it('item.toggle() delegates to the parent accordion', async () => {
-    const { parent, item } = await renderItemWithParent();
-    item.toggle();
-    expect(parent.isExpanded('a')).toBe(true);
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
+
+describe('UiAccordion', () => {
+  it("merges each part's class with its own", async () => {
+    const { container, trigger, tap, content } = await renderAccordion();
+    // Each host element carries the given class too, so look for the view
+    // that has both its own and the given class.
+    expect(container.querySelector('.flex-col.w-80')).not.toBeNull();
+    expect(container.querySelector('.border-b.px-1')).not.toBeNull();
+    expect(trigger('Alpha').classList).toContain('justify-between');
+    expect(trigger('Alpha').classList).toContain('gap-2');
+
+    await tap('Alpha');
+    expect(content('Alpha body')!.classList).toContain('pb-4');
+    expect(content('Alpha body')!.classList).toContain('pt-1');
   });
 
-  it('trigger onTap toggles the parent item', async () => {
-    // The trigger injects UiAccordionItem (not UiAccordion) — same pattern.
-    const parentResult = await render(UiAccordion);
-    const parent = parentResult.componentRef.instance as UiAccordion;
+  it('expands an item when its trigger is tapped, and collapses it on a second tap', async () => {
+    const { tap, chevron, content } = await renderAccordion();
+    // Collapsed, the content isn't mounted at all.
+    expect(content('Alpha body')).toBeNull();
+    expect(chevron('Alpha').textContent).toBe('▶');
 
-    const itemResult = await render(UiAccordionItem, {
-      providers: [{ provide: UiAccordion, useValue: parent }],
-    });
-    const item = itemResult.componentRef.instance as UiAccordionItem;
-    setInputSignal(item.itemValue, 'a');
+    await tap('Alpha');
+    expect(content('Alpha body')).not.toBeNull();
+    expect(chevron('Alpha').textContent).toBe('▼');
+
+    await tap('Alpha');
+    expect(content('Alpha body')).toBeNull();
+    expect(chevron('Alpha').textContent).toBe('▶');
+  });
+
+  it('keeps one item expanded at a time by default', async () => {
+    const { tap, content } = await renderAccordion();
+    await tap('Alpha');
+    await tap('Beta');
+    expect(content('Alpha body')).toBeNull();
+    expect(content('Beta body')).not.toBeNull();
+  });
+
+  it('keeps every expanded item open when its type is multiple', async () => {
+    const { host, tap, content } = await renderAccordion();
+    host.type.set('multiple');
     await waitForUpdate();
 
-    const triggerResult = await render(UiAccordionTrigger, {
-      providers: [{ provide: UiAccordionItem, useValue: item }],
-    });
-    const trigger = triggerResult.componentRef.instance as UiAccordionTrigger;
-    (trigger as unknown as { onTap: () => void }).onTap();
-    expect(parent.isExpanded('a')).toBe(true);
+    await tap('Alpha');
+    await tap('Beta');
+    expect(content('Alpha body')).not.toBeNull();
+    expect(content('Beta body')).not.toBeNull();
   });
 
-  describe('content effect', () => {
-    it('runs the reveal animation after expansion via setTimeout', async () => {
-      const parentResult = await render(UiAccordion);
-      const parent = parentResult.componentRef.instance as UiAccordion;
+  it('expands an item from code, and says which items are expanded', async () => {
+    const { host, content } = await renderAccordion();
+    host.accordion().toggle('b');
+    await waitForUpdate();
+    expect(content('Beta body')).not.toBeNull();
+    expect(host.accordion().isExpanded('b')).toBe(true);
+    expect(host.accordion().isExpanded('a')).toBe(false);
+  });
 
-      const itemResult = await render(UiAccordionItem, {
-        providers: [{ provide: UiAccordion, useValue: parent }],
-      });
-      const item = itemResult.componentRef.instance as UiAccordionItem;
-      setInputSignal(item.itemValue, 'a');
-      await waitForUpdate();
+  describe('reveal animation', () => {
+    // Watched per test: the testing library resets the main thread after each.
+    let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+    beforeEach(() => {
+      animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+    });
+    afterEach(() => animate.mockRestore());
 
-      const contentResult = await render(UiAccordionContent, {
-        providers: [{ provide: UiAccordionItem, useValue: item }],
-      });
-      const content = contentResult.componentRef.instance as UiAccordionContent;
-      // JIT + jsdom doesn't populate the `#content` viewChild — patch it with a
-      // signal returning the outer view so the setTimeout body's `el` check
-      // passes and revealIn/cancel actually run.
-      const view = contentResult.container.querySelector('view') as Element;
-      (content as unknown as { contentRef: unknown }).contentRef = signal({
-        nativeElement: view,
-      });
+    /**
+     * The keys of the animations started on an element.
+     */
+    const startedOn = (element: Element | null) =>
+      animate.mock.calls
+        .filter(
+          ([target, [operation]]) => target === element && operation === START,
+        )
+        .map(([, [, key]]) => key);
 
-      parent.toggle('a');
-      await waitForUpdate();
-      await waitForUpdate(); // wait for the effect's setTimeout(_, 0) to fire
+    it('slides the content down into place each time it expands', async () => {
+      const { tap, content } = await renderAccordion();
 
-      // Cancellation path: toggle off then on to re-schedule with `#anim` set.
-      parent.toggle('a');
+      await tap('Alpha');
+      // The effect waits a macrotask so the content is committed to Lynx's
+      // tree before animating it; this update lets that run.
       await waitForUpdate();
-      parent.toggle('a');
+      expect(animate).toHaveBeenCalledWith(content('Alpha body'), [
+        START,
+        expect.any(String),
+        [
+          { transform: 'translateY(-8px)', opacity: 0 },
+          { transform: 'translateY(0)', opacity: 1 },
+        ],
+        // No fill: once it ends, the content's inline resting style applies.
+        expect.objectContaining({ fill: 'none' }),
+      ]);
+      const [firstKey] = startedOn(content('Alpha body'));
+
+      await tap('Alpha');
+      await tap('Alpha');
       await waitForUpdate();
-      await waitForUpdate();
-      expect(parent.isExpanded('a')).toBe(true);
+      // Expanding again stops the previous reveal before it plays a new one
+      // on the content's new view.
+      expect(animate).toHaveBeenCalledWith(expect.anything(), [
+        CANCEL,
+        firstKey,
+      ]);
+      expect(startedOn(content('Alpha body'))).toHaveLength(1);
     });
 
-    it('returns early inside setTimeout when contentRef is undefined', async () => {
-      // Covers the `if (!el) return;` true branch — no monkey-patch here, so
-      // the viewChild is unresolved and the setTimeout body bails out.
-      const parentResult = await render(UiAccordion);
-      const parent = parentResult.componentRef.instance as UiAccordion;
+    it("doesn't animate content that collapsed before its reveal began", async () => {
+      const { componentRef, trigger, tap, content } = await renderAccordion();
 
-      const itemResult = await render(UiAccordionItem, {
-        providers: [{ provide: UiAccordion, useValue: parent }],
-      });
-      const item = itemResult.componentRef.instance as UiAccordionItem;
-      setInputSignal(item.itemValue, 'a');
-      await waitForUpdate();
+      // The effect has scheduled the reveal for the next macrotask.
+      await tap('Alpha');
+      // Collapse it before then, and render that straight away.
+      fireEvent.tap(trigger('Alpha'));
+      componentRef.changeDetectorRef.detectChanges();
+      expect(content('Alpha body')).toBeNull();
 
-      await render(UiAccordionContent, {
-        providers: [{ provide: UiAccordionItem, useValue: item }],
-      });
-      parent.toggle('a');
       await waitForUpdate();
-      await waitForUpdate();
-      expect(parent.isExpanded('a')).toBe(true);
+      expect(
+        animate.mock.calls.filter(([, [operation]]) => operation === START),
+      ).toEqual([]);
     });
   });
 });

@@ -1,5 +1,30 @@
+import {
+  Component,
+  Injector,
+  type Type,
+  computed,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+import { defineChart, dot } from '@tanstack/charts/universal';
 import { describe, expect, it } from 'vitest';
-import { linearAxis, minSpacing, presetAxes } from './chart-presets';
+import { UiChart, tooltip } from './chart';
+import {
+  type CartesianPresetOptions,
+  PRESET_CHART_BINDINGS,
+  UiCartesianPreset,
+  type XYDatum,
+  linearAxis,
+  minSpacing,
+  presetAxes,
+} from './chart-presets';
 
 /**
  * The configured domain of an axis config's scale instance.
@@ -135,5 +160,176 @@ describe('presetAxes', () => {
     expect(axes.y.grid).toBe(true);
     expect(domainOf(axes.x)).toEqual([0, 10]);
     expect(domainOf(axes.y)).toEqual([-10, 10]);
+  });
+});
+
+/**
+ * The smallest preset: a dot per datum on the shared axes, built the way the
+ * library's presets (`<ui-line-chart>`, …) build theirs.
+ */
+@Component({
+  selector: 'test-dot-chart',
+  imports: [UiChart],
+  template: `
+    <ui-chart
+      #chart
+      [definition]="definition()"
+      ${PRESET_CHART_BINDINGS}
+      (pointSelect)="pointTap.emit(datumOf($event))"
+    />
+  `,
+})
+class DotChart extends UiCartesianPreset<XYDatum> {
+  readonly data = input.required<readonly XYDatum[]>();
+  /** The tapped datum, or `null` for a tap on empty space. */
+  readonly pointTap = output<XYDatum | null>();
+
+  protected readonly definition = computed(() => {
+    const options = this.commonOptions();
+    const data = this.data();
+    return defineChart({
+      marks: [dot(data, { x: 'x', y: 'y' })],
+      scales: presetAxes(options, {
+        x: data.map((d) => d.x),
+        y: data.map((d) => d.y),
+      }),
+      tooltip: options.tooltip === false ? false : tooltip,
+    });
+  });
+}
+
+@Component({
+  imports: [DotChart],
+  template: `
+    <test-dot-chart
+      [data]="data"
+      [width]="300"
+      [height]="160"
+      label="Sales"
+      class="mt-2"
+      [xAxisLabel]="xAxisLabel()"
+      yAxisLabel="Units"
+      [zoomable]="true"
+      zoomAxes="x"
+      (pointTap)="tapped.push($event)"
+    />
+  `,
+})
+class PresetHost {
+  readonly data: readonly XYDatum[] = [
+    { x: 0, y: 100 },
+    { x: 5, y: 300 },
+    { x: 10, y: 500 },
+  ];
+  readonly xAxisLabel = signal('Day');
+  /** Every `pointTap`, in order. */
+  readonly tapped: (XYDatum | null)[] = [];
+  readonly preset = viewChild.required(DotChart);
+}
+
+/**
+ * The chart's own view, which takes every touch.
+ */
+const chartRoot = (container: Element) =>
+  container.querySelector('[accessibility-label]')!;
+
+/**
+ * Where the chart drew each dot, read from its marks layer.
+ */
+const dotsDrawn = (container: Element) =>
+  [
+    ...container
+      .querySelectorAll('svg')[1]!
+      .getAttribute('content')!
+      .matchAll(/<circle cx="([\d.-]+)" cy="([\d.-]+)"/g),
+  ].map(([, x, y]) => ({ x: Number(x), y: Number(y) }));
+
+/**
+ * Touches a spot and lifts the finger right there: a tap.
+ */
+const tap = async (root: Element, at: { x: number; y: number }) => {
+  fireEvent.touchstart(root, { touches: [at] });
+  fireEvent.touchend(root, { touches: [at] });
+  await waitForUpdate();
+};
+
+describe('UiCartesianPreset', () => {
+  it('starts every preset from the same defaults', () => {
+    // Angular builds a preset through the base's factory, with the preset's
+    // own type, so no preset runs that factory's default: build the base alone.
+    const base = Injector.create({
+      providers: [
+        {
+          provide: UiCartesianPreset,
+          useClass: UiCartesianPreset as unknown as Type<
+            UiCartesianPreset<XYDatum>
+          >,
+        },
+      ],
+    }).get(UiCartesianPreset);
+    const options = (
+      base as unknown as { commonOptions(): CartesianPresetOptions }
+    ).commonOptions();
+    expect(options).toEqual({
+      tickCount: 5,
+      showGrid: true,
+      showXGrid: false,
+      xAxisLabel: '',
+      yAxisLabel: '',
+      padding: {},
+      xMin: undefined,
+      xMax: undefined,
+      yMin: undefined,
+      yMax: undefined,
+      xTickFormat: undefined,
+      yTickFormat: undefined,
+      tooltip: true,
+    });
+    expect(base.height()).toBe(200);
+    expect(base.label()).toBe('Chart');
+    expect(base.zoomable()).toBe(false);
+    expect(base.zoomAxes()).toBe('xy');
+  });
+
+  it('passes the shared inputs through to its chart', async () => {
+    const { container, componentRef, getByText } = await render(PresetHost);
+    const root = chartRoot(container);
+    expect(root.getAttribute('accessibility-label')).toBe('Sales');
+    expect(root.getAttribute('class')).toContain('mt-2');
+    expect(root.getAttribute('style')).toContain('height: 160px');
+    expect(getByText('Units')).toBeTruthy();
+    expect(getByText('Day')).toBeTruthy();
+
+    (componentRef.instance as PresetHost).xAxisLabel.set('Week');
+    await waitForUpdate();
+    expect(getByText('Week')).toBeTruthy();
+  });
+
+  it('hands a tap over as the datum, or null off the points', async () => {
+    const { container, componentRef } = await render(PresetHost);
+    const host = componentRef.instance as PresetHost;
+    const root = chartRoot(container);
+    const middle = dotsDrawn(container)[1]!;
+    await tap(root, { x: middle.x + 1, y: middle.y + 1 });
+    await tap(root, { x: -100, y: -100 });
+    expect(host.tapped).toEqual([host.data[1], null]);
+  });
+
+  it('zooms its chart in and out, and resets it', async () => {
+    const { componentRef, queryByText } = await render(PresetHost);
+    const preset = (componentRef.instance as PresetHost).preset();
+    // The x axis spans 0–10; zoomed in around the middle, its last tick goes.
+    expect(queryByText('10')).not.toBeNull();
+    preset.zoomIn();
+    await waitForUpdate();
+    expect(queryByText('10')).toBeNull();
+    preset.zoomOut();
+    await waitForUpdate();
+    expect(queryByText('10')).not.toBeNull();
+
+    preset.zoomIn();
+    preset.resetZoom();
+    await waitForUpdate();
+    expect(queryByText('10')).not.toBeNull();
   });
 });

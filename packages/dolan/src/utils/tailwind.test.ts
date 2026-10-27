@@ -1,7 +1,8 @@
 import { describe, expect, it, afterEach } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, type Fixture } from '../test-utils';
+import { getUiSourceDir } from './resolve-paths';
 import { themeFilesFor, usesTailwind4 } from './tailwind';
 
 let fixture: Fixture;
@@ -62,5 +63,34 @@ describe('themeFilesFor', () => {
       'dark.css',
       'tailwind-plugin.ts',
     ]);
+  });
+
+  it("adds the Tailwind plugin's test with the components' tests", () => {
+    // It covers the plugin in the app's coverage report. Tailwind 4's
+    // tailwind.css has no code to cover.
+    expect(
+      themeFilesFor(project({ tailwindcss: '^3.4.19' }), { tests: true }),
+    ).toEqual([
+      'default.css',
+      'dark.css',
+      'tailwind-plugin.ts',
+      'tailwind-plugin.test.ts',
+    ]);
+    expect(
+      themeFilesFor(project({ tailwindcss: '^4.3.3' }), { tests: true }),
+    ).toEqual(['default.css', 'dark.css', 'tailwind.css']);
+  });
+
+  it('lists only files the theme folder has', () => {
+    for (const version of ['^3.4.19', '^4.3.3']) {
+      const files = themeFilesFor(project({ tailwindcss: version }), {
+        tests: true,
+      });
+      for (const file of files) {
+        expect(existsSync(join(getUiSourceDir(), 'theme', file)), file).toBe(
+          true,
+        );
+      }
+    }
   });
 });

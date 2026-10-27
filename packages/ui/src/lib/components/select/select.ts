@@ -3,7 +3,6 @@ import {
   ViewEncapsulation,
   computed,
   contentChildren,
-  forwardRef,
   inject,
   input,
   model,
@@ -18,17 +17,28 @@ import { cn } from '../../utils/cn';
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
 
+/**
+ * `UiSelectItem`, for `contentChildren()`. A call rather than the class
+ * itself: for a class, Angular's test build keeps an arrow function that
+ * nothing calls, which an app's coverage report would show as uncovered.
+ */
+const selectItem = () => UiSelectItem;
+
 @Component({
   selector: 'ui-select',
   standalone: true,
   imports: [LYNX_ELEMENTS, UiBottomSheet],
   encapsulation: ViewEncapsulation.None,
+  // `sheetOpen` is bound both ways by hand rather than with `[(open)]`: for a
+  // two-way binding Angular also compiles a fallback that assigns the field,
+  // which never runs for a signal and so shows as an uncovered branch in an
+  // app's coverage report.
   template: `
     <view [class]="triggerClass()" (bindtap)="toggle()">
       <text [class]="valueTextClass()">{{ displayText() }}</text>
       <svg [attr.content]="chevronSvg" style="width: 16px; height: 16px;" />
     </view>
-    <ui-bottom-sheet [(open)]="sheetOpen">
+    <ui-bottom-sheet [open]="sheetOpen()" (openChange)="sheetOpen.set($event)">
       <scroll-view scroll-orientation="vertical" style="max-height: 300px;">
         <view class="flex-col pb-4 flex">
           <ng-content />
@@ -47,21 +57,17 @@ export class UiSelect {
 
   protected readonly chevronSvg = CHEVRON_SVG;
 
-  // Drives the shared bottom-sheet's `open` model via `[(open)]`. All the
-  // overlay/animation/drag behavior lives in ui-bottom-sheet; select only
-  // decides when the sheet is open.
+  // Drives the shared bottom-sheet's `open` model. All the overlay/animation/
+  // drag behavior lives in ui-bottom-sheet; select only decides when the sheet
+  // is open.
   protected readonly sheetOpen = signal(false);
 
-  // `forwardRef` is required because UiSelectItem is defined later in this
-  // file — without it, the reference would be `undefined` at class-definition
-  // time and contentChildren would silently query nothing.
-  /* v8 ignore next 1 -- forwardRef lambda; JIT+jsdom doesn't wire required child inputs */
-  readonly itemRefs = contentChildren(forwardRef(() => UiSelectItem));
+  // The projected items, so the trigger can show the chosen one's label.
+  readonly itemRefs = contentChildren(selectItem());
 
   protected readonly displayText = computed(() => {
     const val = this.value();
     if (!val) return this.placeholder();
-    /* v8 ignore next 1 -- .find predicate: unreachable when no content-projected items */
     const item = this.itemRefs().find((i) => i.itemValue() === val);
     return item?.label() ?? val;
   });

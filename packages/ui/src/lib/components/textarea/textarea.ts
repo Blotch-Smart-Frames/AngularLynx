@@ -113,18 +113,20 @@ export class UiTextarea implements FormValueControl<string> {
   #shakeAnim?: AnimationHandle;
   #previousError = '';
 
-  constructor() {
-    // Shake when an error first appears
-    effect(() => {
-      const err = this.error();
-      const el = this.containerRef()?.nativeElement;
-      if (err && !this.#previousError && el) {
-        this.#shakeAnim?.cancel();
-        this.#shakeAnim = shake(el);
-      }
-      this.#previousError = err;
-    });
-  }
+  /**
+   * Shakes the field when an error first appears. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   */
+  protected readonly shakeOnError = effect(() => {
+    const err = this.error();
+    const el = this.containerRef()?.nativeElement;
+    if (err && !this.#previousError && el) {
+      this.#shakeAnim?.cancel();
+      this.#shakeAnim = shake(el);
+    }
+    this.#previousError = err;
+  });
 
   protected readonly containerClass = computed(() =>
     cn('flex-col gap-1.5 flex', this.userClass()),

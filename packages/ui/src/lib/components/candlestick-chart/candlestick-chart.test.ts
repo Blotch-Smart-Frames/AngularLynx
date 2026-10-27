@@ -1,3 +1,9 @@
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { createChartRuntime } from '@tanstack/charts/runtime';
 import { createChartTooltipContent } from '@tanstack/charts/tooltip/model';
 import type {
@@ -6,7 +12,11 @@ import type {
   SceneNode,
 } from '@tanstack/charts/types';
 import { describe, expect, it } from 'vitest';
-import { candlestickChartDefinition } from './candlestick-chart';
+import {
+  type CandlestickDatum,
+  UiCandlestickChart,
+  candlestickChartDefinition,
+} from './candlestick-chart';
 
 const data = [
   { x: 0, open: 100, high: 104, low: 98, close: 102 },
@@ -114,5 +124,76 @@ describe('candlestickChartDefinition', () => {
     });
     expect(definition.tooltip).toBe(false);
     expect(render2(definition).found.length).toBeGreaterThan(0);
+  });
+});
+
+@Component({
+  imports: [UiCandlestickChart],
+  template: `
+    <ui-candlestick-chart
+      [data]="data"
+      [width]="300"
+      [upColor]="upColor()"
+      downColor="red"
+      (candleTap)="tapped.push($event)"
+    />
+  `,
+})
+class CandlestickChartHost {
+  readonly data = data;
+  readonly upColor = signal('green');
+  /** Every `candleTap`, in order. */
+  readonly tapped: CandlestickDatum[] = [];
+}
+
+/**
+ * The SVG the chart's marks layer draws.
+ */
+const marksSvg = (container: Element) =>
+  container.querySelectorAll('svg')[1]!.getAttribute('content')!;
+
+/**
+ * The middle of each candle body the chart drew.
+ */
+const bodiesDrawn = (container: Element) =>
+  [
+    ...marksSvg(container).matchAll(
+      /<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"[^>]*fill=/g,
+    ),
+  ].map(([, x, y, width, height]) => ({
+    x: Number(x) + Number(width) / 2,
+    y: Number(y) + Number(height) / 2,
+  }));
+
+/**
+ * Touches a spot of the chart and lifts the finger right there: a tap.
+ */
+const tap = async (container: Element, at: { x: number; y: number }) => {
+  const root = container.querySelector('[accessibility-label]')!;
+  fireEvent.touchstart(root, { touches: [at] });
+  fireEvent.touchend(root, { touches: [at] });
+  await waitForUpdate();
+};
+
+describe('UiCandlestickChart', () => {
+  it('colors each candle by direction with its inputs', async () => {
+    const { componentRef, container } = await render(CandlestickChartHost);
+    expect(bodiesDrawn(container)).toHaveLength(2);
+    expect(marksSvg(container)).toContain('fill="green"');
+    expect(marksSvg(container)).toContain('fill="red"');
+
+    (componentRef.instance as CandlestickChartHost).upColor.set('blue');
+    await waitForUpdate();
+    expect(marksSvg(container)).toContain('fill="blue"');
+  });
+
+  it("emits a tapped candle's datum, and nothing for a tap off the candles", async () => {
+    const { componentRef, container } = await render(CandlestickChartHost);
+    const host = componentRef.instance as CandlestickChartHost;
+    await tap(container, bodiesDrawn(container)[0]!);
+    expect(host.tapped).toEqual([data[0]]);
+
+    await tap(container, { x: -100, y: -100 });
+    expect(host.tapped).toEqual([data[0]]);
   });
 });

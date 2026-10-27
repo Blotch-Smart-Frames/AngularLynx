@@ -802,6 +802,40 @@ describe('updateCommand --force', () => {
     expect(lockfile.theme['default.css'].hash).toBe(hashContent(upstream));
   });
 
+  it("adds the Tailwind plugin's test once the project has the testing library", async () => {
+    const pluginTest = "import { blotchPlugin } from './tailwind-plugin';";
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: { version: 1, components: {}, utils: {}, theme: {} },
+      themeFiles: { 'tailwind-plugin.test.ts': pluginTest },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    const { updateCommand } = await import('./update');
+
+    await updateCommand({ force: true });
+    expect(
+      existsSync(
+        join(
+          fixture.dir,
+          DEFAULT_CONFIG.aliases.theme,
+          'tailwind-plugin.test.ts',
+        ),
+      ),
+    ).toBe(false);
+
+    writeFileSync(
+      join(fixture.dir, 'package.json'),
+      JSON.stringify({
+        devDependencies: { '@blotch/angular-lynx-testing-library': '^22.2.3' },
+      }),
+    );
+    await updateCommand({ force: true });
+    expect(readTheme(fixture, 'tailwind-plugin.test.ts')).toBe(pluginTest);
+    expect(readLockfile(fixture.dir).theme['tailwind-plugin.test.ts']).toEqual({
+      hash: hashContent(pluginTest),
+    });
+  });
+
   it('never prompts even when conflicts, user-modifications and new files coexist', async () => {
     fixture = createFixture({
       config: DEFAULT_CONFIG,

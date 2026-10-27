@@ -51,8 +51,20 @@ export const registry: RegistryEntry[] = [
   { name: 'badge', dependencies: [], packages: CVA_PACKAGES },
   { name: 'bar-chart', dependencies: ['chart'] },
   { name: 'bottom-sheet', dependencies: [] },
-  { name: 'button', dependencies: ['spinner'], packages: CVA_PACKAGES },
-  { name: 'button-group', dependencies: [], packages: CVA_PACKAGES },
+  // The glass variants draw on `glass`, and projected icons take the label's
+  // color through icon's UI_ICON_COLOR.
+  {
+    name: 'button',
+    dependencies: ['spinner', 'glass', 'icon'],
+    packages: CVA_PACKAGES,
+    themeColors: GLASS_COLORS,
+  },
+  {
+    name: 'button-group',
+    dependencies: ['glass', 'icon'],
+    packages: CVA_PACKAGES,
+    themeColors: GLASS_COLORS,
+  },
   { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
   // Renders any TanStack Charts definition with Lynx elements; the presets

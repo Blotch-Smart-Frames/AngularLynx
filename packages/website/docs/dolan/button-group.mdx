@@ -1,6 +1,6 @@
 # Button Group
 
-A row or column of connected buttons that reads as one toolbar, where each button runs its own action.
+A row or column of connected buttons that reads as one toolbar, where each button runs its own action. With a glass variant, the buttons share one Liquid Glass background, as iOS groups toolbar items.
 
 <Go example="ui-button-group" defaultFile="src/app/app.ts" />
 
@@ -17,7 +17,7 @@ import {
 } from '../components/ui/button-group';
 ```
 
-Button Group imports `class-variance-authority` (see [Installation](/dolan/#installation)).
+This also adds [Glass](/dolan/glass), which draws the glass variants, and [Icon](/dolan/icon). Button Group imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
@@ -57,13 +57,49 @@ export class App {
 
 `default` fills the items with the secondary color. `outline` uses the background color inside a border.
 
+### Glass
+
+One glass background for a group of actions that floats over your content, like a toolbar on iOS 26:
+
+```angular-html
+<ui-button-group variant="glass" size="icon">
+  <ui-button-group-item accessibility-label="Undo" (pressed)="undo()">
+    <ui-icon name="undo-2" />
+  </ui-button-group-item>
+  <ui-button-group-item accessibility-label="Redo" (pressed)="redo()">
+    <ui-icon name="redo-2" />
+  </ui-button-group-item>
+  <ui-button-group-item accessibility-label="Share" (pressed)="share()">
+    <ui-icon name="share-2" />
+  </ui-button-group-item>
+</ui-button-group>
+```
+
+- **`glass`** is regular glass. **`glass-clear`** is clear glass for over photos and video, on a dark dimming layer so its white icons stay legible.
+- **The group is one glass shape** and its items are plain. iOS draws grouped toolbar items this way. Glass circles merged in a [glass group](/dolan/glass#groups) would join with pinched waists instead, and glass shouldn't sit on glass.
+- **A pressed item lights up** in corners concentric with the group's. On iOS 26 the glass also swells under the finger.
+- **A row is a capsule.** A column is too when its items are icons, and otherwise has round corners.
+
+What each platform draws:
+
+| Platform                                       | Glass variants                                                                         |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------- |
+| iOS 26 and later                               | One Liquid Glass shape, drawn by iOS                                                   |
+| iOS 15 to 25                                   | One frosted blur shape                                                                 |
+| Android                                        | Material 3's connected button group: tonal buttons 2px apart, with round outer corners |
+| Android, with [`provideGlass()`](/dolan/glass) | One glass shape without the refraction                                                 |
+| [Web preview](/guide/glossary#web-preview)     | One Liquid Glass shape, drawn with WebGL                                               |
+
 ### Sizes
 
 ```angular-html
 <ui-button-group size="sm">…</ui-button-group>
 <ui-button-group size="default">…</ui-button-group>
 <ui-button-group size="lg">…</ui-button-group>
+<ui-button-group size="icon">…</ui-button-group>
 ```
+
+`icon` makes square items for one [`<ui-icon>`](/dolan/icon) each. Give each an `accessibility-label`, which a screen reader says instead. In the other sizes, an icon sits before the label.
 
 ### Vertical
 
@@ -93,30 +129,38 @@ Disable the whole group, or one item. A disabled item dims and doesn't emit `pre
 
 ### UiButtonGroup
 
-| Input         | Type                         | Default        | Description                              |
-| ------------- | ---------------------------- | -------------- | ---------------------------------------- |
-| `orientation` | `'horizontal' \| 'vertical'` | `'horizontal'` | Lays the items out in a row or a column. |
-| `variant`     | `'default' \| 'outline'`     | `'default'`    | Visual style of every item.              |
-| `size`        | `'default' \| 'sm' \| 'lg'`  | `'default'`    | Height and padding of every item.        |
-| `disabled`    | `boolean`                    | `false`        | Disables every item.                     |
-| `class`       | `string`                     | `''`           | Extra Tailwind classes for the group.    |
+| Input         | Type                                                 | Default        | Description                              |
+| ------------- | ---------------------------------------------------- | -------------- | ---------------------------------------- |
+| `orientation` | `'horizontal' \| 'vertical'`                         | `'horizontal'` | Lays the items out in a row or a column. |
+| `variant`     | `'default' \| 'outline' \| 'glass' \| 'glass-clear'` | `'default'`    | Visual style of every item.              |
+| `size`        | `'default' \| 'sm' \| 'lg' \| 'icon'`                | `'default'`    | Height and padding of every item.        |
+| `disabled`    | `boolean`                                            | `false`        | Disables every item.                     |
+| `class`       | `string`                                             | `''`           | Extra Tailwind classes for the group.    |
 
 No outputs.
 
 ### UiButtonGroupItem
 
-| Input      | Type      | Default | Description                          |
-| ---------- | --------- | ------- | ------------------------------------ |
-| `disabled` | `boolean` | `false` | Disables this item only.             |
-| `class`    | `string`  | `''`    | Extra Tailwind classes for the item. |
+| Input                 | Type      | Default | Description                                              |
+| --------------------- | --------- | ------- | -------------------------------------------------------- |
+| `disabled`            | `boolean` | `false` | Disables this item only.                                 |
+| `accessibility-label` | `string`  | —       | What a screen reader says. Needed for an icon-only item. |
+| `class`               | `string`  | `''`    | Extra Tailwind classes for the item.                     |
 
 | Output    | Type   | Description                                         |
 | --------- | ------ | --------------------------------------------------- |
 | `pressed` | `void` | Emits on tap, unless the item or group is disabled. |
 
-The file also exports `buttonGroupItemVariants` and the `ButtonGroupVariant`, `ButtonGroupSize` and `ButtonGroupOrientation` types.
+The file also exports `buttonGroupItemVariants` and the `ButtonGroupVariant`, `SolidButtonGroupVariant`, `GlassButtonGroupVariant`, `ButtonGroupLook`, `ButtonGroupSize` and `ButtonGroupOrientation` types.
+
+## Accessibility
+
+- **A screen reader reads each item's label as a button,** or its `accessibility-label`.
+- **Reduce Motion:** solid items dim while pressed instead of shrinking. Glass and Material items only light up, which isn't motion, and the web preview's glass stops swelling.
+- **Reduce Transparency and Increase Contrast:** the glass follows them as [Glass](/dolan/glass#accessibility) does. Under Increase Contrast, Android's Material items get an outline.
 
 ## Related
 
-- [Button](/dolan/button): a single button
+- [Button](/dolan/button): a single button, with glass variants too
+- [Glass](/dolan/glass): the Liquid Glass the glass variants draw
 - [Toggle](/dolan/toggle): buttons that stay pressed

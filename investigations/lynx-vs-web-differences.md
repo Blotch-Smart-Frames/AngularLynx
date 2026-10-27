@@ -2304,6 +2304,7 @@ These global keywords are **not supported** in Lynx. Many individual property do
     - On iOS, `LynxEnv`'s `setKeyWindowAndStatusBar` copies the key window's `safeAreaInsets` into them each time a LynxView is created (`initLayoutConfig`, called from `LynxTemplateRender`). Nothing updates them on rotation, and a LynxView created before its window is key reads 0.
     - On Android nothing sets them, so `env()` is always 0.
     - The generated iOS app creates its LynxView in `viewDidLoad`, which runs before `SceneDelegate` calls `makeKeyAndVisible`, so `env()` is 0 there too. That suits both generated apps, which inset the LynxView to the safe area themselves. Lynx Explorer creates its views later and gets the real insets (top 62, bottom 34 on the iPhone 18 Pro simulator), though its page already sits below the status bar.
+    - Except when a `lynx://open` link starts Explorer: a bundle opened while Explorer isn't running yet reads 0 for every inset, even with `?fullscreen=true` (seen on the iOS 27 simulator, October 2026). To check a layout that pads for the insets, such as a tab bar above the home indicator, launch Explorer first, then open the link.
     - For JavaScript, the generated apps and Lynx Explorer send the insets (`safeAreaTop` and so on) and `isNotchScreen` as global props (issue #58). Inject `LynxSafeArea` for `isNotchScreen()`.
   - The `@blotch/ui` Tailwind plugin ships `*-safe` / `*-safe-<n>` padding utilities built on this (see `packages/ui/src/lib/theme/tailwind-plugin.ts`).
 

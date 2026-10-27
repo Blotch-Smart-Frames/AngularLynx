@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "components": {
+    "icon": {
+      "icon.ts": {
+        "hash": "e7fa61d7a0337601"
+      },
+      "icons.ts": {
+        "hash": "2d54632a5080d6fc"
+      },
+      "index.ts": {
+        "hash": "d175df85291c8009"
+      },
+      "icon-theme.ts": {
+        "hash": "9234f03eb74114a7"
+      }
+    },
+    "tab-bar": {
+      "index.ts": {
+        "hash": "ec53b8058dbb2ddb"
+      },
+      "tab-bar.ts": {
+        "hash": "ebda5df4da0b1cc5"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "1fd6a85ec25194af"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "4ac232eeeb7056ea"
+    },
+    "dark.css": {
+      "hash": "9501105e2a3f44cb"
+    }
+  }
+}

@@ -139,6 +139,7 @@ export class App {
       title: 'Components',
       items: [
         { path: 'icon-showcase', label: 'Icons', icon: 'star' },
+        { path: 'tab-bar-demo', label: 'Tab Bar', icon: 'smartphone' },
         {
           path: 'content-projection-demo',
           label: 'Content Projection',

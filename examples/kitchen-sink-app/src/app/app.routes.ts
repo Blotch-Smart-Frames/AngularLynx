@@ -19,6 +19,30 @@ export const routes: Routes = [
       import('./events-demo/events-demo').then((m) => m.EventsDemo),
   },
   {
+    // The demo's own tab bar switches between these child routes.
+    path: 'tab-bar-demo',
+    loadComponent: () =>
+      import('./tab-bar-demo/tab-bar-demo').then((m) => m.TabBarDemo),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'feed' },
+      {
+        path: 'feed',
+        loadComponent: () =>
+          import('./tab-bar-demo/tab-bar-demo').then((m) => m.TabBarFeed),
+      },
+      {
+        path: 'search',
+        loadComponent: () =>
+          import('./tab-bar-demo/tab-bar-demo').then((m) => m.TabBarSearch),
+      },
+      {
+        path: 'alerts',
+        loadComponent: () =>
+          import('./tab-bar-demo/tab-bar-demo').then((m) => m.TabBarAlerts),
+      },
+    ],
+  },
+  {
     path: 'blur-view-demo',
     loadComponent: () =>
       import('./blur-view-demo/blur-view-demo').then((m) => m.BlurViewDemo),

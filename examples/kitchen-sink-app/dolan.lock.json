@@ -222,6 +222,17 @@
       "index.ts": {
         "hash": "72992b309321929f"
       }
+    },
+    "tab-bar": {
+      "index.ts": {
+        "hash": "ec53b8058dbb2ddb"
+      },
+      "tab-bar.test.ts": {
+        "hash": "5205c2bf5878ee03"
+      },
+      "tab-bar.ts": {
+        "hash": "ebda5df4da0b1cc5"
+      }
     }
   },
   "theme": {

@@ -1,6 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS, LynxLogger } from '@blotch/angular-lynx';
+import { Component, signal } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { type IconName, UiIcon } from '../components/ui/icon';
 import {
   UiNavDrawer,
@@ -20,6 +20,8 @@ type NavGroup = { title: string; items: NavItem[] };
   selector: 'app-root',
   imports: [
     RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
     LYNX_ELEMENTS,
     UiNavDrawer,
     UiNavDrawerHeader,
@@ -67,10 +69,15 @@ type NavGroup = { title: string; items: NavItem[] };
           <ui-text variant="large">AngularLynx</ui-text>
           <ui-text variant="muted">Kitchen sink · Angular on Lynx</ui-text>
         </ui-nav-drawer-header>
+        <!-- Each item is a routerLink: a tap navigates, as a click does on
+             the web. routerLinkActive marks the current screen's item, for
+             its highlight and, through LYNX_ELEMENTS, for screen readers. -->
         <ui-nav-drawer-content>
           <ui-nav-drawer-item
-            [active]="currentPath() === 'home'"
-            (pressed)="navigateTo('home')"
+            routerLink="/home"
+            routerLinkActive
+            #home="routerLinkActive"
+            [active]="home.isActive"
           >
             <ui-icon name="home" size="sm" />
             <text class="text-sm text-foreground">Home</text>
@@ -84,8 +91,10 @@ type NavGroup = { title: string; items: NavItem[] };
             </view>
             @for (item of group.items; track item.path) {
               <ui-nav-drawer-item
-                [active]="currentPath() === item.path"
-                (pressed)="navigateTo(item.path)"
+                [routerLink]="'/' + item.path"
+                routerLinkActive
+                #link="routerLinkActive"
+                [active]="link.isActive"
               >
                 <ui-icon [name]="item.icon" size="sm" />
                 <text class="text-sm text-foreground">{{ item.label }}</text>
@@ -103,11 +112,7 @@ type NavGroup = { title: string; items: NavItem[] };
   `,
 })
 export class App {
-  #router = inject(Router);
-  #logger = inject(LynxLogger);
-
   readonly drawerOpen = signal(false);
-  readonly currentPath = signal('home');
 
   readonly navGroups: NavGroup[] = [
     {
@@ -229,17 +234,5 @@ export class App {
 
   openDrawer(): void {
     this.drawerOpen.set(true);
-  }
-
-  navigateTo(path: string): void {
-    this.currentPath.set(path);
-    // Defer navigation out of the Lynx worklet event callback. Angular's Router
-    // processes navigation synchronously, triggering __RemoveElement/__CreateView
-    // during the worklet — moving to a macrotask keeps the mutations in a clean
-    // tick. (The signal write above is safe: zoneless CD runs asynchronously.)
-    setTimeout(() => {
-      this.#router.navigateByUrl(path);
-      this.#logger.log('navigated to', path);
-    }, 0);
   }
 }

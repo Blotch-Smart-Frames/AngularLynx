@@ -1,6 +1,6 @@
 # Routing
 
-Router providers and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy } from '@blotch/angular-lynx';`
+Router providers and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -22,7 +22,7 @@ export const appConfig: ApplicationConfig = {
 };
 ```
 
-Import `provideRouter` from `@blotch/angular-lynx`, not `@angular/router`. Everything else, such as `RouterOutlet`, `RouterLink`, `Router` and `ActivatedRoute`, still comes from `@angular/router`.
+Import `provideRouter` from `@blotch/angular-lynx`, not `@angular/router`. Everything else, such as `RouterOutlet`, `RouterLink`, `RouterLinkActive`, `Router` and `ActivatedRoute`, still comes from `@angular/router`. `RouterLink` works on any Lynx element: AngularLynx delivers a tap to its `click` listener.
 
 ## API
 
@@ -46,8 +46,46 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 - **Leaving a route destroys its components,** as on the web: `provideRouter()` keeps Angular's own `RouteReuseStrategy`. To keep route views alive instead, provide [`LynxRouteReuseStrategy`](#lynxroutereusestrategy).
 - **Failed navigations** resolve to `false` instead of rejecting. Watch `Router.events` for `NavigationError` to detect them.
 - **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
-- **From an event handler,** wrap `router.navigate()` in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **From an event handler,** call `router.navigate()` directly, as on the web.
+- **It also tells `LynxRouterLinkActive`** where to find an element's `RouterLinkActive`, so that `LYNX_ELEMENTS` doesn't import the router itself. Without `provideRouter()`, active links don't get the `selected` trait.
 - **The Android back button** calls `Location.back()` while `LynxLocationStrategy.canGoBack()` is `true`, and leaves the app when it's `false`. It works in the Android app `ng build --platform android` makes, and in [your own app](/guide/embedding/#connect-the-android-back-button) if it sends the same event. With a `LocationStrategy` of your own, the back button always leaves the app.
+
+### `LynxRouterLinkActive`
+
+```typescript
+@Directive({ selector: '[routerLinkActive]' })
+class LynxRouterLinkActive {}
+```
+
+Adds the `selected` accessibility trait to an element while Angular's `RouterLinkActive` on it says its route is active, and takes it away after, so screen readers know which link is the current one. It's part of `LYNX_ELEMENTS`, so it's on every `routerLinkActive` element of a component that imports `LYNX_ELEMENTS` and `RouterLinkActive`. It has no inputs or outputs of its own.
+
+- **It keeps the element's own traits.** `accessibility-traits="button"` reads `button,selected` while the link is active, and `button` again after. A trait set later is merged the same way.
+- **Android leaves the element's traits alone.** It reads a single trait, `none`, `image` or `button`, and has no selected trait, so a list would only lose the element's own.
+- **On a component's host**, add it to `hostDirectives` next to `RouterLinkActive`. Host directives don't match selectors, so `LYNX_ELEMENTS` can't add it there:
+
+```typescript title="src/app/tab.ts"
+import { Component, input } from '@angular/core';
+import { RouterLink, RouterLinkActive } from '@angular/router';
+import { LYNX_ELEMENTS, LynxRouterLinkActive } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-tab',
+  imports: [LYNX_ELEMENTS],
+  hostDirectives: [
+    { directive: RouterLink, inputs: ['routerLink: route'] },
+    {
+      directive: RouterLinkActive,
+      inputs: ['routerLinkActive: activeClass'],
+    },
+    LynxRouterLinkActive,
+  ],
+  host: { 'accessibility-traits': 'button' },
+  template: `<text><ng-content /></text>`,
+})
+export class Tab {
+  readonly route = input.required<string>();
+}
+```
 
 ### `LynxRouteReuseStrategy`
 
@@ -292,7 +330,7 @@ This page uses only Angular types: `Routes`, `RouterFeatures`, `ActivatedRouteSn
 
 ## Related
 
-- [Routing and navigation](/guide/routing): routes, lazy loading and navigating from a tap.
-- [Threads](/guide/concepts/threads#the-settimeout-rule): why navigation from a handler needs `setTimeout`.
+- [Routing and navigation](/guide/routing): routes, links, lazy loading and navigating from code.
+- [Accessibility](/api/angular-lynx/accessibility#attributes): `accessibility-traits` and the other attributes.
 - [Bootstrap](/api/angular-lynx/bootstrap)
 - [Angular Router](https://angular.dev/guide/routing)

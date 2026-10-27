@@ -75,7 +75,7 @@ type GestureCallbackWithState<TEvent extends GestureEvent = GestureEvent> = (
 ) => void;
 ```
 
-`TEvent` is the gesture's event type, such as `PanGestureEvent` (see [Gesture types](/api/gestures/gesture-types)). Callbacks run on the [main thread](/guide/glossary#main-thread), inside the native gesture. Setting signals there is safe, but don't add or remove elements until the gesture ends (see the [`setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`TEvent` is the gesture's event type, such as `PanGestureEvent` (see [Gesture types](/api/gestures/gesture-types)). Callbacks run on the [main thread](/guide/glossary#main-thread), inside the native gesture. Like [event handlers](/guide/concepts/threads#event-handlers), they can change signals and add or remove elements.
 
 ## API
 

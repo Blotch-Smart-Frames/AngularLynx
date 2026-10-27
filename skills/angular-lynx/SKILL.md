@@ -22,7 +22,7 @@ Build Angular apps that render natively on mobile via the Lynx runtime. Uses Ang
 
 These prevent crashes and silent failures. Violating any will break your app on-device.
 
-1. **Defer DOM-mutating operations out of event handlers.** Lynx event callbacks run inside a worklet context where tree mutations are forbidden. Wrap navigation, signal updates that add/remove elements, and any operation that changes the element tree in `setTimeout(() => { ... }, 0)`.
+1. **Bind Lynx event names.** A tap is `(bindtap)` (or `(catchtap)` to stop it bubbling). `(click)` also runs on a tap, which is what makes Angular's `routerLink` work; any other DOM event name, such as `(mouseover)`, is silently ignored. Handlers can do anything they would on the web, navigation included: no `setTimeout` needed.
 
 2. **All visible text must be inside `<text>`.** Raw text inside `<view>` does not render. Lynx has no text nodes — only `<text>` elements display characters.
 
@@ -46,7 +46,7 @@ Read [lynx-elements.md](references/lynx-elements.md)
 
 ## Events & Interactions
 
-The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`. The `setTimeout` requirement for mutations. Angular template syntax: `(bindtap)="handler($event)"`.
+The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`. `(click)` as an alias for tap, several handlers on one element. Angular template syntax: `(bindtap)="handler($event)"`.
 
 Read [events-and-interactions.md](references/events-and-interactions.md)
 
@@ -58,7 +58,7 @@ Read [styling-and-css.md](references/styling-and-css.md)
 
 ## Routing
 
-In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy`. Leaving a route destroys it, as on the web; `LynxRouteReuseStrategy` is an opt-in that keeps route views alive. Lazy-loaded routes with `loadComponent`. Navigation must use `setTimeout` to escape event worklets.
+In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy`. Leaving a route destroys it, as on the web; `LynxRouteReuseStrategy` is an opt-in that keeps route views alive. Lazy-loaded routes with `loadComponent`. Angular's own `routerLink` and `routerLinkActive` work on any element, and the active link gets the `selected` accessibility trait.
 
 Read [routing.md](references/routing.md)
 

@@ -22,14 +22,11 @@ export class Pulse {
   #animation: BaseLynxAnimation | null = null;
 
   pulse(): void {
-    // Start animations outside the native event (see the setTimeout rule).
-    setTimeout(() => {
-      this.#animation?.cancel();
-      this.#animation = this.box().nativeElement.animate(
-        [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }],
-        { duration: 400, easing: 'ease-in-out' },
-      );
-    });
+    this.#animation?.cancel();
+    this.#animation = this.box().nativeElement.animate(
+      [{ opacity: 1 }, { opacity: 0.3 }, { opacity: 1 }],
+      { duration: 400, easing: 'ease-in-out' },
+    );
   }
 }
 ```
@@ -91,7 +88,7 @@ animate(
 
 A method on every element's `nativeElement`, which you get from `viewChild()` or an `ElementRef`. It starts the animation at once. A number for `options` is shorthand for `{ duration }`.
 
-- **From an event handler,** call it inside `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **From an event handler,** call it directly, as on the web.
 - **On the background thread,** it returns an animation whose methods do nothing.
 - **Removing the element** cancels its running animations.
 
@@ -243,4 +240,4 @@ What `animate()` returns on either thread: an `id` plus `play()`, `pause()` and 
 - [Animations](/guide/animations/): CSS transitions and keyframes.
 - [Animate from code](/guide/animations/programmatic)
 - [Enter and leave transitions](/guide/animations/enter-leave)
-- [Threads](/guide/concepts/threads#the-settimeout-rule)
+- [Threads](/guide/concepts/threads#event-handlers)

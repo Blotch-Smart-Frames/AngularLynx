@@ -114,7 +114,7 @@ The chart fills its container's width and is 200px tall. Set `height` for anothe
 <ui-bar-chart [data]="visits" (barTap)="selected.set($event)" />
 ```
 
-`barTap` fires inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`barTap` fires inside the touch, so it can change signals or navigate, as a tap handler can.
 
 ### Pan and zoom
 

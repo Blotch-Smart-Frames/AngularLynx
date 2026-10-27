@@ -19,8 +19,8 @@ afterEach(() => {
 });
 
 /**
- * Every handler defers its signal write via setTimeout(0) (see the class doc),
- * so tests flush a macrotask before asserting on the resulting state.
+ * Lets change detection, and the overlay's deferred entrance animation, run
+ * before a test asserts on the result.
  */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -163,9 +163,8 @@ describe('MotionDemo', () => {
     destroyDemo = destroy;
 
     instance.openOverlay();
-    // openOverlay() defers overlayVisible.set(true) through one setTimeout(0),
-    // then schedules #animateOverlayIn() on a second — one flush is enough to
-    // make the overlay visible.
+    // openOverlay() shows the overlay straight away, then schedules
+    // #animateOverlayIn() for once it's mounted.
     await flush();
     expect(instance.overlayVisible()).toBe(true);
   });

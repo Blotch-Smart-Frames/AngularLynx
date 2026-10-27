@@ -82,7 +82,7 @@ toast({
 });
 ```
 
-`onAction` runs inside the tap. To navigate from it, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`onAction` runs inside the tap, so it can navigate, as any tap handler can.
 
 ### Duration
 

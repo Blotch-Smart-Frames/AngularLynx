@@ -33,23 +33,21 @@ export class Pulse {
   #animation: LynxAnimation | null = null;
 
   pulse(): void {
-    setTimeout(() => {
-      this.#animation?.cancel(); // [!code highlight]
-      this.#animation = this.box().nativeElement.animate(
-        [
-          { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.3)', opacity: 0.7 },
-          { transform: 'scale(1)', opacity: 1 },
-        ],
-        { duration: 600, easing: 'ease-in-out' },
-      );
-    });
+    this.#animation?.cancel(); // [!code highlight]
+    this.#animation = this.box().nativeElement.animate(
+      [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(1.3)', opacity: 0.7 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      { duration: 600, easing: 'ease-in-out' },
+    );
   }
 }
 ```
 
 - **`nativeElement` isn't a DOM element.** On Lynx, `viewChild()` gives you an `ElementRef` whose `nativeElement` is AngularLynx's wrapper around a native [element](/guide/glossary#element). It has `animate()`, but no `style`, `classList` or other DOM properties.
-- **Start it in `setTimeout`.** Starting an animation inside a tap handler can crash the app, so defer it until the handler returns. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **Start it straight from the tap handler**, as on the web.
 - **Cancel the previous animation first.** Each call starts a new animation alongside any that are still running.
 - **Keyframes** are an array of objects whose keys are CSS property names. Only [some properties](/guide/animations/#what-can-animate) animate.
 
@@ -109,32 +107,26 @@ export class Spinner {
   #animation: LynxAnimation | null = null;
 
   start(): void {
-    setTimeout(() => {
-      this.#animation?.cancel();
-      this.#animation = this.box().nativeElement.animate(
-        [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-        { duration: 1000, iterations: Infinity },
-      );
-      this.paused.set(false);
-    });
+    this.#animation?.cancel();
+    this.#animation = this.box().nativeElement.animate(
+      [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+      { duration: 1000, iterations: Infinity },
+    );
+    this.paused.set(false);
   }
 
   togglePause(): void {
-    setTimeout(() => {
-      if (this.paused()) {
-        this.#animation?.play(); // [!code highlight]
-      } else {
-        this.#animation?.pause(); // [!code highlight]
-      }
-      this.paused.update((p) => !p);
-    });
+    if (this.paused()) {
+      this.#animation?.play(); // [!code highlight]
+    } else {
+      this.#animation?.pause(); // [!code highlight]
+    }
+    this.paused.update((p) => !p);
   }
 
   stop(): void {
-    setTimeout(() => {
-      this.#animation?.cancel(); // [!code highlight]
-      this.#animation = null;
-    });
+    this.#animation?.cancel(); // [!code highlight]
+    this.#animation = null;
   }
 }
 ```

@@ -85,6 +85,40 @@ test('the generated app loads lazy routes', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// "Open lazy page" and "Open gestures" are Angular's own routerLinks, which
+// listen for `click`, while Lynx elements fire `tap` (issue #113). The
+// renderer hands them the tap, and routerLinkActive marks the open one, adding
+// the `selected` accessibility trait to its own `button`. Lynx for Web keeps
+// the trait as an attribute.
+test('router links navigate on tap and mark the active link', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const lazyLink = page.locator('[accessibility-label="Open lazy page"]');
+  const gesturesLink = page.locator('[accessibility-label="Open gestures"]');
+
+  await page.getByText('Open lazy page', { exact: true }).click();
+  await expect(page.getByText('Lazy page loaded')).toBeVisible();
+  await expect(lazyLink).toHaveAttribute(
+    'accessibility-traits',
+    'button,selected',
+  );
+  await expect(lazyLink).toHaveClass(/(^|\s)active(\s|$)/);
+  await expect(gesturesLink).toHaveAttribute('accessibility-traits', 'button');
+
+  await page.getByText('Open gestures', { exact: true }).click();
+  await expect(page.getByText('Lazy page loaded')).toBeHidden();
+  await expect(gesturesLink).toHaveAttribute(
+    'accessibility-traits',
+    'button,selected',
+  );
+  await expect(lazyLink).toHaveAttribute('accessibility-traits', 'button');
+  await expect(lazyLink).not.toHaveClass(/(^|\s)active(\s|$)/);
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // Setting a [mainThreadBind*] input to null must remove its handler. The lazy
 // page's first tap counts and turns the handler off, so a second tap must leave
 // the count at 1 (issue #55). Native Lynx is where removal broke; this checks

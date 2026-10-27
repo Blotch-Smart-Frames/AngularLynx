@@ -10,7 +10,7 @@ import {
   signal,
   type OnInit,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   backgroundFn,
   createMainThreadRef,
@@ -61,6 +61,13 @@ type HttpData = { reply: string };
  * lazy route chunks load. "Open gestures" opens gestures.ts in the same place.
  * The two share a row so this page gets no taller (see "Ask background").
  *
+ * Both are Angular's own `routerLink`s, which listen for `click`: the renderer
+ * hands them Lynx's tap, so every check that opens a lazy page also proves a
+ * tap on a routerLink navigates. `routerLinkActive` marks the open one with
+ * the `selected` accessibility trait, next to its own `button` (issue #113):
+ * Layer 3 reads the attribute, and native/lazy-route.yaml asks iOS whether
+ * the element is selected.
+ *
  * The views the tests tap are accessibility elements with labels, so native UI
  * tests (Maestro, in Layer 6) can find them by name. `<text>` is an
  * accessibility element by default, labeled with its content.
@@ -105,7 +112,7 @@ type HttpData = { reply: string };
  */
 @Component({
   selector: 'app-hello',
-  imports: [LYNX_ELEMENTS, TailwindCard],
+  imports: [LYNX_ELEMENTS, RouterLink, RouterLinkActive, TailwindCard],
   template: `
     <view style="margin-top: 16px; align-items: center;">
       <text flatten="false" style="font-size: 18px;">Count: {{ count() }}</text>
@@ -123,8 +130,10 @@ type HttpData = { reply: string };
           [flatten]="false"
           [accessibility-element]="true"
           accessibility-label="Open lazy page"
+          accessibility-traits="button"
           style="padding: 12px; background-color: #e0e0e0;"
-          (bindtap)="open('/lazy')"
+          routerLink="/lazy"
+          routerLinkActive="active"
         >
           <text>Open lazy page</text>
         </view>
@@ -132,8 +141,10 @@ type HttpData = { reply: string };
           [flatten]="false"
           [accessibility-element]="true"
           accessibility-label="Open gestures"
+          accessibility-traits="button"
           style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
-          (bindtap)="open('/gestures')"
+          routerLink="/gestures"
+          routerLinkActive="active"
         >
           <text>Open gestures</text>
         </view>
@@ -198,7 +209,6 @@ type HttpData = { reply: string };
   `,
 })
 export class Hello implements OnInit {
-  readonly #router = inject(Router);
   readonly #mainThread = inject(LynxMainThread);
   readonly #http = inject(HttpClient);
   readonly count = signal(0);
@@ -227,10 +237,6 @@ export class Hello implements OnInit {
 
   onInput(event: Event) {
     this.typed.set((event as CustomEvent<{ value: string }>).detail.value);
-  }
-
-  open(url: string) {
-    void this.#router.navigateByUrl(url);
   }
 
   /**

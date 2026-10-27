@@ -93,7 +93,7 @@ The sheet grows with its content. For long content, put a [`<scroll-view>`](/api
 
 ### Run code after it closes
 
-`closed` emits once the slide-down animation has finished. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a button instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`closed` emits once the slide-down animation has finished. It's a good place to navigate once the sheet has gone. You can also navigate straight from a button, as from any tap handler.
 
 ```angular-html
 <ui-sheet [(open)]="open" (closed)="onClosed()">…</ui-sheet>

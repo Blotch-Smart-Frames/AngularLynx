@@ -30,7 +30,8 @@ Use `id` unless you have a reason not to.
 - **`<text>` and `<image>` are read by default.** A `<text>` reads its own text, so most text needs nothing extra.
 - **`[accessibility-element]="true"` makes an element one stop** for the screen reader. Use it on a `<view>` that acts as a button or groups related content.
 - **`accessibility-label` is what gets read.** Give one to anything without readable text, such as an icon button.
-- **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`.
+- **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`. iOS takes several, separated by commas with no spaces, such as `button,selected`; Android reads only one.
+- **An active `routerLinkActive` link is `selected` for you.** `LYNX_ELEMENTS` adds the trait while its route is active, after the element's own traits. See [Routing](/guide/routing#navigate-between-screens).
 
 ## Set the reading order
 

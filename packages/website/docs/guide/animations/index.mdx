@@ -130,21 +130,19 @@ export class Pulse {
   readonly box = viewChild.required<ElementRef>('box');
 
   pulse(): void {
-    setTimeout(() => {
-      this.box().nativeElement.animate(
-        [
-          { transform: 'scale(1)' },
-          { transform: 'scale(1.2)' },
-          { transform: 'scale(1)' },
-        ],
-        { duration: 300, easing: 'ease-out' },
-      );
-    });
+    this.box().nativeElement.animate(
+      [
+        { transform: 'scale(1)' },
+        { transform: 'scale(1.2)' },
+        { transform: 'scale(1)' },
+      ],
+      { duration: 300, easing: 'ease-out' },
+    );
   }
 }
 ```
 
-The `setTimeout` is required: start animations after the tap handler returns (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)). [Animate from code](/guide/animations/programmatic) covers the options and how to pause or cancel.
+[Animate from code](/guide/animations/programmatic) covers the options and how to pause or cancel.
 
 ## Enter and leave
 

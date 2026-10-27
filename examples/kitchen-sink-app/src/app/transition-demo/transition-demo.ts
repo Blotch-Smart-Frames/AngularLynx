@@ -263,30 +263,20 @@ export class TransitionDemo {
 
   readonly trackById = (item: Item) => item.id;
 
-  /**
-   * Every handler defers its signal update via setTimeout so the write doesn't
-   * happen synchronously inside a Lynx native event handler (bindtap / the
-   * UiButton `pressed` output, which emits inside bindtap). Updating directly
-   * inside the handler can flush the renderer while the native event is still on
-   * the call stack, which breaks Lynx's main-thread frame pipeline.
-   */
   selectPreset(name: string): void {
-    setTimeout(() => this.selected.set(name), 0);
+    this.selected.set(name);
   }
 
   togglePanel(): void {
-    setTimeout(() => {
-      const next = !this.showPanel();
-      this.showPanel.set(next);
-      // Reveal the panel immediately on show; on hide it stays mounted until the
-      // leave animation completes (see onPanelHidden).
-      if (next) this.panelMounted.set(true);
-    }, 0);
+    const next = !this.showPanel();
+    this.showPanel.set(next);
+    // Reveal the panel immediately on show; on hide it stays mounted until the
+    // leave animation completes (see onPanelHidden).
+    if (next) this.panelMounted.set(true);
   }
 
   onPanelHidden(): void {
-    // Fires from LynxTransition's leave timer (not a native event handler), so a
-    // direct signal write is safe here.
+    // Fires from LynxTransition's leave timer, once the leave animation ends.
     this.panelMounted.set(false);
   }
 

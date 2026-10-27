@@ -24,11 +24,9 @@ The background bundle doesn't start from `main.ts`: the build generates its entr
 
 ## Why This Matters
 
-### Event Handlers Run in Worklets
+### Event Handlers Run Inside the Native Event
 
-When a user taps a button, the event handler executes in a synchronous native call frame (worklet) on the main thread. During this frame, **mutating the element tree is forbidden** — it corrupts internal state and crashes.
-
-This is why all DOM-mutating operations must be deferred with `setTimeout(() => { ... }, 0)` — it moves execution to the next macrotask, after the worklet returns.
+When a user taps a button, the event handler executes in a synchronous native call frame on the main thread. Changing the element tree there is safe: measured on Lynx 4.1 (iOS, Android, web), handlers that navigate, start `animate()`, or create, remove and flush elements don't crash. An older version of this guide said to defer those with `setTimeout`; that isn't needed.
 
 ### Background-Only APIs
 

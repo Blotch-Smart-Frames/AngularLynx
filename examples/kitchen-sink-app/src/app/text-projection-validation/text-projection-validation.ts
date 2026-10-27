@@ -90,11 +90,7 @@ export class ConditionalText {
   readonly show = signal(true);
 
   toggle(): void {
-    // Defer the signal write out of the native `bindtap` callback. Flipping this
-    // signal toggles the `@if`, which mutates the element tree; doing that
-    // synchronously while the native tap is still on the call stack flushes the
-    // renderer mid-event and breaks Lynx's main-thread frame pipeline.
-    setTimeout(() => this.show.update((v) => !v), 0);
+    this.show.update((v) => !v);
   }
 }
 

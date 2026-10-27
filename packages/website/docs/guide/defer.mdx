@@ -45,7 +45,7 @@ export class Feed {
 | `on idle`         |      Yes      | When the app has a moment to spare. The default if you give no trigger                   |
 | `on timer(500ms)` |      Yes      | After a delay                                                                            |
 | `on viewport`     |      No       | Lynx has no `IntersectionObserver`. See [below](#load-when-an-element-scrolls-into-view) |
-| `on interaction`  |      No       | Listens for `click` and `keydown`, which Lynx never fires                                |
+| `on interaction`  |      No       | Angular never attaches its `click` and `keydown` listeners to a Lynx element             |
 | `on hover`        |      No       | Listens for mouse and focus events, which Lynx never fires                               |
 | `prefetch …`      |  Not useful   | The code is already in the bundle, so there's nothing to fetch early                     |
 

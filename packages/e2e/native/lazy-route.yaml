@@ -2,6 +2,9 @@
 # app.yaml so its result is reported on its own. It also proves navigation
 # works at all on device: before the runtime polyfilled `URL`, Angular's
 # Router skipped every navigation on Lynx's main thread.
+#
+# "Open lazy page" is Angular's own routerLink, so the tap also proves the
+# renderer hands Lynx's tap to RouterLink's `click` listener (issue #113).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -9,4 +12,17 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: Lazy page loaded
     timeout: 15000
+# routerLinkActive adds the `selected` accessibility trait to the active link.
+# iOS reads it (UIAccessibilityTraitSelected); Android has no selected trait,
+# so the runtime leaves its traits alone there.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible:
+          text: Open lazy page
+          selected: true
+      - assertVisible:
+          text: Open gestures
+          selected: false
 - takeScreenshot: lazy-route

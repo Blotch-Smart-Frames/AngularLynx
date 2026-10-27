@@ -26,8 +26,7 @@ export class CounterComponent {
 
   toggle(): void {
     this.count.update((n) => n + 1);
-    // Structural changes (adding/removing elements) need setTimeout
-    setTimeout(() => this.showDetails.update((v) => !v), 0);
+    this.showDetails.update((v) => !v);
   }
 }
 ```
@@ -87,14 +86,14 @@ Use Angular's built-in control flow with signals:
 ## Event Handler Patterns
 
 ```typescript
-// Safe without setTimeout — only changes text content, no structural changes
+// Handlers set signals directly, whether the change is text or structure
 onInput(event: { detail: { value: string } }) {
   this.inputValue.set(event.detail.value);
 }
 
-// Needs setTimeout — @if block adds/removes elements
+// An @if that adds or removes elements is fine too: no setTimeout needed
 togglePanel(): void {
-  setTimeout(() => this.showPanel.update(v => !v), 0);
+  this.showPanel.update(v => !v);
 }
 ```
 

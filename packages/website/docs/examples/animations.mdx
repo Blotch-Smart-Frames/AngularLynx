@@ -9,7 +9,7 @@ Three ways to animate on [Lynx](/guide/glossary#lynx): a CSS transition, a CSS `
 - **A CSS transition** — toggling `[class.transition-active]` animates the box's background color through `transition: background-color 0.5s`. See [Animations](/guide/animations/).
 - **CSS `@keyframes`** — adding the `spinning` class starts an endless `rotate` animation.
 - **`element.animate()`** — `viewChild()` finds the element, and `animate()` plays a scale-and-fade pulse. The returned `LynxAnimation` is canceled before each replay. See [Animate from code](/guide/animations/programmatic) and [`LynxAnimation`](/api/angular-lynx/animation).
-- **The `setTimeout` rule** — `animate()` is called inside `setTimeout`, because starting it inside a tap handler can crash the app. The class toggles set signals directly, which is always safe. See [The `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **Animations start from the tap handler** — `animate()` is called straight from it, and the class toggles set signals there too.
 
 ## Related
 

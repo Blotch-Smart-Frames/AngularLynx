@@ -87,7 +87,7 @@ protected readonly pageLabel = (page: number, current: boolean) =>
 
 ### React to a change
 
-Listen to `pageChange` to run code when the user changes page. It fires inside the tap, so changing signals there is safe, but wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+Listen to `pageChange` to run code when the user changes page. It fires inside the tap, so it can change signals or navigate, as any tap handler can.
 
 ```angular-html
 <ui-pagination [(page)]="page" [totalPages]="12" (pageChange)="scrollToTop()" />

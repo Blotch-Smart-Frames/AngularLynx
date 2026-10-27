@@ -161,16 +161,10 @@ export class Settings {
   }
 
   reset(): void {
-    // Opening creates views, so it waits until the tap handler returns.
-    setTimeout(() => {
-      this.#dialog = this.#portal.open(ConfirmDialog, {
-        inputs: { title: 'Settings reset' },
-      });
-      // Closing destroys views, so it's deferred the same way.
-      this.#dialog.instance?.closed.subscribe(() =>
-        setTimeout(() => this.#close()),
-      );
+    this.#dialog = this.#portal.open(ConfirmDialog, {
+      inputs: { title: 'Settings reset' },
     });
+    this.#dialog.instance?.closed.subscribe(() => this.#close());
   }
 
   #close(): void {
@@ -180,7 +174,7 @@ export class Settings {
 }
 ```
 
-- **Defer `open()` and `destroy()` with `setTimeout` inside a handler.** Both create or destroy views. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **Call `open()` and `destroy()` from a handler**, such as the tap that opens the dialog, or its `closed` output.
 - **The opened component is a normal component.** It can inject services and use inputs, outputs and signals. `ref.instance` is the component, and `ref.setInput()` changes an input later.
 - **`inputs` sets inputs when it opens.** `injector` gives it a different injector. See [`LynxPortal`](/api/angular-lynx/portal).
 
@@ -210,11 +204,9 @@ export class Upload {
   readonly #portal = inject(LynxPortal);
 
   upload(): void {
-    setTimeout(() => {
-      const ref = this.#portal.openTemplate(this.saving());
-      // Stands in for real work: closes the overlay after two seconds.
-      setTimeout(() => ref.destroy(), 2000);
-    });
+    const ref = this.#portal.openTemplate(this.saving());
+    // Stands in for real work: closes the overlay after two seconds.
+    setTimeout(() => ref.destroy(), 2000);
   }
 }
 ```

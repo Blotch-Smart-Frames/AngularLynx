@@ -29,7 +29,7 @@ Smooth property changes triggered by class toggling or style binding.
 export class TransitionDemo {
   isActive = signal(false);
   toggle(): void {
-    setTimeout(() => this.isActive.update((v) => !v), 0);
+    this.isActive.update((v) => !v);
   }
 }
 ```
@@ -93,24 +93,22 @@ export class AnimateDemo {
   #currentAnimation: LynxAnimation | null = null;
 
   runAnimation(): void {
-    setTimeout(() => {
-      const el = this.boxRef();
-      if (!el) return;
+    const el = this.boxRef();
+    if (!el) return;
 
-      this.#currentAnimation?.cancel();
+    this.#currentAnimation?.cancel();
 
-      this.#currentAnimation = el.nativeElement.animate(
-        [
-          { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.3)', opacity: 0.7 },
-          { transform: 'scale(1)', opacity: 1 },
-        ],
-        {
-          duration: 600,
-          easing: 'ease-in-out',
-        },
-      );
-    }, 0);
+    this.#currentAnimation = el.nativeElement.animate(
+      [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(1.3)', opacity: 0.7 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      {
+        duration: 600,
+        easing: 'ease-in-out',
+      },
+    );
   }
 }
 ```
@@ -157,7 +155,7 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 ## Important Notes
 
 - **`element.animate()` is main-thread only** — it works because Lynx renders the animation natively
-- **Always wrap in `setTimeout`** when triggered from event handlers
+- **Call it straight from an event handler** — no `setTimeout` needed
 - **`animation-iteration-count: 0`** still fires lifecycle events (unlike web where it's a no-op)
 - **Lynx-specific `frames(n)` easing** is available (like `steps()` with different semantics)
 - **Performance tip:** Set `overflow: hidden` on animated elements to reduce redraw region

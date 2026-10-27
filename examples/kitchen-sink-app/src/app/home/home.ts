@@ -135,8 +135,6 @@ export class Home {
   readonly lynxLogo = lynxLogo;
 
   onTap(_event: TouchEvent): void {
-    // Signal write from a native tap is safe: zoneless change detection runs
-    // asynchronously, so the element tree is not mutated inside the worklet.
     this.alterLogo.update((value) => !value);
   }
 }

@@ -9,6 +9,7 @@ import { devStats } from '../devtools/stats';
 // here would form an import cycle. These two files import only element-creators
 // and types, so this path is cycle-free.
 import { createNativeRefByTag } from '../lynx-document/create-native-ref';
+import { isAndroid } from '../lynx-document/android-blur-capture';
 import {
   androidBlurMaterialStyle,
   BLUR_MATERIAL_ATTRIBUTES,
@@ -23,9 +24,85 @@ import type { ElementRef } from '../types/lynx';
 import { sanitizeSvgContent } from './svg-content';
 import {
   type BaseLynxElement,
+  DOM_EVENT_ALIASES,
   EVENT_PREFIXES,
   type LynxEventType,
 } from './types';
+
+type Listener = {
+  eventType: LynxEventType;
+  eventName: string;
+  listener: (event: any) => any;
+};
+
+/**
+ * The key native Lynx stores an element's event handler under. It keeps ONE
+ * handler per event name (`AttributeHolder::SetStaticEvent` assigns into a map
+ * keyed by name), whatever its bind/catch/capture type, so a second
+ * `__AddEvent` for `tap` replaces the first. Global events have a map of
+ * their own.
+ */
+const nativeEventKey = (type: LynxEventType, name: string): string =>
+  type === 'global-bindEvent' ? `global:${name}` : name;
+
+/**
+ * The one type an element's listeners for an event name can be registered
+ * with natively (see nativeEventKey). `catch` wins over `bind`: every listener
+ * on the element still runs, and the event stops there, as a `catch` listener
+ * asked. A capture listener alongside a bubbling one is registered bubbling,
+ * since the two phases can't share one native handler.
+ */
+const combinedEventType = (listeners: Listener[]): LynxEventType => {
+  if (listeners[0].eventType === 'global-bindEvent') return 'global-bindEvent';
+  const capture = listeners.every((l) => l.eventType.startsWith('capture-'));
+  const stops = listeners.some((l) => l.eventType.endsWith('catchEvent'));
+  if (capture) return stops ? 'capture-catchEvent' : 'capture-bindEvent';
+  return stops ? 'catchEvent' : 'bindEvent';
+};
+
+/**
+ * Parses a listener name from Angular (`bindtap`, `catchscroll`, `click`, …)
+ * into the Lynx event type and name `__AddEvent` takes, or undefined for a
+ * name Lynx has no event for.
+ */
+const parseEventName = (
+  name: string,
+): Pick<Listener, 'eventType' | 'eventName'> | undefined => {
+  const alias = DOM_EVENT_ALIASES.get(name);
+  if (alias) return { eventType: 'bindEvent', eventName: alias };
+  for (const [prefix, eventType] of EVENT_PREFIXES) {
+    if (name.startsWith(prefix)) {
+      return { eventType, eventName: name.slice(prefix.length) };
+    }
+  }
+  return undefined;
+};
+
+/**
+ * The `accessibility-traits` value to give an element: the app's own traits
+ * plus the ones the runtime adds (see LynxElement.setAccessibilityTrait).
+ *
+ * iOS reads a comma-separated list with no spaces (`LynxConverter
+ * toAccessibilityTraits:` splits on "," and compares each part exactly), so
+ * that's what this writes. Android reads a single trait by exact match (none,
+ * image or button), so a list would read as none there and drop the app's
+ * own `button`; and it has no selected trait to add. So on Android the app's
+ * traits are left as they are.
+ */
+const withAddedTraits = (own: unknown, added: readonly string[]): unknown => {
+  if (added.length === 0 || isAndroid()) return own;
+  const traits =
+    own == null
+      ? []
+      : String(own)
+          .split(',')
+          .map((trait) => trait.trim())
+          .filter((trait) => trait !== '' && trait !== 'none');
+  for (const trait of added) {
+    if (!traits.includes(trait)) traits.push(trait);
+  }
+  return traits.join(',');
+};
 
 /**
  * True if attaching `candidate` under `parent` would form a cycle — i.e.
@@ -152,11 +229,28 @@ export class LynxElement implements BaseLynxElement {
    * `__AddInlineStyle` drops any name that isn't a CSS property.
    */
   #runtimeStyle = '';
-  #listeners: {
-    eventType: LynxEventType;
-    eventName: string;
-    listener: (event: any) => any;
-  }[] = [];
+  /**
+   * The app's own `accessibility-traits`, and the traits the runtime adds to
+   * them (see setAccessibilityTrait). They're kept apart so that the app
+   * setting its traits keeps the runtime's, and the runtime taking one away
+   * restores the app's.
+   */
+  #ownTraits: unknown = null;
+  #addedTraits: string[] = [];
+  /** Every listener Angular added, in the order it added them. */
+  #listeners: Listener[] = [];
+  /**
+   * The handler registered natively for each event (see nativeEventKey). It
+   * runs every listener for that event, since native Lynx keeps only one.
+   */
+  #nativeHandlers = new Map<
+    string,
+    {
+      eventType: LynxEventType;
+      eventName: string;
+      dispatch: (event: any) => unknown;
+    }
+  >();
   /**
    * DISPLAYED text of a raw-text element — the positionally edge-trimmed value
    * that is actually painted, and what #recreateSubtree bakes into a rebuilt
@@ -356,6 +450,10 @@ export class LynxElement implements BaseLynxElement {
       ) {
         value = sanitizeSvgContent(value);
       }
+      if (name === 'accessibility-traits') {
+        this.#ownTraits = value ?? null;
+        value = withAddedTraits(this.#ownTraits, this.#addedTraits);
+      }
       __SetAttribute(this.element, name, value);
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text
@@ -391,6 +489,19 @@ export class LynxElement implements BaseLynxElement {
     if (usesAndroidBlurMaterials()) {
       this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs));
     }
+  }
+
+  /**
+   * Adds `trait` to the app's own `accessibility-traits`, or takes it away.
+   * The app can still set its traits at any time: setAttribute merges the two
+   * (see withAddedTraits), so neither undoes the other.
+   */
+  setAccessibilityTrait(trait: string, on: boolean): void {
+    if (this.#addedTraits.includes(trait) === on) return;
+    this.#addedTraits = on
+      ? [...this.#addedTraits, trait]
+      : this.#addedTraits.filter((added) => added !== trait);
+    this.setAttribute('accessibility-traits', this.#ownTraits);
   }
 
   getAttribute(name: string) {
@@ -900,10 +1011,14 @@ export class LynxElement implements BaseLynxElement {
     for (const [key, value] of this.#inlineStyleKeys) {
       __AddInlineStyle(fresh, key, value);
     }
-    for (const { eventType, eventName, listener } of this.#listeners) {
+    for (const {
+      eventType,
+      eventName,
+      dispatch,
+    } of this.#nativeHandlers.values()) {
       __AddEvent(fresh, eventType, eventName, {
         type: 'worklet',
-        value: listener,
+        value: dispatch,
       });
     }
     for (const child of this.#children) {
@@ -994,99 +1109,163 @@ export class LynxElement implements BaseLynxElement {
    * Angular's renderer.listen() calls this with event names like 'bindtap',
    * 'catchtouchstart', 'bindscroll', etc. We strip the Lynx event prefix
    * (bind/catch/capture-bind/capture-catch) to extract the native event name
-   * and determine the event type for __AddEvent.
-   * Events that don't match any prefix (e.g. DOM-style 'click') are silently
-   * ignored — Lynx has no equivalent event system for arbitrary names.
+   * and determine the event type for __AddEvent. A DOM name Lynx calls
+   * something else (see DOM_EVENT_ALIASES) listens for the Lynx event, so
+   * `(click)`, and Angular's RouterLink with it, runs on a tap.
+   * Other names (e.g. `mouseover`) are ignored: Lynx has no event for them.
+   *
+   * An element can have any number of listeners for one event, as on the
+   * web: a template's `(bindtap)` next to a directive's host listener for
+   * `click`, say. Native Lynx keeps one handler per event name, so each name
+   * gets one native handler that runs all of them (see #syncNativeHandler).
    */
   addEventListener(name: string, cb: (event: any) => any) {
-    let eventName = '';
-    let eventType: LynxEventType | undefined;
-
-    for (const [prefix, type] of EVENT_PREFIXES) {
-      if (name.startsWith(prefix)) {
-        eventName = name.slice(prefix.length);
-        eventType = type;
-        break;
-      }
-    }
-
-    if (!eventType) {
+    const parsed = parseEventName(name);
+    if (!parsed) {
       return () => {};
     }
 
-    /**
-     * Lynx's background-thread event objects don't implement the DOM-style
-     * stopPropagation()/preventDefault() methods. Lynx only exposes them in
-     * main-thread scripts, yet its own .d.ts declares them on every event — so
-     * TypeScript never catches the gap. Angular templates (and Angular's own
-     * listener wrapper, which calls preventDefault() whenever a handler returns
-     * false) assume every event has them, so a handler like
-     * `$event.stopPropagation()` throws "not a function" at runtime.
-     *
-     * Propagation in Lynx is controlled statically by the bind/catch event
-     * prefix, and there is no runtime default to prevent, so we inject no-op
-     * shims — only when missing, to avoid clobbering the real methods that DO
-     * exist in main-thread-script contexts. This gives Angular DOM parity:
-     * handlers that call these methods run without crashing. We augment the
-     * event before invoking cb (Angular's wrapper may call preventDefault()
-     * during that call) and return cb's result (the return-false path relies
-     * on it). Mirrors React Lynx's addEventMethodsIfNeeded.
-     */
-    const listener = (event: any) => {
-      if (event && typeof event === 'object') {
-        if (typeof event.stopPropagation !== 'function') {
-          event.stopPropagation = () => {};
-        }
-        if (typeof event.preventDefault !== 'function') {
-          event.preventDefault = () => {};
-        }
-        if (typeof event.stopImmediatePropagation !== 'function') {
-          event.stopImmediatePropagation = () => {};
-        }
-      }
-      const result = cb(event);
-      // Native events are delivered straight to this callback by the Lynx SDK —
-      // OUTSIDE Angular's begin()/end() change-detection cycle. So a handler that
-      // imperatively mutates the native tree (e.g. `el.setStyle(...)` for a press
-      // animation) but changes NO signal schedules no CD, and LynxRendererFactory2
-      // .end() therefore never flushes those mutations. On native the effect is a
-      // delayed paint; on web (@lynx-js/web-core's offscreen document) the mutation
-      // never reaches the real DOM at all, so imperative animations silently do
-      // nothing (verified in a headless browser). Schedule the same coalesced
-      // safety-net flush used for content built outside a cycle so these mutations
-      // commit. It's a near-no-op when nothing is layout-dirty, and if the handler
-      // DID change a signal the resulting CD flush runs and this stays a guarded
-      // no-op — so there's no double-flush cost.
-      scheduleSettleFlush();
-      return result;
-    };
-
-    // Cache the resolved handler so #recreateSubtree() can re-register it on a
-    // rebuilt native ref — native events don't survive a painting-node teardown
-    // and can't be read back from the native side, so template `(bind…)` handlers
+    // Kept so #recreateSubtree() can register the handlers again on a rebuilt
+    // native ref: native events don't survive a painting-node teardown and
+    // can't be read back from the native side, so template `(bind…)` handlers
     // on projected content would go dead after a remount without this.
-    const entry = { eventType, eventName, listener };
+    const entry: Listener = { ...parsed, listener: cb };
     this.#listeners.push(entry);
+    this.#syncNativeHandler(entry);
 
+    return () => this.#removeListener(entry);
+  }
+
+  /**
+   * Removes a listener added with addEventListener, as the DOM method does,
+   * for code that pairs the two on the element itself rather than going
+   * through the renderer's cleanup function. Angular's `@defer` interaction
+   * and hover triggers do, for their `click`, `keydown` and `mouseenter`
+   * listeners; without it, their cleanup would throw. A name Lynx has no
+   * event for was never added, so removing it does nothing.
+   */
+  removeEventListener(name: string, cb: (event: any) => any): void {
+    const parsed = parseEventName(name);
+    if (!parsed) return;
+    const entry = this.#listeners.find(
+      (other) =>
+        other.listener === cb &&
+        other.eventType === parsed.eventType &&
+        other.eventName === parsed.eventName,
+    );
+    if (entry) this.#removeListener(entry);
+  }
+
+  #removeListener(entry: Listener): void {
+    const i = this.#listeners.indexOf(entry);
+    // Removing a listener a second time does nothing, as on the DOM.
+    if (i < 0) return;
+    this.#listeners.splice(i, 1);
+    this.#syncNativeHandler(entry);
+  }
+
+  /**
+   * The listeners that share `entry`'s native handler, in the order added.
+   */
+  #listenersLike(entry: Listener): Listener[] {
+    const key = nativeEventKey(entry.eventType, entry.eventName);
+    return this.#listeners.filter(
+      (other) => nativeEventKey(other.eventType, other.eventName) === key,
+    );
+  }
+
+  /**
+   * Brings the native handler for `entry`'s event in line with its listeners:
+   * registers it for the first one, changes its type when a listener needs
+   * another (see combinedEventType), and removes it after the last one.
+   */
+  #syncNativeHandler(entry: Listener): void {
+    const key = nativeEventKey(entry.eventType, entry.eventName);
+    const listeners = this.#listenersLike(entry);
+    const current = this.#nativeHandlers.get(key);
+    const eventType = listeners.length ? combinedEventType(listeners) : null;
+    if (current?.eventType === eventType) return;
+    if (current) {
+      // Passing undefined as the listener tells the Lynx SDK to remove the
+      // handler for this type+name combination.
+      __AddEvent(this.element, current.eventType, entry.eventName, undefined);
+      this.#nativeHandlers.delete(key);
+    }
+    if (!eventType) return;
+    const handler = {
+      eventType,
+      eventName: entry.eventName,
+      // The same dispatcher across a type change: it looks the listeners up
+      // when the event fires, so it never needs registering again for them.
+      dispatch:
+        current?.dispatch ?? ((event: any) => this.#dispatch(entry, event)),
+    };
+    this.#nativeHandlers.set(key, handler);
     // type: 'worklet' routes the callback through Lynx's worklet system
     // (runWorklet), which is the only way to receive events in the JS thread.
     // Direct function callbacks also work here (not just worklet handles) —
     // the native engine checks the value type at runtime.
-    __AddEvent(this.element, eventType, eventName, {
+    __AddEvent(this.element, eventType, entry.eventName, {
       type: 'worklet',
-      value: listener,
+      value: handler.dispatch,
     });
+  }
 
-    return () => {
-      const i = this.#listeners.indexOf(entry);
-      // Defensive: the entry was pushed above and cleanup runs at most once
-      // per registration; indexOf always finds it.
-      /* v8 ignore next */
-      if (i >= 0) this.#listeners.splice(i, 1);
-      // Passing undefined as the listener tells the Lynx SDK to remove the
-      // corresponding event listener for this type+name combination.
-      __AddEvent(this.element, eventType, eventName, undefined);
-    };
+  /**
+   * Runs every listener for the event `entry` belongs to.
+   *
+   * Lynx's background-thread event objects don't implement the DOM-style
+   * stopPropagation()/preventDefault() methods. Lynx only exposes them in
+   * main-thread scripts, yet its own .d.ts declares them on every event — so
+   * TypeScript never catches the gap. Angular templates (and Angular's own
+   * listener wrapper, which calls preventDefault() whenever a handler returns
+   * false) assume every event has them, so a handler like
+   * `$event.stopPropagation()` throws "not a function" at runtime.
+   *
+   * Propagation in Lynx is controlled statically by the bind/catch event
+   * prefix, and there is no runtime default to prevent, so we inject no-op
+   * shims — only when missing, to avoid clobbering the real methods that DO
+   * exist in main-thread-script contexts. This gives Angular DOM parity:
+   * handlers that call these methods run without crashing. We augment the
+   * event before invoking the listeners (Angular's wrapper may call
+   * preventDefault() during that call) and return the last one's result (the
+   * return-false path relies on it). Mirrors React Lynx's
+   * addEventMethodsIfNeeded.
+   */
+  #dispatch(entry: Listener, event: any): unknown {
+    if (event && typeof event === 'object') {
+      if (typeof event.stopPropagation !== 'function') {
+        event.stopPropagation = () => {};
+      }
+      if (typeof event.preventDefault !== 'function') {
+        event.preventDefault = () => {};
+      }
+      if (typeof event.stopImmediatePropagation !== 'function') {
+        event.stopImmediatePropagation = () => {};
+      }
+    }
+    let result: unknown;
+    // As a DOM event does: the listeners are those registered when the event
+    // fires, so one that removes itself doesn't make the next one skip, and a
+    // listener an earlier one removed (an @if hiding part of the element, say)
+    // doesn't run.
+    for (const other of this.#listenersLike(entry)) {
+      if (this.#listeners.includes(other)) result = other.listener(event);
+    }
+    // Native events are delivered straight to this callback by the Lynx SDK —
+    // OUTSIDE Angular's begin()/end() change-detection cycle. So a handler that
+    // imperatively mutates the native tree (e.g. `el.setStyle(...)` for a press
+    // animation) but changes NO signal schedules no CD, and LynxRendererFactory2
+    // .end() therefore never flushes those mutations. On native the effect is a
+    // delayed paint; on web (@lynx-js/web-core's offscreen document) the mutation
+    // never reaches the real DOM at all, so imperative animations silently do
+    // nothing (verified in a headless browser). Schedule the same coalesced
+    // safety-net flush used for content built outside a cycle so these mutations
+    // commit. It's a near-no-op when nothing is layout-dirty, and if the handler
+    // DID change a signal the resulting CD flush runs and this stays a guarded
+    // no-op — so there's no double-flush cost.
+    scheduleSettleFlush();
+    return result;
   }
 }
 

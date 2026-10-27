@@ -81,7 +81,7 @@ The panel grows with its content and has no maximum height. For a long list, put
 
 ### Run code after it closes
 
-`closed` emits once the slide-down animation has finished. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a tap inside the sheet instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`closed` emits once the slide-down animation has finished. It's a good place to navigate once the sheet has gone. You can also navigate straight from a tap inside the sheet, as from any tap handler.
 
 ## API
 

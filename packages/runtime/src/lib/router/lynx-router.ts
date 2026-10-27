@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import {
   provideRouter as ngProvideRouter,
+  RouterLinkActive,
   type RouterFeatures,
   type Routes,
   withRouterConfig,
@@ -14,6 +15,7 @@ import {
 import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
+import { ROUTER_LINK_ACTIVE_CHANGE } from './lynx-router-link-active';
 
 /**
  * Provides Angular Router configured for the Lynx runtime.
@@ -54,5 +56,15 @@ export const provideRouter = (
     // The Android back button goes back through this router's history, like
     // the browser's back button on the web (see lynx-back-button.ts).
     provideEnvironmentInitializer(() => inject(LynxBackButton)),
+    // Lets LYNX_ELEMENTS mark an active routerLinkActive element `selected`
+    // for screen readers without importing the router itself (see
+    // lynx-router-link-active.ts). Taps reach Angular's own RouterLink without
+    // help: the renderer delivers a tap to its `click` listener.
+    {
+      provide: ROUTER_LINK_ACTIVE_CHANGE,
+      useValue: () =>
+        inject(RouterLinkActive, { self: true, optional: true })
+          ?.isActiveChange ?? null,
+    },
   ]);
 };

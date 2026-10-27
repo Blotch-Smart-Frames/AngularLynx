@@ -50,11 +50,11 @@ const MANUAL_LOADING_MS = 900;
  *     interaction, rendering the very same component.
  *
  * Only triggers that actually fire on Lynx are shown. Deliberately omitted:
- * `on interaction` and `on hover`. Angular implements those by registering DOM
- * `click`/`keydown`/`mouseenter` listeners through Renderer2.listen(), but
- * Lynx's element only understands `bind*`/`catch*` prefixed events — any other
- * name is silently dropped, so those triggers would never fire and their
- * placeholders would hang forever. `on idle` works because Angular backs it
+ * `on interaction` and `on hover`. Angular adds their `click`/`keydown`/
+ * `mouseenter` listeners to the trigger element itself once it has rendered,
+ * but on Lynx it never gets that far, so those triggers never fire and their
+ * placeholders would hang forever. (A tap does reach `click` listeners now,
+ * so it isn't the event name.) `on idle` works because Angular backs it
  * with requestIdleCallback falling back to setTimeout, and Lynx has setTimeout.
  *
  * `Heavy` is imported normally (not lazily) here on purpose: because it is
@@ -330,34 +330,23 @@ export class DeferDemo {
   ];
 
   showManual(): void {
-    // Defer the signal writes out of the native `bindtap` callback (UiButton
-    // emits `pressed` synchronously inside its tap handler). Flipping the
-    // condition here also mounts the deferred subtree; mutating the element
-    // tree while a Lynx worklet callback is still on the stack crashes the
-    // main-thread frame pipeline. setTimeout(0) lets the native event unwind
-    // first. See App.navigateTo() for the same pattern.
-    setTimeout(() => {
-      this.deferManual.set(true);
-      if (this.#codeLoaded) {
-        // Code already loaded — Angular renders the component immediately
-        // with no @loading phase, so the stepper jumps straight to loaded.
+    this.deferManual.set(true);
+    if (this.#codeLoaded) {
+      // Code already loaded — Angular renders the component immediately
+      // with no @loading phase, so the stepper jumps straight to loaded.
+      this.stage.set('loaded');
+    } else {
+      this.stage.set('loading');
+      setTimeout(() => {
+        this.#codeLoaded = true;
         this.stage.set('loaded');
-      } else {
-        this.stage.set('loading');
-        setTimeout(() => {
-          this.#codeLoaded = true;
-          this.stage.set('loaded');
-        }, MANUAL_LOADING_MS);
-      }
-    }, 0);
+      }, MANUAL_LOADING_MS);
+    }
   }
 
   resetManual(): void {
-    // Same reasoning as showManual() — this tears the deferred subtree back down.
-    setTimeout(() => {
-      this.deferManual.set(false);
-      this.stage.set('placeholder');
-    }, 0);
+    this.deferManual.set(false);
+    this.stage.set('placeholder');
   }
 
   /**

@@ -150,7 +150,6 @@ export class FormsDemo {
       const { name, email } = this.form.getRawValue();
       this.result.set(`From ${name} <${email}>`);
       // Clear the result banner after 4 seconds and reset the form.
-      // setTimeout is safe here — it's outside the native event callback.
       setTimeout(() => {
         this.result.set('');
         this.form.reset();

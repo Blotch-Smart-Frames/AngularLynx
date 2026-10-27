@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import '@angular/compiler';
 import { LocationStrategy, PlatformLocation } from '@angular/common';
-import { Injector, provideZonelessChangeDetection } from '@angular/core';
+import {
+  EventEmitter,
+  Injector,
+  provideZonelessChangeDetection,
+  runInInjectionContext,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   BrowserTestingModule,
@@ -10,6 +15,7 @@ import {
 import {
   BaseRouteReuseStrategy,
   RouteReuseStrategy,
+  RouterLinkActive,
   ROUTES,
   type Routes,
   withRouterConfig,
@@ -19,6 +25,7 @@ import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
 import { LynxRouteReuseStrategy } from './lynx-route-reuse-strategy';
 import { provideRouter } from './lynx-router';
+import { ROUTER_LINK_ACTIVE_CHANGE } from './lynx-router-link-active';
 
 /**
  * A root injector, as in an app: provideRouter() starts LynxBackButton, which
@@ -114,6 +121,47 @@ describe('provideRouter', () => {
 
       const allRoutes = injector.get(ROUTES) as Routes[];
       expect(allRoutes.flat()).toEqual([]);
+    });
+  });
+
+  describe('routerLinkActive', () => {
+    // LynxRouterLinkActive (in LYNX_ELEMENTS) calls this on each
+    // routerLinkActive element, in that element's injector.
+    it("finds the isActiveChange of the element's own RouterLinkActive", () => {
+      const injector = createInjector([]);
+      const isActiveChange = new EventEmitter<boolean>();
+      const element = Injector.create({
+        providers: [
+          { provide: RouterLinkActive, useValue: { isActiveChange } },
+        ],
+        parent: injector,
+      });
+
+      const found = runInInjectionContext(element, () =>
+        injector.get(ROUTER_LINK_ACTIVE_CHANGE)(),
+      );
+
+      expect(found).toBe(isActiveChange);
+    });
+
+    it("is null on an element without one, even if an ancestor's injector has one", () => {
+      const injector = createInjector([]);
+      const ancestor = Injector.create({
+        providers: [
+          {
+            provide: RouterLinkActive,
+            useValue: { isActiveChange: new EventEmitter<boolean>() },
+          },
+        ],
+        parent: injector,
+      });
+      const element = Injector.create({ providers: [], parent: ancestor });
+
+      const found = runInInjectionContext(element, () =>
+        injector.get(ROUTER_LINK_ACTIVE_CHANGE)(),
+      );
+
+      expect(found).toBeNull();
     });
   });
 

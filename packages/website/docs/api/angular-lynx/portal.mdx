@@ -38,15 +38,10 @@ export class DeleteButton {
   #dialog: PortalRef<ConfirmDialog> | null = null;
 
   confirm(): void {
-    // Opening and closing create and destroy views, so both run outside the native event.
-    setTimeout(() => {
-      this.#dialog = this.#portal.open(ConfirmDialog, {
-        inputs: { title: 'Delete this item?' },
-      });
-      this.#dialog.instance?.closed.subscribe(() =>
-        setTimeout(() => this.#close()),
-      );
+    this.#dialog = this.#portal.open(ConfirmDialog, {
+      inputs: { title: 'Delete this item?' },
     });
+    this.#dialog.instance?.closed.subscribe(() => this.#close());
   }
 
   #close(): void {
@@ -77,7 +72,6 @@ Creates the component inside a new overlay and returns its handle.
 
 - The component takes part in change detection, and gets dependency injection and lifecycle hooks as usual.
 - `config.inputs` sets its inputs once, after creation.
-- From an event handler, call it inside `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
 
 ### `LynxPortal.openTemplate()`
 
@@ -92,7 +86,6 @@ Renders a `TemplateRef`, such as one from `viewChild()`, inside a new overlay.
 
 - `config.context` becomes the template's context. It defaults to `{}`.
 - `config.inputs` is ignored.
-- The same `setTimeout` rule applies.
 
 ### `PortalRef`
 
@@ -124,7 +117,7 @@ Sets one input on the component. Does nothing for template portals.
 destroy(): void;
 ```
 
-Destroys the component or template view, detaches it from change detection, and removes the overlay. From an event handler, call it inside `setTimeout`.
+Destroys the component or template view, detaches it from change detection, and removes the overlay.
 
 ## Types
 
@@ -148,4 +141,4 @@ type PortalConfig = {
 
 - [Dialogs and overlays](/guide/overlays): when to use a portal, `<overlay>` or a UI component.
 - [`<overlay>`](/api/elements/overlay)
-- [Threads](/guide/concepts/threads#the-settimeout-rule)
+- [Threads](/guide/concepts/threads#event-handlers)

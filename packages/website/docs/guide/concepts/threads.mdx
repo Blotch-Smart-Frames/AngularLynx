@@ -1,6 +1,6 @@
 # Threads: where your code runs
 
-Lynx runs JavaScript on two threads. AngularLynx runs your app on one of them, and uses the other to reach APIs your app's thread doesn't have. You can write most components without thinking about this. It matters in two places: one rule for event handlers, and a few APIs that exist on only one thread.
+Lynx runs JavaScript on two threads. AngularLynx runs your app on one of them, and uses the other to reach APIs your app's thread doesn't have. You can write most components without thinking about this. It matters for a few APIs that exist on only one thread.
 
 ## Two threads instead of one
 
@@ -38,9 +38,9 @@ flowchart TB
 
 Constructors, `ngOnInit` and effects run once, like in a browser.
 
-## The `setTimeout` rule
+## Event handlers
 
-**Inside an event handler, change signals freely. Defer anything that creates or destroys views straight away.**
+**Inside an event handler, do what you'd do on the web.** Change signals, navigate, open overlays and start animations, straight away.
 
 ```typescript
 import { Component, inject, signal } from '@angular/core';
@@ -61,33 +61,14 @@ export class Item {
   readonly #router = inject(Router);
 
   open(): void {
-    // Safe: Angular updates the screen after the handler returns.
     this.label.set('Opening…');
-
-    // Deferred: navigating creates and destroys views.
-    setTimeout(() => this.#router.navigate(['/details']));
+    this.#router.navigate(['/details']);
   }
 }
 ```
 
-### Why
-
-A handler runs synchronously inside the native event. While it runs, Lynx is in the middle of delivering that event, and its element tree must not change.
-
-- **Setting a signal is safe.** It only marks the view as changed. Angular re-renders after the handler returns.
-- **Some calls change the tree immediately.** Making them inside the handler can crash the app or leave the screen blank.
-
-`setTimeout(() => …)` runs the call just after the event finishes, which is safe.
-
-### What to defer
-
-Wrap these in `setTimeout` when you call them from an event handler:
-
-- Router navigation: `router.navigate()`, `router.navigateByUrl()`, `location.back()`.
-- Opening an overlay from code: `LynxPortal.open()` and `openTemplate()`. See [Dialogs and overlays](/guide/overlays).
-- Starting an animation from code: `element.animate()`. See [Animate from code](/guide/animations/programmatic).
-
-Template changes driven by signals, such as `@if`, `@for` and class bindings, never need it.
+- **Angular updates the screen after the handler returns.** Setting a signal marks the view as changed, and the router builds the next screen a moment later, as on the web.
+- **You don't need `setTimeout`.** Older versions of this guide said to wrap navigation, overlays and animations in it. Measured on Lynx 4.1 on iOS, Android and the web preview, a handler can create and remove elements, flush them to the screen and navigate without a crash. On iOS and Android, so can a [gesture](/guide/gestures/) callback.
 
 ## APIs that live on one thread
 

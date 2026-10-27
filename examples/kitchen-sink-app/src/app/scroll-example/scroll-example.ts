@@ -255,9 +255,8 @@ export class ScrollExample {
   readonly atEdge = signal<'top' | 'bottom' | null>('top');
 
   /**
-   * bindscroll fires continuously as the feed moves. Writing signals here is
-   * safe inside a Lynx event callback — we never mutate the element tree, so
-   * there's nothing to defer (see App.navigateTo() for the contrasting case).
+   * bindscroll fires continuously as the feed moves, so this only writes the
+   * signals the header reads.
    */
   onScroll(event: ScrollEvent): void {
     const top = event.detail.scrollTop;

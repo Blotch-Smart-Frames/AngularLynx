@@ -66,7 +66,7 @@ const start = (...providers: unknown[]) => {
 };
 
 /**
- * Runs the effect, and lets its call and the listener's timer go.
+ * Runs the effect, and lets its call and the navigation go.
  */
 const settle = async () => {
   TestBed.tick();

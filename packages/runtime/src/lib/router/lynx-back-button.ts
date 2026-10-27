@@ -65,14 +65,7 @@ export class LynxBackButton {
     const emitter =
       modules.getJSModule<GlobalEventEmitter>('GlobalEventEmitter');
     Promise.resolve()
-      .then(() =>
-        emitter?.addListener(BACK_EVENT, () =>
-          // Navigating destroys and creates views, which mustn't happen
-          // inside the event's own callback (the setTimeout rule in
-          // lynx-vs-web-differences.md).
-          setTimeout(() => location.back()),
-        ),
-      )
+      .then(() => emitter?.addListener(BACK_EVENT, () => location.back()))
       .catch(() => {
         // Without a background thread there are no global events to hear.
       });

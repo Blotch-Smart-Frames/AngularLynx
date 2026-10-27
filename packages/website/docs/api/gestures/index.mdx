@@ -140,8 +140,7 @@ These four methods are on every gesture class. `TSelf` is the gesture's own clas
 
 ## Constraints
 
-- **Callbacks run on the [main thread](/guide/glossary#main-thread)**, inside the native gesture. Changing signals there is safe.
-- **Keep the element count fixed during a gesture.** Adding or removing elements from a callback can crash the app. Defer it with `setTimeout`, as the [`setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) explains.
+- **Callbacks run on the [main thread](/guide/glossary#main-thread)**, inside the native gesture. Like [event handlers](/guide/concepts/threads#event-handlers), they can change signals and add or remove elements.
 - **Gestures need the `enableNewGesture` build option**, which is on by default. See [Gesture types](/api/gestures/gesture-types#if-no-gesture-fires).
 
 ## Types

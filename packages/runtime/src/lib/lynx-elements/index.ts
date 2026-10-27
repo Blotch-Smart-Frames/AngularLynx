@@ -64,6 +64,7 @@ export { LynxVideo } from './video';
 export { LynxView } from './view';
 export { LynxViewPager, LynxViewPagerItem } from './viewpager';
 export { LynxWebView } from './webview';
+export { LynxRouterLinkActive } from '../router/lynx-router-link-active';
 
 import { LynxInputValueAccessor, LynxTextareaValueAccessor } from '../forms';
 import { LynxBlurView } from './blur-view';
@@ -90,6 +91,7 @@ import { LynxVideo } from './video';
 import { LynxView } from './view';
 import { LynxViewPager, LynxViewPagerItem } from './viewpager';
 import { LynxWebView } from './webview';
+import { LynxRouterLinkActive } from '../router/lynx-router-link-active';
 
 /**
  * All Lynx native element directives as a single importable array.
@@ -133,4 +135,8 @@ export const LYNX_ELEMENTS = [
   LynxWebView,
   LynxCoverView,
   LynxTitleBarView,
+  // Activates on top of Angular's RouterLinkActive, like the CVA directives
+  // on form attributes above: marks the active link `selected` for screen
+  // readers. It doesn't import the router (see the file).
+  LynxRouterLinkActive,
 ] as const;

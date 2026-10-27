@@ -46,7 +46,10 @@ export type Flow = {
 // the runtime).
 export const FLOWS: readonly Flow[] = [
   { file: 'app.yaml', description: 'renders and handles taps' },
-  { file: 'lazy-route.yaml', description: 'loads lazy routes' },
+  {
+    file: 'lazy-route.yaml',
+    description: 'loads a lazy route from a routerLink',
+  },
   {
     file: 'xelement.yaml',
     description: "renders XElement's input, svg and overlay",

@@ -97,7 +97,6 @@ Read `globalThis.__lynxLastError` at any point to see the last uncaught error.
 | Symptom                   | Likely Cause                                              |
 | ------------------------- | --------------------------------------------------------- |
 | Blank screen              | Crash during bootstrap — check `__lynxLastError`          |
-| App freezes               | DOM mutation inside event worklet (missing `setTimeout`)  |
 | Element disappears        | Element pool exhausted (~256 slots)                       |
 | Navigation silently fails | Missing default route (empty path redirect)               |
 | Styles not applying       | CSS inheritance assumption (styles don't inherit in Lynx) |

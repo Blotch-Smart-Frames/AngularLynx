@@ -40,31 +40,39 @@ export const routes: Routes = [
 
 ## Navigation
 
-**All navigation must be deferred out of event handlers** using `setTimeout`:
+Use Angular's own `routerLink` and `routerLinkActive` from `@angular/router`, on any element:
 
 ```typescript
+import { Component } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
 @Component({
+  imports: [LYNX_ELEMENTS, RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <view (bindtap)="goToDetail()">
+    <view routerLink="/detail" routerLinkActive="bg-accent">
       <text>View Detail</text>
     </view>
     <router-outlet />
   `,
-  imports: [RouterOutlet, LYNX_ELEMENTS],
 })
-export class NavComponent {
-  #router = inject(Router);
+export class NavComponent {}
+```
 
-  goToDetail(): void {
-    // REQUIRED — defer navigation out of the Lynx worklet event callback
-    setTimeout(() => {
-      this.#router.navigateByUrl('/detail');
-    }, 0);
-  }
+- `RouterLink` listens for `click`. The renderer delivers a Lynx tap to `click` listeners (as Lynx for Web maps them), so a tap navigates. A `(bindtap)` on the same element runs too: the renderer registers one native handler per event that runs every listener.
+- `routerLinkActive` adds its classes as on the web, and `LYNX_ELEMENTS` (through `LynxRouterLinkActive`) adds `selected` to the element's `accessibility-traits` while the route is active, keeping the element's own traits (`button` becomes `button,selected`). Android reads a single trait and has no selected trait, so its traits are left alone there. Read the state with `#link="routerLinkActive"` and `link.isActive`.
+- On a component's host, use `hostDirectives: [RouterLink, RouterLinkActive, LynxRouterLinkActive]`: host directives don't match selectors, so `LYNX_ELEMENTS` can't add `LynxRouterLinkActive` there.
+- `LynxRouterLinkActive` finds `RouterLinkActive` through a token that `provideRouter()` from `@blotch/angular-lynx` provides, so `LYNX_ELEMENTS` doesn't pull the router into apps without routes.
+
+Navigate from code with `Router` directly, also inside an event handler:
+
+```typescript
+goToDetail(): void {
+  this.#router.navigateByUrl('/detail');
 }
 ```
 
-Angular's Router processes navigation synchronously, triggering `__RemoveElement`/`__CreateView`/`__AppendElement`. These DOM mutations inside a worklet event callback crash the app.
+Angular's router builds the next screen after the handler returns. Changing the element tree inside a handler is safe anyway: measured on Lynx 4.1 (iOS, Android, web), handlers that create, remove and flush elements don't crash. Don't wrap navigation in `setTimeout`.
 
 ## Route Reuse
 
@@ -91,6 +99,6 @@ It doesn't save native elements: a reattached route rebuilds them. Lynx 4.1 has 
 
 ## Key Differences from Web Routing
 
-- **No URL bar** — users can't type URLs. All navigation is programmatic.
+- **No URL bar** — users can't type URLs. All navigation goes through `routerLink` or the `Router`.
 - **No browser back button** — use `Location.back()`. In the Android app `ng build --platform android` makes, the system back button goes back a screen through the router (and leaves the app from the first one).
 - **In-memory only** — the URL state exists only in `LynxLocationStrategy`'s internal signal. There's no `window.location` or `history.pushState`.

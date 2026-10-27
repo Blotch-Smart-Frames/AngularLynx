@@ -40,7 +40,7 @@ Write for a web developer who knows TypeScript and CSS, and maybe some Angular, 
 
 - Explain implementation internals (`__CreateElement`, `__FlushElementTree`, PrimJS, `LynxRendererFactory2`) only on the Renderer Internals page.
 - Don't explain anything by comparison with React Lynx or Vue Lynx.
-- Threads: Angular runs on the main thread only, where it draws the UI and runs template event handlers. The background thread runs background functions and AngularLynx's calls to background-only APIs. Link to `/guide/concepts/threads`, and its `setTimeout` rule section, rather than re-explaining it.
+- Threads: Angular runs on the main thread only, where it draws the UI and runs template event handlers. The background thread runs background functions and AngularLynx's calls to background-only APIs. Link to `/guide/concepts/threads`, and its Event handlers section, rather than re-explaining it. Handlers can navigate, open overlays and start animations directly: don't wrap those in `setTimeout` (the old "`setTimeout` rule" was measured false on Lynx 4.1; see `investigations/lynx-vs-web-differences.md`).
 
 ## Page Types
 

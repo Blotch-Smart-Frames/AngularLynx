@@ -760,11 +760,11 @@ Re-measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and A
 
 ### What changed
 
-`provideRouter()` no longer installs a `RouteReuseStrategy`, so leaving a route destroys it, as on the web. `LynxRouteReuseStrategy` stays exported as an opt-in for apps that want route state to survive navigation. The original crash was probably one of the other causes in `navigation-crash.md`, such as the `x-list` use-after-free or mutating the tree inside a worklet.
+`provideRouter()` no longer installs a `RouteReuseStrategy`, so leaving a route destroys it, as on the web. `LynxRouteReuseStrategy` stays exported as an opt-in for apps that want route state to survive navigation. The original crash was probably one of the other causes in `navigation-crash.md`, such as the `x-list` use-after-free. Mutating the tree inside a tap handler, the other suspect, doesn't crash (see the next entry).
 
 ---
 
-## DOM mutations during worklet event handler callbacks cause crashes
+## Changing the element tree inside an event handler is safe (the old `setTimeout` rule was wrong)
 
 ### What you'd expect (web)
 
@@ -772,23 +772,63 @@ DOM mutations (`createElement`, `appendChild`, `removeChild`) are safe to perfor
 
 ### What Lynx does
 
-Performing synchronous DOM mutations (`__CreateElement`, `__RemoveElement`, `__AppendElement`, etc.) **inside a worklet callback** (e.g., an `bindtap` event handler) causes a native crash or produces a blank screen. The Lynx worklet executes in a synchronous native call frame; mutating the element tree during that frame corrupts internal state.
+The same. This entry used to say the opposite: that creating or removing elements inside a `bindtap` callback crashed the app or blanked the screen, so navigation, `LynxPortal.open()`, `element.animate()` and structural signal changes had to be deferred with `setTimeout`. The docs called it "the `setTimeout` rule". It came from a May 2026 hypothesis (`navigation-crash.md`, "Fix 2") that shipped alongside two real fixes and was never checked on its own.
 
-React Lynx avoids this by never mutating the tree directly in event handlers — it only updates state and defers mutations to the next render cycle.
+Measured for issue #113 (2026-10-27, Lynx Explorer 4.1 on the iOS 27 Simulator and an Android API 34 emulator, and Lynx for Web 0.26.2), with a probe app whose tap handlers did everything synchronously:
+
+- **Navigation:** 75 taps made 61 `router.navigateByUrl()` and `Location.back()` navigations between an eager route with a 60-row `<scroll-view>` and one with a 40-item `<list>`, including handlers on elements that the navigation itself destroyed. No crash, no blank screen, on either platform.
+- **Navigation doesn't even change the tree inside the handler.** A counter in the next route's constructor stayed at 0 when read straight after `navigateByUrl()` returned: Angular 22's router builds the next view after the handler returns.
+- **A flush inside the handler:** a tap toggled an `@if` over 50 elements and called `ApplicationRef.tick()`, which runs change detection and `__FlushElementTree()` inside the native callback. Fine on both platforms and the web.
+- **Gesture callbacks:** a `TapGesture.onEnd` and a `PanGesture.onUpdate` doing the same (about 60 add/remove-and-flush cycles during pans), fine on iOS and Android.
+- **`element.animate()`** from a tap handler, 8 times in a row, fine.
+
+So handlers call these directly now: `RouterLink` navigates inside its `click` listener, `LynxBackButton` calls `Location.back()` from its event, and the docs, skill and examples dropped the rule.
+
+`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That's a separate bug.
+
+---
+
+## Lynx elements fire `tap`, not `click`; the renderer hands a tap to `click` listeners
+
+### What you'd expect (web)
+
+A tap on a touch screen fires `click`, so `(click)` handlers and Angular directives that listen for `click`, such as `RouterLink`, work on phones.
+
+### What Lynx does
+
+Lynx elements never fire `click`; a tap is the `tap` event. Lynx for Web maps the two itself: web-core's `W3cEventNameToLynx` turns a DOM `click` into `tap`. The renderer does the same in the other direction (`DOM_EVENT_ALIASES` in `packages/runtime/src/lib/lynx-element/types.ts`): a listener for `click` is registered as `bindtap`. That's what lets `<view routerLink="/settings">` navigate on a tap with Angular's own `RouterLink` (issue #113), whose host listener is `(click)`. `RouterLink` also writes `tabindex="0"` on a non-anchor host, which Lynx ignores, and reads `$event.button` and the modifier keys only for `<a>` hosts, which Lynx doesn't have.
+
+---
+
+## Lynx keeps one handler per event on an element
+
+### What you'd expect (web)
+
+`addEventListener('click', a)` then `addEventListener('click', b)` runs both.
+
+### What Lynx does
+
+A second `__AddEvent()` for the same event name **replaces** the first. `AttributeHolder::SetStaticEvent()` (`core/renderer/dom/attribute_holder.h`) does `insert_or_assign(name, …)` into a map keyed by the event name only, whatever its `bindEvent`/`catchEvent`/`capture-*` type; `global-bindEvent` handlers have a map of their own. So a directive's host listener and a template's `(bindtap)` on the same element, such as `routerLink` next to `(bindtap)="track()"`, used to leave only the last one registered.
 
 ### The fix
 
-Defer all DOM-mutating operations (including Angular Router navigation, which triggers component destroy/create) via `setTimeout`:
+`LynxElement.addEventListener()` keeps every listener and registers **one** native handler per event name that runs them all, in the order Angular added them (`#syncNativeHandler`). The handler's type is combined: `catch` if any listener catches (every listener still runs, then the event stops there), and capture only if every listener captures. A listener removed by an earlier one during the same event doesn't run, as in the DOM. Main-thread scripts (`[mainThreadBindtap]`) still register their own native handler, so one still replaces a `(bindtap)` on the same element.
 
-```ts
-bindtap() {
-  // WRONG — navigating synchronously inside a worklet event crashes
-  this.router.navigateByUrl('/other');
+---
 
-  // CORRECT — defer to next macrotask, after the worklet returns
-  setTimeout(() => this.router.navigateByUrl('/other'), 0);
-}
-```
+## `accessibility-traits` takes a comma list on iOS, and a single trait on Android
+
+### What you'd expect (web)
+
+ARIA states combine freely: a `role="button"` element can also be `aria-selected="true"` or `aria-current="page"`.
+
+### What Lynx does
+
+iOS splits `accessibility-traits` on `,` and ORs the traits together (`LynxConverter toAccessibilityTraits:`). It compares each part exactly, so `button,selected` works and `button, selected` loses `selected`. Android reads one trait, matching the whole value against `none`, `image` and `button` (`LynxAccessibilityHelper.LynxAccessibilityTraits.fromValue`), so any list reads as `none` there, and it has no selected trait at all.
+
+### The fix
+
+`LynxRouterLinkActive` (part of `LYNX_ELEMENTS`) adds `selected` to an active `routerLinkActive` element through `LynxElement.setAccessibilityTrait()`, which merges it into the app's own traits with no spaces, keeps it when the app sets its traits again, and leaves the app's traits untouched on Android.
 
 ---
 
@@ -854,7 +894,7 @@ Lynx has its own event binding syntax. Event attributes use explicit phase/propa
 
 | Prefix             | Web equivalent                        | Behavior                                          |
 | ------------------ | ------------------------------------- | ------------------------------------------------- |
-| `bindtap`          | `onclick`                             | Bubble phase, propagates                          |
+| `bindtap`          | `onclick` (`(click)` maps to it)      | Bubble phase, propagates                          |
 | `catchtap`         | `onclick` + `stopPropagation()`       | Bubble phase, stops propagation                   |
 | `capture-bindtap`  | `addEventListener('click', fn, true)` | Capture phase, propagates                         |
 | `capture-catchtap` | Capture + stop                        | Capture phase, stops propagation                  |
@@ -2520,7 +2560,7 @@ The Lynx `Renderer2` implementation passes through element creation and style ch
 
 ### What Lynx does
 
-Event listener registration requires names to match specific prefixes: `bind`, `catch`, `capture-bind`, `capture-catch`, or `global-bind`. If the event name does not start with one of these prefixes, `addEventListener()` returns an **empty unsubscribe function** and the listener is never registered. No error is thrown. This means standard DOM event names like `click`, `focus`, `input` silently fail — you must use `bindtap`, `bindfocus`, `bindinput` instead.
+Event listener registration requires names to match specific prefixes: `bind`, `catch`, `capture-bind`, `capture-catch`, or `global-bind`. If the event name does not start with one of these prefixes, `addEventListener()` returns an **empty unsubscribe function** and the listener is never registered. No error is thrown. This means standard DOM event names like `focus` and `input` silently fail — you must use `bindfocus` and `bindinput` instead. `click` is the exception: it's registered as `bindtap` (see "Lynx elements fire `tap`, not `click`" above).
 
 ---
 
@@ -4238,7 +4278,7 @@ Because AngularLynx trims, templates can be written naturally (`<text>\n  Hello\
 
 ---
 
-## Adding/removing elements inside a gesture worklet callback risks a native crash — keep the element count fixed during a live gesture
+## Charts keep their element count fixed during a gesture (once thought to prevent a crash)
 
 ### What you'd expect (web)
 
@@ -4246,9 +4286,9 @@ A `pointermove`/drag handler can freely mutate the DOM — add rows, remove node
 
 ### What Lynx does
 
-Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside a Lynx worklet**. Mutating the element _tree_ from that context — inserting or removing native elements — is the same dangerous path that crashes when navigating from a native event callback (see `App.navigateTo()` in `kitchen-sink-app`, which defers router navigation with `setTimeout(…, 0)` for exactly this reason). Changing an element's _style_ is fine; changing which elements _exist_ is not.
+Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside the native gesture**. This entry used to say that inserting or removing native elements there crashes, like navigating from a tap handler supposedly did. Neither does: measured for issue #113 on Lynx 4.1 (iOS and Android), a pan's `onUpdate` that added or removed 50 elements and flushed them about 60 times during pans ran fine (see "Changing the element tree inside an event handler is safe"). The fixed counts below stay because they're cheaper: a frame that only restyles existing nodes does less work than one that rebuilds them.
 
-This bites charts specifically. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick _values_ live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
+The case that prompted it was charts. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick _values_ live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
 
 ### The fix
 

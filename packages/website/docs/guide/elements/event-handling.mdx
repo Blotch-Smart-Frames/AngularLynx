@@ -1,6 +1,6 @@
 # Handling taps and events
 
-[Lynx](/guide/glossary#lynx) elements fire native events: taps, touches, scrolls and text input. You bind them with Angular's `(event)` syntax, using Lynx names such as `(bindtap)` in place of `(click)`.
+[Lynx](/guide/glossary#lynx) elements fire native events: taps, touches, scrolls and text input. You bind them with Angular's `(event)` syntax, using Lynx names such as `(bindtap)`.
 
 <Go example="element-event-handling" defaultFile="src/app/app.ts" />
 
@@ -29,41 +29,19 @@ export class ColorPicker {
 ```
 
 - **`bindtap` is Lynx's click.** It fires when a finger presses and lifts without moving far. In the [web preview](/guide/glossary#web-preview), a mouse click fires it too.
-- **`(click)` does nothing.** AngularLynx ignores event names that don't start with a Lynx prefix such as `bind` or `catch`, and it doesn't warn you.
+- **`(click)` works too.** It runs on a tap, like `(bindtap)`, as Lynx for Web maps the two. That's how Angular's `routerLink` navigates on a tap. Other DOM event names, such as `(mouseover)`, do nothing: AngularLynx ignores names that don't start with a Lynx prefix such as `bind` or `catch`, and it doesn't warn you.
 - **Pass values as arguments.** `(bindtap)="select(item)"` is simpler than reading the item back from the event.
-- **Handlers run on the [main thread](/guide/glossary#main-thread)**, inside the native event. Changing signals there is always safe. See [Threads](/guide/concepts/threads).
+- **Handlers run on the [main thread](/guide/glossary#main-thread)**, inside the native event. Do anything there you'd do on the web: change signals, navigate, open overlays, start animations. See [Threads](/guide/concepts/threads).
 
-## Defer navigation and new views
+## Several handlers on one element
 
-```typescript title="src/app/order-row.ts"
-import { Component, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-
-@Component({
-  selector: 'app-order-row',
-  imports: [LYNX_ELEMENTS],
-  template: `
-    <view (bindtap)="openDetails()">
-      <text>{{ opening() ? 'Opening…' : 'Order #1042' }}</text>
-    </view>
-  `,
-})
-export class OrderRow {
-  readonly opening = signal(false);
-  readonly #router = inject(Router);
-
-  openDetails(): void {
-    // Safe right away: Angular re-renders after the handler returns.
-    this.opening.set(true);
-
-    // Deferred: navigating creates and destroys views.
-    setTimeout(() => this.#router.navigate(['/orders', 1042]));
-  }
-}
+```angular-html
+<view routerLink="/orders/1042" (bindtap)="track('order')">
+  <text>Order #1042</text>
+</view>
 ```
 
-Wrap router navigation, `LynxPortal.open()` and `element.animate()` in `setTimeout` when you call them from a handler. A handler runs inside the native event, and creating or destroying views there can crash the app or leave it blank. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+An element can have as many handlers for an event as you like, as on the web: here `routerLink` navigates and `track()` runs too, in the order Angular added them. Lynx itself keeps one handler per event on an element, so AngularLynx registers one that runs them all. If any of them uses `catch`, the event stops at the element once they've all run.
 
 ## Stop an event from bubbling
 

@@ -118,21 +118,16 @@ export class App {
   }
 
   runAnimation(): void {
-    // Unlike the signal changes above, animate() changes the native element
-    // straight away, so it waits until the tap event has finished (see "The
-    // setTimeout rule" in the threads guide).
-    setTimeout(() => {
-      const el = this.animBoxRef();
-      if (!el) return;
-      this.#anim?.cancel();
-      this.#anim = el.nativeElement.animate(
-        [
-          { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.3)', opacity: 0.7 },
-          { transform: 'scale(1)', opacity: 1 },
-        ],
-        { duration: 600, easing: 'ease-in-out' },
-      );
-    }, 0);
+    const el = this.animBoxRef();
+    if (!el) return;
+    this.#anim?.cancel();
+    this.#anim = el.nativeElement.animate(
+      [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(1.3)', opacity: 0.7 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      { duration: 600, easing: 'ease-in-out' },
+    );
   }
 }

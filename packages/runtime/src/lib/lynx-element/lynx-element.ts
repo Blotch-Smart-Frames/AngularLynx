@@ -22,6 +22,7 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { sanitizeSvgContent } from './svg-content';
+import { dropsTap, WebLongPress } from './web-long-press';
 import {
   type BaseLynxElement,
   DOM_EVENT_ALIASES,
@@ -286,6 +287,8 @@ export class LynxElement implements BaseLynxElement {
   #addedTraits: string[] = [];
   /** Every listener Angular added, in the order it added them. */
   #listeners: Listener[] = [];
+  /** Recognizes long presses on Lynx for Web (see #listenForWebLongPress). */
+  #webLongPress: WebLongPress | null = null;
   /**
    * The handler registered natively for each event (see nativeEventKey). It
    * runs every listener for that event, since native Lynx keeps only one.
@@ -1212,6 +1215,10 @@ export class LynxElement implements BaseLynxElement {
       return () => {};
     }
 
+    if (__WEB__ && parsed.eventName === 'longpress') {
+      this.#listenForWebLongPress();
+    }
+
     // Kept so #recreateSubtree() can register the handlers again on a rebuilt
     // native ref: native events don't survive a painting-node teardown and
     // can't be read back from the native side, so template `(bind…)` handlers
@@ -1241,6 +1248,31 @@ export class LynxElement implements BaseLynxElement {
         other.eventName === parsed.eventName,
     );
     if (entry) this.#removeListener(entry);
+  }
+
+  /**
+   * On Lynx for Web, which never fires `longpress` (see web-long-press.ts),
+   * recognizes long presses from this element's touch and mouse events and
+   * runs its `longpress` listeners, as native Lynx would. Once per element:
+   * the listeners it adds stay, and do nothing once no `longpress` listener
+   * is left.
+   */
+  #listenForWebLongPress(): void {
+    if (this.#webLongPress) return;
+    const press = new WebLongPress((detail) => {
+      const entry = this.#listeners.find(
+        (listener) => listener.eventName === 'longpress',
+      );
+      if (entry) this.#dispatch(entry, { type: 'longpress', detail });
+    });
+    this.#webLongPress = press;
+    this.addEventListener('bindtouchstart', press.start);
+    this.addEventListener('bindmousedown', press.start);
+    this.addEventListener('bindtouchmove', press.move);
+    this.addEventListener('bindmousemove', press.move);
+    for (const end of ['touchend', 'touchcancel', 'mouseup', 'mouseleave']) {
+      this.addEventListener(`bind${end}`, press.end);
+    }
   }
 
   #removeListener(entry: Listener): void {
@@ -1331,6 +1363,9 @@ export class LynxElement implements BaseLynxElement {
         event.stopImmediatePropagation = () => {};
       }
     }
+    // The browser's click after a long press on Lynx for Web, which native
+    // Lynx doesn't follow with a tap (see web-long-press.ts).
+    if (__WEB__ && entry.eventName === 'tap' && dropsTap()) return undefined;
     let result: unknown;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a

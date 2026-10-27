@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createEmptyLockfile } from '../lockfile';
 import {
   componentsOnDisk,
+  droppedFiles,
   trackedComponents,
   untrackedComponents,
 } from './installed';
@@ -44,5 +45,24 @@ describe('trackedComponents / untrackedComponents', () => {
 
     expect(trackedComponents(dir, lockfile)).toEqual(['button', 'card']);
     expect(untrackedComponents(dir, lockfile)).toEqual(['spinner']);
+  });
+});
+
+// Reads the real registry source that the test config copies into dist/ui.
+describe('droppedFiles', () => {
+  it("lists the tracked files that upstream doesn't ship", () => {
+    const lockfile = createEmptyLockfile();
+    lockfile.components['button'] = {
+      'button.ts': { hash: 'a' },
+      'button-old.ts': { hash: 'b' },
+      // Shipped, though only a project with the testing library gets it.
+      'button.test.ts': { hash: 'c' },
+    };
+
+    expect(droppedFiles('button', lockfile)).toEqual(['button-old.ts']);
+  });
+
+  it('is empty for a component the lockfile has no entry for', () => {
+    expect(droppedFiles('button', createEmptyLockfile())).toEqual([]);
   });
 });

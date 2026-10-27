@@ -4,6 +4,11 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import pc from 'picocolors';
 import { configExists, writeConfig } from '../config.js';
+import {
+  getOrCreateLockfile,
+  hashContent,
+  writeLockfile,
+} from '../lockfile.js';
 import { getUiSourceDir } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { printBanner } from '../utils/banner.js';
@@ -68,8 +73,8 @@ export type InitOptions = {
 
 /**
  * Sets up a project for dolan: writes `dolan.config.json`, copies the theme
- * files, makes `@blotch/dolan` a dependency, and prints what's left to wire
- * up by hand.
+ * files and records their hashes in `dolan.lock.json`, makes `@blotch/dolan`
+ * a dependency, and prints what's left to wire up by hand.
  *
  * `force` overwrites an existing config and theme files without asking.
  * Without it, init asks first, as `add` does for components: theme files are
@@ -208,10 +213,18 @@ export const initCommand = async (options: InitOptions = {}) => {
     s.start('Copying theme files...');
   }
 
-  for (const { destPath, content, current } of themeFiles) {
-    if (current === content || (current !== null && !overwrite)) continue;
-    writeFileSync(destPath, content);
+  // Record each theme file init leaves as upstream's, as `add` does for
+  // components, so `update` has a base to merge against. Without one, it
+  // called any theme file that differed from the next release a conflict,
+  // though nobody had touched it. A kept file keeps whatever base the
+  // lockfile already has: it isn't upstream's.
+  const lockfile = getOrCreateLockfile(cwd);
+  for (const { file, destPath, content, current } of themeFiles) {
+    if (current !== null && current !== content && !overwrite) continue;
+    if (current !== content) writeFileSync(destPath, content);
+    lockfile.theme[file] = { hash: hashContent(content) };
   }
+  writeLockfile(cwd, lockfile);
 
   s.stop('Setup complete!');
 

@@ -1,5 +1,11 @@
 import * as p from '@clack/prompts';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
 import { configExists, readConfig } from '../config.js';
@@ -14,6 +20,7 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { droppedFiles } from '../utils/installed.js';
 import { isInteractive } from '../utils/interactive.js';
 import { copiesTests, TESTING_LIBRARY } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
@@ -166,6 +173,14 @@ export const addCommand = async (
 
     if (!lockfile.components[name]) {
       lockfile.components[name] = {};
+    }
+
+    // Overwriting a component makes it upstream's version, which no longer
+    // has these files, so they go with their lockfile entries. Left behind,
+    // a stale spec broke the app's `ng test` until `remove` and `add` again.
+    for (const file of droppedFiles(name, lockfile)) {
+      rmSync(join(destDir, file), { force: true });
+      delete lockfile.components[name][file];
     }
 
     const files = getComponentFiles(name, { tests });

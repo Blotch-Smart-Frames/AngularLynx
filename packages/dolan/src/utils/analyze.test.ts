@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 
-import { analyzeFile, formatDiff, summarizeComponent } from './analyze';
+import {
+  analyzeFile,
+  analyzeRemovedFile,
+  formatDiff,
+  summarizeComponent,
+} from './analyze';
 
 const hash = (content: string): string =>
   createHash('sha256').update(content).digest('hex').slice(0, 16);
@@ -48,6 +53,24 @@ describe('analyzeFile', () => {
     expect(analyzeFile('user-edit', 'upstream-edit', stored, hash)).toBe(
       'conflict',
     );
+  });
+});
+
+// A file dolan tracks that upstream no longer ships: upstream's version is
+// "no file".
+describe('analyzeRemovedFile', () => {
+  it('returns up-to-date when the file is gone from disk too', () => {
+    expect(analyzeRemovedFile(null, hash('copied'), hash)).toBe('up-to-date');
+  });
+
+  it('returns auto-update when nobody edited it, so it can just go', () => {
+    expect(analyzeRemovedFile('copied', hash('copied'), hash)).toBe(
+      'auto-update',
+    );
+  });
+
+  it('returns conflict when it was edited, so deleting it needs a yes', () => {
+    expect(analyzeRemovedFile('edited', hash('copied'), hash)).toBe('conflict');
   });
 });
 

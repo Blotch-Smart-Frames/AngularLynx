@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
+import { hashContent } from '../lockfile';
 
 const spinnerMock = { start: vi.fn(), stop: vi.fn() };
 
@@ -341,6 +342,46 @@ describe('addCommand', () => {
 
     expect(p.confirm).not.toHaveBeenCalled();
     expect(readInstalledFile(fixture.dir, 'card', 'card.ts')).toBe(upstream);
+  });
+
+  it('deletes the files upstream no longer ships when it overwrites a component', async () => {
+    // An older release copied card-render.test.ts; this one doesn't ship it.
+    // Left behind, the stale spec broke the app's `ng test`.
+    const card = 'export const Card = {};';
+    const stale = "import '../../../test-utils/set-input-signal';";
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: {
+            'card.ts': { hash: hashContent(card) },
+            'card-render.test.ts': { hash: hashContent(stale) },
+          },
+        },
+        theme: {},
+      },
+      components: { card: { 'card.ts': card, 'card-render.test.ts': stale } },
+      uiSource: { card: { 'card.ts': card } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { addCommand } = await import('./add');
+    await addCommand(['card'], { force: true });
+
+    expect(
+      existsSync(
+        join(
+          fixture.dir,
+          DEFAULT_CONFIG.aliases.components,
+          'card',
+          'card-render.test.ts',
+        ),
+      ),
+    ).toBe(false);
+    expect(readLockfile(fixture.dir).components.card).toEqual({
+      'card.ts': { hash: hashContent(card) },
+    });
   });
 
   // CI, agents and scripts: a question there would wait for input that never

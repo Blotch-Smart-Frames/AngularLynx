@@ -32,6 +32,8 @@ Options:
   --pm <name>            npm (default), pnpm or yarn
   --angular <version>    Angular CLI version for ng new, e.g. 22.2.0 or next
   --no-tailwind          Run ng add with --tailwind=false
+  --tailwind-version <n> Run ng add with --tailwind-version=<n>, 3 or 4
+                         (default: ng add's own default, 4)
   --keep                 Keep the generated app and print its path
   --port <port>          Verdaccio port (default: 4873)
   --storage <dir>        Verdaccio storage, cached between runs
@@ -64,6 +66,7 @@ const { values: args } = parseArgs({
     pm: { type: 'string', default: 'npm' },
     angular: { type: 'string' },
     'no-tailwind': { type: 'boolean', default: false },
+    'tailwind-version': { type: 'string' },
     keep: { type: 'boolean', default: false },
     port: { type: 'string', default: '4873' },
     storage: { type: 'string' },
@@ -96,6 +99,14 @@ if (!['npm', 'pnpm', 'yarn'].includes(packageManager)) {
 }
 if (args.registry !== 'local' && args.registry !== 'public') {
   throw new Error(`--registry must be local or public, not ${args.registry}`);
+}
+const tailwindVersion = args['tailwind-version'];
+if (
+  tailwindVersion !== undefined &&
+  tailwindVersion !== '3' &&
+  tailwindVersion !== '4'
+) {
+  throw new Error(`--tailwind-version must be 3 or 4, not ${tailwindVersion}`);
 }
 const buildNative = args['build-native'];
 if (
@@ -195,12 +206,16 @@ try {
         // ng new + ng add path can vary Angular, the package manager or
         // ng add's options.
         scaffolder:
-          packageManager === 'npm' && !args.angular && !args['no-tailwind']
+          packageManager === 'npm' &&
+          !args.angular &&
+          !args['no-tailwind'] &&
+          !tailwindVersion
             ? 'create'
             : 'ng-add',
         angular: args.angular,
         packageManager,
         tailwind: !args['no-tailwind'],
+        tailwindVersion,
         rspeedy: args.rspeedy,
         buildOnly: args['build-only'],
       },

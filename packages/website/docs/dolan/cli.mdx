@@ -87,10 +87,10 @@ Asks two questions, then sets up the project. Pass an option to answer its quest
 | Where should theme files be installed? | `src/styles`        | `--theme`      |
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
-- Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
+- Copies `default.css`, `dark.css` and `tailwind.css` into the theme folder, or `tailwind-plugin.ts` in place of `tailwind.css` for an app on Tailwind 3 (one with a `tailwind.config.*`). If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
 - Records the hashes of the theme files it copied in `dolan.lock.json`, so [`update`](#update) can tell whether you've edited them.
 - Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
-- Creates the components folder and prints the next steps: the Tailwind plugin, and the `@import` lines for `default.css` and `dark.css`, written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
+- Creates the components folder and prints the next steps: the `@import` lines for the theme files (and, on Tailwind 3, the Tailwind plugin for your config), written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
 
 **Without a terminal**, or with `--yes`, `init` asks nothing:
 
@@ -202,7 +202,7 @@ Merges the bundled source into every installed component, file by file:
 - **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. Theme files are the exception: `init` in 22.2.3 and earlier didn't record their hashes, so a theme file that's still exactly as one of those releases shipped it counts as unchanged.
 - **Files the bundled source no longer has are deleted**, along with their lockfile entries. 22.2.3 stopped copying the `*-render.test.ts` files, for example. If you keep one you edited, it's yours: dolan stops tracking it.
 - **Ejected components are left alone.** `update`, `list`, `diff` and `outdated` only look at the components in `dolan.lock.json`. See [`eject`](#eject).
-- **Theme files** (`default.css`, `dark.css`, `tailwind-plugin.ts`) are merged the same way. Themes you made with [`theme`](#theme) aren't.
+- **Theme files** (`default.css`, `dark.css`, and `tailwind.css` or `tailwind-plugin.ts`) are merged the same way. Themes you made with [`theme`](#theme) aren't.
 - **New dependencies are added.** If a component's new version needs another component, `update` copies it in.
 - **npm packages are installed** the same way [`add`](#add) does.
 - **You're asked about a conflict once.** After you choose, the lockfile records the new upstream hash. If you kept your version, the file shows as modified until upstream changes again.
@@ -267,18 +267,18 @@ npx @blotch/dolan doctor
 
 Runs these checks in order and exits with code 1 if any fail:
 
-| Check                                                                                           | If it doesn't pass |
-| ----------------------------------------------------------------------------------------------- | ------------------ |
-| `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                | Fails and stops    |
-| The components and theme folders exist                                                          | Fails              |
-| The theme folder has `tailwind-plugin.ts`, and `default.css` or `dark.css`                      | Warns              |
-| Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file   | Warns              |
-| `tailwind.config.ts` or `.js` exists and mentions `blotchPlugin`                                | Warns              |
-| `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                | Fails              |
-| `package.json` lists `tailwindcss`                                                              | Warns              |
-| Every component folder is a known component, has all its files and has its dependencies         | Warns              |
-| No component has tests without `@blotch/angular-lynx-testing-library` to run them               | Warns              |
-| `package.json` lists the npm packages the components import, such as `class-variance-authority` | Fails              |
+| Check                                                                                                                             | If it doesn't pass |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                                                  | Fails and stops    |
+| The components and theme folders exist                                                                                            | Fails              |
+| The theme folder has `tailwind.css` (`tailwind-plugin.ts` on Tailwind 3), and `default.css` or `dark.css`                         | Warns              |
+| Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                     | Warns              |
+| On Tailwind 4, the global stylesheet imports `tailwind.css`; on Tailwind 3, `tailwind.config.ts` or `.js` mentions `blotchPlugin` | Warns              |
+| `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                                                  | Fails              |
+| `package.json` lists `tailwindcss`                                                                                                | Warns              |
+| Every component folder is a known component, has all its files and has its dependencies                                           | Warns              |
+| No component has tests without `@blotch/angular-lynx-testing-library` to run them                                                 | Warns              |
+| `package.json` lists the npm packages the components import, such as `class-variance-authority`                                   | Fails              |
 
 An ejected component's files aren't checked. A `utils` path in an older config is allowed but not needed. The `-rgb` twins are what [opacity modifiers](/dolan/theming#opacity-modifiers) such as `bg-primary/50` read; the check suggests the line to add for a missing one.
 

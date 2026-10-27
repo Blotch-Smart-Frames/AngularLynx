@@ -16,12 +16,17 @@
     "tailwind": {
       "type": ["boolean", "string"],
       "pattern": "^(true|false)$",
-      "description": "Whether to add Tailwind CSS with @lynx-js/tailwind-preset.",
+      "description": "Whether to add Tailwind CSS.",
       "default": true,
       "x-prompt": {
-        "message": "Would you like to add Tailwind CSS with Lynx preset?",
+        "message": "Would you like to add Tailwind CSS?",
         "type": "confirmation"
       }
+    },
+    "tailwindVersion": {
+      "type": ["string", "number"],
+      "enum": ["4", "3", 4, 3],
+      "description": "The Tailwind CSS major version to set up: 4 (with @tailwindcss/postcss), or 3 (with @lynx-js/tailwind-preset). Defaults to the version the project already depends on, else 4."
     }
   },
   "required": []

@@ -24,7 +24,7 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 - Gestures — tap, pan, long-press, fling, pinch, rotation with composition
 - Animations — CSS transitions, keyframes, and programmatic `animate()` API
 - Content projection, portals, `@defer`, and lazy-loaded routes
-- Tailwind CSS via `@lynx-js/tailwind-preset`
+- Tailwind CSS 4, with the build rewriting its CSS for Lynx (or Tailwind CSS 3 with `@lynx-js/tailwind-preset`)
 
 ## Documentation
 

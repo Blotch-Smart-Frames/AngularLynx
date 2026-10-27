@@ -1,0 +1,13 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* The @blotch/ui theme, which `dolan init` copied into src/styles. */
+@import './styles/default.css';
+@import './styles/dark.css';
+@import './styles/tailwind.css';

@@ -146,9 +146,10 @@ test('Tailwind styles classes in .html templates', async ({ page }) => {
   });
   await expect(words).toHaveCSS('color', 'rgb(10, 123, 92)');
   // Its `bg-primary/10`: the UI theme's --primary, rgba(24, 24, 27, 1), at
-  // 10%. The plugin reads the color's channels from --primary-rgb for an
-  // opacity modifier, so this checks the theme files and the plugin together
-  // in an app's own build (issue #115). getByText finds the words' own
+  // 10%. A modifier reads the color's channels from --primary-rgb: through
+  // the theme's plugin on Tailwind 3, and on Tailwind 4 through the build's
+  // rewrite of Tailwind's color-mix(). So this checks the theme files with
+  // either in an app's own build (issues #115 and #116). getByText finds the words' own
   // <raw-text>, which inherits the color but not the background, so this
   // reads the <text> element itself.
   await expect(page.locator('x-text', { has: words })).toHaveCSS(

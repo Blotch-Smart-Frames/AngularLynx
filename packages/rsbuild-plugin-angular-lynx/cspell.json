@@ -1,3 +1,11 @@
 {
-  "import": ["../../cspell.json"]
+  "import": ["../../cspell.json"],
+  "words": [
+    "atrule",
+    "currentcolor",
+    "linearrgb",
+    "longhands",
+    "oklab",
+    "oklch"
+  ]
 }

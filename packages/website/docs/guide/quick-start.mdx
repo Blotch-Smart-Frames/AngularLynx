@@ -17,7 +17,7 @@ You don't need the Angular CLI installed globally. The project brings its own co
 npm create angular-lynx my-app
 ```
 
-When it asks **"Would you like to add Tailwind CSS with Lynx preset?"**, answer **Yes**. The tutorial and the examples use Tailwind.
+When it asks **"Would you like to add Tailwind CSS?"**, answer **Yes**. The tutorial and the examples use Tailwind.
 
 The command takes a minute or two. It runs three steps for you:
 
@@ -123,7 +123,7 @@ Some edits can't be applied to the running app, such as code that throws while i
 ```text
 my-app/
 ├── angular.json              # build, serve and test use the AngularLynx builders
-├── tailwind.config.ts        # Tailwind with the Lynx preset
+├── .postcssrc.json           # runs Tailwind CSS 4
 └── src/
     ├── main.ts               # bootstrapApplication from @blotch/angular-lynx
     ├── rspeedy-env.d.ts      # types for importing images, fonts and CSS modules

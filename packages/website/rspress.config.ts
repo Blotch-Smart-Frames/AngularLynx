@@ -393,6 +393,7 @@ export default defineConfig({
         { sectionHeaderText: 'Styling' },
         { text: 'CSS Modules', link: '/examples/css-modules' },
         { text: 'Custom Fonts', link: '/examples/custom-fonts' },
+        { text: 'Tailwind CSS 4', link: '/examples/tailwind-4' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Data & State' },
         { text: 'Host Data', link: '/examples/data-flow' },

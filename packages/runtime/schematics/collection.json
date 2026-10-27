@@ -6,7 +6,7 @@
       "schema": "./ng-add/schema.json"
     },
     "add-tailwind": {
-      "description": "Adds Tailwind CSS with @lynx-js/tailwind-preset to an existing project",
+      "description": "Adds Tailwind CSS to an existing project: Tailwind 4, or Tailwind 3 with @lynx-js/tailwind-preset",
       "factory": "./add-tailwind/index",
       "schema": "./add-tailwind/schema.json"
     },

@@ -33,6 +33,7 @@ export default defineConfig({
 - Runs Angular's AOT compiler within Rsbuild/webpack
 - Splits each entry into **main-thread** and **background-thread** bundles for Lynx's dual-thread model
 - Bundles component stylesheets and processes CSS
+- Runs Tailwind CSS 3 from a `tailwind.config.*`, and rewrites the CSS Tailwind CSS 4 writes (layers, `@property`, nesting, `oklch()` and `color-mix()`, logical properties, `translate`/`rotate`/`scale`) into CSS Lynx reads, for the device and the web preview alike. See [Tailwind CSS](https://angularlynx.js.org/guide/tailwindcss)
 - Registers `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts Lynx elements (`<view>`, `<text>`, etc.)
 - Enforces the build target's `budgets` with `ng build`'s units and messages: a warning is printed, an error fails the build
 

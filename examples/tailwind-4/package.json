@@ -1,0 +1,33 @@
+{
+  "name": "@angular-lynx-example/tailwind-4",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "ng serve",
+    "build": "ng build",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint:fix": "oxlint --fix .",
+    "dolan:update:force": "dolan update --force"
+  },
+  "dependencies": {
+    "@angular/common": "^22.2.1",
+    "@angular/compiler": "^22.2.1",
+    "@angular/core": "^22.2.1",
+    "@angular/platform-browser": "^22.2.1",
+    "@blotch/angular-lynx": "*",
+    "@blotch/dolan": "*",
+    "class-variance-authority": "^0.7.1"
+  },
+  "devDependencies": {
+    "@angular/cli": "^22.2.2",
+    "@angular/compiler-cli": "^22.2.1",
+    "@blotch/angular-lynx-build": "*",
+    "@lynx-js/types": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.0"
+  }
+}

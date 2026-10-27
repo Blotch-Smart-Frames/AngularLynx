@@ -9,8 +9,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * bundle's modules instead of `content`, and a template isn't a module.
  *
  * Its background is a UI theme color with an opacity modifier
- * (`bg-primary/10`), which the theme's plugin turns into
- * `rgba(var(--primary-rgb), 0.1)` (issue #115). It shares the element so the
+ * (`bg-primary/10`), which becomes `rgba(var(--primary-rgb), 0.1)` (issue
+ * #115): through the theme's plugin on Tailwind 3, and on Tailwind 4 through
+ * the build, which rewrites Tailwind's color-mix() (issue #116), so it also
+ * shows Tailwind 4's CSS reached the app. It shares the element so the
  * page gets no taller: CI's small Android emulator has no room to spare.
  */
 @Component({

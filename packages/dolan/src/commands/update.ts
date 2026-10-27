@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
+import { themeFilesFor } from '../utils/tailwind.js';
 import { configExists, readConfig } from '../config.js';
 import { resolveDependencies } from '../registry.js';
 import {
@@ -448,8 +449,7 @@ export const updateCommand = async (options: {
 
   // Theme files
   const themeDir = resolve(cwd, config.aliases.theme);
-  const themeFiles = ['default.css', 'dark.css', 'tailwind-plugin.ts'];
-  for (const file of themeFiles) {
+  for (const file of themeFilesFor(cwd)) {
     const src = join(uiSrc, 'theme', file);
     if (!existsSync(src)) continue;
 

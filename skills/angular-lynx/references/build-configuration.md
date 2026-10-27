@@ -100,7 +100,7 @@ export default defineConfig({
 3. **Thread banners** — Injects `globalThis["__MAIN_THREAD__"]=true/false` into each bundle
 4. **CSS handling** — Processes component styles and global CSS
 5. **Chunk splitting** — Optimizes code splitting for lazy-loaded routes
-6. **Tailwind detection** — Auto-configures Tailwind CSS if detected in the project
+6. **Tailwind** — Runs Tailwind CSS 3 from a `tailwind.config.*`, and rewrites what Tailwind CSS 4 writes into CSS Lynx reads
 
 ## Project Files
 
@@ -169,4 +169,16 @@ npm run demo              # Runs ng serve for the kitchen-sink-app
 
 ## Tailwind CSS
 
-If a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin runs Tailwind as a PostCSS plugin. No `postcss.config.js` or other setup is needed. Tailwind generates CSS for the classes in the files its `content` globs match, so keep `./src/**/*.{html,ts}` there: classes in an `.html` template the glob misses get no CSS.
+New apps use **Tailwind CSS 4**, set up as Angular CLI does: `.postcssrc.json` runs `@tailwindcss/postcss`, and the global stylesheet imports Tailwind's theme and utilities, without Preflight:
+
+```css
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+```
+
+Tailwind 4 writes CSS Lynx drops (cascade layers, `oklch()`, `color-mix()`, `padding-inline`, the `translate`/`rotate`/`scale` properties, `@property`). The plugin rewrites every stylesheet `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for the native and the web bundle, and leaves out properties and keywords Lynx doesn't have. Nothing to configure. Tailwind 4 finds classes in the project's files itself; add `@source` for a folder outside it.
+
+**Tailwind CSS 3** still works: if a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin runs the app's Tailwind 3 as a PostCSS plugin, with `@lynx-js/tailwind-preset` in the config. Tailwind 3 generates CSS for the classes in the files its `content` globs match, so keep `./src/**/*.{html,ts}` there: classes in an `.html` template the glob misses get no CSS.
+
+The `@blotch/ui` theme maps its colors to utilities with `tailwind.css` (import it after Tailwind) on Tailwind 4, and with `tailwind-plugin.ts` on Tailwind 3.

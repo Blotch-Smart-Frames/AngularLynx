@@ -596,6 +596,37 @@ describe('initCommand', () => {
       expect(steps).toContain('npx @blotch/dolan add button card');
     });
 
+    it('copies tailwind.css and imports the theme in the stylesheet on Tailwind 4', async () => {
+      writeFileSync(join(fixture.uiDir, 'theme/tailwind.css'), '@theme {}');
+      writeFileSync(
+        join(fixture.dir, 'package.json'),
+        JSON.stringify({
+          devDependencies: {
+            tailwindcss: '^4.3.3',
+            '@tailwindcss/postcss': '^4.3.3',
+          },
+        }),
+      );
+      await useDefaultAnswers();
+
+      const { initCommand } = await import('./init');
+      await initCommand();
+
+      const steps = await nextSteps();
+      expect(steps).toContain(
+        'Import the theme in src/styles.css, after Tailwind',
+      );
+      expect(steps).toContain("@import './styles/default.css';");
+      expect(steps).toContain("@import './styles/tailwind.css';");
+      expect(steps).not.toContain('tailwind.config.ts');
+      expect(existsSync(join(fixture.dir, 'src/styles/tailwind.css'))).toBe(
+        true,
+      );
+      expect(
+        existsSync(join(fixture.dir, 'src/styles/tailwind-plugin.ts')),
+      ).toBe(false);
+    });
+
     it('imports the theme relative to the global stylesheet, dark.css too', async () => {
       await useDefaultAnswers();
 

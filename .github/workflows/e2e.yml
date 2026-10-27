@@ -66,10 +66,18 @@ env:
   # Read by Maestro's install script, and part of the Maestro cache key.
   MAESTRO_VERSION: 2.10.0
 
+# Every job has a timeout-minutes well above its slowest recent run, so a
+# hang fails it rather than running for GitHub's default of six hours (one
+# PR's iOS job sat in its Layer 6 step for over 80 minutes, with no log to
+# show until the job ended). The step that does a job's work has a shorter
+# one of its own: a step that runs out of time just fails, and the artifact
+# upload after it runs as it does after any failure, instead of depending on
+# what runs when GitHub cancels a job that ran out of time.
 jobs:
   # Decides what this run covers, from the event and inputs.
   setup:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       registry: ${{ steps.plan.outputs.registry }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -130,6 +138,8 @@ jobs:
     needs: setup
     if: needs.setup.outputs.registry == 'local'
     runs-on: ubuntu-latest
+    # Usually 1 to 2 minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -148,6 +158,7 @@ jobs:
       - name: Build the publishable packages
         run: npx turbo run build --filter='@blotch/angular-lynx-e2e^...'
       - name: 'Layer 1: package contract checks'
+        timeout-minutes: 10
         run: >-
           node packages/e2e/src/run.ts --layers 1
           --tarball-dir "$RUNNER_TEMP/tarballs"
@@ -174,6 +185,8 @@ jobs:
       && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
     name: fresh-app (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    # Usually 3 to 9 minutes; the slowest of the last 100 runs took 17.
+    timeout-minutes: 40
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -206,16 +219,20 @@ jobs:
           path: ${{ runner.temp }}/tarballs
       - name: Date for the registry cache key
         id: date
-        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "month=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
       # Verdaccio's storage keeps every third-party package the app installs,
       # so later runs don't depend on (or wait for) the public registry. Keyed
-      # by date so it refreshes daily.
+      # by date so it refreshes daily, and restored only from the same month:
+      # Verdaccio never drops a version it has stored, so the storage would
+      # otherwise only grow.
       - name: Cache Verdaccio storage
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/verdaccio-storage
-          key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
-          restore-keys: verdaccio-${{ runner.os }}-
+          key: verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.month }}-
       - name: Playwright version
         id: playwright
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -235,6 +252,7 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true' && runner.os == 'Linux'
         run: npx playwright install-deps chromium
       - name: 'Layers 2 and 3: fresh app and browser render'
+        timeout-minutes: 30
         env:
           REGISTRY: ${{ needs.setup.outputs.registry }}
           VERSION: ${{ inputs.version }}
@@ -264,6 +282,8 @@ jobs:
       always() && needs.setup.outputs.native == 'true'
       && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
     runs-on: ubuntu-latest
+    # Usually 3 to 6 minutes; Gradle's first build adds about 8.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -279,15 +299,17 @@ jobs:
           path: ${{ runner.temp }}/tarballs
       - name: Date for the registry cache key
         id: date
-        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "month=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
       # Restore only: fresh-app saves this cache, and two jobs saving the same
       # key race.
       - name: Restore Verdaccio storage
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/verdaccio-storage
-          key: verdaccio-${{ runner.os }}-${{ steps.date.outputs.date }}
-          restore-keys: verdaccio-${{ runner.os }}-
+          key: verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.date }}
+          restore-keys: verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.month }}-
       # The Android shell's first build downloads Gradle, the Android Gradle
       # Plugin and every AAR (about 8 minutes on a laptop). The template's
       # Gradle files pin all of them, so they key the cache.
@@ -300,6 +322,7 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('packages/native/templates/android/**/*.kts', 'packages/native/templates/android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
       - name: Build the app and its Android shell
+        timeout-minutes: 20
         env:
           REGISTRY: ${{ needs.setup.outputs.registry }}
           VERSION: ${{ inputs.version }}
@@ -356,27 +379,80 @@ jobs:
     # could import) for iOS 15, so the image's default Xcode 27 links them,
     # as a user's would. macos-15 and macos-26 default to Xcode 16.4 and 26.6.
     runs-on: xcode-27
+    # The last 55 passing runs before this limit took 15 to 47 minutes (28 in
+    # the middle). Within it, the harness stops a Maestro session that hangs
+    # (src/native/maestro.ts), and the Layer 6 step has a limit of its own.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          # This job doesn't run `npm ci` (see the harness's dependencies
+          # below), so npm's cache would only cost a restore and a save.
+          package-manager-cache: false
+      - name: Lynx Explorer version
+        id: explorer
+        run: |
+          version=$(node --input-type=module -e "
+            const { EXPLORER } = await import('./packages/e2e/src/native/explorer.ts');
+            console.log(EXPLORER.version);
+          ")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # A key per platform, since each job downloads only its own platform's
+      # Explorer. With one key for both, whichever job saved first owned it:
+      # the other restored a cache without its app, downloaded and unpacked
+      # it again on every run (1 to 2.5 minutes here), and never saved it.
       - name: Cache Lynx Explorer
         uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx-e2e/explorer
-          key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
+          key: lynx-explorer-${{ steps.explorer.outputs.version }}-ios-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
       # Booting the simulator is the slowest step, so start it first (run-
       # native.ts needs only Node). The simulator keeps booting while the
       # steps below run; the test step waits for it to finish. Its log goes
       # to its own folder, because run.ts empties the artifacts folder.
       - name: Start the iOS Simulator
+        timeout-minutes: 10
         run: >-
           node packages/e2e/src/native/run-native.ts --platform ios --prepare
           --artifacts-dir "$RUNNER_TEMP/e2e-artifacts-prepare"
-      # For the harness's own dependencies (Verdaccio).
-      - run: npm ci
+      # Of the monorepo's dependencies, the harness needs only two here:
+      # Verdaccio (registry.ts) and publint (which check-packages.ts imports,
+      # and run.ts imports check-packages.ts). Everything else it runs is
+      # Node's built-ins and TypeScript that Node strips itself, and the app
+      # comes from the tarballs. `npm ci` installed all 1.1 GB of the
+      # monorepo's dependencies for them, which took 4 to 8 minutes on this
+      # runner. The versions come from the lockfile, so they move with it.
+      - name: Versions of the harness's dependencies
+        id: harness
+        run: |
+          node -e '
+            const lock = require("./package-lock.json").packages;
+            const specs = ["verdaccio", "publint"].map(
+              (name) => `${name}@${lock[`node_modules/${name}`].version}`,
+            );
+            console.log(`specs=${specs.join(" ")}`);
+            console.log(`key=${specs.join("-")}`);
+          ' >> "$GITHUB_OUTPUT"
+      - name: Cache the harness's dependencies
+        id: harness-cache
+        uses: actions/cache@v6
+        with:
+          path: node_modules
+          key: e2e-harness-${{ runner.os }}-${{ steps.harness.outputs.key }}
+      # Installed in a folder of their own and moved in: in the repository,
+      # npm would install the whole workspace.
+      - name: Install the harness's dependencies
+        if: steps.harness-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        env:
+          SPECS: ${{ steps.harness.outputs.specs }}
+        run: |
+          # $SPECS is unquoted on purpose: it holds one package per word.
+          npm install --prefix "$RUNNER_TEMP/e2e-harness" --no-save --no-package-lock \
+            --no-audit --no-fund --ignore-scripts $SPECS
+          mv "$RUNNER_TEMP/e2e-harness/node_modules" node_modules
       - name: Cache Maestro
         id: maestro-cache
         uses: actions/cache@v6
@@ -385,6 +461,7 @@ jobs:
           key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
       - name: Install Maestro
         if: steps.maestro-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - uses: actions/download-artifact@v8
@@ -394,17 +471,19 @@ jobs:
           path: ${{ runner.temp }}/tarballs
       - name: Date for the registry cache key
         id: date
-        run: echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "month=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
       # Its own key, so it never races fresh-app's macOS entry (full matrix
       # only) for the same one; that entry's storage is still a good start.
       - name: Cache Verdaccio storage
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/verdaccio-storage
-          key: verdaccio-ios-${{ steps.date.outputs.date }}
+          key: verdaccio-storage-ios-${{ steps.date.outputs.date }}
           restore-keys: |
-            verdaccio-ios-
-            verdaccio-${{ runner.os }}-
+            verdaccio-storage-ios-${{ steps.date.outputs.month }}-
+            verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.month }}-
       # The prebuilt Lynx XCFrameworks the shell links, which `ng build
       # --platform ios` downloads on first use. frameworks.ts pins them.
       - name: Cache Lynx iOS frameworks
@@ -413,6 +492,9 @@ jobs:
           path: ~/.cache/angular-lynx/lynx-ios
           key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
       - name: 'Layer 6: iOS Simulator'
+        # Took 13 to 37 minutes in eight runs before this limit, about half of
+        # it the flows.
+        timeout-minutes: 40
         env:
           REGISTRY: ${{ needs.setup.outputs.registry }}
           VERSION: ${{ inputs.version }}
@@ -438,6 +520,9 @@ jobs:
     needs: [setup, build-app]
     if: always() && needs.build-app.result == 'success'
     runs-on: ubuntu-latest
+    # Usually 6 to 8 minutes. The slowest of the last 60 took 25, most of it
+    # Maestro waiting in launchApp (see native/open-app.yaml).
+    timeout-minutes: 30
     # Until the Android flow has run reliably for a while (rollout phase 7).
     continue-on-error: true
     steps:
@@ -450,11 +535,20 @@ jobs:
         with:
           name: e2e-app-${{ needs.setup.outputs.registry }}
           path: ${{ runner.temp }}/app
+      - name: Lynx Explorer version
+        id: explorer
+        run: |
+          version=$(node --input-type=module -e "
+            const { EXPLORER } = await import('./packages/e2e/src/native/explorer.ts');
+            console.log(EXPLORER.version);
+          ")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # A key per platform, like the iOS job's.
       - name: Cache Lynx Explorer
         uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx-e2e/explorer
-          key: lynx-explorer-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
+          key: lynx-explorer-${{ steps.explorer.outputs.version }}-android-${{ hashFiles('packages/e2e/src/native/explorer.ts') }}
       - name: Cache Maestro
         id: maestro-cache
         uses: actions/cache@v6
@@ -463,6 +557,7 @@ jobs:
           key: maestro-${{ runner.os }}-${{ env.MAESTRO_VERSION }}
       - name: Install Maestro
         if: steps.maestro-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       # Hardware acceleration for the emulator on Linux runners.
@@ -472,6 +567,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: 'Layer 6: Android emulator'
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -490,6 +586,7 @@ jobs:
     needs: [package-contract, fresh-app, build-app, ios, android]
     if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:

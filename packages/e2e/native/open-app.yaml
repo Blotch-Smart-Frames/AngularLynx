@@ -1,5 +1,5 @@
-# Shared steps run by app.yaml and lazy-route.yaml: opens the app. Not a test
-# on its own (src/native/maestro.ts lists the flows that run).
+# Shared steps every flow runs first: opens the app. Not a test on its own
+# (src/native/maestro.ts lists the flows that run).
 #
 # Two ways to open it, chosen by run-native.ts through OPEN_WITH:
 # - shell: the app's own binary from `ng build --platform`, which loads its
@@ -7,7 +7,15 @@
 # - explorer: Lynx Explorer, opening BUNDLE_URL from a local static server.
 appId: ${APP_ID}
 ---
-- launchApp
+# Stops the app first, so every flow starts from a fresh app process. The
+# camera is the only runtime permission either host asks for (Explorer's QR
+# scanner; the app's own build asks for none), so it's all this grants.
+# launchApp's default grants every permission the app lists, which on Android
+# Maestro reads from the APK it copies off the emulator on every launch: that
+# step sat 6 to 18 minutes in 7 of 60 CI runs (src/native/maestro.ts).
+- launchApp:
+    permissions:
+      camera: allow
 - runFlow:
     when:
       true: ${OPEN_WITH == 'shell'}

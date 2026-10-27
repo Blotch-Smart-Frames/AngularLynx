@@ -5,6 +5,7 @@
     "devicetypes",
     "logcat",
     "noasan",
+    "screencap",
     "serialno",
     "simctl",
     "taskkill",

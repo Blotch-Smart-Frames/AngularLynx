@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { check, run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { flowsFor, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
+import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
 
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
@@ -197,40 +197,43 @@ export const runOnIosSimulator = async ({
     { cwd: process.cwd(), logFile: explorerLog, echo: false },
   );
 
+  /**
+   * Only a debugging aid, so its failure mustn't fail the host or hide the
+   * flows' own results: on the iPhone Duo it exited 22, and the run reported
+   * only that, even for the host whose flows had all passed. It takes a
+   * second or two; the limit is for a simulator that has stopped answering,
+   * which is when the screenshot of a Maestro hang is taken.
+   */
+  const screenshot = async (file: string) => {
+    const result = await runAllowFailure(
+      'xcrun',
+      ['simctl', 'io', udid, 'screenshot', file],
+      { cwd: process.cwd(), logFile, echo: false, timeout: { ms: 60_000 } },
+    );
+    if (result.code !== 0) {
+      console.warn(
+        `The screenshot ${path.basename(file)} failed (simctl exited with code ${result.code}).`,
+      );
+    }
+  };
+
   const failures: string[] = [];
   try {
-    for (const flow of flowsFor('ios', host)) {
-      const result = await runFlow(flow, {
-        device: udid,
-        appId,
-        host,
-        outputDir: path.join(artifactsDir, `ios-${host.kind}`),
-        logFile,
-      });
-      const failure = judgeFlow(flow, 'ios', result.code);
+    const outcomes = await runFlows(flowsFor('ios', host), {
+      device: udid,
+      appId,
+      host,
+      outputDir: path.join(artifactsDir, `ios-${host.kind}`),
+      logFile,
+      screenshot,
+    });
+    for (const [flow, outcome] of outcomes) {
+      const failure = judgeFlow(flow, 'ios', outcome);
       if (failure) {
         failures.push(failure);
       }
     }
-    // Only a debugging aid, so its failure mustn't fail the host or hide the
-    // flows' own results: on the iPhone Duo it exited 22, and the run
-    // reported only that, even for the host whose flows had all passed.
-    const screenshot = await runAllowFailure(
-      'xcrun',
-      [
-        'simctl',
-        'io',
-        udid,
-        'screenshot',
-        path.join(artifactsDir, `ios-${host.kind}-final.png`),
-      ],
-      { cwd: process.cwd(), logFile, echo: false },
-    );
-    if (screenshot.code !== 0) {
-      console.warn(
-        `The final screenshot failed (simctl exited with code ${screenshot.code}).`,
-      );
-    }
+    await screenshot(path.join(artifactsDir, `ios-${host.kind}-final.png`));
   } finally {
     stop(logStream.child);
     if (!keepRunning) {

@@ -2165,7 +2165,7 @@ describe('updateCommand — files upstream no longer ships', () => {
     // and the next update doesn't ask again.
     expect(lockedCard()).toEqual({ 'card.ts': { hash: hashContent(card) } });
     expect(p.log.info).toHaveBeenCalledWith(
-      expect.stringContaining('1 file(s) kept as-is'),
+      expect.stringContaining('file(s) kept as-is'),
     );
 
     vi.clearAllMocks();

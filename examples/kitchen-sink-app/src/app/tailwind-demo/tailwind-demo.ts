@@ -15,10 +15,10 @@ import { ScreenHost } from '../screen-host';
 
 /**
  * A vivid, *named* Tailwind palette swatch. Named colors (bg-rose-500, …)
- * compile to hex/rgb on Lynx, so they render reliably and can vary per item —
- * unlike the semantic theme tokens, which are opaque rgba() values (see root
- * CLAUDE.md). These are the class strings the template scans, so they must
- * appear as literals for Tailwind's JIT to emit them.
+ * compile to hex/rgb on Lynx, so they render reliably and can vary per item,
+ * which the theme's handful of semantic tokens can't (see root CLAUDE.md).
+ * These are the class strings the template scans, so they must appear as
+ * literals for Tailwind's JIT to emit them.
  */
 type Swatch = { readonly class: string; readonly label: string };
 
@@ -202,8 +202,8 @@ type Spacing = { readonly class: string; readonly label: string };
 export class TailwindDemo {
   readonly count = signal(0);
 
-  // Named colors compile to rgb on Lynx (unlike the opaque rgba() theme tokens),
-  // so they render vividly and are safe to vary per item — see Swatch above.
+  // Named colors compile to rgb on Lynx, so they render vividly and are safe
+  // to vary per item — see Swatch above.
   readonly palette: readonly Swatch[] = [
     { class: 'bg-rose-500', label: 'rose' },
     { class: 'bg-orange-500', label: 'orange' },

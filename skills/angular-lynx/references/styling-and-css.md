@@ -90,6 +90,24 @@ Component styles are scoped as in Angular on the web. `ViewEncapsulation.Emulate
 - **`aspect-ratio`**: No `auto` keyword.
 - **`clip-path`**: Only on `<view>`, no `polygon()`.
 
+## Colors
+
+- **`hsl()` only with commas.** `hsl(240, 5.9%, 10%)` works; space-separated `hsl(240 5.9% 10%)` is dropped silently (the element draws transparent). `rgb()`/`rgba()` take both forms, and hex and named colors work.
+- **`var()` inside a color function works.** Lynx substitutes the variable's text before it parses the color, so channels kept comma-separated in one variable fill three arguments:
+
+```css
+page {
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+}
+.scrim {
+  background-color: rgba(var(--primary-rgb), 0.5);
+}
+```
+
+- **Don't wrap raw HSL channels** (`--x: 240 5.9% 10%` in `hsl(var(--x))`, the shadcn/ui pattern): that expands to the space-separated form Lynx drops.
+- **The dolan UI theme** stores each color whole (`--primary`) and as channels (`--primary-rgb`). Its Tailwind plugin maps `bg-primary` to `var(--primary)` and `bg-primary/50` to `rgba(var(--primary-rgb), 0.5)`, so opacity modifiers work on every theme color. Keep each pair the same color when editing a theme; `npx @blotch/dolan doctor` reports a mismatch or a missing `-rgb` variable.
+
 ## Complete Example
 
 ```typescript

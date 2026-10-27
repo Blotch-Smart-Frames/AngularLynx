@@ -92,9 +92,9 @@ export class UiAlertDialog implements OnDestroy {
   // `bg-black/50` supplies the dim. It lives on the backdrop specifically so
   // the existing fadeIn/fadeOut (opacity 0↔1, staggered 30ms ahead of the
   // panel scale-in) animate the dim in lockstep with the dialog appearing —
-  // no separate animation needed. A named color with an opacity modifier is
-  // used deliberately: it compiles to `rgb(0 0 0 / 0.5)`, which Lynx accepts,
-  // whereas a semantic token like `bg-background/50` would render transparent.
+  // no separate animation needed. It's a named color, not a theme one,
+  // because the dim is black in light and dark mode alike; it compiles to
+  // `rgb(0 0 0 / 0.5)`, which Lynx accepts.
   protected readonly backdropClass = computed(() =>
     cn('items-center flex justify-center', 'h-full w-full', 'bg-black/50'),
   );

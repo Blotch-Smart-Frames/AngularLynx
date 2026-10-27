@@ -19,8 +19,8 @@ type Member = {
 
 /**
  * Palette of named Tailwind colors for avatar backgrounds. Named colors
- * (bg-rose-500, bg-sky-500, …) compile to hex/rgb on Lynx, unlike the theme's
- * semantic tokens whose opaque rgba() values can't be safely varied per row.
+ * (bg-rose-500, bg-sky-500, …) give each row its own hue, which the theme's
+ * handful of semantic tokens can't.
  * Each member gets a stable color derived from its numeric id (see avatarClass).
  */
 const AVATAR_COLORS = [

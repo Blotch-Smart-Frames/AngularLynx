@@ -17,9 +17,10 @@ export const alertVariants = cva('flex-col rounded-lg border p-4 flex', {
   variants: {
     variant: {
       default: 'border-border bg-background',
-      // Opacity modifiers on semantic colors don't work on Lynx (opaque rgba
-      // values with no separable channels): use a solid destructive border and
-      // the pre-composed translucent bg-destructive-subtle for the tint.
+      // A solid destructive border over red at 10%. The tint is the
+      // pre-composed bg-destructive-subtle, not bg-destructive/10: a modifier
+      // needs the theme's --destructive-rgb, which themes copied before it
+      // existed don't have.
       destructive: 'border-destructive bg-destructive-subtle',
     },
   },

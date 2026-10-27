@@ -5203,3 +5203,22 @@ web-elements sizes a flex item (`flex: var(--flex-grow) …`, or a linear weight
 
 The runtime's web-only blur view layout (`BLUR_VIEW_LAYOUT_CSS` in `packages/runtime/src/lib/web-glass/blur-view-layout.ts`) gives the slot the host's values: `slot { --lynx-display: inherit; --lynx-linear-orientation: inherit; --lynx-linear-weight-sum: inherit }`.
 
+
+---
+
+## Native Lynx 4.1 loses an element moved to a parent its flush reaches first
+
+### What you'd expect (web)
+
+`appendChild()` moves an element that's already in the tree: it leaves its old parent and shows up in the new one, wherever the two are.
+
+### What Lynx does
+
+`__AppendElement` and `__InsertElementBefore` change the element tree at once, but only queue the change for the layout and painting tree: a removal on the old parent and an insertion on the new one. `__FlushElementTree` handles each element's queue in pre-order (`Element::FlushActions` in `core/renderer/dom/fiber/fiber_element.cc`). When it reaches the new parent first, the insertion finds the element still rendered under its old parent and links it in anyway; the old parent's removal then finds the element rendered elsewhere and does nothing (`HandleRemoveChildAction` logs "remove wrong child node" and returns). The element ends up in neither: the new parent lays out as if empty, and the element measures at the top-left of the screen.
+
+Moves the flush handles in order work: within one parent (an `@for` reorder), into a later part of the tree, or down into the old parent's own subtree. The one that broke was moving an element out of an `<overlay>` back into the page before it, which the context menu does with the element it lifts (on the iOS 27 Simulator and an Android 14 emulator, in Lynx Explorer 4.1). Lynx's develop branch fixes it: `HandleInsertChildAction` detaches the element from its old render parent first, behind `FixFiberReinsertDetachFromOldRenderParent`, which defaults to on but isn't in 4.1.
+
+### The fix
+
+`LynxElement.appendChild()` and `insertBefore()` check, on native Lynx, whether the flush will reach the new parent before the old one (`flushesBefore()`: an ancestor, or an earlier branch under the two's common ancestor). If it will, the element is removed for good and rebuilt in the new parent from its cached state (`#removeIfMoveWouldBeLost()`, then the recreate-on-remount path), in the same flush, so nothing depends on the order. Every other move stays a native move. Lynx for Web moves DOM nodes and doesn't need it. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-move.test.ts`, whose fake flush loses the element the way Lynx does.
+

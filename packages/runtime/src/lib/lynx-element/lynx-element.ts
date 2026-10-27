@@ -143,6 +143,53 @@ const wouldFormCycle = (parent: ElementRef, candidate: ElementRef): boolean => {
 };
 
 /**
+ * `element` and its ancestors, nearest first, up to the root of its tree.
+ */
+const ancestry = (element: ElementRef): ElementRef[] => {
+  const path: ElementRef[] = [];
+  for (let cur: ElementRef | null = element; cur; cur = __GetParent(cur)) {
+    path.push(cur);
+  }
+  return path;
+};
+
+/**
+ * True if a flush handles `first`'s child insertions and removals before
+ * `second`'s. Lynx's flush (`Element::FlushActions` in
+ * `core/renderer/dom/fiber/fiber_element.cc`) walks the element tree in
+ * pre-order: an element's own child actions, then each child's subtree in
+ * order. So an ancestor goes first, and otherwise the element whose branch
+ * comes earlier under the two's nearest common ancestor. Elements in
+ * different trees (one not attached yet) have no order, and count as not.
+ *
+ * Compares by unique ID for the same reason wouldFormCycle does.
+ */
+const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
+  const firstPath = ancestry(first);
+  const secondPath = ancestry(second);
+  const secondDepth = new Map(
+    secondPath.map((element, depth) => [__GetElementUniqueID(element), depth]),
+  );
+  for (let depth = 0; depth < firstPath.length; depth++) {
+    const shared = secondDepth.get(__GetElementUniqueID(firstPath[depth]!));
+    if (shared === undefined) continue;
+    // firstPath[depth] is the nearest common ancestor. If it's `first` itself,
+    // `first` is the ancestor; if it's `second`, `second` is.
+    if (depth === 0) return true;
+    if (shared === 0) return false;
+    // The common ancestor has both branches among its children.
+    const order = __GetChildren(firstPath[depth]!).map((child) =>
+      __GetElementUniqueID(child),
+    );
+    return (
+      order.indexOf(__GetElementUniqueID(firstPath[depth - 1]!)) <
+      order.indexOf(__GetElementUniqueID(secondPath[shared - 1]!))
+    );
+  }
+  return false;
+};
+
+/**
  * A raw-text leaf or a <text> container — the only elements that carry trimmable
  * inline text. Used to decide when a mutation should queue text normalization.
  */
@@ -558,6 +605,7 @@ export class LynxElement implements BaseLynxElement {
     // attached to its old parent, so __InsertElementBefore auto-reparents the
     // whole subtree (see #pendingRemovals).
     newChild.#cancelPendingRemoval();
+    newChild.#removeIfMoveWouldBeLost(this);
     // If the child was genuinely removed in a PREVIOUS cycle its native painting
     // node is gone — rebuild a fresh native element + subtree before re-attaching
     // (see #recreateSubtree). A same-tick move was canceled just above and is
@@ -584,6 +632,7 @@ export class LynxElement implements BaseLynxElement {
     // See insertBefore: cancel a pending removal so a move keeps its subtree,
     // then rebuild the child if its painting node was destroyed in a prior cycle.
     newChild.#cancelPendingRemoval();
+    newChild.#removeIfMoveWouldBeLost(this);
     newChild.#recreateIfDead();
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
@@ -841,6 +890,44 @@ export class LynxElement implements BaseLynxElement {
    */
   #cancelPendingRemoval(): void {
     LynxElement.#pendingRemovals.delete(this);
+  }
+
+  /**
+   * Before this element moves under `newParent`: removes it for good if Lynx
+   * would lose the move, so the insert that follows rebuilds it (see
+   * #recreateIfDead) instead.
+   *
+   * Native Lynx (4.1) loses a move to another parent when the flush reaches
+   * the new parent first. `__AppendElement` and `__InsertElementBefore` queue
+   * the removal on the old parent and the insertion on the new one, and the
+   * flush handles each parent's queue in tree order (see flushesBefore). When
+   * the insertion runs first, the element is still in its old parent's
+   * layout; the removal then finds a different parent and does nothing
+   * (`HandleRemoveChildAction` in `fiber_element.cc`). The element ends up in
+   * neither: the new parent lays out empty and the element sits unattached
+   * at the top-left of the screen. Moving out of an `<overlay>` back to the
+   * page it came from, which follows the page in the tree, always hit this
+   * (CDK's DomPortal and the context menu's lifted element do it). Lynx's
+   * develop branch fixes it (`FixFiberReinsertDetachFromOldRenderParent`),
+   * after 4.1.
+   *
+   * A removal and a rebuild in the same flush don't depend on the order:
+   * the old element leaves its parent, and a fresh one with the same state
+   * goes into the new one. Moves the flush does handle in order (the old
+   * parent first, or the same parent, as for an `@for` reorder) stay native
+   * moves. Lynx for Web moves DOM nodes and doesn't have the problem.
+   */
+  #removeIfMoveWouldBeLost(newParent: LynxElement): void {
+    if (__WEB__ || this.#paintingDead || this._virtualParent) return;
+    const oldParent = __GetParent(this.element);
+    if (
+      !oldParent ||
+      __GetElementUniqueID(oldParent) ===
+        __GetElementUniqueID(newParent.element)
+    ) {
+      return;
+    }
+    if (flushesBefore(newParent.element, oldParent)) this.#doRemove();
   }
 
   /**

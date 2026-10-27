@@ -30,6 +30,9 @@ let fixture: Fixture;
 
 beforeEach(() => {
   interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -368,7 +371,6 @@ describe('removeCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { removeCommand } = await import('./remove');
     await removeCommand('empty-state', {});
@@ -403,7 +405,6 @@ describe('removeCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { removeCommand } = await import('./remove');
     await removeCommand('avatar', {});
@@ -465,15 +466,13 @@ describe('removeCommand', () => {
 });
 
 // CI, agents and scripts: a question there would wait for input that never
-// comes. Last in the file, since clearing the mocks would hide calls that
-// earlier tests' assertions see.
+// comes.
 describe('removeCommand without a terminal', () => {
   const buttonContent = 'export const Button = {};';
   const spinnerContent = 'export const Spinner = {};';
 
   beforeEach(() => {
     interactive = false;
-    vi.clearAllMocks();
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       lockfile: {

@@ -52,7 +52,9 @@ vi.mock('./install-packages.js', () => ({
 
 beforeEach(() => {
   interactive = true;
-  installComponentPackages.mockClear();
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -244,7 +246,6 @@ describe('updateCommand --selective', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true, selective: true });
@@ -308,7 +309,6 @@ describe('updateCommand --selective', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -424,8 +424,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -463,7 +461,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -831,8 +828,6 @@ describe('updateCommand --force', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({ force: true });
@@ -1013,8 +1008,6 @@ describe('updateCommand — config / no-op paths', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.confirm as ReturnType<typeof vi.fn>).mockClear();
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -1133,7 +1126,6 @@ describe('updateCommand — config / no-op paths', () => {
 
     const p = await import('@clack/prompts');
     (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
 
     const { updateCommand } = await import('./update');
     await updateCommand({});
@@ -1724,8 +1716,6 @@ describe('updateCommand — ejected components', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const p = await import('@clack/prompts');
-    (p.log.message as ReturnType<typeof vi.fn>).mockClear();
-    (p.select as ReturnType<typeof vi.fn>).mockClear();
     const { updateCommand } = await import('./update');
     await updateCommand({});
 
@@ -1822,9 +1812,6 @@ describe('updateCommand without a terminal', () => {
 
   beforeEach(() => {
     interactive = false;
-    // This file doesn't clear its mocks between tests, and these check that
-    // nothing was asked.
-    vi.clearAllMocks();
   });
 
   it('applies auto-updates without asking', async () => {
@@ -1858,8 +1845,11 @@ describe('updateCommand without a terminal', () => {
     await expect(updateCommand({})).rejects.toThrow('process.exit(1)');
 
     expect(p.select).not.toHaveBeenCalled();
-    expect(p.log.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/2 conflict\(s\) left.*dolan update --force/),
+    // The count is bold, and CI turns colors on, so match the plain text.
+    const [warning] = (p.log.warn as ReturnType<typeof vi.fn>).mock.calls[0];
+    // oxlint-disable-next-line no-control-regex -- matching ANSI color codes
+    expect((warning as string).replace(/\u001b\[\d+m/g, '')).toMatch(
+      /2 conflict\(s\) left.*dolan update --force/,
     );
     // The auto-update still applies.
     expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(

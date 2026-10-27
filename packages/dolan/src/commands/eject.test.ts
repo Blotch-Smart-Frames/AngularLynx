@@ -30,6 +30,9 @@ let fixture: Fixture;
 
 beforeEach(() => {
   interactive = true;
+  // Each test sees only its own calls. Without this, an assertion could pass
+  // on a message an earlier test logged.
+  vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
@@ -211,12 +214,10 @@ describe('ejectCommand', () => {
 });
 
 // CI, agents and scripts: a question there would wait for input that never
-// comes. Last in the file, since clearing the mocks would hide calls that
-// earlier tests' assertions see.
+// comes.
 describe('ejectCommand without a terminal', () => {
   it('fails without --force, since the default answer cancels', async () => {
     interactive = false;
-    vi.clearAllMocks();
     const content = 'export const Button = {};';
     fixture = createFixture({
       config: DEFAULT_CONFIG,

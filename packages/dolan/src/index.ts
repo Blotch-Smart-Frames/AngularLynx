@@ -60,6 +60,7 @@ program
   .command('add')
   .description('Add components to your project')
   .argument('[components...]', 'components to add')
+  .option('-f, --force', 'overwrite installed components without asking')
   .action(addCommand);
 
 program

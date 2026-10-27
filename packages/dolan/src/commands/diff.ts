@@ -11,6 +11,7 @@ import {
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import { isInteractive } from '../utils/interactive.js';
 import { copiesTests } from '../utils/packages.js';
 import { getOrCreateLockfile, hashContent } from '../lockfile.js';
 import {
@@ -37,7 +38,8 @@ const STATUS_SHORT_LABELS: Record<FileStatus, string> = {
  *   - With a component name: print the per-file diff immediately. Useful for
  *     CI-style "what would change?" inspection.
  *   - Without arguments: summarize all components that have any divergence
- *     from upstream and prompt to pick which one's diff to display.
+ *     from upstream and prompt to pick which one's diff to display. Without a
+ *     terminal to ask in, it shows them all, as `git diff` would.
  *
  * Uses the same analyzeFile + summarizeComponent pipeline as `list`/`update`
  * so what you see here matches what those commands will report.
@@ -131,14 +133,17 @@ export const diffCommand = async (component?: string) => {
 
   p.log.message('');
 
-  const choice = await p.select({
-    message: 'Show diff for which component?',
-    options: [
-      ...changed.map((c) => ({ value: c.name, label: c.name })),
-      { value: '__all__', label: 'All changed components' },
-      { value: '__none__', label: 'Exit' },
-    ],
-  });
+  // No terminal to ask in: show them all.
+  const choice = isInteractive()
+    ? await p.select({
+        message: 'Show diff for which component?',
+        options: [
+          ...changed.map((c) => ({ value: c.name, label: c.name })),
+          { value: '__all__', label: 'All changed components' },
+          { value: '__none__', label: 'Exit' },
+        ],
+      })
+    : '__all__';
 
   if (p.isCancel(choice) || choice === '__none__') {
     p.outro('');

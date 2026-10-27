@@ -7,6 +7,7 @@ import { configExists, writeConfig } from '../config.js';
 import { getUiSourceDir } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
 import { printBanner } from '../utils/banner.js';
+import { isInteractive } from '../utils/interactive.js';
 import {
   detectPackageManager,
   installCommand,
@@ -82,10 +83,7 @@ export type InitOptions = {
  */
 export const initCommand = async (options: InitOptions = {}) => {
   const cwd = process.cwd();
-  // Without a terminal on stdin (CI, an agent, a script), clack's prompts
-  // wait for input that never comes: init used to hang until stdin closed,
-  // then exit 0 having written nothing.
-  const interactive = !options.yes && process.stdin.isTTY === true;
+  const interactive = !options.yes && isInteractive();
 
   printBanner();
   p.intro(pc.bold('dolan init'));

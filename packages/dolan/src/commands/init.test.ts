@@ -57,25 +57,24 @@ const nextSteps = async (): Promise<string> => {
   return (text as string).replace(/\u001b\[\d+m/g, '');
 };
 
-// Vitest's stdin isn't a terminal, which init reads as "nobody can answer".
-// Most tests are about the questions, so they run as if in one.
-const stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
-const setStdinIsTTY = (value: boolean) =>
-  Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true });
+// Vitest's stdin isn't a terminal, which reads as "nobody can answer". Most
+// tests are about the questions, so they run as if in one.
+let interactive = true;
+vi.mock('../utils/interactive.js', () => ({
+  isInteractive: () => interactive,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(process, 'exit').mockImplementation((code) => {
     throw new Error(`process.exit(${code})`);
   });
-  setStdinIsTTY(true);
+  interactive = true;
 });
 
 afterEach(() => {
   fixture?.cleanup();
   vi.restoreAllMocks();
-  if (stdinIsTTY) Object.defineProperty(process.stdin, 'isTTY', stdinIsTTY);
-  else delete (process.stdin as { isTTY?: boolean }).isTTY;
 });
 
 const THEME_CSS = 'page { --background: rgba(255, 255, 255, 1); }';
@@ -352,7 +351,9 @@ describe('initCommand', () => {
   describe.each([
     {
       when: 'stdin is not a terminal',
-      setup: () => setStdinIsTTY(false),
+      setup: () => {
+        interactive = false;
+      },
       options: {},
     },
     { when: 'given --yes', setup: () => {}, options: { yes: true } },

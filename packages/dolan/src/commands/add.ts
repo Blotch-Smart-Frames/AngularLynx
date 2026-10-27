@@ -14,6 +14,7 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
+import { isInteractive } from '../utils/interactive.js';
 import { copiesTests, TESTING_LIBRARY } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
 import {
@@ -38,15 +39,19 @@ import {
  *      `resolveDependencies` (topological order, see registry.ts).
  *   2. Detect any already-installed components and prompt for overwrite —
  *      "skip the conflicts" is the default so a stray re-run doesn't blow
- *      away local changes.
+ *      away local changes. `--force` overwrites them without asking.
  *   3. For each component: copy every file, rewrite cross-component imports
  *      to use the user's alias config, hash the rewritten content, and record
  *      it in the lockfile.
  *   4. Install any npm packages the components import that the project
  *      doesn't depend on yet (the charts need `@tanstack/charts`).
  */
-export const addCommand = async (components: string[]) => {
+export const addCommand = async (
+  components: string[],
+  options: { force?: boolean } = {},
+) => {
   const cwd = process.cwd();
+  const interactive = isInteractive();
 
   p.intro(pc.bold('dolan add'));
 
@@ -63,6 +68,17 @@ export const addCommand = async (components: string[]) => {
   let selected: string[];
 
   if (components.length === 0) {
+    // The checklist has no default to fall back on.
+    if (!interactive) {
+      p.log.error(
+        `Name the components to add, such as ${pc.bold('dolan add button card')}.`,
+      );
+      p.log.info(
+        `Available: ${allComponents.map((c) => pc.cyan(c)).join(', ')}`,
+      );
+      process.exit(1);
+    }
+
     const result = await p.multiselect({
       message: 'Which components would you like to add?',
       options: allComponents.map((name) => ({ value: name, label: name })),
@@ -106,16 +122,23 @@ export const addCommand = async (components: string[]) => {
     return existsSync(destDir);
   });
 
-  if (existing.length > 0) {
+  if (existing.length > 0 && !options.force) {
     // Default to "no" (initialValue: false) — destructive operations on
-    // user-owned code should require an explicit affirmative. The user can
-    // re-run with --force later if we add that flag.
-    const overwrite = await p.confirm({
-      message: `${existing.map((c) => pc.yellow(c)).join(', ')} already exist. Overwrite?`,
-      initialValue: false,
-    });
+    // user-owned code should require an explicit affirmative, which `--force`
+    // gives up front. Without a terminal, that default is the answer.
+    const overwrite = interactive
+      ? await p.confirm({
+          message: `${existing.map((c) => pc.yellow(c)).join(', ')} already exist. Overwrite?`,
+          initialValue: false,
+        })
+      : false;
 
     if (p.isCancel(overwrite) || !overwrite) {
+      // Says how to overwrite them, since a run without the question never
+      // mentioned them.
+      p.log.info(
+        `Skipped ${existing.map((c) => pc.cyan(c)).join(', ')}: already installed. Run ${pc.bold(`dolan add --force ${existing.join(' ')}`)} to overwrite.`,
+      );
       // Filter the existing components out of `resolved` in-place via splice
       // so later code (the copy loop, the success message) operates on the
       // narrowed set. We can't just `resolved = filtered` because the array

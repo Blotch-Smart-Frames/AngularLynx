@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import type { RunContext } from './context.ts';
 import { PUBLISHABLE_PACKAGES, REPO_ROOT } from '../../release/src/packages.ts';
-import { CheckError, start, stop, waitFor } from './process.ts';
+import { CheckError, check, start, stop, waitFor } from './process.ts';
 
 /** The registry every tool in the run installs from. */
 export type Registry = {
@@ -89,9 +89,19 @@ export const startLocalRegistry = async (
     'utf8',
   );
   const config = path.join(context.workDir, 'verdaccio.yaml');
+  // Only the `storage:` line. The file's header comment names STORAGE_DIR
+  // too, and a plain replace() swapped that instead: Verdaccio then kept every
+  // package in a STORAGE_DIR folder inside the run's work directory, which
+  // the run deletes, so the storage CI caches was always empty and every run
+  // downloaded the app's dependencies from the public registry again.
+  const storageLine = /^storage: STORAGE_DIR$/m;
+  check(
+    storageLine.test(configTemplate),
+    'packages/e2e/verdaccio/config.yaml has no `storage: STORAGE_DIR` line for registry.ts to fill in.',
+  );
   writeFileSync(
     config,
-    configTemplate.replace('STORAGE_DIR', JSON.stringify(storage)),
+    configTemplate.replace(storageLine, `storage: ${JSON.stringify(storage)}`),
   );
 
   // 127.0.0.1 rather than localhost: Node may resolve localhost to ::1, which

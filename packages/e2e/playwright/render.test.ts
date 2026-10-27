@@ -175,9 +175,20 @@ test('Tailwind styles classes in .html templates', async ({ page }) => {
   await page.goto('/');
 
   // tailwind-card.html's `text-[#0a7b5c]`.
-  await expect(
-    page.getByText('Styled from an .html template', { exact: true }),
-  ).toHaveCSS('color', 'rgb(10, 123, 92)');
+  const words = page.getByText('Styled from an .html template', {
+    exact: true,
+  });
+  await expect(words).toHaveCSS('color', 'rgb(10, 123, 92)');
+  // Its `bg-primary/10`: the UI theme's --primary, rgba(24, 24, 27, 1), at
+  // 10%. The plugin reads the color's channels from --primary-rgb for an
+  // opacity modifier, so this checks the theme files and the plugin together
+  // in an app's own build (issue #115). getByText finds the words' own
+  // <raw-text>, which inherits the color but not the background, so this
+  // reads the <text> element itself.
+  await expect(page.locator('x-text', { has: words })).toHaveCSS(
+    'background-color',
+    'rgba(24, 24, 27, 0.1)',
+  );
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

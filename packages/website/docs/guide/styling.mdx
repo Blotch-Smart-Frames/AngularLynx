@@ -160,10 +160,29 @@ page {
 ```
 
 - **Don't store raw channels** (`--primary: 240 5.9% 10%`) to wrap later in `hsl(var(--primary))`. That expands to the space-separated `hsl()` Lynx drops, which is why shadcn-style themes render blank.
-- **For a translucent shade, add a variable of its own**, like `--primary-subtle`.
+- **For a translucent shade, add a variable of its own**, like `--primary-subtle`, or use channels in `rgba()`, below.
 - **Set variables in a stylesheet or a static `style` attribute.** A `[style.--name]` binding doesn't reach the element yet.
 
-The [UI components](/dolan/) theme works this way. See [Theming](/dolan/theming).
+### One color at any opacity
+
+Keep a color's channels in a second variable, comma-separated, and wrap it in `rgba()`:
+
+```css title="src/styles.css"
+page {
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+}
+
+.scrim {
+  background-color: rgba(var(--primary-rgb), 0.5);
+}
+```
+
+- Lynx replaces `var()` with the variable's text before it reads the color, so `24, 24, 27` fills three arguments, as in a browser.
+- **Write the channels with commas** for `rgba()`. Space-separated channels work only in the `rgb(var(--x) / 0.5)` form.
+- An undefined variable drops the whole value, and the element draws transparent.
+
+The [UI components](/dolan/) theme works this way. Its Tailwind plugin turns `bg-primary/50` into `rgba(var(--primary-rgb), 0.5)`. See [Theming](/dolan/theming#opacity-modifiers).
 
 ## Selectors and rules
 

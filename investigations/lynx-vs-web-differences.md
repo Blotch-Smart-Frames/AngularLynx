@@ -3673,9 +3673,51 @@ primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' }
 
 `bg-primary` then emits `background-color: var(--primary)`, which resolves to the rgba value Lynx accepts. This matches the official React Lynx Tailwind example.
 
-Tradeoff: Tailwind opacity modifiers on semantic colors (`bg-primary/50`) no longer work — the value is opaque with no separable channels. For a translucent semantic color, add a dedicated variable (e.g. `--destructive-subtle: rgba(239, 68, 68, 0.1)` → `bg-destructive-subtle`) or use `opacity-*` on the element. See the "CSS Colors in Lynx" section of the root `CLAUDE.md`.
+This first cost Tailwind's opacity modifiers on semantic colors (`bg-primary/50`): the value was opaque, with no separable channels. Issue #115 brought them back with a second variable per color holding its channels, comma-separated, which Lynx can substitute into `rgba()` (next entry). See the "CSS Colors in Lynx" section of the root `CLAUDE.md`.
 
 **Status:** implemented across `packages/ui` + all examples; validate the paint on device via the `css-var-validation` screen in kitchen-sink-app.
+
+---
+
+## `var()` inside `rgba()` is substituted as text, so one variable can fill three arguments
+
+### What you'd expect (web)
+
+A browser substitutes `var()` before it parses the value, so `--primary-rgb: 24, 24, 27` with `rgba(var(--primary-rgb), 0.5)` gives `rgba(24, 24, 27, 0.5)`. Tailwind themes built on `<alpha-value>` rely on this.
+
+### What Lynx does
+
+The same, though nothing in Lynx's docs says so, and the HSL entry above shows composed colors can fail silently. Measured for issue #115 and confirmed in the source:
+
+- **Build.** `@lynx-js/css-serializer` (`parse.js`, `transformDeclaration`) turns any declaration containing `var()` into a `css_var` declaration and rewrites each `var(--x)` to `{{--x}}`: `rgba( {{--primary-rgb}} , 0.5)`. The template encoder stores it as a `CSSValue` of type `VARIABLE` (`css_parser_token.cc` in lynx-family/lynx). Custom property definitions are kept as raw text (`transformVariables`).
+- **Runtime.** `CSSValue::Substitution` / `SubstitutionResolved` (`core/renderer/css/css_value.cc`), or `CSSVariableHandler::GetCSSVariableByRule` on the older path, pastes each variable's text in place of its `{{--x}}`. Only then does `UnitHandler::Process` hand the string to `ColorHandler`, whose `CSSStringParser::ParseRGBLikeColor` reads `rgb()`/`rgba()` with commas or with spaces and a `/` alpha. `HSLColor()` takes commas only.
+- **Inline styles** go through `CSSStringParser::ParseVariable` and substitute the same way.
+- **An undefined variable** substitutes nothing, the value doesn't parse (`rgba( , 0.5)`) and the declaration is dropped: the element draws transparent. A browser drops it too (invalid at computed-value time).
+- **A `var()` in another `var()`'s fallback** is a build error from the serializer: "nested var() is not allowed in Lynx". A `var()` inside a custom property's _definition_ is fine.
+
+Probe (2026-10-27): 20 swatches over white in Lynx Explorer 4.1.0 on the iOS 27 simulator (iPhone 18 Pro) and the Android emulator (API 34), and in Lynx for Web (web-core 0.26.2, Chromium), with each swatch's color sampled from a screenshot. Expected values are the swatch blended over white.
+
+| Swatch                                                                  | Expected                      | iOS                           | Android                       | Web                           |
+| ----------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
+| `rgba(var(--p-rgb), 0.5)`, `--p-rgb: 255, 0, 0` on `page`               | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgba(var(--p-rgb), var(--a))`, `--a: 0.25`                             | 255, 191, 191                 | 255, 192, 192                 | 255, 192, 192                 | 255, 191, 191                 |
+| The same rule under a view that redefines `--p-rgb: 0, 128, 0`          | 128, 192, 128                 | 128, 192, 128                 | 128, 192, 128                 | 127, 191, 127                 |
+| Inline `style="background-color: rgba(var(--p-rgb), 0.5)"`              | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgba(var(--undefined-rgb), 0.5)`                                       | dropped                       | dropped (white)               | dropped (white)               | dropped (white)               |
+| `var(--n)` with `--n: rgba(var(--p-rgb), 0.5)`                          | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgb(var(--s) / 0.5)`, `--s: 255 0 0`                                   | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `bg-primary/50` (theme plugin)                                          | 140, 140, 141                 | 140, 140, 141                 | 140, 140, 141                 | 139, 139, 141                 |
+| `text-foreground/70`                                                    | 83, 83, 85                    | 83, 83, 85                    | 83, 83, 85                    | 82, 82, 84                    |
+| `border-border/60`                                                      | 239, 239, 241                 | 239, 239, 241                 | 239, 239, 241                 | 239, 239, 241                 |
+| `bg-destructive/50` under a `.dark` view, toggled off and on at runtime | 247, 162, 162 / 191, 142, 142 | 247, 162, 162 / 191, 142, 142 | 247, 162, 162 / 191, 142, 142 | 247, 161, 161 / 191, 142, 142 |
+
+`bg-destructive/10` and `bg-destructive-subtle` drew the same color everywhere, and `bg-primary/50` bound with `[class]` next to a static `class` drew like the static class. Android matched iOS on every swatch.
+
+A build detail that looks related but isn't: the production build's CSS minifier rewrites colors in custom property values, so the bundle holds `--primary: #18181b` and `--ring-subtle: hsla(240, 5%, 84%, .4)` rather than the `rgba()` the theme wrote. Both forms parse on Lynx; the channel lists (`24,24,27`) only lose their spaces.
+
+### The fix
+
+The `@blotch/ui` theme gives each opaque color a `-rgb` twin (`--primary-rgb: 24, 24, 27`), and the Tailwind plugin's `themeColor()` maps an opacity modifier to `rgba(var(--primary-rgb), 0.5)` while plain classes stay on `var(--primary)`. Keep the channels comma-separated: that's the `rgba()` form both of Lynx's color parsers accept.
 
 ---
 

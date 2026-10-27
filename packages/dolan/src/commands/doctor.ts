@@ -67,6 +67,8 @@ export const doctorCommand = async () => {
 
   checkRequiredFiles(cwd, config, pass, warn);
 
+  checkThemeChannels(cwd, config, pass, warn);
+
   // --- 4. Tailwind integration ---
 
   checkTailwind(cwd, pass, warn);
@@ -182,6 +184,102 @@ const checkRequiredFiles = (
     pass('Theme CSS found');
   } else {
     warn(`No theme CSS files in ${pc.dim(config.aliases.theme)}`);
+  }
+};
+
+/**
+ * A stylesheet's custom properties, by name. Comments are skipped.
+ */
+const cssVariables = (css: string): Map<string, string> =>
+  new Map(
+    [
+      ...css
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .matchAll(/(--[\w-]+)\s*:\s*([^;{}]+);/g),
+    ].map((match) => [match[1]!, match[2]!.trim()]),
+  );
+
+/**
+ * A color's red, green and blue as an `--x-rgb` variable writes them
+ * (`24, 24, 27`), from `rgb()`/`rgba()` or a hex color. Undefined for any
+ * other form, such as `hsl()`, which this check doesn't convert.
+ */
+const colorChannels = (color: string): string | undefined => {
+  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*([,/][^)]*)?\)$/.exec(
+    color,
+  );
+  if (rgb) return `${rgb[1]}, ${rgb[2]}, ${rgb[3]}`;
+  const hex = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(color);
+  if (!hex) return undefined;
+  const digits = hex[1]!.length === 3 ? hex[1]!.replace(/./g, '$&$&') : hex[1]!;
+  return [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16)).join(', ');
+};
+
+/**
+ * Opacity modifiers on theme colors (`bg-primary/50`) read the color's
+ * channels from an `--x-rgb` twin, and they draw nothing without it, or the
+ * wrong color when it no longer matches the color. Neither shows an error.
+ * Themes copied before the twins existed don't have them, and `dolan update`
+ * keeps a theme the app edited, so this points them out. The colors that
+ * need twins are the ones the app's own plugin maps with `themeColor()`: an
+ * older plugin maps none, and its modifiers never worked.
+ */
+const checkThemeChannels = (
+  cwd: string,
+  config: DolanConfig,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  const themeDir = resolve(cwd, config.aliases.theme);
+  const pluginPath = join(themeDir, 'tailwind-plugin.ts');
+  if (!existsSync(pluginPath)) return;
+  const names = [
+    ...new Set(
+      [
+        ...readFileSync(pluginPath, 'utf-8').matchAll(
+          /themeColor\(\s*['"]([\w-]+)['"]\s*\)/g,
+        ),
+      ].map((match) => match[1]!),
+    ),
+  ];
+  if (names.length === 0) return;
+
+  let healthy = true;
+  for (const file of readdirSync(themeDir).filter((f) => f.endsWith('.css'))) {
+    const vars = cssVariables(readFileSync(join(themeDir, file), 'utf-8'));
+    // Only the colors this file sets: a theme may override a few.
+    const set = names.filter((name) => vars.has(`--${name}`));
+    const missing = set.filter((name) => !vars.has(`--${name}-rgb`));
+    const differing = set.filter((name) => {
+      const channels = colorChannels(vars.get(`--${name}`)!);
+      const twin = vars.get(`--${name}-rgb`);
+      return (
+        channels !== undefined &&
+        twin !== undefined &&
+        // Spaces don't matter, commas do: rgba() takes the list as three
+        // arguments only when they're comma-separated.
+        twin.replace(/\s+/g, '') !== channels.replace(/\s+/g, '')
+      );
+    });
+
+    if (missing.length > 0) {
+      const example = missing[0]!;
+      const channels = colorChannels(vars.get(`--${example}`)!) ?? 'r, g, b';
+      warn(
+        `${pc.cyan(file)} has no channels for ${missing.map((name) => pc.cyan(`--${name}`)).join(', ')}, so opacity modifiers such as ${pc.cyan(`bg-${example}/50`)} draw nothing. Add each color's red, green and blue: ${pc.bold(`--${example}-rgb: ${channels};`)}`,
+      );
+      healthy = false;
+    }
+    if (differing.length > 0) {
+      warn(
+        `${pc.cyan(file)}: ${differing.map((name) => pc.cyan(`--${name}-rgb`)).join(', ')} ${differing.length === 1 ? "doesn't" : "don't"} hold the color's red, green and blue, comma-separated, so opacity modifiers draw a different color from the plain class, or nothing.`,
+      );
+      healthy = false;
+    }
+  }
+
+  if (healthy) {
+    pass('Theme colors have the channels opacity modifiers need');
   }
 };
 

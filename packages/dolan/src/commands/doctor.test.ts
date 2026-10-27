@@ -566,3 +566,140 @@ describe('doctorCommand', () => {
     );
   });
 });
+
+describe('doctorCommand theme channels', () => {
+  /**
+   * A plugin that maps primary and border with themeColor(), as dolan's does.
+   */
+  const PLUGIN = `colors: {
+  primary: { DEFAULT: themeColor('primary') },
+  border: themeColor("border"),
+  destructive: { subtle: 'var(--destructive-subtle)' },
+}`;
+
+  /**
+   * Writes the theme's plugin and stylesheets, then runs doctor.
+   */
+  const runDoctor = async (plugin: string, css: Record<string, string>) => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
+    writeFileSync(join(themeDir, 'tailwind-plugin.ts'), plugin);
+    for (const [file, content] of Object.entries(css)) {
+      writeFileSync(join(themeDir, file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    return import('@clack/prompts');
+  };
+
+  it('passes when every mapped color has matching channels', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `/* --primary: red; */
+page {
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+  --border: #e4e4e7;
+  --border-rgb: 228,228,231;
+}`,
+      // A theme that sets only some colors is checked for those alone.
+      'ocean.css':
+        'page { --primary: rgb(37 99 235); --primary-rgb: 37,99, 235; }',
+    });
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'Theme colors have the channels opacity modifiers need',
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+
+  it('warns about colors without channels, with the line to add', async () => {
+    // A theme copied before the -rgb variables, kept by dolan update.
+    const p = await runDoctor(PLUGIN, {
+      'default.css':
+        'page { --primary: rgba(24, 24, 27, 1); --border: hsl(240, 6%, 90%); }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /default\.css.*--primary.*--border.*bg-primary\/50.*--primary-rgb: 24, 24, 27;/,
+      ),
+    );
+  });
+
+  it("suggests placeholder channels when it can't read the color", async () => {
+    const p = await runDoctor(PLUGIN, {
+      'dark.css': 'page.dark { --border: hsl(240, 4%, 16%); }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('--border-rgb: r, g, b;'),
+    );
+  });
+
+  it("warns about channels that don't match their color", async () => {
+    // The brand color changed, its channels didn't.
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `page {
+  --primary: #2563eb;
+  --primary-rgb: 24, 24, 27;
+  --border: #fff;
+  --border-rgb: 0, 0, 0;
+}`,
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/default\.css.*--primary-rgb.*--border-rgb.*don't/),
+    );
+  });
+
+  it('warns about space-separated channels, which rgba() reads as one argument', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css':
+        'page { --primary: rgba(24, 24, 27, 1); --primary-rgb: 24 24 27; }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/--primary-rgb.* doesn't hold .*comma-separated/),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+
+  it('says "doesn\'t" for one differing color, and skips colors it can\'t read', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `page {
+  --primary: rgba(37, 99, 235, 1);
+  --primary-rgb: 24, 24, 27;
+  --border: hsl(240, 6%, 90%);
+  --border-rgb: 1, 2, 3;
+}`,
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/--primary-rgb.* doesn't hold/),
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('--border-rgb'),
+    );
+  });
+
+  it("doesn't check a plugin that maps no themeColor()", async () => {
+    // An older plugin: its modifiers never worked, so nothing needs channels.
+    const p = await runDoctor("colors: { primary: 'var(--primary)' }", {
+      'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+    });
+
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+});

@@ -147,14 +147,15 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Restore only: ci.yml's save-turbo-cache job saves the turbo cache, on
+      # master only (see there), and its entry already holds every package
+      # this job builds.
       - name: Restore turbo cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: .turbo
-          key: turbo-${{ github.sha }}-e2e
-          restore-keys: |
-            turbo-${{ github.sha }}-
-            turbo-
+          key: turbo-${{ github.sha }}
+          restore-keys: turbo-
       - name: Build the publishable packages
         run: npx turbo run build --filter='@blotch/angular-lynx-e2e^...'
       - name: 'Layer 1: package contract checks'

@@ -23,13 +23,26 @@ Press Enter to accept both default folders. It writes `dolan.config.json`, copie
 
 - `default.css`: the light theme's colors and corner radius
 - `dark.css`: the dark theme's colors
-- `tailwind-plugin.ts`: maps those colors to Tailwind classes such as `bg-primary`
+- `tailwind.css`: maps those colors to Tailwind classes such as `bg-primary`. An app on Tailwind 3 gets `tailwind-plugin.ts`, a Tailwind plugin, instead.
 
 Copied components import `cn()` and animation helpers from `@blotch/dolan`, so your app needs it to build, not only to run commands. Once it's installed, `npx dolan` runs it too.
 
 In CI, a script or an AI agent, `init` asks nothing and takes the default folders. Add `--yes` to skip the questions in a terminal too, and `--components` or `--theme` to choose other folders. See [`init`](/dolan/cli#init).
 
-**2. Add the Tailwind plugin.**
+**2. Import the theme**, after Tailwind's own imports:
+
+```css title="src/styles.css"
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './styles/default.css'; /* [!code highlight] */
+@import './styles/dark.css'; /* [!code highlight] */
+@import './styles/tailwind.css'; /* [!code highlight] */
+```
+
+`dark.css` changes nothing until you turn dark mode on. See [Theming](/dolan/theming#dark-mode).
+
+**3. On Tailwind 3**, add the Tailwind plugin to your config instead, and import only the colors:
 
 ```typescript title="tailwind.config.ts"
 import type { Config } from 'tailwindcss';
@@ -45,8 +58,6 @@ const config: Config = {
 export default config;
 ```
 
-**3. Import the theme.** Put the `@import` lines first, because CSS ignores an `@import` that comes after other rules.
-
 ```css title="src/styles.css"
 @import './styles/default.css';
 @import './styles/dark.css';
@@ -55,7 +66,7 @@ export default config;
 @tailwind utilities;
 ```
 
-`dark.css` changes nothing until you turn dark mode on. See [Theming](/dolan/theming#dark-mode).
+Put the `@import` lines first: CSS ignores an `@import` that comes after other rules.
 
 **4. Add components.**
 
@@ -118,7 +129,7 @@ export class App {
 ## Good to know
 
 - **Text color doesn't inherit.** CSS inheritance is off by default on Lynx, so put a color class such as `text-foreground` on each of your own `<text>` elements. The components color their own text.
-- **Tests come with the code.** `dolan add` copies each component's `<name>.test.ts`. Most use `@blotch/angular-lynx-testing-library`, so set up [testing](/guide/testing/) or delete those files.
+- **Tests come with the code.** Once you've set up [testing](/guide/testing/) (`@blotch/angular-lynx-testing-library`), `dolan add` copies each component's tests too. They cover every line of the component under `ng test --coverage`, so the copies can stay in your coverage report.
 - **Updates are merged, not forced.** Run [`dolan update`](/dolan/cli#update) after upgrading `@blotch/dolan`. It keeps your edits and asks when both sides changed.
 
 ## Components
@@ -143,6 +154,7 @@ export class App {
 **Navigation**
 
 - [Nav Drawer](/dolan/nav-drawer): a side menu that slides in
+- [Tab Bar](/dolan/tab-bar): tabs along the bottom that switch routed screens
 - [Pagination](/dolan/pagination): page numbers with previous and next buttons
 
 **Data Display**

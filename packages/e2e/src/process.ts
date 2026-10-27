@@ -32,12 +32,30 @@ export type RunOptions = {
   readonly logFile?: string;
   /** Print output as it arrives. On by default so CI shows progress. */
   readonly echo?: boolean;
+  /**
+   * Kills the command, with its children, once it runs for `ms` without
+   * printing a line that matches `progress` (or at all, without `progress`).
+   * For commands that can hang outright, as Maestro did waiting on a device:
+   * CI had no timeout of its own, so a hang ran until GitHub killed the job
+   * hours later, with no logs to show for it.
+   */
+  readonly timeout?: {
+    readonly ms: number;
+    readonly progress?: RegExp;
+  };
 };
 
 export type RunResult = {
   readonly code: number;
   /** stdout and stderr interleaved, as a user would see them in a terminal. */
   readonly output: string;
+  /**
+   * Set when {@link RunOptions.timeout} stopped the command, with what it had
+   * printed by then. What it prints while it shuts down isn't a result: told
+   * to stop, Maestro reported the flow it hung on, and every flow after it, as
+   * failed.
+   */
+  readonly timedOut?: { readonly output: string };
 };
 
 // On Windows `npm` and `npx` are `.cmd` shims, which only start through a
@@ -84,8 +102,15 @@ export const start = (
   return { child, output: () => output };
 };
 
-/** Kills a process started with {@link start}, including its children. */
-export const stop = (child: ChildProcess) => {
+/**
+ * Kills a process started with {@link start}, including its children. With
+ * `killAfterMs`, a process group still running that long after SIGTERM gets
+ * SIGKILL: a hung program may never get to the end of its shutdown.
+ */
+export const stop = (
+  child: ChildProcess,
+  { killAfterMs }: { killAfterMs?: number } = {},
+) => {
   if (child.exitCode !== null || child.pid === undefined) {
     return;
   }
@@ -97,6 +122,17 @@ export const stop = (child: ChildProcess) => {
       spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f']);
     } else {
       process.kill(-child.pid, 'SIGTERM');
+      if (killAfterMs !== undefined) {
+        const pid = child.pid;
+        const timer = setTimeout(() => {
+          try {
+            process.kill(-pid, 'SIGKILL');
+          } catch {
+            // The group ended after SIGTERM.
+          }
+        }, killAfterMs);
+        child.once('close', () => clearTimeout(timer));
+      }
     }
   } catch {
     // Already gone.
@@ -110,9 +146,45 @@ export const runAllowFailure = (
   options: RunOptions,
 ): Promise<RunResult> => {
   const { child, output } = start(command, args, options);
+  const { timeout } = options;
+  let timedOut: RunResult['timedOut'];
+  let timer: NodeJS.Timeout | undefined;
+  const watch = (ms: number, message: string) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = { output: output() };
+      console.error(`\n! \`${command}\` ${message}; stopping it.`);
+      stop(child, { killAfterMs: 10_000 });
+    }, ms);
+  };
+  const { ms, progress } = timeout ?? {};
+  const limit = `${Math.round((ms ?? 0) / 1000)}s`;
+  if (ms !== undefined) {
+    watch(ms, progress ? `made no progress for ${limit}` : `ran for ${limit}`);
+  }
+  if (ms !== undefined && progress) {
+    // Whole lines only: a progress line can arrive split across chunks.
+    let partial = '';
+    const onData = (chunk: Buffer) => {
+      const lines = (partial + chunk.toString()).split('\n');
+      partial = lines.pop()!;
+      // Once stopped, a command's output no longer counts as progress.
+      if (!timedOut && lines.some((line) => progress.test(line))) {
+        watch(ms, `made no progress for ${limit}`);
+      }
+    };
+    child.stdout!.on('data', onData);
+    child.stderr!.on('data', onData);
+  }
   return new Promise((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 1, output: output() }));
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code: code ?? 1, output: output(), timedOut });
+    });
   });
 };
 

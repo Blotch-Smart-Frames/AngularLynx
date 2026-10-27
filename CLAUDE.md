@@ -48,22 +48,18 @@ Near-1:1 Angular parity — partial support isn't acceptable. Every Angular API 
 
 ## CSS Colors in Lynx
 
-Use Tailwind semantic color utilities (`bg-background`, `text-foreground`, `border-border`, `bg-card`, `text-muted-foreground`, etc.). They work on Lynx and switch with dark mode automatically. The `@blotch/ui` theme stores each color as a complete `rgba()` value (e.g. `--primary: rgba(24, 24, 27, 1)`) and the tailwind plugin references it directly as `var(--primary)`. Examples receive the theme via `dolan`; apps import it from `@blotch/ui/theme`.
+Use Tailwind semantic color utilities (`bg-background`, `text-foreground`, `border-border`, `bg-card`, `text-muted-foreground`, etc.). They work on Lynx and switch with dark mode automatically. The `@blotch/ui` theme stores each color as a complete `rgba()` value (e.g. `--primary: rgba(24, 24, 27, 1)`) and the tailwind plugin (Tailwind 3) or `tailwind.css` (Tailwind 4) references it directly as `var(--primary)`. Examples receive the theme via `dolan`; apps import it from `@blotch/ui/theme`.
 
 Never author raw HSL. Lynx's parser accepts only comma-separated `hsl(240, 5.9%, 10%)`, but Tailwind's shadcn-style `hsl(var(--x) / 1)` resolves to space-separated HSL, which Lynx silently drops (the element renders transparent, no warning). The theme uses `rgba()` values specifically to sidestep this.
 
-**Opacity modifiers on semantic colors do not work** (`bg-primary/50`, `border-destructive/50`). The value is an opaque `rgba()` with no separable channels for Tailwind to inject alpha into. Instead:
-
-- add a dedicated translucent variable (see `--destructive-subtle` → `bg-destructive-subtle` in `packages/ui/src/lib/theme/`), or
-- use a solid semantic token (e.g. `bg-muted` for a subtle track), or
-- apply `opacity-*` to the whole element.
+**Opacity modifiers on semantic colors work** (`bg-primary/50`, `text-foreground/70`, `border-border/60`). Each opaque theme color has a `-rgb` twin holding its channels comma-separated (`--primary-rgb: 24, 24, 27`). The plugin's `themeColor()` keeps plain classes on `var(--primary)` and turns a modifier into `rgba(var(--primary-rgb), 0.5)`: Lynx substitutes `var()` as text before parsing the color, so the list fills three arguments (verified on iOS, Android and web). When you change a theme color, change its twin too; `packages/ui/src/lib/theme/rgb-channels.test.ts` and `dolan doctor` catch a mismatch. A theme copied before the twins existed still draws plain classes, but not modifiers; that's why the alert keeps its pre-composed `bg-destructive-subtle` rather than `bg-destructive/10`.
 
 Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile to hex/rgb, and their opacity modifiers (`bg-black/50`) compile to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
 
 | Need                       | Use                                                    |
 | -------------------------- | ------------------------------------------------------ |
 | Themed color (preferred)   | `bg-background`, `text-foreground`, `bg-card`          |
-| Translucent semantic color | dedicated var (`bg-destructive-subtle`) or `opacity-*` |
+| Translucent semantic color | opacity modifier (`bg-primary/50`, `border-border/60`) |
 | One-off custom color       | `style="background-color: rgba(0, 0, 0, 0.5)"`         |
 | Named color (± opacity)    | `bg-white`, `bg-black/50`                              |
 
@@ -87,7 +83,7 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 
 - **Test files use `.test.ts`, never `.spec.ts`.** The whole repo standardized on `.test.ts` (the modern Vitest/Node convention). Vitest `include` globs and tsconfig excludes expect `.test.ts`. When creating a new test file, name it `<name>.test.ts` — never `<name>.spec.ts`. (In users' apps, `ng test` runs both: the `component` schematic emits a `.test.ts` that renders on Lynx when the app has the testing library, and keeps Angular's `.spec.ts` otherwise.)
 
-- **Apps run tests with `ng test`** (`@blotch/angular-lynx-build:unit-test`, wrapping Angular's `@angular/build:unit-test`). It compiles tests ahead of time and checks templates strictly, so a component using Lynx elements must import `LYNX_ELEMENTS` (the app build alone would let it pass). Angular's runner shares one module graph across test files: don't `vi.mock('@angular/core')` or relative imports. `examples/kitchen-sink-app` runs its tests this way; the packages run theirs with plain Vitest.
+- **Apps run tests with `ng test`** (`@blotch/angular-lynx-build:unit-test`, wrapping Angular's `@angular/build:unit-test`). It compiles tests ahead of time and checks templates strictly, so a component using Lynx elements must import `LYNX_ELEMENTS` (the app build alone would let it pass). Angular's runner shares one module graph across test files: don't `vi.mock('@angular/core')` or relative imports. `examples/kitchen-sink-app` runs its tests this way, and so does `packages/ui`, since dolan copies its specs into apps (each component's own specs must cover it 100% there; see the `ui-component` skill). The other packages run theirs with plain Vitest.
 
 - **End-to-end tests:** `npm run e2e` installs the packed packages into a fresh app the way a user does. Run it after changing schematics, the scaffolder, package.json `files`/`exports`, or anything in the build plugin: unit tests run against source and can't see packaging bugs.
 
@@ -95,9 +91,9 @@ Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile 
 
 The runtime package ships an Angular schematics collection (`packages/runtime/schematics/collection.json`). These are the primary developer onboarding paths:
 
-- **`ng add @blotch/angular-lynx`** — transforms an existing `ng new` project into a Lynx-native app: rewrites `main.ts`, `app.config.ts`, `app.ts`; points `build` / `serve` / `test` / `extract-i18n` at the AngularLynx builders (keeping `ng new`'s options, resizing its `initial` budget for a Lynx bundle); puts `@blotch/angular-lynx` first in `cli.schematicCollections`; git-ignores `.dev-logs` (`LynxLogger`'s output); installs only `@blotch/angular-lynx-build`; and optionally installs Tailwind (`--tailwind=false` to skip). It writes no `lynx.config.ts`: angular.json holds the build config
+- **`ng add @blotch/angular-lynx`** — transforms an existing `ng new` project into a Lynx-native app: rewrites `main.ts`, `app.config.ts`, `app.ts`; points `build` / `serve` / `test` / `extract-i18n` at the AngularLynx builders (keeping `ng new`'s options, resizing its `initial` budget for a Lynx bundle); puts `@blotch/angular-lynx` first in `cli.schematicCollections`; git-ignores `.dev-logs` (`LynxLogger`'s output); installs only `@blotch/angular-lynx-build`; and optionally installs Tailwind (`--tailwind=false` to skip): Tailwind 4 by default, as Angular CLI sets it up (`.postcssrc.json`), or the project's existing Tailwind 3 (`--tailwind-version` to choose). It writes no `lynx.config.ts`: angular.json holds the build config
 - **`ng generate component <name>`** (or `ng generate @blotch/angular-lynx:component`, alias `c`) — runs Angular's own component schematic (every option, angular.json's `@schematics/angular:component` defaults), then turns the `<p>` template into Lynx elements, imports `LYNX_ELEMENTS`, and, if the app has the testing library, swaps Angular's TestBed `.spec.ts` for a `.test.ts` using `render()`. Its schema mirrors Angular's without defaults (a test in `schematics/component/schema.test.ts` keeps it in step). Other `ng generate` schematics come from Angular
-- **`ng generate @blotch/angular-lynx:add-tailwind`** — adds `tailwind.config.ts` with `@lynx-js/tailwind-preset` and updates `styles.css`
+- **`ng generate @blotch/angular-lynx:add-tailwind`** — the same Tailwind setup on its own: Tailwind 4 (`.postcssrc.json` running `@tailwindcss/postcss`, and Tailwind's imports without Preflight in `styles.css`), or Tailwind 3 (`tailwind.config.ts` with `@lynx-js/tailwind-preset`)
 - **`ng generate @blotch/angular-lynx:add-testing`** — installs `@blotch/angular-lynx-testing-library` and points the `test` target at the unit-test builder, which loads the library's setup itself (no `vitest.config.ts` or setup file)
 - **`ng generate @blotch/angular-lynx:add-i18n`** — adds `@angular/localize`, configures `angular.json` i18n (with an `extract-i18n` target that writes JSON for `loadTranslations()`), and injects `provideLocale()` into app config
 - **`ng update @blotch/angular-lynx`** — updates every package of the group together; migrations for breaking changes go in `packages/runtime/schematics/migrations.json` (its `ng-update.migrations`)

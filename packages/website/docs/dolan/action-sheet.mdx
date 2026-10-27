@@ -87,13 +87,13 @@ export class ShareMenu {
 
 ### Navigate from an item
 
-`pressed` fires inside the tap. Changing signals there is safe, but router navigation isn't: wrap it in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) for why.
+Navigate from `pressed`, as from any tap handler:
 
 ```typescript
 readonly #router = inject(Router);
 
 protected openSettings(): void {
-  setTimeout(() => this.#router.navigateByUrl('/settings'));
+  this.#router.navigateByUrl('/settings');
 }
 ```
 

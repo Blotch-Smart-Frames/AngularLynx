@@ -99,9 +99,9 @@ export class UiProgress {
 
   protected readonly trackClass = computed(() =>
     cn(
-      // bg-muted (solid, theme-aware) instead of bg-primary/20: opacity
-      // modifiers on semantic colors don't work on Lynx (colors are opaque
-      // rgba values with no separable channels).
+      // bg-muted (solid, theme-aware) instead of bg-primary/20: a modifier
+      // needs the theme's --primary-rgb, and in a theme copied before it
+      // existed the track would disappear.
       'h-2 w-full rounded-full bg-muted overflow-hidden',
       this.userClass(),
     ),

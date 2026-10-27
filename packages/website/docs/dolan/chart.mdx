@@ -166,7 +166,7 @@ protected onSelect(point: ChartPoint | null): void {
 }
 ```
 
-`ChartPoint` comes from `@tanstack/charts/types`. Its `datum` is the row you passed to the mark. Both outputs fire inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`ChartPoint` comes from `@tanstack/charts/types`. Its `datum` is the row you passed to the mark. Both outputs fire inside the touch, so they can change signals or navigate, as a tap handler can.
 
 By default a touch focuses the nearest point within 48px (`maxFocusDistance`). Set `focus` in the definition to change that: `'nearest-x'` prefers the closest x value, `'group-x'` takes every series at that x, and `false` turns focus off. A TanStack `selection` controller in the definition is told about each tap.
 

@@ -40,10 +40,10 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
       <!-- bg-black/50 dims the content behind the drawer. The fadeIn/fadeOut in
            #animateIn/#animateOut already tween this element's opacity over
            DURATION.normal, so the dim animates in lockstep with the panel slide —
-           matching the dialog/action-sheet/bottom-sheet backdrop. A named color
-           with an opacity modifier is required here: bg-black/50 compiles to
-           rgb(0 0 0 / 0.5), which Lynx accepts, whereas opacity modifiers on
-           semantic tokens don't. -->
+           matching the dialog/action-sheet/bottom-sheet backdrop. It's a named
+           color, not a theme one, because the dim is black in light and dark
+           mode alike; bg-black/50 compiles to rgb(0 0 0 / 0.5), which Lynx
+           accepts. -->
       <view
         #backdrop
         class="h-full w-full bg-black/50"
@@ -82,8 +82,11 @@ export class UiNavDrawer implements OnDestroy {
       : 'position: fixed; overflow: visible; width: 100vw; height: 100vh; top: 0; left: 0; z-index: 999; display: none;',
   );
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay hides with
+  // display:none rather than leaving the tree), and the sequences only read
+  // them from timers that start after the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -91,21 +94,26 @@ export class UiNavDrawer implements OnDestroy {
   // them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // first run would call #doClose() and emit `closed` before the drawer
-    // has ever been opened.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Plays the open or close sequence whenever `open` changes. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * first run would call #doClose() and emit `closed` before the drawer
+   * has ever been opened.
+   */
+  protected readonly openAndClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   protected readonly panelClass = computed(() =>
     cn(
@@ -192,9 +200,8 @@ export class UiNavDrawer implements OnDestroy {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -213,9 +220,8 @@ export class UiNavDrawer implements OnDestroy {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -257,6 +263,13 @@ export class UiNavDrawerHeader {
     ),
   );
 }
+
+/**
+ * `UiNavDrawerItem`, for `contentChildren()`. A call rather than the class
+ * itself: for a class, Angular's test build keeps an arrow function that
+ * nothing calls, which an app's coverage report would show as uncovered.
+ */
+const navDrawerItem = () => UiNavDrawerItem;
 
 @Component({
   selector: 'ui-nav-drawer-content',
@@ -314,27 +327,29 @@ export class UiNavDrawerContent {
   // Every nav item projected into this section (Home + each group item). Used to
   // find the active one when the drawer opens. `descendants: true` reaches items
   // nested inside the @for group wrappers, not just the direct content children.
-  readonly items = contentChildren(UiNavDrawerItem, { descendants: true });
+  readonly items = contentChildren(navDrawerItem(), { descendants: true });
 
   protected readonly contentClass = computed(() =>
     cn('h-full w-full', this.userClass()),
   );
 
-  constructor() {
-    // When the drawer opens, land the user on their current route instead of the
-    // top of a potentially long nav list. The <overlay> is display:none until
-    // open, so the scroll-view has no laid-out child frames until it's shown —
-    // defer a tick so the just-shown content is measured before we read it.
-    //
-    // This open-driven path is the fallback: it covers the web preview (where
-    // contentsizechanged isn't emitted) and re-opens that don't trigger a
-    // relayout. On device, onContentLayout() below is the precise trigger. Both
-    // call the same instant scroll, so firing twice is a harmless no-op.
-    effect(() => {
-      if (!this.#drawer.open()) return;
-      setTimeout(() => this.#scrollActiveIntoView(), 0);
-    });
-  }
+  /**
+   * When the drawer opens, land the user on their current route instead of the
+   * top of a potentially long nav list.
+   *
+   * The <overlay> is display:none until open, so the scroll-view has no
+   * laid-out child frames until it's shown — defer a tick so the just-shown
+   * content is measured before we read it.
+   *
+   * This open-driven path is the fallback: it covers the web preview (where
+   * contentsizechanged isn't emitted) and re-opens that don't trigger a
+   * relayout. On device, onContentLayout() below is the precise trigger. Both
+   * call the same instant scroll, so firing twice is a harmless no-op.
+   */
+  protected readonly revealActiveOnOpen = effect(() => {
+    if (!this.#drawer.open()) return;
+    setTimeout(() => this.#scrollActiveIntoView(), 0);
+  });
 
   /**
    * Fired by the scroll-view once its content finishes layout. Gated on the
@@ -347,12 +362,23 @@ export class UiNavDrawerContent {
 
   #scrollActiveIntoView(): void {
     this.items()
-      /* v8 ignore start -- .find predicate unreachable when no content-projected items */
       .find((item) => item.active())
-      /* v8 ignore stop */
       ?.scrollIntoView();
   }
 }
+
+/**
+ * The color icons inside an item draw with: the destructive color in a
+ * destructive item. A function of its own rather than written inline in
+ * `providers`: Angular's test build keeps a second copy of an inline factory
+ * that nothing calls, which an app's coverage report would show as uncovered.
+ */
+const itemIconColor = () => {
+  const item = inject(UiNavDrawerItem);
+  return computed(() =>
+    item.variant() === 'destructive' ? 'var(--destructive)' : undefined,
+  );
+};
 
 @Component({
   selector: 'ui-nav-drawer-item',
@@ -360,17 +386,7 @@ export class UiNavDrawerContent {
   encapsulation: ViewEncapsulation.None,
   // Icons projected into the item (see the variant below) inject this through
   // the item's element injector, which content projection keeps them under.
-  providers: [
-    {
-      provide: UI_ICON_COLOR,
-      useFactory: () => {
-        const item = inject(UiNavDrawerItem);
-        return computed(() =>
-          item.variant() === 'destructive' ? 'var(--destructive)' : undefined,
-        );
-      },
-    },
-  ],
+  providers: [{ provide: UI_ICON_COLOR, useFactory: itemIconColor }],
   template: `
     <view
       #container

@@ -181,6 +181,7 @@ Set `CI=true` and `NG_CLI_ANALYTICS=false`. CI has no terminal attached, so `ng 
 5. **Run each schematic, and build after each one:**
    - `ng generate @blotch/angular-lynx:component hello`: creates `hello.ts` and `hello.test.ts`, and the app still builds after `<app-hello />` is added to it.
    - `ng generate @blotch/angular-lynx:add-testing`, then `npm test`: the generated component's test passes using `@blotch/angular-lynx-testing-library`.
+   - `dolan init --yes` and `dolan add` with every component (with Tailwind), then `ng test --coverage`: the tests dolan copies pass and cover every copied component and theme file 100%.
    - `ng generate @blotch/angular-lynx:add-i18n`, then build.
    - Tailwind is added by `ng add` by default. Also cover `ng add ... --tailwind=false` in the nightly matrix.
 6. **Smoke-test the dev server:** start `npm start` in the background, wait for "ready", request the bundle URL, then stop it. The dev server takes code paths that `build` doesn't (watch mode, the Angular rebuild coordinator).
@@ -343,6 +344,9 @@ Instead of Explorer, a minimal Swift app could embed the Lynx iOS SDK and load t
 ### Cost and schedule
 
 GitHub-hosted macOS runners are free for public repositories, but a free account runs at most 5 macOS jobs at once, and they start more slowly. Expect about 8–12 minutes per run, mostly booting the simulator.
+
+- **In practice** the iOS job, which also builds the app and its shell and tests two hosts, took 15 to 47 minutes over its first 55 passing runs, and booting was the least of it. A Maestro session per flow spent about as long starting its driver as running the flow, `npm ci` installed the whole monorepo for two packages, and a bug kept Verdaccio's storage cache empty, so the app's dependencies came from the public registry every time. Each host's flows now run in one Maestro session, the job installs only Verdaccio and publint, and the cache works (#125).
+- **Every job has a timeout**, and the harness stops a Maestro session that finishes no flow for 7 minutes, saving a screenshot and the end of Maestro's log. Before, a hang ran for GitHub's six-hour default.
 
 iOS and Android run on every pull request, as well as nightly and in the release gate. Bugs that only exist on Lynx's own engine should block a merge rather than surface the next morning. This roughly doubles a PR's wall-clock time. The Android job starts after the Linux `build-app` job, which builds the APK; the iOS job builds its own app, shell included, on the Mac, so it starts as soon as the packages are packed.
 

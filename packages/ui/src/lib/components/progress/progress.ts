@@ -32,65 +32,63 @@ export class UiProgress {
   readonly indeterminate = input(false);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly fillRef = viewChild<ElementRef>('fill');
+  readonly fillRef = viewChild.required<ElementRef>('fill');
   #fillAnim?: AnimationHandle;
   #indeterminateAnim?: AnimationHandle;
   #previousPercent: number | null = null;
 
-  constructor() {
-    effect(() => {
-      const el = this.fillRef()?.nativeElement;
-      // el.animate() is inert in jsdom. Determinate and indeterminate paths
-      // are exercised on-device; the effect's animation branch cannot be
-      // meaningfully verified from a unit test.
-      /* v8 ignore start */
-      if (!el) return;
+  /**
+   * Slides the fill while indeterminate, and animates its width as the value
+   * changes. A field rather than a constructor: Angular's test build keeps a
+   * function for a constructor that nothing calls, which an app's coverage
+   * report would show as uncovered.
+   */
+  protected readonly fillAnimation = effect(() => {
+    const el = this.fillRef().nativeElement;
 
-      // Handle indeterminate mode with infinite sliding animation.
-      // The fill element is 40% of the track width. `translateX` percentages
-      // are relative to the element's OWN width, so:
-      //   translateX(-100%) = left edge at -40% of track = starts off-screen left
-      //   translateX(250%)  = left edge at +100% of track = exits off-screen right
-      // 250% is the minimum that pushes the 40%-wide fill fully past the right edge.
-      if (this.indeterminate()) {
-        this.#fillAnim?.cancel();
-        this.#indeterminateAnim?.cancel();
-        this.#indeterminateAnim = el.animate(
-          [
-            { transform: 'translateX(-100%)', width: '40%' },
-            { transform: 'translateX(250%)', width: '40%' },
-          ],
-          {
-            duration: 1200,
-            easing: EASING.standard,
-            iterations: Infinity,
-          },
-        );
-        return;
-      }
-
-      // Determinate mode — animate width changes smoothly.
-      // `#previousPercent === null` skips the very first effect run so
-      // the bar doesn't animate from 0% → initial value on mount.
-      // The equality guard prevents redundant animations if the effect
-      // re-runs without an actual percent change.
-      this.#indeterminateAnim?.cancel();
-      const percent = this.percent();
-      if (this.#previousPercent === null) {
-        this.#previousPercent = percent;
-        return;
-      }
-      if (percent === this.#previousPercent) return;
-
+    // Handle indeterminate mode with infinite sliding animation.
+    // The fill element is 40% of the track width. `translateX` percentages
+    // are relative to the element's OWN width, so:
+    //   translateX(-100%) = left edge at -40% of track = starts off-screen left
+    //   translateX(250%)  = left edge at +100% of track = exits off-screen right
+    // 250% is the minimum that pushes the 40%-wide fill fully past the right edge.
+    if (this.indeterminate()) {
       this.#fillAnim?.cancel();
-      this.#fillAnim = el.animate(
-        [{ width: `${this.#previousPercent}%` }, { width: `${percent}%` }],
-        { duration: DURATION.slow, easing: EASING.standard, fill: 'forwards' },
+      this.#indeterminateAnim?.cancel();
+      this.#indeterminateAnim = el.animate(
+        [
+          { transform: 'translateX(-100%)', width: '40%' },
+          { transform: 'translateX(250%)', width: '40%' },
+        ],
+        {
+          duration: 1200,
+          easing: EASING.standard,
+          iterations: Infinity,
+        },
       );
+      return;
+    }
+
+    // Determinate mode — animate width changes smoothly.
+    // `#previousPercent === null` skips the very first effect run so
+    // the bar doesn't animate from 0% → initial value on mount.
+    // The equality guard skips the animation when the effect re-runs without
+    // a percent change: leaving indeterminate mode at the same value.
+    this.#indeterminateAnim?.cancel();
+    const percent = this.percent();
+    if (this.#previousPercent === null) {
       this.#previousPercent = percent;
-      /* v8 ignore stop */
-    });
-  }
+      return;
+    }
+    if (percent === this.#previousPercent) return;
+
+    this.#fillAnim?.cancel();
+    this.#fillAnim = el.animate(
+      [{ width: `${this.#previousPercent}%` }, { width: `${percent}%` }],
+      { duration: DURATION.slow, easing: EASING.standard, fill: 'forwards' },
+    );
+    this.#previousPercent = percent;
+  });
 
   protected readonly percent = computed(() => {
     const m = this.max();
@@ -100,9 +98,9 @@ export class UiProgress {
 
   protected readonly trackClass = computed(() =>
     cn(
-      // bg-muted (solid, theme-aware) instead of bg-primary/20: opacity
-      // modifiers on semantic colors don't work on Lynx (colors are opaque
-      // rgba values with no separable channels).
+      // bg-muted (solid, theme-aware) instead of bg-primary/20: a modifier
+      // needs the theme's --primary-rgb, and in a theme copied before it
+      // existed the track would disappear.
       'h-2 w-full rounded-full bg-muted overflow-hidden',
       this.userClass(),
     ),

@@ -28,11 +28,6 @@ import { ScreenHost } from '../screen-host';
  *  - `bindtouchstart/move/end` — the raw touch stream, which delivers the full
  *    TouchEvent (with live coordinates) on the background thread as the finger
  *    moves.
- *
- * All handlers only write signals — never mutate the element tree — so they are
- * safe to run inside a Lynx worklet callback under zoneless change detection
- * (the render happens asynchronously on a later tick). See App.navigateTo() for
- * the contrasting case where a tree mutation must be deferred.
  */
 @Component({
   selector: 'app-events-demo',

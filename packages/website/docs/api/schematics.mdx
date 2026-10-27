@@ -6,7 +6,7 @@
 | ------------------------------- | ---------------------------------------- | -------------------------------------------------- |
 | [`ng-add`](#ng-add)             | `ng add @blotch/angular-lynx`            | Turns an `ng new` project into a Lynx app          |
 | [`component`](#component)       | `ng generate component <name>`           | Generates a component with a Lynx template         |
-| [`add-tailwind`](#add-tailwind) | `ng g @blotch/angular-lynx:add-tailwind` | Adds Tailwind CSS with the Lynx preset             |
+| [`add-tailwind`](#add-tailwind) | `ng g @blotch/angular-lynx:add-tailwind` | Adds Tailwind CSS                                  |
 | [`add-testing`](#add-testing)   | `ng g @blotch/angular-lynx:add-testing`  | Adds the AngularLynx testing library               |
 | [`add-i18n`](#add-i18n)         | `ng g @blotch/angular-lynx:add-i18n`     | Adds `@angular/localize` and `provideLocale()`     |
 | [`eject`](#eject)               | `ng g @blotch/angular-lynx:eject`        | Copies the iOS and Android projects into your repo |
@@ -39,10 +39,11 @@ ng add @blotch/angular-lynx
 
 It doesn't write a `lynx.config.ts`. The builders read everything from `angular.json` (see [`@blotch/angular-lynx-build`](/api/build/)).
 
-| Option       | Type      | Default             | Description                                           |
-| ------------ | --------- | ------------------- | ----------------------------------------------------- |
-| `--project`  | `string`  | The current project | The project to convert                                |
-| `--tailwind` | `boolean` | `true`              | Add Tailwind CSS. You're asked when you don't pass it |
+| Option               | Type       | Default                                    | Description                                           |
+| -------------------- | ---------- | ------------------------------------------ | ----------------------------------------------------- |
+| `--project`          | `string`   | The current project                        | The project to convert                                |
+| `--tailwind`         | `boolean`  | `true`                                     | Add Tailwind CSS. You're asked when you don't pass it |
+| `--tailwind-version` | `4` \| `3` | The project's own Tailwind version, or `4` | The Tailwind CSS major version to set up              |
 
 ## `component`
 
@@ -91,17 +92,25 @@ It takes all of [Angular's component options](https://angular.dev/cli/generate/c
 ng generate @blotch/angular-lynx:add-tailwind
 ```
 
-Use it if you skipped Tailwind during `ng add`. See [Tailwind CSS](/guide/tailwindcss).
+Use it if you skipped Tailwind during `ng add`. It sets up the Tailwind version the project already depends on, or Tailwind 4. See [Tailwind CSS](/guide/tailwindcss).
 
-**What it changes:**
+**What it changes, for Tailwind 4** (as Angular CLI's own Tailwind schematic does):
+
+- **`src/styles.css`**: its contents are replaced with Tailwind's theme and utilities imports, without Preflight. A project styled with `styles.scss` gets a `src/tailwind.css`, added to the build's `styles`, instead.
+- **`.postcssrc.json`**: created, or `@tailwindcss/postcss` added to it (or to `postcss.config.json`).
+- **`package.json`**: adds `tailwindcss` and `@tailwindcss/postcss` (4.x) as dev dependencies, keeping the version of a project that has them.
+- It warns about a `tailwind.config.ts` left from Tailwind 3, which Tailwind 4 doesn't read.
+
+**What it changes, for Tailwind 3:**
 
 - **`tailwind.config.ts`**: created, or replaced, with `@lynx-js/tailwind-preset` and `content: ['./src/**/*.{html,ts}']`.
 - **`src/styles.css`** (or `styles.scss` if it exists): its contents are replaced with `@tailwind base;` and `@tailwind utilities;`.
 - **`package.json`**: adds `tailwindcss` (3.x) and `@lynx-js/tailwind-preset` as dev dependencies.
 
-| Option      | Type     | Default             | Description           |
-| ----------- | -------- | ------------------- | --------------------- |
-| `--project` | `string` | The current project | The project to change |
+| Option               | Type       | Default                                    | Description                              |
+| -------------------- | ---------- | ------------------------------------------ | ---------------------------------------- |
+| `--project`          | `string`   | The current project                        | The project to change                    |
+| `--tailwind-version` | `4` \| `3` | The project's own Tailwind version, or `4` | The Tailwind CSS major version to set up |
 
 ## `add-testing`
 

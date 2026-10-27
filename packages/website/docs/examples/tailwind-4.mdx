@@ -1,0 +1,19 @@
+# Tailwind CSS 4
+
+Tailwind CSS 4 utilities on Lynx, next to the UI components' theme. Look here for the utilities whose Tailwind 4 CSS the build rewrites for Lynx: colors, opacity modifiers, logical padding, transforms and borders.
+
+<Go example="tailwind-4" defaultFile="src/app/app.ts" />
+
+## What it shows
+
+- **Tailwind 4, set up as `ng add` does** — `.postcssrc.json` runs `@tailwindcss/postcss`, and `src/styles.css` imports Tailwind's theme and utilities without Preflight. See [Tailwind CSS](/guide/tailwindcss).
+- **The palette and opacity modifiers** — Tailwind 4's `oklch()` colors and `bg-sky-500/40` reach Lynx as `rgb()` and `rgba()`.
+- **Transforms** — `rotate-45`, `scale-75`, `-translate-y-2` and `skew-x-12` compose into one `transform`, and `animate-spin` spins.
+- **A transition** — the button toggles `scale-x-50` on the bar, which `transition-transform` animates.
+- **The UI components' theme** — `src/styles/tailwind.css` gives [Card](/dolan/card) and [Button](/dolan/button) their colors, such as `bg-card`, in Tailwind 4, and `bg-primary/10` takes an opacity modifier from the theme's `--primary-rgb`.
+
+## Related
+
+- [Tailwind CSS](/guide/tailwindcss)
+- [CSS on Lynx](/guide/styling)
+- [Theming](/dolan/theming)

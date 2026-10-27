@@ -152,20 +152,25 @@ export class UiAccordionContent {
   readonly contentRef = viewChild<ElementRef>('content');
   #anim?: AnimationHandle;
 
-  constructor() {
-    // Animate the reveal whenever the panel expands. contentRef only resolves
-    // while the `@if` content is mounted; defer one macrotask so the freshly
-    // (re)created element is committed to the native tree before we animate it.
-    effect(() => {
-      if (!this.item.isExpanded()) return;
-      setTimeout(() => {
-        const el = this.contentRef()?.nativeElement;
-        if (!el) return;
-        this.#anim?.cancel();
-        this.#anim = revealIn(el, { fromY: -8, fill: 'none' });
-      }, 0);
-    });
-  }
+  /**
+   * Animates the reveal whenever the panel expands. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   *
+   * contentRef only resolves while the `@if` content is mounted; defer one
+   * macrotask so the freshly (re)created element is committed to the native
+   * tree before we animate it. By then the panel may have collapsed again,
+   * which leaves nothing to animate.
+   */
+  protected readonly revealing = effect(() => {
+    if (!this.item.isExpanded()) return;
+    setTimeout(() => {
+      const el = this.contentRef()?.nativeElement;
+      if (!el) return;
+      this.#anim?.cancel();
+      this.#anim = revealIn(el, { fromY: -8, fill: 'none' });
+    }, 0);
+  });
 
   protected readonly contentClass = computed(() =>
     cn('flex-col pb-4 flex', this.userClass()),

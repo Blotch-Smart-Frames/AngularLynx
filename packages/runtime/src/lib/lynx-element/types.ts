@@ -13,6 +13,18 @@ export const EVENT_PREFIXES: [string, LynxEventType][] = [
   ['bind', 'bindEvent'],
 ];
 
+/**
+ * DOM event names whose Lynx event has another name. A listener for one of
+ * them hears the Lynx event, bubbling, as if it were bound with `bind`: a
+ * `(click)` listener runs on a tap. This is the mapping Lynx for Web makes
+ * between the two (web-core's `W3cEventNameToLynx` turns a DOM `click` into
+ * `tap`), and it's what lets Angular's own directives that listen for
+ * `click`, such as `RouterLink`, work on Lynx elements.
+ */
+export const DOM_EVENT_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['click', 'tap'],
+]);
+
 import type { Element as LynxJsElement } from '@lynx-js/types/main-thread';
 
 /**
@@ -44,6 +56,12 @@ export type BaseLynxElement = Pick<LynxJsElement, 'setAttribute'> & {
    */
   addScopeClass(name: string): void;
   removeClass(name: string): void;
+  /**
+   * Adds a trait to the element's own `accessibility-traits`, or takes it
+   * away, keeping the traits the app sets. For state the runtime tracks, such
+   * as `selected` on an active router link (see LynxRouterLinkActive).
+   */
+  setAccessibilityTrait(trait: string, on: boolean): void;
   remove(): void;
   parentNode(): BaseLynxElement | null;
   nextSibling(): BaseLynxElement | null;

@@ -96,12 +96,7 @@ export class Reveal {
   readonly open = signal(false);
 
   toggle(): void {
-    // Defer out of the native `bindtap` callback (UiButton emits `pressed` from
-    // inside bindtap). Flipping this signal toggles the `@if` above, which
-    // mutates the element tree; doing that synchronously while the native event
-    // is still on the call stack flushes the renderer mid-event and breaks
-    // Lynx's main-thread frame pipeline.
-    setTimeout(() => this.open.update((v) => !v), 0);
+    this.open.update((v) => !v);
   }
 }
 

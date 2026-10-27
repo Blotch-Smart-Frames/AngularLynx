@@ -97,24 +97,20 @@ The drawer stacks up to three sections, each optional:
 
 ### Navigate with the router
 
-`pressed` fires inside the tap. Changing signals there is safe, but router navigation isn't: wrap it in `setTimeout`. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) for why.
-
-```typescript
-readonly #router = inject(Router);
-
-protected go(url: string): void {
-  setTimeout(() => this.#router.navigateByUrl(url));
-}
-```
+Make each item a `routerLink`, and let `routerLinkActive` say which one is active. Import `RouterLink` and `RouterLinkActive` from `@angular/router`:
 
 ```angular-html
 <ui-nav-drawer-item
-  [active]="current() === '/settings'"
-  (pressed)="go('/settings')"
+  routerLink="/settings"
+  routerLinkActive
+  #settings="routerLinkActive"
+  [active]="settings.isActive"
 >
   <text class="text-sm text-foreground">Settings</text>
 </ui-nav-drawer-item>
 ```
+
+A tap on the item navigates, and closes the drawer as any item does. `routerLinkActive` with no classes only tracks the route, for `[active]`, and marks the item selected for screen readers. See [Routing and navigation](/guide/routing#navigate-between-screens).
 
 ### A destructive item
 
@@ -200,4 +196,5 @@ All sub-components (`UiNavDrawerHeader`, `UiNavDrawerContent`, `UiNavDrawerItem`
 - [Routing and navigation](/guide/routing): move between pages with the router
 - [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
 - [Safe area](/guide/safe-area): the insets the header and footer pad for
+- [Tab Bar](/dolan/tab-bar): bottom tabs, for an app with a handful of top-level screens
 - [Icon](/dolan/icon): icons for the items

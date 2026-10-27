@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { addSafeAreaUtilities, blotchPlugin } from './tailwind-plugin';
+import {
+  addSafeAreaUtilities,
+  blotchPlugin,
+  themeColor,
+} from './tailwind-plugin';
 
 /**
  * These tests exercise the utility generator in isolation with mock Tailwind
@@ -119,6 +123,42 @@ describe('blotchPlugin', () => {
     };
     const colors = factory.config?.theme?.extend?.colors;
     expect(colors).toBeDefined();
-    expect(colors!['background']).toBe('var(--background)');
+    const background = colors!['background'] as (options?: object) => string;
+    expect(background()).toBe('var(--background)');
+  });
+});
+
+describe('themeColor', () => {
+  const primary = themeColor('primary');
+
+  it('reads the complete color when no alpha is asked for', () => {
+    // caret-primary, shadow-primary: Tailwind passes no options.
+    expect(primary()).toBe('var(--primary)');
+    expect(primary({})).toBe('var(--primary)');
+  });
+
+  it("reads the complete color for a plain class with Tailwind's opacity variable", () => {
+    // bg-primary: the opacity variable is always 1 unless a deprecated
+    // bg-opacity-* utility changes it, and that never worked on these colors.
+    expect(
+      primary({
+        opacityVariable: '--tw-bg-opacity',
+        opacityValue: 'var(--tw-bg-opacity, 1)',
+      }),
+    ).toBe('var(--primary)');
+  });
+
+  it('reads the complete color for an alpha of 1', () => {
+    // bg-primary/100 passes '1'; theme('colors.primary') passes the number 1.
+    expect(primary({ opacityValue: '1' })).toBe('var(--primary)');
+    expect(primary({ opacityValue: 1 })).toBe('var(--primary)');
+  });
+
+  it('reads the channels for an opacity modifier', () => {
+    expect(primary({ opacityValue: '0.5' })).toBe(
+      'rgba(var(--primary-rgb), 0.5)',
+    );
+    // A gradient's transparent end stop asks for 0.
+    expect(primary({ opacityValue: 0 })).toBe('rgba(var(--primary-rgb), 0)');
   });
 });

@@ -74,7 +74,7 @@ Replace the template with this:
 </view>
 ```
 
-Tailwind classes work as on the web. The Lynx preset in `tailwind.config.ts` limits them to the CSS that Lynx supports. See [Tailwind CSS](/guide/tailwindcss).
+Tailwind classes work as on the web. The build rewrites the CSS Tailwind writes into CSS that Lynx supports. See [Tailwind CSS](/guide/tailwindcss).
 
 Layout is where Lynx differs from the browser:
 
@@ -187,7 +187,7 @@ Lynx calls a click a **tap**, and its event names start with `bind` or `catch`:
 
 The ✕ sits inside the card, and the card toggles on tap. With `catchtap`, tapping ✕ deletes the todo without also running the card's `toggle()`. See [Handling taps and events](/guide/elements/event-handling).
 
-`update()` returns a new array instead of changing the old one, so the signal sees a new value. These handlers only change signals, which is always safe. Some work, such as router navigation, has to wait until the handler ends: see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+`update()` returns a new array instead of changing the old one, so the signal sees a new value. These handlers only change signals. A handler can also navigate, open an overlay or start an animation, as on the web.
 
 **You should see:** tapping a card turns its square indigo with a ✓ and strikes through the label. Tap again to undo. Tap ✕ to delete a todo, and delete both to see "All done!".
 

@@ -37,9 +37,9 @@ import { cn } from '../../utils/cn';
       <!-- bg-black/50 dims the content behind the sheet. The fadeIn/fadeOut in
            #animateIn/#animateOut already tween this element's opacity over
            DURATION.normal, so the dim animates in lockstep with the panel slide —
-           matching the dialog/bottom-sheet backdrop. A named color with an opacity
-           modifier is required here: bg-black/50 compiles to rgb(0 0 0 / 0.5),
-           which Lynx accepts, whereas opacity modifiers on semantic tokens don't. -->
+           matching the dialog/bottom-sheet backdrop. It's a named color, not a
+           theme one, because the dim is black in light and dark mode alike;
+           bg-black/50 compiles to rgb(0 0 0 / 0.5), which Lynx accepts. -->
       <view
         #backdrop
         class="h-full w-full bg-black/50"
@@ -92,8 +92,10 @@ export class UiActionSheet implements OnDestroy {
       : 'position: fixed; overflow: visible; width: 100vw; height: 100vh; top: 0; left: 0; z-index: 999; display: none;',
   );
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay is hidden, never
+  // removed), and nothing reads them before the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -101,21 +103,25 @@ export class UiActionSheet implements OnDestroy {
   // them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // first run would call #doClose() and emit `closed` before the action
-    // sheet has ever been opened.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Opens or closes the action sheet as `open` changes. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * first run would call #doClose() and emit `closed` before the action
+   * sheet has ever been opened.
+   */
+  protected readonly openOrClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   protected readonly panelClass = computed(() =>
     cn('w-full flex-col gap-2 px-4 pb-6 flex', this.userClass()),
@@ -190,9 +196,8 @@ export class UiActionSheet implements OnDestroy {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -210,9 +215,8 @@ export class UiActionSheet implements OnDestroy {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -275,7 +279,8 @@ export class UiActionSheetItem {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  // Required: the container is always in the template.
+  readonly containerRef = viewChild.required<ElementRef>('container');
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -295,19 +300,19 @@ export class UiActionSheetItem {
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
     this.#pressAnim = pressDown(
-      this.containerRef()?.nativeElement,
+      this.containerRef().nativeElement,
       SCALE.pressDownLight,
     );
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
 
   protected onTap(): void {
@@ -343,7 +348,8 @@ export class UiActionSheetCancel {
   readonly label = input('Cancel');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  // Required: the container is always in the template.
+  readonly containerRef = viewChild.required<ElementRef>('container');
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -360,19 +366,19 @@ export class UiActionSheetCancel {
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
     this.#pressAnim = pressDown(
-      this.containerRef()?.nativeElement,
+      this.containerRef().nativeElement,
       SCALE.pressDownLight,
     );
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
 
   protected onTap(): void {

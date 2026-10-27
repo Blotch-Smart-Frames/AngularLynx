@@ -74,6 +74,7 @@ Every directive below, as one array for a component's `imports`. Each directive 
 | `LynxWebView`                   | `webview`                        | [`<webview>`](/api/elements/webview)                           |
 | `LynxCoverView`                 | `cover-view`                     | [`<cover-view>`](/api/elements/cover-view)                     |
 | `LynxTitleBarView`              | `title-bar-view`                 | [`<title-bar-view>`](/api/elements/title-bar-view)             |
+| `LynxRouterLinkActive`          | `[routerLinkActive]`             | [Routing](/api/angular-lynx/routing#lynxrouterlinkactive)      |
 
 ### `LynxIf` and `LynxFor`
 
@@ -89,7 +90,7 @@ Declare Lynx's own low-level `<if>` and `<for>` elements, so a template that con
 
 ### Attributes on every element
 
-Every directive above, except the two form accessors, also accepts these inputs. Write the true/false ones either way, `flatten="false"` or `[flatten]="false"`; both give Lynx a boolean. The same goes for the numbers of `pan-intercept-direction` and `pan-intercept-scope`.
+Every directive above, except the two form accessors and `LynxRouterLinkActive`, also accepts these inputs. Write the true/false ones either way, `flatten="false"` or `[flatten]="false"`; both give Lynx a boolean. The same goes for the numbers of `pan-intercept-direction` and `pan-intercept-scope`.
 
 | Attribute                         | Type                 | Description                                                                           |
 | --------------------------------- | -------------------- | ------------------------------------------------------------------------------------- |

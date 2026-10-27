@@ -114,6 +114,20 @@ export class InMemoryElement implements BaseLynxElement {
   removeClass(name: string): void {
     this.#classes.delete(name);
   }
+  /**
+   * Adds the trait to the `accessibility-traits` prop, or takes it out, so a
+   * test can read it back with getAttribute.
+   */
+  setAccessibilityTrait(trait: string, on: boolean): void {
+    const traits = new Set(
+      String(this.#props.get('accessibility-traits') ?? '')
+        .split(',')
+        .filter(Boolean),
+    );
+    if (on) traits.add(trait);
+    else traits.delete(trait);
+    this.#props.set('accessibility-traits', [...traits].join(','));
+  }
   remove(): void {
     if (this.isRootPageElement) return;
     if (!this.#parent) {

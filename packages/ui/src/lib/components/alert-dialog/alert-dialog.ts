@@ -52,8 +52,11 @@ export class UiAlertDialog implements OnDestroy {
 
   protected readonly overlayVisible = signal(false);
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay hides with
+  // display:none rather than leaving the tree), and the sequences only read
+  // them from timers that start after the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
@@ -61,21 +64,26 @@ export class UiAlertDialog implements OnDestroy {
   // them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // first run would call #doClose() immediately and emit `closed` before the
-    // dialog has ever been opened.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Plays the open or close sequence whenever `open` changes. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * first run would call #doClose() immediately and emit `closed` before the
+   * dialog has ever been opened.
+   */
+  protected readonly openAndClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   /**
    * `width`/`height`/`top`/`left` are web-only necessities: on web
@@ -92,9 +100,9 @@ export class UiAlertDialog implements OnDestroy {
   // `bg-black/50` supplies the dim. It lives on the backdrop specifically so
   // the existing fadeIn/fadeOut (opacity 0↔1, staggered 30ms ahead of the
   // panel scale-in) animate the dim in lockstep with the dialog appearing —
-  // no separate animation needed. A named color with an opacity modifier is
-  // used deliberately: it compiles to `rgb(0 0 0 / 0.5)`, which Lynx accepts,
-  // whereas a semantic token like `bg-background/50` would render transparent.
+  // no separate animation needed. It's a named color, not a theme one,
+  // because the dim is black in light and dark mode alike; it compiles to
+  // `rgb(0 0 0 / 0.5)`, which Lynx accepts.
   protected readonly backdropClass = computed(() =>
     cn('items-center flex justify-center', 'h-full w-full', 'bg-black/50'),
   );
@@ -163,9 +171,8 @@ export class UiAlertDialog implements OnDestroy {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -191,9 +198,8 @@ export class UiAlertDialog implements OnDestroy {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();

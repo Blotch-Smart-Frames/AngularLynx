@@ -1,115 +1,236 @@
-import { signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-import { describe, expect, it, vi } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import { UiTextarea } from './textarea';
 
+@Component({
+  imports: [UiTextarea],
+  template: `
+    <ui-textarea
+      [(value)]="notes"
+      [label]="label()"
+      placeholder="Add a note"
+      [helperText]="helperText()"
+      [error]="error()"
+      [disabled]="disabled()"
+      [minLines]="minLines()"
+      [maxLines]="maxLines()"
+      class="w-full"
+      (changed)="changes.push($event)"
+      (focused)="events.push('focused')"
+      (blurred)="events.push('blurred')"
+    />
+  `,
+})
+class TextareaHost {
+  readonly notes = signal('');
+  readonly label = signal('');
+  readonly helperText = signal('');
+  readonly error = signal('');
+  readonly disabled = signal(false);
+  readonly minLines = signal(3);
+  readonly maxLines = signal<number | undefined>(undefined);
+  readonly changes: string[] = [];
+  readonly events: string[] = [];
+}
+
+const renderTextarea = async () => {
+  const result = await render(TextareaHost);
+  return {
+    ...result,
+    host: result.componentRef.instance as TextareaHost,
+    field: () => result.container.querySelector('textarea')!,
+    // The field's own column; the host element renders as a view too.
+    column: () => result.container.querySelector('.flex-col')!,
+    wrapper: () => result.container.querySelector('.bg-muted') as HTMLElement,
+    // The layer that draws the focus ring around the field.
+    ring: () => result.container.querySelector('.absolute') as HTMLElement,
+  };
+};
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
+
 describe('UiTextarea', () => {
-  it('renders with default configuration', async () => {
-    const { container } = await render(UiTextarea);
-    expect(container).toBeTruthy();
+  // Watched per test: the testing library resets the main thread after each.
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+  });
+  afterEach(() => animate.mockRestore());
+
+  it('renders a native textarea with its placeholder, and no label', async () => {
+    const { field, column, queryByText } = await renderTextarea();
+    expect(field().getAttribute('placeholder')).toBe('Add a note');
+    expect(column().classList).toContain('w-full');
+    expect(queryByText('Add a note')).toBeNull();
   });
 
-  it('onInput() updates the model and emits `changed`', async () => {
-    const { componentRef } = await render(UiTextarea);
-    const inst = componentRef.instance as unknown as UiTextarea & {
-      onInput: (e: { detail: { value: string } }) => void;
-    };
-    const emitted: string[] = [];
-    inst.changed.subscribe((v) => emitted.push(v));
-    inst.onInput({ detail: { value: 'hello' } });
-    expect(inst.value()).toBe('hello');
-    expect(emitted).toEqual(['hello']);
+  it('shows its label', async () => {
+    const { host, getByText } = await renderTextarea();
+    host.label.set('Notes');
+    await waitForUpdate();
+    expect(getByText('Notes').classList).toContain('font-medium');
   });
 
-  it('onInput() is a no-op when disabled', async () => {
-    const { componentRef } = await render(UiTextarea);
-    const inst = componentRef.instance as unknown as UiTextarea & {
-      onInput: (e: { detail: { value: string } }) => void;
-    };
-    setInputSignal(inst.disabled, true);
-    const emitted = vi.fn();
-    inst.changed.subscribe(emitted);
-    inst.onInput({ detail: { value: 'blocked' } });
-    expect(inst.value()).toBe('');
-    expect(emitted).not.toHaveBeenCalled();
+  it('updates `value` and emits `changed` as the user types', async () => {
+    const { host, field } = await renderTextarea();
+    // Lynx puts the typed text in the event's detail, not on its target.
+    fireEvent.input(field(), { detail: { value: 'Call' } });
+    fireEvent.input(field(), { detail: { value: 'Call Sam' } });
+    expect(host.notes()).toBe('Call Sam');
+    expect(host.changes).toEqual(['Call', 'Call Sam']);
   });
 
-  it('onFocus/onBlur emit and update state', async () => {
-    const { componentRef } = await render(UiTextarea);
-    const inst = componentRef.instance as unknown as UiTextarea & {
-      onFocus: () => void;
-      onBlur: () => void;
-    };
-    const focused = vi.fn();
-    const blurred = vi.fn();
-    inst.focused.subscribe(focused);
-    inst.blurred.subscribe(blurred);
-    inst.onFocus();
-    inst.onBlur();
-    expect(focused).toHaveBeenCalledTimes(1);
-    expect(blurred).toHaveBeenCalledTimes(1);
+  it('hides its placeholder while it has a value', async () => {
+    // Lynx's iOS textarea would otherwise draw the placeholder over a value
+    // the app sets.
+    const { host, field } = await renderTextarea();
+    host.notes.set('Call Sam');
+    await waitForUpdate();
+    expect(field().hasAttribute('placeholder')).toBe(false);
+
+    host.notes.set('');
+    await waitForUpdate();
+    expect(field().getAttribute('placeholder')).toBe('Add a note');
   });
 
-  it('error input triggers the shake effect', async () => {
-    // Same pattern as UiInput: JIT + jsdom doesn't populate template-ref
-    // viewChild queries. Monkey-patch containerRef so the effect body's `el`
-    // check passes and the shake path executes.
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    const view = container.querySelector('view') as Element;
-    (inst as unknown as { containerRef: unknown }).containerRef = signal({
-      nativeElement: view,
-    });
-    setInputSignal(inst.error, 'Too short');
+  it("dims and ignores typing while it's disabled", async () => {
+    const { host, field, wrapper } = await renderTextarea();
+    host.disabled.set(true);
     await waitForUpdate();
-    await waitForUpdate();
-    expect(container.textContent).toContain('Too short');
-    // Clear then re-trigger to cover the cancel path.
-    setInputSignal(inst.error, '');
-    await waitForUpdate();
-    await waitForUpdate();
-    setInputSignal(inst.error, 'Retry');
-    await waitForUpdate();
-    await waitForUpdate();
-    expect(container.textContent).toContain('Retry');
+    expect(wrapper().classList).toContain('opacity-50');
+
+    fireEvent.input(field(), { detail: { value: 'blocked' } });
+    expect(host.notes()).toBe('');
+    expect(host.changes).toEqual([]);
   });
 
-  it('renders helper text when no error is present', async () => {
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    setInputSignal(inst.helperText, 'Notes here');
+  it('disables the native textarea only while disabled', async () => {
+    // Lynx treats any `disabled` value, even false, as disabled, so the
+    // attribute has to go rather than be set to false.
+    const setAttribute = vi.spyOn(lynxMainThread(), '__SetAttribute');
+    const { host, field } = await renderTextarea();
+    expect(setAttribute).not.toHaveBeenCalledWith(
+      field(),
+      'disabled',
+      expect.anything(),
+    );
+
+    host.disabled.set(true);
     await waitForUpdate();
-    expect(container.textContent).toContain('Notes here');
+    expect(setAttribute).toHaveBeenLastCalledWith(field(), 'disabled', 'true');
+    setAttribute.mockRestore();
   });
 
-  it('renders the label when provided', async () => {
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    setInputSignal(inst.label, 'Description');
+  it('shows a focus ring while focused, and emits `focused` and `blurred`', async () => {
+    const { host, field, ring } = await renderTextarea();
+    expect(ring().style.getPropertyValue('opacity')).toBe('0');
+
+    fireEvent.focus(field());
     await waitForUpdate();
-    expect(container.textContent).toContain('Description');
+    expect(ring().style.getPropertyValue('opacity')).toBe('1');
+    expect(ring().style.getPropertyValue('box-shadow')).toContain(
+      'var(--ring)',
+    );
+
+    fireEvent.blur(field());
+    await waitForUpdate();
+    expect(ring().style.getPropertyValue('opacity')).toBe('0');
+    expect(host.events).toEqual(['focused', 'blurred']);
   });
 
-  it('computes a min-height wrapper style when only minLines is set', async () => {
-    // Exercises the `max != null ? ... : ''` false branch of wrapperStyle.
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    setInputSignal(inst.minLines, 5);
+  it('shows its helper text', async () => {
+    const { host, getByText } = await renderTextarea();
+    host.helperText.set('Only you can see this.');
     await waitForUpdate();
-    // 5 * 20 + 20 = 120px
-    const wrapper = container.querySelector('[style*="min-height"]');
-    expect(wrapper?.getAttribute('style')).toContain('min-height: 120px');
-    expect(wrapper?.getAttribute('style')).not.toContain('max-height');
+    expect(getByText('Only you can see this.').classList).toContain(
+      'text-muted-foreground',
+    );
   });
 
-  it('adds max-height to wrapper style when maxLines is set', async () => {
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    setInputSignal(inst.maxLines, 4);
+  it('shows an error in place of the helper text, with a destructive ring', async () => {
+    const { host, ring, getByText, queryByText } = await renderTextarea();
+    host.helperText.set('Only you can see this.');
+    host.error.set('Too short');
     await waitForUpdate();
-    const wrapper = container.querySelector('[style*="max-height"]');
-    expect(wrapper?.getAttribute('style')).toContain('max-height: 100px');
+    expect(getByText('Too short').classList).toContain('text-destructive');
+    expect(queryByText('Only you can see this.')).toBeNull();
+    // An invalid field keeps its ring even when it isn't focused.
+    expect(ring().style.getPropertyValue('opacity')).toBe('1');
+    expect(ring().style.getPropertyValue('box-shadow')).toContain(
+      'var(--destructive)',
+    );
+  });
+
+  it('shakes when an error appears, but not when it only changes', async () => {
+    const { host, column } = await renderTextarea();
+    const shakes = () =>
+      animate.mock.calls.filter(([, [action]]) => action === START);
+    expect(shakes()).toEqual([]);
+
+    host.error.set('Required');
+    await waitForUpdate();
+    expect(animate).toHaveBeenCalledWith(column(), [
+      START,
+      expect.any(String),
+      expect.arrayContaining([{ transform: 'translateX(-4px)' }]),
+      expect.anything(),
+    ]);
+    expect(shakes()).toHaveLength(1);
+
+    host.error.set('Too short');
+    await waitForUpdate();
+    expect(shakes()).toHaveLength(1);
+
+    // Once fixed, the next error shakes again, replacing the last shake.
+    host.error.set('');
+    await waitForUpdate();
+    host.error.set('Required');
+    await waitForUpdate();
+    expect(shakes()).toHaveLength(2);
+    expect(animate).toHaveBeenCalledWith(column(), [
+      CANCEL,
+      expect.any(String),
+    ]);
+  });
+
+  it('opens at minLines tall and grows without limit by default', async () => {
+    // Each line is 20px, plus 20px of vertical padding.
+    const { host, field, wrapper } = await renderTextarea();
+    expect(wrapper().style.getPropertyValue('min-height')).toBe('80px');
+    expect(wrapper().style.getPropertyValue('max-height')).toBe('');
+    expect(field().hasAttribute('enable-scroll-bar')).toBe(false);
+
+    host.minLines.set(5);
+    await waitForUpdate();
+    expect(wrapper().style.getPropertyValue('min-height')).toBe('120px');
+  });
+
+  it('stops growing at maxLines and shows a scroll bar', async () => {
+    const { host, field, wrapper } = await renderTextarea();
+    host.maxLines.set(4);
+    await waitForUpdate();
+    expect(wrapper().style.getPropertyValue('max-height')).toBe('100px');
+    expect(field().getAttribute('enable-scroll-bar')).toBe('true');
   });
 
   it('makes the wrapper a stacking context so the field scrolls with it', async () => {
@@ -117,22 +238,7 @@ describe('UiTextarea', () => {
     // when an ancestor inside the scroll content is a stacking context. Without
     // z-0 on the wrapper, the native field (and its placeholder) stays fixed on
     // screen while the page scrolls.
-    const { container } = await render(UiTextarea);
-    const wrapper = container.querySelector(
-      '[class*="rounded-xl"][class*="bg-muted"]',
-    );
-    expect(wrapper?.getAttribute('class')?.split(/\s+/)).toContain('z-0');
-  });
-
-  it('applies the disabled dim class when disabled', async () => {
-    // Covers the true branch of `disabled() && 'opacity-50'` in textareaWrapperClass.
-    const { componentRef, container } = await render(UiTextarea);
-    const inst = componentRef.instance as UiTextarea;
-    setInputSignal(inst.disabled, true);
-    await waitForUpdate();
-    const wrapper = container.querySelector(
-      '[class*="rounded-xl"][class*="bg-muted"]',
-    );
-    expect(wrapper?.getAttribute('class')).toContain('opacity-50');
+    const { wrapper } = await renderTextarea();
+    expect(wrapper().classList).toContain('z-0');
   });
 });

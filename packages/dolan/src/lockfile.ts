@@ -55,3 +55,43 @@ export const getOrCreateLockfile = (cwd: string): Lockfile => {
   }
   return createEmptyLockfile();
 };
+
+/**
+ * The hash of each theme file as the releases up to 22.2.3 shipped it (22.2.0
+ * to 22.2.2 shipped the same theme), taken from each published tarball's
+ * `dist/ui/theme`. Their `init` copied the theme but left `"theme": {}` in the
+ * lockfile, so `update` had no base for those files and called every one that
+ * differed from upstream a conflict, though nobody had touched it.
+ *
+ * A file whose hash is in this list is a copy a release wrote and nobody has
+ * edited since, so that hash is its base. Matching on content, rather than
+ * recording the dolan version in the lockfile and looking up what it shipped,
+ * is what works for the `dolan.lock.json` those releases wrote: it holds no
+ * version, and an app may have skipped releases since. `init` records the
+ * theme's hashes now, so the list never grows. It misses a
+ * `tailwind-plugin.ts` that `init` reformatted with the app's own oxfmt
+ * settings, which stays a conflict.
+ */
+const SHIPPED_THEME_HASHES: Record<string, readonly string[]> = {
+  'default.css': ['6010e930f4314a61', '1fd6a85ec25194af'],
+  'dark.css': ['73345d8f2179fd64', '9501105e2a3f44cb'],
+  'tailwind-plugin.ts': ['0c4c52d9d2c90630', '4ac232eeeb7056ea'],
+};
+
+/**
+ * The base `update` merges a theme file against: the hash the lockfile
+ * records, else, for a lockfile an older `init` wrote, the hash of the release
+ * copy the file still is (see SHIPPED_THEME_HASHES). Null when there's
+ * neither, so a file that differs from upstream is a conflict.
+ */
+export const themeBase = (
+  lockfile: Lockfile,
+  file: string,
+  currentContent: string | null,
+): string | null => {
+  const stored = lockfile.theme[file]?.hash;
+  if (stored) return stored;
+  if (currentContent === null) return null;
+  const hash = hashContent(currentContent);
+  return SHIPPED_THEME_HASHES[file]?.includes(hash) ? hash : null;
+};

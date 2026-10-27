@@ -14,6 +14,12 @@ import {
   TESTING_LIBRARY,
 } from '../utils/packages.js';
 import { getComponentFiles } from '../utils/resolve-paths.js';
+import {
+  TAILWIND_CONFIG_FILES,
+  themeFilesFor,
+  usesTailwind4,
+} from '../utils/tailwind.js';
+import { globalStylesheet } from './init.js';
 
 /**
  * Runs a battery of project health checks similar to `npm doctor` or
@@ -66,6 +72,8 @@ export const doctorCommand = async () => {
   // --- 3. Required files ---
 
   checkRequiredFiles(cwd, config, pass, warn);
+
+  checkThemeChannels(cwd, config, pass, warn);
 
   // --- 4. Tailwind integration ---
 
@@ -167,11 +175,14 @@ const checkRequiredFiles = (
 ) => {
   const themeDir = resolve(cwd, config.aliases.theme);
 
-  if (existsSync(join(themeDir, 'tailwind-plugin.ts'))) {
-    pass(`${pc.cyan('tailwind-plugin.ts')} found in theme`);
+  // What maps the colors to Tailwind's utilities: tailwind.css for
+  // Tailwind 4, tailwind-plugin.ts for Tailwind 3.
+  const tailwindFile = themeFilesFor(cwd)[2]!;
+  if (existsSync(join(themeDir, tailwindFile))) {
+    pass(`${pc.cyan(tailwindFile)} found in theme`);
   } else {
     warn(
-      `${pc.cyan('tailwind-plugin.ts')} missing from ${pc.dim(config.aliases.theme)}`,
+      `${pc.cyan(tailwindFile)} missing from ${pc.dim(config.aliases.theme)}`,
     );
   }
 
@@ -185,16 +196,135 @@ const checkRequiredFiles = (
   }
 };
 
+/**
+ * A stylesheet's custom properties, by name. Comments are skipped.
+ */
+const cssVariables = (css: string): Map<string, string> =>
+  new Map(
+    [
+      ...css
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .matchAll(/(--[\w-]+)\s*:\s*([^;{}]+);/g),
+    ].map((match) => [match[1]!, match[2]!.trim()]),
+  );
+
+/**
+ * A color's red, green and blue as an `--x-rgb` variable writes them
+ * (`24, 24, 27`), from `rgb()`/`rgba()` or a hex color. Undefined for any
+ * other form, such as `hsl()`, which this check doesn't convert.
+ */
+const colorChannels = (color: string): string | undefined => {
+  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*([,/][^)]*)?\)$/.exec(
+    color,
+  );
+  if (rgb) return `${rgb[1]}, ${rgb[2]}, ${rgb[3]}`;
+  const hex = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(color);
+  if (!hex) return undefined;
+  const digits = hex[1]!.length === 3 ? hex[1]!.replace(/./g, '$&$&') : hex[1]!;
+  return [0, 2, 4].map((i) => parseInt(digits.slice(i, i + 2), 16)).join(', ');
+};
+
+/**
+ * Opacity modifiers on theme colors (`bg-primary/50`) read the color's
+ * channels from an `--x-rgb` twin, and they draw nothing without it, or the
+ * wrong color when it no longer matches the color. Neither shows an error.
+ * Themes copied before the twins existed don't have them, and `dolan update`
+ * keeps a theme the app edited, so this points them out. The colors that
+ * need twins are the ones the app's own plugin maps with `themeColor()`, or
+ * its `tailwind.css` maps (see themeColorNames): an older plugin maps none,
+ * and its modifiers never worked.
+ */
+/**
+ * Whether a color is `rgba()` with an alpha below 1.
+ */
+const isTranslucent = (color: string): boolean => {
+  const alpha = /^rgba\(.*,\s*([\d.]+)\s*\)$/.exec(color)?.[1];
+  return alpha !== undefined && Number(alpha) < 1;
+};
+
+/**
+ * The theme colors that take opacity modifiers: the ones the plugin maps with
+ * `themeColor()` (Tailwind 3), or the variables `tailwind.css` maps a
+ * `--color-*` to (Tailwind 4), where the build reads a modifier's channels
+ * from the variable's `-rgb` twin.
+ */
+const themeColorNames = (themeDir: string): string[] => {
+  const pluginPath = join(themeDir, 'tailwind-plugin.ts');
+  const cssPath = join(themeDir, 'tailwind.css');
+  const [source, pattern] = existsSync(pluginPath)
+    ? [pluginPath, /themeColor\(\s*['"]([\w-]+)['"]\s*\)/g]
+    : [cssPath, /--color-[\w-]+\s*:\s*var\(\s*--([\w-]+)\s*\)/g];
+  if (!existsSync(source)) return [];
+  return [
+    ...new Set(
+      [...readFileSync(source, 'utf-8').matchAll(pattern)].map(
+        (match) => match[1]!,
+      ),
+    ),
+  ];
+};
+
+const checkThemeChannels = (
+  cwd: string,
+  config: DolanConfig,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  const themeDir = resolve(cwd, config.aliases.theme);
+  const names = themeColorNames(themeDir);
+  if (names.length === 0) return;
+
+  let healthy = true;
+  for (const file of readdirSync(themeDir).filter((f) => f.endsWith('.css'))) {
+    const vars = cssVariables(readFileSync(join(themeDir, file), 'utf-8'));
+    // Only the colors this file sets: a theme may override a few. A color
+    // that's translucent already, such as --destructive-subtle, has no twin.
+    const set = names.filter(
+      (name) => vars.has(`--${name}`) && !isTranslucent(vars.get(`--${name}`)!),
+    );
+    const missing = set.filter((name) => !vars.has(`--${name}-rgb`));
+    const differing = set.filter((name) => {
+      const channels = colorChannels(vars.get(`--${name}`)!);
+      const twin = vars.get(`--${name}-rgb`);
+      return (
+        channels !== undefined &&
+        twin !== undefined &&
+        // Spaces don't matter, commas do: rgba() takes the list as three
+        // arguments only when they're comma-separated.
+        twin.replace(/\s+/g, '') !== channels.replace(/\s+/g, '')
+      );
+    });
+
+    if (missing.length > 0) {
+      const example = missing[0]!;
+      const channels = colorChannels(vars.get(`--${example}`)!) ?? 'r, g, b';
+      warn(
+        `${pc.cyan(file)} has no channels for ${missing.map((name) => pc.cyan(`--${name}`)).join(', ')}, so opacity modifiers such as ${pc.cyan(`bg-${example}/50`)} draw nothing. Add each color's red, green and blue: ${pc.bold(`--${example}-rgb: ${channels};`)}`,
+      );
+      healthy = false;
+    }
+    if (differing.length > 0) {
+      warn(
+        `${pc.cyan(file)}: ${differing.map((name) => pc.cyan(`--${name}-rgb`)).join(', ')} ${differing.length === 1 ? "doesn't" : "don't"} hold the color's red, green and blue, comma-separated, so opacity modifiers draw a different color from the plain class, or nothing.`,
+      );
+      healthy = false;
+    }
+  }
+
+  if (healthy) {
+    pass('Theme colors have the channels opacity modifiers need');
+  }
+};
+
 const checkTailwind = (
   cwd: string,
   pass: (msg: string) => void,
   warn: (msg: string) => void,
 ) => {
-  const candidates = ['tailwind.config.ts', 'tailwind.config.js'];
-  const found = candidates.find((f) => existsSync(resolve(cwd, f)));
+  const found = TAILWIND_CONFIG_FILES.find((f) => existsSync(resolve(cwd, f)));
 
   if (!found) {
-    warn('No Tailwind config found');
+    checkTailwind4Theme(cwd, pass, warn);
     return;
   }
 
@@ -206,6 +336,30 @@ const checkTailwind = (
   } else {
     warn(
       `${pc.cyan('blotchPlugin')} not found in ${pc.dim(found)} — add it to your plugins array`,
+    );
+  }
+};
+
+/**
+ * Tailwind 4 has no config: the stylesheet imports the theme's tailwind.css.
+ */
+const checkTailwind4Theme = (
+  cwd: string,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  if (!usesTailwind4(cwd)) {
+    warn('No Tailwind config found');
+    return;
+  }
+  const stylesheet = globalStylesheet(cwd);
+  const path = resolve(cwd, stylesheet);
+  const content = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+  if (/@import\s+['"][^'"]*\/tailwind\.css['"]/.test(content)) {
+    pass(`${pc.cyan('tailwind.css')} imported in ${pc.dim(stylesheet)}`);
+  } else {
+    warn(
+      `${pc.cyan('tailwind.css')} not imported in ${pc.dim(stylesheet)} — import it after Tailwind, as dolan init shows`,
     );
   }
 };

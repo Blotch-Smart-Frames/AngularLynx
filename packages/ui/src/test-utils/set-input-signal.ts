@@ -1,10 +1,11 @@
 /**
  * Sets an Angular `input()` / `model()` signal's value from a test.
  *
- * The Vitest JIT harness does not wire up signal inputs for template binding or
- * `ComponentRef.setInput()` (that metadata is only emitted by Angular's AOT
- * compiler), so the usual ways of feeding a value into an `input()` are inert
- * here. Angular's own reactive-node API is the supported escape hatch: reach the
+ * Under `ng test`, which compiles ahead of time, bind the input from a host
+ * component's template or call `ComponentRef.setInput()` instead. This is for
+ * tests compiled just in time (plain Vitest), where neither reaches a signal
+ * input: that metadata is only emitted by Angular's AOT compiler. Angular's own
+ * reactive-node API is the supported escape hatch there: reach the
  * input's SIGNAL node and call `applyValueToInputSignal`, exactly as a parent
  * template binding would at runtime. This drives a PUBLIC input to a value — it
  * does not touch a component's private (`#`) state — and mirrors the existing

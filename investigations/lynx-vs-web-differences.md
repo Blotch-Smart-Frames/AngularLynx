@@ -760,11 +760,11 @@ Re-measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and A
 
 ### What changed
 
-`provideRouter()` no longer installs a `RouteReuseStrategy`, so leaving a route destroys it, as on the web. `LynxRouteReuseStrategy` stays exported as an opt-in for apps that want route state to survive navigation. The original crash was probably one of the other causes in `navigation-crash.md`, such as the `x-list` use-after-free or mutating the tree inside a worklet.
+`provideRouter()` no longer installs a `RouteReuseStrategy`, so leaving a route destroys it, as on the web. `LynxRouteReuseStrategy` stays exported as an opt-in for apps that want route state to survive navigation. The original crash was probably one of the other causes in `navigation-crash.md`, such as the `x-list` use-after-free. Mutating the tree inside a tap handler, the other suspect, doesn't crash (see the next entry).
 
 ---
 
-## DOM mutations during worklet event handler callbacks cause crashes
+## Changing the element tree inside an event handler is safe (the old `setTimeout` rule was wrong)
 
 ### What you'd expect (web)
 
@@ -772,23 +772,63 @@ DOM mutations (`createElement`, `appendChild`, `removeChild`) are safe to perfor
 
 ### What Lynx does
 
-Performing synchronous DOM mutations (`__CreateElement`, `__RemoveElement`, `__AppendElement`, etc.) **inside a worklet callback** (e.g., an `bindtap` event handler) causes a native crash or produces a blank screen. The Lynx worklet executes in a synchronous native call frame; mutating the element tree during that frame corrupts internal state.
+The same. This entry used to say the opposite: that creating or removing elements inside a `bindtap` callback crashed the app or blanked the screen, so navigation, `LynxPortal.open()`, `element.animate()` and structural signal changes had to be deferred with `setTimeout`. The docs called it "the `setTimeout` rule". It came from a May 2026 hypothesis (`navigation-crash.md`, "Fix 2") that shipped alongside two real fixes and was never checked on its own.
 
-React Lynx avoids this by never mutating the tree directly in event handlers — it only updates state and defers mutations to the next render cycle.
+Measured for issue #113 (2026-10-27, Lynx Explorer 4.1 on the iOS 27 Simulator and an Android API 34 emulator, and Lynx for Web 0.26.2), with a probe app whose tap handlers did everything synchronously:
+
+- **Navigation:** 75 taps made 61 `router.navigateByUrl()` and `Location.back()` navigations between an eager route with a 60-row `<scroll-view>` and one with a 40-item `<list>`, including handlers on elements that the navigation itself destroyed. No crash, no blank screen, on either platform.
+- **Navigation doesn't even change the tree inside the handler.** A counter in the next route's constructor stayed at 0 when read straight after `navigateByUrl()` returned: Angular 22's router builds the next view after the handler returns.
+- **A flush inside the handler:** a tap toggled an `@if` over 50 elements and called `ApplicationRef.tick()`, which runs change detection and `__FlushElementTree()` inside the native callback. Fine on both platforms and the web.
+- **Gesture callbacks:** a `TapGesture.onEnd` and a `PanGesture.onUpdate` doing the same (about 60 add/remove-and-flush cycles during pans), fine on iOS and Android.
+- **`element.animate()`** from a tap handler, 8 times in a row, fine.
+
+So handlers call these directly now: `RouterLink` navigates inside its `click` listener, `LynxBackButton` calls `Location.back()` from its event, and the docs, skill and examples dropped the rule.
+
+`LynxPortal` did misbehave in that probe, but not because of the handler: `PortalRef.destroy()` left the overlay's content on screen (iOS also showed "LynxCreateUIException: page ui not found"), on master too, and just the same with `open()` and `destroy()` both deferred with `setTimeout`. That's a separate bug.
+
+---
+
+## Lynx elements fire `tap`, not `click`; the renderer hands a tap to `click` listeners
+
+### What you'd expect (web)
+
+A tap on a touch screen fires `click`, so `(click)` handlers and Angular directives that listen for `click`, such as `RouterLink`, work on phones.
+
+### What Lynx does
+
+Lynx elements never fire `click`; a tap is the `tap` event. Lynx for Web maps the two itself: web-core's `W3cEventNameToLynx` turns a DOM `click` into `tap`. The renderer does the same in the other direction (`DOM_EVENT_ALIASES` in `packages/runtime/src/lib/lynx-element/types.ts`): a listener for `click` is registered as `bindtap`. That's what lets `<view routerLink="/settings">` navigate on a tap with Angular's own `RouterLink` (issue #113), whose host listener is `(click)`. `RouterLink` also writes `tabindex="0"` on a non-anchor host, which Lynx ignores, and reads `$event.button` and the modifier keys only for `<a>` hosts, which Lynx doesn't have.
+
+---
+
+## Lynx keeps one handler per event on an element
+
+### What you'd expect (web)
+
+`addEventListener('click', a)` then `addEventListener('click', b)` runs both.
+
+### What Lynx does
+
+A second `__AddEvent()` for the same event name **replaces** the first. `AttributeHolder::SetStaticEvent()` (`core/renderer/dom/attribute_holder.h`) does `insert_or_assign(name, …)` into a map keyed by the event name only, whatever its `bindEvent`/`catchEvent`/`capture-*` type; `global-bindEvent` handlers have a map of their own. So a directive's host listener and a template's `(bindtap)` on the same element, such as `routerLink` next to `(bindtap)="track()"`, used to leave only the last one registered.
 
 ### The fix
 
-Defer all DOM-mutating operations (including Angular Router navigation, which triggers component destroy/create) via `setTimeout`:
+`LynxElement.addEventListener()` keeps every listener and registers **one** native handler per event name that runs them all, in the order Angular added them (`#syncNativeHandler`). The handler's type is combined: `catch` if any listener catches (every listener still runs, then the event stops there), and capture only if every listener captures. A listener removed by an earlier one during the same event doesn't run, as in the DOM. Main-thread scripts (`[mainThreadBindtap]`) still register their own native handler, so one still replaces a `(bindtap)` on the same element.
 
-```ts
-bindtap() {
-  // WRONG — navigating synchronously inside a worklet event crashes
-  this.router.navigateByUrl('/other');
+---
 
-  // CORRECT — defer to next macrotask, after the worklet returns
-  setTimeout(() => this.router.navigateByUrl('/other'), 0);
-}
-```
+## `accessibility-traits` takes a comma list on iOS, and a single trait on Android
+
+### What you'd expect (web)
+
+ARIA states combine freely: a `role="button"` element can also be `aria-selected="true"` or `aria-current="page"`.
+
+### What Lynx does
+
+iOS splits `accessibility-traits` on `,` and ORs the traits together (`LynxConverter toAccessibilityTraits:`). It compares each part exactly, so `button,selected` works and `button, selected` loses `selected`. Android reads one trait, matching the whole value against `none`, `image` and `button` (`LynxAccessibilityHelper.LynxAccessibilityTraits.fromValue`), so any list reads as `none` there, and it has no selected trait at all.
+
+### The fix
+
+`LynxRouterLinkActive` (part of `LYNX_ELEMENTS`) adds `selected` to an active `routerLinkActive` element through `LynxElement.setAccessibilityTrait()`, which merges it into the app's own traits with no spaces, keeps it when the app sets its traits again, and leaves the app's traits untouched on Android.
 
 ---
 
@@ -854,7 +894,7 @@ Lynx has its own event binding syntax. Event attributes use explicit phase/propa
 
 | Prefix             | Web equivalent                        | Behavior                                          |
 | ------------------ | ------------------------------------- | ------------------------------------------------- |
-| `bindtap`          | `onclick`                             | Bubble phase, propagates                          |
+| `bindtap`          | `onclick` (`(click)` maps to it)      | Bubble phase, propagates                          |
 | `catchtap`         | `onclick` + `stopPropagation()`       | Bubble phase, stops propagation                   |
 | `capture-bindtap`  | `addEventListener('click', fn, true)` | Capture phase, propagates                         |
 | `capture-catchtap` | Capture + stop                        | Capture phase, stops propagation                  |
@@ -2268,6 +2308,7 @@ These global keywords are **not supported** in Lynx. Many individual property do
     - On iOS, `LynxEnv`'s `setKeyWindowAndStatusBar` copies the key window's `safeAreaInsets` into them each time a LynxView is created (`initLayoutConfig`, called from `LynxTemplateRender`). Nothing updates them on rotation, and a LynxView created before its window is key reads 0.
     - On Android nothing sets them, so `env()` is always 0.
     - The generated iOS app creates its LynxView in `viewDidLoad`, which runs before `SceneDelegate` calls `makeKeyAndVisible`, so `env()` is 0 there too. That suits both generated apps, which inset the LynxView to the safe area themselves. Lynx Explorer creates its views later and gets the real insets (top 62, bottom 34 on the iPhone 18 Pro simulator), though its page already sits below the status bar.
+    - Except when a `lynx://open` link starts Explorer: a bundle opened while Explorer isn't running yet reads 0 for every inset, even with `?fullscreen=true` (seen on the iOS 27 simulator, October 2026). To check a layout that pads for the insets, such as a tab bar above the home indicator, launch Explorer first, then open the link.
     - For JavaScript, the generated apps and Lynx Explorer send the insets (`safeAreaTop` and so on) and `isNotchScreen` as global props (issue #58). Inject `LynxSafeArea` for `isNotchScreen()`.
   - The `@blotch/ui` Tailwind plugin ships `*-safe` / `*-safe-<n>` padding utilities built on this (see `packages/ui/src/lib/theme/tailwind-plugin.ts`).
 
@@ -2524,7 +2565,7 @@ The Lynx `Renderer2` implementation passes through element creation and style ch
 
 ### What Lynx does
 
-Event listener registration requires names to match specific prefixes: `bind`, `catch`, `capture-bind`, `capture-catch`, or `global-bind`. If the event name does not start with one of these prefixes, `addEventListener()` returns an **empty unsubscribe function** and the listener is never registered. No error is thrown. This means standard DOM event names like `click`, `focus`, `input` silently fail — you must use `bindtap`, `bindfocus`, `bindinput` instead.
+Event listener registration requires names to match specific prefixes: `bind`, `catch`, `capture-bind`, `capture-catch`, or `global-bind`. If the event name does not start with one of these prefixes, `addEventListener()` returns an **empty unsubscribe function** and the listener is never registered. No error is thrown. This means standard DOM event names like `focus` and `input` silently fail — you must use `bindfocus` and `bindinput` instead. `click` is the exception: it's registered as `bindtap` (see "Lynx elements fire `tap`, not `click`" above).
 
 ---
 
@@ -3636,9 +3677,51 @@ primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' }
 
 `bg-primary` then emits `background-color: var(--primary)`, which resolves to the rgba value Lynx accepts. This matches the official React Lynx Tailwind example.
 
-Tradeoff: Tailwind opacity modifiers on semantic colors (`bg-primary/50`) no longer work — the value is opaque with no separable channels. For a translucent semantic color, add a dedicated variable (e.g. `--destructive-subtle: rgba(239, 68, 68, 0.1)` → `bg-destructive-subtle`) or use `opacity-*` on the element. See the "CSS Colors in Lynx" section of the root `CLAUDE.md`.
+This first cost Tailwind's opacity modifiers on semantic colors (`bg-primary/50`): the value was opaque, with no separable channels. Issue #115 brought them back with a second variable per color holding its channels, comma-separated, which Lynx can substitute into `rgba()` (next entry). See the "CSS Colors in Lynx" section of the root `CLAUDE.md`.
 
 **Status:** implemented across `packages/ui` + all examples; validate the paint on device via the `css-var-validation` screen in kitchen-sink-app.
+
+---
+
+## `var()` inside `rgba()` is substituted as text, so one variable can fill three arguments
+
+### What you'd expect (web)
+
+A browser substitutes `var()` before it parses the value, so `--primary-rgb: 24, 24, 27` with `rgba(var(--primary-rgb), 0.5)` gives `rgba(24, 24, 27, 0.5)`. Tailwind themes built on `<alpha-value>` rely on this.
+
+### What Lynx does
+
+The same, though nothing in Lynx's docs says so, and the HSL entry above shows composed colors can fail silently. Measured for issue #115 and confirmed in the source:
+
+- **Build.** `@lynx-js/css-serializer` (`parse.js`, `transformDeclaration`) turns any declaration containing `var()` into a `css_var` declaration and rewrites each `var(--x)` to `{{--x}}`: `rgba( {{--primary-rgb}} , 0.5)`. The template encoder stores it as a `CSSValue` of type `VARIABLE` (`css_parser_token.cc` in lynx-family/lynx). Custom property definitions are kept as raw text (`transformVariables`).
+- **Runtime.** `CSSValue::Substitution` / `SubstitutionResolved` (`core/renderer/css/css_value.cc`), or `CSSVariableHandler::GetCSSVariableByRule` on the older path, pastes each variable's text in place of its `{{--x}}`. Only then does `UnitHandler::Process` hand the string to `ColorHandler`, whose `CSSStringParser::ParseRGBLikeColor` reads `rgb()`/`rgba()` with commas or with spaces and a `/` alpha. `HSLColor()` takes commas only.
+- **Inline styles** go through `CSSStringParser::ParseVariable` and substitute the same way.
+- **An undefined variable** substitutes nothing, the value doesn't parse (`rgba( , 0.5)`) and the declaration is dropped: the element draws transparent. A browser drops it too (invalid at computed-value time).
+- **A `var()` in another `var()`'s fallback** is a build error from the serializer: "nested var() is not allowed in Lynx". A `var()` inside a custom property's _definition_ is fine.
+
+Probe (2026-10-27): 20 swatches over white in Lynx Explorer 4.1.0 on the iOS 27 simulator (iPhone 18 Pro) and the Android emulator (API 34), and in Lynx for Web (web-core 0.26.2, Chromium), with each swatch's color sampled from a screenshot. Expected values are the swatch blended over white.
+
+| Swatch                                                                  | Expected                      | iOS                           | Android                       | Web                           |
+| ----------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
+| `rgba(var(--p-rgb), 0.5)`, `--p-rgb: 255, 0, 0` on `page`               | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgba(var(--p-rgb), var(--a))`, `--a: 0.25`                             | 255, 191, 191                 | 255, 192, 192                 | 255, 192, 192                 | 255, 191, 191                 |
+| The same rule under a view that redefines `--p-rgb: 0, 128, 0`          | 128, 192, 128                 | 128, 192, 128                 | 128, 192, 128                 | 127, 191, 127                 |
+| Inline `style="background-color: rgba(var(--p-rgb), 0.5)"`              | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgba(var(--undefined-rgb), 0.5)`                                       | dropped                       | dropped (white)               | dropped (white)               | dropped (white)               |
+| `var(--n)` with `--n: rgba(var(--p-rgb), 0.5)`                          | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `rgb(var(--s) / 0.5)`, `--s: 255 0 0`                                   | 255, 128, 128                 | 255, 128, 128                 | 255, 128, 128                 | 255, 127, 127                 |
+| `bg-primary/50` (theme plugin)                                          | 140, 140, 141                 | 140, 140, 141                 | 140, 140, 141                 | 139, 139, 141                 |
+| `text-foreground/70`                                                    | 83, 83, 85                    | 83, 83, 85                    | 83, 83, 85                    | 82, 82, 84                    |
+| `border-border/60`                                                      | 239, 239, 241                 | 239, 239, 241                 | 239, 239, 241                 | 239, 239, 241                 |
+| `bg-destructive/50` under a `.dark` view, toggled off and on at runtime | 247, 162, 162 / 191, 142, 142 | 247, 162, 162 / 191, 142, 142 | 247, 162, 162 / 191, 142, 142 | 247, 161, 161 / 191, 142, 142 |
+
+`bg-destructive/10` and `bg-destructive-subtle` drew the same color everywhere, and `bg-primary/50` bound with `[class]` next to a static `class` drew like the static class. Android matched iOS on every swatch.
+
+A build detail that looks related but isn't: the production build's CSS minifier rewrites colors in custom property values, so the bundle holds `--primary: #18181b` and `--ring-subtle: hsla(240, 5%, 84%, .4)` rather than the `rgba()` the theme wrote. Both forms parse on Lynx; the channel lists (`24,24,27`) only lose their spaces.
+
+### The fix
+
+The `@blotch/ui` theme gives each opaque color a `-rgb` twin (`--primary-rgb: 24, 24, 27`), and the Tailwind plugin's `themeColor()` maps an opacity modifier to `rgba(var(--primary-rgb), 0.5)` while plain classes stay on `var(--primary)`. Keep the channels comma-separated: that's the `rgba()` form both of Lynx's color parsers accept.
 
 ---
 
@@ -4200,7 +4283,7 @@ Because AngularLynx trims, templates can be written naturally (`<text>\n  Hello\
 
 ---
 
-## Adding/removing elements inside a gesture worklet callback risks a native crash — keep the element count fixed during a live gesture
+## Charts keep their element count fixed during a gesture (once thought to prevent a crash)
 
 ### What you'd expect (web)
 
@@ -4208,9 +4291,9 @@ A `pointermove`/drag handler can freely mutate the DOM — add rows, remove node
 
 ### What Lynx does
 
-Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside a Lynx worklet**. Mutating the element _tree_ from that context — inserting or removing native elements — is the same dangerous path that crashes when navigating from a native event callback (see `App.navigateTo()` in `kitchen-sink-app`, which defers router navigation with `setTimeout(…, 0)` for exactly this reason). Changing an element's _style_ is fine; changing which elements _exist_ is not.
+Gesture callbacks (`PanGesture`/`PinchGesture` `onUpdate`, etc.) run on the **main thread inside the native gesture**. This entry used to say that inserting or removing native elements there crashes, like navigating from a tap handler supposedly did. Neither does: measured for issue #113 on Lynx 4.1 (iOS and Android), a pan's `onUpdate` that added or removed 50 elements and flushed them about 60 times during pans ran fine (see "Changing the element tree inside an event handler is safe"). The fixed counts below stay because they're cheaper: a frame that only restyles existing nodes does less work than one that rebuilds them.
 
-This bites charts specifically. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick _values_ live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
+The case that prompted it was charts. `UiCartesianChart` draws gridlines and axis labels with `@for (tick of ticks())`. If a pinch/pan recomputed the tick _values_ live and the count changed (e.g. a "nice numbers in the visible window" algorithm yields 5 ticks at one zoom and 6 at the next), the `@for` would add/remove `<view>`/`<text>` nodes on a gesture frame — a tree mutation inside the worklet.
 
 ### The fix
 
@@ -5021,3 +5104,32 @@ A `(focus)` handler can restyle the field it belongs to, for example to give it 
 ### What Lynx does
 
 On the iOS Simulator (Lynx Explorer 4.1, iOS 27), a `(bindfocus)` handler that changes the focused `<input>`'s border color, through a class or an inline style, or its background color, has no visible effect while the field has focus. The change does reach the element: a `<text>` bound to the same signal updates in the same render, and the same bundle shows the new border on an Android 14 emulator and in the web preview. Found while fixing `examples/form-input`'s focus border (issue #67), which therefore shows on Android and the web only. Not investigated further: the cause is somewhere in the iOS input (`LynxUIBaseInput`), not in what AngularLynx sends.
+
+---
+
+## Tailwind CSS 4 writes modern CSS that Lynx drops, mostly silently, while the web preview shows it
+
+### What you'd expect (web)
+
+Tailwind 4 targets current browsers: its output uses cascade layers (`@layer`), registered custom properties (`@property`), CSS nesting, `oklch()` colors, `color-mix()` for opacity modifiers, logical properties (`padding-inline` for every `px-*`), the individual `translate`/`rotate`/`scale` properties, `:where()` in `space-*` and `divide-*`, and percentage opacities (`opacity: 50%`).
+
+### What Lynx does
+
+Checked in Lynx Explorer 4.1 on iOS and Android, and in Lynx for Web (Chromium), with hand-written probes and with real Tailwind 4.3 output:
+
+- **`@layer` blocks are dropped**, natively and on the web: the template encoder only reads `@layer`, `@media` and `@supports` behind a compile option (`enable_css_rule_`, `css_rule_parser.cc` in lynx-family/lynx), and web-core's `encodeCSS` skips them. All of Tailwind 4's utilities are in `@layer utilities`, so nothing applies.
+- **`@property` is ignored.** A variable Tailwind registers with an initial value (`--tw-border-style: solid`) stays unset. `--x: initial` is a literal value to Lynx, not "unset", so a `var(--x, fallback)` reading it breaks.
+- **A selector list with an unknown pseudo-class loses the whole rule** at encode time, with a build warning: `:root, :host` (where Tailwind puts its theme), and `:where(…)`/`:is(…)`.
+- **`:last-child` never matches**, so `:not(:last-child)` matches every child. `* + *` works.
+- **`oklch()`, `oklab()` and `color-mix()` are dropped** (the element gets no color); the web preview shows them. `rgb()` with spaces and a slash, and 4- and 8-digit hex, work.
+- **`opacity: 50%` is ignored** on native; the web applies it.
+- **Logical shorthands (`padding-inline`, `margin-block`, `inset`) are removed at encode.** The longhands Lynx lists (`margin-inline-start`, `padding-inline-start`, `inset-inline-start`) parse but have no effect on either platform, even under `direction: ltr`.
+- **There are no `translate`, `rotate` or `scale` properties.** `transform` with `var()` inside its functions works, and composes across classes when every element starts with the variables' values (a `*` rule).
+- **A `var()` inside a function, inside a custom property's value, never resolves**: `--tw-translate-x: calc(var(--spacing) * 2)` and `--tw-blur: blur(var(--blur-sm))` leave the property unusable, even when the variable is set in the same rule or the `var()` has a fallback. A `var()` at the top of the value (`--a: var(--b)`) resolves, and so does one inside a function in an ordinary property (`width: calc(var(--spacing) * 20)`).
+- **`@keyframes` without a `from` (or `to`) keyframe don't play.** Tailwind's `spin` has only `to`.
+- **`calc(infinity * 1px)`** (`rounded-full`) isn't parsed, nor is the `3.40282e38px` a minifier folds it to.
+- These do work: an empty fallback (`var(--x,)` becomes nothing), a `var()` fallback holding another `var()`, unitless `calc()` in `line-height`, and `*` rules setting variables.
+
+### What we do about it
+
+The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewrites every stylesheet that `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for both the native and the web bundle: it flattens nesting and layers, turns `@property` initial values into a `*` rule, converts colors to `rgb()`/`rgba()` (gamut-mapping as CSS Color 4 does), writes logical properties as physical ones (left-to-right), composes `translate`/`rotate`/`scale` into one `transform`, rewrites `space-*`/`divide-*` to `* + *`, resolves the `var()`s Lynx can't inside custom properties, completes keyframes, and drops properties and keywords Lynx doesn't have, so the web preview matches the device.

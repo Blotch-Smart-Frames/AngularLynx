@@ -1,0 +1,37 @@
+{
+  "$schema": "../../node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "analytics": false
+  },
+  "projects": {
+    "ui": {
+      "projectType": "application",
+      "root": "",
+      "sourceRoot": "src",
+      "architect": {
+        "build": {
+          "builder": "@blotch/angular-lynx-build:application",
+          "options": {
+            "tsConfig": "tsconfig.spec.json"
+          }
+        },
+        "test": {
+          "builder": "@blotch/angular-lynx-build:unit-test",
+          "options": {
+            "buildTarget": "ui:build",
+            "coverageInclude": ["src/lib/**/*.ts"],
+            "coverageExclude": ["src/**/*.test.ts"],
+            "coverageReporters": ["text", "html", "lcov", "json"],
+            "coverageThresholds": {
+              "statements": 100,
+              "branches": 100,
+              "functions": 100,
+              "lines": 100
+            }
+          }
+        }
+      }
+    }
+  }
+}

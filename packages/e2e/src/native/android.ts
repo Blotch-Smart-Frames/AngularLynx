@@ -3,7 +3,7 @@ import path from 'node:path';
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
 import { HTTP_DATA } from '../static-server.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { flowsFor, type NativeHost, judgeFlow, runFlow } from './maestro.ts';
+import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
 
 /**
  * Layer 6 on Android: installs the app's own APK, or Lynx Explorer, on the
@@ -44,18 +44,48 @@ export const runOnAndroidEmulator = async ({
     echo: false,
   });
 
+  /**
+   * For a Maestro run that hung. The PNG is written on the emulator and
+   * pulled, because the harness reads a command's output as text, which
+   * `adb exec-out screencap` would garble. Only a debugging aid, so it never
+   * fails the host, and has a limit in case the emulator stopped answering.
+   */
+  const screenshot = async (file: string) => {
+    const onDevice = '/data/local/tmp/angular-lynx-e2e.png';
+    const options = {
+      cwd: process.cwd(),
+      logFile,
+      echo: false,
+      timeout: { ms: 60_000 },
+    };
+    let result = await runAllowFailure(
+      'adb',
+      ['shell', 'screencap', '-p', onDevice],
+      options,
+    );
+    if (result.code === 0) {
+      result = await runAllowFailure('adb', ['pull', onDevice, file], options);
+    }
+    if (result.code !== 0) {
+      console.warn(
+        `The screenshot ${path.basename(file)} failed (adb exited with code ${result.code}).`,
+      );
+    }
+  };
+
   const failures: string[] = [];
   try {
     const device = (await adb(['get-serialno'])).output.trim();
-    for (const flow of flowsFor('android', host)) {
-      const result = await runFlow(flow, {
-        device,
-        appId,
-        host,
-        outputDir: path.join(artifactsDir, `android-${host.kind}`),
-        logFile,
-      });
-      const failure = judgeFlow(flow, 'android', result.code);
+    const outcomes = await runFlows(flowsFor('android', host), {
+      device,
+      appId,
+      host,
+      outputDir: path.join(artifactsDir, `android-${host.kind}`),
+      logFile,
+      screenshot,
+    });
+    for (const [flow, outcome] of outcomes) {
+      const failure = judgeFlow(flow, 'android', outcome);
       if (failure) {
         failures.push(failure);
       }

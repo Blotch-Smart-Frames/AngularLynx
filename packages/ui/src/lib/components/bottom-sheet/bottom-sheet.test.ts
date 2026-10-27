@@ -1,345 +1,421 @@
 import { Component, signal } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { DURATION } from '../../utils/animate';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import { UiBottomSheet } from './bottom-sheet';
 
 @Component({
   imports: [UiBottomSheet, LYNX_ELEMENTS],
-  template: `<ui-bottom-sheet [(open)]="open"
-    ><text>Panel</text></ui-bottom-sheet
-  >`,
+  template: `
+    <ui-bottom-sheet [(open)]="open" class="max-h-96" (closed)="closed()">
+      <text>Panel</text>
+    </ui-bottom-sheet>
+  `,
 })
 class BottomSheetHost {
-  open = true;
+  readonly open = signal(false);
+  readonly closed = vi.fn();
 }
 
+/**
+ * The Lynx function an element's `invoke()` calls to run one of its UI
+ * methods, such as moving a screen reader's focus. The testing library
+ * defines it on the global object.
+ */
+type InvokeUIMethod = {
+  __InvokeUIMethod: (
+    element: Element,
+    method: string,
+    params: Record<string, unknown>,
+    callback: (result: { code: number }) => void,
+  ) => void;
+};
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling an animation. */
+const CANCEL = 3;
+
+const renderSheet = async () => {
+  const result = await render(BottomSheetHost);
+  const { container } = result;
+  return {
+    ...result,
+    host: result.componentRef.instance as BottomSheetHost,
+    overlay: container.querySelector('overlay')!,
+    backdrop: container.querySelector('overlay > view')!,
+    panel: container.querySelector('.rounded-t-2xl')!,
+    // The strip around the grabber pill, which takes the drag.
+    handle: container.querySelector('.bg-muted')!.parentElement!,
+  };
+};
+
+/**
+ * Opens the sheet and waits out its open sequence: the overlay shows on one
+ * tick, and the panel slides in on the next.
+ */
+const openSheet = async (host: BottomSheetHost) => {
+  host.open.set(true);
+  for (let i = 0; i < 3; i++) await waitForUpdate();
+};
+
+/**
+ * Waits for the close sequence to finish: the panel slides out, then the
+ * overlay hides and `closed` fires. Polled rather than timed, since the
+ * sequence only starts on the update after `open` changes.
+ */
+const waitForClose = async (host: BottomSheetHost) => {
+  await vi.waitFor(() => expect(host.closed).toHaveBeenCalled());
+  await waitForUpdate();
+};
+
+/**
+ * The panel's live drag offset, from its inline transform.
+ */
+const transformOf = (panel: Element) =>
+  (panel as HTMLElement).style.getPropertyValue('transform');
+
+/**
+ * The touch fields a handle's touch event carries.
+ */
+const touchAt = (clientY: number) => ({
+  eventType: 'catchEvent',
+  touches: [{ clientY }],
+});
+
 describe('UiBottomSheet', () => {
+  // Watched per test: the testing library resets the main thread after each.
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+  });
+  afterEach(() => animate.mockRestore());
+
+  it('stays hidden until opened, then shows the panel and its content', async () => {
+    const { host, overlay, getByText } = await renderSheet();
+    expect(overlay.getAttribute('style')).toContain('display: none');
+    expect(overlay.getAttribute('visible')).toBe('false');
+
+    await openSheet(host);
+    expect(overlay.getAttribute('style')).not.toContain('display: none');
+    expect(overlay.getAttribute('visible')).toBe('true');
+    expect(getByText('Panel')).toBeTruthy();
+  });
+
+  it("adds the class to the panel's own", async () => {
+    const { panel } = await renderSheet();
+    expect(panel.classList).toContain('max-h-96');
+    expect(panel.classList).toContain('bg-background');
+  });
+
+  it('fades the backdrop in and slides the panel up when opened', async () => {
+    const { host, backdrop, panel } = await renderSheet();
+    await openSheet(host);
+    expect(animate).toHaveBeenCalledWith(backdrop, [
+      START,
+      expect.any(String),
+      [{ opacity: 0 }, { opacity: 1 }],
+      expect.objectContaining({ duration: DURATION.normal }),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel, [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateY(100%)', opacity: 0.8 },
+        { transform: 'translateY(0%)', opacity: 1 },
+      ],
+      expect.objectContaining({ duration: DURATION.slow }),
+    ]);
+  });
+
+  it('moves a screen reader into the panel and keeps it there while open', async () => {
+    const invoke = vi.spyOn(
+      globalThis as unknown as InvokeUIMethod,
+      '__InvokeUIMethod',
+    );
+    const { host, panel } = await renderSheet();
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
+
+    await openSheet(host);
+    expect(invoke).toHaveBeenCalledWith(
+      panel,
+      'requestAccessibilityFocus',
+      expect.anything(),
+      expect.any(Function),
+    );
+    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
+    invoke.mockRestore();
+  });
+
+  it('closes when the backdrop is tapped, sliding the panel down', async () => {
+    const { host, overlay, backdrop, panel } = await renderSheet();
+    await openSheet(host);
+
+    fireEvent.tap(backdrop);
+    expect(host.open()).toBe(false);
+    await waitForClose(host);
+    expect(animate).toHaveBeenCalledWith(backdrop, [
+      START,
+      expect.any(String),
+      [{ opacity: 1 }, { opacity: 0 }],
+      expect.objectContaining({ duration: DURATION.normal }),
+    ]);
+    expect(animate).toHaveBeenCalledWith(panel, [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateY(0%)', opacity: 1 },
+        { transform: 'translateY(100%)', opacity: 0.8 },
+      ],
+      expect.objectContaining({ duration: DURATION.normal }),
+    ]);
+    // Once the slide is over, the overlay hides and `closed` fires, only for
+    // this close: a sheet that starts closed hasn't closed before.
+    expect(overlay.getAttribute('style')).toContain('display: none');
+    expect(host.closed).toHaveBeenCalledOnce();
+  });
+
+  it('stays open when the panel is tapped', async () => {
+    const { host, panel } = await renderSheet();
+    await openSheet(host);
+    // The panel catches its taps, so they never reach the backdrop.
+    fireEvent.tap(panel, { eventType: 'catchEvent' });
+    expect(host.open()).toBe(true);
+  });
+
   it('stops its close timers when it is destroyed while closing', async () => {
     const warn = vi.spyOn(console, 'warn');
-    const { componentRef, unmount } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    inst.open.set(false);
+    const { host, unmount } = await renderSheet();
+    await openSheet(host);
+    host.open.set(false);
     await waitForUpdate();
     // Destroyed during the close animation, as an `@if` around the sheet
     // would do. Its close timer (DURATION.normal + 20) used to fire anyway
     // and emit `closed` from the destroyed output.
     unmount();
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
+    await new Promise((resolve) => setTimeout(resolve, DURATION.normal + 50));
     const warnings = warn.mock.calls.map(([message]) => String(message));
     warn.mockRestore();
     expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
       [],
     );
+    expect(host.closed).not.toHaveBeenCalled();
   });
 
-  it('moves a screen reader into the panel and keeps it there while open', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const panel = container.querySelector(
-      '[accessibility-exclusive-focus]',
-    ) as Element & { invoke?: unknown };
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('false');
-    const invoke = vi.fn();
-    panel.invoke = invoke;
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: panel,
+  describe('dragged by its handle', () => {
+    it('follows the finger down, lightening the backdrop as it goes', async () => {
+      const { host, backdrop, panel, handle } = await renderSheet();
+      await openSheet(host);
+      animate.mockClear();
+
+      fireEvent.touchstart(handle, touchAt(100));
+      // The open slide holds the panel in place until it's canceled.
+      expect(animate).toHaveBeenCalledWith(panel, [CANCEL, expect.any(String)]);
+      fireEvent.touchmove(handle, touchAt(200));
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(100px)');
+      // 100px of the 500px over which the backdrop clears: 4/5 of its dim.
+      expect(backdrop.getAttribute('style')).toContain('rgba(0, 0, 0, 0.4)');
     });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: panel,
+
+    it('closes when released past the threshold, sliding on from the finger', async () => {
+      const { host, panel, handle } = await renderSheet();
+      await openSheet(host);
+
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(300));
+      fireEvent.touchend(handle, { eventType: 'catchEvent' });
+      expect(host.open()).toBe(false);
+      await waitForClose(host);
+      expect(animate).toHaveBeenCalledWith(panel, [
+        START,
+        expect.any(String),
+        [
+          { transform: 'translateY(200px)', opacity: 1 },
+          { transform: 'translateY(600px)', opacity: 0.8 },
+        ],
+        expect.objectContaining({ duration: DURATION.normal }),
+      ]);
+      expect(host.closed).toHaveBeenCalledOnce();
+      // Hidden, it's back in place for the next open.
+      expect(transformOf(panel)).toBe('translateY(0px)');
     });
-    inst.open.set(true);
-    for (let i = 0; i < 5; i++) await waitForUpdate();
-    expect(invoke).toHaveBeenCalledWith('requestAccessibilityFocus');
-    expect(panel.getAttribute('accessibility-exclusive-focus')).toBe('true');
-  });
 
-  const patchRefs = (inst: UiBottomSheet, view: Element) => {
-    (inst as unknown as { backdropRef: unknown }).backdropRef = signal({
-      nativeElement: view,
+    it('springs back when released or canceled short of the threshold', async () => {
+      const { host, panel, handle } = await renderSheet();
+      await openSheet(host);
+
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(130));
+      fireEvent.touchend(handle, { eventType: 'catchEvent' });
+      await waitForUpdate();
+      expect(host.open()).toBe(true);
+      expect(animate).toHaveBeenCalledWith(panel, [
+        START,
+        expect.any(String),
+        [{ transform: 'translateY(30px)' }, { transform: 'translateY(0px)' }],
+        expect.objectContaining({ duration: DURATION.fast }),
+      ]);
+      expect(transformOf(panel)).toBe('translateY(0px)');
+
+      // A scroll that takes the touch over cancels it the same way.
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(150));
+      fireEvent.touchcancel(handle, { eventType: 'catchEvent' });
+      await waitForUpdate();
+      expect(host.open()).toBe(true);
+      expect(transformOf(panel)).toBe('translateY(0px)');
     });
-    (inst as unknown as { panelRef: unknown }).panelRef = signal({
-      nativeElement: view,
+
+    it("doesn't move up past where it's docked", async () => {
+      const { host, panel, handle } = await renderSheet();
+      await openSheet(host);
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(40));
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(0px)');
     });
-  };
 
-  it('renders the panel content when open', async () => {
-    const { getByText } = await render(BottomSheetHost);
-    expect(getByText('Panel')).toBeTruthy();
+    it('ignores touches without a position, and moves outside a drag', async () => {
+      const { host, panel, handle } = await renderSheet();
+      await openSheet(host);
+
+      // A move or release with no drag under way does nothing.
+      fireEvent.touchmove(handle, touchAt(300));
+      fireEvent.touchend(handle, { eventType: 'catchEvent' });
+      // Nor does a touch whose position is missing.
+      fireEvent.touchstart(handle, { eventType: 'catchEvent' });
+      fireEvent.touchmove(handle, touchAt(300));
+      fireEvent.touchstart(handle, { eventType: 'catchEvent', touches: [] });
+      fireEvent.touchmove(handle, touchAt(300));
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(0px)');
+
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, { eventType: 'catchEvent', touches: [] });
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(0px)');
+      expect(host.open()).toBe(true);
+    });
   });
 
-  it('backdrop tap closes the sheet', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    inst.open.set(true);
-    await waitForUpdate();
-    (inst as unknown as { onBackdropTap: () => void }).onBackdropTap();
-    expect(inst.open()).toBe(false);
-  });
+  describe('dragged by mouse', () => {
+    /**
+     * Presses the handle, which catches its own mousedown.
+     */
+    const press = (handle: Element, y: number) =>
+      fireEvent.mousedown(handle, { eventType: 'catchEvent', y });
+    /**
+     * Moves the mouse, which the backdrop sees anywhere in the sheet.
+     */
+    const move = (backdrop: Element, y: number, buttons = 1) =>
+      fireEvent.mousemove(backdrop, { y, buttons });
 
-  it('panel tap is a no-op', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    expect(() =>
-      (inst as unknown as { onPanelTap: () => void }).onPanelTap(),
-    ).not.toThrow();
-  });
+    it('closes when released past the threshold', async () => {
+      const { host, backdrop, panel, handle } = await renderSheet();
+      await openSheet(host);
 
-  it('open effect runs the animate-in and animate-out lifecycles', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
+      press(handle, 100);
+      move(backdrop, 300);
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(200px)');
+      fireEvent.mouseup(backdrop);
+      expect(host.open()).toBe(false);
+    });
 
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    await waitForUpdate();
+    it('springs back when released short of the threshold', async () => {
+      const { host, backdrop, panel, handle } = await renderSheet();
+      await openSheet(host);
 
-    inst.open.set(false);
-    await new Promise((r) => setTimeout(r, 320));
-    await waitForUpdate();
-    expect(inst.open()).toBe(false);
-  });
+      press(handle, 100);
+      move(backdrop, 130);
+      fireEvent.mouseup(backdrop);
+      await waitForUpdate();
+      expect(host.open()).toBe(true);
+      expect(transformOf(panel)).toBe('translateY(0px)');
+    });
 
-  it('open effect bails when backdrop/panel refs are undefined', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const closed = vi.fn();
-    inst.closed.subscribe(closed);
-    inst.open.set(true);
-    await waitForUpdate();
-    await waitForUpdate();
-    inst.open.set(false);
-    await waitForUpdate();
-    // Wait out the close sequence, so #animateOut runs (and bails) while the
-    // component is still alive. Destroying it clears the sequence's timers.
-    await new Promise((r) => setTimeout(r, DURATION.normal + 50));
-    expect(inst.open()).toBe(false);
-    expect(closed).toHaveBeenCalledOnce();
-  });
+    it('ignores the backdrop click that follows a moved drag', async () => {
+      const { host, backdrop, handle } = await renderSheet();
+      await openSheet(host);
 
-  it('drag beyond the dismiss threshold closes the sheet', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
-    const animate = vi.spyOn(
-      view as Element & { animate: () => unknown },
-      'animate',
-    );
-    inst.open.set(true);
-    await waitForUpdate();
+      // A drag released above the panel: the browser's click lands on the
+      // backdrop, and must not close the sheet that just snapped back.
+      press(handle, 100);
+      move(backdrop, 40);
+      fireEvent.mouseup(backdrop);
+      fireEvent.tap(backdrop);
+      expect(host.open()).toBe(true);
 
-    const cast = inst as unknown as {
-      onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
-      onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
-      onDragEnd: () => void;
-    };
-    cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
-    cast.onHandleTouchMove({ touches: [{ clientY: 300 }] });
-    cast.onDragEnd();
-    await waitForUpdate();
-    expect(inst.open()).toBe(false);
-    // The exit slide starts the next tick, from where the finger let go
-    // rather than from the docked position.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(
-      animate.mock.calls.some(
-        ([keyframes]) =>
-          (keyframes as Keyframe[])[0]?.transform === 'translateY(200px)',
-      ),
-    ).toBe(true);
-  });
+      // Only that one click is ignored: the next backdrop tap closes it.
+      fireEvent.tap(backdrop);
+      expect(host.open()).toBe(false);
+    });
 
-  it('drag below the dismiss threshold snaps back to open', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
-    inst.open.set(true);
-    await waitForUpdate();
+    it('a new press clears an ignore no click consumed', async () => {
+      const { host, backdrop, handle } = await renderSheet();
+      await openSheet(host);
 
-    const cast = inst as unknown as {
-      onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
-      onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
-      onDragEnd: () => void;
-    };
-    cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
-    cast.onHandleTouchMove({ touches: [{ clientY: 130 }] });
-    cast.onDragEnd();
-    await waitForUpdate();
-    expect(inst.open()).toBe(true);
-  });
+      // Released over the panel, so its catchtap ate the click.
+      press(handle, 100);
+      move(backdrop, 120);
+      fireEvent.mouseup(backdrop);
+      // A real backdrop click starts with a mousedown on the backdrop.
+      fireEvent.mousedown(backdrop);
+      fireEvent.tap(backdrop);
+      expect(host.open()).toBe(false);
+    });
 
-  it('touch handlers guard against missing touches and non-active drags', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    const cast = inst as unknown as {
-      onHandleTouchStart: (e: { touches?: { clientY: number }[] }) => void;
-      onHandleTouchMove: (e: { touches?: { clientY: number }[] }) => void;
-      onDragEnd: () => void;
-    };
-    // touchmove without prior touchstart is a no-op (guards `#isDragging`).
-    cast.onHandleTouchMove({ touches: [{ clientY: 200 }] });
-    // touchstart / touchmove without touches entries is a no-op.
-    cast.onHandleTouchStart({ touches: [] });
-    cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
-    cast.onHandleTouchMove({ touches: [] });
-    // touchend without an active drag is also a no-op.
-    cast.onDragEnd();
-    cast.onDragEnd();
-  });
+    it('a press without a move, or a touch drag, leaves the backdrop tap alone', async () => {
+      const { host, backdrop, handle } = await renderSheet();
+      await openSheet(host);
 
-  type MouseDrag = {
-    onHandleMouseDown: (e: { y: number }) => void;
-    onMouseDragMove: (e: { y: number; buttons: number }) => void;
-    onDragEnd: () => void;
-    onBackdropMouseDown: () => void;
-    onBackdropTap: () => void;
-  };
+      press(handle, 100);
+      fireEvent.mouseup(backdrop);
+      // A moved touch is never followed by a tap, so nothing is ignored.
+      fireEvent.touchstart(handle, touchAt(100));
+      fireEvent.touchmove(handle, touchAt(120));
+      fireEvent.touchend(handle, { eventType: 'catchEvent' });
+      fireEvent.tap(backdrop);
+      expect(host.open()).toBe(false);
+    });
 
-  it('mouse drag beyond the dismiss threshold closes the sheet', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    patchRefs(inst, container.querySelector('view') as Element);
-    inst.open.set(true);
-    await waitForUpdate();
+    it('ends a drag whose release it never saw', async () => {
+      const { host, backdrop, handle } = await renderSheet();
+      await openSheet(host);
 
-    const cast = inst as unknown as MouseDrag;
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onMouseDragMove({ y: 300, buttons: 1 });
-    cast.onDragEnd();
-    await waitForUpdate();
-    expect(inst.open()).toBe(false);
-  });
+      press(handle, 100);
+      move(backdrop, 300);
+      // The button came up outside the window; the cursor is back without it.
+      move(backdrop, 120, 0);
+      // Released 200px down, past the threshold, so it closes.
+      expect(host.open()).toBe(false);
+    });
 
-  it('mouse drag below the dismiss threshold snaps back to open', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    patchRefs(inst, container.querySelector('view') as Element);
-    inst.open.set(true);
-    await waitForUpdate();
-
-    const cast = inst as unknown as MouseDrag;
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onMouseDragMove({ y: 130, buttons: 1 });
-    cast.onDragEnd();
-    await waitForUpdate();
-    expect(inst.open()).toBe(true);
-  });
-
-  it('ignores the backdrop click that follows a moved mouse drag', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    inst.open.set(true);
-    await waitForUpdate();
-
-    const cast = inst as unknown as MouseDrag;
-    // A drag released above the panel: the browser's click lands on the
-    // backdrop, and must not close the sheet that just snapped back.
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onMouseDragMove({ y: 40, buttons: 1 });
-    cast.onDragEnd();
-    cast.onBackdropTap();
-    expect(inst.open()).toBe(true);
-
-    // Only that one click is ignored: the next backdrop tap closes it.
-    cast.onBackdropTap();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('a new press clears an ignore no click consumed', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    inst.open.set(true);
-    await waitForUpdate();
-
-    const cast = inst as unknown as MouseDrag;
-    // Released over the panel, so its catchtap ate the click.
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onMouseDragMove({ y: 120, buttons: 1 });
-    cast.onDragEnd();
-    // A real backdrop click starts with a mousedown on the backdrop.
-    cast.onBackdropMouseDown();
-    cast.onBackdropTap();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('a mouse press without a move, or a touch drag, leaves the backdrop tap alone', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    inst.open.set(true);
-    await waitForUpdate();
-
-    const cast = inst as unknown as MouseDrag & {
-      onHandleTouchStart: (e: { touches: { clientY: number }[] }) => void;
-      onHandleTouchMove: (e: { touches: { clientY: number }[] }) => void;
-    };
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onDragEnd();
-    // A moved touch is never followed by a tap, so nothing is ignored.
-    cast.onHandleTouchStart({ touches: [{ clientY: 100 }] });
-    cast.onHandleTouchMove({ touches: [{ clientY: 120 }] });
-    cast.onDragEnd();
-    cast.onBackdropTap();
-    expect(inst.open()).toBe(false);
-  });
-
-  it('ends a mouse drag whose release it never saw', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    patchRefs(inst, container.querySelector('view') as Element);
-    inst.open.set(true);
-    await waitForUpdate();
-
-    const cast = inst as unknown as MouseDrag;
-    cast.onHandleMouseDown({ y: 100 });
-    cast.onMouseDragMove({ y: 300, buttons: 1 });
-    // The button came up outside the window; the cursor is back without it.
-    cast.onMouseDragMove({ y: 120, buttons: 0 });
-    await waitForUpdate();
-    // Released 200px down, past the threshold, so it closes.
-    expect(inst.open()).toBe(false);
-  });
-
-  it('a mouse move outside a drag leaves the sheet in place', async () => {
-    const { componentRef } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    // The cursor moving over an open sheet with no button pressed.
-    (inst as unknown as MouseDrag).onMouseDragMove({ y: 300, buttons: 1 });
-    expect((inst as unknown as { dragOffset: () => number }).dragOffset()).toBe(
-      0,
-    );
-  });
-
-  it('applies a user class on the panel', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    setInputSignal(inst.userClass, 'custom-panel');
-    await waitForUpdate();
-    expect(
-      Array.from(container.querySelectorAll('view')).some((el) =>
-        el.getAttribute('class')?.includes('custom-panel'),
-      ),
-    ).toBe(true);
-  });
-
-  it('overlayStyle switches between visible and hidden variants', async () => {
-    const { componentRef, container } = await render(UiBottomSheet);
-    const inst = componentRef.instance as UiBottomSheet;
-    let overlay = container.querySelector('overlay');
-    expect(overlay?.getAttribute('style')).toContain('display: none');
-
-    const view = container.querySelector('view') as Element;
-    patchRefs(inst, view);
-    inst.open.set(true);
-    for (let i = 0; i < 10; i++) await waitForUpdate();
-    overlay = container.querySelector('overlay');
-    expect(overlay?.getAttribute('style')).not.toContain('display: none');
+    it('a move outside a drag leaves the sheet in place', async () => {
+      const { host, backdrop, panel } = await renderSheet();
+      await openSheet(host);
+      // The cursor passing over an open sheet with a button held elsewhere.
+      move(backdrop, 300);
+      await waitForUpdate();
+      expect(transformOf(panel)).toBe('translateY(0px)');
+    });
   });
 });

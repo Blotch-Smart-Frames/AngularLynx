@@ -162,7 +162,9 @@ describe('doctorCommand', () => {
 
   it('warns when tailwind-plugin.ts and theme CSS are both missing', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writePackageJson(fixture.dir, {
+      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
+    });
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -195,9 +197,11 @@ describe('doctorCommand', () => {
     expect(p.log.success).toHaveBeenCalledWith('Theme CSS found');
   });
 
-  it('warns when no tailwind config is found', async () => {
+  it('warns when no tailwind config is found on Tailwind 3', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writePackageJson(fixture.dir, {
+      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
+    });
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -208,6 +212,55 @@ describe('doctorCommand', () => {
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining('No Tailwind config found'),
     );
+  });
+
+  it("passes when a Tailwind 4 stylesheet imports the theme's tailwind.css", async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writeFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'tailwind.css'),
+      '',
+    );
+    writeFileSync(
+      join(fixture.dir, 'src/styles.css'),
+      "@import 'tailwindcss/utilities.css';\n@import './styles/tailwind.css';\n",
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('imported in'),
+    );
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('found in theme'),
+    );
+  });
+
+  it("warns when a Tailwind 4 stylesheet, or its absence, doesn't import tailwind.css", async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    // Tailwind's own imports don't count.
+    writeFileSync(
+      join(fixture.dir, 'src/styles.css'),
+      "@import 'tailwindcss/utilities.css';",
+    );
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(
+      vi
+        .mocked(p.log.warn)
+        .mock.calls.filter(([message]) => message.includes('not imported in')),
+    ).toHaveLength(2);
   });
 
   it('warns when a tailwind config exists but does not reference blotchPlugin', async () => {
@@ -564,5 +617,202 @@ describe('doctorCommand', () => {
     expect(p.log.warn).not.toHaveBeenCalledWith(
       expect.stringContaining('is missing files'),
     );
+  });
+});
+
+describe('doctorCommand theme channels', () => {
+  /**
+   * A plugin that maps primary and border with themeColor(), as dolan's does.
+   */
+  const PLUGIN = `colors: {
+  primary: { DEFAULT: themeColor('primary') },
+  border: themeColor("border"),
+  destructive: { subtle: 'var(--destructive-subtle)' },
+}`;
+
+  /**
+   * Writes the theme's plugin and stylesheets, then runs doctor.
+   */
+  const runDoctor = async (plugin: string, css: Record<string, string>) => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
+    writeFileSync(join(themeDir, 'tailwind-plugin.ts'), plugin);
+    for (const [file, content] of Object.entries(css)) {
+      writeFileSync(join(themeDir, file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    return import('@clack/prompts');
+  };
+
+  it('passes when every mapped color has matching channels', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `/* --primary: red; */
+page {
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+  --border: #e4e4e7;
+  --border-rgb: 228,228,231;
+}`,
+      // A theme that sets only some colors is checked for those alone.
+      'ocean.css':
+        'page { --primary: rgb(37 99 235); --primary-rgb: 37,99, 235; }',
+    });
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'Theme colors have the channels opacity modifiers need',
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+
+  it('warns about colors without channels, with the line to add', async () => {
+    // A theme copied before the -rgb variables, kept by dolan update.
+    const p = await runDoctor(PLUGIN, {
+      'default.css':
+        'page { --primary: rgba(24, 24, 27, 1); --border: hsl(240, 6%, 90%); }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /default\.css.*--primary.*--border.*bg-primary\/50.*--primary-rgb: 24, 24, 27;/,
+      ),
+    );
+  });
+
+  it("suggests placeholder channels when it can't read the color", async () => {
+    const p = await runDoctor(PLUGIN, {
+      'dark.css': 'page.dark { --border: hsl(240, 4%, 16%); }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('--border-rgb: r, g, b;'),
+    );
+  });
+
+  it("warns about channels that don't match their color", async () => {
+    // The brand color changed, its channels didn't.
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `page {
+  --primary: #2563eb;
+  --primary-rgb: 24, 24, 27;
+  --border: #fff;
+  --border-rgb: 0, 0, 0;
+}`,
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/default\.css.*--primary-rgb.*--border-rgb.*don't/),
+    );
+  });
+
+  it('warns about space-separated channels, which rgba() reads as one argument', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css':
+        'page { --primary: rgba(24, 24, 27, 1); --primary-rgb: 24 24 27; }',
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/--primary-rgb.* doesn't hold .*comma-separated/),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+
+  it('says "doesn\'t" for one differing color, and skips colors it can\'t read', async () => {
+    const p = await runDoctor(PLUGIN, {
+      'default.css': `page {
+  --primary: rgba(37, 99, 235, 1);
+  --primary-rgb: 24, 24, 27;
+  --border: hsl(240, 6%, 90%);
+  --border-rgb: 1, 2, 3;
+}`,
+    });
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/--primary-rgb.* doesn't hold/),
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('--border-rgb'),
+    );
+  });
+
+  it("doesn't check a plugin that maps no themeColor()", async () => {
+    // An older plugin: its modifiers never worked, so nothing needs channels.
+    const p = await runDoctor("colors: { primary: 'var(--primary)' }", {
+      'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+    });
+
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('channels'),
+    );
+  });
+
+  describe('on Tailwind 4', () => {
+    /**
+     * Writes the theme's tailwind.css and stylesheets, then runs doctor.
+     */
+    const runDoctor4 = async (css: Record<string, string>) => {
+      fixture = createFixture({ config: DEFAULT_CONFIG });
+      writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+      const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
+      for (const [file, content] of Object.entries(css)) {
+        writeFileSync(join(themeDir, file), content);
+      }
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+      const { doctorCommand } = await import('./doctor');
+      await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+      return import('@clack/prompts');
+    };
+
+    /**
+     * The colors tailwind.css maps, as the theme's does.
+     */
+    const TAILWIND_CSS = `@theme inline {
+  --color-primary: var(--primary);
+  --color-destructive-subtle: var(--destructive-subtle);
+}`;
+
+    it('checks the colors tailwind.css maps, skipping translucent ones', async () => {
+      const p = await runDoctor4({
+        'tailwind.css': TAILWIND_CSS,
+        'default.css':
+          'page { --primary: rgba(24, 24, 27, 1); --primary-rgb: 24, 24, 27; --destructive-subtle: rgba(239, 68, 68, 0.1); }',
+      });
+
+      expect(p.log.success).toHaveBeenCalledWith(
+        'Theme colors have the channels opacity modifiers need',
+      );
+    });
+
+    it('warns about a color tailwind.css maps without channels', async () => {
+      const p = await runDoctor4({
+        'tailwind.css': TAILWIND_CSS,
+        'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+      });
+
+      expect(p.log.warn).toHaveBeenCalledWith(
+        expect.stringMatching(/default\.css.*--primary-rgb: 24, 24, 27;/),
+      );
+    });
+
+    it("doesn't check a theme without tailwind.css or the plugin", async () => {
+      const p = await runDoctor4({
+        'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+      });
+
+      expect(p.log.success).not.toHaveBeenCalledWith(
+        expect.stringContaining('channels'),
+      );
+    });
   });
 });

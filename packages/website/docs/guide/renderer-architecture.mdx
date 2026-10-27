@@ -124,7 +124,7 @@ Change detection is zoneless (see [Signals and change detection](/guide/concepts
 4. When the handler returns, `scheduleSettleFlush()` queues a microtask for any direct element changes.
 5. The tick runs change detection. The renderer calls element functions, and `end()` flushes.
 
-Changing the tree in step 2 is what [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule) forbids: the engine is still delivering the event.
+Changing the tree in step 2 is safe, though the engine is still delivering the event: a handler can create and remove elements, and even flush them with `ApplicationRef.tick()`. A navigation changes it later anyway, since the router builds the next screen after the handler returns.
 
 ## Removal, moves and rebuilding
 

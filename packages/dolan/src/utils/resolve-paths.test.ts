@@ -42,11 +42,19 @@ describe('getComponentFiles', () => {
     }
   });
 
-  it("leaves the library's render tests behind", () => {
-    // line-chart has both: line-chart.test.ts ships, the render test doesn't.
-    const files = getComponentFiles('line-chart', { tests: true });
-    expect(files).toContain('line-chart.test.ts');
-    expect(files).not.toContain('line-chart-render.test.ts');
+  it('ships every test in the component folder', () => {
+    // Together they cover the component, so an app's coverage report can
+    // include the copies (packages/ui checks the coverage).
+    const components = join(getUiSourceDir(), 'components');
+    for (const name of readdirSync(components)) {
+      const tests = readdirSync(join(components, name)).filter((file) =>
+        file.endsWith('.test.ts'),
+      );
+      expect(tests, name).not.toEqual([]);
+      expect(getComponentFiles(name, { tests: true }), name).toEqual(
+        expect.arrayContaining(tests),
+      );
+    }
   });
 
   it('leaves every test behind for an app without the testing library', () => {

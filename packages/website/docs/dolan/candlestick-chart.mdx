@@ -107,7 +107,7 @@ The chart fills its container's width and is 200px tall. Set `height` for anothe
 <ui-candlestick-chart [data]="prices" (candleTap)="selected.set($event)" />
 ```
 
-`candleTap` fires inside the touch, so wrap router navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`candleTap` fires inside the touch, so it can change signals or navigate, as a tap handler can.
 
 ### Pan and zoom
 

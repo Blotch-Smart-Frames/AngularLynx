@@ -1,6 +1,7 @@
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -12,6 +13,7 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 
 import type { RunContext } from './context.ts';
+import { getComponentNames } from '../../dolan/src/registry.ts';
 import { REPO_ROOT } from '../../release/src/packages.ts';
 import type { Registry } from './registry.ts';
 import { check, run, start, step, stop, waitFor } from './process.ts';
@@ -32,6 +34,11 @@ export type ScaffoldOptions = {
   readonly angular?: string;
   readonly packageManager: PackageManager;
   readonly tailwind: boolean;
+  /**
+   * The Tailwind major version `ng add` sets up, through `ng-add`'s
+   * `--tailwind-version`. Without it, `ng add` picks its default, 4.
+   */
+  readonly tailwindVersion?: '3' | '4';
   /**
    * Replace the @lynx-js/rspeedy version @blotch/angular-lynx-build depends
    * on, e.g. with `latest`, for early warning of Lynx toolchain changes.
@@ -88,6 +95,9 @@ export const scaffoldApp = async (
   // Step 2: check what the scaffold produced.
   step('Layer 2: check the generated project');
   checkGeneratedProject(appDir, options.version);
+  if (options.tailwind) {
+    checkTailwindSetup(appDir, options.tailwindVersion ?? '4');
+  }
 
   // Step 3: check what got installed.
   step('Layer 2: check the installed packages');
@@ -107,6 +117,11 @@ export const scaffoldApp = async (
   if (!options.buildOnly) {
     await buildApp(appDir, pm, registry, context, ['lynx']);
     await addTestingAndRunTests(appDir, pm, exec, options.version);
+    // dolan's theme maps its colors for Tailwind, so it needs Tailwind: on
+    // Tailwind 3, the plugin it copies imports it.
+    if (options.tailwind) {
+      await addComponentsAndRunTests(appDir, pm, exec, options.version);
+    }
   }
 
   // i18n is part of every app the later layers test, so the native tests run
@@ -128,7 +143,7 @@ export const scaffoldApp = async (
   // Swap in the fixtures Layer 3 and Layer 6 interact with: the counter
   // replaces the generated hello component, and a lazy route proves chunk
   // loading. Done after the tests, which expect hello's generated template.
-  applyFixtures(appDir);
+  applyFixtures(appDir, options.tailwind && (options.tailwindVersion ?? '4'));
 
   if (!options.buildOnly) {
     await extractMessages(appDir, exec, pm);
@@ -245,6 +260,73 @@ const addTestingAndRunTests = async (
 };
 
 /**
+ * dolan copies each component with its tests, and an app keeps the copies in
+ * its coverage report: their own tests have to cover them fully under the
+ * app's `ng test`, which compiles them ahead of time (issue #111). packages/ui
+ * checks the coverage against its sources; this checks the copies an app
+ * really gets, with their rewritten imports, against the published packages
+ * and the app's own Vitest.
+ */
+const addComponentsAndRunTests = async (
+  appDir: string,
+  pm: PackageManagerCommands,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+  version: string,
+) => {
+  step(
+    "Layer 2: dolan init and dolan add every component, then their tests' coverage",
+  );
+  await exec(...pm.add([`@blotch/dolan@${version}`]));
+  await exec(...pm.exec('dolan', ['init', '--yes']));
+  const components = getComponentNames();
+  await exec(...pm.exec('dolan', ['add', ...components]));
+  // `ng test --coverage` asks for a coverage provider that `ng new` doesn't
+  // install, matching the app's Vitest.
+  const vitest = readJson<PackageJson>(
+    path.join(appDir, 'node_modules/vitest/package.json'),
+  ).version;
+  await exec(...pm.add([`@vitest/coverage-v8@${vitest}`], { dev: true }));
+  await exec(
+    ...pm.exec('ng', [
+      'test',
+      '--no-watch',
+      '--coverage',
+      '--coverage-include=src/components/ui/**/*.ts',
+      '--coverage-include=src/styles/**/*.ts',
+      '--coverage-reporters=json-summary',
+    ]),
+  );
+  const summary = readJson<
+    Record<string, Record<string, { pct: number | string }>>
+  >(path.join(appDir, 'coverage', APP_NAME, 'coverage-summary.json'));
+  const uncovered = Object.entries(summary)
+    .filter(([file]) => file !== 'total')
+    .filter(([, metrics]) =>
+      ['statements', 'branches', 'functions', 'lines'].some(
+        (metric) => Number(metrics[metric]?.pct) < 100,
+      ),
+    )
+    .map(([file]) => path.relative(appDir, file));
+  // On Tailwind 3, the theme comes with a plugin and its test. Tailwind 4
+  // takes tailwind.css instead, with no code to cover.
+  const plugin = path.join(appDir, 'src/styles/tailwind-plugin.ts');
+  check(
+    !existsSync(plugin) ||
+      Object.keys(summary).some((file) =>
+        file.endsWith('src/styles/tailwind-plugin.ts'),
+      ),
+    "`ng test --coverage` didn't report on dolan's theme plugin (src/styles/tailwind-plugin.ts).",
+  );
+  check(
+    uncovered.length === 0,
+    `The tests dolan copies don't cover these copies fully under \`ng test --coverage\` (see coverage/${APP_NAME}): ${uncovered.join(', ')}. Run \`node scripts/test-coverage.ts --all\` in packages/ui.`,
+  );
+  console.log(
+    `✓ the ${components.length} components' tests pass and cover them${existsSync(plugin) ? ', and the theme plugin,' : ''} fully`,
+  );
+};
+
+/**
  * Checks what `ng generate component <name>` produced: Angular's files, made
  * Lynx ones by AngularLynx's schematic, and the test it should have written.
  */
@@ -309,6 +391,14 @@ type Command = [command: string, args: string[]];
 
 const packageManagerCommands = (packageManager: PackageManager) => ({
   install: (): Command => [packageManager, ['install']],
+  add: (specs: string[], { dev = false } = {}): Command => [
+    packageManager,
+    [
+      packageManager === 'npm' ? 'install' : 'add',
+      ...(dev ? ['-D'] : []),
+      ...specs,
+    ],
+  ],
   run: (script: string): Command => [packageManager, ['run', script]],
   exec: (bin: string, args: string[]): Command => {
     switch (packageManager) {
@@ -379,6 +469,9 @@ const scaffoldWithNgAdd = async (
       `@blotch/angular-lynx@${options.version}`,
       '--skip-confirmation',
       ...(options.tailwind ? [] : ['--tailwind=false']),
+      ...(options.tailwindVersion
+        ? [`--tailwind-version=${options.tailwindVersion}`]
+        : []),
     ],
     appDir,
   );
@@ -453,6 +546,46 @@ const checkOwnRange = (
     devDependencies?.[name] === `^${version}`,
     `${schematic} added ${name}@${devDependencies?.[name]} to devDependencies, not ^${version}. Our packages must be added at the release the schematic shipped in (ownVersionRange in ng-add/versions.ts).`,
   );
+};
+
+/**
+ * Checks that `ng add` set up the Tailwind version asked for: Tailwind 4 as
+ * Angular CLI does, through `.postcssrc.json`, or Tailwind 3 with Lynx's
+ * preset in `tailwind.config.ts`. The build and Layer 3's Tailwind check then
+ * show it works.
+ */
+const checkTailwindSetup = (appDir: string, version: '3' | '4') => {
+  const { devDependencies = {} } = readJson<{
+    devDependencies?: Record<string, string>;
+  }>(path.join(appDir, 'package.json'));
+  const stylesheet = readFileSync(path.join(appDir, 'src/styles.css'), 'utf8');
+  if (version === '4') {
+    check(
+      (devDependencies['tailwindcss'] ?? '').startsWith('^4.') &&
+        devDependencies['@tailwindcss/postcss'] !== undefined,
+      `ng add didn't add tailwindcss@4 and @tailwindcss/postcss to devDependencies (it added ${JSON.stringify(devDependencies)}).`,
+    );
+    check(
+      existsSync(path.join(appDir, '.postcssrc.json')) &&
+        !existsSync(path.join(appDir, 'tailwind.config.ts')),
+      "ng add didn't set Tailwind 4 up as Angular CLI does: .postcssrc.json and no tailwind.config.ts.",
+    );
+    check(
+      stylesheet.includes("@import 'tailwindcss/utilities.css'"),
+      `ng add didn't import Tailwind 4 in src/styles.css, which holds:\n${stylesheet}`,
+    );
+  } else {
+    check(
+      (devDependencies['tailwindcss'] ?? '').startsWith('^3.') &&
+        devDependencies['@lynx-js/tailwind-preset'] !== undefined,
+      `ng add didn't add tailwindcss@3 and @lynx-js/tailwind-preset to devDependencies (it added ${JSON.stringify(devDependencies)}).`,
+    );
+    check(
+      existsSync(path.join(appDir, 'tailwind.config.ts')) &&
+        stylesheet.includes('@tailwind utilities;'),
+      "ng add didn't set Tailwind 3 up: tailwind.config.ts and @tailwind utilities in src/styles.css.",
+    );
+  }
 };
 
 const checkGeneratedProject = (appDir: string, version: string) => {
@@ -696,7 +829,10 @@ const useHelloInApp = (appDir: string) => {
  * Replaces the generated hello component with the counter fixture and adds
  * two lazy-loaded routes, for the checks in Layers 3 and 6.
  */
-const applyFixtures = (appDir: string) => {
+const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
+  if (tailwind) {
+    addUiTheme(appDir, tailwind);
+  }
   copyFileSync(
     path.join(FIXTURES_DIR, 'counter.ts'),
     path.join(appDir, 'src/app/hello/hello.ts'),
@@ -737,6 +873,62 @@ export const routes: Routes = [
 ];
 `,
   );
+};
+
+/**
+ * Adds the UI components' theme the way `dolan init` and its next steps do,
+ * from packages/ui, which dolan copies the files from. tailwind-card.html
+ * uses a theme color with an opacity modifier, which needs the theme and the
+ * app's own Tailwind build:
+ *
+ * - Tailwind 4: copies default.css and tailwind.css to src/styles, and
+ *   imports both after Tailwind in styles.css. The build turns the modifier's
+ *   color-mix() into rgba() from the color's -rgb channels.
+ * - Tailwind 3: copies default.css and tailwind-plugin.ts, adds the plugin to
+ *   tailwind.config.ts and imports default.css in styles.css.
+ */
+const addUiTheme = (appDir: string, tailwind: '3' | '4') => {
+  const themeDir = path.join(appDir, 'src/styles');
+  mkdirSync(themeDir, { recursive: true });
+  const stylesPath = path.join(appDir, 'src/styles.css');
+  const styles = readFileSync(stylesPath, 'utf8');
+
+  if (tailwind === '4') {
+    for (const file of ['default.css', 'tailwind.css']) {
+      copyFileSync(
+        path.join(REPO_ROOT, 'packages/ui/src/lib/theme', file),
+        path.join(themeDir, file),
+      );
+    }
+    writeFileSync(
+      stylesPath,
+      `${styles}@import './styles/default.css';\n@import './styles/tailwind.css';\n`,
+    );
+    return;
+  }
+
+  for (const file of ['default.css', 'tailwind-plugin.ts']) {
+    copyFileSync(
+      path.join(REPO_ROOT, 'packages/ui/src/lib/theme', file),
+      path.join(themeDir, file),
+    );
+  }
+
+  const configPath = path.join(appDir, 'tailwind.config.ts');
+  let config = readFileSync(configPath, 'utf8');
+  config = `import { blotchPlugin } from './src/styles/tailwind-plugin';\n${config}`;
+  config = config.replace(
+    'presets: [preset],',
+    'presets: [preset],\n  plugins: [blotchPlugin],',
+  );
+  check(
+    config.includes('plugins: [blotchPlugin],'),
+    "Couldn't add the UI theme's plugin to tailwind.config.ts; the config ng add generates has changed shape. Update addUiTheme() in packages/e2e/src/scaffold.ts.",
+  );
+  writeFileSync(configPath, config);
+
+  // @import has to come before Tailwind's directives.
+  writeFileSync(stylesPath, `@import './styles/default.css';\n${styles}`);
 };
 
 /**

@@ -17,9 +17,10 @@ export const alertVariants = cva('flex-col rounded-lg border p-4 flex', {
   variants: {
     variant: {
       default: 'border-border bg-background',
-      // Opacity modifiers on semantic colors don't work on Lynx (opaque rgba
-      // values with no separable channels): use a solid destructive border and
-      // the pre-composed translucent bg-destructive-subtle for the tint.
+      // A solid destructive border over red at 10%. The tint is the
+      // pre-composed bg-destructive-subtle, not bg-destructive/10: a modifier
+      // needs the theme's --destructive-rgb, which themes copied before it
+      // existed don't have.
       destructive: 'border-destructive bg-destructive-subtle',
     },
   },
@@ -75,20 +76,17 @@ export class UiAlert {
   readonly description = input<string>('');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly containerRef = viewChild.required<ElementRef>('container');
 
-  constructor() {
-    // Subtle entrance animation on first render
-    effect(() => {
-      const el = this.containerRef()?.nativeElement;
-      // revealIn calls el.animate() which is inert in jsdom — the animation
-      // never plays and the effect can't be verified from a JIT render test.
-      /* v8 ignore next 3 */
-      if (el) {
-        revealIn(el, { fromY: 4 });
-      }
-    });
-  }
+  /**
+   * Reveals the alert with a subtle entrance on first render. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly entrance = effect(() => {
+    revealIn(this.containerRef().nativeElement, { fromY: 4 });
+  });
 
   protected readonly containerClass = computed(() =>
     cn(alertVariants({ variant: this.variant() }), this.userClass()),

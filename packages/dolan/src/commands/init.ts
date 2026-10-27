@@ -4,18 +4,23 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import pc from 'picocolors';
 import { configExists, writeConfig } from '../config.js';
+import {
+  getOrCreateLockfile,
+  hashContent,
+  writeLockfile,
+} from '../lockfile.js';
 import { getUiSourceDir } from '../utils/resolve-paths.js';
+import { themeFilesFor, usesTailwind4 } from '../utils/tailwind.js';
 import { formatContent } from '../utils/format.js';
 import { printBanner } from '../utils/banner.js';
 import { isInteractive } from '../utils/interactive.js';
 import {
+  copiesTests,
   detectPackageManager,
   installCommand,
   installPackages,
   missingPackages,
 } from '../utils/packages.js';
-
-const THEME_FILES = ['default.css', 'dark.css', 'tailwind-plugin.ts'];
 
 /**
  * The global stylesheet the theme gets imported into: the first `styles`
@@ -68,8 +73,8 @@ export type InitOptions = {
 
 /**
  * Sets up a project for dolan: writes `dolan.config.json`, copies the theme
- * files, makes `@blotch/dolan` a dependency, and prints what's left to wire
- * up by hand.
+ * files and records their hashes in `dolan.lock.json`, makes `@blotch/dolan`
+ * a dependency, and prints what's left to wire up by hand.
  *
  * `force` overwrites an existing config and theme files without asking.
  * Without it, init asks first, as `add` does for components: theme files are
@@ -172,16 +177,18 @@ export const initCommand = async (options: InitOptions = {}) => {
    * formatContent unchanged, and non-oxfmt projects get verbatim content, so
    * this is a no-op copy everywhere except the case it fixes.
    */
-  const themeFiles = THEME_FILES.flatMap((file) => {
-    const src = join(uiSrc, 'theme', file);
-    if (!existsSync(src)) return [];
-    const destPath = join(themeDir, file);
-    const content = formatContent(readFileSync(src, 'utf-8'), destPath);
-    const current = existsSync(destPath)
-      ? readFileSync(destPath, 'utf-8')
-      : null;
-    return [{ file, destPath, content, current }];
-  });
+  const themeFiles = themeFilesFor(cwd, { tests: copiesTests(cwd) }).flatMap(
+    (file) => {
+      const src = join(uiSrc, 'theme', file);
+      if (!existsSync(src)) return [];
+      const destPath = join(themeDir, file);
+      const content = formatContent(readFileSync(src, 'utf-8'), destPath);
+      const current = existsSync(destPath)
+        ? readFileSync(destPath, 'utf-8')
+        : null;
+      return [{ file, destPath, content, current }];
+    },
+  );
 
   // A file that already matches needs no write and no question.
   const changed = themeFiles.filter(
@@ -208,10 +215,18 @@ export const initCommand = async (options: InitOptions = {}) => {
     s.start('Copying theme files...');
   }
 
-  for (const { destPath, content, current } of themeFiles) {
-    if (current === content || (current !== null && !overwrite)) continue;
-    writeFileSync(destPath, content);
+  // Record each theme file init leaves as upstream's, as `add` does for
+  // components, so `update` has a base to merge against. Without one, it
+  // called any theme file that differed from the next release a conflict,
+  // though nobody had touched it. A kept file keeps whatever base the
+  // lockfile already has: it isn't upstream's.
+  const lockfile = getOrCreateLockfile(cwd);
+  for (const { file, destPath, content, current } of themeFiles) {
+    if (current !== null && current !== content && !overwrite) continue;
+    if (current !== content) writeFileSync(destPath, content);
+    lockfile.theme[file] = { hash: hashContent(content) };
   }
+  writeLockfile(cwd, lockfile);
 
   s.stop('Setup complete!');
 
@@ -242,16 +257,29 @@ export const initCommand = async (options: InitOptions = {}) => {
             installCommand(detectPackageManager(cwd), [dolanSpec]).join(' '),
           ] as [string, string],
         ]),
-    [
-      `Add the Tailwind plugin to your ${pc.cyan('tailwind.config.ts')}:`,
-      `import { blotchPlugin } from './${config.theme}/tailwind-plugin';`,
-      'plugins: [blotchPlugin]',
-    ],
-    [
-      `Import the theme in ${pc.cyan(stylesheet)}. ${pc.cyan('dark.css')} holds the dark mode colors, under ${pc.cyan('page.dark')}:`,
-      `@import '${cssImportPath(stylesheet, join(config.theme, 'default.css'))}';`,
-      `@import '${cssImportPath(stylesheet, join(config.theme, 'dark.css'))}';`,
-    ],
+    // Tailwind 4 takes the theme in the stylesheet, Tailwind 3 in its config.
+    ...(usesTailwind4(cwd)
+      ? [
+          [
+            `Import the theme in ${pc.cyan(stylesheet)}, after Tailwind. ${pc.cyan('dark.css')} holds the dark mode colors, under ${pc.cyan('page.dark')}, and ${pc.cyan('tailwind.css')} gives them their utilities:`,
+            ...['default.css', 'dark.css', 'tailwind.css'].map(
+              (file) =>
+                `@import '${cssImportPath(stylesheet, join(config.theme, file))}';`,
+            ),
+          ] as [string, ...string[]],
+        ]
+      : [
+          [
+            `Add the Tailwind plugin to your ${pc.cyan('tailwind.config.ts')}:`,
+            `import { blotchPlugin } from './${config.theme}/tailwind-plugin';`,
+            'plugins: [blotchPlugin]',
+          ] as [string, ...string[]],
+          [
+            `Import the theme in ${pc.cyan(stylesheet)}. ${pc.cyan('dark.css')} holds the dark mode colors, under ${pc.cyan('page.dark')}:`,
+            `@import '${cssImportPath(stylesheet, join(config.theme, 'default.css'))}';`,
+            `@import '${cssImportPath(stylesheet, join(config.theme, 'dark.css'))}';`,
+          ] as [string, ...string[]],
+        ]),
     [
       'Add components:',
       `npx ${dolanInstalled ? 'dolan' : '@blotch/dolan'} add button card`,

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -94,3 +94,13 @@ export const DEFAULT_CONFIG: DolanConfig = {
     theme: 'src/styles',
   },
 };
+
+/**
+ * A theme file exactly as 22.2.2's `init` copied it (from the v22.2.2 tag),
+ * which left the lockfile without its hash. lockfile.ts knows its hash.
+ */
+export const shippedTheme = (file: 'default.css' | 'dark.css'): string =>
+  readFileSync(
+    new URL(`./fixtures/theme-22.2.2/${file}`, import.meta.url),
+    'utf-8',
+  );

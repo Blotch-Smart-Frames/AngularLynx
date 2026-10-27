@@ -65,6 +65,10 @@ navigateTo(path: string): void {
 
 This moves all DOM mutations into a `setTimeout` macrotask, after the worklet callback returns — matching React Lynx's pattern.
 
+### Status
+
+Disproven (issue #113, 2026-10-27). Navigating synchronously from a tap handler doesn't crash on Lynx 4.1 (iOS, Android or the web), not even when the handler flushes 50 new elements with `ApplicationRef.tick()`, and Angular 22's router doesn't change the tree inside the handler anyway. The crash this was meant to fix was the x-list use-after-free above, or one of the other causes in this file. See "Changing the element tree inside an event handler is safe" in `lynx-vs-web-differences.md`.
+
 ### Diagnostics Added
 
 Since there is no console on the Lynx device, added on-screen error rendering:

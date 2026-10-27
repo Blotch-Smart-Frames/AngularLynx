@@ -310,94 +310,81 @@ export class MotionDemo {
     return this.activeKeyframes().has(name);
   }
 
-  /**
-   * All handlers defer their signal writes via setTimeout so the update never
-   * happens synchronously inside a Lynx native event handler (bindtap, or the
-   * UiButton `pressed` output which emits inside bindtap). A synchronous write
-   * can flush the renderer while the native event is still on the call stack,
-   * which breaks Lynx's main-thread frame pipeline.
-   */
   toggleSwitch(): void {
-    setTimeout(() => this.switchOn.update((v) => !v), 0);
+    this.switchOn.update((v) => !v);
   }
 
   toggleKeyframe(name: string): void {
-    setTimeout(() => {
-      this.activeKeyframes.update((active) => {
-        const next = new Set(active);
-        if (next.has(name)) {
-          next.delete(name);
-        } else {
-          next.add(name);
-        }
-        return next;
-      });
-    }, 0);
+    this.activeKeyframes.update((active) => {
+      const next = new Set(active);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
   }
 
   runAnimation(preset: AnimatePreset): void {
-    setTimeout(() => {
-      const el = this.animateBoxRef();
-      if (!el) return;
+    const el = this.animateBoxRef();
+    if (!el) return;
 
-      // Cancel any previously running animation so they don't stack.
-      this.#currentAnimation?.cancel();
+    // Cancel any previously running animation so they don't stack.
+    this.#currentAnimation?.cancel();
 
-      const native = el.nativeElement;
-      switch (preset) {
-        case 'pop':
-          this.#currentAnimation = native.animate(
-            [
-              { transform: 'scale(1)' },
-              { transform: 'scale(1.35)' },
-              { transform: 'scale(1)' },
-            ],
-            { duration: 500, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
-          );
-          break;
-        case 'shake':
-          this.#currentAnimation = native.animate(
-            [
-              { transform: 'translateX(0px)' },
-              { transform: 'translateX(-8px)' },
-              { transform: 'translateX(8px)' },
-              { transform: 'translateX(-8px)' },
-              { transform: 'translateX(0px)' },
-            ],
-            { duration: 450, easing: 'ease-in-out' },
-          );
-          break;
-        case 'flash':
-          this.#currentAnimation = native.animate(
-            [
-              { opacity: 1 },
-              { opacity: 0.2 },
-              { opacity: 1 },
-              { opacity: 0.2 },
-              { opacity: 1 },
-            ],
-            { duration: 600, easing: 'ease-in-out' },
-          );
-          break;
-      }
-    }, 0);
+    const native = el.nativeElement;
+    switch (preset) {
+      case 'pop':
+        this.#currentAnimation = native.animate(
+          [
+            { transform: 'scale(1)' },
+            { transform: 'scale(1.35)' },
+            { transform: 'scale(1)' },
+          ],
+          { duration: 500, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
+        );
+        break;
+      case 'shake':
+        this.#currentAnimation = native.animate(
+          [
+            { transform: 'translateX(0px)' },
+            { transform: 'translateX(-8px)' },
+            { transform: 'translateX(8px)' },
+            { transform: 'translateX(-8px)' },
+            { transform: 'translateX(0px)' },
+          ],
+          { duration: 450, easing: 'ease-in-out' },
+        );
+        break;
+      case 'flash':
+        this.#currentAnimation = native.animate(
+          [
+            { opacity: 1 },
+            { opacity: 0.2 },
+            { opacity: 1 },
+            { opacity: 0.2 },
+            { opacity: 1 },
+          ],
+          { duration: 600, easing: 'ease-in-out' },
+        );
+        break;
+    }
   }
 
   /**
    * Two-phase open: make the overlay visible so its elements mount into the
-   * native tree, then animate on the next frame — Lynx's animate() requires the
-   * target to already exist. Deferred via setTimeout so the signal write never
-   * happens synchronously inside the button's native tap callback.
+   * native tree, then animate on the next task — Lynx's animate() requires the
+   * target to already exist, and change detection mounts it after this
+   * handler returns.
    */
   openOverlay(): void {
-    setTimeout(() => {
-      this.overlayVisible.set(true);
-      setTimeout(() => this.#animateOverlayIn(), 0);
-    }, 0);
+    this.overlayVisible.set(true);
+    setTimeout(() => this.#animateOverlayIn(), 0);
   }
 
   closeOverlay(): void {
-    setTimeout(() => this.#animateOverlayOut(), 0);
+    this.#animateOverlayOut();
   }
 
   /**

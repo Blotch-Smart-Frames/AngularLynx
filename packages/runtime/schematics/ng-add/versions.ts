@@ -16,11 +16,17 @@ export const VERSIONS = {
    */
   lynxTypes: '^4.3.0',
   /**
-   * tailwindcss — utility-first CSS framework (optional, controlled by the `tailwind` schema option)
+   * tailwindcss and @tailwindcss/postcss, for Tailwind CSS 4: the default when
+   * the `tailwind` schema option is on. The build plugin rewrites what it
+   * writes into CSS Lynx reads.
+   */
+  tailwindcss4: '^4.3.3',
+  /**
+   * tailwindcss, for Tailwind CSS 3 (`--tailwind-version=3`)
    */
   tailwindcss: '^3.4.19',
   /**
-   * @lynx-js/tailwind-preset — Lynx-specific Tailwind preset with native design tokens
+   * @lynx-js/tailwind-preset — Lynx's preset for Tailwind CSS 3
    */
   tailwindPreset: '^0.6.0',
   /**

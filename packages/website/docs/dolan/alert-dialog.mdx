@@ -85,7 +85,7 @@ export class DeleteAccount {
 
 ### Run code after it closes
 
-`closed` emits once the close animation has finished, about 270ms after `open` turns `false`. It fires from a timer, outside any tap handler, so it's a safe place to navigate. To navigate straight from a button instead, wrap the navigation in `setTimeout` (see [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)).
+`closed` emits once the close animation has finished, about 270ms after `open` turns `false`. It's a good place to navigate once the dialog has gone. You can also navigate straight from a button, as from any tap handler.
 
 ```angular-html
 <ui-alert-dialog [(open)]="open" (closed)="onClosed()">…</ui-alert-dialog>

@@ -20,7 +20,7 @@
         "hash": "51e43e6d441b7cab"
       },
       "nav-drawer.ts": {
-        "hash": "dc6fc8d3df93466e"
+        "hash": "5cd79ff4b42489b4"
       }
     },
     "separator": {
@@ -222,17 +222,28 @@
       "index.ts": {
         "hash": "72992b309321929f"
       }
+    },
+    "tab-bar": {
+      "index.ts": {
+        "hash": "ec53b8058dbb2ddb"
+      },
+      "tab-bar.test.ts": {
+        "hash": "5205c2bf5878ee03"
+      },
+      "tab-bar.ts": {
+        "hash": "ebda5df4da0b1cc5"
+      }
     }
   },
   "theme": {
     "default.css": {
-      "hash": "1fd6a85ec25194af"
+      "hash": "43076919dc0628d4"
     },
     "dark.css": {
-      "hash": "9501105e2a3f44cb"
+      "hash": "20229ae915a63dfd"
     },
     "tailwind-plugin.ts": {
-      "hash": "4ac232eeeb7056ea"
+      "hash": "48f5669cd884d13e"
     }
   }
 }

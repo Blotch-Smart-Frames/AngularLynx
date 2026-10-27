@@ -159,9 +159,6 @@ export class TextWhitespaceDemo {
   });
 
   bump(): void {
-    // Defer the signal write out of the native bindtap worklet callback —
-    // mutating state that drives the element tree inside the worklet crashes
-    // Lynx's main-thread pipeline (see App.navigateTo in app.ts).
-    setTimeout(() => this.#taps.update((n) => n + 1), 0);
+    this.#taps.update((n) => n + 1);
   }
 }

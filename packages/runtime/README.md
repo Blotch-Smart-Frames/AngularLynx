@@ -20,17 +20,43 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 
 - Standalone components with signals, `@if`/`@for`/`@switch`, DI, and pipes
 - Zoneless change detection — signals as the primary reactivity model
-- Full Angular Router with in-memory navigation for Lynx
+- Full Angular Router with in-memory navigation for Lynx, including `routerLink` and `routerLinkActive` on any element
 - Gestures — tap, pan, long-press, fling, pinch, rotation with composition
 - Animations — CSS transitions, keyframes, and programmatic `animate()` API
 - Content projection, portals, `@defer`, and lazy-loaded routes
-- Tailwind CSS via `@lynx-js/tailwind-preset`
+- Tailwind CSS 4, with the build rewriting its CSS for Lynx (or Tailwind CSS 3 with `@lynx-js/tailwind-preset`)
 
 ## Documentation
 
 Full docs and guides at [angularlynx.js.org](https://angularlynx.js.org).
 
 ---
+
+## Routing
+
+`provideRouter()` from `@blotch/angular-lynx` sets up Angular's Router with in-memory history. Everything else comes from `@angular/router`, as on the web, `routerLink` and `routerLinkActive` included:
+
+```typescript
+import { Component } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, RouterOutlet, RouterLink, RouterLinkActive],
+  template: `
+    <view routerLink="/settings" routerLinkActive="active">
+      <text>Settings</text>
+    </view>
+    <router-outlet />
+  `,
+})
+export class App {}
+```
+
+- A tap on the element navigates: the renderer delivers Lynx's `tap` to `click` listeners, as Lynx for Web does, and `RouterLink` listens for `click`.
+- While the link's route is active, `routerLinkActive` adds its classes and `LYNX_ELEMENTS` adds `selected` to the element's `accessibility-traits`, keeping its own (`LynxRouterLinkActive`). On a component's host, list `LynxRouterLinkActive` in `hostDirectives` next to `RouterLinkActive`.
+- Event handlers can navigate directly, with `Router.navigate()` or `Location.back()`.
 
 ## Animation API
 
@@ -103,25 +129,23 @@ export class ExampleComponent {
   #animation: LynxAnimation | null = null;
 
   runAnimation(): void {
-    setTimeout(() => {
-      const el = this.boxRef();
-      if (!el) return;
+    const el = this.boxRef();
+    if (!el) return;
 
-      // Cancel previous animation before starting a new one.
-      this.#animation?.cancel();
+    // Cancel previous animation before starting a new one.
+    this.#animation?.cancel();
 
-      this.#animation = el.nativeElement.animate(
-        [
-          { transform: 'scale(1)', opacity: 1 },
-          { transform: 'scale(1.3)', opacity: 0.7 },
-          { transform: 'scale(1)', opacity: 1 },
-        ],
-        {
-          duration: 600,
-          easing: 'ease-in-out',
-        },
-      );
-    }, 0);
+    this.#animation = el.nativeElement.animate(
+      [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(1.3)', opacity: 0.7 },
+        { transform: 'scale(1)', opacity: 1 },
+      ],
+      {
+        duration: 600,
+        easing: 'ease-in-out',
+      },
+    );
   }
 }
 ```
@@ -181,4 +205,4 @@ Available events: `animationstart`, `animationend`, `animationcancel`, `animatio
 #### Important Notes
 
 - The `animate()` API is **main-thread only**. Calling it on the background thread throws an error.
-- Wrap `animate()` calls inside `setTimeout(() => { ... }, 0)` when triggered from Lynx event callbacks to avoid mutating the element tree inside a worklet.
+- Call `animate()` straight from an event handler; it doesn't need a `setTimeout`.

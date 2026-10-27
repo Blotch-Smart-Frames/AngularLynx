@@ -1,63 +1,133 @@
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
-import { describe, expect, it, vi } from 'vitest';
-import { setInputSignal } from '../../../test-utils/set-input-signal';
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+import {
+  type MockInstance,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  type LynxMainThread,
+  lynxMainThread,
+} from '../../../test-utils/lynx-main-thread';
 import { UiSwitch } from './switch';
 
+@Component({
+  imports: [UiSwitch],
+  template: `
+    <ui-switch
+      [(checked)]="checked"
+      [disabled]="disabled()"
+      class="ml-2"
+      (changed)="changes.push($event)"
+    />
+  `,
+})
+class SwitchHost {
+  readonly checked = signal(false);
+  readonly disabled = signal(false);
+  readonly changes: boolean[] = [];
+}
+
+const renderSwitch = async () => {
+  const result = await render(SwitchHost);
+  return {
+    ...result,
+    host: result.componentRef.instance as SwitchHost,
+    track: () => result.container.querySelector('.flex-row')!,
+    thumb: () => result.container.querySelector('.bg-background')!,
+  };
+};
+
+/** `__ElementAnimate`'s first argument for starting an animation. */
+const START = 0;
+/** `__ElementAnimate`'s first argument for canceling one. */
+const CANCEL = 3;
+
 describe('UiSwitch', () => {
-  it('renders in the off position by default', async () => {
-    const { container } = await render(UiSwitch);
-    expect(container).toBeTruthy();
+  // Watched per test: the testing library resets the main thread after each.
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+  });
+  afterEach(() => animate.mockRestore());
+
+  it('renders off, with the thumb at the left and the given class', async () => {
+    const { track, thumb } = await renderSwitch();
+    expect(track().classList).toContain('bg-input');
+    expect(track().classList).toContain('ml-2');
+    expect(thumb().getAttribute('style')).toContain('translateX(2px)');
   });
 
-  it('toggle() flips checked and emits `changed`', async () => {
-    const { componentRef } = await render(UiSwitch);
-    const inst = componentRef.instance as UiSwitch;
-    const emitted: boolean[] = [];
-    inst.changed.subscribe((v) => emitted.push(v));
+  it('turns on and off on tap, emitting `changed`', async () => {
+    const { host, track, thumb } = await renderSwitch();
 
-    inst.toggle();
-    expect(inst.checked()).toBe(true);
-    inst.toggle();
-    expect(inst.checked()).toBe(false);
-    expect(emitted).toEqual([true, false]);
-  });
-
-  it('toggle() is a no-op when disabled', async () => {
-    const { componentRef } = await render(UiSwitch);
-    const inst = componentRef.instance as UiSwitch;
-    setInputSignal(inst.disabled, true);
-    const listener = vi.fn();
-    inst.changed.subscribe(listener);
-
-    inst.toggle();
-    expect(inst.checked()).toBe(false);
-    expect(listener).not.toHaveBeenCalled();
-  });
-
-  it('positions the thumb differently in ON vs OFF state', async () => {
-    const { componentRef, container } = await render(UiSwitch);
-    const inst = componentRef.instance as UiSwitch;
-    let thumb = container.querySelectorAll('view')[1];
-    expect(thumb?.getAttribute('style')).toContain('translateX(2px)');
-
-    inst.checked.set(true);
+    fireEvent.tap(track());
     await waitForUpdate();
-    thumb = container.querySelectorAll('view')[1];
-    expect(thumb?.getAttribute('style')).toContain('translateX(22px)');
+    expect(host.checked()).toBe(true);
+    expect(track().classList).toContain('bg-primary');
+    expect(thumb().getAttribute('style')).toContain('translateX(22px)');
+
+    fireEvent.tap(track());
+    await waitForUpdate();
+    expect(host.checked()).toBe(false);
+    expect(host.changes).toEqual([true, false]);
   });
 
-  it('applies opacity-50 when disabled and includes a user class', async () => {
-    // Covers the disabled=true branch of trackClass() (line 62) and the
-    // userClass() concatenation. Without a render + detectChanges cycle the
-    // computed never runs with disabled=true and the branch stays uncovered.
-    const { componentRef, container } = await render(UiSwitch);
-    const inst = componentRef.instance as UiSwitch;
-    setInputSignal(inst.disabled, true);
-    setInputSignal(inst.userClass, 'custom-cls');
+  it('springs the thumb across the track, squishing it halfway', async () => {
+    const { track, thumb } = await renderSwitch();
+
+    fireEvent.tap(track());
+    expect(animate).toHaveBeenCalledWith(thumb(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(2px) scale(1)' },
+        { transform: 'translateX(12px) scale(1.1)' },
+        { transform: 'translateX(22px) scale(1)' },
+      ],
+      expect.objectContaining({ fill: 'forwards' }),
+    ]);
+
+    // Turning it back off cuts the first spring short and springs it back.
+    fireEvent.tap(track());
+    expect(animate).toHaveBeenCalledWith(thumb(), [CANCEL, expect.any(String)]);
+    expect(animate).toHaveBeenLastCalledWith(thumb(), [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateX(22px) scale(1)' },
+        { transform: 'translateX(12px) scale(1.1)' },
+        { transform: 'translateX(2px) scale(1)' },
+      ],
+      expect.objectContaining({ fill: 'forwards' }),
+    ]);
+  });
+
+  it('follows its checked binding', async () => {
+    const { host, thumb } = await renderSwitch();
+    host.checked.set(true);
     await waitForUpdate();
-    const track = container.querySelectorAll('view')[0];
-    const cls = track?.getAttribute('class') ?? '';
-    expect(cls).toContain('opacity-50');
-    expect(cls).toContain('custom-cls');
+    expect(thumb().getAttribute('style')).toContain('translateX(22px)');
+  });
+
+  it('dims and ignores taps while disabled', async () => {
+    const { host, track } = await renderSwitch();
+    host.disabled.set(true);
+    await waitForUpdate();
+    expect(track().classList).toContain('opacity-50');
+
+    fireEvent.tap(track());
+    await waitForUpdate();
+    expect(host.checked()).toBe(false);
+    expect(host.changes).toEqual([]);
+    expect(animate).not.toHaveBeenCalled();
   });
 });

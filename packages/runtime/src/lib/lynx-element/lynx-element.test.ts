@@ -226,6 +226,89 @@ describe('LynxElement', () => {
     });
   });
 
+  describe('accessibility traits the runtime adds', () => {
+    const traits = () =>
+      (globalThis.__SetAttribute as ReturnType<typeof vi.fn>).mock.calls
+        .filter((call) => call[1] === 'accessibility-traits')
+        .map((call) => call[2]);
+
+    beforeEach(() => {
+      globalThis.__SetAttribute = vi.fn();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('adds a trait to the element’s own, as the comma list iOS reads', () => {
+      element = new LynxElement(fakeRef);
+      element.setAttribute('accessibility-traits', 'button');
+      element.setAccessibilityTrait('selected', true);
+
+      // No space after the comma: iOS compares each part exactly.
+      expect(traits()).toEqual(['button', 'button,selected']);
+    });
+
+    it('keeps the trait when the app sets its own traits afterwards', () => {
+      element = new LynxElement(fakeRef);
+      element.setAccessibilityTrait('selected', true);
+      element.setAttribute('accessibility-traits', ' link , header ');
+      element.removeAttribute('accessibility-traits');
+
+      expect(traits()).toEqual([
+        'selected',
+        'link,header,selected',
+        'selected',
+      ]);
+    });
+
+    it('restores the app’s traits when the trait is taken away', () => {
+      element = new LynxElement(fakeRef);
+      element.setAttribute('accessibility-traits', 'button');
+      element.setAccessibilityTrait('selected', true);
+      element.setAccessibilityTrait('selected', false);
+
+      expect(traits()).toEqual(['button', 'button,selected', 'button']);
+    });
+
+    it('resets the attribute when neither the app nor the runtime sets one', () => {
+      element = new LynxElement(fakeRef);
+      element.setAccessibilityTrait('selected', true);
+      element.setAccessibilityTrait('selected', false);
+
+      expect(traits()).toEqual(['selected', null]);
+    });
+
+    it('replaces none, and doesn’t repeat a trait the app already has', () => {
+      element = new LynxElement(fakeRef);
+      element.setAttribute('accessibility-traits', 'none');
+      element.setAccessibilityTrait('selected', true);
+      element.setAttribute('accessibility-traits', 'selected,button');
+
+      expect(traits()).toEqual(['none', 'selected', 'selected,button']);
+    });
+
+    it('does nothing when the trait is already in that state', () => {
+      element = new LynxElement(fakeRef);
+      element.setAccessibilityTrait('selected', false);
+      element.setAccessibilityTrait('selected', true);
+      element.setAccessibilityTrait('selected', true);
+
+      expect(traits()).toEqual(['selected']);
+    });
+
+    it('leaves the app’s traits alone on Android, which reads only one', () => {
+      // Android matches the whole value against none/image/button, so
+      // "button,selected" would read as none and lose the button role.
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      element = new LynxElement(fakeRef);
+      element.setAttribute('accessibility-traits', 'button');
+      element.setAccessibilityTrait('selected', true);
+
+      expect(traits()).toEqual(['button', 'button']);
+    });
+  });
+
   describe('blur-view materials on Android', () => {
     const material = (background: string) =>
       `--angular-lynx-blur-background: ${background}; ` +
@@ -424,7 +507,7 @@ describe('LynxElement', () => {
     element = new LynxElement(fakeRef);
     const cb = vi.fn();
 
-    const cleanup = element.addEventListener('click', cb);
+    const cleanup = element.addEventListener('mouseover', cb);
 
     expect(globalThis.__AddEvent).not.toHaveBeenCalled();
     expect(typeof cleanup).toBe('function');
@@ -445,6 +528,196 @@ describe('LynxElement', () => {
       'tap',
       undefined,
     );
+  });
+
+  describe('click listeners', () => {
+    it('hear a tap, bubbling, as Lynx for Web maps them', () => {
+      // Angular's RouterLink listens for `click` on its host. A Lynx element
+      // fires `tap` instead, so without the alias a routerLink did nothing.
+      element = new LynxElement(fakeRef);
+      element.addEventListener('click', vi.fn());
+
+      expect(globalThis.__AddEvent).toHaveBeenCalledWith(
+        fakeRef,
+        'bindEvent',
+        'tap',
+        { type: 'worklet', value: expect.any(Function) },
+      );
+    });
+  });
+
+  describe('several listeners for one event', () => {
+    const addEvent = () => globalThis.__AddEvent as ReturnType<typeof vi.fn>;
+    /**
+     * The handler most recently registered natively, as Lynx would call it.
+     */
+    const nativeHandler = (): ((event: unknown) => unknown) =>
+      (addEvent().mock.calls.at(-1)![3] as { value: (e: unknown) => unknown })
+        .value;
+
+    it('registers one native handler that runs them all, in order', () => {
+      // Native Lynx keeps one handler per event name, so a routerLink's click
+      // listener next to a template's (bindtap) used to replace it.
+      element = new LynxElement(fakeRef);
+      const calls: string[] = [];
+      element.addEventListener('bindtap', () => calls.push('template'));
+      element.addEventListener('click', () => calls.push('routerLink'));
+
+      expect(addEvent()).toHaveBeenCalledTimes(1);
+      nativeHandler()({ type: 'tap' });
+      expect(calls).toEqual(['template', 'routerLink']);
+    });
+
+    it('keeps the handler while a listener is left, and removes it after the last', () => {
+      element = new LynxElement(fakeRef);
+      const first = vi.fn();
+      const second = vi.fn();
+      const removeFirst = element.addEventListener('bindtap', first);
+      const removeSecond = element.addEventListener('bindtap', second);
+      const handler = nativeHandler();
+
+      removeFirst();
+      expect(addEvent()).toHaveBeenCalledTimes(1);
+      handler({ type: 'tap' });
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+
+      removeSecond();
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'bindEvent',
+        'tap',
+        undefined,
+      );
+    });
+
+    it('does nothing when a listener is removed twice', () => {
+      element = new LynxElement(fakeRef);
+      const remove = element.addEventListener('bindtap', vi.fn());
+      remove();
+      addEvent().mockClear();
+
+      remove();
+
+      expect(addEvent()).not.toHaveBeenCalled();
+    });
+
+    it('registers catch when any listener catches, and bind again once it goes', () => {
+      element = new LynxElement(fakeRef);
+      element.addEventListener('click', vi.fn());
+      const removeCatch = element.addEventListener('catchtap', vi.fn());
+
+      // The old registration is removed before the new one replaces it.
+      expect(
+        addEvent()
+          .mock.calls.slice(1)
+          .map((call) => call[1]),
+      ).toEqual(['bindEvent', 'catchEvent']);
+      expect(addEvent().mock.calls[1]![3]).toBeUndefined();
+
+      removeCatch();
+      expect(addEvent()).toHaveBeenLastCalledWith(fakeRef, 'bindEvent', 'tap', {
+        type: 'worklet',
+        value: expect.any(Function),
+      });
+    });
+
+    it('registers capture only when every listener captures', () => {
+      element = new LynxElement(fakeRef);
+      element.addEventListener('capture-bindtap', vi.fn());
+      element.addEventListener('capture-catchtap', vi.fn());
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'capture-catchEvent',
+        'tap',
+        expect.anything(),
+      );
+
+      element.addEventListener('bindtap', vi.fn());
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'catchEvent',
+        'tap',
+        expect.anything(),
+      );
+    });
+
+    it('keeps capture-bind for capture listeners that only bind', () => {
+      element = new LynxElement(fakeRef);
+      element.addEventListener('capture-bindtap', vi.fn());
+      element.addEventListener('capture-bindtap', vi.fn());
+
+      expect(addEvent()).toHaveBeenCalledTimes(1);
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'capture-bindEvent',
+        'tap',
+        expect.anything(),
+      );
+    });
+
+    it('keeps global events apart from the element’s own', () => {
+      // Lynx stores global-bind handlers in a map of their own.
+      element = new LynxElement(fakeRef);
+      element.addEventListener('bindtap', vi.fn());
+      element.addEventListener('global-bindtap', vi.fn());
+
+      expect(addEvent().mock.calls.map((call) => call[1])).toEqual([
+        'bindEvent',
+        'global-bindEvent',
+      ]);
+    });
+
+    it('removes a listener through removeEventListener, as the DOM does', () => {
+      // Angular's @defer triggers add their listeners to the element
+      // directly, and remove them this way.
+      element = new LynxElement(fakeRef);
+      const onClick = vi.fn();
+      const onTap = vi.fn();
+      element.addEventListener('click', onClick);
+      element.addEventListener('bindtap', onTap);
+
+      element.removeEventListener('click', onClick);
+      // Names Lynx has no event for, and listeners never added, are ignored.
+      element.removeEventListener('keydown', onClick);
+      element.removeEventListener('bindtap', vi.fn());
+      nativeHandler()({ type: 'tap' });
+
+      expect(onClick).not.toHaveBeenCalled();
+      expect(onTap).toHaveBeenCalledTimes(1);
+
+      element.removeEventListener('bindtap', onTap);
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'bindEvent',
+        'tap',
+        undefined,
+      );
+    });
+
+    it('skips a listener that an earlier one removed, as the DOM does', () => {
+      element = new LynxElement(fakeRef);
+      const second = vi.fn();
+      let removeSecond = () => {};
+      element.addEventListener('bindtap', () => removeSecond());
+      removeSecond = element.addEventListener('bindtap', second);
+
+      nativeHandler()({ type: 'tap' });
+
+      expect(second).not.toHaveBeenCalled();
+    });
+
+    it('still runs the next listener when one removes itself', () => {
+      element = new LynxElement(fakeRef);
+      const second = vi.fn();
+      let removeFirst = () => {};
+      removeFirst = element.addEventListener('bindtap', () => removeFirst());
+      element.addEventListener('bindtap', second);
+
+      nativeHandler()({ type: 'tap' });
+
+      expect(second).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('addEventListener event-method shims', () => {

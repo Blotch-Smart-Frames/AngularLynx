@@ -26,29 +26,15 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 | Blur           | `bindblur`          | Input element lost focus                    |
 | Confirm        | `bindconfirm`       | Keyboard action button pressed (on `input`) |
 
-## Critical: Defer DOM Mutations
+## `(click)` and several handlers per element
 
-Lynx event handlers run inside a worklet context. DOM mutations (`__CreateElement`, `__RemoveElement`, `__AppendElement`) during a worklet **crash the app**. Wrap any operation that changes the element tree in `setTimeout`:
+- `(click)` runs on a tap, as `(bindtap)` does: the renderer maps it like Lynx for Web (`click` → `tap`, bubbling). Angular's `RouterLink` depends on this. Other DOM event names, such as `(mouseover)`, are silently ignored.
+- Native Lynx keeps **one** handler per event name on an element (its event map is keyed by name, whatever the bind/catch type). The renderer registers one native handler per event that runs every Angular listener in order, so `routerLink` plus `(bindtap)` on one element both run. If any listener uses `catch`, the event stops at the element after all of them run.
+- A main-thread script (`[mainThreadBindtap]`) registers its own native handler, so it still replaces a `(bindtap)` on the same element.
 
-```typescript
-// WRONG — navigation mutates the tree synchronously inside the worklet
-onTap() {
-  this.router.navigateByUrl('/detail');
-}
+## Handlers can change the element tree
 
-// CORRECT — defers mutations to the next macrotask
-onTap() {
-  setTimeout(() => this.router.navigateByUrl('/detail'), 0);
-}
-```
-
-This applies to:
-
-- Router navigation
-- Signal updates that add/remove elements (e.g., toggling `@if` blocks)
-- Any operation that causes Angular to create or destroy components
-
-Signal updates that only change text/attributes (no structural changes) are safe without `setTimeout`.
+Event handlers run on the main thread, inside the native event. They can do anything they would on the web: set signals, navigate, open overlays, start `animate()`, add and remove elements. Measured on Lynx 4.1 (iOS, Android, web): a handler that creates and removes 50 elements and flushes them with `ApplicationRef.tick()` doesn't crash, and neither do gesture callbacks doing the same. Don't wrap these calls in `setTimeout`.
 
 ## Event Payload
 

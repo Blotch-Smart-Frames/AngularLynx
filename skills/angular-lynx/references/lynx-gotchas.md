@@ -4,10 +4,6 @@ Curated list of Lynx-vs-web differences that cause bugs. Organized by severity.
 
 ## Critical (Will Crash or Break Your App)
 
-### DOM mutations in event worklets
-
-Synchronous DOM mutations inside `bindtap`/`bindinput` handlers crash the app. **Fix:** Wrap all tree-mutating operations in `setTimeout(() => { ... }, 0)`.
-
 ### Missing `item-key` on `<list-item>`
 
 The native list engine requires a unique `item-key` attribute on every `<list-item>`. Without it, the engine crashes. **Fix:** Always set `item-key="{{ uniqueId }}"`.

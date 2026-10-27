@@ -9,4 +9,10 @@ export type Schema = {
    * into a text input).
    */
   tailwind?: boolean | 'true' | 'false';
+  /**
+   * The Tailwind CSS major version: a string, or a number when the CLI has
+   * parsed `--tailwind-version 4` without the schema (see `tailwind`).
+   * Defaults to the project's own version, else 4.
+   */
+  tailwindVersion?: '3' | '4' | 3 | 4;
 };

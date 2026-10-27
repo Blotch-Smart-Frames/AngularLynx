@@ -86,6 +86,7 @@
     "tsconfig.spec.tsbuildinfo"
   ],
   "words": [
+    "accessibilityaction",
     "angularlynx",
     "animationcancel",
     "animationend",
@@ -259,6 +260,7 @@
     "Playfair",
     "pluginAngularLynx",
     "pluralrules",
+    "postcssrc",
     "pressable",
     "provideRenderer",
     "qrcode",

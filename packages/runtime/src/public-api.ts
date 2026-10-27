@@ -83,6 +83,7 @@ export {
   LynxOverlay,
   LynxRefresh,
   LynxRefreshHeader,
+  LynxRouterLinkActive,
   LynxScrollCoordinator,
   LynxScrollCoordinatorHeader,
   LynxScrollCoordinatorSlot,

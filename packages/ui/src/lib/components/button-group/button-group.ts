@@ -179,16 +179,13 @@ export class UiButtonGroupItem {
 
   protected onPressStart(): void {
     if (this.isDisabled()) return;
-    // See UiButton — press animations use el.setStyle-driven transitions that
-    // are inert in the JIT test harness. Verified on-device.
-    /* v8 ignore next 2 */
+    // See UiButton: press feedback is an el.setStyle()-driven CSS transition.
     this.#pressAnim?.cancel();
     this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
   }
 
   protected onPressEnd(): void {
     if (this.isDisabled()) return;
-    /* v8 ignore next 2 */
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
   }
@@ -196,7 +193,6 @@ export class UiButtonGroupItem {
   protected onPressCancel(): void {
     // Restore scale on cancel too — otherwise a touch stolen by a scroll
     // gesture leaves the item stuck in its pressed-down state.
-    /* v8 ignore next 2 */
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
   }

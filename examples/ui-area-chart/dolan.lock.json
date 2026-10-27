@@ -64,13 +64,13 @@
   },
   "theme": {
     "default.css": {
-      "hash": "1fd6a85ec25194af"
+      "hash": "43076919dc0628d4"
     },
     "dark.css": {
-      "hash": "9501105e2a3f44cb"
+      "hash": "20229ae915a63dfd"
     },
     "tailwind-plugin.ts": {
-      "hash": "4ac232eeeb7056ea"
+      "hash": "48f5669cd884d13e"
     }
   }
 }

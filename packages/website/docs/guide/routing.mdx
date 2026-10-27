@@ -1,6 +1,6 @@
 # Routing and navigation
 
-Move between screens with Angular's Router and `<router-outlet>`. Three things differ from the web: the URL lives in memory, you navigate from tap handlers instead of links, and the views of routes you leave stay alive.
+Move between screens with Angular's Router, `<router-outlet>` and `routerLink`, as on the web. What differs: the URL lives in memory, a link is any element you tap rather than an `<a>`, and the active link tells screen readers it's selected.
 
 ## Set up the router
 
@@ -41,32 +41,63 @@ export const routes: Routes = [
 ## Navigate between screens
 
 ```typescript title="src/app/app.ts"
-import { Component, inject } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { Component } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet],
+  imports: [LYNX_ELEMENTS, RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <view class="nav">
-      <view (bindtap)="go('home')"><text>Home</text></view>
-      <view (bindtap)="go('settings')"><text>Settings</text></view>
+    <view class="flex flex-row">
+      <view class="p-3" routerLink="/home" routerLinkActive="bg-accent">
+        <text>Home</text>
+      </view>
+      <view class="p-3" routerLink="/settings" routerLinkActive="bg-accent">
+        <text>Settings</text>
+      </view>
     </view>
     <router-outlet />
   `,
 })
-export class App {
+export class App {}
+```
+
+- **`routerLink` and `routerLinkActive` are Angular's own,** from `@angular/router`. A tap on the element navigates: `RouterLink` listens for `click`, and AngularLynx hands it the tap, as [Lynx for Web](/guide/glossary#web-preview) does.
+- **Put `routerLink` on any element**, usually the `<view>` around a label. Its inputs work as on the web, such as `queryParams`, `replaceUrl` and `state`. There's no `href` to show, as on any element that isn't an `<a>`.
+- **`routerLinkActive` adds its classes while the link's route is active.** For styling a class can't do, read its state: `#link="routerLinkActive"`, then `link.isActive`.
+- **The active link is selected for screen readers.** While its route is active, `LYNX_ELEMENTS` adds `selected` to the element's `accessibility-traits`, after any traits of its own, and takes it away again after. iOS announces it as selected. Android has no selected trait, so there the element keeps its own traits.
+
+:::tip
+For tabs along the bottom of the screen, the [Tab Bar](/dolan/tab-bar) component does all of this: `npx @blotch/dolan add tab-bar`.
+:::
+
+### Navigate from code
+
+```typescript title="src/app/order-row.ts"
+import { Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-order-row',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="open()">
+      <text>Order #1042</text>
+    </view>
+  `,
+})
+export class OrderRow {
   readonly #router = inject(Router);
 
-  go(path: string): void {
-    setTimeout(() => this.#router.navigateByUrl(path)); // [!code highlight]
+  open(): void {
+    this.#router.navigate(['/orders', 1042]);
   }
 }
 ```
 
-- **Use `(bindtap)`, not `routerLink`.** `RouterLink` listens for `click`, which [Lynx elements](/guide/glossary#element) never fire. Call `Router.navigate()` or `navigateByUrl()` from a tap handler instead.
-- **Wrap navigation in `setTimeout`.** Navigating creates and destroys views, which can crash the app if it happens inside the tap handler. See [the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule).
+- **Call `navigate()` or `navigateByUrl()` straight from a handler**, as on the web.
 - **Failed navigations don't throw.** `navigate()` resolves to `false`, for example for a path with no route. Watch `Router.events` for `NavigationError` to find out why.
 
 ## Go back
@@ -87,7 +118,7 @@ export class Details {
   readonly #location = inject(Location);
 
   back(): void {
-    setTimeout(() => this.#location.back()); // [!code highlight]
+    this.#location.back(); // [!code highlight]
   }
 }
 ```
@@ -154,14 +185,14 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 
 ## Differences from web Angular
 
-| Feature                   | Web Angular                           | AngularLynx                            |
-| ------------------------- | ------------------------------------- | -------------------------------------- |
-| URL                       | Shown in the address bar              | Kept in memory, never shown            |
-| Starting URL              | Any URL the browser opens             | Always `/`                             |
-| Links                     | `routerLink`                          | `(bindtap)` with `Router.navigate()`   |
-| Going back                | Browser back button, `history.back()` | Android back button, `Location.back()` |
-| Navigating from a handler | Call it directly                      | Wrap it in `setTimeout`                |
-| Lazy routes               | Separate files, downloaded on demand  | Part of the bundle                     |
+| Feature      | Web Angular                                 | AngularLynx                            |
+| ------------ | ------------------------------------------- | -------------------------------------- |
+| URL          | Shown in the address bar                    | Kept in memory, never shown            |
+| Starting URL | Any URL the browser opens                   | Always `/`                             |
+| Links        | `<a routerLink>`                            | `routerLink` on any element            |
+| Active link  | `aria-current` with `ariaCurrentWhenActive` | The `selected` accessibility trait     |
+| Going back   | Browser back button, `history.back()`       | Android back button, `Location.back()` |
+| Lazy routes  | Separate files, downloaded on demand        | Part of the bundle                     |
 
 ## Good to know
 
@@ -170,6 +201,7 @@ Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and
 ## Related
 
 - [Routing API reference](/api/angular-lynx/routing)
-- [Threads: the `setTimeout` rule](/guide/concepts/threads#the-settimeout-rule)
+- [Handling taps and events](/guide/elements/event-handling)
 - [Multi-page apps](/guide/multi-page): separate bundles, each its own Angular app, instead of routes
+- [Tab Bar](/dolan/tab-bar): a ready-made bottom tab bar that navigates between routes
 - [Angular routing guide](https://angular.dev/guide/routing)

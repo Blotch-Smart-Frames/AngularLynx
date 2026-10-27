@@ -31,6 +31,14 @@
     "./testing/set-input-signal": {
       "types": "./dist/testing/set-input-signal.d.ts",
       "default": "./dist/testing/set-input-signal.js"
+    },
+    "./testing/fire-lynx-event": {
+      "types": "./dist/testing/fire-lynx-event.d.ts",
+      "default": "./dist/testing/fire-lynx-event.js"
+    },
+    "./testing/lynx-main-thread": {
+      "types": "./dist/testing/lynx-main-thread.d.ts",
+      "default": "./dist/testing/lynx-main-thread.js"
     }
   },
   "scripts": {

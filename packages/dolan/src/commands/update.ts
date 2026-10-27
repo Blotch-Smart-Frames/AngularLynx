@@ -1,7 +1,14 @@
 import * as p from '@clack/prompts';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
+import { themeFilesFor } from '../utils/tailwind.js';
 import { configExists, readConfig } from '../config.js';
 import { resolveDependencies } from '../registry.js';
 import {
@@ -11,18 +18,24 @@ import {
   rewriteImports,
 } from '../utils/resolve-paths.js';
 import { formatContent } from '../utils/format.js';
-import { trackedComponents, untrackedComponents } from '../utils/installed.js';
+import {
+  droppedFiles,
+  trackedComponents,
+  untrackedComponents,
+} from '../utils/installed.js';
 import { isInteractive } from '../utils/interactive.js';
 import { copiesTests } from '../utils/packages.js';
 import { installComponentPackages } from './install-packages.js';
 import {
   getOrCreateLockfile,
   hashContent,
+  themeBase,
   writeLockfile,
   type Lockfile,
 } from '../lockfile.js';
 import {
   analyzeFile,
+  analyzeRemovedFile,
   formatDiff,
   formatHunk,
   getHunks,
@@ -144,7 +157,8 @@ const reviewHunks = async (
  * upstream", while auto-updates and new files in selective mode get "apply /
  * skip for now". The "Show diff" option loops back into the same prompt so the
  * user can inspect before committing. "Review by hunk" lets the user
- * accept/reject individual changes within the file.
+ * accept/reject individual changes within the file. For a file upstream no
+ * longer ships, taking upstream's version deletes it.
  */
 const reviewFile = async (
   componentName: string,
@@ -153,17 +167,27 @@ const reviewFile = async (
   const isNewFile = analysis.status === 'new-upstream';
   const isConflict = analysis.status === 'conflict';
   const isUserModified = analysis.status === 'user-modified';
+  const isRemoved = analysis.removed === true;
 
-  const suffix = isConflict
-    ? '— how to resolve?'
-    : isNewFile
-      ? '— new file from upstream'
-      : isUserModified
-        ? '— you modified this file'
-        : '— upstream changed';
+  const suffix = isRemoved
+    ? isConflict
+      ? '— you modified it, and upstream no longer ships it'
+      : '— upstream no longer ships it'
+    : isConflict
+      ? '— how to resolve?'
+      : isNewFile
+        ? '— new file from upstream'
+        : isUserModified
+          ? '— you modified this file'
+          : '— upstream changed';
 
-  const applyOption =
-    isConflict || isUserModified
+  const applyOption = isRemoved
+    ? {
+        value: 'upstream' as const,
+        label: 'Delete it',
+        hint: isConflict ? 'discard my changes' : 'remove the file',
+      }
+    : isConflict || isUserModified
       ? {
           value: 'upstream' as const,
           label: 'Take upstream version',
@@ -183,18 +207,26 @@ const reviewFile = async (
             hint: 'overwrite with upstream',
           };
 
+  // Keeping a file upstream no longer ships makes it the app's own: there's
+  // nothing left to merge it with, so dolan stops tracking it.
   const skipOption =
-    isConflict || isUserModified
+    isRemoved && isConflict
       ? {
           value: 'keep' as const,
           label: 'Keep my version',
-          hint: 'skip upstream changes for this file',
+          hint: 'keep it as my own file',
         }
-      : {
-          value: 'keep' as const,
-          label: 'Skip for now',
-          hint: 'keep current, ask again next time',
-        };
+      : isConflict || isUserModified
+        ? {
+            value: 'keep' as const,
+            label: 'Keep my version',
+            hint: 'skip upstream changes for this file',
+          }
+        : {
+            value: 'keep' as const,
+            label: 'Skip for now',
+            hint: 'keep current, ask again next time',
+          };
 
   const options: { value: string; label: string; hint: string }[] = [
     {
@@ -206,8 +238,9 @@ const reviewFile = async (
     applyOption,
   ];
 
-  // New files have nothing to compare hunk-by-hunk — it's all new content
-  if (!isNewFile) {
+  // New files have nothing to compare hunk-by-hunk — it's all new content —
+  // and a deletion is all or nothing.
+  if (!isNewFile && !isRemoved) {
     options.push({
       value: 'hunk-review',
       label: 'Review by hunk',
@@ -273,6 +306,11 @@ const reviewFile = async (
  *                            (user has edits, no upstream change → keep theirs).
  *   - **conflict**         — current differs from base AND upstream differs
  *                            from base (both sides moved → prompt the user).
+ *
+ * A file the lockfile tracks that upstream no longer ships gets the same
+ * statuses from `analyzeRemovedFile`, with "no file" as upstream's version:
+ * taking it deletes the file and drops its lockfile entry, so an untouched
+ * one goes as an auto-update and an edited one is a conflict.
  *
  * `--force` bypasses all prompts and overwrites every file with upstream,
  * which is destructive but useful for resetting to a clean baseline.
@@ -381,6 +419,27 @@ export const updateCommand = async (options: {
       });
     }
 
+    // Files dolan copied that upstream has since stopped shipping. Taking
+    // upstream's version deletes them, by the same rules as a change: quietly
+    // when nobody edited them, after asking when someone did.
+    for (const file of droppedFiles(name, lockfile)) {
+      const destPath = join(destDir, file);
+      const currentContent = existsSync(destPath)
+        ? readFileSync(destPath, 'utf-8')
+        : null;
+      fileAnalyses.push({
+        file,
+        status: analyzeRemovedFile(
+          currentContent,
+          lockedComponent[file]!.hash,
+          hashContent,
+        ),
+        currentContent: currentContent ?? '',
+        newContent: '',
+        removed: true,
+      });
+    }
+
     componentAnalyses.push({ name, files: fileAnalyses });
   }
 
@@ -390,8 +449,7 @@ export const updateCommand = async (options: {
 
   // Theme files
   const themeDir = resolve(cwd, config.aliases.theme);
-  const themeFiles = ['default.css', 'dark.css', 'tailwind-plugin.ts'];
-  for (const file of themeFiles) {
+  for (const file of themeFilesFor(cwd, { tests })) {
     const src = join(uiSrc, 'theme', file);
     if (!existsSync(src)) continue;
 
@@ -402,7 +460,9 @@ export const updateCommand = async (options: {
     const currentContent = existsSync(destPath)
       ? readFileSync(destPath, 'utf-8')
       : null;
-    const storedHash = lockfile.theme[file]?.hash ?? null;
+    // A lockfile an older `init` wrote has no theme hashes, so an untouched
+    // copy gets its release's hash as the base instead (see themeBase).
+    const storedHash = themeBase(lockfile, file, currentContent);
 
     sharedAnalyses.push({
       file: `theme/${file}`,
@@ -425,6 +485,18 @@ export const updateCommand = async (options: {
       p.log.message(
         `  ${STATUS_ICONS[overall]} ${pc.bold(comp.name)} — ${STATUS_LABELS[overall]}`,
       );
+      // Name each file a deletion would take, since the component's line
+      // reads like an ordinary update.
+      for (const file of comp.files) {
+        if (!file.removed || file.status === 'up-to-date') continue;
+        p.log.message(
+          `    ${STATUS_ICONS[file.status]} ${comp.name}/${file.file} — ${
+            file.status === 'conflict'
+              ? pc.red('upstream no longer ships it, and you modified it')
+              : pc.blue('upstream no longer ships it → delete')
+          }`,
+        );
+      }
     }
   }
 
@@ -592,6 +664,7 @@ export const updateCommand = async (options: {
   applySpinner.start('Applying updates...');
 
   let appliedCount = 0;
+  let deletedCount = 0;
   let skippedCount = 0;
   const newLockfile = getOrCreateLockfile(cwd);
 
@@ -638,6 +711,27 @@ export const updateCommand = async (options: {
             (options.force || resolution === 'upstream')) ||
           (file.status === 'conflict' &&
             (options.force || resolution === 'upstream')));
+
+      if (file.removed) {
+        // "Skip for now" leaves the file and its lockfile entry (newLockfile
+        // was read from disk), so the next update asks again.
+        if (selectivelySkipped) {
+          skippedCount++;
+          continue;
+        }
+        if (shouldOverwrite) {
+          rmSync(destPath, { force: true });
+          deletedCount++;
+        } else if (file.status === 'conflict') {
+          // Kept: upstream has nothing to merge into it any more, so it's the
+          // app's own file now, like an ejected component's.
+          skippedCount++;
+        }
+        // Deleted, kept as the app's, or already gone: dolan stops tracking
+        // it either way. The entry used to stay forever.
+        delete newLockfile.components[comp.name][file.file];
+        continue;
+      }
 
       if (resolution === 'partial') {
         // User accepted some hunks but not all — write reconstructed
@@ -764,6 +858,11 @@ export const updateCommand = async (options: {
   if (appliedCount > 0) {
     p.log.success(`${pc.bold(String(appliedCount))} file(s) updated.`);
   }
+  if (deletedCount > 0) {
+    p.log.success(
+      `${pc.bold(String(deletedCount))} file(s) deleted: upstream no longer ships them.`,
+    );
+  }
   if (skippedCount > 0 && isSelective) {
     p.log.info(
       `${pc.bold(String(skippedCount))} file(s) skipped — they'll appear again on next update.`,
@@ -784,7 +883,9 @@ export const updateCommand = async (options: {
 };
 
 /**
- * Build a fresh lockfile snapshot for the "nothing to apply" case
+ * Build a fresh lockfile snapshot for the "nothing to apply" case. The only
+ * files upstream no longer ships that get here are already gone from disk
+ * (any other is an auto-update or a conflict), so their entries are dropped.
  */
 const buildLockfile = (
   components: ComponentAnalysis[],
@@ -794,15 +895,12 @@ const buildLockfile = (
   const lockfile: Lockfile = { ...existing };
 
   for (const comp of components) {
-    lockfile.components[comp.name] = {
-      ...lockfile.components[comp.name],
-      ...Object.fromEntries(
-        comp.files.map((file) => [
-          file.file,
-          { hash: hashContent(file.newContent) },
-        ]),
-      ),
-    };
+    const entries = { ...lockfile.components[comp.name] };
+    for (const file of comp.files) {
+      if (file.removed) delete entries[file.file];
+      else entries[file.file] = { hash: hashContent(file.newContent) };
+    }
+    lockfile.components[comp.name] = entries;
   }
 
   for (const file of shared) {

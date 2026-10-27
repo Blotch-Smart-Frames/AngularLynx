@@ -7,6 +7,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * nowhere else in the app, so the render tests only see its color if
  * Tailwind read the template itself. The build once handed Tailwind the
  * bundle's modules instead of `content`, and a template isn't a module.
+ *
+ * Its background is a UI theme color with an opacity modifier
+ * (`bg-primary/10`), which becomes `rgba(var(--primary-rgb), 0.1)` (issue
+ * #115): through the theme's plugin on Tailwind 3, and on Tailwind 4 through
+ * the build, which rewrites Tailwind's color-mix() (issue #116), so it also
+ * shows Tailwind 4's CSS reached the app. It shares the element so the
+ * page gets no taller: CI's small Android emulator has no room to spare.
  */
 @Component({
   selector: 'app-tailwind-card',

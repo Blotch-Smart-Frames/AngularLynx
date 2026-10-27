@@ -102,18 +102,21 @@ export class UiInput implements FormValueControl<string> {
   #shakeAnim?: AnimationHandle;
   #previousError = '';
 
-  constructor() {
-    // Shake the input when an error appears (transition from no-error to error)
-    effect(() => {
-      const err = this.error();
-      const el = this.containerRef()?.nativeElement;
-      if (err && !this.#previousError && el) {
-        this.#shakeAnim?.cancel();
-        this.#shakeAnim = shake(el);
-      }
-      this.#previousError = err;
-    });
-  }
+  /**
+   * Shakes the field when an error appears (a change from no error to one). A
+   * field rather than a constructor: Angular's test build keeps a function for
+   * a constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly shakeOnError = effect(() => {
+    const err = this.error();
+    const el = this.containerRef()?.nativeElement;
+    if (err && !this.#previousError && el) {
+      this.#shakeAnim?.cancel();
+      this.#shakeAnim = shake(el);
+    }
+    this.#previousError = err;
+  });
 
   protected readonly containerClass = computed(() =>
     cn('flex-col gap-1.5 flex', this.userClass()),

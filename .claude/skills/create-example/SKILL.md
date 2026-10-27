@@ -60,6 +60,8 @@ If using Tailwind (for UI component examples), also add:
 }
 ```
 
+Most examples use Tailwind 3 and the Lynx preset, as below. For Tailwind 4, which new apps get, copy `examples/tailwind-4` instead: `tailwindcss` and `@tailwindcss/postcss` at `^4.3.3`, a `.postcssrc.json` running `@tailwindcss/postcss`, no `tailwind.config.ts`, and a `src/styles.css` that imports Tailwind's theme and utilities, then the theme's `default.css`, `dark.css` and `tailwind.css`.
+
 #### No `lynx.config.ts`
 
 An example doesn't need one. `ng build` and `ng serve` take the entry from the build target's `browser` in angular.json, build both the `web` and `lynx` environments, and add the AngularLynx rsbuild plugin themselves. Add a `lynx.config.ts` only to pass the plugin options or change RSpeedy settings (see `examples/ssr` and `examples/multi-page`), importing from the builders package:

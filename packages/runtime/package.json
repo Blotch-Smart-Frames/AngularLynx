@@ -1,6 +1,6 @@
 {
   "name": "@blotch/angular-lynx",
-  "version": "22.2.2",
+  "version": "22.2.3",
   "description": "Angular renderer for the Lynx cross-platform native UI framework",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {

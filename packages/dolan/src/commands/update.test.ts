@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
+import {
+  createFixture,
+  DEFAULT_CONFIG,
+  shippedTheme,
+  type Fixture,
+} from '../test-utils';
 import { hashContent } from '../lockfile';
 
 const spinnerMock = { start: vi.fn(), stop: vi.fn() };
@@ -36,9 +41,9 @@ vi.mock('../utils/resolve-paths.js', () => ({
   getUiSourceDir: () => fixture.uiDir,
   getComponentSourceDir: (name: string) =>
     join(fixture.uiDir, 'components', name),
-  getComponentFiles: (name: string) =>
-    readdirSync(join(fixture.uiDir, 'components', name)).filter((f) =>
-      f.endsWith('.ts'),
+  getComponentFiles: (name: string, { tests }: { tests: boolean }) =>
+    readdirSync(join(fixture.uiDir, 'components', name)).filter(
+      (f) => f.endsWith('.ts') && (tests || !f.endsWith('.test.ts')),
     ),
   rewriteImports: (content: string) => content,
 }));
@@ -1905,5 +1910,383 @@ describe('updateCommand without a terminal', () => {
     expect(readInstalledFile(fixture.dir, 'skeleton', 'skeleton.ts')).toBe(
       base,
     );
+  });
+});
+
+// 22.2.2's `init` copied the theme but recorded no hashes for it, so the first
+// `update` after a release that changed the theme called every theme file a
+// conflict, though nobody had touched them.
+describe('updateCommand — theme files an older init copied', () => {
+  const themePath = (file: string) =>
+    join(fixture.dir, DEFAULT_CONFIG.aliases.theme, file);
+  const upstream = {
+    'default.css': ':root { --primary: rgba(2, 2, 2, 1); }',
+    'dark.css': 'page.dark { --primary: rgba(3, 3, 3, 1); }',
+  };
+
+  /**
+   * Writes `files` where init put the theme, with `"theme": {}` locked.
+   */
+  const setup = (files: Record<string, string>) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: { version: 1, components: {}, theme: {} },
+      themeFiles: upstream,
+    });
+    for (const [file, content] of Object.entries(files)) {
+      writeFileSync(themePath(file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+
+  it('updates an untouched copy as an auto-update, not a conflict', async () => {
+    setup({
+      'default.css': shippedTheme('default.css'),
+      'dark.css': shippedTheme('dark.css'),
+    });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.select).not.toHaveBeenCalled();
+    expect(p.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Apply 2 auto-update(s)?' }),
+    );
+    expect(readFileSync(themePath('default.css'), 'utf-8')).toBe(
+      upstream['default.css'],
+    );
+    expect(readFileSync(themePath('dark.css'), 'utf-8')).toBe(
+      upstream['dark.css'],
+    );
+    expect(readLockfile(fixture.dir).theme).toEqual({
+      'default.css': { hash: hashContent(upstream['default.css']) },
+      'dark.css': { hash: hashContent(upstream['dark.css']) },
+    });
+  });
+
+  it('applies them without a terminal, rather than leaving conflicts and exiting 1', async () => {
+    interactive = false;
+    setup({ 'default.css': shippedTheme('default.css') });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readFileSync(themePath('default.css'), 'utf-8')).toBe(
+      upstream['default.css'],
+    );
+    expect(p.outro).toHaveBeenCalledWith('Update complete.');
+  });
+
+  it('still asks about a copy that was edited, since its base is unknown', async () => {
+    const edited = `${shippedTheme('default.css')}\npage { --mine: red; }\n`;
+    setup({ 'default.css': edited });
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('how to resolve?'),
+      }),
+    );
+    expect(readFileSync(themePath('default.css'), 'utf-8')).toBe(edited);
+  });
+});
+
+// 22.2.3 stopped copying `*-render.test.ts`, but `update` only looked at the
+// files upstream ships now and kept every old lockfile entry, so the stale
+// spec stayed, importing a helper dolan doesn't copy, and broke `ng test`.
+describe('updateCommand — files upstream no longer ships', () => {
+  const card = 'export const Card = {};';
+  const stale = "import { setInputSignal } from '../../../test-utils/x';";
+  const edited = `${stale}\n// mine\n`;
+  const STALE = 'card-render.test.ts';
+  const stalePath = () =>
+    join(fixture.dir, DEFAULT_CONFIG.aliases.components, 'card', STALE);
+
+  /**
+   * card is up to date, and it has STALE (as add copied it, unless `onDisk`
+   * says otherwise), which upstream no longer ships. `upstreamCard` changes
+   * card.ts upstream too.
+   */
+  const setup = ({
+    onDisk = stale,
+    upstreamCard = card,
+  }: { onDisk?: string | null; upstreamCard?: string } = {}) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: {
+            'card.ts': { hash: hashContent(card) },
+            [STALE]: { hash: hashContent(stale) },
+          },
+        },
+        theme: {},
+      },
+      components: {
+        card: {
+          'card.ts': card,
+          ...(onDisk === null ? {} : { [STALE]: onDisk }),
+        },
+      },
+      uiSource: { card: { 'card.ts': upstreamCard } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+  const lockedCard = () => readLockfile(fixture.dir).components.card;
+  /**
+   * The log messages, colors stripped.
+   */
+  const messages = async () => {
+    const p = await import('@clack/prompts');
+    const text = (p.log.message as ReturnType<typeof vi.fn>).mock.calls
+      .map(([m]) => m as string)
+      .join('\n');
+    // oxlint-disable-next-line no-control-regex -- matching ANSI color codes
+    return text.replace(/\u001b\[\d+m/g, '');
+  };
+  /**
+   * The options of the select prompt's first call.
+   */
+  const selectOptions = async () => {
+    const p = await import('@clack/prompts');
+    const [{ options }] = (p.select as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [
+      { options: { value: string; label: string; hint: string }[] },
+    ];
+    return options;
+  };
+
+  beforeEach(async () => {
+    // A reset drops answers an earlier test queued and never used.
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue('upstream');
+  });
+
+  it('deletes one nobody edited, with its lockfile entry, after the usual question', async () => {
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Apply 1 auto-update(s)?' }),
+    );
+    expect(p.select).not.toHaveBeenCalled();
+    expect(await messages()).toContain(
+      `card/${STALE} — upstream no longer ships it → delete`,
+    );
+    expect(existsSync(stalePath())).toBe(false);
+    expect(lockedCard()).toEqual({ 'card.ts': { hash: hashContent(card) } });
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('deleted: upstream no longer ships them'),
+    );
+  });
+
+  it('deletes one nobody edited without a terminal too', async () => {
+    interactive = false;
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(existsSync(stalePath())).toBe(false);
+    expect(lockedCard()).not.toHaveProperty(STALE);
+    expect(p.outro).toHaveBeenCalledWith('Update complete.');
+  });
+
+  it('asks before deleting one you edited, and deletes it when told to', async () => {
+    setup({ onDisk: edited });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(await messages()).toContain(
+      `card/${STALE} — upstream no longer ships it, and you modified it`,
+    );
+    expect(p.select).toHaveBeenCalledTimes(1);
+    expect(p.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          'you modified it, and upstream no longer ships it',
+        ),
+      }),
+    );
+    // A deletion is all or nothing, so there are no hunks to review.
+    expect(await selectOptions()).toEqual([
+      expect.objectContaining({ value: 'diff' }),
+      {
+        value: 'keep',
+        label: 'Keep my version',
+        hint: 'keep it as my own file',
+      },
+      { value: 'upstream', label: 'Delete it', hint: 'discard my changes' },
+    ]);
+    expect(existsSync(stalePath())).toBe(false);
+    expect(lockedCard()).not.toHaveProperty(STALE);
+  });
+
+  it('shows what deleting it would take away', async () => {
+    setup({ onDisk: edited });
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('diff')
+      .mockResolvedValueOnce('upstream');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(await messages()).toContain(`- // mine`);
+    expect(existsSync(stalePath())).toBe(false);
+  });
+
+  it('keeps one you edited when told to, as your own file from then on', async () => {
+    setup({ onDisk: edited });
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readFileSync(stalePath(), 'utf-8')).toBe(edited);
+    // Upstream has nothing left to merge into it, so dolan stops tracking it,
+    // and the next update doesn't ask again.
+    expect(lockedCard()).toEqual({ 'card.ts': { hash: hashContent(card) } });
+    expect(p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining('file(s) kept as-is'),
+    );
+
+    vi.clearAllMocks();
+    await updateCommand({});
+    expect(p.select).not.toHaveBeenCalled();
+    expect(readFileSync(stalePath(), 'utf-8')).toBe(edited);
+  });
+
+  it('leaves one you edited for a terminal to ask about without one, and exits 1', async () => {
+    interactive = false;
+    setup({ onDisk: edited });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(1)');
+
+    expect(p.select).not.toHaveBeenCalled();
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('conflict(s) left as they are'),
+    );
+    expect(readFileSync(stalePath(), 'utf-8')).toBe(edited);
+    expect(lockedCard()[STALE]).toEqual({ hash: hashContent(stale) });
+  });
+
+  it('deletes one you edited with --force', async () => {
+    interactive = false;
+    setup({ onDisk: edited });
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true });
+
+    expect(existsSync(stalePath())).toBe(false);
+    expect(lockedCard()).not.toHaveProperty(STALE);
+  });
+
+  describe('with --selective', () => {
+    it('asks about the deletion, and "Skip for now" keeps the file and its entry', async () => {
+      setup();
+      const p = await import('@clack/prompts');
+      (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({ selective: true });
+
+      expect(p.select).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringMatching(/upstream no longer ships it$/),
+        }),
+      );
+      expect(await selectOptions()).toEqual([
+        expect.objectContaining({ value: 'diff' }),
+        expect.objectContaining({ value: 'keep', label: 'Skip for now' }),
+        { value: 'upstream', label: 'Delete it', hint: 'remove the file' },
+      ]);
+      expect(readFileSync(stalePath(), 'utf-8')).toBe(stale);
+      expect(lockedCard()[STALE]).toEqual({ hash: hashContent(stale) });
+    });
+
+    it('deletes it when accepted', async () => {
+      setup();
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({ selective: true });
+
+      expect(existsSync(stalePath())).toBe(false);
+      expect(lockedCard()).not.toHaveProperty(STALE);
+    });
+  });
+
+  describe('already gone from disk', () => {
+    it('drops its entry when nothing else changed', async () => {
+      setup({ onDisk: null });
+      const p = await import('@clack/prompts');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(await messages()).not.toContain(STALE);
+      expect(p.outro).toHaveBeenCalledWith('Everything is up to date.');
+      expect(lockedCard()).toEqual({ 'card.ts': { hash: hashContent(card) } });
+    });
+
+    it('drops its entry alongside an update', async () => {
+      const upstreamCard = 'export const Card = { v: 2 };';
+      setup({ onDisk: null, upstreamCard });
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(lockedCard()).toEqual({
+        'card.ts': { hash: hashContent(upstreamCard) },
+      });
+    });
+  });
+
+  it("leaves the tests a project without the testing library doesn't get", async () => {
+    // Copied before dolan checked for the library. Upstream still ships them,
+    // so they aren't deleted: `doctor` says what to do about them instead.
+    const test = "import '@blotch/angular-lynx-testing-library';";
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {
+          card: {
+            'card.ts': { hash: hashContent(card) },
+            'card.test.ts': { hash: hashContent(test) },
+          },
+        },
+        theme: {},
+      },
+      components: { card: { 'card.ts': card, 'card.test.ts': test } },
+      uiSource: { card: { 'card.ts': card, 'card.test.ts': test } },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readInstalledFile(fixture.dir, 'card', 'card.test.ts')).toBe(test);
+    expect(lockedCard()['card.test.ts']).toEqual({ hash: hashContent(test) });
   });
 });

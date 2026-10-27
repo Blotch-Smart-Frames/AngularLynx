@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { getComponentNames } from '../registry.js';
 import type { Lockfile } from '../lockfile.js';
+import { getComponentFiles } from './resolve-paths.js';
 
 /**
  * The registry components with a folder in the components directory. Other
@@ -35,3 +36,21 @@ export const untrackedComponents = (
   lockfile: Lockfile,
 ): string[] =>
   componentsOnDisk(componentsDir).filter((name) => !lockfile.components[name]);
+
+/**
+ * The files dolan tracks for a component that upstream no longer ships, such
+ * as the `*-render.test.ts` files that 22.2.3 stopped copying. `update` and
+ * `add` used to keep their lockfile entries and leave them on disk, where a
+ * stale spec importing a helper dolan doesn't copy broke the app's `ng test`.
+ *
+ * Shipped means shipped with tests: a project without the testing library
+ * doesn't get the components' `<name>.test.ts`, but upstream still ships it,
+ * so a copy from before dolan checked for the library isn't deleted here
+ * (`doctor` warns about those instead).
+ */
+export const droppedFiles = (name: string, lockfile: Lockfile): string[] => {
+  const shipped = new Set(getComponentFiles(name, { tests: true }));
+  return Object.keys(lockfile.components[name] ?? {}).filter(
+    (file) => !shipped.has(file),
+  );
+};

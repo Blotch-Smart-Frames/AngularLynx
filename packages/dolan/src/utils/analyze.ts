@@ -19,6 +19,11 @@ export type FileAnalysis = {
   status: FileStatus;
   currentContent: string;
   newContent: string;
+  /**
+   * Upstream stopped shipping the file, so taking upstream's version deletes
+   * it (see analyzeRemovedFile). Its `newContent` is empty.
+   */
+  removed?: boolean;
 };
 
 export type ComponentAnalysis = {
@@ -78,6 +83,25 @@ export const analyzeFile = (
   if (storedHash !== currentHash && storedHash === newHash)
     return 'user-modified';
   return 'conflict';
+};
+
+/**
+ * The status of a file dolan tracks but upstream no longer ships, such as the
+ * `*-render.test.ts` files that 22.2.3 stopped copying. Upstream's version of
+ * it is "no file", so the same three-way rules apply as for a changed file:
+ *   - gone from disk too → up-to-date (only its lockfile entry is left)
+ *   - current == base → auto-update (nobody edited it: delete it)
+ *   - current != base → conflict (git's modify/delete: ask before deleting)
+ */
+export const analyzeRemovedFile = (
+  currentContent: string | null,
+  storedHash: string,
+  hashContent: (content: string) => string,
+): FileStatus => {
+  if (currentContent === null) return 'up-to-date';
+  return hashContent(currentContent) === storedHash
+    ? 'auto-update'
+    : 'conflict';
 };
 
 export const formatDiff = (

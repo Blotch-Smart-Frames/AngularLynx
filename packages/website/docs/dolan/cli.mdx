@@ -88,6 +88,7 @@ Asks two questions, then sets up the project. Pass an option to answer its quest
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
 - Copies `default.css`, `dark.css` and `tailwind-plugin.ts` into the theme folder. If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
+- Records the hashes of the theme files it copied in `dolan.lock.json`, so [`update`](#update) can tell whether you've edited them.
 - Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
 - Creates the components folder and prints the next steps: the Tailwind plugin, and the `@import` lines for `default.css` and `dark.css`, written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
 
@@ -119,7 +120,7 @@ Copies each component into `<components>/<name>/`. With no names, it shows a che
 - **Dependencies come too.** Adding `button` also adds `spinner`, and the CLI prints what it added.
 - **Imports are rewritten.** `cn()` and the animation helpers are imported from `@blotch/dolan/utils/cn` and `@blotch/dolan/utils/animate`.
 - **Unit tests are copied if you can run them.** Each component's `<name>.test.ts` renders it with `@blotch/angular-lynx-testing-library`, so it's copied only when your `package.json` lists the library. Otherwise `add` leaves the tests out and says so: run `ng generate @blotch/angular-lynx:add-testing`, then `dolan update` adds them. The tests' helpers come from `@blotch/dolan/testing/*`.
-- **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise. Without a terminal it skips it, and says how to overwrite it. `--force` overwrites without asking.
+- **Existing components are kept.** If a folder already exists, it asks before overwriting (default No) and skips it otherwise. Without a terminal it skips it, and says how to overwrite it. `--force` overwrites without asking. Overwriting also deletes the files an older version copied that the bundled source no longer has.
 - **npm packages are installed.** If a component imports a package your `package.json` lacks, `add` installs it with your package manager (npm, pnpm, yarn or bun, detected from the lockfile): `class-variance-authority` for Alert, Badge, Button, Button Group, Toggle and Typography, and `@tanstack/charts` and `d3-shape` for `chart` and the chart presets.
 
 | Argument or option | Description                                                                  |
@@ -193,10 +194,13 @@ Merges the bundled source into every installed component, file by file:
 | Your file | Bundled source       | What `update` does                                                                            |
 | --------- | -------------------- | --------------------------------------------------------------------------------------------- |
 | Unchanged | Changed, or new file | Asks once whether to apply all of these (default Yes), then overwrites.                       |
+| Unchanged | No longer has it     | Deletes it, with the changes above.                                                           |
 | Edited    | Unchanged            | Keeps yours.                                                                                  |
 | Edited    | Changed              | Conflict. Asks per file: show the diff, keep yours, take upstream, or review it hunk by hunk. |
+| Edited    | No longer has it     | Conflict. Asks: show the diff, keep yours, or delete it.                                      |
 
-- **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. That covers theme files you edited before your first `update`.
+- **No hash means conflict.** A file with no recorded hash that differs from upstream is a conflict. Theme files are the exception: `init` in 22.2.3 and earlier didn't record their hashes, so a theme file that's still exactly as one of those releases shipped it counts as unchanged.
+- **Files the bundled source no longer has are deleted**, along with their lockfile entries. 22.2.3 stopped copying the `*-render.test.ts` files, for example. If you keep one you edited, it's yours: dolan stops tracking it.
 - **Ejected components are left alone.** `update`, `list`, `diff` and `outdated` only look at the components in `dolan.lock.json`. See [`eject`](#eject).
 - **Theme files** (`default.css`, `dark.css`, `tailwind-plugin.ts`) are merged the same way. Themes you made with [`theme`](#theme) aren't.
 - **New dependencies are added.** If a component's new version needs another component, `update` copies it in.

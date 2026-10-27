@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createFixture, type Fixture } from '../test-utils';
+import { hashContent, type Lockfile } from '../lockfile';
 import type * as Packages from '../utils/packages.js';
 
 const spinnerMock = { start: vi.fn(), stop: vi.fn() };
@@ -80,6 +81,9 @@ afterEach(() => {
 const THEME_CSS = 'page { --background: rgba(255, 255, 255, 1); }';
 const TAILWIND_PLUGIN = 'export const blotchPlugin = () => {};';
 
+const readLockfile = (): Lockfile =>
+  JSON.parse(readFileSync(join(fixture.dir, 'dolan.lock.json'), 'utf-8'));
+
 /**
  * Answers each folder question as pressing Enter does in the real
  * @clack/prompts: with its `defaultValue`. That keeps the defaults coming from
@@ -127,6 +131,48 @@ describe('initCommand', () => {
 
     expect(existsSync(join(fixture.dir, 'src/components/ui'))).toBe(true);
     expect(p.note).toHaveBeenCalled();
+  });
+
+  // Without them, the first `update` after a release that changed the theme
+  // called all three files a conflict, though nobody had touched them.
+  it("records the theme files' hashes, so update can tell they're untouched", async () => {
+    fixture = createFixture({
+      themeFiles: {
+        'default.css': THEME_CSS,
+        'dark.css': THEME_CSS,
+        'tailwind-plugin.ts': TAILWIND_PLUGIN,
+      },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    await useDefaultAnswers();
+
+    const { initCommand } = await import('./init');
+    await initCommand();
+
+    expect(readLockfile().theme).toEqual({
+      'default.css': { hash: hashContent(THEME_CSS) },
+      'dark.css': { hash: hashContent(THEME_CSS) },
+      'tailwind-plugin.ts': { hash: hashContent(TAILWIND_PLUGIN) },
+    });
+  });
+
+  it('keeps the components an existing lockfile tracks', async () => {
+    const card = { 'card.ts': { hash: 'abc' } };
+    fixture = createFixture({
+      lockfile: { version: 1, components: { card }, theme: {} },
+      themeFiles: { 'default.css': THEME_CSS },
+    });
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+    await useDefaultAnswers();
+
+    const { initCommand } = await import('./init');
+    await initCommand();
+
+    expect(readLockfile()).toEqual({
+      version: 1,
+      components: { card },
+      theme: { 'default.css': { hash: hashContent(THEME_CSS) } },
+    });
   });
 
   it('skips a theme file that does not exist upstream', async () => {
@@ -300,6 +346,32 @@ describe('initCommand', () => {
       expect(p.log.info).toHaveBeenCalledWith(
         expect.stringContaining('dolan init --force'),
       );
+      // The kept file isn't upstream's, so upstream's hash isn't its base.
+      // The two that are upstream's, written or already matching, are.
+      expect(readLockfile().theme).toEqual({
+        'dark.css': { hash: hashContent(THEME_CSS) },
+        'tailwind-plugin.ts': { hash: hashContent(TAILWIND_PLUGIN) },
+      });
+    });
+
+    it('leaves the base the lockfile has for a file it keeps', async () => {
+      seedTheme({ 'default.css': 'page { --mine: red; }' });
+      writeFileSync(
+        join(fixture.dir, 'dolan.lock.json'),
+        JSON.stringify({
+          version: 1,
+          components: {},
+          theme: { 'default.css': { hash: 'base' } },
+        }),
+      );
+      await useDefaultAnswers();
+      const p = await import('@clack/prompts');
+      (p.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+      const { initCommand } = await import('./init');
+      await initCommand();
+
+      expect(readLockfile().theme['default.css']).toEqual({ hash: 'base' });
     });
 
     it('keeps them when the question is canceled', async () => {
@@ -327,6 +399,9 @@ describe('initCommand', () => {
 
       expect(theme('default.css')).toBe(THEME_CSS);
       expect(p.log.info).not.toHaveBeenCalled();
+      expect(readLockfile().theme['default.css']).toEqual({
+        hash: hashContent(THEME_CSS),
+      });
     });
 
     it('replaces them, and an existing config, without asking with --force', async () => {

@@ -18,7 +18,7 @@ page {
 ```
 
 - The tokens are set on `page`, the root element of every Lynx app (see [Glossary](/guide/glossary#page)), so every element can read them.
-- Each token holds a complete `rgba()` color. `tailwind-plugin.ts` maps the classes straight to the variable: `bg-primary` becomes `background-color: var(--primary)`.
+- Each token holds a complete `rgba()` color. `tailwind.css` (or, on Tailwind 3, `tailwind-plugin.ts`) maps the classes straight to the variable: `bg-primary` becomes `background-color: var(--primary)`.
 - `dolan init` copied both files into `src/styles/`. They're yours to edit.
 
 The tokens are complete colors because of how Lynx parses them. Lynx accepts only comma-separated `hsl()`, while the usual shadcn/ui setup produces space-separated `hsl(var(--x) / 1)`. Lynx drops that value without a warning, and the element renders transparent. See [CSS on Lynx](/guide/styling) for the other color rules.
@@ -43,7 +43,7 @@ page {
 ```
 
 - `bg-primary` reads `--primary`: `background-color: var(--primary)`.
-- `bg-primary/50` reads `--primary-rgb`: `background-color: rgba(var(--primary-rgb), 0.5)`.
+- `bg-primary/50` reads `--primary-rgb`: `background-color: rgba(var(--primary-rgb), 0.5)`. Tailwind 4 writes the modifier as `color-mix()`, which Lynx can't read, and the build turns it into the same `rgba()`.
 - **Keep each pair the same color.** If you change `--primary`, change `--primary-rgb` too. [`dolan doctor`](/dolan/cli#doctor) warns when a pair doesn't match.
 - **Write the channels with commas.** Lynx fills `rgba()` with the variable's text before it reads the color, so `24, 24, 27` becomes three arguments.
 
@@ -109,7 +109,7 @@ page {
 
 ### Add a token
 
-Add the variable and its channels to both theme files, then map it in the plugin with `themeColor()`:
+Add the variable and its channels to both theme files, then map it in the plugin with `themeColor()` (Tailwind 3) or in `tailwind.css` (Tailwind 4):
 
 ```css title="src/styles/default.css"
 page {
@@ -123,6 +123,15 @@ const colors = {
   // …the existing colors…
   success: themeColor('success'), // [!code highlight]
 };
+```
+
+On Tailwind 4, map it in `tailwind.css` instead:
+
+```css title="src/styles/tailwind.css"
+@theme inline {
+  /* …the existing colors… */
+  --color-success: var(--success); /* [!code highlight] */
+}
 ```
 
 You can now use `bg-success`, `text-success` and `bg-success/10`. Without the `-rgb` line, the modifiers draw nothing. A color you only ever use whole can skip it and map to the variable instead: `success: 'var(--success)'`.
@@ -201,5 +210,5 @@ Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb`
 
 - [UI Components](/dolan/): install the theme with `dolan init`
 - [CSS on Lynx](/guide/styling): color formats and other CSS differences
-- [Tailwind CSS](/guide/tailwindcss): the Tailwind setup the plugin builds on
+- [Tailwind CSS](/guide/tailwindcss): the Tailwind setup the theme builds on
 - [Dark mode](/guide/dark-mode): switching themes at runtime

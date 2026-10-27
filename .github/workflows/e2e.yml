@@ -105,6 +105,8 @@ jobs:
                 // Our peer range starts at 22.2.0; keep it honest.
                 { ...base, name: "Angular 22.2.0", args: "--angular 22.2.0" },
                 { ...base, name: "no Tailwind", args: "--no-tailwind" },
+                // New apps get Tailwind 4; apps made before keep Tailwind 3.
+                { ...base, name: "Tailwind 3", args: "--tailwind-version 3" },
                 { ...base, name: "Angular next", args: "--angular next", experimental: true },
                 { ...base, name: "rspeedy latest", args: "--rspeedy latest", experimental: true },
                 // The scaffolder is npm-only; pnpm and Yarn are tested through

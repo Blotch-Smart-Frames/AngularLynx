@@ -4,7 +4,7 @@
   "title": "AngularLynx add-tailwind schematic",
   "type": "object",
   "additionalProperties": false,
-  "description": "Adds Tailwind CSS with @lynx-js/tailwind-preset to an existing AngularLynx project.",
+  "description": "Adds Tailwind CSS to an existing AngularLynx project: Tailwind 4 by default, or Tailwind 3 with @lynx-js/tailwind-preset.",
   "properties": {
     "project": {
       "type": "string",
@@ -12,6 +12,11 @@
       "$default": {
         "$source": "projectName"
       }
+    },
+    "tailwindVersion": {
+      "type": ["string", "number"],
+      "enum": ["4", "3", 4, 3],
+      "description": "The Tailwind CSS major version to set up: 4 (with @tailwindcss/postcss), or 3 (with @lynx-js/tailwind-preset). Defaults to the version the project already depends on, else 4."
     }
   },
   "required": []

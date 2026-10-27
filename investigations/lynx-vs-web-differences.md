@@ -5099,3 +5099,32 @@ A `(focus)` handler can restyle the field it belongs to, for example to give it 
 ### What Lynx does
 
 On the iOS Simulator (Lynx Explorer 4.1, iOS 27), a `(bindfocus)` handler that changes the focused `<input>`'s border color, through a class or an inline style, or its background color, has no visible effect while the field has focus. The change does reach the element: a `<text>` bound to the same signal updates in the same render, and the same bundle shows the new border on an Android 14 emulator and in the web preview. Found while fixing `examples/form-input`'s focus border (issue #67), which therefore shows on Android and the web only. Not investigated further: the cause is somewhere in the iOS input (`LynxUIBaseInput`), not in what AngularLynx sends.
+
+---
+
+## Tailwind CSS 4 writes modern CSS that Lynx drops, mostly silently, while the web preview shows it
+
+### What you'd expect (web)
+
+Tailwind 4 targets current browsers: its output uses cascade layers (`@layer`), registered custom properties (`@property`), CSS nesting, `oklch()` colors, `color-mix()` for opacity modifiers, logical properties (`padding-inline` for every `px-*`), the individual `translate`/`rotate`/`scale` properties, `:where()` in `space-*` and `divide-*`, and percentage opacities (`opacity: 50%`).
+
+### What Lynx does
+
+Checked in Lynx Explorer 4.1 on iOS and Android, and in Lynx for Web (Chromium), with hand-written probes and with real Tailwind 4.3 output:
+
+- **`@layer` blocks are dropped**, natively and on the web: the template encoder only reads `@layer`, `@media` and `@supports` behind a compile option (`enable_css_rule_`, `css_rule_parser.cc` in lynx-family/lynx), and web-core's `encodeCSS` skips them. All of Tailwind 4's utilities are in `@layer utilities`, so nothing applies.
+- **`@property` is ignored.** A variable Tailwind registers with an initial value (`--tw-border-style: solid`) stays unset. `--x: initial` is a literal value to Lynx, not "unset", so a `var(--x, fallback)` reading it breaks.
+- **A selector list with an unknown pseudo-class loses the whole rule** at encode time, with a build warning: `:root, :host` (where Tailwind puts its theme), and `:where(…)`/`:is(…)`.
+- **`:last-child` never matches**, so `:not(:last-child)` matches every child. `* + *` works.
+- **`oklch()`, `oklab()` and `color-mix()` are dropped** (the element gets no color); the web preview shows them. `rgb()` with spaces and a slash, and 4- and 8-digit hex, work.
+- **`opacity: 50%` is ignored** on native; the web applies it.
+- **Logical shorthands (`padding-inline`, `margin-block`, `inset`) are removed at encode.** The longhands Lynx lists (`margin-inline-start`, `padding-inline-start`, `inset-inline-start`) parse but have no effect on either platform, even under `direction: ltr`.
+- **There are no `translate`, `rotate` or `scale` properties.** `transform` with `var()` inside its functions works, and composes across classes when every element starts with the variables' values (a `*` rule).
+- **A `var()` inside a function, inside a custom property's value, never resolves**: `--tw-translate-x: calc(var(--spacing) * 2)` and `--tw-blur: blur(var(--blur-sm))` leave the property unusable, even when the variable is set in the same rule or the `var()` has a fallback. A `var()` at the top of the value (`--a: var(--b)`) resolves, and so does one inside a function in an ordinary property (`width: calc(var(--spacing) * 20)`).
+- **`@keyframes` without a `from` (or `to`) keyframe don't play.** Tailwind's `spin` has only `to`.
+- **`calc(infinity * 1px)`** (`rounded-full`) isn't parsed, nor is the `3.40282e38px` a minifier folds it to.
+- These do work: an empty fallback (`var(--x,)` becomes nothing), a `var()` fallback holding another `var()`, unitless `calc()` in `line-height`, and `*` rules setting variables.
+
+### What we do about it
+
+The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewrites every stylesheet that `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for both the native and the web bundle: it flattens nesting and layers, turns `@property` initial values into a `*` rule, converts colors to `rgb()`/`rgba()` (gamut-mapping as CSS Color 4 does), writes logical properties as physical ones (left-to-right), composes `translate`/`rotate`/`scale` into one `transform`, rewrites `space-*`/`divide-*` to `* + *`, resolves the `var()`s Lynx can't inside custom properties, completes keyframes, and drops properties and keywords Lynx doesn't have, so the web preview matches the device.

@@ -23,6 +23,7 @@ import {
 } from '@schematics/angular/utility/workspace';
 
 import { ignoreDevLogs } from '../utility/dev-logs-gitignore';
+import { setUpTailwind, tailwindVersionFor } from '../utility/tailwind';
 import { useLynxExtractI18n } from '../utility/extract-i18n-target';
 import type { Schema } from './schema';
 import { VERSIONS, ownVersionRange } from './versions';
@@ -34,8 +35,8 @@ import { VERSIONS, ownVersionRange } from './versions';
  * `ng test` and `ng extract-i18n` at the AngularLynx builders and
  * `ng generate` at its schematics, git-ignores the `.dev-logs` file that
  * `ng serve` writes `LynxLogger`'s output to, and optionally sets up Tailwind
- * with the Lynx preset. Everything else stays as `ng new` left it: the app
- * needs no build config besides angular.json.
+ * CSS (4, or 3 with the Lynx preset). Everything else stays as `ng new` left
+ * it: the app needs no build config besides angular.json.
  * This is a one-shot destructive transform — the old browser-Angular files
  * are deleted because they reference DOM APIs and HTML elements that don't
  * exist on the Lynx runtime.
@@ -92,9 +93,10 @@ export default (options: Schema): Rule =>
     // `"false"` is how `ng add ... --tailwind=false` arrives (see schema.ts).
     if (options.tailwind !== false && options.tailwind !== 'false') {
       rules.push(
-        addTailwindConfig(projectRoot),
-        updateStylesCss(sourceRoot),
-        addTailwindDependencies(),
+        setUpTailwind(
+          { projectName, projectRoot, sourceRoot },
+          tailwindVersionFor(tree, options.tailwindVersion),
+        ),
       );
     }
 
@@ -521,64 +523,6 @@ const addCoreDependencies = (): Rule => {
       install: InstallBehavior.Auto,
     }),
     addDependency('@lynx-js/types', VERSIONS.lynxTypes, {
-      type: DependencyType.Dev,
-      install: InstallBehavior.Auto,
-    }),
-  ]);
-};
-
-const addTailwindConfig = (projectRoot: string): Rule => {
-  return (tree: Tree) => {
-    const configPath = `${projectRoot ? projectRoot + '/' : ''}tailwind.config.ts`;
-    const content = `import type { Config } from 'tailwindcss';
-import preset from '@lynx-js/tailwind-preset';
-
-const config: Config = {
-  content: ['./src/**/*.{html,ts}'],
-  presets: [preset],
-};
-
-export default config;
-`;
-    if (tree.exists(configPath)) {
-      tree.overwrite(configPath, content);
-    } else {
-      tree.create(configPath, content);
-    }
-  };
-};
-
-const updateStylesCss = (sourceRoot: string): Rule => {
-  return (tree: Tree) => {
-    const cssPath = `${sourceRoot}/styles.css`;
-    const scssPath = `${sourceRoot}/styles.scss`;
-    const targetPath = tree.exists(scssPath) ? scssPath : cssPath;
-
-    // Only @tailwind base + utilities — no @tailwind components. Lynx doesn't
-    // support all of Tailwind's component-layer reset rules (e.g. button
-    // resets that reference focus-visible, form input pseudo-classes), and
-    // bundling them in would generate CSS the runtime can't parse, producing
-    // diagnostic noise. The base layer ships with @lynx-js/tailwind-preset's
-    // own Lynx-compatible normalize rules.
-    const content = `@tailwind base;
-@tailwind utilities;
-`;
-
-    if (tree.exists(targetPath)) {
-      tree.overwrite(targetPath, content);
-    } else {
-      tree.create(cssPath, content);
-    }
-  };
-};
-
-const addTailwindDependencies = (): Rule => {
-  return chain([
-    addDependency('tailwindcss', VERSIONS.tailwindcss, {
-      type: DependencyType.Dev,
-      install: InstallBehavior.Auto,
-    }),
-    addDependency('@lynx-js/tailwind-preset', VERSIONS.tailwindPreset, {
       type: DependencyType.Dev,
       install: InstallBehavior.Auto,
     }),

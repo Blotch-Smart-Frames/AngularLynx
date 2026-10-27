@@ -162,7 +162,9 @@ describe('doctorCommand', () => {
 
   it('warns when tailwind-plugin.ts and theme CSS are both missing', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writePackageJson(fixture.dir, {
+      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
+    });
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -195,9 +197,11 @@ describe('doctorCommand', () => {
     expect(p.log.success).toHaveBeenCalledWith('Theme CSS found');
   });
 
-  it('warns when no tailwind config is found', async () => {
+  it('warns when no tailwind config is found on Tailwind 3', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writePackageJson(fixture.dir, {
+      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
+    });
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -208,6 +212,55 @@ describe('doctorCommand', () => {
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining('No Tailwind config found'),
     );
+  });
+
+  it("passes when a Tailwind 4 stylesheet imports the theme's tailwind.css", async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    writeFileSync(
+      join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'tailwind.css'),
+      '',
+    );
+    writeFileSync(
+      join(fixture.dir, 'src/styles.css'),
+      "@import 'tailwindcss/utilities.css';\n@import './styles/tailwind.css';\n",
+    );
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('imported in'),
+    );
+    expect(p.log.success).toHaveBeenCalledWith(
+      expect.stringContaining('found in theme'),
+    );
+  });
+
+  it("warns when a Tailwind 4 stylesheet, or its absence, doesn't import tailwind.css", async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    // Tailwind's own imports don't count.
+    writeFileSync(
+      join(fixture.dir, 'src/styles.css'),
+      "@import 'tailwindcss/utilities.css';",
+    );
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    expect(
+      vi
+        .mocked(p.log.warn)
+        .mock.calls.filter(([message]) => message.includes('not imported in')),
+    ).toHaveLength(2);
   });
 
   it('warns when a tailwind config exists but does not reference blotchPlugin', async () => {
@@ -701,5 +754,65 @@ page {
     expect(p.log.success).not.toHaveBeenCalledWith(
       expect.stringContaining('channels'),
     );
+  });
+
+  describe('on Tailwind 4', () => {
+    /**
+     * Writes the theme's tailwind.css and stylesheets, then runs doctor.
+     */
+    const runDoctor4 = async (css: Record<string, string>) => {
+      fixture = createFixture({ config: DEFAULT_CONFIG });
+      writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+      const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
+      for (const [file, content] of Object.entries(css)) {
+        writeFileSync(join(themeDir, file), content);
+      }
+      vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+      const { doctorCommand } = await import('./doctor');
+      await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+      return import('@clack/prompts');
+    };
+
+    /**
+     * The colors tailwind.css maps, as the theme's does.
+     */
+    const TAILWIND_CSS = `@theme inline {
+  --color-primary: var(--primary);
+  --color-destructive-subtle: var(--destructive-subtle);
+}`;
+
+    it('checks the colors tailwind.css maps, skipping translucent ones', async () => {
+      const p = await runDoctor4({
+        'tailwind.css': TAILWIND_CSS,
+        'default.css':
+          'page { --primary: rgba(24, 24, 27, 1); --primary-rgb: 24, 24, 27; --destructive-subtle: rgba(239, 68, 68, 0.1); }',
+      });
+
+      expect(p.log.success).toHaveBeenCalledWith(
+        'Theme colors have the channels opacity modifiers need',
+      );
+    });
+
+    it('warns about a color tailwind.css maps without channels', async () => {
+      const p = await runDoctor4({
+        'tailwind.css': TAILWIND_CSS,
+        'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+      });
+
+      expect(p.log.warn).toHaveBeenCalledWith(
+        expect.stringMatching(/default\.css.*--primary-rgb: 24, 24, 27;/),
+      );
+    });
+
+    it("doesn't check a theme without tailwind.css or the plugin", async () => {
+      const p = await runDoctor4({
+        'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+      });
+
+      expect(p.log.success).not.toHaveBeenCalledWith(
+        expect.stringContaining('channels'),
+      );
+    });
   });
 });

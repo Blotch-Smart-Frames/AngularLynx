@@ -10,6 +10,7 @@ npm run e2e                            # From the repo root: builds the packages
 npm run e2e -- --keep                  # Keep the generated app and print its path
 npm run e2e -- --layers 1              # Package checks only (seconds)
 npm run e2e -- --pm pnpm --angular next
+npm run e2e -- --tailwind-version 3    # An app on Tailwind 3 and Lynx's preset (the default is 4)
 npm run e2e -- --registry public       # Test what is on npm right now
 npm run e2e -- --ios                   # Also run on the iOS Simulator (needs Xcode and Maestro, below)
 npm run e2e -- --ios --shell           # ...testing the app's own build from `ng build --platform ios`

@@ -1,6 +1,6 @@
 # Tailwind CSS
 
-Style Lynx elements with [Tailwind CSS](https://v3.tailwindcss.com/) utility classes. AngularLynx supports **Tailwind CSS v3** through **`@lynx-js/tailwind-preset`**, which limits Tailwind's utilities to the CSS that Lynx supports.
+Style Lynx elements with [Tailwind CSS](https://tailwindcss.com/) utility classes. New apps get **Tailwind CSS 4**, set up the way Angular CLI sets it up. Apps made before keep **Tailwind CSS 3** with Lynx's preset, which still works.
 
 ## Add Tailwind
 
@@ -10,47 +10,44 @@ Style Lynx elements with [Tailwind CSS](https://v3.tailwindcss.com/) utility cla
 ng generate @blotch/angular-lynx:add-tailwind
 ```
 
-It does three things:
+It sets up Tailwind 4, as `ng new --style=tailwind` does:
 
-- Installs `tailwindcss@3` and `@lynx-js/tailwind-preset` as dev dependencies.
-- Writes `tailwind.config.ts` with the Lynx preset.
-- **Replaces** `src/styles.css` (or `src/styles.scss`) with Tailwind's directives. Copy out any global styles you want to keep first.
+- Installs `tailwindcss` and `@tailwindcss/postcss` as dev dependencies.
+- Writes `.postcssrc.json`, which runs `@tailwindcss/postcss`.
+- **Replaces** `src/styles.css` with Tailwind's imports. Copy out any global styles you want to keep first.
 
-There's nothing to add to `angular.json`, and no `postcss.config.js` to write. The build turns Tailwind on when it finds a `tailwind.config.ts`.
+An app that already depends on Tailwind 3 keeps it. Pass `--tailwind-version=3` or `4` to choose.
 
 ### Set it up by hand
 
-1. Install Tailwind v3 and the preset:
+1. Install Tailwind 4:
 
    ```bash
-   npm install -D tailwindcss@3 @lynx-js/tailwind-preset
+   npm install -D tailwindcss @tailwindcss/postcss
    ```
 
-2. Create `tailwind.config.ts` in the project root:
+2. Run its PostCSS plugin:
 
-   ```typescript title="tailwind.config.ts"
-   import type { Config } from 'tailwindcss';
-   import preset from '@lynx-js/tailwind-preset';
-
-   const config: Config = {
-     content: ['./src/**/*.{html,ts}'],
-     presets: [preset],
-   };
-
-   export default config;
+   ```json title=".postcssrc.json"
+   {
+     "plugins": {
+       "@tailwindcss/postcss": {}
+     }
+   }
    ```
 
-3. Add the directives to your global stylesheet:
+3. Import Tailwind in your global stylesheet:
 
    ```css title="src/styles.css"
-   @tailwind base;
-   @tailwind utilities;
+   @layer theme, base, components, utilities;
+   @import 'tailwindcss/theme.css' layer(theme);
+   @import 'tailwindcss/utilities.css' layer(utilities);
    ```
 
-The schematic leaves out `@tailwind components`, whose rules Lynx can't fully parse.
+This imports Tailwind without **Preflight**, its reset for HTML elements such as `h1` and `button`. A Lynx app has none of them, and the web preview would apply the reset where the device doesn't.
 
-:::warning Tailwind v3 only
-The Lynx preset works with Tailwind v3. Tailwind v4 isn't supported, so don't install `@tailwindcss/postcss` or `@tailwindcss/vite`, which are v4 packages.
+:::tip From `ng new --style=tailwind`
+Running `ng add @blotch/angular-lynx` in an app made that way keeps its Tailwind 4 and its `.postcssrc.json`, and replaces `@import 'tailwindcss';` with the imports above.
 :::
 
 ## Use utility classes
@@ -87,12 +84,32 @@ export class Counter {
 - **Rows need `flex flex-row`.** Elements stack in a column by default, and `flex-row` alone does nothing.
 - **Sizes run 12.5% smaller than on the web.** Tailwind's scale uses `rem`, which is 14px on Lynx. For an exact size, use an arbitrary `px` value such as `w-[44px]`.
 
+<Go example="tailwind-4" defaultFile="src/app/app.ts" />
+
+## How Tailwind 4 works on Lynx
+
+Tailwind 4 writes CSS for current browsers: `oklch()` colors, cascade layers, `color-mix()` for opacity modifiers, `padding-inline` for `px-*`, and the `translate`, `rotate` and `scale` properties. Lynx drops all of these, while the web preview, which runs in a browser, shows them.
+
+So the build rewrites the CSS Tailwind writes into CSS with the same meaning that Lynx reads, for the device and the web preview alike:
+
+| Tailwind 4 writes                  | Lynx gets                                     |
+| ---------------------------------- | --------------------------------------------- |
+| `oklch(63.7% 0.237 25.331)`        | `rgb(251, 44, 54)`                            |
+| `color-mix(in oklab, #000 50%, …)` | `rgba(0, 0, 0, 0.5)`                          |
+| `padding-inline: …`                | `padding-left` and `padding-right`            |
+| `translate`, `rotate`, `scale`     | one `transform` they all compose into         |
+| `opacity: 50%`                     | `opacity: 0.5`                                |
+| `@layer`, nesting, `@property`     | plain rules, with the variables' start values |
+
+It also leaves out the properties and values Lynx doesn't have, such as `text-transform`, so the web preview doesn't show styles the device won't. There's nothing to configure: the build does this for every stylesheet Tailwind 4 compiles.
+
 ## Where Tailwind finds classes
 
-Tailwind generates CSS only for the classes it finds in the files `content` lists. The schematic writes `./src/**/*.{html,ts}`, which covers inline templates and `.html` templates alike.
+Tailwind 4 scans your project's files for classes itself, `.html` templates and `.ts` files alike, and skips what `.gitignore` lists. To scan a folder outside the project, such as a library in your workspace, add it with [`@source`](https://tailwindcss.com/docs/detecting-classes-in-source-files):
 
-- **Components outside `src`**, such as a library in your workspace, need their folder added to `content`.
-- **Apps made with an older version** have `content: ['./src/**/*.ts']`, which misses `.html` templates. `ng update @blotch/angular-lynx` adds `.html` to it.
+```css title="src/styles.css"
+@source '../../libs/ui/src';
+```
 
 ## Mix with component styles
 
@@ -125,22 +142,66 @@ The component's own rules are scoped to its template, as on the web. See [Compon
 
 ## What doesn't work
 
-The preset drops utilities Lynx can't render. These are the gaps you'll notice first:
+These are the gaps you'll notice first:
 
 - **The `hover:`, `focus:`, `sm:`, `md:` and `dark:` variants** don't work on a phone. Lynx has no `:hover` or `:focus`, and AngularLynx apps don't support `@media`. For dark mode, see [Dark mode](/guide/dark-mode).
-- **`block`, `inline` and `inline-block`** have no effect. Lynx has no flow layout.
+- **`inline` and `inline-block`** have no effect. Lynx has no flow layout.
 - **`overflow-auto` and `overflow-scroll`** don't scroll a `<view>`. Use `<scroll-view>`.
 - **`uppercase`, `lowercase` and `capitalize`** do nothing. Lynx has no `text-transform`.
+- **Two filters on one element**, such as `blur-sm grayscale`, don't combine. Lynx takes one filter function.
+- **`ring-offset-*` doesn't widen a ring**, and **`drop-shadow-<color>`** doesn't color a drop shadow.
 
-[CSS on Lynx](/guide/styling) lists every CSS difference. The preset's [support matrix](https://github.com/lynx-family/lynx-stack/blob/main/packages/tailwind-preset/docs/tailwind-css-v3-support.md) lists every utility.
+[CSS on Lynx](/guide/styling) lists every CSS difference.
+
+## Tailwind 3
+
+Apps made before Tailwind 4 support use Tailwind 3 with **`@lynx-js/tailwind-preset`**, which limits Tailwind's utilities to the CSS Lynx supports. They keep working: the build runs Tailwind 3 when it finds a `tailwind.config.ts`.
+
+```typescript title="tailwind.config.ts"
+import type { Config } from 'tailwindcss';
+import preset from '@lynx-js/tailwind-preset';
+
+const config: Config = {
+  content: ['./src/**/*.{html,ts}'],
+  presets: [preset],
+};
+
+export default config;
+```
+
+```css title="src/styles.css"
+@tailwind base;
+@tailwind utilities;
+```
+
+To set Tailwind 3 up in a new app, run `ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=3`. Apps made with an older version have `content: ['./src/**/*.ts']`, which misses `.html` templates; `ng update @blotch/angular-lynx` adds `.html` to it.
+
+### Move to Tailwind 4
+
+1. Run `ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=4`. It installs Tailwind 4, writes `.postcssrc.json` and replaces `src/styles.css`.
+2. Move your config's `theme.extend` into [`@theme`](https://tailwindcss.com/docs/theme) in `src/styles.css`, then delete `tailwind.config.ts` and uninstall `@lynx-js/tailwind-preset`.
+3. Rename the utilities Tailwind 4 renamed, such as `shadow-sm` to `shadow-xs`. See Tailwind's [upgrade guide](https://tailwindcss.com/docs/upgrade-guide#renamed-utilities).
+
+Tailwind's own `npx @tailwindcss/upgrade` can't read a config that uses the Lynx preset, so remove the preset from `presets` before running it.
+
+## Prettier
+
+[`prettier-plugin-tailwindcss`](https://github.com/tailwindlabs/prettier-plugin-tailwindcss) sorts classes against your stylesheet. With Tailwind 4, point it there:
+
+```json title=".prettierrc"
+{
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindStylesheet": "./src/styles.css"
+}
+```
 
 ## UI components
 
-The [UI components](/dolan/) add semantic color utilities such as `bg-background` and `text-foreground` through their own Tailwind plugin. They take opacity modifiers, such as `bg-primary/50`, and switch colors when the `page` has a `dark` class. See [Theming](/dolan/theming) and [Dark mode](/guide/dark-mode).
+The [UI components](/dolan/) add semantic color utilities such as `bg-background` and `text-foreground`. With Tailwind 4 they come from the theme's `tailwind.css`, which you import after Tailwind; with Tailwind 3, from its Tailwind plugin. They take opacity modifiers, such as `bg-primary/50`, and switch colors when the `page` has a `dark` class. See [Theming](/dolan/theming) and [Dark mode](/guide/dark-mode).
 
 ## Related
 
 - [CSS on Lynx](/guide/styling)
 - [Dark mode](/guide/dark-mode)
 - [Safe area](/guide/safe-area): the `*-safe` padding utilities
-- [`add-tailwind` schematic](/api/schematics)
+- [`add-tailwind` schematic](/api/schematics#add-tailwind)

@@ -19,12 +19,13 @@ type PostcssHook = (
 
 /**
  * Runs `applyTailwind` against a stand-in plugin API and returns the
- * `tools.postcss` hook it adds to the Rsbuild config, or `undefined` when it
- * adds none.
+ * `tools.postcss` hook it adds to the Rsbuild config, and the logger's `warn`.
  */
-const postcssHook = (): PostcssHook | undefined => {
+const setUp = () => {
   let hook: PostcssHook | undefined;
+  const warn = vi.fn();
   const api = {
+    logger: { warn },
     modifyRsbuildConfig: (
       handler: (
         config: object,
@@ -38,35 +39,51 @@ const postcssHook = (): PostcssHook | undefined => {
     },
   };
   applyTailwind(api as any);
-  return hook;
+  return { hook: hook!, warn };
 };
 
 /**
- * Runs the hook with the given PostCSS options and returns the plugins it adds.
+ * Runs the hook with the given PostCSS options and returns the names of the
+ * plugins it adds.
  */
 const addedPlugins = (hook: PostcssHook, postcssOptions?: unknown) => {
   const addPlugins = vi.fn();
   hook({ postcssOptions }, { addPlugins });
-  return addPlugins.mock.calls.map(([plugin]) => plugin);
+  return addPlugins.mock.calls.map(
+    ([plugin]) => (plugin as { postcssPlugin: string }).postcssPlugin,
+  );
 };
+
+/** What `@tailwindcss/postcss` looks like in a loaded PostCSS config. */
+const TAILWIND_4 = { postcssPlugin: '@tailwindcss/postcss' };
 
 describe('applyTailwind', () => {
   let projectRoot: string;
   let configFile: string;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // An app with a Tailwind config and a stand-in tailwindcss package, which
-    // the plugin resolves from the app rather than from itself.
-    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-tw-'));
-    configFile = path.join(projectRoot, 'tailwind.config.ts');
-    fs.writeFileSync(configFile, 'export default {};');
+  /**
+   * Installs a stand-in tailwindcss package of this version in the app.
+   */
+  const installTailwind = (version: string) => {
     const tailwindDir = path.join(projectRoot, 'node_modules', 'tailwindcss');
     fs.mkdirSync(tailwindDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tailwindDir, 'package.json'),
+      JSON.stringify({ name: 'tailwindcss', version, main: 'index.js' }),
+    );
     fs.writeFileSync(
       path.join(tailwindDir, 'index.js'),
       "module.exports = function tailwindcss(options) { return { postcssPlugin: 'tailwindcss', options }; };",
     );
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // An app with a Tailwind config, which the plugin resolves Tailwind from
+    // rather than from itself.
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-tw-'));
+    configFile = path.join(projectRoot, 'tailwind.config.ts');
+    fs.writeFileSync(configFile, 'export default {};');
   });
 
   afterEach(() => {
@@ -76,7 +93,7 @@ describe('applyTailwind', () => {
   it('looks for a Tailwind config from the working directory', () => {
     mockedFindUp.mockReturnValue(null);
 
-    applyTailwind({} as any);
+    setUp();
 
     expect(mockedFindUp).toHaveBeenCalledWith(
       [
@@ -89,49 +106,98 @@ describe('applyTailwind', () => {
     );
   });
 
-  it('leaves the build alone without a Tailwind config', () => {
+  it('only adds the Tailwind 4 lowering without a Tailwind config', () => {
     mockedFindUp.mockReturnValue(null);
 
-    expect(postcssHook()).toBeUndefined();
-  });
-
-  it("adds the app's Tailwind as a PostCSS plugin with the found config", () => {
-    mockedFindUp.mockReturnValue(configFile);
-
-    expect(addedPlugins(postcssHook()!, { plugins: [] })).toEqual([
-      { postcssPlugin: 'tailwindcss', options: { config: configFile } },
+    // Tailwind 4 needs no config file: the PostCSS config runs it.
+    expect(addedPlugins(setUp().hook, { plugins: [TAILWIND_4] })).toEqual([
+      'angular-lynx-tailwind',
     ]);
   });
 
-  it('adds Tailwind when the PostCSS options have no plugin list or are a function', () => {
-    mockedFindUp.mockReturnValue(configFile);
-    const hook = postcssHook()!;
+  describe('Tailwind 3', () => {
+    beforeEach(() => {
+      installTailwind('3.4.19');
+      mockedFindUp.mockReturnValue(configFile);
+    });
 
-    for (const postcssOptions of [undefined, {}, () => ({})]) {
-      expect(addedPlugins(hook, postcssOptions)).toHaveLength(1);
-    }
+    it("adds the app's Tailwind as a PostCSS plugin with the found config, then the lowering", () => {
+      const addPlugins = vi.fn();
+      setUp().hook({ postcssOptions: { plugins: [] } }, { addPlugins });
+
+      expect(addPlugins.mock.calls.map(([plugin]) => plugin)).toEqual([
+        { postcssPlugin: 'tailwindcss', options: { config: configFile } },
+        expect.objectContaining({ postcssPlugin: 'angular-lynx-tailwind' }),
+      ]);
+    });
+
+    it('adds Tailwind when the PostCSS options have no plugin list or are a function', () => {
+      const { hook } = setUp();
+
+      for (const postcssOptions of [undefined, {}, () => ({})]) {
+        expect(addedPlugins(hook, postcssOptions)).toEqual([
+          'tailwindcss',
+          'angular-lynx-tailwind',
+        ]);
+      }
+    });
+
+    it('keeps a Tailwind the PostCSS config already runs', () => {
+      const { hook } = setUp();
+
+      const tailwindcss = () => {};
+      // `plugins: { tailwindcss: {} }` lists it called, and
+      // `plugins: [require('tailwindcss')]` lists the function itself.
+      for (const tailwind of [{ postcssPlugin: 'tailwindcss' }, tailwindcss]) {
+        expect(addedPlugins(hook, { plugins: [tailwind] })).toEqual([
+          'angular-lynx-tailwind',
+        ]);
+      }
+    });
+
+    it('adds Tailwind next to other PostCSS plugins', () => {
+      const nesting = () => {};
+
+      expect(
+        addedPlugins(setUp().hook, {
+          plugins: [{ postcssPlugin: 'autoprefixer' }, nesting, null],
+        }),
+      ).toEqual(['tailwindcss', 'angular-lynx-tailwind']);
+    });
   });
 
-  it('keeps a Tailwind the PostCSS config already runs', () => {
-    mockedFindUp.mockReturnValue(configFile);
-    const hook = postcssHook()!;
+  describe('Tailwind 4 with a Tailwind config', () => {
+    beforeEach(() => {
+      installTailwind('4.3.3');
+      mockedFindUp.mockReturnValue(configFile);
+    });
 
-    const tailwindcss = () => {};
-    // `plugins: { tailwindcss: {} }` lists it called, and
-    // `plugins: [require('tailwindcss')]` lists the function itself.
-    for (const tailwind of [{ postcssPlugin: 'tailwindcss' }, tailwindcss]) {
-      expect(addedPlugins(hook, { plugins: [tailwind] })).toEqual([]);
-    }
-  });
+    it("doesn't run Tailwind 4 as Tailwind 3", () => {
+      expect(addedPlugins(setUp().hook, { plugins: [TAILWIND_4] })).toEqual([
+        'angular-lynx-tailwind',
+      ]);
+    });
 
-  it('adds Tailwind next to other PostCSS plugins', () => {
-    mockedFindUp.mockReturnValue(configFile);
-    const nesting = () => {};
+    it("warns, once, when the PostCSS config doesn't run Tailwind 4 either", () => {
+      const { hook, warn } = setUp();
 
-    expect(
-      addedPlugins(postcssHook()!, {
-        plugins: [{ postcssPlugin: 'autoprefixer' }, nesting, null],
-      }),
-    ).toHaveLength(1);
+      expect(addedPlugins(hook, { plugins: [] })).toEqual([
+        'angular-lynx-tailwind',
+      ]);
+      addedPlugins(hook, { plugins: [] });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain(
+        "Tailwind CSS 4.3.3 is installed, which doesn't run from a Tailwind config file",
+      );
+    });
+
+    it('stays quiet when the PostCSS config runs Tailwind 4', () => {
+      const { hook, warn } = setUp();
+
+      addedPlugins(hook, { plugins: [TAILWIND_4] });
+
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });

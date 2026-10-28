@@ -9,10 +9,7 @@ import { devStats } from '../devtools/stats';
 // here would form an import cycle. These two files import only element-creators
 // and types, so this path is cycle-free.
 import { createNativeRefByTag } from '../lynx-document/create-native-ref';
-import {
-  isAndroid,
-  nativePlatform,
-} from '../lynx-document/android-blur-capture';
+import { isAndroid } from '../lynx-document/android-blur-capture';
 import {
   androidBlurMaterialStyle,
   BLUR_MATERIAL_ATTRIBUTES,
@@ -192,6 +189,37 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
   }
   return false;
 };
+
+/**
+ * Whether this is Lynx's iOS renderer. On the native main thread there is no
+ * global `SystemInfo`, only `lynx.SystemInfo` (see isAndroid).
+ */
+const isIOS = (): boolean => {
+  const info =
+    (typeof lynx !== 'undefined'
+      ? (lynx as { SystemInfo?: { platform?: string } }).SystemInfo
+      : undefined) ??
+    (typeof SystemInfo !== 'undefined' ? SystemInfo : undefined);
+  return info?.platform === 'iOS';
+};
+
+/**
+ * Whether inserting `child` into `parent` before a sibling would leave it
+ * drawing nothing: on iOS, a `<blur-view>` (a UIVisualEffectView) put among a plain
+ * element's children anywhere but at the end shows nothing, nor do its
+ * children, though the layout keeps its space. That's every blur-view at the
+ * top of an `@if`, `@switch` or `@for` block, which Angular inserts before the
+ * block's anchor. Appended, it draws, and so it does inside another
+ * blur-view, whose native view inserts children its own way.
+ */
+const insertHidesBlurView = (
+  parent: LynxElement,
+  child: LynxElement,
+): boolean =>
+  !__WEB__ &&
+  child.tagName === 'blur-view' &&
+  parent.tagName !== 'blur-view' &&
+  isIOS();
 
 /**
  * A raw-text leaf or a <text> container — the only elements that carry trimmable
@@ -378,19 +406,6 @@ export class LynxElement implements BaseLynxElement {
   static #pendingTextNormalization = new Set<LynxElement>();
 
   /**
-   * iOS blur-views that no flush has drawn yet, created after the first
-   * render. iOS draws nothing for a blur-view, children included, when the
-   * flush that first draws it already gives it a glass effect, and it never
-   * recovers. Glass set in a later flush draws, so their glass is held back
-   * (#heldGlass) until `releaseHeldGlass()` runs right after that flush.
-   * Keyed by the wrapper, never a native ref (see #pendingRemovals).
-   */
-  static #blurViewsToDraw = new Set<LynxElement>();
-
-  /** The glass `blur-effect` a blur-view no flush has drawn is waiting for. */
-  #heldGlass: string | null = null;
-
-  /**
    * Native-ref → canonical wrapper registry, keyed by the native unique ID.
    *
    * Angular locates an insertion parent for embedded views (@if/@for content)
@@ -520,9 +535,7 @@ export class LynxElement implements BaseLynxElement {
         this.#ownTraits = value ?? null;
         value = withAddedTraits(this.#ownTraits, this.#addedTraits);
       }
-      if (!this.#holdsGlass(name, value)) {
-        __SetAttribute(this.element, name, value);
-      }
+      __SetAttribute(this.element, name, value);
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text
       // carries its text via the 'text' attribute (renderer.setValue) — keep
@@ -557,56 +570,6 @@ export class LynxElement implements BaseLynxElement {
     if (usesAndroidBlurMaterials()) {
       this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs));
     }
-  }
-
-  /**
-   * Holds back this blur-view's glass until a flush has drawn it, on iOS
-   * after the first render (see #blurViewsToDraw). LynxDocument calls it
-   * when it creates a blur-view. In the first render the page isn't on
-   * screen yet, and glass draws from the start.
-   */
-  holdGlassUntilDrawn(): void {
-    if (!__WEB__ && !isFirstRenderPending() && nativePlatform() === 'iOS') {
-      LynxElement.#blurViewsToDraw.add(this);
-    }
-  }
-
-  /**
-   * Whether setting `name` to `value` waits for the flush that draws this
-   * blur-view: a glass `blur-effect` before it's drawn. Any other effect
-   * replaces a held one, and goes to the element at once.
-   */
-  #holdsGlass(name: string, value: unknown): boolean {
-    if (name !== 'blur-effect' || !LynxElement.#blurViewsToDraw.has(this)) {
-      return false;
-    }
-    this.#heldGlass =
-      value === 'glass' || value === 'glass-container' ? value : null;
-    return this.#heldGlass !== null;
-  }
-
-  /**
-   * Called right after a flush, which has drawn every blur-view created
-   * before it: gives them the glass they were waiting for. Returns whether it
-   * set any, for the caller to flush again in the same task, so the glass is
-   * there in the same frame (checked on the iOS 27 Simulator).
-   */
-  static releaseHeldGlass(): boolean {
-    if (LynxElement.#blurViewsToDraw.size === 0) return false;
-    const drawn = [...LynxElement.#blurViewsToDraw];
-    LynxElement.#blurViewsToDraw.clear();
-    let released = false;
-    for (const view of drawn) {
-      const effect = view.#heldGlass;
-      view.#heldGlass = null;
-      // A blur-view removed before it was drawn gets its glass held again
-      // when it's rebuilt (see #recreateSubtree).
-      if (effect && !view.#paintingDead) {
-        __SetAttribute(view.element, 'blur-effect', effect);
-        released = true;
-      }
-    }
-    return released;
   }
 
   /**
@@ -690,11 +653,38 @@ export class LynxElement implements BaseLynxElement {
       // safe: a cyclic insert is a corrupt request, and leaving newChild where it
       // is beats freezing the app.
       if (wouldFormCycle(this.element, newChild.element)) return;
-      __InsertElementBefore(this.element, newChild.element, refChild.element);
+      if (insertHidesBlurView(this, newChild)) {
+        this.#appendBefore(newChild, refChild);
+      } else {
+        __InsertElementBefore(this.element, newChild.element, refChild.element);
+      }
       this.#adoptChild(newChild, refChild);
       if (isTextish(this) || isTextish(newChild)) {
         LynxElement.#enqueueTextNormalization(newChild);
       }
+    }
+  }
+
+  /**
+   * Puts `newChild` before `refChild` by appending it, then moving `refChild`
+   * and every native sibling after it to the end behind it, in order: the
+   * same order as `__InsertElementBefore`, reached only by appends (see
+   * insertHidesBlurView). The moves are in the same flush as the insert, so
+   * the siblings keep their painting nodes, as any Angular move does.
+   */
+  #appendBefore(newChild: LynxElement, refChild: LynxElement): void {
+    const childId = __GetElementUniqueID(newChild.element);
+    const following: ElementRef[] = [];
+    for (
+      let sibling: ElementRef | null = refChild.element;
+      sibling;
+      sibling = __NextElement(sibling)
+    ) {
+      if (__GetElementUniqueID(sibling) !== childId) following.push(sibling);
+    }
+    __AppendElement(this.element, newChild.element);
+    for (const sibling of following) {
+      __AppendElement(this.element, sibling);
     }
   }
 
@@ -1156,10 +1146,8 @@ export class LynxElement implements BaseLynxElement {
     if (Object.keys(this.#dataset).length > 0) {
       __SetDataset(fresh, this.#dataset);
     }
-    // A rebuilt blur-view is new to iOS too, so its glass waits again.
-    if (this.tagName === 'blur-view') this.holdGlassUntilDrawn();
     for (const [name, value] of this.#attrs) {
-      if (!this.#holdsGlass(name, value)) __SetAttribute(fresh, name, value);
+      __SetAttribute(fresh, name, value);
     }
     if (this.#classes) __SetClasses(fresh, this.#classes);
     // Whole-string styles first, then per-key overrides — same order as the
@@ -1472,13 +1460,6 @@ export const processPendingRemovals = (): void => {
 };
 
 /**
- * Gives the blur-views the last flush drew the glass they were waiting for,
- * and returns whether it gave any, for `LynxRendererFactory2.end()` to flush
- * again (see `LynxElement.releaseHeldGlass()`).
- */
-export const releaseHeldGlass = (): boolean => LynxElement.releaseHeldGlass();
-
-/**
  * Re-derives positional edge whitespace for every text touched this cycle — a
  * free-function wrapper over `LynxElement.commitPendingTextNormalization()` so
  * `LynxRendererFactory2.end()` can drain it (via the lynx-element barrel) right
@@ -1537,6 +1518,5 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingRemovals();
     LynxElement.commitPendingTextNormalization();
     __FlushElementTree();
-    if (releaseHeldGlass()) __FlushElementTree();
   });
 };

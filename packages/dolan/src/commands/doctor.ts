@@ -16,7 +16,9 @@ import {
 } from '../utils/packages.js';
 import { getComponentFiles, getUiSourceDir } from '../utils/resolve-paths.js';
 import {
-  TAILWIND_CONFIG_FILES,
+  installedTailwindVersion,
+  majorVersion,
+  tailwindConfigFile,
   themeFilesFor,
   usesTailwind4,
 } from '../utils/tailwind.js';
@@ -80,13 +82,11 @@ export const doctorCommand = async () => {
 
   // --- 4. Tailwind integration ---
 
-  checkTailwind(cwd, pass, warn);
-
-  checkLeftoverThemeFiles(cwd, config, warn);
+  checkTailwind(cwd, config, pass, warn);
 
   // --- 5. Package dependencies ---
 
-  checkPackageDeps(cwd, pass, warn, fail);
+  checkPackageDeps(cwd, pass, fail);
 
   // --- 6. Component health ---
 
@@ -402,26 +402,72 @@ const checkComponentColors = (
   }
 };
 
+/**
+ * Which Tailwind CSS the project has, and whether it's set up for it. The
+ * version is the `tailwindcss` the project resolves (see
+ * installedTailwindVersion), which its package.json may not list: a
+ * workspace root or `@tailwindcss/postcss` can bring it. A Tailwind config
+ * means a Tailwind 3 setup (see usesTailwind4), so the mismatches are
+ * Tailwind 4 with a config and Tailwind 3 without one. A matching setup gets
+ * the checks of the theme files the other version leaves, and of what maps
+ * the theme to classes: the stylesheet's `tailwind.css` import on Tailwind 4,
+ * `blotchPlugin` in the config on Tailwind 3.
+ */
 const checkTailwind = (
   cwd: string,
+  config: DolanConfig,
   pass: (msg: string) => void,
   warn: (msg: string) => void,
 ) => {
-  const found = TAILWIND_CONFIG_FILES.find((f) => existsSync(resolve(cwd, f)));
-
-  if (!found) {
-    checkTailwind4Theme(cwd, pass, warn);
+  const version = installedTailwindVersion(cwd);
+  if (version === undefined) {
+    warn(
+      `${pc.cyan('tailwindcss')} not found — required if using dolan UI components. Install it with ${pc.bold(installCommand(detectPackageManager(cwd), ['tailwindcss']).join(' '))}, or set it up with ${pc.bold('ng generate @blotch/angular-lynx:add-tailwind')}`,
+    );
     return;
   }
 
-  pass(`Tailwind config found (${pc.dim(found)})`);
+  const found = `${pc.cyan(`tailwindcss ${version}`)} found`;
+  const tailwind4 = majorVersion(version) >= 4;
+  const configFile = tailwindConfigFile(cwd);
 
-  const content = readFileSync(resolve(cwd, found), 'utf-8');
+  if (tailwind4 && configFile) {
+    // The build warns about a config Tailwind 4 doesn't run, in these words.
+    // dolan still reads it as a Tailwind 3 setup, and gives the theme the
+    // Tailwind 3 plugin.
+    warn(
+      `Found ${pc.dim(configFile)}, but Tailwind CSS ${version} is installed, which doesn't run from a Tailwind config file. While it's there, dolan sets the theme up for Tailwind 3. Move its settings into your stylesheet and delete it, then run ${pc.bold('dolan update')} for the theme's ${pc.cyan('tailwind.css')}.`,
+    );
+  } else if (tailwind4) {
+    pass(`${found}, set up for Tailwind 4`);
+    checkLeftoverThemeFiles(cwd, config, warn);
+    checkTailwind4Theme(cwd, pass, warn);
+  } else if (configFile) {
+    pass(`${found}, set up for Tailwind 3 (${pc.dim(configFile)})`);
+    checkLeftoverThemeFiles(cwd, config, warn);
+    checkBlotchPlugin(cwd, configFile, pass, warn);
+  } else {
+    warn(
+      `${found}, but no Tailwind config: the build runs Tailwind 3 only from a ${pc.dim('tailwind.config.*')}. Add one with ${pc.bold('ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=3')}`,
+    );
+  }
+};
+
+/**
+ * Tailwind 3 takes the theme's plugin in its config.
+ */
+const checkBlotchPlugin = (
+  cwd: string,
+  config: string,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  const content = readFileSync(resolve(cwd, config), 'utf-8');
   if (content.includes('blotchPlugin')) {
     pass(`${pc.cyan('blotchPlugin')} referenced in Tailwind config`);
   } else {
     warn(
-      `${pc.cyan('blotchPlugin')} not found in ${pc.dim(found)} — add it to your plugins array`,
+      `${pc.cyan('blotchPlugin')} not found in ${pc.dim(config)} — add it to your plugins array`,
     );
   }
 };
@@ -434,10 +480,6 @@ const checkTailwind4Theme = (
   pass: (msg: string) => void,
   warn: (msg: string) => void,
 ) => {
-  if (!usesTailwind4(cwd)) {
-    warn('No Tailwind config found');
-    return;
-  }
   const stylesheet = globalStylesheet(cwd);
   const path = resolve(cwd, stylesheet);
   const content = existsSync(path) ? readFileSync(path, 'utf-8') : '';
@@ -457,7 +499,9 @@ const checkTailwind4Theme = (
  * them, and the plugin is an uncovered file in the app's coverage report.
  * `dolan update` deletes the ones dolan tracks (asking first about an edited
  * one), so only those get that advice: one the app chose to keep, or edited
- * before dolan recorded it, is the app's own.
+ * before dolan recorded it, is the app's own. checkTailwind runs it once the
+ * app is set up for the Tailwind it has: without Tailwind, neither version's
+ * files are left over, and a mismatch has its own warning.
  */
 const checkLeftoverThemeFiles = (
   cwd: string,
@@ -465,13 +509,6 @@ const checkLeftoverThemeFiles = (
   warn: (msg: string) => void,
 ) => {
   const tailwind4 = usesTailwind4(cwd);
-  // Without Tailwind, neither version's files are left over from the other.
-  if (
-    !tailwind4 &&
-    !TAILWIND_CONFIG_FILES.some((file) => existsSync(resolve(cwd, file)))
-  ) {
-    return;
-  }
   const takes = themeFilesFor(cwd, { tests: true });
   const themeDir = resolve(cwd, config.aliases.theme);
   const leftover = [
@@ -493,7 +530,6 @@ const checkLeftoverThemeFiles = (
 const checkPackageDeps = (
   cwd: string,
   pass: (msg: string) => void,
-  warn: (msg: string) => void,
   fail: (msg: string) => void,
 ) => {
   const pkgPath = resolve(cwd, 'package.json');
@@ -528,14 +564,6 @@ const checkPackageDeps = (
   } else {
     fail(
       `Missing packages: ${missingRequired.map((d) => pc.cyan(d)).join(', ')}`,
-    );
-  }
-
-  if (deps['tailwindcss']) {
-    pass(`${pc.cyan('tailwindcss')} found`);
-  } else {
-    warn(
-      `${pc.cyan('tailwindcss')} not found — required if using dolan UI components`,
     );
   }
 };

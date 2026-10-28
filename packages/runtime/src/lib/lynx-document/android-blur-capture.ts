@@ -15,18 +15,15 @@
 export const ANDROID_BLUR_CAPTURE_TARGET = 'angular-lynx-page';
 
 /**
- * The platform Lynx is rendering on, as SystemInfo names it. On the native
- * main thread, where elements are created, there is no global `SystemInfo`,
- * only `lynx.SystemInfo`; the background thread and web have the global.
+ * Whether this is Lynx's Android renderer. On the native main thread, where
+ * elements are created, there is no global `SystemInfo`, only
+ * `lynx.SystemInfo`; the background thread and web have the global.
  */
-export const nativePlatform = (): string | undefined => {
+export const isAndroid = (): boolean => {
   const info =
     (typeof lynx !== 'undefined'
       ? (lynx as { SystemInfo?: { platform?: string } }).SystemInfo
       : undefined) ??
     (typeof SystemInfo !== 'undefined' ? SystemInfo : undefined);
-  return info?.platform;
+  return info?.platform === 'Android';
 };
-
-/** Whether this is Lynx's Android renderer (see nativePlatform). */
-export const isAndroid = (): boolean => nativePlatform() === 'Android';

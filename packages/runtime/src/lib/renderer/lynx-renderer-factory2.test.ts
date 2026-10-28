@@ -5,10 +5,8 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LynxElement } from '../lynx-element';
-import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { InMemoryDocument } from '../testing/in-memory-document';
-import type { ElementRef } from '../types/lynx';
+import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LynxRenderer } from './renderer';
@@ -217,33 +215,6 @@ describe('LynxRendererFactory2', () => {
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
-    });
-
-    it('flushes again for the glass of blur-views the flush drew', () => {
-      // iOS draws no glass on a blur-view whose first flush has it, so new
-      // blur-views get theirs right after (see LynxElement.releaseHeldGlass).
-      vi.stubGlobal('__FlushElementTree', vi.fn());
-      vi.stubGlobal('__SetAttribute', vi.fn());
-      vi.stubGlobal('__WEB__', false);
-      vi.stubGlobal('lynx', { SystemInfo: { platform: 'iOS' } });
-      vi.stubGlobal(
-        '__GetElementUniqueID',
-        vi.fn(() => 41),
-      );
-      markFirstRenderComplete();
-      const view = new LynxElement({} as ElementRef);
-      view.tagName = 'blur-view';
-      view.holdGlassUntilDrawn();
-      view.setAttribute('blur-effect', 'glass');
-
-      createFactory().end?.();
-
-      expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(2);
-      expect(globalThis.__SetAttribute).toHaveBeenLastCalledWith(
-        view.element,
-        'blur-effect',
-        'glass',
-      );
     });
 
     it('skips the flush while the first render is still pending', async () => {

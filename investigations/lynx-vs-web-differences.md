@@ -5294,19 +5294,74 @@ The bottom sheet hides itself without `visibility` while it waits for layout: th
 
 ---
 
-## On iOS, a glass `<blur-view>` created after the first render draws nothing, its content included
+## On iOS, a glass `<blur-view>` added to the page after its first frame draws nothing
 
-### What you'd expect (parity with the first render)
+### What you'd expect (web)
 
-A `<blur-view blur-effect="glass">` added to the page later, by an `@if` or a routed screen, draws its glass and its children, as one in the first render does.
+An element an `@if` adds later renders like one that was there from the start.
 
 ### What Lynx does
 
-Checked in Lynx Explorer 4.1 on the iOS 27 Simulator: a blur-view created after the first render whose first flush already gives it `glass` (or `glass-container`) draws nothing at all, neither the glass nor the text inside it, and setting its effect again later doesn't bring it back. One removed and added again does the same, as it's rebuilt then. Everything else draws: a glass blur-view in the first render (the page isn't on screen yet), a `light` blur added later, glass set in a later flush on a blur-view created with no effect or with `light`, glass added later inside a glass container that was already there, and glass in an `<overlay>` created later, a window of its own (the glass bottom sheet's). A second `__FlushElementTree()` in the same task is enough. Why isn't known: `LynxUIBlurView` sets `effect` on its `UIVisualEffectView` in `propsDidUpdate`, so a new blur-view gets its glass before Lynx inserts it into a window that's already showing. Every glass element in a routed screen hit this: the screen is built after the first render, so its glass buttons, groups and bars were blank.
+On the iOS 27 Simulator (Lynx Explorer 4.1), a `<blur-view blur-effect="glass">` (raw, or `ui-glass`) that an `@if` adds to the page after the first frame draws nothing, its children included, though layout leaves room for it. One removed and added again does the same. A plain view, and a `blur-effect="light"` blur view, added the same way draw. Glass inside an `<overlay>` created later (a glass `ui-bottom-sheet` in an `@if`) draws, as does glass that was on the page from the first frame.
+
+### What we do about it
+
+It was found while building the glass sheet, whose glass is in an overlay. The cause is how iOS inserts a blur view before a sibling, which is how Angular adds an `@if` block's elements, and the renderer now appends it instead: see the next section.
+
+---
+
+## On iOS, a glass `<blur-view>` at the top of an `@if`, `@switch` or `@for` block draws nothing
+
+### What you'd expect (web)
+
+An element inside a control-flow block shows up where the block is, whatever its tag.
+
+### What Lynx does
+
+On the iOS 27 Simulator in Lynx Explorer 4.1, a glass `<blur-view>` (`ui-glass`, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them, and a `light` blur view draws on iOS too (see the previous section). It happens on the first frame and on any later one.
+
+What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws. Two more data points, from the navigation bar's probes: a blur-view inserted the same way but given `glass` only in a later flush (created with no effect, or `light`) draws, and one that has drawn nothing doesn't recover when its effect is set again. Every glass control in a routed screen hit this, since their glass sits at the top of `@if` blocks.
 
 ### The fix
 
-The runtime holds back a new blur-view's glass until a flush has drawn it (`holdGlassUntilDrawn()` and `releaseHeldGlass()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). On iOS, after the first render, a blur-view LynxDocument creates (or rebuilds on remount) doesn't send a `glass` or `glass-container` `blur-effect` to the element until `LynxRendererFactory2.end()` or the settle flush has flushed it; then they set it and flush again, in the same task, so the glass is there in the same frame. Any other effect goes to the element at once. Android and the web draw glass their own way and hold nothing. Covered by `held-glass.test.ts`.
+`LynxElement.insertBefore()` puts a `<blur-view>` into a parent that isn't one, on iOS, by appending it and then appending the siblings it should come before, in order (`insertHidesBlurView()` and `#appendBefore()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). The native order is the same as an insert's, reached only by appends, in the same flush, so the siblings move as any Angular move does. Covered by `lynx-element-blur-insert.test.ts`. Found with the search field, whose `@switch` picks its glass on iOS 26 and its fill before.
+
+---
+
+## Lynx doesn't move a field the keyboard covers, and reports the keyboard differently on each platform
+
+### What you'd expect (web)
+
+A mobile browser scrolls a focused field into view above the keyboard, and `visualViewport` (or `env(keyboard-inset-height)`) says how much of the page the keyboard covers.
+
+### What Lynx does
+
+Measured in Lynx Explorer 4.1 (iOS 27 Simulator, Android 14 emulator), with an `<input>` at the bottom of the screen:
+
+- **Nothing moves.** The keyboard covers the field on both platforms. Lynx Explorer neither resizes nor pans its Lynx view.
+- **`avoid-keyboard="true"` on the `<input>`** (with `avoid-keyboard-spacing="8px"`; Android parses only a string with a unit there) moves the whole Lynx view up until the field clears the keyboard: iOS animates the root view's frame with the keyboard (`LynxKeyboardEventDispatcher.m`), so the top of the page goes off screen, as Android's `adjustPan` does. Fine for a form, wrong for a bar at the bottom, which should rise on its own while the content stays.
+- **The input's own `keyboardheightchange` event** (`detail.height`) arrives on the main thread while it's focused: as the keyboard shows, when it changes size, and with 0 as it hides. iOS sends points measured up from the bottom of the **window**. Android sends **physical pixels** measured up from the bottom of the **Lynx view**: our bundles target SDK 3.2, which turns on the `keyboardCallbackPassRelativeHeight` page config (on from 2.2), so Android reports how far the keyboard reaches into the Lynx view, and re-reports it when the view's layout changes. Lynx Explorer's 312dp keyboard arrived as 819 at 2.625x.
+- **The global `keyboardstatuschanged` event** (through `GlobalEventEmitter`, so on the background thread, relayed to Angular's main thread) carries `['on', 328]` on iOS and `['on', 312, 312]` on Android (both in points/dp), and `['off', 0]`. Both events came about 80–100 ms after `focus`; the first keyboard of a fresh simulator took 700 ms.
+- **The iOS-only `keyboard` event** sends `safeAreaBottom` of the input's own view, which is 0, so it can't stand in for the window's inset.
+- **`boundingClientRect` with `relativeTo: 'screen'`** is in window coordinates on iOS (`convertRect:toView:nil`), and relative to the window's root view on Android (`LynxUIHelper.convertRectFromUIToScreen`). Without `relativeTo`, both measure from the Lynx view.
+
+So where the keyboard's top is depends on the platform: on iOS the screen's height less the keyboard's, and on Android the Lynx view's bottom less it. The iOS app `ng build --platform ios` makes insets its Lynx view above the home indicator, so the window's measure and the view's differ by 34pt there.
+
+### What we do about it
+
+The search field reads `keyboardheightchange` (`packages/ui/src/lib/components/search-field/keyboard.ts`): it measures its host and the page on screen, works out how far the keyboard reaches over it on each platform, and rises by that, plus an 8px gap, with a transform on an inner view, so the host it measures doesn't move. In the dock, the dock measures its own host, which stays at the bottom of the page, and pads itself above the keyboard. The forms guide's advice for other inputs stands: put long forms in a `<scroll-view>`.
+
+---
+
+## `layoutchange` reports `top` and `left` from the page on iOS and from the parent on Android
+
+### What you'd expect (web)
+
+A `ResizeObserver` entry has no position, and `getBoundingClientRect()` measures from the viewport.
+
+### What Lynx does
+
+In Lynx Explorer 4.1, a 42px bar at the bottom of the screen reported `{ top: 797, bottom: 839 }` with `layoutchange` on iOS, measured from the page, and `{ top: 0, bottom: 41.9 }` on Android, measured from its parent. `width` and `height` agree. Read only the size from `layoutchange` (as the dock does for its width), and measure a position with `boundingClientRect`.
 
 ---
 

@@ -2,7 +2,6 @@ export {
   LynxElement,
   processPendingRemovals,
   processPendingTextNormalization,
-  releaseHeldGlass,
   scheduleSettleFlush,
 } from './lynx-element';
 export {

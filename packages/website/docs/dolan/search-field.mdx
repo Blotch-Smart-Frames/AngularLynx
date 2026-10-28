@@ -1,0 +1,141 @@
+# Search Field
+
+A search field with a magnifier, a button that clears it and an optional Cancel. It's a Liquid Glass capsule on iOS 26, and can sit in the [dock](/dolan/dock#search) to search from the bottom of the screen, as iPhone apps do.
+
+<Go example="ui-search-field" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add search-field
+```
+
+```typescript
+import { UiSearchField } from '../components/ui/search-field';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the field on iOS 26, and [Icon](/dolan/icon), whose icons it draws.
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiSearchField } from '../components/ui/search-field';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiSearchField],
+  template: `
+    <ui-search-field
+      placeholder="Songs and artists"
+      cancelable
+      [(value)]="query"
+      (submitted)="search($event)"
+    />
+  `,
+})
+export class App {
+  protected readonly query = signal('');
+
+  protected search(text: string): void {
+    // …
+  }
+}
+```
+
+- **`[(value)]` follows every keystroke,** and setting the signal from code updates the field.
+- **The keyboard's return key reads Search,** and pressing it emits `submitted` with the text and closes the keyboard.
+- **A clear button shows while there's text.** It empties the field and keeps the keyboard up, as UIKit's does.
+- **`cancelable` adds a Cancel** that shows while the field is in use (focused, or holding text). It clears the field, closes the keyboard and emits `canceled`.
+- **A field the keyboard would cover rises above it** while it's focused (see [The keyboard](#the-keyboard)).
+
+### What each platform draws
+
+| Platform                                                                | What you get                                                                                                                         |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| iOS 26 and later                                                        | A 48pt Liquid Glass capsule. Cancel is a glass circle with an x that grows out of the field's end, which shrinks to make room.       |
+| iOS 15 to 25                                                            | UISearchBar's field: a 36pt rounded rectangle on a gray fill, with a Cancel that slides in beside it.                                |
+| Android                                                                 | Material 3's search bar: a 56dp capsule on a tonal surface. While it's in use, its search icon turns into a back arrow that cancels. |
+| Android, with [`provideGlass()`](/dolan/glass#what-each-platform-draws) | The glass capsule, drawn with Android's blur.                                                                                        |
+| [Web preview](/guide/glossary#web-preview)                              | The glass capsule, drawn with WebGL.                                                                                                 |
+
+Glass belongs to the controls that float over your content. On iOS 26, put the field where it floats: at the top of a screen over its content, or in the [dock](/dolan/dock#search).
+
+### Signal Forms
+
+`UiSearchField` implements Angular's `FormValueControl`, so it works with the `[formField]` directive of Signal Forms (see [Forms](/guide/forms)):
+
+```angular-html
+<ui-search-field [formField]="filters.query" />
+```
+
+### Focus from code
+
+`focus()` gives the field the keyboard, and `blur()` takes it away. `hasFocus()` says whether it has it:
+
+```typescript
+readonly field = viewChild.required(UiSearchField);
+
+openSearch(): void {
+  this.field().focus();
+}
+```
+
+### The keyboard
+
+Lynx doesn't move a field the keyboard covers, so the field does it: when the keyboard shows, it measures where it is on screen and rises above the keyboard by however much it would be covered, and settles when the keyboard closes. A field at the top of the screen stays where it is. In the dock, the whole dock rises with it.
+
+It reads the keyboard's height from its `<input>`'s `keyboardheightchange` event, which iOS measures from the bottom of the window and Android from the bottom of the Lynx view. On Android, an app whose window already shrinks above the keyboard, as the one `ng build --platform android` makes does, reports nothing to rise by. See [Forms](/guide/forms) for the keyboard elsewhere.
+
+### Dark mode
+
+The icons draw with the light theme's colors until you say otherwise. If your app switches to dark mode, set the color scheme with [`provideIconTheme()`](/dolan/icon#dark-mode).
+
+## API
+
+### UiSearchField
+
+| Input         | Type      | Default        | Description                                                   |
+| ------------- | --------- | -------------- | ------------------------------------------------------------- |
+| `value`       | `string`  | `''`           | The text. Two-way with `[(value)]`.                           |
+| `placeholder` | `string`  | `'Search'`     | What the field searches, shown while it's empty.              |
+| `cancelable`  | `boolean` | `false`        | Shows a Cancel while the field is in use.                     |
+| `cancelLabel` | `string`  | `'Cancel'`     | The Cancel's label, which screen readers say.                 |
+| `clearLabel`  | `string`  | `'Clear text'` | What screen readers say for the clear button.                 |
+| `disabled`    | `boolean` | `false`        | Dims the field and ignores typing.                            |
+| `class`       | `string`  | `''`           | Extra Tailwind classes for the field, such as `class="mx-4"`. |
+
+| Output        | Type     | Description                                                  |
+| ------------- | -------- | ------------------------------------------------------------ |
+| `valueChange` | `string` | Emits the text as it changes.                                |
+| `submitted`   | `string` | Emits the text when the keyboard's Search key is pressed.    |
+| `canceled`    | `void`   | Emits after Cancel clears the field and closes the keyboard. |
+| `focused`     | `void`   | Emits when the field gets the keyboard's focus.              |
+| `blurred`     | `void`   | Emits when it loses it.                                      |
+
+| Property         | Type                                         | Description                                                  |
+| ---------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| `hasFocus`       | `Signal<boolean>`                            | Whether the field has the keyboard's focus.                  |
+| `keyboardHeight` | `Signal<number>`                             | The keyboard's height in px while the field has focus.       |
+| `design`         | `Signal<'glass' \| 'frosted' \| 'material'>` | The platform's design (see [Glass](/dolan/glass#functions)). |
+| `focus()`        | method                                       | Gives the field the keyboard's focus.                        |
+| `blur()`         | method                                       | Takes it away.                                               |
+| `clear()`        | method                                       | Empties the field.                                           |
+| `cancel()`       | method                                       | What Cancel does.                                            |
+
+## Accessibility
+
+- **The text box is a search field** to screen readers (the `search` trait on iOS), named by its placeholder.
+- **The clear button and Cancel are buttons,** named by `clearLabel` and `cancelLabel`. Material's back arrow is the Cancel.
+- **Reduce Motion:** Cancel appears and the field rises above the keyboard at once, without growing or sliding.
+- **Increase Contrast** draws the glass field's magnifier and placeholder at full strength. Reduce Transparency is handled by the [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Dock](/dolan/dock#search): search from the bottom of the screen, as iOS 26 does
+- [Input](/dolan/input): a text field with a label, helper text and error message
+- [Glass](/dolan/glass): the glass the field is drawn with
+- [Forms](/guide/forms): forms and the on-screen keyboard
+- [`<input>`](/api/elements/input): the element underneath

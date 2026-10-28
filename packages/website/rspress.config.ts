@@ -97,6 +97,7 @@ export default defineConfig({
         { text: 'Dock', link: '/dolan/dock' },
         { text: 'Navigation Bar', link: '/dolan/navigation-bar' },
         { text: 'Toolbar', link: '/dolan/toolbar' },
+        { text: 'Search Field', link: '/dolan/search-field' },
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
         { text: 'Glass Sheets', link: '/dolan/bottom-sheet#glass' },

@@ -1583,10 +1583,10 @@ When `display: linear` (the Lynx default), two custom properties control layout:
 
 Measured for issue #68 (2026-10-26, Lynx Explorer 4.1, iOS 27 Simulator and Android API 34 emulator), with `typeof` in app code on each thread:
 
-| Thread | `fetch` | `lynx.fetch` | `XMLHttpRequest` | `WebSocket` |
-| --- | --- | --- | --- | --- |
-| Main (where Angular runs) | `undefined` | — | `undefined` | `undefined` |
-| Background | `function` | `function` | `undefined` | `undefined` |
+| Thread                    | `fetch`     | `lynx.fetch` | `XMLHttpRequest` | `WebSocket` |
+| ------------------------- | ----------- | ------------ | ---------------- | ----------- |
+| Main (where Angular runs) | `undefined` | —            | `undefined`      | `undefined` |
+| Background                | `function`  | `function`   | `undefined`      | `undefined` |
 
 - **`fetch` exists only on the background thread.** Lynx's docs tag it `BTS`. Background code is wrapped in a function whose parameters include `fetch`, `XMLHttpRequest` and `WebSocket` (`core/runtime/js/js_bundle.cc`), and rspeedy's runtime wrapper adds `fetch = fetch || lynx.fetch`. The wrapper's `XMLHttpRequest` and `WebSocket` parameters are `undefined` in Lynx Explorer.
 - **The main thread has none of them**, and since issue #81 every component, service, interceptor and `(bindtap)` handler runs there. Angular's `HttpClient` needs `fetch` for its default backend and `XMLHttpRequest` for `withXhr()`, so the runtime installs both on the main thread, relayed to the background thread's `fetch` (issue #85). See "The main thread's `fetch` is AngularLynx's relay" below.
@@ -2834,10 +2834,10 @@ The default `position` is **`relative`**. This means `top`/`left`/`right`/`botto
 
 Measured for issue #68 (2026-10-26, Lynx Explorer 4.1) with `typeof Intl`:
 
-| Thread | iOS | Android |
-| --- | --- | --- |
-| Main (PrimJS, where Angular runs) | `undefined` | `undefined` |
-| Background | `object` (JavaScriptCore) | `undefined` (PrimJS) |
+| Thread                            | iOS                       | Android              |
+| --------------------------------- | ------------------------- | -------------------- |
+| Main (PrimJS, where Angular runs) | `undefined`               | `undefined`          |
+| Background                        | `object` (JavaScriptCore) | `undefined` (PrimJS) |
 
 So any code that runs in a component, service or template handler has no `Intl`, on either platform. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
 
@@ -5220,3 +5220,37 @@ web-elements sends `layoutchange` from a `ResizeObserver` on the element's `layo
 ### What we do about it
 
 Measure a plain view instead. The dock puts an empty full-width `<view class="h-0 w-full">` above its glass group and listens there. A fix in web-elements would be for `XBlurView` to set `[layoutChangeTarget] = this`, as `XView` does.
+
+---
+
+## Native Lynx 4.1 loses an element moved to a parent its flush reaches first
+
+### What you'd expect (web)
+
+`appendChild()` moves an element that's already in the tree: it leaves its old parent and shows up in the new one, wherever the two are.
+
+### What Lynx does
+
+`__AppendElement` and `__InsertElementBefore` change the element tree at once, but only queue the change for the layout and painting tree: a removal on the old parent and an insertion on the new one. `__FlushElementTree` handles each element's queue in pre-order (`Element::FlushActions` in `core/renderer/dom/fiber/fiber_element.cc`). When it reaches the new parent first, the insertion finds the element still rendered under its old parent and links it in anyway; the old parent's removal then finds the element rendered elsewhere and does nothing (`HandleRemoveChildAction` logs "remove wrong child node" and returns). The element ends up in neither: the new parent lays out as if empty, and the element measures at the top-left of the screen.
+
+Moves the flush handles in order work: within one parent (an `@for` reorder), into a later part of the tree, or down into the old parent's own subtree. The one that broke was moving an element out of an `<overlay>` back into the page before it, which the context menu does with the element it lifts (on the iOS 27 Simulator and an Android 14 emulator, in Lynx Explorer 4.1). Lynx's develop branch fixes it: `HandleInsertChildAction` detaches the element from its old render parent first, behind `FixFiberReinsertDetachFromOldRenderParent`, which defaults to on but isn't in 4.1.
+
+### The fix
+
+`LynxElement.appendChild()` and `insertBefore()` check, on native Lynx, whether the flush will reach the new parent before the old one (`flushesBefore()`: an ancestor, or an earlier branch under the two's common ancestor). If it will, the element is removed for good and rebuilt in the new parent from its cached state (`#removeIfMoveWouldBeLost()`, then the recreate-on-remount path), in the same flush, so nothing depends on the order. Every other move stays a native move. Lynx for Web moves DOM nodes and doesn't need it. Covered by `packages/runtime/src/lib/lynx-element/lynx-element-move.test.ts`, whose fake flush loses the element the way Lynx does.
+
+---
+
+## Lynx for Web never fires `longpress`
+
+### What you'd expect (parity with iOS and Android)
+
+`(bindlongpress)` runs when a finger (or the mouse) stays down on the element, and the `tap` that would follow doesn't fire.
+
+### What Lynx does
+
+Native Lynx recognizes long presses itself. `@lynx-js/web-core` (0.26) has no recognizer: it listens for the DOM event of each Lynx event's name, maps `click` to `tap`, and the DOM has no `longpress`. So a long press in the web preview, and in the docs' previews, did nothing but fire `tap` when it ended. Its listeners are passive, so a handler can't stop the browser's own `contextmenu` either.
+
+### The fix
+
+On the web, an element that gets a `longpress` listener recognizes long presses from its own touch and mouse events (`WebLongPress` in `packages/runtime/src/lib/lynx-element/web-long-press.ts`): a press with the main button or a finger, held 500ms without moving more than 10px, runs its `longpress` listeners with the press's position in `detail`, as native Lynx does. The browser's `click` when the press ends, which web-core turns into `tap`, is dropped for any element, as native Lynx sends no tap after a long press.

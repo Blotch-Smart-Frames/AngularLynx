@@ -276,6 +276,7 @@
     "reparented",
     "reparenting",
     "reparents",
+    "requestclose",
     "rgba",
     "rsbuild",
     "rslib",

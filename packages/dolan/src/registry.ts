@@ -72,6 +72,9 @@ export const registry: RegistryEntry[] = [
   { name: 'chart', dependencies: [], packages: CHART_PACKAGES },
   { name: 'checkbox', dependencies: [] },
   { name: 'collapsible', dependencies: [] },
+  // The context menu is a menu that opens on a long press: it shares the
+  // menu's items and its overlay.
+  { name: 'context-menu', dependencies: ['menu'] },
   { name: 'dialog', dependencies: [] },
   // The dock's bar, button and accessory are glass, and its items draw their
   // icons from icon's set. Its selection capsule and the items on glass take
@@ -89,6 +92,12 @@ export const registry: RegistryEntry[] = [
   { name: 'label', dependencies: [] },
   { name: 'line-chart', dependencies: ['chart'] },
   { name: 'list', dependencies: [] },
+  // The menu is glass, and its items draw their icons from icon's set.
+  {
+    name: 'menu',
+    dependencies: ['glass', 'icon'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground', 'glass-dim'],
+  },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
   // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.

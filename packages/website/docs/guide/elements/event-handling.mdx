@@ -133,6 +133,7 @@ Each `Touch` has `x` and `y` relative to the element, `pageX` and `pageY` relati
 Each element's page under [API → Elements](/api/elements/view) lists all its events.
 
 - **`bindtap` and `bindlongpress` exclude each other.** With both on one element, a long press fires only `bindlongpress`.
+- **A long press is half a second.** In the web preview, hold the mouse button down as long. The runtime recognizes it there, as Lynx for Web doesn't.
 - **Touch events don't fire from a mouse.** In the web preview, a mouse fires `tap` but no `touchstart` or `touchend`. If you build press feedback from touch events, also bind `bindmousedown` and `bindmouseup`.
 
 ## Choose taps, gestures or touch events

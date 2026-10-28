@@ -5,6 +5,11 @@ on:
     branches: [master]
   push:
     branches: [master]
+  # Only a run on master saves the turbo cache that pull requests restore
+  # (see save-turbo-cache). GitHub has dropped a merge's push event before,
+  # which leaves that commit without one: run this on master by hand to catch
+  # up.
+  workflow_dispatch:
 
 jobs:
   format:
@@ -54,20 +59,45 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Restore only: save-turbo-cache saves the turbo cache, on master only,
+      # and a pull request's run restores master's newest.
       - name: Restore turbo cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: .turbo
-          # Unique per commit so this job owns the write. restore-keys warm it
-          # from the newest prior cache AND let the example shards below find
-          # THIS job's cache in the same run via the shared turbo-<sha>- prefix.
-          key: turbo-${{ github.sha }}-pkgs
-          restore-keys: |
-            turbo-${{ github.sha }}-
-            turbo-
+          key: turbo-${{ github.sha }}
+          restore-keys: turbo-
+      # Before the build, which can change the hashes a dry run gives (see
+      # the script).
+      - name: List this commit's turbo tasks
+        run: npx turbo run build --dry=json > "$RUNNER_TEMP/turbo-tasks.json"
       - run: npx turbo run build --filter=./packages/* --concurrency=4
         env:
           NG_BUILD_MAX_WORKERS: 2
+      # So the cache holds this commit's builds rather than every build since
+      # it was first saved: turbo never evicts an entry itself.
+      - name: Prune turbo cache
+        run: node .github/scripts/prune-turbo-cache.mts "$RUNNER_TEMP/turbo-tasks.json"
+      # For the example shards below, and on master for save-turbo-cache. An
+      # artifact doesn't count toward the repository's Actions cache, so a
+      # PR's run shares this with its shards without saving a cache. It holds
+      # this commit's package builds, and its example builds too unless an
+      # example changed while turbo replayed the website's build (which builds
+      # them all) rather than running it.
+      - name: Share turbo cache
+        uses: actions/upload-artifact@v7
+        with:
+          name: turbo-cache
+          path: .turbo/cache
+          # Everything under .turbo counts as hidden.
+          include-hidden-files: true
+          if-no-files-found: error
+          # Long enough to re-run a failed job.
+          retention-days: 1
+          # The entries are compressed already.
+          compression-level: 0
+          # Re-running this job uploads it again.
+          overwrite: true
 
   # Build all example apps (both lynx AND web targets) split across parallel
   # runners. Each shard builds ~1/N of the examples, so per-runner memory stays
@@ -92,17 +122,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Restore turbo cache
-        uses: actions/cache@v6
+      # build-packages' turbo cache, so this shard reuses the already-compiled
+      # package deps instead of rebuilding them, plus every example output
+      # unchanged since master's last run.
+      - name: Download build-packages' turbo cache
+        uses: actions/download-artifact@v8
+        # Only a speed-up: without it, turbo builds everything itself.
+        continue-on-error: true
         with:
-          path: .turbo
-          key: turbo-${{ github.sha }}-ex-${{ matrix.shard }}
-          # Restore build-packages' cache (turbo-<sha>-pkgs) so this shard reuses
-          # the already-compiled package deps instead of rebuilding them, plus any
-          # example outputs unchanged since a previous run.
-          restore-keys: |
-            turbo-${{ github.sha }}-
-            turbo-
+          name: turbo-cache
+          path: .turbo/cache
       - name: Build this shard's examples (lynx + web)
         # Partition examples round-robin by shard index (i % total) so heavy
         # examples spread evenly rather than clumping into one contiguous slice.
@@ -125,6 +154,22 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           NG_BUILD_MAX_WORKERS: 2
+      # When an example changes but nothing the website's build depends on
+      # does (a change to packages/ui, say), turbo replays the website's build
+      # instead of running it, and only this shard builds the example. So on
+      # master, this shard's cache goes to save-turbo-cache too. It holds only
+      # this commit's entries, since build-packages pruned the ones it
+      # downloaded.
+      - name: Share turbo cache
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: turbo-cache-shard-${{ matrix.shard }}
+          path: .turbo/cache
+          include-hidden-files: true
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
 
   # Single aggregation gate so branch protection can require one "build" check
   # instead of eight shard checks. Runs always() and fails red (not "skipped")
@@ -149,21 +194,39 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Restore only, like build-packages. `test:ci:coverage` dependsOn ^build,
+      # so master's cache skips rebuilding the package deps as well as
+      # re-running the tests of packages that haven't changed.
       - name: Restore turbo cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: .turbo
-          # `test:ci:coverage` dependsOn ^build, so warm from the same shared
-          # cache to skip rebuilding package deps that build-packages compiled.
-          key: turbo-${{ github.sha }}-cov
-          restore-keys: |
-            turbo-${{ github.sha }}-
-            turbo-
+          key: turbo-${{ github.sha }}
+          restore-keys: turbo-
+      # On master only, for save-turbo-cache: list this commit's tasks before
+      # the tests, then prune and share the cache after, as build-packages
+      # does.
+      - name: List this commit's turbo tasks
+        if: github.ref == 'refs/heads/master'
+        run: npx turbo run test:ci:coverage --dry=json > "$RUNNER_TEMP/turbo-tasks.json"
       # THE GATE: each package enforces 100% via vitest `thresholds`, so this
       # step exits non-zero (failing the job) if any package drops below 100% on
       # any metric — with or without Codecov. The uploads below are visualization
       # only. turbo caches each package's coverage/** as a task output.
       - run: npm run test:ci:coverage
+      - name: Prune turbo cache
+        if: github.ref == 'refs/heads/master'
+        run: node .github/scripts/prune-turbo-cache.mts "$RUNNER_TEMP/turbo-tasks.json"
+      - name: Share turbo cache
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: turbo-cache-test
+          path: .turbo/cache
+          include-hidden-files: true
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
 
       # Combine coverage across the monorepo via Codecov FLAGS (one per package),
       # mirroring the board repo. `disable_search` pins the exact lcov path;
@@ -226,3 +289,30 @@ jobs:
           flags: oxlint-plugin
           disable_search: true
           fail_ci_if_error: false
+
+  # Saves the turbo cache that every job above restores, from master only. A
+  # pull request's run can restore what master's runs save, but what it saves
+  # itself serves only that pull request's later runs. Each push to a pull
+  # request used to save eleven turbo entries, one per job (4 GB for one push
+  # once they had grown), which pushed the caches the native E2E jobs need
+  # out of the repository's 10 GB within minutes. Now each master commit
+  # saves one: build-packages', the shards' and the test job's caches
+  # together, so it holds every package build, example build and coverage
+  # report of that commit.
+  save-turbo-cache:
+    needs: [build-packages, build-examples, test]
+    # Also after a failed shard or test job: turbo caches only the tasks that
+    # passed.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.build-packages.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: turbo-cache*
+          path: .turbo/cache
+          # The caches share most entries, which are the same file in each.
+          merge-multiple: true
+      - uses: actions/cache/save@v6
+        with:
+          path: .turbo
+          key: turbo-${{ github.sha }}

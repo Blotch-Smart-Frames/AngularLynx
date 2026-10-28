@@ -460,15 +460,16 @@ describe('doctorCommand', () => {
   });
 
   it('does not warn about a dependency that is also installed', async () => {
-    // button depends on spinner, and spinner on icon (registry.ts) —
-    // installing all three means the `!installed.includes(dep)` check in
-    // checkComponentHealth is false for every dependency, so no "requires ...
-    // run dolan add" warning fires.
+    // button depends on spinner, glass and icon, and spinner and glass on
+    // icon (registry.ts) — installing all four means the
+    // `!installed.includes(dep)` check in checkComponentHealth is false for
+    // every dependency, so no "requires ... run dolan add" warning fires.
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       components: {
         button: { 'button.ts': '' },
         spinner: { 'spinner.ts': '' },
+        glass: { 'glass.ts': '' },
         icon: { 'icon.ts': '' },
       },
     });

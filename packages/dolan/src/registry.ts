@@ -51,8 +51,20 @@ export const registry: RegistryEntry[] = [
   { name: 'badge', dependencies: [], packages: CVA_PACKAGES },
   { name: 'bar-chart', dependencies: ['chart'] },
   { name: 'bottom-sheet', dependencies: [] },
-  { name: 'button', dependencies: ['spinner'], packages: CVA_PACKAGES },
-  { name: 'button-group', dependencies: [], packages: CVA_PACKAGES },
+  // The glass variants draw on `glass`, and projected icons take the label's
+  // color through icon's UI_ICON_COLOR.
+  {
+    name: 'button',
+    dependencies: ['spinner', 'glass', 'icon'],
+    packages: CVA_PACKAGES,
+    themeColors: GLASS_COLORS,
+  },
+  {
+    name: 'button-group',
+    dependencies: ['glass', 'icon'],
+    packages: CVA_PACKAGES,
+    themeColors: GLASS_COLORS,
+  },
   { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
   // Renders any TanStack Charts definition with Lynx elements; the presets
@@ -64,6 +76,14 @@ export const registry: RegistryEntry[] = [
   // menu's items and its overlay.
   { name: 'context-menu', dependencies: ['menu'] },
   { name: 'dialog', dependencies: [] },
+  // The dock's bar, button and accessory are glass, and its items draw their
+  // icons from icon's set. Its selection capsule and the items on glass take
+  // the glass foreground.
+  {
+    name: 'dock',
+    dependencies: ['glass', 'icon'],
+    themeColors: ['glass-foreground'],
+  },
   { name: 'empty-state', dependencies: ['icon'] },
   // Glass resolves its tint with the icons' copy of the theme, and hands
   // projected icons its foreground.

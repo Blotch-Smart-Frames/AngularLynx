@@ -174,6 +174,8 @@ The native `<overlay>` element occupies **no space** (`OverlayShadowNode::Measur
 
 Make the overlay's first child a **full-size backdrop view** (`class="h-full w-full"`), then position content inside it. This is why `bottom-sheet` (overlay → `h-full w-full` backdrop → `position: absolute; bottom: 0` panel) docks correctly, and the toast did not until wrapped the same way.
 
+An `@if` directly inside the overlay does the same, even with a full-size view in it: Angular inserts a hidden `<view>` to anchor the block and puts the block's content before it, and the overlay still didn't size that content. The alert dialog had its two panels in an `@if` straight under `<overlay>`, and on the iOS 27 Simulator its glass panel drew in the top-left corner. Wrapping the `@if` in an `h-full w-full` view fixed it.
+
 Caveats for **non-modal** overlays (e.g. toast): a full-screen first child captures touches for the app behind it, and on iOS this held true no matter what was tried — `pointer-events` errors the build (see above), `events-pass-through`/`custom-layout` are web-platform-only overlay attributes (the native overlay API exposes only `ios-enable-swipe-back`, `level`, `mode`, `visible`), and even the general-purpose `event-through` attribute did not help in practice, despite checking out against the native source on paper:
 
 - **Harmony**: `UIOverlay::OnNodeEvent` (`platform/harmony/lynx_xelement/overlay/ui_overlay.cc`) hit-tests its own subtree, and if the deepest hit element has `EventThrough` set, redispatches the touch to the page root instead of handling it.
@@ -5254,3 +5256,35 @@ Native Lynx recognizes long presses itself. `@lynx-js/web-core` (0.26) has no re
 ### The fix
 
 On the web, an element that gets a `longpress` listener recognizes long presses from its own touch and mouse events (`WebLongPress` in `packages/runtime/src/lib/lynx-element/web-long-press.ts`): a press with the main button or a finger, held 500ms without moving more than 10px, runs its `longpress` listeners with the press's position in `detail`, as native Lynx does. The browser's `click` when the press ends, which web-core turns into `tap`, is dropped for any element, as native Lynx sends no tap after a long press.
+
+---
+
+## There's no `backdrop-filter`, and `backdrop-blur-*` generates nothing
+
+### What you'd expect (web)
+
+`backdrop-filter: blur(4px)`, or Tailwind's `backdrop-blur-sm`, blurs whatever is behind the element: the classic frosted backdrop behind a dialog.
+
+### What Lynx does
+
+Lynx's CSS has no `backdrop-filter` (it isn't in `core/renderer/css`; only the desktop Clay renderer has a backdrop filter layer). On the iOS 27 Simulator and the Android 14 emulator, a view with an inline `backdrop-filter: blur(12px)` over text left the text sharp. The class doesn't get that far: the Lynx Tailwind 3 preset leaves the backdrop utilities out (its "Unsupported" table), so `examples/ui-dialog`'s bundle had no rule for the `backdrop-blur-sm` its dialog used, and with Tailwind 4 the build plugin drops properties Lynx lacks (`dropUnsupportedProperties` in `tailwind-v4/declarations.ts`), so the web preview doesn't blur either. The dialog's comment called the blur "web-only"; it blurred nowhere.
+
+### The fix
+
+Blur with a `<blur-view>`, which is what Lynx has for it on every platform. The dialog's no-op class is gone. The alert dialog's glass variant dims the screen with a plain layer, as iOS and Material do behind an alert.
+
+---
+
+## Fading a `<blur-view>` itself hides its material on iOS; fading a parent fades it
+
+### What you'd expect (web)
+
+`opacity` on an element fades it and everything it draws, a backdrop blur included.
+
+### What Lynx does
+
+On the iOS 27 Simulator, an `animate()` of a glass `<blur-view>`'s own opacity made its Liquid Glass disappear at once: its text and buttons stayed, on nothing. (UIKit warns that a `UIVisualEffectView` asked to animate its opacity looks broken until it's back at 1.) The same animation on a plain `<view>` around the blur view works: iOS draws the glass as a translucent frosted sheet that fades with it, then as glass once it's opaque. That's what UIKit draws for its own alerts as they come and go (frames of a `UIAlertController` with the window's layer slowed 20×).
+
+### What we do about it
+
+Fade and scale a plain view around a blur view, never the blur view. The alert dialog's glass variant animates the view its panel sits in, and keeps its dimming layer beside that view rather than around it. The menus avoid the question by growing their glass instead of fading it. A blur view that stays faded (a disabled control) is still a washed-out patch, so components dim the content inside the glass for that (see the `ui-component` skill).

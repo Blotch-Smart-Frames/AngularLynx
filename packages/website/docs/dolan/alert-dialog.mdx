@@ -17,8 +17,13 @@ import {
   UiAlertDialogTitle,
   UiAlertDialogDescription,
   UiAlertDialogFooter,
+  UiAlertDialogAction,
 } from '../components/ui/alert-dialog';
 ```
+
+:::tip
+This also adds [Glass](/dolan/glass) and [Icon](/dolan/icon), which the [glass variant](#glass) draws with.
+:::
 
 ## Usage
 
@@ -83,6 +88,56 @@ export class DeleteAccount {
 - When it opens, a screen reader moves into the panel and stays inside it until the dialog closes.
 - `<ui-alert-dialog-title>` and `<ui-alert-dialog-description>` render `<text>`, so put plain text in them. The footer lays out its buttons in a row, aligned right.
 
+### Glass
+
+`variant="glass"` draws the platform's own alert: Liquid Glass on iOS 26. Give it its buttons with `<ui-alert-dialog-action>`:
+
+```angular-html
+<ui-alert-dialog variant="glass" [(open)]="open">
+  <ui-alert-dialog-header>
+    <ui-alert-dialog-title>Delete Photo?</ui-alert-dialog-title>
+    <ui-alert-dialog-description>
+      This photo will be deleted from all your devices.
+    </ui-alert-dialog-description>
+  </ui-alert-dialog-header>
+  <ui-alert-dialog-footer>
+    <ui-alert-dialog-action variant="cancel">Cancel</ui-alert-dialog-action>
+    <ui-alert-dialog-action variant="destructive" (pressed)="delete()">
+      Delete
+    </ui-alert-dialog-action>
+  </ui-alert-dialog-footer>
+</ui-alert-dialog>
+```
+
+- **Pressing an action closes the dialog**, after `pressed` emits, as every iOS and Android alert button does. You don't set `open` to `false` yourself.
+- **`variant`** gives an action its role: `cancel` backs out, `destructive` deletes or can't be undone (it reads in red), and `default` is anything else.
+- **The cancel action goes where each platform puts it:** on the leading side of a row, and at the bottom of a stack, wherever you write it.
+- **Two actions sit side by side, and three stack.** For labels too long to share a row, set `orientation="vertical"` on the footer.
+- **`preferred`** marks the action to take when the user agrees, such as Save. iOS 26 fills it with the theme's `glass-tint`, and earlier iOS sets it in bold. Use it at most once, and never on the cancel action.
+
+```angular-html
+<ui-alert-dialog-footer>
+  <ui-alert-dialog-action variant="cancel">Cancel</ui-alert-dialog-action>
+  <ui-alert-dialog-action preferred (pressed)="save()"
+    >Save</ui-alert-dialog-action
+  >
+</ui-alert-dialog-footer>
+```
+
+What each platform draws:
+
+| Platform                                           | The alert                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| iOS 26 and later                                   | A 320pt Liquid Glass panel with 40pt corners. Leading bold title and message, 48pt capsule buttons. The screen dims to 20%     |
+| iOS 15 to 25                                       | Apple's alert before Liquid Glass: 270pt on the frosted material, centered text, buttons between hairlines, the preferred bold |
+| Android                                            | Material 3's basic dialog: 28dp corners on the theme's `secondary` surface, text buttons at the end, a 32% scrim               |
+| Android, with `provideGlass({ android: 'glass' })` | The iOS 26 alert, on glass without the refraction                                                                              |
+| [Web preview](/guide/glossary#web-preview)         | The iOS 26 alert, on Liquid Glass drawn with WebGL                                                                             |
+
+As on iOS, the glass shrinks into place from a little larger as it fades in, and only fades as it goes. Material's dialog grows in from a little smaller. None of them blur the screen behind: Lynx has no `backdrop-filter`, so Tailwind's `backdrop-blur-*` classes would do nothing there anyway.
+
+The default variant, and `<ui-button>`s in its footer, stay as they were. An `<ui-alert-dialog-action>` in it draws as an outline button for cancel, and a filled one otherwise.
+
 ### Run code after it closes
 
 `closed` emits once the close animation has finished, about 270ms after `open` turns `false`. It's a good place to navigate once the dialog has gone. You can also navigate straight from a button, as from any tap handler.
@@ -103,21 +158,54 @@ export class DeleteAccount {
 
 ### UiAlertDialog
 
-| Input   | Type      | Default | Description                                       |
-| ------- | --------- | ------- | ------------------------------------------------- |
-| `open`  | `boolean` | `false` | Whether the dialog is shown. Supports `[(open)]`. |
-| `class` | `string`  | `''`    | Extra Tailwind classes for the panel.             |
+| Input     | Type                   | Default     | Description                                                  |
+| --------- | ---------------------- | ----------- | ------------------------------------------------------------ |
+| `open`    | `boolean`              | `false`     | Whether the dialog is shown. Supports `[(open)]`.            |
+| `variant` | `'default' \| 'glass'` | `'default'` | `glass` draws the platform's own alert. See [Glass](#glass). |
+| `class`   | `string`               | `''`        | Extra Tailwind classes for the panel.                        |
 
-| Output       | Type      | Description                                                                   |
-| ------------ | --------- | ----------------------------------------------------------------------------- |
-| `openChange` | `boolean` | Part of `[(open)]`. The alert dialog never closes itself, so it doesn't emit. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                     |
+| Output       | Type      | Description                                                                                       |
+| ------------ | --------- | ------------------------------------------------------------------------------------------------- |
+| `openChange` | `boolean` | Part of `[(open)]`. Emits `false` when an `<ui-alert-dialog-action>` closes it, and never itself. |
+| `closed`     | `void`    | Emits after the close animation finishes.                                                         |
 
-All sub-components (`UiAlertDialogHeader`, `UiAlertDialogTitle`, `UiAlertDialogDescription`, `UiAlertDialogFooter`) accept `class`.
+### UiAlertDialogFooter
+
+| Input         | Type                                   | Default  | Description                                                                                        |
+| ------------- | -------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `orientation` | `'auto' \| 'horizontal' \| 'vertical'` | `'auto'` | How the glass variant lays out its actions. `auto` puts two side by side and stacks three, as iOS. |
+| `class`       | `string`                               | `''`     | Extra Tailwind classes.                                                                            |
+
+### UiAlertDialogAction
+
+| Input                | Type                                     | Default     | Description                                                                |
+| -------------------- | ---------------------------------------- | ----------- | -------------------------------------------------------------------------- |
+| `variant`            | `'default' \| 'cancel' \| 'destructive'` | `'default'` | The action's role.                                                         |
+| `preferred`          | `boolean`                                | `false`     | The action to take when the user agrees. Filled on iOS 26, bold before it. |
+| `accessibilityLabel` | `string`                                 | —           | What a screen reader reads instead of the label.                           |
+| `class`              | `string`                                 | `''`        | Extra Tailwind classes.                                                    |
+
+| Output    | Type   | Description                                                |
+| --------- | ------ | ---------------------------------------------------------- |
+| `pressed` | `void` | Emits when the action is chosen, before the dialog closes. |
+
+`UiAlertDialogHeader`, `UiAlertDialogTitle` and `UiAlertDialogDescription` accept `class`.
+
+### Theme colors
+
+The glass variant reads `glass-foreground` and `glass-muted-foreground` (its text), and `glass-tint` and `glass-tint-foreground` (the preferred action on iOS 26). See [Glass](/dolan/glass#theme-colors).
+
+## Accessibility
+
+- **When the dialog opens, a screen reader moves into the panel** and stays inside it until the dialog closes.
+- **Each action is a button** named by its label, or by `accessibilityLabel`.
+- **Reduce Motion:** nothing scales. The dimming and the panel only fade, in both variants.
+- **Reduce Transparency and Increase Contrast** apply to the glass panel as to all [glass](/dolan/glass#accessibility).
 
 ## Related
 
 - [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
 - [Dialog](/dolan/dialog): a dialog the backdrop can close
 - [Action Sheet](/dolan/action-sheet): offer several actions instead of two
+- [Glass](/dolan/glass): the material the glass variant is drawn with
 - [`<overlay>`](/api/elements/overlay): the element the dialog draws in

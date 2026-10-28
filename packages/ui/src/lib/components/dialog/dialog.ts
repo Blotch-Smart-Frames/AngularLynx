@@ -99,12 +99,12 @@ export class UiDialog implements OnDestroy {
   );
 
   protected readonly backdropClass = computed(() =>
-    // bg-black/50 dims the backdrop; backdrop-blur-sm applies frosted-glass blur
-    // on web. Lynx does not support backdrop-filter, so the blur is web-only.
-    cn(
-      'h-full w-full items-center flex justify-center',
-      'backdrop-blur-sm bg-black/50',
-    ),
+    // bg-black/50 dims the backdrop. It doesn't blur: a backdrop-blur-sm here
+    // blurred nothing on any platform. Lynx has no backdrop-filter, so iOS and
+    // Android drop it, the Lynx Tailwind 3 preset doesn't generate the class,
+    // and the build drops it from Tailwind 4's CSS for the web preview too
+    // (see investigations/lynx-vs-web-differences.md). A <blur-view> blurs.
+    cn('h-full w-full items-center flex justify-center', 'bg-black/50'),
   );
 
   protected readonly panelClass = computed(() =>

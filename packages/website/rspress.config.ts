@@ -97,6 +97,7 @@ export default defineConfig({
         { text: 'Dock', link: '/dolan/dock' },
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
+        { text: 'Glass Alert Dialog', link: '/dolan/alert-dialog#glass' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

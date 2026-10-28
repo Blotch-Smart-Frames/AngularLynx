@@ -99,6 +99,7 @@ export default defineConfig({
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
         { text: 'Glass Sheets', link: '/dolan/bottom-sheet#glass' },
+        { text: 'Popover', link: '/dolan/popover' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

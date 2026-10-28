@@ -5362,3 +5362,30 @@ A `ResizeObserver` entry has no position, and `getBoundingClientRect()` measures
 ### What Lynx does
 
 In Lynx Explorer 4.1, a 42px bar at the bottom of the screen reported `{ top: 797, bottom: 839 }` with `layoutchange` on iOS, measured from the page, and `{ top: 0, bottom: 41.9 }` on Android, measured from its parent. `width` and `height` agree. Read only the size from `layoutchange` (as the dock does for its width), and measure a position with `boundingClientRect`.
+
+---
+
+Nothing yet: it was found while building the glass sheet, whose glass is in an overlay. A glass component on a page shown later (a routed screen, an `@if`) may be affected, and the cause, in Lynx's iOS blur view or in the renderer, isn't known.
+
+---
+
+## A popover that leaves the screen usable: a `position: fixed` panel and `global-bind` listeners, not an `<overlay>`
+
+### What you'd expect (web)
+
+A non-modal popover is an element above the page, and a `click` listener on `document` hears every click: one outside the popover closes it, and still reaches what it landed on, so one tap closes a popover and presses the button under the finger.
+
+### What Lynx does
+
+- **An `<overlay>` takes every touch** while it's shown (see the toast's entry above), so a popover in one blocks the screen, as the menus and the bottom action sheet do on purpose.
+- **There's no `document` to listen on.** A listener on the page root hears only the touches that bubble up to it, and a `catch` listener on the way stops them.
+- **`global-bind` listeners run for a touch on any element** (`global-bindtouchstart`), however it bubbles: Lynx queues them before the touched element's own capture and bubble listeners (`TouchEventHandler::HandleEventInternal` in `core/renderer/events/touch_event_handler.cc`), and web-core runs them in the same dispatch. On the iOS 27 Simulator in Lynx Explorer 4.1, the global listener ran first, then the touched element's.
+- **`capture-bind` listeners didn't run on iOS.** A `capture-bindtouchstart` or `capture-bindtap` on a view or a blur view never ran there in Lynx Explorer 4.1, while a `bindtouchstart` on the same element did. Not traced further.
+
+### What we do about it
+
+`UiPopoverPanel` (`packages/ui/src/lib/components/popover/popover-panel.ts`), behind `ui-popover` and the anchored `ui-action-sheet`:
+
+- The panel is a `position: fixed` view with `z-index: 999`. Lynx lifts it to the page root, above the page, and hit-tests it like any other view, so the rest of the screen keeps its touches. It's placed in page coordinates: two marker views of no size (the safe area's top edge, and an edge from the page's top to the safe area's bottom) are measured with `boundingClientRect` alongside the anchor, relative to the screen, and the safe area's offset in the page is added to the menu's `placeMenu()` frame.
+- While it's shown, it has `global-bindtouchstart` and `global-bindmousedown` listeners (mouse for the web preview, where touch events come only from a touch screen). A touch on the panel, or on its trigger, sets a flag through ordinary `bindtouchstart` listeners; the global listener checks the flag on the next timer, which runs after every listener of that touch, and closes the panel if nothing set it. A `catchtouchstart` inside the panel would hide a touch from it, and close it.
+- A touch, not a tap, closes it, so a scroll that starts outside closes it too, rather than moving its anchor away from under it.

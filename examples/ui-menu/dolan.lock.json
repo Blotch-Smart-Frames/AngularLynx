@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "components": {
+    "icon": {
+      "icon.ts": {
+        "hash": "e7fa61d7a0337601"
+      },
+      "icons.ts": {
+        "hash": "2d54632a5080d6fc"
+      },
+      "index.ts": {
+        "hash": "d175df85291c8009"
+      },
+      "icon-theme.ts": {
+        "hash": "1efb1f9b494fbf74"
+      }
+    },
+    "glass": {
+      "concentric-radius.ts": {
+        "hash": "41fd4168e55e3f08"
+      },
+      "glass-design.ts": {
+        "hash": "f55143a5e91687c5"
+      },
+      "glass.ts": {
+        "hash": "edf2662a09d2104c"
+      },
+      "index.ts": {
+        "hash": "f9f59d5807c760b6"
+      }
+    },
+    "menu": {
+      "index.ts": {
+        "hash": "6844fe66f0fbae47"
+      },
+      "menu.ts": {
+        "hash": "9f4d628d7ad82520"
+      },
+      "menu-popup.ts": {
+        "hash": "92268cfca18a3725"
+      },
+      "menu-placement.ts": {
+        "hash": "76c669fffb01282d"
+      }
+    },
+    "context-menu": {
+      "index.ts": {
+        "hash": "acdf9850d5f22a87"
+      },
+      "context-menu.ts": {
+        "hash": "b9e635c347a3b239"
+      }
+    }
+  },
+  "theme": {
+    "default.css": {
+      "hash": "df5b6172b99d88e0"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0706a8e28039a2ca"
+    },
+    "dark.css": {
+      "hash": "2d60711510067786"
+    }
+  }
+}

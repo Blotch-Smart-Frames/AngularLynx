@@ -1,0 +1,119 @@
+# Context Menu
+
+A long press on an element lifts it and opens a menu of actions beside it, while the rest of the screen dims, as on iOS 26.
+
+<Go example="ui-menu" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add context-menu
+```
+
+```typescript
+import { UiContextMenu } from '../components/ui/context-menu';
+import { UiMenuItem, UiMenuSeparator } from '../components/ui/menu';
+```
+
+:::tip
+This also adds [Menu](/dolan/menu), whose items, sections and separators make up the context menu, with [Glass](/dolan/glass) and [Icon](/dolan/icon).
+:::
+
+## Usage
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiContextMenu } from '../components/ui/context-menu';
+import { UiMenuItem, UiMenuSeparator } from '../components/ui/menu';
+
+@Component({
+  selector: 'app-trip-card',
+  imports: [LYNX_ELEMENTS, UiContextMenu, UiMenuItem, UiMenuSeparator],
+  template: `
+    <ui-context-menu>
+      <view class="rounded-2xl bg-card p-4" (bindtap)="open()">
+        <text class="text-lg font-semibold text-card-foreground">Kyoto</text>
+      </view>
+
+      <ui-menu-item label="Share" icon="upload" (pressed)="share()" />
+      <ui-menu-item label="Favorite" icon="heart" (pressed)="favorite()" />
+      <ui-menu-separator />
+      <ui-menu-item
+        label="Delete"
+        icon="trash"
+        variant="destructive"
+        (pressed)="remove()"
+      />
+    </ui-context-menu>
+  `,
+})
+export class TripCard {
+  protected open(): void {}
+  protected share(): void {}
+  protected favorite(): void {}
+  protected remove(): void {}
+}
+```
+
+- **The items are the menu**, and everything else inside `<ui-context-menu>` is the element it opens from: here, the card.
+- **A long press opens it.** A tap still reaches the element: Lynx tells a tap from a long press.
+- **Choosing an item emits its `pressed`, then closes the menu.** A tap outside the menu, or Android's back button, closes it without choosing.
+- **The menu opens below the element,** or above it near the bottom of the screen. When it fits on neither side, the element moves up to make room, as on iOS.
+- **`[(open)]` opens and closes it from code.** `disabled` turns the long press off.
+
+The items, sections and separators are the [Menu's](/dolan/menu#items): icons, check marks, destructive and disabled items, and titled sections all work here too.
+
+### What each platform draws
+
+| Platform                                           | What you get                                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| iOS 26 and later                                   | The element lifts over a dimmed screen, and a Liquid Glass menu blooms from its corner         |
+| iOS 15 to 25                                       | The element lifts over a blurred screen, with the menu on the frosted material                 |
+| Android                                            | A Material 3 menu beside the element, without the lift or the dimming, as Android's menus open |
+| Android, with `provideGlass({ android: 'glass' })` | The iOS 26 look                                                                                |
+| [Web preview](/guide/glossary#web-preview)         | The iOS 26 look. Hold the mouse button down on the element to open it                          |
+
+### The lifted element
+
+The element that lifts is the element itself, not a copy or a picture of it. The context menu moves it into the menu's [overlay](/api/elements/overlay), at the same spot on screen, above the dimming layer, and scales it up a little. When the menu closes, it goes back. Meanwhile the space it left keeps its size, so the page doesn't move.
+
+So the element looks exactly as it did and stays live: a tap on it still runs its own handler, and closes the menu.
+
+### Match swipe actions
+
+Apple asks for a context menu's first actions to match the swipe actions of the row it's on, if the row has any, so the two ways to reach an action agree. A mail row that swipes to Archive and Delete offers Archive and Delete first in its context menu.
+
+## API
+
+### UiContextMenu
+
+| Input      | Type      | Default | Description                                    |
+| ---------- | --------- | ------- | ---------------------------------------------- |
+| `open`     | `boolean` | `false` | Whether the menu is open. Supports `[(open)]`. |
+| `disabled` | `boolean` | `false` | Turns the long press off.                      |
+
+| Output       | Type      | Description                                                           |
+| ------------ | --------- | --------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits when a long press, an item or a tap outside opens or closes it. |
+| `closed`     | `void`    | Emits after the close animation finishes.                             |
+
+| Method    | Description      |
+| --------- | ---------------- |
+| `close()` | Closes the menu. |
+
+The items' API is on the [Menu page](/dolan/menu#uimenuitem).
+
+## Accessibility
+
+- **VoiceOver and TalkBack open it with a double-tap and hold**, their long press.
+- **When the menu opens, a screen reader moves into it** and stays inside until it closes. Each item is a button named by its label, and a destructive one reads as "Delete, destructive".
+- **Reduce Motion:** the element doesn't scale, and the menu doesn't grow. They appear in place, and the dimming and the items fade in.
+- **Reduce Transparency and Increase Contrast** apply as on all [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Menu](/dolan/menu): the same menu, opened by a tap on a button
+- [Glass](/dolan/glass): the material the menu is drawn with
+- [Action Sheet](/dolan/action-sheet): a list of actions from the bottom of the screen
+- [Events](/guide/elements/event-handling): `bindtap` and `bindlongpress`

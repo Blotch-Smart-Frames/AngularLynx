@@ -1,0 +1,230 @@
+# Menu
+
+A pull-down menu that grows out of the button that opens it, in Liquid Glass on iOS 26 and a Material 3 menu on Android.
+
+<Go example="ui-menu" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add menu
+```
+
+```typescript
+import {
+  UiMenu,
+  UiMenuItem,
+  UiMenuSection,
+  UiMenuSeparator,
+  UiMenuTrigger,
+} from '../components/ui/menu';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the menu, and [Icon](/dolan/icon), for the items' icons.
+:::
+
+## Usage
+
+```typescript
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiGlass } from '../components/ui/glass';
+import { UiIcon } from '../components/ui/icon';
+import {
+  UiMenu,
+  UiMenuItem,
+  UiMenuSection,
+  UiMenuSeparator,
+  UiMenuTrigger,
+} from '../components/ui/menu';
+
+@Component({
+  selector: 'app-trips-toolbar',
+  imports: [
+    LYNX_ELEMENTS,
+    UiGlass,
+    UiIcon,
+    UiMenu,
+    UiMenuItem,
+    UiMenuSection,
+    UiMenuSeparator,
+    UiMenuTrigger,
+  ],
+  template: `
+    <ui-menu>
+      <blur-view
+        ui-glass
+        uiMenuTrigger
+        shape="circle"
+        class="h-11 w-11 items-center flex justify-center"
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        accessibility-label="More"
+      >
+        <ui-icon name="ellipsis" />
+      </blur-view>
+
+      <ui-menu-section title="Sort by">
+        <ui-menu-item
+          label="Name"
+          [checked]="sort() === 'name'"
+          (pressed)="sort.set('name')"
+        />
+        <ui-menu-item
+          label="Date"
+          [checked]="sort() === 'date'"
+          (pressed)="sort.set('date')"
+        />
+      </ui-menu-section>
+      <ui-menu-separator />
+      <ui-menu-item label="New trip" icon="plus" (pressed)="newTrip()" />
+    </ui-menu>
+  `,
+})
+export class TripsToolbar {
+  protected readonly sort = signal<'name' | 'date'>('date');
+
+  protected newTrip(): void {}
+}
+```
+
+- **`uiMenuTrigger` marks the element that opens the menu.** A tap on it opens and closes it. Anything can be the trigger: a glass button, as here, a [Button](/dolan/button), or your own view.
+- **Everything else inside `<ui-menu>` is the menu:** `<ui-menu-item>`, `<ui-menu-section>` and `<ui-menu-separator>`.
+- **Choosing an item emits its `pressed`, then closes the menu.** A tap outside the menu, or Android's back button, closes it without choosing.
+- **It stays on screen and inside the safe area.** Near the bottom of the screen it opens upward, and in the right half it lines up with the trigger's right edge.
+- **`[(open)]` opens and closes it from code**, as with [Dialog](/dolan/dialog).
+
+### What each platform draws
+
+| Platform                                           | What you get                                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| iOS 26 and later                                   | Liquid Glass that grows out of the trigger and shrinks back into it, with the icon before each label |
+| iOS 15 to 25                                       | The same on the frosted material, with the icon after each label and a thick band between sections   |
+| Android                                            | A Material 3 menu that unfolds below the trigger, on a solid surface with a shadow                   |
+| Android, with `provideGlass({ android: 'glass' })` | Liquid Glass, as on iOS                                                                              |
+| [Web preview](/guide/glossary#web-preview)         | Liquid Glass, as on iOS                                                                              |
+
+On iOS the menu is one glass shape whose frame grows from the trigger's to the menu's, and the trigger hides under it meanwhile. Liquid Glass follows a shape as it moves and resizes, so the trigger seems to open into the menu.
+
+### Items
+
+```angular-html
+<ui-menu-item label="Share" icon="upload" (pressed)="share()" />
+<ui-menu-item
+  label="Delete"
+  icon="trash"
+  variant="destructive"
+  (pressed)="remove()"
+/>
+<ui-menu-item label="Archive" icon="archive" disabled />
+```
+
+- **`label`** is the item's text, and what a screen reader reads.
+- **`icon`** takes a name from the [icon set](/dolan/icon). Give icons to common actions, such as share, copy and delete.
+- **`variant="destructive"`** colors the item red, for actions that delete or can't be undone.
+- **`disabled`** shows the item, faded, without letting it be chosen.
+
+### Check marks
+
+`checked` shows a checkmark, for an option that's on:
+
+```angular-html
+<ui-menu-item
+  label="Name"
+  [checked]="sort() === 'name'"
+  (pressed)="sort.set('name')"
+/>
+<ui-menu-item
+  label="Date"
+  [checked]="sort() === 'date'"
+  (pressed)="sort.set('date')"
+/>
+```
+
+Set `checked`, true or false, on every item of the group. An unchecked item keeps the checkmark's space, so the labels line up.
+
+### Sections
+
+```angular-html
+<ui-menu-section title="Sort by">
+  <ui-menu-item label="Name" />
+  <ui-menu-item label="Date" />
+</ui-menu-section>
+<ui-menu-separator />
+<ui-menu-section>
+  <ui-menu-item label="Select" />
+</ui-menu-section>
+```
+
+- **`<ui-menu-section>`** groups items, under an optional `title`.
+- **`<ui-menu-separator />`** parts two sections: a thin line, or a thick band before iOS 26.
+
+## API
+
+### UiMenu
+
+| Input  | Type      | Default | Description                                    |
+| ------ | --------- | ------- | ---------------------------------------------- |
+| `open` | `boolean` | `false` | Whether the menu is open. Supports `[(open)]`. |
+
+| Output       | Type      | Description                                                          |
+| ------------ | --------- | -------------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits when the trigger, an item or a tap outside opens or closes it. |
+| `closed`     | `void`    | Emits after the close animation finishes.                            |
+
+| Method     | Description               |
+| ---------- | ------------------------- |
+| `toggle()` | Opens or closes the menu. |
+| `close()`  | Closes the menu.          |
+
+### UiMenuTrigger
+
+Selector: `[uiMenuTrigger]`. Put it on the element inside `<ui-menu>` that opens it. Without one, the menu grows out of `<ui-menu>`'s own element.
+
+### UiMenuItem
+
+| Input                | Type                         | Default     | Description                                                                           |
+| -------------------- | ---------------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `label`              | `string`                     | (required)  | The item's text.                                                                      |
+| `icon`               | `IconName`                   | —           | An icon from the icon set.                                                            |
+| `variant`            | `'default' \| 'destructive'` | `'default'` | `destructive` colors it red.                                                          |
+| `checked`            | `boolean`                    | —           | Shows a checkmark when true. Set it on every item of a group of options.              |
+| `disabled`           | `boolean`                    | `false`     | Shows the item without letting it be chosen.                                          |
+| `accessibilityLabel` | `string`                     | —           | What a screen reader reads instead of the label and, if destructive, ", destructive". |
+
+| Output    | Type   | Description                                            |
+| --------- | ------ | ------------------------------------------------------ |
+| `pressed` | `void` | Emits when the item is chosen, before the menu closes. |
+
+Items, sections and separators work in a `<ui-menu>` and in a [`<ui-context-menu>`](/dolan/context-menu).
+
+### UiMenuSection
+
+| Input   | Type     | Default | Description                        |
+| ------- | -------- | ------- | ---------------------------------- |
+| `title` | `string` | —       | A title above the section's items. |
+
+### UiMenuSeparator
+
+No inputs.
+
+### Theme colors
+
+The menu reads `glass-foreground` and `glass-muted-foreground` (text and icons) and `glass-dim` (a context menu's dimming layer). See [Glass](/dolan/glass#theme-colors).
+
+## Accessibility
+
+- **Each item is a button named by its label.** A destructive item reads as "Delete, destructive". `accessibilityLabel` replaces both.
+- **A checked item is selected**, which VoiceOver reads on iOS.
+- **Section titles are headings.**
+- **When the menu opens, a screen reader moves into it** and stays inside until it closes, reading the items in order.
+- **Reduce Motion:** the menu doesn't grow or shrink. It appears in place, and its items fade in.
+- **Reduce Transparency and Increase Contrast** apply as on all [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Context Menu](/dolan/context-menu): the same menu, opened by a long press on an element
+- [Glass](/dolan/glass): the material the menu is drawn with
+- [Action Sheet](/dolan/action-sheet): a list of actions from the bottom of the screen
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use

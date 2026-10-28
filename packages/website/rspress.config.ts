@@ -94,6 +94,7 @@ export default defineConfig({
         { sectionHeaderText: 'Liquid Glass' },
         { text: 'Glass', link: '/dolan/glass' },
         { text: 'Glass Buttons', link: '/dolan/button#glass' },
+        { text: 'Dock', link: '/dolan/dock' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

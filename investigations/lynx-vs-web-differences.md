@@ -5187,6 +5187,8 @@ Checked in Lynx Explorer 4.1 on the iOS 27 Simulator:
 
 Nothing yet. A component can morph glass by animating one shape's size and position rather than swapping elements. A true morph between shapes (a button into its menu) would need Lynx's iOS `blur-view` to animate its effect changes.
 
+The dock does that. Its bar, action and accessory are absolutely positioned shapes in one group, and minimizing transitions their `left`, `right`, `bottom` and `height`: the accessory moving down between the shrinking bar and action bridges into each as it passes and splits off again, on the iOS 27 Simulator and in the web preview.
+
 ---
 
 ## `flex-1` on a `<blur-view>`'s children does nothing on Lynx for Web
@@ -5203,3 +5205,18 @@ web-elements sizes a flex item (`flex: var(--flex-grow) …`, or a linear weight
 
 The runtime's web-only blur view layout (`BLUR_VIEW_LAYOUT_CSS` in `packages/runtime/src/lib/web-glass/blur-view-layout.ts`) gives the slot the host's values: `slot { --lynx-display: inherit; --lynx-linear-orientation: inherit; --lynx-linear-weight-sum: inherit }`.
 
+---
+
+## `layoutchange` never fires on a `<blur-view>` on Lynx for Web
+
+### What you'd expect (parity with iOS and Android)
+
+`(bindlayoutchange)` on a `<blur-view>` reports its size after layout, as on any element, and does on iOS and Android.
+
+### What Lynx does
+
+web-elements sends `layoutchange` from a `ResizeObserver` on the element's `layoutChangeTarget`. `<x-view>` and `<x-text>` set it to themselves, but `<x-blur-view>` (`XBlurView.js` in `@lynx-js/web-elements`) leaves it unset, so enabling the event observes nothing. The dock measured its width on its glass group and never minimized in the web preview.
+
+### What we do about it
+
+Measure a plain view instead. The dock puts an empty full-width `<view class="h-0 w-full">` above its glass group and listens there. A fix in web-elements would be for `XBlurView` to set `[layoutChangeTarget] = this`, as `XView` does.

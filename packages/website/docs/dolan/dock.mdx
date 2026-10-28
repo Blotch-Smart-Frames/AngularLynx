@@ -1,0 +1,231 @@
+# Dock
+
+The floating bar of your app's top-level screens: the Liquid Glass form of the [tab bar](/dolan/tab-bar). A glass capsule of icon-and-label items at the bottom of the screen, with a separate button beside it, an accessory above it, and a minimized form while content scrolls.
+
+<Go example="ui-dock" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add dock
+```
+
+```typescript
+import {
+  UiDock,
+  UiDockAccessory,
+  UiDockAction,
+  UiDockItem,
+  UiDockScroll,
+} from '../components/ui/dock';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the dock, and [Icon](/dolan/icon), whose icons the items draw.
+:::
+
+## Usage
+
+Give each item a `route`, an `icon` and a `label`, and put the dock after your `<router-outlet>`:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiDock, UiDockAction, UiDockItem } from '../components/ui/dock';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, RouterOutlet, UiDock, UiDockAction, UiDockItem],
+  template: `
+    <view class="flex h-full flex-col bg-background">
+      <router-outlet />
+      <ui-dock>
+        <ui-dock-item route="/home" icon="home" label="Home" />
+        <ui-dock-item route="/browse" icon="layout-grid" label="Browse" />
+        <ui-dock-item route="/library" icon="music" label="Library" />
+        <ui-dock-action route="/search" icon="search" label="Search" />
+      </ui-dock>
+    </view>
+  `,
+})
+export class App {}
+```
+
+- **The dock floats over your screens** at the bottom of its parent, and their content scrolls beneath it. It clears the iPhone's home indicator by the bottom [safe area](/guide/safe-area).
+- **A tap navigates** to the item's `route` with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
+- **A capsule marks the selected item,** and slides to the next one you tap. An item stays selected on the routes under it: Library at `/library/42` too.
+- **The action is a separate button,** for what people reach for from every screen, such as search or compose (below).
+
+Give each screen's host `flex-1`, so its `<scroll-view>` fills the screen, and pad the end of its content so the last row scrolls clear of the dock: `pb-safe-24`, or `pb-safe-40` with an accessory.
+
+```typescript
+@Component({
+  selector: 'app-home',
+  imports: [LYNX_ELEMENTS, UiDockScroll],
+  host: { class: 'flex flex-1 flex-col' },
+  template: `
+    <scroll-view
+      ui-dock-scroll
+      scroll-orientation="vertical"
+      class="h-full w-full"
+    >
+      <view class="flex-col gap-4 px-5 pb-safe-24 pt-safe-6">…</view>
+    </scroll-view>
+  `,
+})
+export class Home {}
+```
+
+### What each platform draws
+
+| Platform                                                                | What you get                                                                                                                             |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS 26 and later                                                        | A floating Liquid Glass capsule, with a sliding selection capsule. It minimizes as content scrolls down.                                 |
+| iOS 15 to 25                                                            | The tab bar of that time: edge to edge on a blur material, the selected item in `primary` and the others gray.                           |
+| Android                                                                 | A Material 3 Expressive floating toolbar with an active indicator, and a floating action button. It slides away as content scrolls down. |
+| Android, with [`provideGlass()`](/dolan/glass#what-each-platform-draws) | The glass dock, drawn with Android's blur.                                                                                               |
+| [Web preview](/guide/glossary#web-preview)                              | The glass dock, drawn with WebGL.                                                                                                        |
+
+### Minimize on scroll
+
+Put `ui-dock-scroll` on a screen's `<scroll-view>` (or `<list>`), and the dock minimizes as it scrolls down and comes back as it scrolls up, as iOS 26's tab bar does:
+
+- **On glass,** the bar shrinks to the selected item's icon on the left, the action to a circle on the right, and the accessory moves down between them. A tap on the minimized bar brings the dock back.
+- **On Material,** the toolbar slides off the screen and the floating action button stays.
+- **Before iOS 26,** the tab bar stays where it is: Apple's tab bars didn't minimize.
+
+It comes back at the top of the content, and when the screen goes. To minimize or bring it back yourself, set `UiDockState`:
+
+```typescript
+inject(UiDockState).minimized.set(false);
+```
+
+`ui-dock-scroll` reads the scroll view's events itself rather than through a template listener, which would run change detection on every event, about every frame while content moves. It updates the dock only when it changes. Your template handlers already run on Lynx's main thread, beside the native scroll, so it needs no [main-thread script](/guide/main-thread/).
+
+### The action
+
+`<ui-dock-action>` is the button beside the bar. Like an item, it navigates to a `route` and is selected while the route is active. Without a route, handle `(pressed)`:
+
+```angular-html
+<ui-dock-action icon="plus" label="New message" (pressed)="compose()" />
+```
+
+On glass, it's a circle in the same [glass group](/dolan/glass#groups) as the bar, so the two merge as they near each other. The `label` is what a screen reader says, since the button shows only its icon.
+
+### The accessory
+
+Mark content with `ui-dock-accessory` and the dock puts it in a glass bar above itself, for something that stays at hand on every screen, such as what's playing:
+
+```angular-html
+<ui-dock #dock>
+  @if (player.track(); as track) {
+    <view ui-dock-accessory class="flex flex-row items-center gap-3 px-4">
+      <text class="text-sm font-semibold text-glass-foreground">{{
+        track.title
+      }}</text>
+      @if (!dock.minimized()) {
+        <text class="text-xs text-glass-muted-foreground">{{
+          track.artist
+        }}</text>
+      }
+    </view>
+  }
+  …
+</ui-dock>
+```
+
+When the glass dock minimizes, the accessory moves into the row beside the bar, at the bar's height. Read the dock's `minimized()` to show less there. Color its text `text-glass-foreground`; `<ui-icon>`s in it get the same color.
+
+### Badges and router options
+
+Items take a `badge` and `RouterLink`'s inputs, as [tab bar items](/dolan/tab-bar#badges) do:
+
+```angular-html
+<ui-dock-item
+  route="/"
+  icon="home"
+  label="Home"
+  [routerLinkActiveOptions]="{ exact: true }"
+/>
+<ui-dock-item
+  route="/inbox"
+  icon="inbox"
+  label="Inbox"
+  [badge]="unreadCount()"
+/>
+```
+
+`(pressed)` emits on every tap, including one on the selected item.
+
+### Dark mode
+
+The icons draw with the light theme's colors until you say otherwise, and the glass follows the same setting. If your app switches to dark mode, set the color scheme with [`provideIconTheme()`](/dolan/icon#dark-mode).
+
+## API
+
+### UiDock
+
+| Input         | Type     | Default          | Description                                                                           |
+| ------------- | -------- | ---------------- | ------------------------------------------------------------------------------------- |
+| `expandLabel` | `string` | `'Show tab bar'` | What a screen reader says for the minimized dock, before the selected item's label.   |
+| `class`       | `string` | `''`             | Extra Tailwind classes for the dock, which places itself at the bottom of its parent. |
+
+| Property       | Type                                         | Description                                                   |
+| -------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| `minimized`    | `Signal<boolean>`                            | Whether the dock is minimized now. It never is before iOS 26. |
+| `design`       | `Signal<'glass' \| 'frosted' \| 'material'>` | The platform's design (see [Glass](/dolan/glass#functions)).  |
+| `selectedItem` | `Signal<UiDockItem \| undefined>`            | The item whose route is active.                               |
+| `expand()`     | method                                       | Brings a minimized dock back.                                 |
+
+### UiDockItem
+
+| Input                     | Type                                                          | Default     | Description                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `route`                   | `string \| any[] \| UrlTree \| null`                          | —           | Where a tap navigates. `RouterLink`'s `routerLink`.                                                                                      |
+| `icon`                    | `IconName`                                                    | —           | Required. The [Icon](/dolan/icon) drawn above the label.                                                                                 |
+| `label`                   | `string`                                                      | —           | Required. The item's name, shown and read by screen readers.                                                                             |
+| `badge`                   | `string \| number \| null \| undefined`                       | `undefined` | A count or short text over the icon. Hidden for `0`, `''`, `null` and `undefined`.                                                       |
+| `routerLinkActiveOptions` | `{ exact: boolean } \| IsActiveMatchOptions`                  | subset      | How the current route is matched. `RouterLinkActive`'s input.                                                                            |
+| `queryParams`, …          | See [`RouterLink`](https://angular.dev/api/router/RouterLink) | —           | `queryParams`, `queryParamsHandling`, `fragment`, `preserveFragment`, `state`, `info`, `relativeTo`, `replaceUrl`, `skipLocationChange`. |
+| `class`                   | `string`                                                      | `''`        | Extra Tailwind classes for the item's content.                                                                                           |
+
+| Output    | Type   | Description                                               |
+| --------- | ------ | --------------------------------------------------------- |
+| `pressed` | `void` | Emits on every tap, including a tap on the selected item. |
+
+### UiDockAction
+
+| Input      | Type       | Default | Description                                                       |
+| ---------- | ---------- | ------- | ----------------------------------------------------------------- |
+| `icon`     | `IconName` | —       | Required. The button's [Icon](/dolan/icon).                       |
+| `label`    | `string`   | —       | Required. What the button does, for screen readers.               |
+| `route`, … | —          | —       | `RouterLink`'s inputs and `routerLinkActiveOptions`, as on items. |
+
+| Output    | Type   | Description         |
+| --------- | ------ | ------------------- |
+| `pressed` | `void` | Emits on every tap. |
+
+### UiDockAccessory and UiDockScroll
+
+| Directive         | Selector                                              | Description                                         |
+| ----------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| `UiDockAccessory` | `[ui-dock-accessory]`                                 | Marks the content of the accessory above the dock.  |
+| `UiDockScroll`    | `scroll-view[ui-dock-scroll]`, `list[ui-dock-scroll]` | Minimizes the dock as the scroll view scrolls down. |
+
+`UiDockState` is a root service with one signal, `minimized`, which the dock and `ui-dock-scroll` share.
+
+## Accessibility
+
+- **Each item is one button,** named by its `label` and then its badge: "Inbox, 3". The selected item has the `selected` trait, so iOS VoiceOver announces it.
+- **On iOS, the row of items has the `tabbar` trait,** as a native tab bar does.
+- **The minimized dock is one button,** "Show tab bar", with the selected item's label as its value. The hidden items are hidden from screen readers too.
+- **Reduce Motion:** the capsule, the minimizing and the indicator change at once instead of sliding, shrinking or fading.
+- **Reduce Transparency and Increase Contrast** are handled by the [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Tab Bar](/dolan/tab-bar): the same navigation, as a plain bar along the bottom edge
+- [Glass](/dolan/glass): the glass the dock is drawn with
+- [Routing and navigation](/guide/routing): set up the router and its routes
+- [Safe area](/guide/safe-area): the inset the dock clears

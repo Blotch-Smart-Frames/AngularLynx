@@ -114,7 +114,8 @@ A Liquid Glass component (dock, glass button, menu…) builds on the `glass` com
 - **Content projected into your component doesn't see the glass in your template.** Angular resolves a projected `<ui-icon>` through the template that declared it, so it sits under your component's host, not under the `<blur-view ui-glass>` you project it into. Provide `UI_ICON_COLOR` on the component itself (see `button.ts`).
 - **Dim the content, not the glass.** For a disabled or pressed state, fade a view inside the glass: on iOS, glass under a faded parent turns into a washed-out patch. Clear glass over media sits on a `bg-glass-dim` view in its shape, under the glass.
 - **List `glass` in `dependencies`**, and the glass colors your classes use in the registry entry's `themeColors`, so `dolan doctor` can point out a theme that lacks them.
-- **In tests, set the platform** with `vi.stubGlobal('SystemInfo', { platform: 'iOS', osVersion: '26.0' })` (with no SystemInfo the design is `'material'`), and provide a fake `LynxAccessibilitySettings` with signals to drive the settings. See `glass/glass.test.ts`.
+- **In tests, set the platform** with `vi.stubGlobal('SystemInfo', { platform: 'iOS', osVersion: '26.0' })` (with no SystemInfo the design is `'material'`), and provide a fake `LynxAccessibilitySettings` with signals to drive the settings. See `glass/glass.test.ts`. With `provideRouter()` in the test, the router's setup puts the testing library's own SystemInfo (iOS 17) back before your component reads it: provide `{ provide: LynxSystemInfo, useValue: { platform: 'iOS', osVersion: '26.0' } }` instead (see `dock/dock.test.ts`).
+- **Projected content injects from where the app writes it,** not from the glass you project it into: an icon the app puts in your component's slot doesn't see the inner `ui-glass`'s `UI_ICON_COLOR`. Provide it on your component to reach it (see `UiDock`).
 
 ### `index.ts`
 

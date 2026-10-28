@@ -73,6 +73,14 @@ export const registry: RegistryEntry[] = [
   { name: 'checkbox', dependencies: [] },
   { name: 'collapsible', dependencies: [] },
   { name: 'dialog', dependencies: [] },
+  // The dock's bar, button and accessory are glass, and its items draw their
+  // icons from icon's set. Its selection capsule and the items on glass take
+  // the glass foreground.
+  {
+    name: 'dock',
+    dependencies: ['glass', 'icon'],
+    themeColors: ['glass-foreground'],
+  },
   { name: 'empty-state', dependencies: ['icon'] },
   // Glass resolves its tint with the icons' copy of the theme, and hands
   // projected icons its foreground.

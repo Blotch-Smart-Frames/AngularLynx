@@ -1,5 +1,21 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import type { SystemInfo, PlatformType } from '@lynx-js/types';
+import { callOnBackground, isMainThread } from '../background-call';
+
+/**
+ * The OS version the host app sent in its global props, if it sent one. The
+ * apps `ng build --platform` makes send `osVersion`, because the native main
+ * thread's `SystemInfo` has none (see {@link LynxSystemInfo.osVersion}).
+ */
+const hostOsVersion = (): string | undefined => {
+  const value =
+    typeof lynx !== 'undefined'
+      ? (lynx.__globalProps as Record<string, unknown> | undefined)?.[
+          'osVersion'
+        ]
+      : undefined;
+  return typeof value === 'string' && value !== '' ? value : undefined;
+};
 
 /**
  * Wraps the global `SystemInfo` object as an Angular injectable,
@@ -10,7 +26,8 @@ import type { SystemInfo, PlatformType } from '@lynx-js/types';
  *
  * On iOS and Android (Lynx 4.1), the main thread has no global `SystemInfo`,
  * only `lynx.SystemInfo`, so that's read first. The background thread and the
- * web have the global.
+ * web have the global. The main thread's copy has no `osVersion` either: see
+ * {@link LynxSystemInfo.osVersion} for where that comes from instead.
  *
  * @usageNotes
  * ```typescript
@@ -32,6 +49,12 @@ import type { SystemInfo, PlatformType } from '@lynx-js/types';
 @Injectable({ providedIn: 'root' })
 export class LynxSystemInfo {
   readonly #info: SystemInfo;
+  /**
+   * The OS version, from wherever it's known: SystemInfo, the host's global
+   * props, or the background thread's SystemInfo, which answers later. A
+   * signal, so a `computed()` reading {@link osVersion} sees the late answer.
+   */
+  readonly #osVersion = signal<string | undefined>(undefined);
 
   constructor() {
     const info =
@@ -43,6 +66,22 @@ export class LynxSystemInfo {
       throw new Error('SystemInfo is not available in this environment');
     }
     this.#info = info;
+    this.#osVersion.set(info.osVersion || hostOsVersion());
+    // Lynx builds the native main thread's SystemInfo, where Angular runs,
+    // without the OS version (GenerateSystemInfo in Lynx core), so ask the
+    // background thread's, which has it. It answers after the first frame, so
+    // a host app that knows the version should send it as the `osVersion`
+    // global prop, as the generated apps do.
+    if (this.#osVersion() === undefined && isMainThread()) {
+      callOnBackground('osVersion').then(
+        (version) => {
+          if (version) this.#osVersion.set(version);
+        },
+        () => {
+          // No background thread to ask: the version stays unknown.
+        },
+      );
+    }
   }
 
   /**
@@ -60,10 +99,16 @@ export class LynxSystemInfo {
   }
 
   /**
-   * The current operating system version.
+   * The current operating system version, such as `'26.1'` on iOS or `'15'`
+   * on Android. Empty while it isn't known.
+   *
+   * The native main thread's SystemInfo lacks it, so there it comes from the
+   * host app's `osVersion` global prop, or else from the background thread,
+   * which answers shortly after the first frame. It reads a signal, so a
+   * `computed()` that reads it updates when the answer arrives.
    */
   get osVersion(): string {
-    return this.#info.osVersion;
+    return this.#osVersion() ?? '';
   }
 
   /**

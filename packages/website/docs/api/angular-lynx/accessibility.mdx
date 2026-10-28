@@ -1,6 +1,6 @@
 # Accessibility
 
-`LynxAccessibility` speaks to screen readers from code, and the `accessibility-*` attributes describe elements to them. `import { LynxAccessibility } from '@blotch/angular-lynx';`
+`LynxAccessibility` speaks to screen readers from code, the `accessibility-*` attributes describe elements to them, and `LynxAccessibilitySettings` reads the user's display settings. `import { LynxAccessibility, LynxAccessibilitySettings } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -76,6 +76,41 @@ Moves the screen reader's focus to the element that matches `selector`. Give tha
 
 - **`selector`:** use an ID selector such as `'#confirmation'`, which matches the element's `id`. Other selectors aren't reliable.
 - **Rejects** when no element matches, or with the Lynx error code when the element can't take focus.
+
+### `LynxAccessibilitySettings`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxAccessibilitySettings {
+  readonly reduceMotion: Signal<boolean>;
+  readonly reduceTransparency: Signal<boolean>;
+  readonly increaseContrast: Signal<boolean>;
+}
+```
+
+The user's display settings, as signals that update when the user changes one.
+
+```typescript title="src/app/drawer.ts"
+readonly #settings = inject(LynxAccessibilitySettings);
+
+// Jump into place instead of sliding when the user asked for less motion.
+readonly duration = computed(() => (this.#settings.reduceMotion() ? 0 : 300));
+```
+
+- **`reduceMotion()`:** the user asked for less motion. Replace slides and bounces with a fade or an instant change.
+- **`reduceTransparency()`:** the user asked for less transparency. Draw blurred and translucent surfaces opaque.
+- **`increaseContrast()`:** the user asked for more contrast. Strengthen edges and use full-strength text colors.
+
+Lynx has no API for these, so they come from the [host app](/guide/glossary#host-app), as the theme does, in the `reduceMotion`, `reduceTransparency` and `increaseContrast` [global props](/guide/embedding/host-data). Each is off unless it's `true`.
+
+| Where the app runs                             | Where the settings come from                                                                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Apps from `ng build --platform`, iOS           | Reduce Motion, Reduce Transparency and Increase Contrast, sent again when they change                                              |
+| Apps from `ng build --platform`, Android       | Remove animations, and contrast above standard (Android 14) or high contrast text (Android 16). Android has no Reduce Transparency |
+| [Web preview](/guide/glossary#web-preview)     | The browser's `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast: more`                                |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: add them to the bundle URL to try them, such as `?reduceMotion=true`                                                         |
+
+iOS 27's Liquid Glass setting (clear or tinted glass) has no public API, so it isn't here. iOS's own glass follows it.
 
 ## Attributes
 

@@ -7,6 +7,12 @@ export type RegistryEntry = {
    * Installed into the project when the component is added or updated.
    */
   packages?: string[];
+  /**
+   * Theme colors the component reads that a theme copied by an older dolan
+   * lacks, by variable name without `--` (`glass-foreground`). Without them
+   * its classes draw nothing, and `doctor` lists what's missing.
+   */
+  themeColors?: string[];
 };
 
 /**
@@ -20,6 +26,18 @@ const CHART_PACKAGES = ['@tanstack/charts@^1.1.0', 'd3-shape@^3.2.0'];
  * inputs. Kept in step with packages/ui/package.json by the same test.
  */
 const CVA_PACKAGES = ['class-variance-authority@^0.7.1'];
+
+/**
+ * The Liquid Glass colors, which the theme gained with the glass component.
+ */
+const GLASS_COLORS = [
+  'glass-tint',
+  'glass-tint-foreground',
+  'glass-foreground',
+  'glass-muted-foreground',
+  'glass-clear-foreground',
+  'glass-dim',
+];
 
 export const registry: RegistryEntry[] = [
   { name: 'action-sheet', dependencies: [] },
@@ -44,6 +62,9 @@ export const registry: RegistryEntry[] = [
   { name: 'collapsible', dependencies: [] },
   { name: 'dialog', dependencies: [] },
   { name: 'empty-state', dependencies: ['icon'] },
+  // Glass resolves its tint with the icons' copy of the theme, and hands
+  // projected icons its foreground.
+  { name: 'glass', dependencies: ['icon'], themeColors: GLASS_COLORS },
   { name: 'input', dependencies: [] },
   { name: 'label', dependencies: [] },
   { name: 'line-chart', dependencies: ['chart'] },

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as CssColor from './css-color';
 import type { BackdropSnapshot } from './backdrop-snapshot';
-import { GlassGroup } from './glass-group';
+import { backdropOf, GlassGroup } from './glass-group';
 import { pressOf, trackPress } from './glass-press';
 import type { GlassFrame } from './glass-renderer';
 
@@ -76,13 +76,15 @@ let pending: {
 const flush = () => new Promise((resolve) => setTimeout(resolve));
 
 /**
- * A backdrop holding text, then the glass root, then an overlay above it.
+ * A backdrop holding text, then the glass root, then an overlay above it. Its
+ * opaque background makes it the glass's backdrop (see backdropOf).
  */
 const scene = (root: HTMLElement) => {
   const backdrop = placed(
     document.createElement('x-view'),
     rect(0, 0, 400, 400),
   );
+  backdrop.style.backgroundColor = 'rgb(255, 255, 255)';
   const text = document.createElement('x-text');
   const overlay = document.createElement('x-view');
   backdrop.append(text, root, overlay);
@@ -466,5 +468,72 @@ describe('GlassGroup', () => {
     expect(group.lost).toBe(false);
     mocks.renderer.lost = true;
     expect(group.lost).toBe(true);
+  });
+});
+
+describe('backdropOf', () => {
+  afterEach(() => document.body.replaceChildren());
+
+  /**
+   * A view with an inline style, holding `children`.
+   */
+  const view = (style: string, ...children: Element[]) => {
+    const element = document.createElement('x-view');
+    element.setAttribute('style', style);
+    element.append(...children);
+    return element;
+  };
+
+  it("skips wrappers that draw nothing, up to a card's background image", () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    const row = view('', glass);
+    const card = view('background-image: linear-gradient(red, blue)', row);
+    document.body.append(view('background-color: rgb(0, 0, 0)', card));
+
+    expect(backdropOf(glass)).toBe(card);
+  });
+
+  it('looks through a translucent background, such as a dimming layer', () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    const dim = view('background-color: rgba(0, 0, 0, 0.35)', glass);
+    const screen = view('background-color: rgb(255, 255, 255)', dim);
+    document.body.append(view('background-image: none', screen));
+
+    expect(backdropOf(glass)).toBe(screen);
+  });
+
+  it('falls back to the topmost element, the page, when nothing paints', () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    const page = view('', view('', glass));
+    // In Lynx for Web, the page is the top of the <lynx-view>'s shadow root.
+    document.createElement('div').attachShadow({ mode: 'open' }).append(page);
+
+    expect(backdropOf(glass)).toBe(page);
+    expect(backdropOf(blurView({}))).toBeNull();
+  });
+});
+
+describe('GlassGroup over a deeper backdrop', () => {
+  it('leaves out what follows each of the glass’s ancestors', () => {
+    const { root } = container();
+    const before = document.createElement('x-text');
+    const after = document.createElement('x-view');
+    const row = document.createElement('x-view');
+    const later = document.createElement('x-view');
+    row.append(before, root, after);
+    const card = placed(document.createElement('x-view'), rect(0, 0, 400, 400));
+    card.style.backgroundColor = 'rgb(255, 255, 255)';
+    card.append(row, later);
+    document.body.append(card);
+
+    new GlassGroup(root, true).frame(16);
+    const [target, options] = mocks.snapshot.mock.lastCall!;
+
+    expect(target).toBe(card);
+    expect(options.exclude(row)).toBe(false);
+    expect(options.exclude(before)).toBe(false);
+    expect(options.exclude(root)).toBe(true);
+    expect(options.exclude(after)).toBe(true);
+    expect(options.exclude(later)).toBe(true);
   });
 });

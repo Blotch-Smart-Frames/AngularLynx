@@ -2,7 +2,10 @@
  * Public API Surface of @blotch/angular-lynx
  */
 
-export { LynxAccessibility } from './lib/accessibility';
+export {
+  LynxAccessibility,
+  LynxAccessibilitySettings,
+} from './lib/accessibility';
 export { LynxAnimation } from './lib/animation/animation';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';
 export type { DevToolsStats, LynxTraceOptions } from './lib/devtools';

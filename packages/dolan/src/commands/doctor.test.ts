@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 
 vi.mock('@clack/prompts', () => ({
@@ -24,6 +25,8 @@ vi.mock('../utils/resolve-paths.js', () => ({
     if (name === 'card') return ['card.ts', 'index.ts'];
     return [`${name}.ts`];
   },
+  // dolan's own theme, which the fixture's `themeFiles` write.
+  getUiSourceDir: () => fixture.uiDir,
 }));
 
 beforeEach(() => {
@@ -814,5 +817,154 @@ page {
         expect.stringContaining('channels'),
       );
     });
+  });
+});
+
+describe('doctorCommand theme colors components read', () => {
+  /** Every glass color, as dolan's default.css sets them. */
+  const GLASS_CSS = `page {
+  --glass-tint: rgba(24, 24, 27, 1);
+  --glass-tint-rgb: 24, 24, 27;
+  --glass-tint-foreground: rgba(250, 250, 250, 1);
+  --glass-tint-foreground-rgb: 250, 250, 250;
+  --glass-foreground: rgba(9, 9, 11, 1);
+  --glass-foreground-rgb: 9, 9, 11;
+  --glass-muted-foreground: rgba(63, 63, 70, 1);
+  --glass-muted-foreground-rgb: 63, 63, 70;
+  --glass-clear-foreground: rgba(255, 255, 255, 1);
+  --glass-clear-foreground-rgb: 255, 255, 255;
+  --glass-dim: rgba(0, 0, 0, 0.35);
+}`;
+
+  /** The glass colors mapped as dolan's tailwind.css maps them. */
+  const GLASS_TAILWIND_CSS = `@theme inline {
+  --color-glass-tint: var(--glass-tint);
+  --color-glass-tint-foreground: var(--glass-tint-foreground);
+  --color-glass-foreground: var(--glass-foreground);
+  --color-glass-muted-foreground: var(--glass-muted-foreground);
+  --color-glass-clear-foreground: var(--glass-clear-foreground);
+  --color-glass-dim: var(--glass-dim);
+}`;
+
+  /**
+   * A Tailwind 4 project with glass installed and the given theme files,
+   * and dolan's own theme if `bundled` is given. Runs doctor.
+   */
+  /**
+   * Every warning, without the colors picocolors adds in CI.
+   */
+  const warnings = async (): Promise<string[]> => {
+    const p = await import('@clack/prompts');
+    return vi
+      .mocked(p.log.warn)
+      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
+  };
+
+  const runDoctor = async (
+    theme: Record<string, string>,
+    bundled?: Record<string, string>,
+    root: Record<string, string> = {},
+  ) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: tracking('glass', 'icon'),
+      components: {
+        glass: { 'glass.ts': '' },
+        icon: { 'icon.ts': '' },
+      },
+      themeFiles: bundled,
+    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
+    for (const [file, content] of Object.entries(theme)) {
+      writeFileSync(join(themeDir, file), content);
+    }
+    for (const [file, content] of Object.entries(root)) {
+      writeFileSync(join(fixture.dir, file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    return import('@clack/prompts');
+  };
+
+  it('passes when the theme has and maps every color the components read', async () => {
+    const p = await runDoctor({
+      'default.css': GLASS_CSS,
+      'tailwind.css': GLASS_TAILWIND_CSS,
+    });
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'Theme has the colors your components read',
+    );
+  });
+
+  it("lists the colors a theme lacks, with dolan's lines for them", async () => {
+    // A theme copied before glass, and edited, so dolan update kept it.
+    const p = await runDoctor(
+      {
+        'default.css': 'page { --primary: rgba(24, 24, 27, 1); }',
+        'dark.css': GLASS_CSS.replace('page', 'page.dark'),
+      },
+      { 'default.css': GLASS_CSS },
+    );
+
+    expect(await warnings()).toContainEqual(
+      expect.stringMatching(
+        /default\.css lacks theme colors that glass read: --glass-tint, .*--glass-dim\..*dolan update.*\n--glass-tint: rgba\(24, 24, 27, 1\);\n--glass-tint-rgb: 24, 24, 27;\n/s,
+      ),
+    );
+    expect(await warnings()).not.toContainEqual(
+      expect.stringContaining('dark.css lacks'),
+    );
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      'Theme has the colors your components read',
+    );
+  });
+
+  it("points at dolan update alone without dolan's theme to quote", async () => {
+    await runDoctor({ 'default.css': 'page {}' });
+
+    expect(await warnings()).toContainEqual(
+      expect.stringMatching(/default\.css lacks .*haven't edited\.$/),
+    );
+  });
+
+  it("lists the colors tailwind.css doesn't map", async () => {
+    await runDoctor({
+      'default.css': GLASS_CSS,
+      'tailwind.css': GLASS_TAILWIND_CSS.replace(
+        '  --color-glass-dim: var(--glass-dim);\n',
+        '',
+      ),
+    });
+
+    expect(await warnings()).toContainEqual(
+      expect.stringMatching(
+        /tailwind\.css doesn't map theme colors that glass read to classes: glass-dim\./,
+      ),
+    );
+  });
+
+  it("accepts the Tailwind 3 plugin's themeColor() and var() mappings", async () => {
+    const p = await runDoctor(
+      {
+        'default.css': GLASS_CSS,
+        'tailwind-plugin.ts': `glass: {
+  tint: { DEFAULT: themeColor('glass-tint'), foreground: themeColor("glass-tint-foreground") },
+  foreground: themeColor('glass-foreground'),
+  'muted-foreground': themeColor('glass-muted-foreground'),
+  'clear-foreground': themeColor('glass-clear-foreground'),
+  dim: 'var(--glass-dim)',
+}`,
+      },
+      undefined,
+      { 'tailwind.config.ts': 'export default { plugins: [blotchPlugin] };' },
+    );
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'Theme has the colors your components read',
+    );
   });
 });

@@ -47,7 +47,11 @@ page {
 - **Keep each pair the same color.** If you change `--primary`, change `--primary-rgb` too. [`dolan doctor`](/dolan/cli#doctor) warns when a pair doesn't match.
 - **Write the channels with commas.** Lynx fills `rgba()` with the variable's text before it reads the color, so `24, 24, 27` becomes three arguments.
 
-`--destructive-subtle` (red at 10%) is already translucent, so it has no twin and takes no modifier. `bg-destructive-subtle` and `bg-destructive/10` draw the same color.
+`--destructive-subtle` (red at 10%) and `--glass-dim` (black at 35%) are already translucent, so they have no twin and take no modifier. `bg-destructive-subtle` and `bg-destructive/10` draw the same color.
+
+### Themes from before a component's colors
+
+Some components read colors the theme gained after you may have copied it: [Glass](/dolan/glass) reads the `glass-*` colors. `dolan update` adds them if you never edited the theme. If you did, [`dolan doctor`](/dolan/cli#doctor) lists the variables your theme lacks, with the lines to add, and the colors your `tailwind.css` or plugin doesn't map.
 
 ### Themes from before opacity modifiers
 
@@ -55,21 +59,25 @@ Themes copied by an older dolan have no `-rgb` variables. [`dolan update`](/dola
 
 ## Tokens
 
-| Token                                    | Tailwind classes                                | Used for                                         |
-| ---------------------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| `background` / `foreground`              | `bg-background`, `text-foreground`              | The app background and its text                  |
-| `card` / `card-foreground`               | `bg-card`, `text-card-foreground`               | Cards and raised surfaces                        |
-| `primary` / `primary-foreground`         | `bg-primary`, `text-primary-foreground`         | Main buttons, checked controls, your brand color |
-| `secondary` / `secondary-foreground`     | `bg-secondary`, `text-secondary-foreground`     | Secondary buttons, button groups                 |
-| `muted` / `muted-foreground`             | `bg-muted`, `text-muted-foreground`             | Field backgrounds, tab bars, helper text         |
-| `accent` / `accent-foreground`           | `bg-accent`, `text-accent-foreground`           | Pressed toggles, the selected select item        |
-| `destructive` / `destructive-foreground` | `bg-destructive`, `text-destructive-foreground` | Delete buttons, errors                           |
-| `destructive-subtle`                     | `bg-destructive-subtle`                         | The destructive alert's background               |
-| `border`                                 | `border-border`                                 | Borders and separators                           |
-| `input`                                  | `border-input`, `bg-input`                      | The select's border, the switch's off track      |
-| `ring`                                   | `border-ring`                                   | Input and textarea focus rings                   |
-| `ring-subtle`                            | none                                            | The soft outer focus ring, set inline by fields  |
-| `chart-1` … `chart-5`                    | `bg-chart-1` … `bg-chart-5`                     | Chart series colors, legend swatches             |
+| Token                                        | Tailwind classes                                       | Used for                                         |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
+| `background` / `foreground`                  | `bg-background`, `text-foreground`                     | The app background and its text                  |
+| `card` / `card-foreground`                   | `bg-card`, `text-card-foreground`                      | Cards and raised surfaces                        |
+| `primary` / `primary-foreground`             | `bg-primary`, `text-primary-foreground`                | Main buttons, checked controls, your brand color |
+| `secondary` / `secondary-foreground`         | `bg-secondary`, `text-secondary-foreground`            | Secondary buttons, button groups                 |
+| `muted` / `muted-foreground`                 | `bg-muted`, `text-muted-foreground`                    | Field backgrounds, tab bars, helper text         |
+| `accent` / `accent-foreground`               | `bg-accent`, `text-accent-foreground`                  | Pressed toggles, the selected select item        |
+| `destructive` / `destructive-foreground`     | `bg-destructive`, `text-destructive-foreground`        | Delete buttons, errors                           |
+| `destructive-subtle`                         | `bg-destructive-subtle`                                | The destructive alert's background               |
+| `border`                                     | `border-border`                                        | Borders and separators                           |
+| `input`                                      | `border-input`, `bg-input`                             | The select's border, the switch's off track      |
+| `ring`                                       | `border-ring`                                          | Input and textarea focus rings                   |
+| `ring-subtle`                                | none                                                   | The soft outer focus ring, set inline by fields  |
+| `chart-1` … `chart-5`                        | `bg-chart-1` … `bg-chart-5`                            | Chart series colors, legend swatches             |
+| `glass-foreground`, `glass-muted-foreground` | `text-glass-foreground`, `text-glass-muted-foreground` | Text and icons on [Glass](/dolan/glass)          |
+| `glass-clear-foreground`                     | `text-glass-clear-foreground`                          | Text on clear glass, white in both themes        |
+| `glass-tint` / `glass-tint-foreground`       | `bg-glass-tint`, `text-glass-tint-foreground`          | Tinted glass, and what sits on it                |
+| `glass-dim`                                  | `bg-glass-dim`                                         | The dimming layer under clear glass              |
 
 Every color class works with `bg-`, `text-` and `border-`, and takes [opacity modifiers](#opacity-modifiers) such as `bg-primary/50`. The plugin also sets `border-color: var(--border)` on every element, so a plain `border` class draws in the theme's border color.
 
@@ -204,6 +212,12 @@ Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb`
 | `--chart-3`                | `rgba(39, 71, 84, 1)`    | `rgba(232, 140, 48, 1)`    |
 | `--chart-4`                | `rgba(232, 196, 104, 1)` | `rgba(175, 87, 219, 1)`    |
 | `--chart-5`                | `rgba(244, 164, 98, 1)`  | `rgba(226, 54, 112, 1)`    |
+| `--glass-tint`             | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
+| `--glass-tint-foreground`  | `rgba(250, 250, 250, 1)` | `rgba(24, 24, 27, 1)`      |
+| `--glass-foreground`       | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
+| `--glass-muted-foreground` | `rgba(63, 63, 70, 1)`    | `rgba(212, 212, 216, 1)`   |
+| `--glass-clear-foreground` | `rgba(255, 255, 255, 1)` | `rgba(255, 255, 255, 1)`   |
+| `--glass-dim`              | `rgba(0, 0, 0, 0.35)`    | `rgba(0, 0, 0, 0.35)`      |
 | `--radius`                 | `8px`                    | `8px`                      |
 
 ## Related

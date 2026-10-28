@@ -1,5 +1,6 @@
 import { observeBackdrop } from './backdrop-observer';
 import { snapshotBackdrop, type BackdropSnapshot } from './backdrop-snapshot';
+import { parseNormalizedColor } from './css-color';
 import { drawnScale } from './drawn-scale';
 import { GlassRenderer, type GlassFrame } from './glass-renderer';
 import { pressOf } from './glass-press';
@@ -17,11 +18,35 @@ const MAX_SCALE = 2;
 const DARK_LUMINANCE = 0.4;
 
 /**
+ * The element whose drawing a glass group refracts: the nearest ancestor that
+ * paints over everything behind it, with an opaque background color or a
+ * background image, or else the topmost one, the page. The glass's own parent
+ * is often a row or a wrapper that draws nothing, while what the glass floats
+ * over belongs to an ancestor: a card's gradient, or the screen's content.
+ * iOS's glass shows whatever is on screen behind it.
+ */
+export const backdropOf = (root: HTMLElement): HTMLElement | null => {
+  const win = root.ownerDocument.defaultView!;
+  let element = root.parentElement;
+  while (element?.parentElement) {
+    const style = win.getComputedStyle(element);
+    if (
+      (style.backgroundImage && style.backgroundImage !== 'none') ||
+      parseNormalizedColor(style.backgroundColor)[3] >= 1
+    ) {
+      return element;
+    }
+    element = element.parentElement;
+  }
+  return element;
+};
+
+/**
  * Draws one group of Liquid Glass on Lynx for Web: a `glass-container` and the
  * glass shapes directly inside it, or a lone `glass` element.
  *
  * A canvas in the root's shadow root, stacked under its children, draws every
- * shape refracting an image of the backdrop: the root's parent, captured up to
+ * shape refracting an image of the backdrop (see backdropOf), captured up to
  * the root. The image is captured again when anything in the backdrop (other
  * than the glass itself) changes, resizes or scrolls.
  */
@@ -55,7 +80,7 @@ export class GlassGroup {
     const shadow = root.shadowRoot;
     shadow?.insertBefore(this.#canvas, shadow.querySelector('slot'));
     this.#renderer = shadow ? GlassRenderer.create(this.#canvas) : null;
-    this.#backdrop = root.parentElement;
+    this.#backdrop = backdropOf(root);
     if (this.#renderer && this.#backdrop) {
       this.#stopObserving = observeBackdrop(this.#backdrop, root, () => {
         this.#stale = true;
@@ -186,15 +211,21 @@ export class GlassGroup {
     this.#capturing = true;
     this.#stale = false;
     const started = win.performance.now();
-    // The glass and everything after it paints on top of the glass, not
-    // behind it.
-    const above = new Set<Element>();
+    // The glass, and everything after it and after each of its ancestors in
+    // the backdrop, paints on top of the glass, not behind it.
+    const above = new Set<Element>([this.root]);
     for (
       let node: Element | null = this.root;
-      node;
-      node = node.nextElementSibling
+      node && node !== backdrop;
+      node = node.parentElement
     ) {
-      above.add(node);
+      for (
+        let sibling = node.nextElementSibling;
+        sibling;
+        sibling = sibling.nextElementSibling
+      ) {
+        above.add(sibling);
+      }
     }
     // The region is in screen pixels, and the margin in CSS pixels.
     const margin = CAPTURE_MARGIN * zoom;

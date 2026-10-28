@@ -13,7 +13,7 @@ import {
   packageName,
   TESTING_LIBRARY,
 } from '../utils/packages.js';
-import { getComponentFiles } from '../utils/resolve-paths.js';
+import { getComponentFiles, getUiSourceDir } from '../utils/resolve-paths.js';
 import {
   TAILWIND_CONFIG_FILES,
   themeFilesFor,
@@ -74,6 +74,8 @@ export const doctorCommand = async () => {
   checkRequiredFiles(cwd, config, pass, warn);
 
   checkThemeChannels(cwd, config, pass, warn);
+
+  checkComponentColors(cwd, config, pass, warn);
 
   // --- 4. Tailwind integration ---
 
@@ -313,6 +315,87 @@ const checkThemeChannels = (
 
   if (healthy) {
     pass('Theme colors have the channels opacity modifiers need');
+  }
+};
+
+/**
+ * The theme colors the installed components read that the theme gained after
+ * an app may have copied it, such as the glass colors: the component's
+ * classes draw nothing without them, and nothing says why. `dolan update`
+ * merges them into a theme the app left alone, and keeps one it edited, so
+ * this lists the variables a theme file lacks, with the lines dolan's own
+ * theme has for them, and the colors the Tailwind mapping doesn't map.
+ */
+const checkComponentColors = (
+  cwd: string,
+  config: DolanConfig,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  const componentsDir = resolve(cwd, config.aliases.components);
+  // checkDirectories() reports a components path that isn't a folder.
+  const installed =
+    existsSync(componentsDir) && statSync(componentsDir).isDirectory()
+      ? readdirSync(componentsDir)
+      : [];
+  // Each color an installed component reads, with that component.
+  const reads = installed.flatMap((name) =>
+    (getEntry(name)?.themeColors ?? []).map((color) => ({ color, name })),
+  );
+  if (reads.length === 0) return;
+
+  const colors = [...new Set(reads.map(({ color }) => color))];
+  const readers = (missing: string[]) =>
+    [
+      ...new Set(
+        reads
+          .filter(({ color }) => missing.includes(color))
+          .map(({ name }) => pc.cyan(name)),
+      ),
+    ].join(', ');
+  const themeDir = resolve(cwd, config.aliases.theme);
+  let healthy = true;
+
+  for (const file of ['default.css', 'dark.css']) {
+    const path = join(themeDir, file);
+    if (!existsSync(path)) continue;
+    const vars = cssVariables(readFileSync(path, 'utf-8'));
+    const missing = colors.filter((color) => !vars.has(`--${color}`));
+    if (missing.length === 0) continue;
+    healthy = false;
+    // The lines dolan's own theme has for them, channels included.
+    const bundledPath = join(getUiSourceDir(), 'theme', file);
+    const bundled = existsSync(bundledPath)
+      ? cssVariables(readFileSync(bundledPath, 'utf-8'))
+      : new Map<string, string>();
+    const lines = missing
+      .flatMap((color) => [`--${color}`, `--${color}-rgb`])
+      .filter((name) => bundled.has(name))
+      .map((name) => `${name}: ${bundled.get(name)};`);
+    warn(
+      `${pc.cyan(file)} lacks theme colors that ${readers(missing)} read: ${missing.map((color) => pc.cyan(`--${color}`)).join(', ')}. Classes that use them draw nothing. Run ${pc.bold('dolan update')}, which adds them to a theme you haven't edited${lines.length > 0 ? `, or add:\n${lines.join('\n')}` : '.'}`,
+    );
+  }
+
+  // The Tailwind mapping names each color: themeColor('glass-tint') or
+  // 'var(--glass-dim)' in the plugin, var(--glass-tint) in tailwind.css.
+  const tailwindFile = themeFilesFor(cwd)[2]!;
+  const tailwindPath = join(themeDir, tailwindFile);
+  if (existsSync(tailwindPath)) {
+    const source = readFileSync(tailwindPath, 'utf-8');
+    const unmapped = colors.filter(
+      (color) => !new RegExp(`['"]${color}['"]|--${color}\\)`).test(source),
+    );
+    if (unmapped.length > 0) {
+      healthy = false;
+      warn(
+        `${pc.cyan(tailwindFile)} doesn't map theme colors that ${readers(unmapped)} read to classes: ${unmapped.map((color) => pc.cyan(color)).join(', ')}. Run ${pc.bold('dolan update')}, or map them as dolan's theme does.`,
+      );
+    }
+  }
+
+  if (healthy) {
+    pass('Theme has the colors your components read');
   }
 };
 

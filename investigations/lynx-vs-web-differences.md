@@ -4711,7 +4711,7 @@ A browser can't give WebGL the page's pixels, so CSS alone can't refract. `backd
 
 The runtime draws the glass itself on web (`packages/runtime/src/lib/web-glass/`). `createBlurViewElement` loads it with a dynamic `import()` behind the `__WEB__` define, so native bundles never contain it. For each visible glass container, or glass element outside one, it:
 
-1. Captures the backdrop: the glass's parent, up to the glass. The subtree is copied with inlined computed styles, shadow roots flattened and slots filled, then rasterized through an SVG `<foreignObject>` (the approach of html-to-image).
+1. Captures the backdrop: the nearest ancestor that paints over everything behind it (an opaque background color or a background image), or else the page, up to the glass. The subtree is copied with inlined computed styles, shadow roots flattened and slots filled, then rasterized through an SVG `<foreignObject>` (the approach of html-to-image). What follows the glass, or any of its ancestors below the backdrop, is left out, since it paints over the glass. The backdrop used to be the glass's parent alone, which is usually a row or a wrapper that draws nothing: glass in a row on a gradient card, or a bar wrapped for positioning, refracted a blank image and drew as flat white.
 2. Draws every shape in one WebGL pass, into a canvas in the root's shadow root stacked under its children. Shapes are rounded-box SDFs joined by a smooth minimum, so nearby shapes merge. The lens samples outward at the rim and slightly inward in the middle, and `regular` glass mixes in a blurred copy of the backdrop.
 3. Captures again when the backdrop mutates, resizes or scrolls (changes inside the glass don't count), at most every 100 ms.
 
@@ -4876,9 +4876,13 @@ The runtime's own variables (the blur-view materials above) go in front of the a
 
 On iOS and Android (Lynx 4.1), main-thread code sees `typeof SystemInfo === 'undefined'`. The same object is reachable as `lynx.SystemInfo` there (`lynx.SystemInfo.platform` is `'Android'` or `'iOS'`). The background thread has the global.
 
+That `lynx.SystemInfo` also lacks `osVersion`: Lynx builds it in `GenerateSystemInfo` (`core/renderer/utils/base/tasm_utils.cc`) with only `platform`, the pixel sizes and ratio, `lynxSdkVersion`, `engineVersion` and `theme`. The background thread's global, built in `core/runtime/js/bindings/global.cc`, has it. Checked in Lynx Explorer 4.1 on the iOS 27 Simulator: the main thread printed no `osVersion`, and a `backgroundFn()` returned `27.0`, about 740 ms after the bundle loaded.
+
 ### The fix
 
 Main-thread code reads `lynx.SystemInfo` first and falls back to the global (`isAndroid()` in `packages/runtime/src/lib/lynx-document/android-blur-capture.ts`).
+
+`LynxSystemInfo.osVersion` takes the host's `osVersion` global prop when SystemInfo has none, and the shells `ng build --platform` makes send it. Without one, it asks the background thread (`callOnBackground('osVersion')`), and keeps the answer in a signal, so a `computed()` reading the getter sees it. The glass components need the version (`blur-view` draws Liquid Glass only from iOS 26), and count an unknown iOS version as current until the answer arrives.
 
 ---
 
@@ -5134,3 +5138,68 @@ Checked in Lynx Explorer 4.1 on iOS and Android, and in Lynx for Web (Chromium),
 ### What we do about it
 
 The build plugin (`packages/rsbuild-plugin-angular-lynx/src/tailwind-v4/`) rewrites every stylesheet that `@tailwindcss/postcss` compiled into CSS with the same meaning that Lynx reads, for both the native and the web bundle: it flattens nesting and layers, turns `@property` initial values into a `*` rule, converts colors to `rgb()`/`rgba()` (gamut-mapping as CSS Color 4 does), writes logical properties as physical ones (left-to-right), composes `translate`/`rotate`/`scale` into one `transform`, rewrites `space-*`/`divide-*` to `* + *`, resolves the `var()`s Lynx can't inside custom properties, completes keyframes, and drops properties and keywords Lynx doesn't have, so the web preview matches the device.
+
+---
+
+## Lynx has no API for the user's accessibility display settings
+
+### What you'd expect (web)
+
+`@media (prefers-reduced-motion: reduce)`, `(prefers-reduced-transparency: reduce)` and `(prefers-contrast: more)` follow the system's Reduce Motion, Reduce Transparency and Increase Contrast, and `matchMedia()` reports them to scripts.
+
+### What Lynx does
+
+Lynx has no `@media`, and neither SystemInfo nor any `lynx` API carries these settings, on iOS or Android (searched lynx-family/lynx, lynx-stack and the lynx-website docs; the only accessibility module is `LynxAccessibilityModule`, with `accessibilityAnnounce` and `registerMutationStyle`). Lynx Explorer sends none of them either, though it does pass a bundle URL's query parameters as global props, as strings: `?reduceMotion=true` arrives as `reduceMotion: 'true'`. iOS 27's Liquid Glass appearance setting (clear or tinted) has no public API at all (searched the iOS 27.1 SDK's UIKit and SwiftUI interfaces); UIKit's glass follows it, and Reduce Transparency and Increase Contrast, by itself.
+
+### The fix
+
+`LynxAccessibilitySettings` (`packages/runtime/src/lib/accessibility/accessibility-settings.ts`) reads `reduceMotion`, `reduceTransparency` and `increaseContrast` from the host's global props, as `true` or `'true'`, and on the web also from the page window's media queries. The shells send them: iOS from `UIAccessibility` (Increase Contrast is `isDarkerSystemColorsEnabled`), again on each `...StatusDidChangeNotification`; Android from the animator duration scale (Remove animations sets it to 0), `UiModeManager.getContrast()` (Android 14) and `AccessibilityManager.isHighContrastTextEnabled()` (Android 16), again through a settings observer and the contrast listeners. Android has no Reduce Transparency. Checked live on the iOS 27 Simulator (`simctl ui increase_contrast`, and Reduce Motion and Reduce Transparency through `com.apple.Accessibility` defaults) and the Android 14 emulator (`settings put global animator_duration_scale 0`, `settings put secure contrast_level 1.0`).
+
+---
+
+## On iOS, a `<blur-view>` draws no background; elsewhere it does
+
+### What you'd expect (web)
+
+`background-color` on any element paints behind its content.
+
+### What Lynx does
+
+iOS's `LynxUIBlurView` declares the background setters (`background-color`, `background-image` and the rest) as no-ops, so a blur view never paints a background there: the material is all it draws. Android's blur-view paints its background over the blurred backdrop (which is how the runtime approximates the materials, see above), and Lynx for Web's `<x-blur-view>` paints it like any element. The glass component relies on both: on Android and the web its opaque surfaces are the blur view's own `bg-secondary` or tint. iOS never needs those, except to tint the frosted material before iOS 26, which it does with a filled `<view>` behind the content.
+
+---
+
+## A glass container merges the glass in its own content, follows it as it moves, and doesn't animate glass coming or going
+
+### What you'd expect (parity with SwiftUI)
+
+A `GlassEffectContainer` merges nearby glass, and morphs it when a shape appears, disappears or changes into another (`glassEffectID`).
+
+### What Lynx does
+
+Checked in Lynx Explorer 4.1 on the iOS 27 Simulator:
+
+- **Glass inside a plain wrapper view, one that draws nothing, still merged** (`glass-container` → `view` → `glass`). Wrappers that draw weren't tried. The web drawing counts only the container's direct children, so the glass component tells apps to put glass directly in the group.
+- **Moving or resizing a glass shape with a CSS transition morphs the merged glass every frame**: two shapes pulled apart with `transition: margin-left` stretch their bridge thinner until it breaks, and a widening shape stays merged with its neighbor throughout.
+- **A shape added or removed (`@if`) appears or disappears in one frame,** already merged. `LynxUIBlurView` sets its effect directly, outside any UIKit animation, so nothing materializes or dissolves, and there's no counterpart to `glassEffectID` for morphing one shape into another.
+
+### What we do about it
+
+Nothing yet. A component can morph glass by animating one shape's size and position rather than swapping elements. A true morph between shapes (a button into its menu) would need Lynx's iOS `blur-view` to animate its effect changes.
+
+---
+
+## `flex-1` on a `<blur-view>`'s children does nothing on Lynx for Web
+
+### What you'd expect (parity with iOS and Android)
+
+A child with `flex-1` inside a blur view with `flex flex-row` takes the remaining width, as inside a `<view>`.
+
+### What Lynx does
+
+web-elements sizes a flex item (`flex: var(--flex-grow) …`, or a linear weight) through container style queries on its parent's `--lynx-display` and `--lynx-linear-orientation`, which don't inherit. A blur view's children are slotted into its shadow root's `<slot>`, which is the parent those queries see, so they never matched: a glass capsule with `flex-1` beside a button in a glass group stayed as narrow as its content.
+
+### The fix
+
+The runtime's web-only blur view layout (`BLUR_VIEW_LAYOUT_CSS` in `packages/runtime/src/lib/web-glass/blur-view-layout.ts`) gives the slot the host's values: `slot { --lynx-display: inherit; --lynx-linear-orientation: inherit; --lynx-linear-weight-sum: inherit }`.
+

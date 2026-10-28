@@ -98,7 +98,11 @@ Must handle uppercase/lowercase in JavaScript.
 
 ### No `@media` queries
 
-Use runtime logic with conditional classes.
+Use runtime logic with conditional classes. For `prefers-reduced-motion`, `prefers-reduced-transparency` and `prefers-contrast`, inject `LynxAccessibilitySettings`: its `reduceMotion()`, `reduceTransparency()` and `increaseContrast()` signals come from the host app's global props (the `ng build --platform` apps send them) and, in the web preview, from the browser's media queries.
+
+### `SystemInfo.osVersion` is missing where Angular runs
+
+Lynx builds the native main thread's `SystemInfo` without the OS version. `LynxSystemInfo.osVersion` fills it in from the host's `osVersion` global prop (the generated apps send it), or else from the background thread shortly after the first frame; read it in a `computed()`.
 
 ### No `::before` / `::after`
 

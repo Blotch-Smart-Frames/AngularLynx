@@ -15,6 +15,12 @@ describe('applyBlurViewLayout', () => {
     );
   });
 
+  it("hands the host's layout to the slot, where its children's flex rules look", () => {
+    expect(BLUR_VIEW_LAYOUT_CSS).toContain(
+      'slot{--lynx-display:inherit;--lynx-linear-orientation:inherit;--lynx-linear-weight-sum:inherit}',
+    );
+  });
+
   it('does nothing without a shadow root', () => {
     const element = document.createElement('x-blur-view');
     expect(() => applyBlurViewLayout(element)).not.toThrow();

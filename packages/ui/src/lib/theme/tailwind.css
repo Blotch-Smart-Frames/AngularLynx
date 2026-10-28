@@ -41,6 +41,14 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* What sits on Liquid Glass, and its tint (see the glass component).
+     glass-dim is translucent already, so it takes no opacity modifier. */
+  --color-glass-tint: var(--glass-tint);
+  --color-glass-tint-foreground: var(--glass-tint-foreground);
+  --color-glass-foreground: var(--glass-foreground);
+  --color-glass-muted-foreground: var(--glass-muted-foreground);
+  --color-glass-clear-foreground: var(--glass-clear-foreground);
+  --color-glass-dim: var(--glass-dim);
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);

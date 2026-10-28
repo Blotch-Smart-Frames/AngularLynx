@@ -141,6 +141,31 @@ fireEvent.tap(getByRole('button', { name: 'Add to cart' }));
 
 `getByRole` finds a `<view>` only with `[accessibility-element]="true"`, so a missing one fails the test. See [`*ByRole`](/api/testing-library/#byrole) and [`*ByAccessibilityLabel`](/api/testing-library/#byaccessibilitylabel).
 
+## Follow the user's display settings
+
+Reduce Motion, Reduce Transparency and Increase Contrast are signals on `LynxAccessibilitySettings`:
+
+```typescript title="src/app/banner.ts"
+import { Component, computed, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-banner',
+  imports: [LYNX_ELEMENTS],
+  template: `<view [style.transition]="transition()">…</view>`,
+})
+export class Banner {
+  readonly #settings = inject(LynxAccessibilitySettings);
+
+  // Slide in, unless the user asked for less motion.
+  protected readonly transition = computed(() =>
+    this.#settings.reduceMotion() ? 'none' : 'transform 300ms ease-out',
+  );
+}
+```
+
+The apps `ng build --platform` makes send the settings, and the web preview reads the browser's. See [`LynxAccessibilitySettings`](/api/angular-lynx/accessibility#lynxaccessibilitysettings) for where each comes from. The [Glass](/dolan/glass) component follows them on its own.
+
 ## Test with a screen reader
 
 **On an iPhone:**

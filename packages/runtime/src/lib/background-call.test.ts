@@ -130,6 +130,15 @@ describe('callOnBackground()', () => {
       expect(stopExposure.mock.calls).toEqual([[{}], [{ sendEvent: false }]]);
     });
 
+    it("answers the OS version from this thread's SystemInfo", async () => {
+      const { callOnBackground } = await load({ mainThread: false, lynx: {} });
+
+      await expect(callOnBackground('osVersion')).resolves.toBeUndefined();
+
+      vi.stubGlobal('SystemInfo', { osVersion: '26.1' });
+      await expect(callOnBackground('osVersion')).resolves.toBe('26.1');
+    });
+
     it("runs the main thread's fetch on this thread's fetch, and aborts it by ID", async () => {
       let signal: AbortSignal | undefined;
       vi.stubGlobal(

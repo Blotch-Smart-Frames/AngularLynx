@@ -327,6 +327,14 @@ const handlers = {
     lynxApi('registerModule')(name, restoreFunctions(module));
   },
 
+  /**
+   * The OS version, for LynxSystemInfo on the main thread: native Lynx builds
+   * that thread's SystemInfo without one, and the background thread's global
+   * has it.
+   */
+  osVersion: (): string | undefined =>
+    typeof SystemInfo !== 'undefined' ? SystemInfo.osVersion : undefined,
+
   /** The main thread's `fetch` (network/fetch.ts) sends its requests here. */
   fetch: (id: number, request: RelayedRequest): Promise<RelayedResponse> =>
     fetchForMainThread(id, request),

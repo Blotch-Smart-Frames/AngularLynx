@@ -62,11 +62,13 @@ None, apart from the [common events](/api/elements/view#events), such as `bindta
 
 ## Platform support
 
-| Platform | What you get                                                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iOS      | Blur, every material, and Liquid Glass on iOS 26 and later.                                                                                                             |
-| Android  | Blur only. AngularLynx tints it to approximate the materials and glass; a `background-color` or `box-shadow` you set replaces the tint. Glass doesn't refract or merge. |
-| Web      | AngularLynx draws the blur, the materials and the glass itself, the glass with WebGL. Without WebGL, glass falls back to a plain blur.                                  |
+| Platform | What you get                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS      | Blur, every material, and Liquid Glass on iOS 26 and later.                                                                                                                                     |
+| Android  | Blur only. AngularLynx tints it to approximate the materials and glass; a `background-color` or `box-shadow` you set replaces the tint. Glass doesn't refract or merge.                         |
+| Web      | AngularLynx draws the blur, the materials and the glass itself, the glass with WebGL, refracting the nearest ancestor that draws a background. Without WebGL, glass falls back to a plain blur. |
+
+For glass that picks the right material on each platform and follows the user's accessibility settings, use the [Glass](/dolan/glass) UI component.
 
 ## Related
 

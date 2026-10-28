@@ -94,6 +94,24 @@ const renderScroll = async (
   };
 };
 
+/**
+ * The scroll view's mask as [how much shows, where] stops, however the DOM
+ * writes it back: jsdom versions differ, writing opaque black as
+ * `rgb(0, 0, 0)` and leaving out the default `to bottom`.
+ */
+const maskStops = (element: HTMLElement): [number, string][] =>
+  Array.from(
+    element.style
+      .getPropertyValue('mask-image')
+      .matchAll(
+        /rgba?\(0, 0, 0(?:, ([\d.]+))?\) (calc\([^)]*\)|[\d.]+(?:%|px))/g,
+      ),
+    ([, alpha, at]): [number, string] => [
+      alpha === undefined ? 1 : Number(alpha),
+      at,
+    ],
+  );
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -115,12 +133,13 @@ describe('UiBarScroll', () => {
       state.topBar.set(topBar());
       state.bottomBar.set(bottomBar());
     });
-    // jsdom writes the sum the other way round.
-    expect(topSpacer().style.height).toBe(
-      'calc(44px + env(safe-area-inset-top))',
-    );
-    expect(bottomSpacer().style.height).toBe(
-      'calc(52px + env(safe-area-inset-bottom))',
+    // The status bar and the home indicator count too. jsdom versions write
+    // the sum in different orders.
+    expect(topSpacer().style.height).toContain('44px');
+    expect(topSpacer().style.height).toContain('env(safe-area-inset-top)');
+    expect(bottomSpacer().style.height).toContain('52px');
+    expect(bottomSpacer().style.height).toContain(
+      'env(safe-area-inset-bottom)',
     );
   });
 
@@ -171,39 +190,45 @@ describe('UiBarScroll', () => {
 
   it('fades content out under glass bars, from their measured room', async () => {
     const { state, scrollView, update, layOut } = await renderScroll();
-    const mask = () => scrollView().style.getPropertyValue('mask-image');
     await update(() => {
       state.topBar.set(topBar());
       state.bottomBar.set(bottomBar());
     });
     // Not laid out yet: no edge.
-    expect(mask()).toBe('');
+    expect(scrollView().style.getPropertyValue('mask-image')).toBe('');
 
     // 1000px tall, with 100px for the top bar and 50px for the bottom one.
     await layOut(1000, 100, 50);
-    expect(mask()).toBe(
-      'linear-gradient(to bottom, ' +
-        'rgba(0, 0, 0, 0) 0.00%, rgba(0, 0, 0, 0) 7.00%, ' +
-        'rgba(0, 0, 0, 0.12) 9.00%, rgba(0, 0, 0, 1) 10.00%, ' +
-        'rgba(0, 0, 0, 1) 95.00%, rgba(0, 0, 0, 0.12) 95.50%, ' +
-        'rgba(0, 0, 0, 0) 96.50%, rgba(0, 0, 0, 0) 100.00%)',
+    expect(scrollView().style.getPropertyValue('mask-image')).toContain(
+      'linear-gradient(',
     );
+    expect(maskStops(scrollView())).toEqual([
+      [0, '0.00%'],
+      [0, '7.00%'],
+      [0.12, '9.00%'],
+      [1, '10.00%'],
+      [1, '95.00%'],
+      [0.12, '95.50%'],
+      [0, '96.50%'],
+      [0, '100.00%'],
+    ]);
 
     // A top bar alone fades the top only, and a bottom bar alone the bottom.
     await layOut(1000, 100, 0);
-    expect(mask()).toContain(
-      'rgba(0, 0, 0, 1) 10.00%, rgba(0, 0, 0, 1) 100.00%)',
-    );
+    expect(maskStops(scrollView()).slice(-2)).toEqual([
+      [1, '10.00%'],
+      [1, '100.00%'],
+    ]);
     await layOut(1000, 0, 50);
-    expect(mask()).toContain(
-      'linear-gradient(to bottom, rgba(0, 0, 0, 1) 0.00%, rgba(0, 0, 0, 1) 95.00%',
-    );
+    expect(maskStops(scrollView()).slice(0, 2)).toEqual([
+      [1, '0.00%'],
+      [1, '95.00%'],
+    ]);
   });
 
   it('fades with lengths in the web preview, whose scroll view reports no layout', async () => {
     const { state, scrollView, update, topSpacer, bottomSpacer } =
       await renderScroll(WEB);
-    const mask = () => scrollView().style.getPropertyValue('mask-image');
     await update(() => {
       state.topBar.set(topBar());
       state.bottomBar.set(bottomBar());
@@ -212,22 +237,24 @@ describe('UiBarScroll', () => {
       detail: { width: 402, height: 100 },
     });
     await waitForUpdate();
-    expect(mask()).toBe(
-      'linear-gradient(to bottom, ' +
-        'rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0) 70px, ' +
-        'rgba(0, 0, 0, 0.12) 90px, rgba(0, 0, 0, 1) 100px, ' +
-        'rgba(0, 0, 0, 1) calc(100% - 0px))',
-    );
+    expect(maskStops(scrollView())).toEqual([
+      [0, '0px'],
+      [0, '70px'],
+      [0.12, '90px'],
+      [1, '100px'],
+      [1, 'calc(100% - 0px)'],
+    ]);
 
     fireEvent.layoutchange(bottomSpacer(), {
       detail: { width: 402, height: 50 },
     });
     await waitForUpdate();
-    expect(mask()).toContain(
-      'rgba(0, 0, 0, 1) calc(100% - 50px), ' +
-        'rgba(0, 0, 0, 0.12) calc(100% - 45px), ' +
-        'rgba(0, 0, 0, 0) calc(100% - 35px), rgba(0, 0, 0, 0) calc(100% - 0px))',
-    );
+    expect(maskStops(scrollView()).slice(-4)).toEqual([
+      [1, 'calc(100% - 50px)'],
+      [0.12, 'calc(100% - 45px)'],
+      [0, 'calc(100% - 35px)'],
+      [0, 'calc(100% - 0px)'],
+    ]);
   });
 
   it('leaves the edge to the bars before iOS 26, which mark it with their background', async () => {

@@ -101,6 +101,7 @@ export class LynxDocument implements LynxDocumentBase {
     // set its (empty) material, or it inherits a parent blur-view's.
     if (tag === 'blur-view') {
       el.updateBlurMaterial();
+      el.holdGlassUntilDrawn();
     }
     return el;
   }

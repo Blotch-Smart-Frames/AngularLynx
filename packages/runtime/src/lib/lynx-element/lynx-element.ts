@@ -9,7 +9,10 @@ import { devStats } from '../devtools/stats';
 // here would form an import cycle. These two files import only element-creators
 // and types, so this path is cycle-free.
 import { createNativeRefByTag } from '../lynx-document/create-native-ref';
-import { isAndroid } from '../lynx-document/android-blur-capture';
+import {
+  isAndroid,
+  nativePlatform,
+} from '../lynx-document/android-blur-capture';
 import {
   androidBlurMaterialStyle,
   BLUR_MATERIAL_ATTRIBUTES,
@@ -375,6 +378,19 @@ export class LynxElement implements BaseLynxElement {
   static #pendingTextNormalization = new Set<LynxElement>();
 
   /**
+   * iOS blur-views that no flush has drawn yet, created after the first
+   * render. iOS draws nothing for a blur-view, children included, when the
+   * flush that first draws it already gives it a glass effect, and it never
+   * recovers. Glass set in a later flush draws, so their glass is held back
+   * (#heldGlass) until `releaseHeldGlass()` runs right after that flush.
+   * Keyed by the wrapper, never a native ref (see #pendingRemovals).
+   */
+  static #blurViewsToDraw = new Set<LynxElement>();
+
+  /** The glass `blur-effect` a blur-view no flush has drawn is waiting for. */
+  #heldGlass: string | null = null;
+
+  /**
    * Native-ref → canonical wrapper registry, keyed by the native unique ID.
    *
    * Angular locates an insertion parent for embedded views (@if/@for content)
@@ -504,7 +520,9 @@ export class LynxElement implements BaseLynxElement {
         this.#ownTraits = value ?? null;
         value = withAddedTraits(this.#ownTraits, this.#addedTraits);
       }
-      __SetAttribute(this.element, name, value);
+      if (!this.#holdsGlass(name, value)) {
+        __SetAttribute(this.element, name, value);
+      }
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text
       // carries its text via the 'text' attribute (renderer.setValue) — keep
@@ -539,6 +557,56 @@ export class LynxElement implements BaseLynxElement {
     if (usesAndroidBlurMaterials()) {
       this.#setRuntimeStyle(androidBlurMaterialStyle(this.#attrs));
     }
+  }
+
+  /**
+   * Holds back this blur-view's glass until a flush has drawn it, on iOS
+   * after the first render (see #blurViewsToDraw). LynxDocument calls it
+   * when it creates a blur-view. In the first render the page isn't on
+   * screen yet, and glass draws from the start.
+   */
+  holdGlassUntilDrawn(): void {
+    if (!__WEB__ && !isFirstRenderPending() && nativePlatform() === 'iOS') {
+      LynxElement.#blurViewsToDraw.add(this);
+    }
+  }
+
+  /**
+   * Whether setting `name` to `value` waits for the flush that draws this
+   * blur-view: a glass `blur-effect` before it's drawn. Any other effect
+   * replaces a held one, and goes to the element at once.
+   */
+  #holdsGlass(name: string, value: unknown): boolean {
+    if (name !== 'blur-effect' || !LynxElement.#blurViewsToDraw.has(this)) {
+      return false;
+    }
+    this.#heldGlass =
+      value === 'glass' || value === 'glass-container' ? value : null;
+    return this.#heldGlass !== null;
+  }
+
+  /**
+   * Called right after a flush, which has drawn every blur-view created
+   * before it: gives them the glass they were waiting for. Returns whether it
+   * set any, for the caller to flush again in the same task, so the glass is
+   * there in the same frame (checked on the iOS 27 Simulator).
+   */
+  static releaseHeldGlass(): boolean {
+    if (LynxElement.#blurViewsToDraw.size === 0) return false;
+    const drawn = [...LynxElement.#blurViewsToDraw];
+    LynxElement.#blurViewsToDraw.clear();
+    let released = false;
+    for (const view of drawn) {
+      const effect = view.#heldGlass;
+      view.#heldGlass = null;
+      // A blur-view removed before it was drawn gets its glass held again
+      // when it's rebuilt (see #recreateSubtree).
+      if (effect && !view.#paintingDead) {
+        __SetAttribute(view.element, 'blur-effect', effect);
+        released = true;
+      }
+    }
+    return released;
   }
 
   /**
@@ -1088,8 +1156,10 @@ export class LynxElement implements BaseLynxElement {
     if (Object.keys(this.#dataset).length > 0) {
       __SetDataset(fresh, this.#dataset);
     }
+    // A rebuilt blur-view is new to iOS too, so its glass waits again.
+    if (this.tagName === 'blur-view') this.holdGlassUntilDrawn();
     for (const [name, value] of this.#attrs) {
-      __SetAttribute(fresh, name, value);
+      if (!this.#holdsGlass(name, value)) __SetAttribute(fresh, name, value);
     }
     if (this.#classes) __SetClasses(fresh, this.#classes);
     // Whole-string styles first, then per-key overrides — same order as the
@@ -1402,6 +1472,13 @@ export const processPendingRemovals = (): void => {
 };
 
 /**
+ * Gives the blur-views the last flush drew the glass they were waiting for,
+ * and returns whether it gave any, for `LynxRendererFactory2.end()` to flush
+ * again (see `LynxElement.releaseHeldGlass()`).
+ */
+export const releaseHeldGlass = (): boolean => LynxElement.releaseHeldGlass();
+
+/**
  * Re-derives positional edge whitespace for every text touched this cycle — a
  * free-function wrapper over `LynxElement.commitPendingTextNormalization()` so
  * `LynxRendererFactory2.end()` can drain it (via the lynx-element barrel) right
@@ -1460,5 +1537,6 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingRemovals();
     LynxElement.commitPendingTextNormalization();
     __FlushElementTree();
+    if (releaseHeldGlass()) __FlushElementTree();
   });
 };

@@ -12,6 +12,7 @@ import {
   processPendingListUpdates,
   processPendingRemovals,
   processPendingTextNormalization,
+  releaseHeldGlass,
 } from '../lynx-element';
 import {
   isFirstRenderPending,
@@ -153,6 +154,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
       processPendingTextNormalization();
       if (!isFirstRenderPending()) {
         __FlushElementTree();
+        // iOS draws glass only on a blur-view that's already drawn, so new
+        // blur-views get their glass now, in a second flush of the same task
+        // (see LynxElement.releaseHeldGlass).
+        if (releaseHeldGlass()) __FlushElementTree();
       }
       processPendingListUpdates();
     } finally {

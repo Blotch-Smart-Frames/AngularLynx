@@ -5254,3 +5254,20 @@ Native Lynx recognizes long presses itself. `@lynx-js/web-core` (0.26) has no re
 ### The fix
 
 On the web, an element that gets a `longpress` listener recognizes long presses from its own touch and mouse events (`WebLongPress` in `packages/runtime/src/lib/lynx-element/web-long-press.ts`): a press with the main button or a finger, held 500ms without moving more than 10px, runs its `longpress` listeners with the press's position in `detail`, as native Lynx does. The browser's `click` when the press ends, which web-core turns into `tap`, is dropped for any element, as native Lynx sends no tap after a long press.
+
+---
+
+## On iOS, a glass `<blur-view>` created after the first render draws nothing, its content included
+
+### What you'd expect (parity with the first render)
+
+A `<blur-view blur-effect="glass">` added to the page later, by an `@if` or a routed screen, draws its glass and its children, as one in the first render does.
+
+### What Lynx does
+
+Checked in Lynx Explorer 4.1 on the iOS 27 Simulator: a blur-view created after the first render whose first flush already gives it `glass` (or `glass-container`) draws nothing at all, neither the glass nor the text inside it, and setting its effect again later doesn't bring it back. Everything else draws: a glass blur-view in the first render (the page isn't on screen yet), a `light` blur added later, glass set in a later flush on a blur-view created with no effect or with `light`, and glass added later inside a glass container that was already there. A second `__FlushElementTree()` in the same task is enough. Why isn't known: `LynxUIBlurView` sets `effect` on its `UIVisualEffectView` in `propsDidUpdate`, so a new blur-view gets its glass before Lynx inserts it into a window that's already showing. Every glass element in a routed screen hit this: the screen is built after the first render, so its glass buttons, groups and bars were blank.
+
+### The fix
+
+The runtime holds back a new blur-view's glass until a flush has drawn it (`holdGlassUntilDrawn()` and `releaseHeldGlass()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). On iOS, after the first render, a blur-view LynxDocument creates (or rebuilds on remount) doesn't send a `glass` or `glass-container` `blur-effect` to the element until `LynxRendererFactory2.end()` or the settle flush has flushed it; then they set it and flush again, in the same task, so the glass is there in the same frame. Any other effect goes to the element at once. Android and the web draw glass their own way and hold nothing. Covered by `held-glass.test.ts`.
+

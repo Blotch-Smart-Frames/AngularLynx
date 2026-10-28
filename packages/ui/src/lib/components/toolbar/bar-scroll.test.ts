@@ -7,6 +7,7 @@ import {
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { provideGlass } from '../glass/glass-design';
 import { UiBarScroll, UiBarState } from './bar-scroll';
 
 @Component({
@@ -255,6 +256,25 @@ describe('UiBarScroll', () => {
       [0, 'calc(100% - 35px)'],
       [0, 'calc(100% - 0px)'],
     ]);
+  });
+
+  it('leaves the edge to Android’s glass bars, as its scroll view takes no mask', async () => {
+    vi.stubGlobal('SystemInfo', ANDROID);
+    const result = await render(ScrollHost, {
+      providers: [provideGlass({ android: 'glass' })],
+    });
+    const state = result.componentRef.injector.get(UiBarState);
+    state.topBar.set(topBar());
+    await waitForUpdate();
+    const scrollView = result.container.querySelector<HTMLElement>('#first')!;
+    fireEvent.layoutchange(scrollView, {
+      detail: { width: 402, height: 1000 },
+    });
+    fireEvent.layoutchange(scrollView.firstElementChild!, {
+      detail: { width: 402, height: 100 },
+    });
+    await waitForUpdate();
+    expect(scrollView.style.getPropertyValue('mask-image')).toBe('');
   });
 
   it('leaves the edge to the bars before iOS 26, which mark it with their background', async () => {

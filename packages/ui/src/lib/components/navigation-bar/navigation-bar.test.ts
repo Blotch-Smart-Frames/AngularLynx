@@ -14,6 +14,7 @@ import {
   provideRouter,
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { provideGlass } from '../glass/glass-design';
 import { UiBarScroll, UiBarState } from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
 import { UiNavigationBar } from './navigation-bar';
@@ -385,6 +386,19 @@ describe('UiNavigationBar on Android', () => {
 class PlainBarHost {
   readonly bar = viewChild.required(UiNavigationBar);
 }
+
+describe('UiNavigationBar with glass on Android', () => {
+  it('fades the content beneath it itself, as Android’s scroll view takes no mask', async () => {
+    const { bar } = await renderBar(ANDROID, [
+      provideGlass({ android: 'glass' }),
+    ]);
+    const fade = style(bar(), 'background-image');
+    expect(fade).toContain('linear-gradient(to bottom');
+    expect(fade).toContain('var(--background-rgb)');
+    // It isn't Material's bar.
+    expect(bar().classList).not.toContain('bg-background');
+  });
+});
 
 describe('UiNavigationBar without the Lynx router', () => {
   it('has no history to go back through without the router', async () => {

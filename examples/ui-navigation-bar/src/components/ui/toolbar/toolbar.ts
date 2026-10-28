@@ -24,7 +24,7 @@ import {
 } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
 import { type IconName, ICONS } from '../icon/icons';
-import { platformOf, UiBarState } from './bar-scroll';
+import { edgeFadeOverlay, platformOf, UiBarState } from './bar-scroll';
 
 /**
  * The toolbar's height above the home indicator, in px, in each design:
@@ -321,8 +321,9 @@ export class UiToolbarItem {
             ? 'h-[40px] w-[40px] m-[4px] rounded-full bg-primary overflow-hidden'
             : 'h-[48px] w-[48px]';
         } else {
+          // 4dp in from its 48dp target, as Material insets its buttons.
           size = cn(
-            'h-[40px] rounded-full px-[12px] overflow-hidden',
+            'mx-[4px] h-[40px] rounded-full px-[12px] overflow-hidden',
             prominent && 'bg-primary px-[16px]',
           );
         }
@@ -459,7 +460,10 @@ export class UiToolbarSpacer {}
   selector: 'ui-toolbar',
   imports: [LYNX_ELEMENTS, UiGlass],
   encapsulation: ViewEncapsulation.None,
-  host: { '[class]': 'hostClass()' },
+  host: {
+    '[class]': 'hostClass()',
+    '[style.background-image]': 'edgeFade()',
+  },
   template: `
     @if (frostedBackground()) {
       <blur-view
@@ -477,6 +481,7 @@ export class UiToolbar {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #state = inject(UiBarState);
+  readonly #platform = platformOf(inject(Injector));
 
   /** The design on this platform (see GlassDesign), which the items follow. */
   readonly design = injectGlassDesign();
@@ -496,6 +501,16 @@ export class UiToolbar {
    */
   protected readonly frostedBackground = computed(
     () => this.design() === 'frosted' && this.#state.scrolledUnderBottom(),
+  );
+
+  /**
+   * On Android, glass bars fade the content beneath them themselves, since
+   * its scroll view takes no mask (see edgeFadeOverlay).
+   */
+  protected readonly edgeFade = computed(() =>
+    this.design() === 'glass' && this.#platform === 'Android'
+      ? edgeFadeOverlay('top')
+      : null,
   );
 
   protected readonly hostClass = computed(() => {

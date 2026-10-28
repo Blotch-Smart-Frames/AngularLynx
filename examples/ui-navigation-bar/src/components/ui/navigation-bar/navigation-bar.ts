@@ -21,7 +21,7 @@ import { DURATION, EASING } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 import { UiGlass } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
-import { UiBarState } from '../toolbar/bar-scroll';
+import { edgeFadeOverlay, platformOf, UiBarState } from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
 
 /**
@@ -121,6 +121,7 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
   host: {
     '[class]': 'hostClass()',
     '[style.transition]': 'containerTransition()',
+    '[style.background-image]': 'edgeFade()',
   },
   // The frosted material is added and removed rather than faded: a blur
   // view under a fading opacity draws wrongly on iOS.
@@ -220,6 +221,7 @@ export class UiNavigationBar {
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #injector = inject(Injector);
   readonly #history = historyOf(this.#injector);
+  readonly #platform = platformOf(this.#injector);
 
   /** The design on this platform (see GlassDesign), which the items follow. */
   readonly design = injectGlassDesign();
@@ -265,6 +267,16 @@ export class UiNavigationBar {
       !this.largeTitle() ||
       !this.#state.content() ||
       this.#state.largeTitleUnder(),
+  );
+
+  /**
+   * On Android, glass bars fade the content beneath them themselves, since
+   * its scroll view takes no mask (see edgeFadeOverlay).
+   */
+  protected readonly edgeFade = computed(() =>
+    this.design() === 'glass' && this.#platform === 'Android'
+      ? edgeFadeOverlay('bottom')
+      : null,
   );
 
   protected readonly frostedBackground = computed(

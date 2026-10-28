@@ -94,7 +94,7 @@ Put a `<ui-toolbar>` after the screen's `<scroll-view>`, and `ui-bar-scroll` on 
 
 - **It makes room** for the navigation bar and the status bar at the top, and the toolbar and the home indicator at the bottom.
 - **It draws the large title** of a navigation bar with `largeTitle`.
-- **It fades content out** under glass bars, iOS 26's scroll edge effect.
+- **It fades content out** under glass bars, iOS 26's scroll edge effect. Android's scroll view takes no mask, so there the glass bars fade content to the theme's `background` color themselves.
 - **It tells the bars where the content is**: the frosted bars turn opaque, and Material's top app bar changes color, as content scrolls under them.
 
 It reads the scroll view's events itself rather than through a template listener, so it updates the bars only when they change. Only a `<scroll-view>` takes it; a `<list>` can't hold the spacers.

@@ -115,6 +115,22 @@ const EDGE_FADE: readonly (readonly [at: number, alpha: number])[] = [
   [1, 1],
 ];
 
+/**
+ * The scroll edge effect for a glass bar to draw itself, where the scroll
+ * view can't: Android, whose `<scroll-view>` takes no `mask-image` (a plain
+ * view does). It's the mask's fade the other way round, in the theme's
+ * background color, from the screen's edge `toward` the content, over the
+ * bar's own box, which takes the safe area as the scroll view's spacer does.
+ * So content fades to the background color rather than to what's behind.
+ */
+export const edgeFadeOverlay = (toward: 'bottom' | 'top'): string => {
+  const stops = EDGE_FADE.map(
+    ([at, alpha]) =>
+      `rgba(var(--background-rgb), ${Number((1 - alpha).toFixed(2))}) ${Number((at * 100).toFixed(2))}%`,
+  );
+  return `linear-gradient(to ${toward}, ${stops.join(', ')})`;
+};
+
 /** What Lynx sends with `scroll` and `layoutchange`, as far as this reads. */
 type ScrollDetail = { scrollTop: number; scrollHeight: number };
 type LayoutDetail = { height: number };
@@ -282,7 +298,8 @@ export class UiBarScroll {
    * come from the scroll view's height too. The web preview's scroll view
    * reports no layout (web-elements' `<x-scroll-view>` sends no
    * `layoutchange`), but the browser reads lengths, so there the stops are
-   * px from each end.
+   * px from each end. Android's scroll view takes no mask, so there the
+   * bars draw the edge themselves (see edgeFadeOverlay).
    */
   protected readonly edgeMask = computed(() => {
     const top = this.topSpace();
@@ -291,6 +308,7 @@ export class UiBarScroll {
     const web = this.#platform === 'web';
     if (
       this.#design() !== 'glass' ||
+      this.#platform === 'Android' ||
       top + bottom <= 0 ||
       (!web && height <= 0)
     ) {

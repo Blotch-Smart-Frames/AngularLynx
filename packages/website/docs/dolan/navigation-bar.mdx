@@ -119,7 +119,7 @@ With `largeTitle`, the title starts large at the top of the content and scrolls 
 
 ### The scroll edge effect
 
-On iOS 26 and later, content fades out as it passes under the glass bar, so the bar's controls stay legible over whatever is beneath them, as iOS's scroll edge effect does. It's a mask on the scroll view, so content fades to whatever is behind it: the screen's background, or an image.
+On iOS 26 and later, content fades out as it passes under the glass bar, so the bar's controls stay legible over whatever is beneath them, as iOS's scroll edge effect does. It's a mask on the scroll view, so content fades to whatever is behind it: the screen's background, or an image. Android's scroll view takes no mask, so with the glass opt-in the bar fades content to the theme's `background` color instead.
 
 The other designs mark the edge with the bar's own background instead: the frosted material before iOS 26, and Material's container color on Android.
 

@@ -372,6 +372,15 @@ describe('UiToolbar without SystemInfo', () => {
 });
 
 describe('UiToolbar with glass on Android and the web', () => {
+  it('fades the content beneath it itself on Android, whose scroll view takes no mask', async () => {
+    const { toolbar } = await renderToolbar(ANDROID, [
+      provideGlass({ android: 'glass' }),
+    ]);
+    const fade = toolbar().style.getPropertyValue('background-image');
+    expect(fade).toContain('linear-gradient(to top');
+    expect(fade).toContain('var(--background-rgb)');
+  });
+
   it('highlights an item on its own on Android, whose glass doesn’t react to touch', async () => {
     const { ownGlass, press, button } = await renderToolbar(ANDROID, [
       provideGlass({ android: 'glass' }),

@@ -1,7 +1,8 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { getComponentNames } from '../registry.js';
-import type { Lockfile } from '../lockfile.js';
+import { trackedThemeFiles, type Lockfile } from '../lockfile.js';
 import { getComponentFiles } from './resolve-paths.js';
+import { themeFilesFor } from './tailwind.js';
 
 /**
  * The registry components with a folder in the components directory. Other
@@ -52,5 +53,27 @@ export const droppedFiles = (name: string, lockfile: Lockfile): string[] => {
   const shipped = new Set(getComponentFiles(name, { tests: true }));
   return Object.keys(lockfile.components[name] ?? {}).filter(
     (file) => !shipped.has(file),
+  );
+};
+
+/**
+ * The theme files dolan tracks (see trackedThemeFiles) that the project no
+ * longer takes: the Tailwind 3 plugin and its test once it's on Tailwind 4,
+ * or `tailwind.css` once it's back on Tailwind 3. `update` used to look only
+ * at the files the project takes, so the plugin stayed, on disk and in the
+ * lockfile, as dead code and an uncovered file in the app's coverage report.
+ *
+ * As for droppedFiles, a test counts as taken whether or not the project has
+ * the testing library: the plugin's test goes with the plugin, not with the
+ * library, so a Tailwind 3 project that drops the library keeps its copy.
+ */
+export const droppedThemeFiles = (
+  cwd: string,
+  themeDir: string,
+  lockfile: Lockfile,
+): string[] => {
+  const takes = new Set(themeFilesFor(cwd, { tests: true }));
+  return trackedThemeFiles(lockfile, themeDir).filter(
+    (file) => !takes.has(file),
   );
 };

@@ -136,6 +136,8 @@ describe('UiSwitch', () => {
     expect(track().getAttribute('accessibility-role-description')).toBe(
       'switch',
     );
+    // Sideways swipes are the switch's, not the scroll view's.
+    expect(track().getAttribute('consume-slide-event')).toContain('[-45,45]');
     await update(() => host.checked.set(true));
     expect(track().getAttribute('accessibility-value')).toBe('On');
   });

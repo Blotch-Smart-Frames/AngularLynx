@@ -148,6 +148,19 @@ const FROSTED_THUMB_SHADOW =
 const DRAG_SLOP = 6;
 
 /**
+ * The swipe angles, in degrees from the right, that the switch keeps from
+ * the scroll views around it: within 45 degrees of sideways. On iOS a
+ * scroll view's pan runs alongside Lynx's touch events, so a slightly
+ * diagonal drag would also scroll the page (`consume-slide-event` fails
+ * those pans). A swipe up or down still scrolls.
+ */
+const SIDEWAYS: [number, number][] = [
+  [-45, 45],
+  [135, 180],
+  [-180, -135],
+];
+
+/**
  * A CSS transition of each property, for an inline `transition`.
  */
 const transitionOf = (
@@ -273,6 +286,7 @@ type Press = {
       [class]="rootClass()"
       [style]="rootStyle()"
       hit-slop="8px"
+      [consume-slide-event]="sideways"
       [accessibility-element]="true"
       [accessibility-traits]="disabled() ? 'button,disabled' : 'button'"
       accessibility-role-description="switch"
@@ -336,6 +350,8 @@ export class UiSwitch implements FormCheckboxControl {
 
   /** The new state, after each tap or drag that changes it. */
   readonly changed = output<boolean>();
+
+  protected readonly sideways = SIDEWAYS;
 
   /** The thumb is always in the template, so the switch can always slide it. */
   readonly thumbRef = viewChild.required<ElementRef>('thumb');

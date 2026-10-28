@@ -146,6 +146,19 @@ const IOS_THUMB_SHADOW = {
  */
 const DRAG_SLOP = 6;
 
+/**
+ * The swipe angles, in degrees from the right, that the slider keeps from
+ * the scroll views around it: within 45 degrees of sideways. On iOS a
+ * scroll view's pan runs alongside Lynx's touch events, so without this a
+ * slightly diagonal drag also scrolled the page (`consume-slide-event` fails
+ * those pans). A swipe up or down still scrolls.
+ */
+const SIDEWAYS: [number, number][] = [
+  [-45, 45],
+  [135, 180],
+  [-180, -135],
+];
+
 /** How far outside the thumb a press still picks it up, in px. */
 const GRAB_SLOP = 10;
 
@@ -162,9 +175,9 @@ const transitionOf = (
     .join(', ');
 
 /**
- * The thumb glides to a value set by a tap, an accessibility action or a
- * binding, and the track's parts glide with it. While it's dragged, they
- * follow the finger at once.
+ * The thumb glides to a value set by a tap or an accessibility action, and
+ * the track's parts glide with it. A drag moves them with the finger at
+ * once, and a new layout or a value from a binding puts them in place.
  */
 const THUMB_GLIDE = transitionOf(
   ['transform'],
@@ -309,6 +322,7 @@ type Press = {
       [class]="rootClass()"
       [style]="rootStyle()"
       hit-slop="8px"
+      [consume-slide-event]="sideways"
       [accessibility-element]="true"
       [accessibility-traits]="disabled() ? 'adjustable,disabled' : 'adjustable'"
       accessibility-role-description="slider"
@@ -406,13 +420,18 @@ export class UiSlider implements FormValueControl<number> {
   readonly #web = platformOf(inject(Injector)) === 'web';
 
   protected readonly accessibilityActions = [INCREASE, DECREASE];
+  protected readonly sideways = SIDEWAYS;
 
   /** The slider's width, from its layout; 0 until it's laid out. */
   readonly #width = signal(0);
   /** The thumb is held, by a press on it or a drag. */
   readonly #holding = signal(false);
-  /** A drag is moving the thumb, which then follows it with no glide. */
-  readonly #dragging = signal(false);
+  /**
+   * The last change was a tap or an accessibility action, which the thumb
+   * glides to. Otherwise it moves at once: with a dragging finger, and when
+   * the first layout arrives, which would glide it in from the start.
+   */
+  readonly #glide = signal(false);
   #press: Press | null = null;
   /**
    * Where the slider's left edge is in the `<lynx-view>`, on the web, where
@@ -537,7 +556,7 @@ export class UiSlider implements FormValueControl<number> {
     const center = this.#center();
     const holding = this.#holding();
     const animate = this.#animate();
-    const glide = animate && !this.#dragging();
+    const glide = animate && this.#glide();
     // Glides, and the morph, together on the thumb: an element has one
     // `transition`.
     const thumbTransition =
@@ -634,13 +653,16 @@ export class UiSlider implements FormValueControl<number> {
   protected onLayout(event: unknown): void {
     const { detail, params } = event as LayoutEvent;
     const width = (detail ?? params)?.width;
-    if (typeof width === 'number') this.#width.set(width);
+    if (typeof width !== 'number') return;
+    this.#glide.set(false);
+    this.#width.set(width);
   }
 
   protected onPressStart(event: PointerEvent): void {
     // A new press starts a new tap, so the last drag's tap can't eat it.
     this.#suppressTap = false;
     this.#tapX = null;
+    this.#glide.set(false);
     const point = pointOf(event);
     if (this.disabled() || !point) return;
     const press: Press = {
@@ -670,7 +692,6 @@ export class UiSlider implements FormValueControl<number> {
       const dy = Math.abs(point.y - press.startY);
       if (dx >= DRAG_SLOP && dx > dy) {
         press.dragging = true;
-        this.#dragging.set(true);
         this.#holding.set(true);
       } else if (dy >= DRAG_SLOP) {
         // A scroll, which the scroll view may or may not take over: Android
@@ -736,6 +757,7 @@ export class UiSlider implements FormValueControl<number> {
       return;
     }
     if (this.disabled() || x === null) return;
+    this.#glide.set(true);
     this.#set(this.#valueAt(x));
     this.#finish();
   }
@@ -744,6 +766,7 @@ export class UiSlider implements FormValueControl<number> {
     const name = (event as { detail?: { name?: string } }).detail?.name;
     if (this.disabled() || (name !== INCREASE && name !== DECREASE)) return;
     const step = this.#accessibilityStep();
+    this.#glide.set(true);
     this.#set(this.#current() + (name === INCREASE ? step : -step));
     this.#finish();
   }
@@ -770,7 +793,6 @@ export class UiSlider implements FormValueControl<number> {
     const press = this.#press;
     this.#press = null;
     this.#holding.set(false);
-    this.#dragging.set(false);
     if (press?.dragging) {
       // Lynx may still send a tap for a short drag, and the browser always
       // clicks after a mouse drag: that tap isn't one.

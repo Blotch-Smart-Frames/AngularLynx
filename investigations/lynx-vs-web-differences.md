@@ -5318,10 +5318,29 @@ React Lynx runs component code on the background thread, so a drag handled there
 
 AngularLynx runs Angular on the main thread (see `lynx-architecture`), so template handlers like `(bindtouchmove)` already run beside the native touch handling. Measured with a probe around `ui-slider` in Lynx Explorer 4.1 (a `(bindtouchmove)` on its parent that compares the event's `timestamp` with `Date.now()`, and an `afterRenderEffect` on the value), dragging with Maestro over 2 seconds:
 
-|                  | touchmove interval                    | event to handler           | handler to render        |
-| ---------------- | ------------------------------------- | -------------------------- | ------------------------ |
-| iOS 27 Simulator | 16.7 to 17.2ms average (one 34ms gap) | 0.6ms average, 2ms at most | 3ms average, 7ms at most |
+|                     | touchmove interval     | event to handler                  | handler to render                  |
+| ------------------- | ---------------------- | --------------------------------- | ---------------------------------- |
+| iOS 27 Simulator    | 16.7 to 17.2ms average | 0.6ms average, 2ms at most        | 3ms average, 7ms at most           |
+| Android 14 emulator | 17.1 to 20ms average   | 1.1 to 1.7ms average, 7ms at most | 3.5 to 4.8ms average, 19ms at most |
+
+Runs while the host machine was overloaded (a load average near 40 on 18 cores) dropped to a move every 35 to 125ms on the emulator, with renders up to 270ms behind; those are the emulator starving, not the handlers.
 
 ### What we do about it
 
 Nothing: the slider and the switch set a signal in their handlers and let change detection apply the styles, under a frame from the native event to the render. A main-thread script would save no thread hop, and the change detection it would skip costs about 3ms for these controls.
+
+---
+
+## On iOS, a scroll view scrolls alongside a drag that Lynx's touch events are following
+
+### What you'd expect (UIKit)
+
+A control dragged sideways inside a vertical scroll view keeps the drag to itself: `UISlider` and `UISwitch` stop the scroll view's pan from starting while they track a touch.
+
+### What Lynx does
+
+Lynx delivers touch events from its own gesture recognizer on the LynxView, and a `<scroll-view>`'s `UIScrollView` pan recognizes alongside it. A drag on a slider that drifted 40pt down over a 226pt swipe moved the slider all the way and scrolled the page 66 times (Lynx Explorer 4.1, iOS 27 Simulator). On the Android 14 emulator the same drag didn't scroll: Lynx's scroll view only takes over when the movement is mostly vertical.
+
+### The fix
+
+`consume-slide-event` takes swipe angle ranges, in degrees from the right (`atan2(dy, dx)`), and Lynx fails the platform's pan gestures for a swipe inside them (`dispatchPanEvent:` in `LynxEventHandler.m`). The slider and the switch set `[[-45, 45], [135, 180], [-180, -135]]`, within 45 degrees of sideways: the diagonal drag above no longer scrolled the page, and a swipe up that starts on the slider still scrolls it, on iOS and Android. It matches the controls' own rule for starting a drag, more sideways than up or down.

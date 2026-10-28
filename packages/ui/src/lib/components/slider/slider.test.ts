@@ -165,6 +165,14 @@ describe('UiSlider', () => {
     expect(slider.getAttribute('accessibility-actions')).toBe(
       JSON.stringify(['Increase', 'Decrease']),
     );
+    // Sideways swipes are the slider's, not the scroll view's.
+    expect(slider.getAttribute('consume-slide-event')).toBe(
+      JSON.stringify([
+        [-45, 45],
+        [135, 180],
+        [-180, -135],
+      ]),
+    );
   });
 
   it('follows a drag of the thumb, keeping where the finger holds it', async () => {
@@ -187,7 +195,6 @@ describe('UiSlider', () => {
     await lift();
     expect(host.changes).toEqual([60]);
     expect(host.touches).toBe(1);
-    expect(style(thumb, 'transition')).toContain('transform');
 
     // Lynx may send a tap after a short drag: it doesn't move the thumb.
     await tap();
@@ -205,7 +212,7 @@ describe('UiSlider', () => {
   });
 
   it('moves to a tap on the track, but not to one on the thumb', async () => {
-    const { host, touch, lift, tap } = await renderSlider();
+    const { host, slider, thumb, touch, lift, tap } = await renderSlider();
 
     await touch('touchstart', 150);
     await lift();
@@ -216,6 +223,11 @@ describe('UiSlider', () => {
     await lift();
     await tap();
     expect(host.value()).toBe(10);
+    // It glides there, where a drag or a new layout moves it at once.
+    expect(style(thumb, 'transition')).toContain('transform');
+    fireEvent.layoutchange(slider, { detail: { width: WIDTH } });
+    await waitForUpdate();
+    expect(style(thumb, 'transition')).not.toContain('transform');
     expect(host.changes).toEqual([10]);
     expect(host.touches).toBe(1);
   });
@@ -568,6 +580,10 @@ describe('UiSlider', () => {
       await touch('touchmove', 164);
       expect(style(track, 'transition')).toBe('none');
       await lift();
+      fireLynxEvent(slider, 'accessibilityaction', {
+        detail: { name: 'Decrease' },
+      });
+      await waitForUpdate();
       expect(style(track, 'transition')).toContain('left');
 
       // Near the end, the stop goes under the handle's gap.

@@ -1785,6 +1785,9 @@ describe('updateCommand — ejected components', () => {
       uiSource: {
         select: { 'select.ts': select },
         'bottom-sheet': { 'bottom-sheet.ts': 'export const BottomSheet = {};' },
+        // What bottom-sheet's glass variant draws with.
+        glass: { 'glass.ts': 'export const Glass = {};' },
+        icon: { 'icon.ts': 'export const Icon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);

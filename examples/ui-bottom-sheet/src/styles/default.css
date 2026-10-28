@@ -84,5 +84,29 @@ page {
   --chart-5: rgba(244, 164, 98, 1);
   --chart-5-rgb: 244, 164, 98;
 
+  /* Liquid Glass (the glass component). Glass draws its own material, so
+     these color what sits on it, and tint it:
+     - glass-tint: the color tinted glass takes, such as a prominent glass
+       button's, and glass-tint-foreground what sits on it.
+     - glass-foreground and glass-muted-foreground: text and icons on regular
+       glass. Darker than muted-foreground, since what shows through the
+       glass varies.
+     - glass-clear-foreground: on clear glass, which sits over photos and
+       video, so it's white in both themes.
+     - glass-dim: the dimming layer under clear glass over bright content,
+       black at about a third, as Apple suggests. Already translucent, so it
+       has no channels. */
+  --glass-tint: rgba(24, 24, 27, 1);
+  --glass-tint-rgb: 24, 24, 27;
+  --glass-tint-foreground: rgba(250, 250, 250, 1);
+  --glass-tint-foreground-rgb: 250, 250, 250;
+  --glass-foreground: rgba(9, 9, 11, 1);
+  --glass-foreground-rgb: 9, 9, 11;
+  --glass-muted-foreground: rgba(63, 63, 70, 1);
+  --glass-muted-foreground-rgb: 63, 63, 70;
+  --glass-clear-foreground: rgba(255, 255, 255, 1);
+  --glass-clear-foreground-rgb: 255, 255, 255;
+  --glass-dim: rgba(0, 0, 0, 0.35);
+
   --radius: 8px;
 }

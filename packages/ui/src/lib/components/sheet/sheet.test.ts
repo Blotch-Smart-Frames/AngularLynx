@@ -1,11 +1,12 @@
-import { Component, signal } from '@angular/core';
+import { Component, type WritableSignal, signal } from '@angular/core';
 import {
   fireEvent,
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SheetDetent } from '../bottom-sheet/bottom-sheet';
 import {
   UiSheet,
   UiSheetDescription,
@@ -52,7 +53,7 @@ const renderSheet = async () => {
  * Opens the sheet and waits out its open sequence: the overlay shows on one
  * tick, and the panel slides in on the next.
  */
-const openSheet = async (host: SheetHost) => {
+const openSheet = async (host: { readonly open: WritableSignal<boolean> }) => {
   host.open.set(true);
   for (let i = 0; i < 3; i++) await waitForUpdate();
 };
@@ -93,5 +94,53 @@ describe('UiSheet', () => {
     await waitForUpdate();
     expect(overlay.getAttribute('visible')).toBe('false');
     expect(host.closed).toHaveBeenCalledOnce();
+  });
+});
+
+@Component({
+  imports: [UiSheet, LYNX_ELEMENTS],
+  template: `
+    <ui-sheet
+      [(open)]="open"
+      variant="glass"
+      [detents]="['medium', 'large']"
+      [(detent)]="detent"
+    >
+      <text>Body</text>
+    </ui-sheet>
+  `,
+})
+class GlassSheetHost {
+  readonly open = signal(false);
+  readonly detent = signal<SheetDetent | undefined>(undefined);
+}
+
+describe('UiSheet glass variant', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('passes the variant and the detents to its bottom sheet', async () => {
+    vi.stubGlobal('SystemInfo', { platform: 'iOS', osVersion: '26.0' });
+    const { componentRef, container, getByText } = await render(GlassSheetHost);
+    const host = componentRef.instance as GlassSheetHost;
+    // A sheet with heights of its own lets its content fill it.
+    expect(getByText('Body').parentElement?.classList).toContain('flex-1');
+
+    // Laid out as on a phone, which the medium and large detents need.
+    const backdrop = container.querySelector('overlay > view')!;
+    fireEvent.layoutchange(backdrop, { detail: { height: 874 } });
+    fireEvent.layoutchange(backdrop.firstElementChild!, {
+      detail: { height: 812 },
+    });
+    await openSheet(host);
+    expect(
+      container.querySelector('blur-view')?.getAttribute('blur-effect'),
+    ).toBe('glass');
+    expect(host.detent()).toBe('medium');
+
+    // The grabber moves it to the next detent, and the host hears of it.
+    const grabber = container.querySelector('overlay .rounded-full')!;
+    fireEvent.tap(grabber.parentElement!, { eventType: 'catchEvent' });
+    await waitForUpdate();
+    expect(host.detent()).toBe('large');
   });
 });

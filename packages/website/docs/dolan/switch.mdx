@@ -1,6 +1,6 @@
 # Switch
 
-An on/off switch for settings, with a thumb that springs across when tapped.
+An on/off switch for settings. Tap it or drag its thumb across, and give it `variant="glass"` for each platform's own switch.
 
 <Go example="ui-switch" defaultFile="src/app/app.ts" />
 
@@ -13,6 +13,10 @@ npx @blotch/dolan add switch
 ```typescript
 import { UiSwitch } from '../components/ui/switch';
 ```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the glass variant's lens, and [Icon](/dolan/icon), whose copy of the theme colors gives the iOS colors their dark mode.
+:::
 
 ## Usage
 
@@ -28,7 +32,7 @@ import { UiSwitch } from '../components/ui/switch';
   template: `
     <view class="flex flex-row items-center justify-between">
       <ui-label>Bluetooth</ui-label>
-      <ui-switch [(checked)]="bluetooth" />
+      <ui-switch [(checked)]="bluetooth" accessibility-label="Bluetooth" />
     </view>
   `,
 })
@@ -38,8 +42,32 @@ export class App {
 ```
 
 - This example also uses [Label](/dolan/label).
-- The track is the primary color when on and the input color when off.
-- The switch is 44 by 24 pixels, set in pixels so it looks the same at any font size.
+- **A tap toggles it, and so does dragging the thumb across.** It lands on the side you let go nearer, as on iOS.
+- **A drag starts only once your finger moves sideways,** so a scroll that starts on the switch scrolls the page. A sideways drag doesn't scroll it.
+- The default switch is 44 by 24 pixels: the primary color when on, the input color when off.
+
+### Glass
+
+Each platform's own switch:
+
+```angular-html
+<ui-switch variant="glass" [(checked)]="wifi" accessibility-label="Wi-Fi" />
+```
+
+On iOS 26 the thumb turns into a Liquid Glass lens while you touch it, bigger than the track, and turns solid again when you let go. It's the one place glass sits on content: Apple keeps glass for the layer above content, except on sliders and switches, and only while they're touched.
+
+What each platform draws:
+
+| Platform                                       | Switch                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| iOS 26 and later                               | iOS 26's 63 × 28pt switch, whose thumb turns to glass while touched               |
+| iOS 15 to 25                                   | The classic 51 × 31pt switch, whose thumb stretches while touched                 |
+| Android                                        | A Material 3 switch: 52 × 32dp, outlined when off, its handle grows while pressed |
+| Android, with [`provideGlass()`](/dolan/glass) | iOS 26's switch, with Android's glass                                             |
+| [Web preview](/guide/glossary#web-preview)     | iOS 26's switch, with the glass drawn by WebGL                                    |
+
+- **iOS draws it green when on,** as UIKit does whatever your app's tint color. Its colors follow your app's color scheme, which [`provideIconTheme()`](/dolan/icon#dark-mode) sets.
+- **Material uses the theme's colors:** `primary` when on, `secondary` with a `muted-foreground` outline when off.
 
 ### Disabled
 
@@ -50,7 +78,7 @@ export class App {
 </view>
 ```
 
-A disabled switch dims and ignores taps.
+A disabled switch dims and ignores taps and drags.
 
 ### Listen without a signal
 
@@ -58,27 +86,49 @@ A disabled switch dims and ignores taps.
 <ui-switch (changed)="onNotifications($event)" />
 ```
 
-`changed` emits the new state after each tap.
+`changed` emits the new state after each tap or drag that changes it.
+
+### Forms
+
+`checked` is a `model()`, so the switch works with every Angular forms API:
+
+```angular-html
+<ui-switch [formControl]="wifi" />
+<ui-switch [(ngModel)]="wifi" />
+<ui-switch [formField]="settings.wifi" />
+```
+
+`UiSwitch` implements Signal Forms' `FormCheckboxControl`. Reactive and template-driven forms bind to its `checked` model directly, as Angular 22 does for any component with one. See [Forms](/guide/forms).
 
 ## API
 
 ### UiSwitch
 
-| Input      | Type      | Default | Description                              |
-| ---------- | --------- | ------- | ---------------------------------------- |
-| `checked`  | `boolean` | `false` | Whether it's on. Supports `[(checked)]`. |
-| `disabled` | `boolean` | `false` | Dims the switch and ignores taps.        |
-| `class`    | `string`  | `''`    | Extra Tailwind classes for the track.    |
+| Input                 | Type                   | Default     | Description                                       |
+| --------------------- | ---------------------- | ----------- | ------------------------------------------------- |
+| `checked`             | `boolean`              | `false`     | Whether it's on. Supports `[(checked)]`.          |
+| `disabled`            | `boolean`              | `false`     | Dims the switch and ignores taps and drags.       |
+| `variant`             | `'default' \| 'glass'` | `'default'` | `'glass'` draws each platform's own switch.       |
+| `accessibility-label` | `string`               | —           | What a screen reader calls it, such as `'Wi-Fi'`. |
+| `class`               | `string`               | `''`        | Extra Tailwind classes for the switch.            |
 
-| Output          | Type      | Description                             |
-| --------------- | --------- | --------------------------------------- |
-| `changed`       | `boolean` | Emits the new state after a tap.        |
-| `checkedChange` | `boolean` | Emits the new state, for `[(checked)]`. |
+| Output          | Type      | Description                                         |
+| --------------- | --------- | --------------------------------------------------- |
+| `changed`       | `boolean` | Emits the new state after a tap or drag changes it. |
+| `checkedChange` | `boolean` | Emits the new state, for `[(checked)]`.             |
 
 `UiSwitch` also has a public `toggle()` method, which does nothing while disabled.
 
+## Accessibility
+
+- **A screen reader reads it as a button with its label and an "On" or "Off" value.** Android's reads it as a switch. Give it an `accessibility-label`, since the label beside it is a separate element.
+- **Reduce Motion:** the thumb jumps across instead of sliding, and turns to glass and back without growing.
+- **Reduce Transparency:** iOS makes its own lens opaque. On Android and the web, the solid thumb grows instead of turning to glass.
+
 ## Related
 
+- [Slider](/dolan/slider): a value in a range, whose thumb turns to glass too
 - [Checkbox](/dolan/checkbox): for agreeing or picking options in a form
 - [Toggle](/dolan/toggle): a button that stays pressed
+- [Glass](/dolan/glass): the Liquid Glass the lens draws
 - [Label](/dolan/label)

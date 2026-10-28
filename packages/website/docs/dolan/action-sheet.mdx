@@ -1,6 +1,6 @@
 # Action Sheet
 
-Offer a short list of actions in a group that slides up from the bottom of the screen, with a separate Cancel button below it.
+Offer a short list of choices about an action: from the bottom of the screen, or growing out of the button that presents it, as on iOS 26.
 
 <Go example="ui-action-sheet" defaultFile="src/app/app.ts" />
 
@@ -13,11 +13,16 @@ npx @blotch/dolan add action-sheet
 ```typescript
 import {
   UiActionSheet,
+  UiActionSheetAnchor,
   UiActionSheetTitle,
   UiActionSheetItem,
   UiActionSheetCancel,
 } from '../components/ui/action-sheet';
 ```
+
+:::tip
+This also adds [Popover](/dolan/popover), which draws the sheet opened from its control, with the [Glass](/dolan/glass) and [Menu](/dolan/menu) it builds on.
+:::
 
 ## Usage
 
@@ -69,11 +74,48 @@ export class ShareMenu {
 
 - `[(open)]` two-way binds a signal. Set it to `true` to slide the sheet up.
 - Tapping an item emits its `pressed`, then closes the sheet. You don't need to set `open` yourself.
-- Tapping Cancel or the backdrop closes the sheet without emitting anything.
+- Tapping Cancel or the backdrop, or Android's back button, closes the sheet without emitting anything.
 - The title and items stack in one rounded group. `<ui-action-sheet-cancel>` always renders as its own tile below the group, wherever you put it.
 - Items and the title render their content in a `<text>`, so put plain text in them.
 - The sheet draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
 - When it opens, a screen reader moves into the sheet and stays inside it until the sheet closes.
+
+### From its control
+
+Mark the button that presents the sheet with `[uiActionSheetAnchor]`, and the sheet opens from it:
+
+```angular-html
+<ui-button
+  variant="outline"
+  [uiActionSheetAnchor]="draftSheet"
+  (pressed)="open.set(true)"
+>
+  Discard Draft
+</ui-button>
+
+<ui-action-sheet #draftSheet [(open)]="open">
+  <ui-action-sheet-title>Delete this draft?</ui-action-sheet-title>
+  <ui-action-sheet-item variant="destructive" (pressed)="remove()">
+    Delete Draft
+  </ui-action-sheet-item>
+  <ui-action-sheet-item (pressed)="save()">Save Draft</ui-action-sheet-item>
+  <ui-action-sheet-cancel />
+</ui-action-sheet>
+```
+
+- **`#draftSheet` names the sheet, and `[uiActionSheetAnchor]` points the button at it.** The directive only says where the sheet opens from. Open it as before, from the button's own handler.
+- **Nothing dims, and the rest of the screen stays usable.** A touch outside the sheet closes it, and still reaches what it touched.
+- **There's no Cancel button.** A touch outside is the cancel, as iOS and Material menus have it. Keep `<ui-action-sheet-cancel>` for the platforms that still show one.
+
+| Platform                                           | What you get                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| iOS 26 and later                                   | Liquid Glass that grows out of the button, over it, with the choices centered                |
+| iOS 15 to 25                                       | The sheet from the bottom of the screen, with Cancel: iPhone action sheets always rose there |
+| Android                                            | A Material 3 menu that unfolds below the button, on a solid surface with a shadow            |
+| Android, with `provideGlass({ android: 'glass' })` | Liquid Glass, as on iOS 26                                                                   |
+| [Web preview](/guide/glossary#web-preview)         | Liquid Glass, as on iOS 26                                                                   |
+
+On Android, a Material 3 bottom sheet is the counterpart of the sheet from the bottom. Material puts choices about a button in a menu by that button, so the anchored sheet is one. It shares its placement with [Popover](/dolan/popover) and [Menu](/dolan/menu).
 
 ### Destructive items
 
@@ -123,6 +165,14 @@ You can also wait for `closed`, which emits after the slide-down animation, from
 | --------- | ----------------- |
 | `close()` | Closes the sheet. |
 
+### UiActionSheetAnchor
+
+Selector: `[uiActionSheetAnchor]`. Put it on the control that presents the sheet.
+
+| Input                 | Type            | Default    | Description                           |
+| --------------------- | --------------- | ---------- | ------------------------------------- |
+| `uiActionSheetAnchor` | `UiActionSheet` | (required) | The sheet, by its template reference. |
+
 ### UiActionSheetItem
 
 | Input     | Type                         | Default     | Description |
@@ -143,10 +193,22 @@ No outputs. Tapping it closes the sheet.
 
 All sub-components (`UiActionSheetTitle`, `UiActionSheetItem`, `UiActionSheetCancel`) accept `class`. Items and Cancel only work inside a `<ui-action-sheet>`, because they close it.
 
+### Theme colors
+
+Opened from its control, the sheet's text reads `glass-foreground` and `glass-muted-foreground`. See [Glass](/dolan/glass#theme-colors).
+
+## Accessibility
+
+- **Items and Cancel are buttons, and the title is a heading,** to a screen reader.
+- **From the bottom, a screen reader moves into the sheet and stays there** until it closes.
+- **From its control, a screen reader moves into the sheet,** and the rest of the screen stays reachable, as it does for touch.
+- **Reduce Motion:** a sheet from its control appears in place, and its choices fade in.
+
 ## Related
 
 - [Dialogs and overlays](/guide/overlays): how overlays work and which one to use
 - [Sheet](/dolan/sheet): a panel from the bottom for any content
 - [Alert Dialog](/dolan/alert-dialog): confirm one action in a centered panel
 - [Bottom Sheet](/dolan/bottom-sheet): a bare panel to lay out yourself
+- [Popover](/dolan/popover): any content, opened from its control the same way
 - [Menu](/dolan/menu) and [Context Menu](/dolan/context-menu): actions in a menu beside the button or element that opens it

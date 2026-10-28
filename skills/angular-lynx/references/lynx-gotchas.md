@@ -164,6 +164,14 @@ Simulate with background images if needed.
 
 Supported: `blur`, `grayscale`, `brightness`, `contrast`, `saturate`. No chaining.
 
+### No `backdrop-filter`
+
+iOS and Android drop it, so Tailwind's `backdrop-blur-*` blurs nothing there (the Lynx Tailwind 3 preset doesn't even generate it). To blur what's behind an element, use `<blur-view>`.
+
+### Don't fade a `<blur-view>` itself
+
+On iOS, a blur view's own opacity below 1 makes its material vanish. Animate the opacity of a plain `<view>` around it instead: iOS then draws the glass as a translucent sheet that fades, as UIKit's alerts do.
+
 ### `box-shadow: inset` not supported
 
 Only outer shadows.

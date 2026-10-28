@@ -1,6 +1,6 @@
 {
   "name": "@blotch/angular-lynx-build",
-  "version": "22.2.3",
+  "version": "22.2.4",
   "description": "Angular CLI builders for AngularLynx: ng build, ng serve and ng test for Lynx, and native iOS and Android apps",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {
@@ -51,8 +51,8 @@
     "publish:local": "yalc publish --push"
   },
   "dependencies": {
-    "@blotch/angular-lynx-native": "22.2.3",
-    "@blotch/rsbuild-plugin-angular-lynx": "22.2.3",
+    "@blotch/angular-lynx-native": "22.2.4",
+    "@blotch/rsbuild-plugin-angular-lynx": "22.2.4",
     "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3",
     "@lynx-js/rspeedy": "^0.18.0"
   },

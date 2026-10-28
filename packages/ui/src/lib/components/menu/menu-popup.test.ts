@@ -323,8 +323,11 @@ describe('UiMenuPopup', () => {
   });
 
   it("measures in the app's pixels where the app is drawn scaled", async () => {
-    // A docs preview draws the app at half its size: boundingClientRect gives
-    // boxes half their size, and the safe area's layout gives its real width.
+    /**
+     * A box drawn at half its size, as a docs preview might draw the app:
+     * boundingClientRect gives boxes like that, while the safe area's layout
+     * gives its real width.
+     */
     const half = (box: MenuRect): MenuRect => ({
       left: box.left / 2,
       top: box.top / 2,

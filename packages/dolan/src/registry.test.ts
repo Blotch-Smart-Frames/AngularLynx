@@ -24,8 +24,16 @@ describe('getEntry', () => {
     const entry = getEntry('button');
     expect(entry).toEqual({
       name: 'button',
-      dependencies: ['spinner'],
+      dependencies: ['spinner', 'glass', 'icon'],
       packages: ['class-variance-authority@^0.7.1'],
+      themeColors: [
+        'glass-tint',
+        'glass-tint-foreground',
+        'glass-foreground',
+        'glass-muted-foreground',
+        'glass-clear-foreground',
+        'glass-dim',
+      ],
     });
   });
 
@@ -41,12 +49,12 @@ describe('resolveDependencies', () => {
 
   it('resolves transitive dependencies in dependency-first order', () => {
     const resolved = resolveDependencies(['button']);
-    expect(resolved).toEqual(['icon', 'spinner', 'button']);
+    expect(resolved).toEqual(['icon', 'spinner', 'glass', 'button']);
   });
 
   it('deduplicates when dependency is also explicitly listed', () => {
     const resolved = resolveDependencies(['button', 'spinner']);
-    expect(resolved).toEqual(['icon', 'spinner', 'button']);
+    expect(resolved).toEqual(['icon', 'spinner', 'glass', 'button']);
   });
 
   it('handles empty input', () => {

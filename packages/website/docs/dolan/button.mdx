@@ -1,6 +1,6 @@
 # Button
 
-A tappable button with five styles, four sizes, and disabled and loading states.
+A tappable button with five solid styles, three Liquid Glass styles, five sizes, and disabled and loading states.
 
 <Go example="ui-button" defaultFile="src/app/app.ts" />
 
@@ -14,7 +14,7 @@ npx @blotch/dolan add button
 import { UiButton } from '../components/ui/button';
 ```
 
-This also adds [Spinner](/dolan/spinner), which shows while the button is loading, and the [Icon](/dolan/icon) colors it draws with. Button imports `class-variance-authority` (see [Installation](/dolan/#installation)).
+This also adds [Spinner](/dolan/spinner), which shows while the button is loading, [Icon](/dolan/icon), and [Glass](/dolan/glass), which draws the glass variants. Button imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
 ## Usage
 
@@ -52,6 +52,34 @@ export class App {
 <ui-button variant="ghost">Ghost</ui-button>
 ```
 
+### Glass
+
+Liquid Glass buttons, for controls that float over your content, like SwiftUI's glass button styles:
+
+```angular-html
+<ui-button variant="glass">Edit</ui-button>
+<ui-button variant="glass-prominent">Done</ui-button>
+<ui-button variant="glass-clear">Save</ui-button>
+```
+
+- **`glass`** is regular glass, SwiftUI's `.glass`. Use it for most floating buttons.
+- **`glass-prominent`** is tinted with the theme's `glass-tint`, the primary color by default, like `.glassProminent`. Keep it for the screen's main action.
+- **`glass-clear`** is clear glass, for buttons over photos and video. It sits on a dark dimming layer (`glass-dim`), so its white label stays legible over bright content.
+- **The glass reacts to touch.** On iOS 26 it swells and brightens under the finger. Elsewhere the button shrinks, as the solid ones do.
+- **Glass belongs on the layer above content.** Put glass buttons over a photo, a map or a scrolling list, not in a form.
+
+What each platform draws:
+
+| Platform                                       | `glass` and `glass-clear`              | `glass-prominent`          |
+| ---------------------------------------------- | -------------------------------------- | -------------------------- |
+| iOS 26 and later                               | Liquid Glass, drawn by iOS             | Liquid Glass in the tint   |
+| iOS 15 to 25                                   | A frosted blur, dark for `glass-clear` | A filled button            |
+| Android                                        | A Material 3 filled tonal button       | A Material 3 filled button |
+| Android, with [`provideGlass()`](/dolan/glass) | Glass without the refraction           | Glass in the tint          |
+| [Web preview](/guide/glossary#web-preview)     | Liquid Glass, drawn with WebGL         | Liquid Glass in the tint   |
+
+On Android the glass variants are Material buttons unless your app [opts into glass](/dolan/glass#what-each-platform-draws): fully rounded, flat, with Material's pressed state layer instead of a shrink.
+
 ### Sizes
 
 ```angular-html
@@ -59,9 +87,31 @@ export class App {
 <ui-button size="default">Default</ui-button>
 <ui-button size="lg">Large</ui-button>
 <ui-button size="icon">+</ui-button>
+<ui-button size="icon-circle" accessibility-label="Search">
+  <ui-icon name="search" />
+</ui-button>
 ```
 
-`icon` makes a square button for a single character.
+- **`icon`** makes a square button for a single character or icon.
+- **`icon-circle`** makes a circle for one icon.
+- **Glass buttons are capsules,** so a glass button in either icon size is a circle.
+
+### Icons
+
+Put a [`<ui-icon>`](/dolan/icon) in the button, before the label. It takes the label's color:
+
+```angular-html
+<ui-button variant="glass">
+  <ui-icon name="share-2" size="sm" />
+  Share
+</ui-button>
+
+<ui-button variant="glass" size="icon-circle" accessibility-label="Add">
+  <ui-icon name="plus" />
+</ui-button>
+```
+
+In an icon size, the button shows the icon alone. Give it an `accessibility-label`, which a screen reader says instead.
 
 ### Disabled and loading
 
@@ -70,7 +120,7 @@ export class App {
 <ui-button [loading]="true">Saving</ui-button>
 ```
 
-Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner in the label's color.
+Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner in the label's color. A glass button dims its label and keeps the glass, as iOS does.
 
 ### Custom classes
 
@@ -82,7 +132,7 @@ Your classes are merged onto the button's container and replace any default they
 
 ### Button styles on your own view
 
-`buttonVariants()` returns the container classes for a variant and size. Use it to style a view that isn't a `<ui-button>`, and color its text yourself.
+`buttonVariants()` returns the container classes for a solid variant and a size. Use it to style a view that isn't a `<ui-button>`, and color its text yourself. Glass needs a [`<blur-view ui-glass>`](/dolan/glass), which classes can't draw.
 
 ```typescript title="src/app/settings-link.ts"
 import { Component } from '@angular/core';
@@ -110,23 +160,31 @@ export class SettingsLink {
 
 ### UiButton
 
-| Input      | Type                                                                | Default     | Description                                     |
-| ---------- | ------------------------------------------------------------------- | ----------- | ----------------------------------------------- |
-| `variant`  | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost'` | `'default'` | Visual style.                                   |
-| `size`     | `'default' \| 'sm' \| 'lg' \| 'icon'`                               | `'default'` | Height and padding. `icon` is a square.         |
-| `disabled` | `boolean`                                                           | `false`     | Dims the button and ignores taps.               |
-| `loading`  | `boolean`                                                           | `false`     | Shows a spinner, dims the button, ignores taps. |
-| `class`    | `string`                                                            | `''`        | Extra Tailwind classes for the container.       |
+| Input                 | Type                                                                                                                 | Default     | Description                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------- |
+| `variant`             | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost' \| 'glass' \| 'glass-prominent' \| 'glass-clear'` | `'default'` | Visual style.                                                   |
+| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'`                                                               | `'default'` | Height and padding. `icon` is a square, `icon-circle` a circle. |
+| `disabled`            | `boolean`                                                                                                            | `false`     | Dims the button and ignores taps.                               |
+| `loading`             | `boolean`                                                                                                            | `false`     | Shows a spinner, dims the button, ignores taps.                 |
+| `accessibility-label` | `string`                                                                                                             | —           | What a screen reader says. Needed for an icon-only button.      |
+| `class`               | `string`                                                                                                             | `''`        | Extra Tailwind classes for the container.                       |
 
 | Output    | Type   | Description                               |
 | --------- | ------ | ----------------------------------------- |
 | `pressed` | `void` | Emits on tap, unless disabled or loading. |
 
-The file also exports `buttonVariants` and the `ButtonVariant` and `ButtonSize` types.
+The file also exports `buttonVariants` and the `ButtonVariant`, `SolidButtonVariant`, `GlassButtonVariant` and `ButtonSize` types.
+
+## Accessibility
+
+- **A screen reader reads the label as a button.** With `accessibility-label`, the whole button is one element that says the label instead.
+- **Reduce Motion:** the button dims while pressed instead of shrinking. Interactive glass in the web preview stops swelling. iOS calms its own glass.
+- **Reduce Transparency and Increase Contrast:** the glass follows them as [Glass](/dolan/glass#accessibility) does. Clear glass that turns solid drops its dimming layer and its white label. Under Increase Contrast, Android's tonal buttons get an outline.
 
 ## Related
 
-- [Button Group](/dolan/button-group): connected buttons for related actions
+- [Button Group](/dolan/button-group): connected buttons for related actions, or a group on one glass background
+- [Glass](/dolan/glass): the Liquid Glass the glass variants draw
 - [Toggle](/dolan/toggle): a button that stays pressed
 - [Spinner](/dolan/spinner): the loading indicator
 - [Handling taps and events](/guide/elements/event-handling)

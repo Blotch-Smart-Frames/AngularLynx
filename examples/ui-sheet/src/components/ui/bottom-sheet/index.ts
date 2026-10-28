@@ -1,1 +1,5 @@
-export { UiBottomSheet } from './bottom-sheet';
+export {
+  UiBottomSheet,
+  type BottomSheetVariant,
+  type SheetDetent,
+} from './bottom-sheet';

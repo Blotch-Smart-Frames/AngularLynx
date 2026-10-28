@@ -191,6 +191,37 @@ const flushesBefore = (first: ElementRef, second: ElementRef): boolean => {
 };
 
 /**
+ * Whether this is Lynx's iOS renderer. On the native main thread there is no
+ * global `SystemInfo`, only `lynx.SystemInfo` (see isAndroid).
+ */
+const isIOS = (): boolean => {
+  const info =
+    (typeof lynx !== 'undefined'
+      ? (lynx as { SystemInfo?: { platform?: string } }).SystemInfo
+      : undefined) ??
+    (typeof SystemInfo !== 'undefined' ? SystemInfo : undefined);
+  return info?.platform === 'iOS';
+};
+
+/**
+ * Whether inserting `child` into `parent` before a sibling would leave it
+ * drawing nothing: on iOS, a `<blur-view>` (a UIVisualEffectView) put among a plain
+ * element's children anywhere but at the end shows nothing, nor do its
+ * children, though the layout keeps its space. That's every blur-view at the
+ * top of an `@if`, `@switch` or `@for` block, which Angular inserts before the
+ * block's anchor. Appended, it draws, and so it does inside another
+ * blur-view, whose native view inserts children its own way.
+ */
+const insertHidesBlurView = (
+  parent: LynxElement,
+  child: LynxElement,
+): boolean =>
+  !__WEB__ &&
+  child.tagName === 'blur-view' &&
+  parent.tagName !== 'blur-view' &&
+  isIOS();
+
+/**
  * A raw-text leaf or a <text> container — the only elements that carry trimmable
  * inline text. Used to decide when a mutation should queue text normalization.
  */
@@ -622,11 +653,38 @@ export class LynxElement implements BaseLynxElement {
       // safe: a cyclic insert is a corrupt request, and leaving newChild where it
       // is beats freezing the app.
       if (wouldFormCycle(this.element, newChild.element)) return;
-      __InsertElementBefore(this.element, newChild.element, refChild.element);
+      if (insertHidesBlurView(this, newChild)) {
+        this.#appendBefore(newChild, refChild);
+      } else {
+        __InsertElementBefore(this.element, newChild.element, refChild.element);
+      }
       this.#adoptChild(newChild, refChild);
       if (isTextish(this) || isTextish(newChild)) {
         LynxElement.#enqueueTextNormalization(newChild);
       }
+    }
+  }
+
+  /**
+   * Puts `newChild` before `refChild` by appending it, then moving `refChild`
+   * and every native sibling after it to the end behind it, in order: the
+   * same order as `__InsertElementBefore`, reached only by appends (see
+   * insertHidesBlurView). The moves are in the same flush as the insert, so
+   * the siblings keep their painting nodes, as any Angular move does.
+   */
+  #appendBefore(newChild: LynxElement, refChild: LynxElement): void {
+    const childId = __GetElementUniqueID(newChild.element);
+    const following: ElementRef[] = [];
+    for (
+      let sibling: ElementRef | null = refChild.element;
+      sibling;
+      sibling = __NextElement(sibling)
+    ) {
+      if (__GetElementUniqueID(sibling) !== childId) following.push(sibling);
+    }
+    __AppendElement(this.element, newChild.element);
+    for (const sibling of following) {
+      __AppendElement(this.element, sibling);
     }
   }
 

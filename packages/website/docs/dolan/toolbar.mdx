@@ -1,0 +1,144 @@
+# Toolbar
+
+Bar buttons, grouped the way iOS 26 groups them on one Liquid Glass capsule, for the [Navigation Bar](/dolan/navigation-bar) and for a bar of actions along the bottom of the screen.
+
+<Go example="ui-navigation-bar" defaultFile="src/app/screens.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add toolbar
+```
+
+```typescript
+import {
+  UiBarScroll,
+  UiToolbar,
+  UiToolbarGroup,
+  UiToolbarItem,
+  UiToolbarSpacer,
+} from '../components/ui/toolbar';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the items, and [Icon](/dolan/icon), whose icons they show.
+:::
+
+## Usage
+
+Put a `<ui-toolbar>` after the screen's `<scroll-view>`, and `ui-bar-scroll` on the scroll view so the content ends above it:
+
+```angular-html
+<scroll-view ui-bar-scroll scroll-orientation="vertical" class="h-full w-full">
+  …
+</scroll-view>
+
+<ui-toolbar>
+  <ui-toolbar-group>
+    <ui-toolbar-item
+      icon="list-checks"
+      label="Checklist"
+      (pressed)="addChecklist()"
+    />
+    <ui-toolbar-item icon="camera" label="Camera" (pressed)="addPhoto()" />
+  </ui-toolbar-group>
+  <ui-toolbar-spacer />
+  <ui-toolbar-item icon="pencil" label="New note" (pressed)="compose()" />
+</ui-toolbar>
+```
+
+- **The toolbar floats over the content** at the bottom of the screen, above the home indicator. Content scrolls beneath it, and on iOS 26 fades out as it does.
+- **Items spread across it.** A `<ui-toolbar-spacer>` takes the free space instead, pushing what follows it to the end.
+- **Every item needs a `label`.** It's what a screen reader says, and what the item shows without an icon.
+
+### What each platform draws
+
+| Platform                                   | Toolbar                                                                                                       | Items                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| iOS 26 and later                           | No bar: the items float in Liquid Glass                                                                       | Glass circles and capsules; a group shares one capsule            |
+| iOS 15 to 25                               | Edge to edge, on the blur material with a hairline while content continues beneath it, clear at the end of it | Plain bar buttons in the tint color, which fade while pressed     |
+| Android                                    | Material 3 Expressive's docked toolbar, on the surface container                                              | Material icon buttons with a state layer; labels are text buttons |
+| Android, with `provideGlass()`             | As on iOS 26, drawn with Android's blur                                                                       | As on iOS 26                                                      |
+| [Web preview](/guide/glossary#web-preview) | As on iOS 26, drawn with WebGL                                                                                | As on iOS 26                                                      |
+
+### Groups
+
+`<ui-toolbar-group>` puts related items on one glass capsule, as iOS 26 groups a bar's items. Before iOS 26 and on Android it only keeps them together.
+
+```angular-html
+<ui-toolbar-group>
+  <ui-toolbar-item icon="share-2" label="Share" (pressed)="share()" />
+  <ui-toolbar-item icon="heart" label="Favorite" (pressed)="favorite()" />
+</ui-toolbar-group>
+```
+
+- **An item on its own** is a glass circle for an icon, or a capsule for a label.
+- **Keep labels apart from icons.** Side by side on one capsule, they read as one button.
+- **Aim for three groups at most** in a bar, as Apple suggests.
+
+### Prominent items
+
+`prominent` marks the screen's key action, such as Done: tinted glass on iOS 26, a bold label before it, and a filled button on Android. Give it a place of its own at the trailing end; in a group it's a plain item.
+
+```angular-html
+<ui-toolbar-item label="Done" prominent (pressed)="save()" />
+```
+
+### Back items
+
+`back` draws the platform's Back button: a glass circle with a chevron on iOS 26, the chevron and `label` before it, and Material's arrow on Android. The [Navigation Bar](/dolan/navigation-bar#the-back-button) shows one by itself; use this one for a Back button of your own.
+
+### The scroll view
+
+`ui-bar-scroll` on a `<scroll-view>` is what connects the content to the bars over it:
+
+- **It makes room** for the navigation bar and the status bar at the top, and the toolbar and the home indicator at the bottom.
+- **It draws the large title** of a navigation bar with `largeTitle`.
+- **It fades content out** under glass bars, iOS 26's scroll edge effect. Android's scroll view takes no mask, so there the glass bars fade content to the theme's `background` color themselves.
+- **It tells the bars where the content is**: the frosted bars turn opaque, and Material's top app bar changes color, as content scrolls under them.
+
+It reads the scroll view's events itself rather than through a template listener, so it updates the bars only when they change. Only a `<scroll-view>` takes it; a `<list>` can't hold the spacers.
+
+## API
+
+### UiToolbarItem
+
+| Input       | Type                    | Default     | Description                                                                      |
+| ----------- | ----------------------- | ----------- | -------------------------------------------------------------------------------- |
+| `label`     | `string`                | —           | Required. What the item does: shown without an icon, and read by screen readers. |
+| `icon`      | `IconName \| undefined` | `undefined` | The [Icon](/dolan/icon) shown instead of the label.                              |
+| `prominent` | `boolean`               | `false`     | The screen's key action, tinted, on its own.                                     |
+| `back`      | `boolean`               | `false`     | The platform's Back button, with `label` as the previous screen's title.         |
+| `disabled`  | `boolean`               | `false`     | Dims the item and ignores taps.                                                  |
+
+| Output    | Type   | Description                           |
+| --------- | ------ | ------------------------------------- |
+| `pressed` | `void` | Emits on a tap, unless it's disabled. |
+
+### UiToolbar, UiToolbarGroup and UiToolbarSpacer
+
+| Component         | Selector            | Inputs  | Description                                                           |
+| ----------------- | ------------------- | ------- | --------------------------------------------------------------------- |
+| `UiToolbar`       | `ui-toolbar`        | `class` | The bar along the bottom, which places itself at its parent's bottom. |
+| `UiToolbarGroup`  | `ui-toolbar-group`  | `class` | Items sharing one glass capsule.                                      |
+| `UiToolbarSpacer` | `ui-toolbar-spacer` | —       | Flexible space between items.                                         |
+
+### UiBarScroll and UiBarState
+
+| Name          | Kind                                    | Description                                                                                                                                                                |
+| ------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UiBarScroll` | Component, `scroll-view[ui-bar-scroll]` | Makes room for the bars, draws the large title, fades content under glass bars and tells the bars where the content is.                                                    |
+| `UiBarState`  | Root service                            | What the bars and the scroll view tell each other. Provide one on a component to give its bars their own (see [Two bars at once](/dolan/navigation-bar#two-bars-at-once)). |
+
+## Accessibility
+
+- **Each item is one button,** named by its `label`. A disabled item also has the `disabled` trait.
+- **Reduce Motion:** the web preview's glass stops swelling under the finger, and the item shows a highlight instead. iOS calms its own glass.
+- **Reduce Transparency and Increase Contrast** are handled by the [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Navigation Bar](/dolan/navigation-bar): the bar at the top of a screen, with a title and a Back button
+- [Button Group](/dolan/button-group#glass): a group of glass buttons inside a screen's content
+- [Dock](/dolan/dock): a floating glass tab bar for the app's top-level screens
+- [Glass](/dolan/glass): the glass the items are drawn with

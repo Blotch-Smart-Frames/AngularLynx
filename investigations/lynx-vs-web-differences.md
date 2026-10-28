@@ -5322,7 +5322,7 @@ An element inside a control-flow block shows up where the block is, whatever its
 
 On the iOS 27 Simulator in Lynx Explorer 4.1, a glass `<blur-view>` (`ui-glass`, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them, and a `light` blur view draws on iOS too (see the previous section). It happens on the first frame and on any later one.
 
-What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws.
+What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws. Two more data points, from the navigation bar's probes: a blur-view inserted the same way but given `glass` only in a later flush (created with no effect, or `light`) draws, and one that has drawn nothing doesn't recover when its effect is set again. Every glass control in a routed screen hit this, since their glass sits at the top of `@if` blocks.
 
 ### The fix
 
@@ -5529,3 +5529,25 @@ On the Android 14 emulator (Lynx Explorer 4.1), the alert dialog's Material pane
 ### The fix
 
 Give an animated view that holds a shadowed element a native view of its own with `[flatten]="false"`, as the alert dialog's shell does. The gesture detector already does the same for views it listens on (see the gesture entries above).
+
+---
+
+## Fading content under a bar: masks work on `<scroll-view>`, gradient stops must be percentages, and the web's scroll view reports no layout
+
+### What you'd expect (web)
+
+`mask-image: linear-gradient(to bottom, transparent 0, black 100px)` on a scrolling element fades its top 100px, whatever it scrolls, and a `ResizeObserver` (or Lynx's `layoutchange`) says how tall it is.
+
+### What Lynx does
+
+Checked for the navigation bar's scroll edge effect, in Lynx Explorer 4.1 on the iOS 27 Simulator and an Android 14 emulator, and in Lynx for Web (Chromium), with a probe of each way to soften content under a bar:
+
+- **`mask-image` on a `<scroll-view>` works on iOS and the web, not on Android**, which draws the scroll view unmasked (Lynx's docs say the property applies to `view` only). On iOS the mask stays put while the content scrolls: it doesn't move with the UIScrollView's bounds. On a plain view, and on a wrapper view around the scroll view, it works on all three.
+- **Gradient stops are percentages only on native Lynx**, as for backgrounds, so stops a fixed distance from an edge come from the element's measured height. The browser reads `px` and `calc(100% - 50px)` stops as usual.
+- **`<x-scroll-view>` sends no `layoutchange` on Lynx for Web**: web-elements' `ScrollView` doesn't set `layoutChangeTarget`, as `XView` does (the same gap as `<blur-view>`, above). A plain view inside it still reports its size.
+- **A gradient overlay** in the page's background color fades content too, but only to that color, not to an image behind. `rgba(var(--background-rgb), 0.5)` stops work in it on all three.
+- **A `<blur-view>` with a gradient `mask-image`** blurs progressively, more toward the edge, on iOS and the web; Android ignores the mask and blurs a hard-edged band. Three stacked blur-views of rising radius band visibly instead.
+
+### What we do about it
+
+`ui-bar-scroll` puts the mask on its own scroll view: under glass bars, content fades out over the bar's space, to whatever is behind it. Its stops come from its spacers' `layoutchange` heights, which count the safe area, and on iOS from the scroll view's own height, as percentages; on the web, where there's no height to read, from each end as lengths. On Android, with the glass opt-in, the bars draw the same fade themselves as a gradient in the theme's background color (`edgeFadeOverlay()`), so content fades to that color there. The masked blur isn't used: the blur-view's material would tint the strip, Android ignores its mask, and on Android every blur-view redraws the page each frame.

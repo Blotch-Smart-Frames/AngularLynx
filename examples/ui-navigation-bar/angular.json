@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "projects": {
+    "ui-navigation-bar": {
+      "projectType": "application",
+      "root": ".",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@blotch/angular-lynx-build:application",
+          "options": {
+            "outputPath": "dist",
+            "index": "src/index.html",
+            "browser": "src/main.ts",
+            "polyfills": [],
+            "tsConfig": "tsconfig.app.json",
+            "styles": ["src/styles.css"],
+            "scripts": []
+          }
+        },
+        "serve": {
+          "builder": "@blotch/angular-lynx-build:dev-server",
+          "options": {
+            "buildTarget": "ui-navigation-bar:build"
+          }
+        }
+      }
+    }
+  }
+}

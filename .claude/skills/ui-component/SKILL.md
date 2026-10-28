@@ -118,6 +118,8 @@ A Liquid Glass component (dock, glass button, menu…) builds on the `glass` com
 - **List `glass` in `dependencies`**, and the glass colors your classes use in the registry entry's `themeColors`, so `dolan doctor` can point out a theme that lacks them.
 - **In tests, set the platform** with `vi.stubGlobal('SystemInfo', { platform: 'iOS', osVersion: '26.0' })` (with no SystemInfo the design is `'material'`), and provide a fake `LynxAccessibilitySettings` with signals to drive the settings. See `glass/glass.test.ts`. With `provideRouter()` in the test, the router's setup puts the testing library's own SystemInfo (iOS 17) back before your component reads it: provide `{ provide: LynxSystemInfo, useValue: { platform: 'iOS', osVersion: '26.0' } }` instead (see `dock/dock.test.ts`).
 - **Projected content injects from where the app writes it,** not from the glass you project it into: an icon the app puts in your component's slot doesn't see the inner `ui-glass`'s `UI_ICON_COLOR`. Provide it on your component to reach it (see `UiDock`).
+- **Give platform metrics in px** (`h-[44px]`, not `h-11`): Tailwind's spacing scale is `rem`, and `rem` is 14px on Lynx, so `h-11` is 38.5px. A bar's height that another part reads, such as the room a scroll view makes for it, has to match its classes.
+- **Check it on iOS in a routed screen,** not only on the app's first screen: glass at the top of an `@if` block goes through the runtime's blur-view insert path (see `investigations/lynx-vs-web-differences.md`).
 
 ### `index.ts`
 

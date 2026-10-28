@@ -131,10 +131,14 @@ const after = async (ms: number) => {
   await waitForUpdate();
 };
 
-/** Long enough for the open sequence. */
-const OPENED = 50;
-/** Long enough for the close animation and the hide after it. */
-const CLOSED = DURATION.normal + 50;
+/**
+ * Long enough for the open sequence. The sequence is chained timers, and on
+ * Windows each can fire up to a clock tick (about 16ms) late, so 50ms was too
+ * short for the dialogs' sequences on CI's Windows runner.
+ */
+const OPENED = 150;
+/** Long enough for the close animation and the hide after it, as above. */
+const CLOSED = DURATION.normal + 150;
 
 /** `__ElementAnimate`'s first argument for starting an animation. */
 const START = 0;

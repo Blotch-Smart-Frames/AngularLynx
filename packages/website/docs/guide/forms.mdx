@@ -222,7 +222,8 @@ export class SearchBox {
 - **`confirm-type` sets the keyboard's action key.** Use `done` (the default), `next`, `go`, `search` or `send`. Pressing it fires `(bindconfirm)`, with the text in `detail.value`.
 - **`(bindfocus)` and `(bindblur)`** fire when the field gains and loses focus, also with `detail.value`.
 - **`type` picks the keyboard:** `text`, `number`, `digit`, `password`, `tel` or `email`.
-- **The keyboard doesn't move the page.** Lynx's `<input>` doesn't scroll out of the keyboard's way, so the keyboard can cover the field being typed in. AngularLynx doesn't handle this yet. Put long forms in a `<scroll-view>` with extra space at the bottom, so people can scroll a covered field into view.
+- **The keyboard doesn't move the page.** Lynx's `<input>` doesn't scroll out of the keyboard's way, so the keyboard can cover the field being typed in. Put long forms in a `<scroll-view>` with extra space at the bottom, so people can scroll a covered field into view. A field at the bottom of the screen can rise above the keyboard itself, as the [Search Field](/dolan/search-field#the-keyboard) does: the input's `(bindkeyboardheightchange)` sends the keyboard's height in `detail.height`, in points on iOS and physical pixels on Android.
+- **`avoid-keyboard` moves the whole page.** Lynx's own keyboard avoidance on an `<input>` (`avoid-keyboard="true"`, with `avoid-keyboard-spacing="8px"`) shifts the entire Lynx view up until the focused field clears the keyboard, so the top of the page goes off screen. It suits a form; a bar at the bottom should rise on its own instead.
 
 ## Limitations
 

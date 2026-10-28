@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import pc from 'picocolors';
-import { themeFilesFor } from '../utils/tailwind.js';
+import { themeFilesFor, usesTailwind4 } from '../utils/tailwind.js';
 import { configExists, readConfig } from '../config.js';
 import { resolveDependencies } from '../registry.js';
 import {
@@ -20,6 +20,7 @@ import {
 import { formatContent } from '../utils/format.js';
 import {
   droppedFiles,
+  droppedThemeFiles,
   trackedComponents,
   untrackedComponents,
 } from '../utils/installed.js';
@@ -167,12 +168,12 @@ const reviewFile = async (
   const isNewFile = analysis.status === 'new-upstream';
   const isConflict = analysis.status === 'conflict';
   const isUserModified = analysis.status === 'user-modified';
-  const isRemoved = analysis.removed === true;
+  const isRemoved = analysis.removed !== undefined;
 
   const suffix = isRemoved
     ? isConflict
-      ? '— you modified it, and upstream no longer ships it'
-      : '— upstream no longer ships it'
+      ? `— you modified it, and ${analysis.removed}`
+      : `— ${analysis.removed}`
     : isConflict
       ? '— how to resolve?'
       : isNewFile
@@ -290,6 +291,17 @@ const reviewFile = async (
 };
 
 /**
+ * The summary line for a file that taking upstream's version deletes, with
+ * the reason (see FileAnalysis.removed). An untouched one gets a minus, as a
+ * new file gets a plus: the auto-update arrow would read like an ordinary
+ * update.
+ */
+const removalLine = (path: string, file: FileAnalysis): string =>
+  file.status === 'conflict'
+    ? `${STATUS_ICONS.conflict} ${path} — ${pc.red(`${file.removed}, and you modified it`)}`
+    : `${pc.blue('−')} ${path} — ${pc.blue(`${file.removed} → delete`)}`;
+
+/**
  * Three-way merge update for installed components, modeled on the same flow
  * git/Mercurial use when applying upstream changes to a fork:
  *
@@ -310,7 +322,9 @@ const reviewFile = async (
  * A file the lockfile tracks that upstream no longer ships gets the same
  * statuses from `analyzeRemovedFile`, with "no file" as upstream's version:
  * taking it deletes the file and drops its lockfile entry, so an untouched
- * one goes as an auto-update and an edited one is a conflict.
+ * one goes as an auto-update and an edited one is a conflict. So does a theme
+ * file for the Tailwind version the app no longer uses, such as the Tailwind 3
+ * plugin of an app that moved to Tailwind 4.
  *
  * `--force` bypasses all prompts and overwrites every file with upstream,
  * which is destructive but useful for resetting to a clean baseline.
@@ -436,7 +450,7 @@ export const updateCommand = async (options: {
         ),
         currentContent: currentContent ?? '',
         newContent: '',
-        removed: true,
+        removed: 'upstream no longer ships it',
       });
     }
 
@@ -472,6 +486,31 @@ export const updateCommand = async (options: {
     });
   }
 
+  // Theme files dolan copied for the Tailwind version the app no longer
+  // uses: the plugin and its test after a move to Tailwind 4, or
+  // tailwind.css after a move back. As for a component's file upstream
+  // stopped shipping, taking upstream's version deletes them: quietly when
+  // nobody edited them, after asking when someone did.
+  const themeReason = `the app uses Tailwind ${usesTailwind4(cwd) ? 4 : 3}`;
+  for (const file of droppedThemeFiles(cwd, themeDir, lockfile)) {
+    const destPath = join(themeDir, file);
+    const currentContent = existsSync(destPath)
+      ? readFileSync(destPath, 'utf-8')
+      : null;
+    sharedAnalyses.push({
+      file: `theme/${file}`,
+      status: analyzeRemovedFile(
+        currentContent,
+        // Tracked, so it has a base (see trackedThemeFiles).
+        themeBase(lockfile, file, currentContent)!,
+        hashContent,
+      ),
+      currentContent: currentContent ?? '',
+      newContent: '',
+      removed: themeReason,
+    });
+  }
+
   s.stop('Analysis complete.');
 
   installComponentPackages(cwd, installed);
@@ -489,22 +528,24 @@ export const updateCommand = async (options: {
       // reads like an ordinary update.
       for (const file of comp.files) {
         if (!file.removed || file.status === 'up-to-date') continue;
-        p.log.message(
-          `    ${STATUS_ICONS[file.status]} ${comp.name}/${file.file} — ${
-            file.status === 'conflict'
-              ? pc.red('upstream no longer ships it, and you modified it')
-              : pc.blue('upstream no longer ships it → delete')
-          }`,
-        );
+        p.log.message(`    ${removalLine(`${comp.name}/${file.file}`, file)}`);
       }
     }
   }
 
-  if (sharedAnalyses.length > 0) {
+  // A file to delete that's gone already has nothing left to show.
+  const sharedShown = sharedAnalyses.filter(
+    (file) => !(file.removed && file.status === 'up-to-date'),
+  );
+  if (sharedShown.length > 0) {
     p.log.message(pc.bold('\nShared files:'));
-    for (const file of sharedAnalyses) {
+    for (const file of sharedShown) {
       p.log.message(
-        `  ${STATUS_ICONS[file.status]} ${pc.bold(file.file)} — ${STATUS_LABELS[file.status]}`,
+        `  ${
+          file.removed
+            ? removalLine(pc.bold(file.file), file)
+            : `${STATUS_ICONS[file.status]} ${pc.bold(file.file)} — ${STATUS_LABELS[file.status]}`
+        }`,
       );
     }
   }
@@ -665,6 +706,7 @@ export const updateCommand = async (options: {
 
   let appliedCount = 0;
   let deletedCount = 0;
+  let deletedThemeCount = 0;
   let skippedCount = 0;
   const newLockfile = getOrCreateLockfile(cwd);
 
@@ -823,7 +865,30 @@ export const updateCommand = async (options: {
           (options.force || sharedResolution === 'upstream')) ||
         (file.status === 'conflict' &&
           (options.force || sharedResolution === 'upstream')));
+    /* v8 ignore stop */
 
+    // A theme file for the Tailwind version the app doesn't use, by the same
+    // rules as a component's file upstream stopped shipping.
+    if (file.removed) {
+      // "Skip for now" leaves the file and any lockfile entry, so the next
+      // update asks again.
+      if (selectivelySkippedShared) {
+        skippedCount++;
+        continue;
+      }
+      if (shouldOverwrite) {
+        rmSync(destPath, { force: true });
+        deletedThemeCount++;
+      } else if (file.status === 'conflict') {
+        // Kept: it's the app's own file now.
+        skippedCount++;
+      }
+      // Deleted, kept as the app's, or already gone: dolan stops tracking it.
+      delete newLockfile.theme[fileName];
+      continue;
+    }
+
+    /* v8 ignore start */
     const entry = { hash: hashContent(file.newContent) };
 
     if (sharedResolution === 'partial') {
@@ -861,6 +926,11 @@ export const updateCommand = async (options: {
   if (deletedCount > 0) {
     p.log.success(
       `${pc.bold(String(deletedCount))} file(s) deleted: upstream no longer ships them.`,
+    );
+  }
+  if (deletedThemeCount > 0) {
+    p.log.success(
+      `${pc.bold(String(deletedThemeCount))} theme file(s) deleted: ${themeReason}.`,
     );
   }
   if (skippedCount > 0 && isSelective) {
@@ -905,8 +975,8 @@ const buildLockfile = (
 
   for (const file of shared) {
     const fileName = file.file.split('/').pop()!;
-    const entry = { hash: hashContent(file.newContent) };
-    lockfile.theme[fileName] = entry;
+    if (file.removed) delete lockfile.theme[fileName];
+    else lockfile.theme[fileName] = { hash: hashContent(file.newContent) };
   }
 
   return lockfile;

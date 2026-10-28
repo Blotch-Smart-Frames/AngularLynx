@@ -181,6 +181,18 @@ To set Tailwind 3 up in a new app, run `ng generate @blotch/angular-lynx:add-tai
 1. Run `ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=4`. It installs Tailwind 4, writes `.postcssrc.json` and replaces `src/styles.css`.
 2. Move your config's `theme.extend` into [`@theme`](https://tailwindcss.com/docs/theme) in `src/styles.css`, then delete `tailwind.config.ts` and uninstall `@lynx-js/tailwind-preset`.
 3. Rename the utilities Tailwind 4 renamed, such as `shadow-sm` to `shadow-xs`. See Tailwind's [upgrade guide](https://tailwindcss.com/docs/upgrade-guide#renamed-utilities).
+4. If you use the [UI components](/dolan/), import the theme in `src/styles.css`, after Tailwind's imports. Step 1 replaced the file, and Tailwind 4 takes the theme's classes from its `tailwind.css`:
+
+   ```css title="src/styles.css"
+   @layer theme, base, components, utilities;
+   @import 'tailwindcss/theme.css' layer(theme);
+   @import 'tailwindcss/utilities.css' layer(utilities);
+   @import './styles/default.css';
+   @import './styles/dark.css';
+   @import './styles/tailwind.css';
+   ```
+
+   Keep them above the `@theme` from step 2: CSS ignores an `@import` that comes after other rules. Then run `npx dolan update`. It copies `tailwind.css` into the theme and deletes the Tailwind 3 plugin, `tailwind-plugin.ts`, with its test. It asks first about a file you edited.
 
 Tailwind's own `npx @tailwindcss/upgrade` can't read a config that uses the Lynx preset, so remove the preset from `presets` before running it.
 

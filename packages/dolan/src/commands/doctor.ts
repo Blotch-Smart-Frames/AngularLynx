@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { configExists, readConfig, type DolanConfig } from '../config.js';
 import { getOrCreateLockfile } from '../lockfile.js';
 import { getEntry, resolvePackages } from '../registry.js';
+import { droppedThemeFiles } from '../utils/installed.js';
 import {
   copiesTests,
   detectPackageManager,
@@ -80,6 +81,8 @@ export const doctorCommand = async () => {
   // --- 4. Tailwind integration ---
 
   checkTailwind(cwd, pass, warn);
+
+  checkLeftoverThemeFiles(cwd, config, warn);
 
   // --- 5. Package dependencies ---
 
@@ -445,6 +448,46 @@ const checkTailwind4Theme = (
       `${pc.cyan('tailwind.css')} not imported in ${pc.dim(stylesheet)} — import it after Tailwind, as dolan init shows`,
     );
   }
+};
+
+/**
+ * The theme files for the Tailwind version the app doesn't use: the plugin
+ * and its test in a Tailwind 4 app, or `tailwind.css` in a Tailwind 3 one. A
+ * move between the two leaves them in the theme folder, where nothing uses
+ * them, and the plugin is an uncovered file in the app's coverage report.
+ * `dolan update` deletes the ones dolan tracks (asking first about an edited
+ * one), so only those get that advice: one the app chose to keep, or edited
+ * before dolan recorded it, is the app's own.
+ */
+const checkLeftoverThemeFiles = (
+  cwd: string,
+  config: DolanConfig,
+  warn: (msg: string) => void,
+) => {
+  const tailwind4 = usesTailwind4(cwd);
+  // Without Tailwind, neither version's files are left over from the other.
+  if (
+    !tailwind4 &&
+    !TAILWIND_CONFIG_FILES.some((file) => existsSync(resolve(cwd, file)))
+  ) {
+    return;
+  }
+  const takes = themeFilesFor(cwd, { tests: true });
+  const themeDir = resolve(cwd, config.aliases.theme);
+  const leftover = [
+    'tailwind.css',
+    'tailwind-plugin.ts',
+    'tailwind-plugin.test.ts',
+  ].filter((file) => !takes.includes(file) && existsSync(join(themeDir, file)));
+  if (leftover.length === 0) return;
+  const them = leftover.length === 1 ? 'it' : 'them';
+  const dropped = droppedThemeFiles(cwd, themeDir, getOrCreateLockfile(cwd));
+  const advice = leftover.every((file) => dropped.includes(file))
+    ? `Run ${pc.bold('dolan update')} to delete ${them}, or delete ${them}.`
+    : `Delete ${them}, unless your own code uses ${them}.`;
+  warn(
+    `Found ${leftover.map((file) => pc.cyan(file)).join(', ')} in ${pc.dim(config.aliases.theme)}, but the app uses Tailwind ${tailwind4 ? 4 : 3}, which takes the theme's classes from ${pc.cyan(takes[2]!)}. ${advice}`,
+  );
 };
 
 const checkPackageDeps = (

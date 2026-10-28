@@ -20,7 +20,7 @@ import {
 } from '../components/ui/sheet';
 ```
 
-This also adds [Bottom Sheet](/dolan/bottom-sheet), which handles the sliding, dragging and backdrop.
+This also adds [Bottom Sheet](/dolan/bottom-sheet), which handles the sliding, dragging and backdrop, and [Glass](/dolan/glass) and [Icon](/dolan/icon), which its glass variant draws with.
 
 ## Usage
 
@@ -72,6 +72,7 @@ export class SettingsSheet {
 - The bar at the top is a drag handle. Dragging it down more than 100px closes the sheet, and a shorter drag springs it back. The backdrop lightens as it moves.
 - The sheet pads its content and keeps it clear of the home indicator at the bottom of the screen.
 - When it opens, a screen reader moves into the sheet and stays inside it until the sheet closes.
+- Android's back button closes it.
 - `<ui-sheet-title>` and `<ui-sheet-description>` render `<text>`, so put plain text in them. The footer stacks its buttons full width.
 
 ### Other content
@@ -91,6 +92,30 @@ Put any elements between the header and footer. Import `LYNX_ELEMENTS` in your c
 
 The sheet grows with its content. For long content, put a [`<scroll-view>`](/api/elements/scroll-view) with a fixed height inside, because a scroll view needs one to scroll.
 
+### Glass
+
+`variant="glass"` draws each platform's own sheet: Liquid Glass on iOS 26 and later, the opaque sheet of iOS 15 to 25, and Material 3's bottom sheet on Android.
+
+```angular-html
+<ui-sheet variant="glass" [detents]="['medium', 'large']" [(open)]="open">
+  <ui-sheet-header>
+    <ui-sheet-title>Trip to Kyoto</ui-sheet-title>
+  </ui-sheet-header>
+  <view class="flex flex-1 flex-col gap-3">…</view>
+  <ui-sheet-footer>
+    <ui-button (pressed)="open.set(false)">Done</ui-button>
+  </ui-sheet-footer>
+</ui-sheet>
+```
+
+On iOS 26, at half height the glass sheet floats inset from the screen's edges, so the page shows around it. Dragged up to full height, it turns opaque and meets the edges. See [Bottom Sheet](/dolan/bottom-sheet#glass) for what each platform draws.
+
+### Detents
+
+`detents` sets the heights the sheet rests at: `'fit'` (its content's, the default), `'medium'` (half the screen) and `'large'` (the whole screen below the status bar). The handle drags it between them, and a tap on it moves to the next. `[(detent)]` binds the one it's at. See [Bottom Sheet](/dolan/bottom-sheet#detents) for the details.
+
+With a `medium` or `large` detent, the sheet's content fills it as a column. Give a scroll view, or the view before the footer, `flex-1` to take the height that's left.
+
 ### Run code after it closes
 
 `closed` emits once the slide-down animation has finished. It's a good place to navigate once the sheet has gone. You can also navigate straight from a button, as from any tap handler.
@@ -103,15 +128,19 @@ The sheet grows with its content. For long content, put a [`<scroll-view>`](/api
 
 ### UiSheet
 
-| Input   | Type      | Default | Description                                                                                   |
-| ------- | --------- | ------- | --------------------------------------------------------------------------------------------- |
-| `open`  | `boolean` | `false` | Whether the sheet is shown. Supports `[(open)]`.                                              |
-| `class` | `string`  | `''`    | Extra Tailwind classes for the content area inside the panel. Default padding is `px-6 pb-6`. |
+| Input     | Type                       | Default     | Description                                                                                   |
+| --------- | -------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| `open`    | `boolean`                  | `false`     | Whether the sheet is shown. Supports `[(open)]`.                                              |
+| `variant` | `'default' \| 'glass'`     | `'default'` | `'glass'` draws each platform's own sheet. See [Glass](#glass).                               |
+| `detents` | `SheetDetent[]`            | `['fit']`   | The heights it rests at: `'fit'`, `'medium'`, `'large'`. See [Detents](#detents).             |
+| `detent`  | `SheetDetent \| undefined` | `undefined` | The detent it rests at while open. Supports `[(detent)]`.                                     |
+| `class`   | `string`                   | `''`        | Extra Tailwind classes for the content area inside the panel. Default padding is `px-6 pb-6`. |
 
-| Output       | Type      | Description                                                                       |
-| ------------ | --------- | --------------------------------------------------------------------------------- |
-| `openChange` | `boolean` | Emits `false` when a backdrop tap or a drag closes the sheet. Part of `[(open)]`. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                         |
+| Output         | Type                       | Description                                                                                               |
+| -------------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `openChange`   | `boolean`                  | Emits `false` when a backdrop tap, a drag or Android's back button closes the sheet. Part of `[(open)]`.  |
+| `detentChange` | `SheetDetent \| undefined` | Emits when the sheet comes to rest at a detent, and `undefined` once it has closed. Part of `[(detent)]`. |
+| `closed`       | `void`                     | Emits after the close animation finishes.                                                                 |
 
 All sub-components (`UiSheetHeader`, `UiSheetTitle`, `UiSheetDescription`, `UiSheetFooter`) accept `class`.
 
@@ -121,3 +150,4 @@ All sub-components (`UiSheetHeader`, `UiSheetTitle`, `UiSheetDescription`, `UiSh
 - [Bottom Sheet](/dolan/bottom-sheet): the bare panel the sheet is built on
 - [Action Sheet](/dolan/action-sheet): a list of actions from the bottom
 - [Dialog](/dolan/dialog): a centered panel
+- [Glass](/dolan/glass): the Liquid Glass the glass variant draws with

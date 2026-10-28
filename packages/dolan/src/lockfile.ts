@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export type FileEntry = {
   hash: string;
@@ -95,3 +95,27 @@ export const themeBase = (
   const hash = hashContent(currentContent);
   return SHIPPED_THEME_HASHES[file]?.includes(hash) ? hash : null;
 };
+
+/**
+ * The theme files in `themeDir` that dolan tracks, so each has a base for
+ * `update` (see themeBase): the ones the lockfile records, and the ones an
+ * older `init` copied without recording them while they're still a release's
+ * copy. Most Tailwind 3 apps were set up by those releases, so without the
+ * second kind, `update` couldn't tell their plugin was dolan's to delete once
+ * they moved to Tailwind 4. A copy that was edited since isn't dolan's to
+ * judge, so it's left to the app.
+ */
+export const trackedThemeFiles = (
+  lockfile: Lockfile,
+  themeDir: string,
+): string[] =>
+  [
+    ...new Set([
+      ...Object.keys(lockfile.theme),
+      ...Object.keys(SHIPPED_THEME_HASHES),
+    ]),
+  ].filter((file) => {
+    const path = join(themeDir, file);
+    const content = existsSync(path) ? readFileSync(path, 'utf-8') : null;
+    return themeBase(lockfile, file, content) !== null;
+  });

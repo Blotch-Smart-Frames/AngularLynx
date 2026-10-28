@@ -20,10 +20,14 @@ export type FileAnalysis = {
   currentContent: string;
   newContent: string;
   /**
-   * Upstream stopped shipping the file, so taking upstream's version deletes
-   * it (see analyzeRemovedFile). Its `newContent` is empty.
+   * Why upstream's version of the file is no file, when it is: upstream
+   * stopped shipping it, or it's a theme file for the Tailwind version the
+   * app doesn't use. Taking upstream's version deletes it (see
+   * analyzeRemovedFile), and its `newContent` is empty. The summary and the
+   * question about it give this reason, since "upstream changed" would hide
+   * that the file goes.
    */
-  removed?: boolean;
+  removed?: string;
 };
 
 export type ComponentAnalysis = {
@@ -87,8 +91,9 @@ export const analyzeFile = (
 
 /**
  * The status of a file dolan tracks but upstream no longer ships, such as the
- * `*-render.test.ts` files that 22.2.3 stopped copying. Upstream's version of
- * it is "no file", so the same three-way rules apply as for a changed file:
+ * `*-render.test.ts` files that 22.2.3 stopped copying, or the Tailwind 3
+ * plugin of an app that moved to Tailwind 4. Upstream's version of it is "no
+ * file", so the same three-way rules apply as for a changed file:
  *   - gone from disk too → up-to-date (only its lockfile entry is left)
  *   - current == base → auto-update (nobody edited it: delete it)
  *   - current != base → conflict (git's modify/delete: ask before deleting)

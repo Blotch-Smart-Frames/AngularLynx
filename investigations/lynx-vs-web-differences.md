@@ -5254,3 +5254,58 @@ Native Lynx recognizes long presses itself. `@lynx-js/web-core` (0.26) has no re
 ### The fix
 
 On the web, an element that gets a `longpress` listener recognizes long presses from its own touch and mouse events (`WebLongPress` in `packages/runtime/src/lib/lynx-element/web-long-press.ts`): a press with the main button or a finger, held 500ms without moving more than 10px, runs its `longpress` listeners with the press's position in `detail`, as native Lynx does. The browser's `click` when the press ends, which web-core turns into `tap`, is dropped for any element, as native Lynx sends no tap after a long press.
+
+---
+
+## On iOS, a `<blur-view>` at the top of an `@if`, `@switch` or `@for` block draws nothing
+
+### What you'd expect (web)
+
+An element inside a control-flow block shows up where the block is, whatever its tag.
+
+### What Lynx does
+
+On the iOS 27 Simulator in Lynx Explorer 4.1, a `<blur-view>` (glass, a blur material, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them.
+
+What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws.
+
+### The fix
+
+`LynxElement.insertBefore()` puts a `<blur-view>` into a parent that isn't one, on iOS, by appending it and then appending the siblings it should come before, in order (`insertHidesBlurView()` and `#appendBefore()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). The native order is the same as an insert's, reached only by appends, in the same flush, so the siblings move as any Angular move does. Covered by `lynx-element-blur-insert.test.ts`. Found with the search field, whose `@switch` picks its glass on iOS 26 and its fill before.
+
+---
+
+## Lynx doesn't move a field the keyboard covers, and reports the keyboard differently on each platform
+
+### What you'd expect (web)
+
+A mobile browser scrolls a focused field into view above the keyboard, and `visualViewport` (or `env(keyboard-inset-height)`) says how much of the page the keyboard covers.
+
+### What Lynx does
+
+Measured in Lynx Explorer 4.1 (iOS 27 Simulator, Android 14 emulator), with an `<input>` at the bottom of the screen:
+
+- **Nothing moves.** The keyboard covers the field on both platforms. Lynx Explorer neither resizes nor pans its Lynx view.
+- **`avoid-keyboard="true"` on the `<input>`** (with `avoid-keyboard-spacing="8px"`; Android parses only a string with a unit there) moves the whole Lynx view up until the field clears the keyboard: iOS animates the root view's frame with the keyboard (`LynxKeyboardEventDispatcher.m`), so the top of the page goes off screen, as Android's `adjustPan` does. Fine for a form, wrong for a bar at the bottom, which should rise on its own while the content stays.
+- **The input's own `keyboardheightchange` event** (`detail.height`) arrives on the main thread while it's focused: as the keyboard shows, when it changes size, and with 0 as it hides. iOS sends points measured up from the bottom of the **window**. Android sends **physical pixels** measured up from the bottom of the **Lynx view**: our bundles target SDK 3.2, which turns on the `keyboardCallbackPassRelativeHeight` page config (on from 2.2), so Android reports how far the keyboard reaches into the Lynx view, and re-reports it when the view's layout changes. Lynx Explorer's 312dp keyboard arrived as 819 at 2.625x.
+- **The global `keyboardstatuschanged` event** (through `GlobalEventEmitter`, so on the background thread, relayed to Angular's main thread) carries `['on', 328]` on iOS and `['on', 312, 312]` on Android (both in points/dp), and `['off', 0]`. Both events came about 80–100 ms after `focus`; the first keyboard of a fresh simulator took 700 ms.
+- **The iOS-only `keyboard` event** sends `safeAreaBottom` of the input's own view, which is 0, so it can't stand in for the window's inset.
+- **`boundingClientRect` with `relativeTo: 'screen'`** is in window coordinates on iOS (`convertRect:toView:nil`), and relative to the window's root view on Android (`LynxUIHelper.convertRectFromUIToScreen`). Without `relativeTo`, both measure from the Lynx view.
+
+So where the keyboard's top is depends on the platform: on iOS the screen's height less the keyboard's, and on Android the Lynx view's bottom less it. The iOS app `ng build --platform ios` makes insets its Lynx view above the home indicator, so the window's measure and the view's differ by 34pt there.
+
+### What we do about it
+
+The search field reads `keyboardheightchange` (`packages/ui/src/lib/components/search-field/keyboard.ts`): it measures its host and the page on screen, works out how far the keyboard reaches over it on each platform, and rises by that, plus an 8px gap, with a transform on an inner view, so the host it measures doesn't move. In the dock, the dock measures its own host, which stays at the bottom of the page, and pads itself above the keyboard. The forms guide's advice for other inputs stands: put long forms in a `<scroll-view>`.
+
+---
+
+## `layoutchange` reports `top` and `left` from the page on iOS and from the parent on Android
+
+### What you'd expect (web)
+
+A `ResizeObserver` entry has no position, and `getBoundingClientRect()` measures from the viewport.
+
+### What Lynx does
+
+In Lynx Explorer 4.1, a 42px bar at the bottom of the screen reported `{ top: 797, bottom: 839 }` with `layoutchange` on iOS, measured from the page, and `{ top: 0, bottom: 41.9 }` on Android, measured from its parent. `width` and `height` agree. Read only the size from `layoutchange` (as the dock does for its width), and measure a position with `boundingClientRect`.

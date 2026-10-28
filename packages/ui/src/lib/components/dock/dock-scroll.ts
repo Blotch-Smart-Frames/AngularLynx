@@ -32,6 +32,15 @@ export class UiDockState {
    * this says.
    */
   readonly minimized = signal(false);
+
+  /**
+   * Whether the dock's search field is open, for a `<ui-dock-action>` without
+   * a route: pressing the action opens it, and the bar's button, Cancel or
+   * leaving the search closes it. Set it to open or close the search from
+   * code. With a route, the search is open while the route is active, and
+   * this isn't needed.
+   */
+  readonly searching = signal(false);
 }
 
 /**

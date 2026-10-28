@@ -78,10 +78,11 @@ export const registry: RegistryEntry[] = [
   { name: 'dialog', dependencies: [] },
   // The dock's bar, button and accessory are glass, and its items draw their
   // icons from icon's set. Its selection capsule and the items on glass take
-  // the glass foreground.
+  // the glass foreground. It holds a search field in its glass, and rises
+  // above the keyboard with search-field's keyboard.ts.
   {
     name: 'dock',
-    dependencies: ['glass', 'icon'],
+    dependencies: ['glass', 'icon', 'search-field'],
     themeColors: ['glass-foreground'],
   },
   { name: 'empty-state', dependencies: ['icon'] },
@@ -106,6 +107,13 @@ export const registry: RegistryEntry[] = [
   { name: 'radio-group', dependencies: [] },
   { name: 'scatter-chart', dependencies: ['chart'] },
   { name: 'scroll-area', dependencies: [] },
+  // The search field is glass on iOS 26 and later, and draws its icons from
+  // icon's set in theme colors resolved by icon-theme.ts.
+  {
+    name: 'search-field',
+    dependencies: ['glass', 'icon'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground'],
+  },
   { name: 'select', dependencies: ['bottom-sheet'] },
   { name: 'separator', dependencies: [] },
   { name: 'sheet', dependencies: ['bottom-sheet'] },

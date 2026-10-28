@@ -98,6 +98,7 @@ export default defineConfig({
         { text: 'Search Field', link: '/dolan/search-field' },
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
+        { text: 'Glass Sheets', link: '/dolan/bottom-sheet#glass' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

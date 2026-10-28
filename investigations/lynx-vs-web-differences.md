@@ -5257,7 +5257,60 @@ On the web, an element that gets a `longpress` listener recognizes long presses 
 
 ---
 
-## On iOS, a `<blur-view>` at the top of an `@if`, `@switch` or `@for` block draws nothing
+## iOS glass takes only one corner radius, and can't animate it
+
+### What you'd expect (parity with SwiftUI)
+
+A glass shape with `border-top-left-radius: 38px; border-bottom-left-radius: 54px` has round top and rounder bottom corners, like an iOS 26 sheet, and its radius can change as it moves.
+
+### What Lynx does
+
+On the iOS 27 Simulator (Lynx Explorer 4.1), a `<blur-view blur-effect="glass">` with per-corner radii draws a square glass shape: the corners aren't rounded or clipped at all. Only `border-radius` with one value shapes the glass. And Lynx can't animate `border-radius` (see the whitelist above), so a glass shape keeps its corners while a transition moves or resizes it.
+
+iOS 26's own sheets need both. Measured with a SwiftUI sheet (`presentationDetents([.medium, .large])`) on the same simulator, an iPhone 18 Pro (402×874pt, display corner radius 62pt):
+
+- **At the medium detent** the sheet is the full-width sheet scaled by 0.96 (`UIDropShadowView`'s transform), which insets it 8pt from the sides and bottom. Its top corners are about 38pt and its bottom ones about 52pt, concentric with the display's. It's Liquid Glass, and `UIDimmingView` dims the screen with black at 20%.
+- **At the large detent** it sits at the top of the safe area (62pt), full width and down to the bottom edge, with `systemBackground` behind its content, so it's opaque. Its top corners are still about 38pt. The grabber is 60×4pt at 6pt from the top, `rgb(197, 197, 199)` on white.
+
+### What we do about it
+
+The glass bottom sheet (`variant="glass"` on `ui-bottom-sheet`) draws the glass as one shape with one radius, concentric with the display's corners (62 − 8 = 54px), and never changes it. It animates the frame instead, which iOS's glass follows frame by frame: the inset shrinks from 8px to 0 as the sheet grows to full height, through the sheet's height and a CSS transition on `left`, `right`, `bottom` and `height`. An opaque `bg-background` layer above the glass (a plain view, so per-corner radii work there) fades in over the same progress. Once the sheet rests at full height, the layer's bottom corners square off; on an iPhone the display's rounder corners hide that change. Frames captured with the transitions slowed 8× show the glass widening into the screen's edges and clouding over to white, with no jump.
+
+---
+
+## iOS glass under an ancestor that becomes visible while it fades in draws nothing
+
+### What you'd expect (web)
+
+An element hidden with `visibility: hidden` appears as it was once its ancestor turns `visible`, whatever animation runs on the ancestor.
+
+### What Lynx does
+
+On the iOS 27 Simulator (Lynx Explorer 4.1), a glass `<blur-view>` whose ancestor goes from `visibility: hidden` to `visible` while an `element.animate()` fades that ancestor's opacity in draws nothing at all, even after the animation ends: its children show, the glass doesn't. Without the fade, or with the ancestor's opacity changed by style instead of animated, the glass appears. The bottom sheet hit it: it kept its backdrop `visibility: hidden` while it measured the screen, then made it visible as the backdrop's fade-in started.
+
+### What we do about it
+
+The bottom sheet hides itself without `visibility` while it waits for layout: the panel sits below the screen (`translateY(110%)`) and the backdrop's dim is transparent until the sheet is shown.
+
+---
+
+## On iOS, a glass `<blur-view>` added to the page after its first frame draws nothing
+
+### What you'd expect (web)
+
+An element an `@if` adds later renders like one that was there from the start.
+
+### What Lynx does
+
+On the iOS 27 Simulator (Lynx Explorer 4.1), a `<blur-view blur-effect="glass">` (raw, or `ui-glass`) that an `@if` adds to the page after the first frame draws nothing, its children included, though layout leaves room for it. One removed and added again does the same. A plain view, and a `blur-effect="light"` blur view, added the same way draw. Glass inside an `<overlay>` created later (a glass `ui-bottom-sheet` in an `@if`) draws, as does glass that was on the page from the first frame.
+
+### What we do about it
+
+It was found while building the glass sheet, whose glass is in an overlay. The cause is how iOS inserts a blur view before a sibling, which is how Angular adds an `@if` block's elements, and the renderer now appends it instead: see the next section.
+
+---
+
+## On iOS, a glass `<blur-view>` at the top of an `@if`, `@switch` or `@for` block draws nothing
 
 ### What you'd expect (web)
 
@@ -5265,7 +5318,7 @@ An element inside a control-flow block shows up where the block is, whatever its
 
 ### What Lynx does
 
-On the iOS 27 Simulator in Lynx Explorer 4.1, a `<blur-view>` (glass, a blur material, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them.
+On the iOS 27 Simulator in Lynx Explorer 4.1, a glass `<blur-view>` (`ui-glass`, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them, and a `light` blur view draws on iOS too (see the previous section). It happens on the first frame and on any later one.
 
 What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws.
 

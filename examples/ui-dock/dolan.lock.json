@@ -31,13 +31,24 @@
     },
     "dock": {
       "dock.ts": {
-        "hash": "22c83450c10d5cbe"
+        "hash": "bc8135c6100effa1"
       },
       "dock-scroll.ts": {
-        "hash": "216cdc0eab180c8a"
+        "hash": "fd895dda77940df1"
       },
       "index.ts": {
         "hash": "771649c459fc9906"
+      }
+    },
+    "search-field": {
+      "index.ts": {
+        "hash": "635f9c122e27cded"
+      },
+      "keyboard.ts": {
+        "hash": "e24a944f111c87fc"
+      },
+      "search-field.ts": {
+        "hash": "02815bc672f617e8"
       }
     }
   },

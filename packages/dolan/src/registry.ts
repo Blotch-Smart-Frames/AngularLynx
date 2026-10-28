@@ -56,7 +56,8 @@ export const registry: RegistryEntry[] = [
   { name: 'avatar', dependencies: ['skeleton'] },
   { name: 'badge', dependencies: [], packages: CVA_PACKAGES },
   { name: 'bar-chart', dependencies: ['chart'] },
-  { name: 'bottom-sheet', dependencies: [] },
+  // The glass variant draws its sheet on `glass`, in the platform's design.
+  { name: 'bottom-sheet', dependencies: ['glass'] },
   // The glass variants draw on `glass`, and projected icons take the label's
   // color through icon's UI_ICON_COLOR.
   {

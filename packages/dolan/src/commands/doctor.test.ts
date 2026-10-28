@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
+import { hashContent } from '../lockfile';
+import {
+  createFixture,
+  DEFAULT_CONFIG,
+  onTailwind,
+  type Fixture,
+} from '../test-utils';
 
 vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
@@ -967,5 +973,90 @@ describe('doctorCommand theme colors components read', () => {
     expect(p.log.success).toHaveBeenCalledWith(
       'Theme has the colors your components read',
     );
+  });
+});
+
+// A move between Tailwind versions leaves the other version's theme files,
+// which nothing uses: the plugin is dead code the app's coverage counts.
+describe('doctorCommand — theme files for the Tailwind version the app left', () => {
+  /**
+   * Runs doctor in an app on `tailwind` whose theme folder has `files`, which
+   * the lockfile records unless `tracked` says otherwise, and returns its
+   * warnings about them, colors stripped.
+   */
+  const leftoverWarnings = async (
+    tailwind: 3 | 4 | null,
+    files: string[],
+    tracked = files,
+  ) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: {
+        version: 1,
+        components: {},
+        theme: Object.fromEntries(
+          tracked.map((file) => [file, { hash: hashContent('') }]),
+        ),
+      },
+    });
+    const { tailwindcss: _, ...dependencies } = FULL_ANGULAR_DEPS;
+    if (tailwind === null) writePackageJson(fixture.dir, { dependencies });
+    else onTailwind(fixture.dir, tailwind, { dependencies });
+    for (const file of files) {
+      writeFileSync(join(fixture.dir, DEFAULT_CONFIG.aliases.theme, file), '');
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+
+    const p = await import('@clack/prompts');
+    return vi
+      .mocked(p.log.warn)
+      .mock.calls.map(([message]) => stripVTControlCharacters(message))
+      .filter((message) => message.startsWith('Found '));
+  };
+
+  it('warns about the Tailwind 3 plugin and its test in a Tailwind 4 app, for dolan update to delete', async () => {
+    expect(
+      await leftoverWarnings(4, [
+        'tailwind.css',
+        'tailwind-plugin.ts',
+        'tailwind-plugin.test.ts',
+      ]),
+    ).toEqual([
+      "Found tailwind-plugin.ts, tailwind-plugin.test.ts in src/styles, but the app uses Tailwind 4, which takes the theme's classes from tailwind.css. Run dolan update to delete them, or delete them.",
+    ]);
+  });
+
+  it('warns about tailwind.css in a Tailwind 3 app', async () => {
+    expect(
+      await leftoverWarnings(3, ['tailwind.css', 'tailwind-plugin.ts']),
+    ).toEqual([
+      "Found tailwind.css in src/styles, but the app uses Tailwind 3, which takes the theme's classes from tailwind-plugin.ts. Run dolan update to delete it, or delete it.",
+    ]);
+  });
+
+  it("doesn't send the app to dolan update for a plugin it doesn't delete", async () => {
+    // Kept when `update` asked, so the app's own now.
+    expect(
+      await leftoverWarnings(4, ['tailwind.css', 'tailwind-plugin.ts'], []),
+    ).toEqual([
+      "Found tailwind-plugin.ts in src/styles, but the app uses Tailwind 4, which takes the theme's classes from tailwind.css. Delete it, unless your own code uses it.",
+    ]);
+  });
+
+  it.each([
+    [4, ['tailwind.css']],
+    [3, ['tailwind-plugin.ts', 'tailwind-plugin.test.ts']],
+  ] as const)(
+    'says nothing when a Tailwind %s theme has only the files the app takes',
+    async (tailwind, files) => {
+      expect(await leftoverWarnings(tailwind, [...files])).toEqual([]);
+    },
+  );
+
+  it('says nothing without Tailwind, which has no version to have left', async () => {
+    expect(await leftoverWarnings(null, ['tailwind.css'])).toEqual([]);
   });
 });

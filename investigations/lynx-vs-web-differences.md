@@ -5389,3 +5389,93 @@ A non-modal popover is an element above the page, and a `click` listener on `doc
 - The panel is a `position: fixed` view with `z-index: 999`. Lynx lifts it to the page root, above the page, and hit-tests it like any other view, so the rest of the screen keeps its touches. It's placed in page coordinates: two marker views of no size (the safe area's top edge, and an edge from the page's top to the safe area's bottom) are measured with `boundingClientRect` alongside the anchor, relative to the screen, and the safe area's offset in the page is added to the menu's `placeMenu()` frame.
 - While it's shown, it has `global-bindtouchstart` and `global-bindmousedown` listeners (mouse for the web preview, where touch events come only from a touch screen). A touch on the panel, or on its trigger, sets a flag through ordinary `bindtouchstart` listeners; the global listener checks the flag on the next timer, which runs after every listener of that touch, and closes the panel if nothing set it. A `catchtouchstart` inside the panel would hide a touch from it, and close it.
 - A touch, not a tap, closes it, so a scroll that starts outside closes it too, rather than moving its anchor away from under it.
+
+---
+
+## A touch's `x` is relative to the touched element on iOS and Android, but to the `<lynx-view>` on the web
+
+### What you'd expect (parity between platforms)
+
+A touch event's `touches[0].x` means the same thing everywhere, so a slider can read where on its track the finger is.
+
+### What Lynx does
+
+- **iOS and Android:** `x` and `y` are relative to the element the touch landed on, its `target` (`[touch locationInView:ui.view]` in `LynxTouchHandler.mm`, `convertToViewPoint(mActiveUI, …)` in `TouchEventDispatcher.java`). `pageX` is relative to the LynxView and `clientX` to the window. A tap's `detail.x` is the page position.
+- **Lynx for Web:** web-core sets `x` to `clientX` minus the `<lynx-view>`'s left edge (`createCrossThreadEvent.js`), for touches and the mouse alike, whatever element was touched. `pageX` and `clientX` keep their web meaning: the document and the browser's viewport.
+
+So no single field tells a control where on it the finger is on every platform.
+
+### What we do about it
+
+The slider (`packages/ui/src/lib/components/slider/slider.ts`) makes everything inside it ignore touches (`user-interaction-enabled="false"`), so the touched element is always the slider itself, and reads `x`: on iOS and Android that's already relative to the slider. On the web it measures its own left edge in the `<lynx-view>` when a press starts (`boundingClientRect`, which answers asynchronously) and subtracts it. In the docs' scaled previews the measurement is in screen pixels while events and `layoutchange` are in the app's, so it divides by the ratio of the measured width to the laid-out one, as the menu does. Moves that arrive before the measurement are held until it does. The switch only needs how far the finger moved, which is the same in either space.
+
+---
+
+## Lynx's iOS views don't implement `accessibilityIncrement`, so VoiceOver can't swipe an adjustable element
+
+### What you'd expect (UIKit)
+
+An element with the adjustable trait changes its value when a VoiceOver user swipes up or down: VoiceOver calls its `accessibilityIncrement` and `accessibilityDecrement`, as it does on a `UISlider`.
+
+### What Lynx does
+
+`accessibility-traits="adjustable"` sets `UIAccessibilityTraitAdjustable` (`LynxConverter+UI.m`), and VoiceOver announces the element as adjustable, but nothing in Lynx's iOS code implements `accessibilityIncrement` or `accessibilityDecrement` (searched `platform/darwin` on Lynx's develop branch, October 2026). The swipe calls UIView's empty defaults and nothing happens. Android ignores the trait: it reads only `none`, `image` and `button` (`LynxAccessibilityTraits`).
+
+### What we do about it
+
+The slider is adjustable, and it also offers `accessibility-actions` named Increase and Decrease. Lynx turns those into `UIAccessibilityCustomAction`s on iOS and custom accessibility actions on Android, and both fire `accessibilityaction` with the action's name, so VoiceOver users reach them through the Actions rotor and TalkBack users through its actions menu. `accessibility-role-description="slider"` names the role on Android. A fix in Lynx would send an `accessibilityaction` (or a new event) from `accessibilityIncrement` and `accessibilityDecrement` on adjustable elements.
+
+---
+
+## Lynx for Web's glass refracts only its nearest painted ancestor, cut to that ancestor's box
+
+### What you'd expect (parity with iOS)
+
+A glass shape bends whatever is on screen behind it, including content outside its parent's box when it overflows its parent.
+
+### What Lynx does
+
+The runtime's WebGL glass (`backdropOf` in `packages/runtime/src/lib/web-glass/glass-group.ts`) refracts an image of one ancestor: the nearest that paints an opaque background or an image. When that ancestor is smaller than the glass, the image ends at the ancestor's edge, and the glass beyond it samples the image's clamped edge rather than what's really behind. iOS's glass samples the screen, and Android's blur captures the page.
+
+### What we do about it
+
+The switch's glass lens is bigger than its track (59 by 38pt over a 63 by 28pt track, as on iOS 26), so the track can't be the lens's parent and paint the background: the switch draws the track with a view of its own, before the lens, and the lens's backdrop is the card or page around the switch. Clear glass over white is faint in the web drawing either way: the lens shows mostly as the bend it puts in the track.
+
+---
+
+## A drag handled in template event handlers keeps up with the finger
+
+### What you'd expect (React Lynx's guidance)
+
+React Lynx runs component code on the background thread, so a drag handled there reaches the screen a thread hop later, and its docs recommend main-thread scripts for touch-driven UI.
+
+### What Lynx does
+
+AngularLynx runs Angular on the main thread (see `lynx-architecture`), so template handlers like `(bindtouchmove)` already run beside the native touch handling. Measured with a probe around `ui-slider` in Lynx Explorer 4.1 (a `(bindtouchmove)` on its parent that compares the event's `timestamp` with `Date.now()`, and an `afterRenderEffect` on the value), dragging with Maestro over 2 seconds:
+
+|                     | touchmove interval     | event to handler                  | handler to render                  |
+| ------------------- | ---------------------- | --------------------------------- | ---------------------------------- |
+| iOS 27 Simulator    | 16.7 to 17.2ms average | 0.6ms average, 2ms at most        | 3ms average, 7ms at most           |
+| Android 14 emulator | 17.1 to 20ms average   | 1.1 to 1.7ms average, 7ms at most | 3.5 to 4.8ms average, 19ms at most |
+
+Runs while the host machine was overloaded (a load average near 40 on 18 cores) dropped to a move every 35 to 125ms on the emulator, with renders up to 270ms behind; those are the emulator starving, not the handlers.
+
+### What we do about it
+
+Nothing: the slider and the switch set a signal in their handlers and let change detection apply the styles, under a frame from the native event to the render. A main-thread script would save no thread hop, and the change detection it would skip costs about 3ms for these controls.
+
+---
+
+## On iOS, a scroll view scrolls alongside a drag that Lynx's touch events are following
+
+### What you'd expect (UIKit)
+
+A control dragged sideways inside a vertical scroll view keeps the drag to itself: `UISlider` and `UISwitch` stop the scroll view's pan from starting while they track a touch.
+
+### What Lynx does
+
+Lynx delivers touch events from its own gesture recognizer on the LynxView, and a `<scroll-view>`'s `UIScrollView` pan recognizes alongside it. A drag on a slider that drifted 40pt down over a 226pt swipe moved the slider all the way and scrolled the page 66 times (Lynx Explorer 4.1, iOS 27 Simulator). On the Android 14 emulator the same drag didn't scroll: Lynx's scroll view only takes over when the movement is mostly vertical.
+
+### The fix
+
+`consume-slide-event` takes swipe angle ranges, in degrees from the right (`atan2(dy, dx)`), and Lynx fails the platform's pan gestures for a swipe inside them (`dispatchPanEvent:` in `LynxEventHandler.m`). The slider and the switch set `[[-45, 45], [135, 180], [-180, -135]]`, within 45 degrees of sideways: the diagonal drag above no longer scrolled the page, and a swipe up that starts on the slider still scrolls it, on iOS and Android. It matches the controls' own rule for starting a drag, more sideways than up or down.

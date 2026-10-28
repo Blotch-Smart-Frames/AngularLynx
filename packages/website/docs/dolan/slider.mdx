@@ -1,0 +1,150 @@
+# Slider
+
+Pick a number in a range, such as a volume or a brightness. Drag the thumb or tap the track, and give it `variant="glass"` for each platform's own slider.
+
+<Go example="ui-slider" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add slider
+```
+
+```typescript
+import { UiSlider } from '../components/ui/slider';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the glass variant's lens, and [Icon](/dolan/icon), whose copy of the theme colors gives the iOS colors their dark mode.
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiSlider } from '../components/ui/slider';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiSlider],
+  template: `
+    <text class="text-sm text-foreground">Volume {{ volume() }}</text>
+    <ui-slider [(value)]="volume" accessibility-label="Volume" />
+  `,
+})
+export class App {
+  protected readonly volume = signal(40);
+}
+```
+
+- **Drag the thumb to change the value.** It keeps where your finger holds it, so it doesn't jump when you pick it up.
+- **Tap the track to move the thumb there,** or drag from beside the thumb to pull it under your finger.
+- **A drag starts only once your finger moves sideways,** so a scroll that starts on the slider scrolls the page and leaves the value alone. A sideways drag doesn't scroll the page.
+- The slider fills the width it's given.
+
+### Range and steps
+
+```angular-html
+<ui-slider [min]="1" [max]="5" [(value)]="rating" />
+<ui-slider [min]="0" [max]="1" [step]="0.05" [(value)]="opacity" />
+```
+
+- The value goes from `min` to `max` (0 to 100 by default) in whole `step`s (1 by default).
+- A bound value outside the range or between steps shows at the nearest step. The slider only writes back values it sets itself.
+
+### Glass
+
+Each platform's own slider:
+
+```angular-html
+<ui-slider
+  variant="glass"
+  [(value)]="brightness"
+  accessibility-label="Brightness"
+/>
+```
+
+On iOS 26 the thumb turns into a Liquid Glass lens while you drag it, magnifying the track under it, and turns solid again when you let go. It's the one place glass sits on content: Apple keeps glass for the layer above content, except on sliders and switches, and only while they're touched.
+
+What each platform draws:
+
+| Platform                                       | Slider                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| iOS 26 and later                               | iOS 26's slider: a 6pt track and a capsule thumb that turns to glass while it's held                    |
+| iOS 15 to 25                                   | The classic slider: a 4pt track and a round white thumb                                                 |
+| Android                                        | Material 3 Expressive's slider: a thick track with a bar handle in a gap, which narrows while it's held |
+| Android, with [`provideGlass()`](/dolan/glass) | iOS 26's slider, with Android's glass                                                                   |
+| [Web preview](/guide/glossary#web-preview)     | iOS 26's slider, with the glass drawn by WebGL                                                          |
+
+- **iOS fills it with the system blue,** UISlider's default tint. Its colors follow your app's color scheme, which [`provideIconTheme()`](/dolan/icon#dark-mode) sets.
+- **Material uses the theme's colors:** `primary` for the filled track, handle and stop dot, and `secondary` for the rest.
+
+### Disabled
+
+```angular-html
+<ui-slider [value]="30" [disabled]="true" />
+```
+
+A disabled slider dims and ignores touches and screen reader actions.
+
+### Listen to changes
+
+```angular-html
+<ui-slider [(value)]="volume" (changed)="saveVolume($event)" />
+```
+
+- **`valueChange`** (the `[(value)]` binding) follows every step of a drag.
+- **`changed`** emits the value you settled on: when a drag ends, after a tap, and after a screen reader action. Save or send the value here.
+
+### Forms
+
+`value` is a `model()`, so the slider works with every Angular forms API:
+
+```angular-html
+<ui-slider [formControl]="volume" />
+<ui-slider [(ngModel)]="volume" />
+<ui-slider [formField]="settings.volume" />
+```
+
+`UiSlider` implements Signal Forms' `FormValueControl<number>`, including `min`, `max` and `disabled`. It emits `touch` when you finish changing it, so the field counts as touched. Reactive and template-driven forms bind to its `value` model directly, as Angular 22 does for any component with one. See [Forms](/guide/forms).
+
+## API
+
+### UiSlider
+
+| Input                 | Type                        | Default     | Description                                                     |
+| --------------------- | --------------------------- | ----------- | --------------------------------------------------------------- |
+| `value`               | `number`                    | `0`         | The value. Supports `[(value)]`.                                |
+| `min`                 | `number`                    | `0`         | The value at the start of the track.                            |
+| `max`                 | `number`                    | `100`       | The value at the end of the track.                              |
+| `step`                | `number`                    | `1`         | The values it stops at: `min`, `min + step` and so on.          |
+| `disabled`            | `boolean`                   | `false`     | Dims the slider and ignores the user.                           |
+| `variant`             | `'default' \| 'glass'`      | `'default'` | `'glass'` draws each platform's own slider.                     |
+| `accessibility-label` | `string`                    | —           | What a screen reader calls it, such as `'Volume'`.              |
+| `valueText`           | `(value: number) => string` | —           | What a screen reader says for a value. A percentage without it. |
+| `class`               | `string`                    | `''`        | Extra Tailwind classes for the slider.                          |
+
+| Output        | Type     | Description                                          |
+| ------------- | -------- | ---------------------------------------------------- |
+| `valueChange` | `number` | Emits each new value during a drag, for `[(value)]`. |
+| `changed`     | `number` | Emits the value the user settled on.                 |
+| `touch`       | `void`   | Emits when the user finishes changing it, for forms. |
+
+## Accessibility
+
+- **A screen reader reads it as an adjustable element** with its `accessibility-label` and its value, a percentage unless you pass `valueText`. Android's reads it as a slider.
+- **Its Increase and Decrease actions move it** by a tenth of the range, or one step when there are fewer than ten. VoiceOver lists them in its Actions rotor, and TalkBack in its actions menu.
+- **Reduce Motion:** the thumb jumps to a tapped value instead of gliding, and turns to glass and back without growing.
+- **Reduce Transparency:** iOS makes its own lens opaque. On Android and the web, the solid thumb grows instead of turning to glass.
+
+:::info VoiceOver's swipe up and down
+VoiceOver adjusts an adjustable element with a swipe up or down, which calls the view's `accessibilityIncrement`. Lynx's iOS views don't implement it, so that swipe does nothing: choose Increase or Decrease from the Actions rotor instead.
+:::
+
+## Related
+
+- [Switch](/dolan/switch): on and off, whose thumb turns to glass too
+- [Progress](/dolan/progress): a value the user doesn't set
+- [Glass](/dolan/glass): the Liquid Glass the lens draws
+- [Forms](/guide/forms)

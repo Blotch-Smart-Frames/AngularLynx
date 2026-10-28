@@ -132,8 +132,12 @@ export const registry: RegistryEntry[] = [
   { name: 'separator', dependencies: [] },
   { name: 'sheet', dependencies: ['bottom-sheet'] },
   { name: 'skeleton', dependencies: [] },
+  // The glass variant's thumb turns into a glass lens while it's dragged,
+  // and its iOS colors follow the app's color scheme through icon-theme.ts.
+  { name: 'slider', dependencies: ['glass', 'icon'] },
   { name: 'spinner', dependencies: ['icon'] },
-  { name: 'switch', dependencies: [] },
+  // As the slider.
+  { name: 'switch', dependencies: ['glass', 'icon'] },
   // The tab bar draws its items' icons from icon's set, in theme colors
   // resolved by icon-theme.ts.
   { name: 'tab-bar', dependencies: ['icon'] },

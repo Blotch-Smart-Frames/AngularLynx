@@ -5330,6 +5330,44 @@ What the failing ones share: Angular puts a block's top elements in with `__Inse
 
 ---
 
+---
+
+## A `display: none` element still draws its text on iOS, from its corner
+
+### What you'd expect (web)
+
+An element with `display: none` draws nothing, and nor does anything in it.
+
+### What Lynx does
+
+Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) a `<text>` in it still draws its glyphs, spilling out of the 0×0 box from its top-left corner. The tabs' hidden panels did this: their first letters overlapped the tab list.
+
+### The fix
+
+Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0.
+
+---
+
+## Measuring a row of segments: `layoutchange` gives sizes you can rely on, not positions
+
+### What you'd expect (web)
+
+`getBoundingClientRect()` gives each item's position and size at any moment, so an indicator under a row of items can be placed from the item's left edge.
+
+### What Lynx does
+
+- **`layoutchange`'s position isn't the same on each platform**: from the page on iOS, from the parent on Android (see "`layoutchange` reports `top` and `left` from the page on iOS and from the parent on Android" below). And only an element whose layout changed reports again: when the whole row moves, say because content above it grew, an item whose own frame in its parent didn't change may not report, so a page-relative `left` goes stale. Its `width` stays right everywhere.
+- **`boundingClientRect` is current, but asynchronous** (a UI method that answers in a callback, see above), so it can't place an indicator in the same frame as a tap.
+- **Older Android puts the size in `params`**, iOS and the web in `detail`.
+
+### What we do about it
+
+The segmented control (`segmented-control.ts` in `@blotch/ui`) measures each segment's width from `layoutchange` on the segment's own flex item, which sits in a row with no gap, and adds the widths up for the left edges. Segments of different widths and a rotated or resized control both land right, as each segment reports its new width. Until every width has arrived, the indicator takes an equal share of the track (`width: 33.33%`, `left: n × 33.33%`), which is already right for equal segments, so the first frame needs no measuring. The first placement on measured widths has no transition, so the indicator doesn't slide in from the equal share.
+
+A drag reads the pointer's `pageX`, which touch and mouse events both carry. A `touchmove` goes to the element the touch started on, so the segment that was pressed keeps receiving it as the finger crosses the others. On the web, `mousemove` goes to whichever segment is under the cursor, so every segment forwards it to the shared control. Only the distance from the press matters, never which element reports it.
+
+---
+
 ## Lynx doesn't move a field the keyboard covers, and reports the keyboard differently on each platform
 
 ### What you'd expect (web)

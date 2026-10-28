@@ -3,6 +3,7 @@ import {
   Component,
   ViewEncapsulation,
   computed,
+  contentChildren,
   effect,
   inject,
   input,
@@ -11,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -21,10 +22,41 @@ import {
   revealIn,
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
+import {
+  type SegmentedHost,
+  UI_SEGMENTED_HOST,
+  UiSegmentedControl,
+  UiSegmentedIndicator,
+} from '../segmented-control/segmented-control';
+
+/**
+ * A tab list's look: shadcn's tabs, or `'segmented'` for the platform's
+ * segmented control (see UiTabsList).
+ */
+export type TabsListVariant = 'default' | 'segmented';
+
+/** AngularLynx's element, which can add an accessibility trait. */
+type AccessibleElement = {
+  setAccessibilityTrait(trait: string, on: boolean): void;
+};
+
+/**
+ * `UiTabsTrigger`, for the list's content query. A call rather than the
+ * class itself: for a class, Angular's test build keeps an arrow function
+ * that nothing calls, which an app's coverage report would show as
+ * uncovered.
+ */
+const triggerType = () => UiTabsTrigger;
+
+/**
+ * The list, as the segmented control it provides reads it. Named, not
+ * inline: the component's metadata keeps its own copy of an inline factory,
+ * which nothing calls.
+ */
+const tabsListHost = (): SegmentedHost => inject(UiTabsList).segmentedHost;
 
 @Component({
   selector: 'ui-tabs',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
@@ -95,58 +127,177 @@ export class UiTabs {
   }
 }
 
+/**
+ * The row of tab triggers.
+ *
+ * `variant="segmented"` draws the platform's segmented control instead (see
+ * UiSegmentedControl), Apple's control for switching between closely
+ * related views: iOS 26's capsule with a thumb that lifts into Liquid Glass
+ * as it slides between the tabs (it can be dragged across them too), iOS 13
+ * to 18's raised thumb before iOS 26, and Material 3 Expressive's connected
+ * button group on Android. It fills the width it's given, and the tabs
+ * share it.
+ *
+ * The row is a tab bar to VoiceOver (`tabbar`), which reads each trigger as
+ * a tab, and the selected one as selected.
+ */
 @Component({
   selector: 'ui-tabs-list',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, UiSegmentedIndicator],
   encapsulation: ViewEncapsulation.None,
+  providers: [
+    UiSegmentedControl,
+    { provide: UI_SEGMENTED_HOST, useFactory: tabsListHost },
+  ],
+  // The mouse leaving the row lets go of an indicator dragged in the web
+  // preview, where a drag gets no touchcancel.
   template: `
-    <view [class]="listClass()">
+    <view
+      accessibility-traits="tabbar"
+      [class]="listClass()"
+      (bindmouseleave)="segmentedControl.cancel()"
+    >
+      @if (segmentedControl.underlay()) {
+        <ui-segmented-indicator />
+      }
       <ng-content />
     </view>
   `,
 })
 export class UiTabsList {
+  /**
+   * `'default'`, or `'segmented'` for the platform's segmented control.
+   */
+  readonly variant = input<TabsListVariant>('default');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly listClass = computed(() =>
-    cn(
-      // `self-start` keeps the tab bar hugging its triggers. The parent <ui-tabs>
-      // is a `flex flex-col` column, and in Lynx's linear/flex layout a child with
-      // no explicit width stretches to fill the parent's cross axis — so without
-      // it the muted pill spans the full width, leaving empty space around the
-      // tabs. Same lever as the badge fix: Lynx has no `inline-flex`, so
-      // align-self is how you opt a child into shrink-to-fit.
-      'flex-row items-center self-start rounded-lg bg-muted p-1 flex',
-      this.userClass(),
+  readonly #tabs = inject(UiTabs);
+  protected readonly segmentedControl = inject(UiSegmentedControl);
+  /** The triggers in the list, in order. */
+  readonly triggers = contentChildren(triggerType(), { descendants: true });
+
+  /** What the segmented control reads from the list. */
+  readonly segmentedHost: SegmentedHost = {
+    segmented: computed(() => this.variant() === 'segmented'),
+    segmentValues: computed(() =>
+      this.triggers().map((trigger) => trigger.triggerValue()),
     ),
+    selectedValues: computed(() => [this.#tabs.value()]),
+    // One tab is active at a time, and tabs are never disabled.
+    multiple: signal(false).asReadonly(),
+    disabled: signal(false).asReadonly(),
+    select: (value) => this.#tabs.select(value),
+  };
+
+  protected readonly listClass = computed(() =>
+    this.segmentedControl.enabled()
+      ? // A segmented control fills the width it's given, as UIKit's does
+        // in a form, and its tabs share it.
+        cn(this.segmentedControl.trackClass(), this.userClass())
+      : cn(
+          // `self-start` keeps the tab bar hugging its triggers. The parent <ui-tabs>
+          // is a `flex flex-col` column, and in Lynx's linear/flex layout a child with
+          // no explicit width stretches to fill the parent's cross axis — so without
+          // it the muted pill spans the full width, leaving empty space around the
+          // tabs. Same lever as the badge fix: Lynx has no `inline-flex`, so
+          // align-self is how you opt a child into shrink-to-fit.
+          'flex-row items-center self-start rounded-lg bg-muted p-1 flex',
+          this.userClass(),
+        ),
   );
 }
 
 @Component({
   selector: 'ui-tabs-trigger',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'hostClass()',
+    // The segmented control places its indicator from each tab's width.
+    '(bindlayoutchange)': 'measure($event)',
+  },
+  // The label is the accessibility element, a button (a tab, in the list's
+  // tab bar) named by its own text. A view would need a label of its own.
   template: `
-    <view #trigger [class]="triggerClass()" (bindtap)="select()">
-      <text [class]="textClass()"><ng-content /></text>
+    <view
+      #trigger
+      [class]="triggerClass()"
+      [style]="triggerStyle()"
+      (bindtap)="onTap()"
+      (bindtouchstart)="press($event)"
+      (bindtouchmove)="move($event)"
+      (bindtouchend)="release()"
+      (bindtouchcancel)="cancel()"
+      (bindmousedown)="press($event)"
+      (bindmousemove)="move($event)"
+      (bindmouseup)="release()"
+      (bindmouseleave)="leave()"
+    >
+      @if (stateLayerClass(); as stateLayer) {
+        <view [class]="stateLayer"></view>
+      }
+      <text #label accessibility-traits="button" [class]="textClass()"
+        ><ng-content
+      /></text>
     </view>
   `,
 })
 export class UiTabsTrigger {
   readonly #tabs = inject(UiTabs);
+  readonly #settings = inject(LynxAccessibilitySettings);
+  // Absent for a trigger outside a <ui-tabs-list>.
+  readonly #segmented = inject(UiSegmentedControl, { optional: true });
 
   readonly triggerValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly triggerRef = viewChild.required<ElementRef>('trigger');
+  readonly labelRef =
+    viewChild.required<ElementRef<AccessibleElement>>('label');
   #anim?: AnimationHandle;
   #previousActive?: boolean;
 
   protected readonly isActive = computed(
     () => this.#tabs.value() === this.triggerValue(),
   );
+
+  /**
+   * The segmented control this trigger is a segment of, or null when its
+   * list is the default tabs (or it has no list).
+   */
+  readonly #segment = computed(() =>
+    this.#segmented?.enabled() ? this.#segmented : null,
+  );
+
+  /**
+   * A segment's host is the track's flex item, an equal share of it. Angular
+   * puts the app's static `class` on the host as well as on the trigger, so
+   * the two are merged here: `class="flex-[2]"` makes a wider tab.
+   */
+  protected readonly hostClass = computed(() => {
+    const segment = this.#segment();
+    return segment ? cn(segment.segmentHostClass, this.userClass()) : '';
+  });
+
+  protected readonly triggerStyle = computed(
+    () => this.#segment()?.segmentStyle(this.triggerValue()) ?? null,
+  );
+
+  protected readonly stateLayerClass = computed(
+    () => this.#segment()?.stateLayerClass(this.triggerValue()) ?? null,
+  );
+
+  /**
+   * The selected tab is `selected` to a screen reader, which iOS reads.
+   * Through the runtime, which adds the trait to `button` on iOS and leaves
+   * Android, which reads one trait, with `button`.
+   */
+  protected readonly selectedTrait = effect(() => {
+    this.labelRef().nativeElement.setAccessibilityTrait(
+      'selected',
+      this.isActive(),
+    );
+  });
 
   /** Registers this trigger with the parent for direction detection. */
   protected readonly registering = effect(() => {
@@ -161,8 +312,17 @@ export class UiTabsTrigger {
     this.#previousActive = active;
     // The first run only records the starting state, and only a change has
     // anything to animate. (`isActive` is a computed, so the effect only
-    // re-runs once it changes; the second check is a safeguard.)
-    if (wasActive === undefined || wasActive === active) return;
+    // re-runs once it changes; the second check is a safeguard.) A segment
+    // doesn't animate itself: the segmented control's indicator moves. Under
+    // Reduce Motion the trigger changes at once.
+    if (
+      wasActive === undefined ||
+      wasActive === active ||
+      this.#segment() ||
+      this.#settings.reduceMotion()
+    ) {
+      return;
+    }
 
     this.#anim?.cancel();
 
@@ -195,8 +355,12 @@ export class UiTabsTrigger {
     }
   });
 
-  protected readonly triggerClass = computed(() =>
-    cn(
+  protected readonly triggerClass = computed(() => {
+    const segment = this.#segment();
+    if (segment) {
+      return cn(segment.segmentClass(this.triggerValue()), this.userClass());
+    }
+    return cn(
       // No `flex-1` here: now that the list shrinks to fit its content (see
       // `self-start` in UiTabsList), stretching triggers to equal width is
       // pointless, and `flex-basis: 0` growth combined with Lynx treating
@@ -206,24 +370,62 @@ export class UiTabsTrigger {
       'items-center rounded-sm px-3 py-1.5 flex justify-center',
       this.isActive() ? 'bg-background' : 'bg-transparent',
       this.userClass(),
-    ),
-  );
+    );
+  });
 
-  protected readonly textClass = computed(() =>
-    cn(
-      'text-sm font-medium',
-      this.isActive() ? 'text-foreground' : 'text-muted-foreground',
-    ),
+  protected readonly textClass = computed(
+    () =>
+      this.#segment()?.labelClass(this.triggerValue()) ??
+      cn(
+        'text-sm font-medium',
+        this.isActive() ? 'text-foreground' : 'text-muted-foreground',
+      ),
   );
 
   select(): void {
     this.#tabs.select(this.triggerValue());
   }
+
+  protected measure(event: unknown): void {
+    this.#segmented?.measure(this.triggerValue(), event);
+  }
+
+  /**
+   * A press. A segment's touches go to the segmented control, which draws
+   * their feedback and moves its indicator.
+   */
+  protected press(event: unknown): void {
+    this.#segment()?.press(this.triggerValue(), event);
+  }
+
+  protected move(event: unknown): void {
+    this.#segment()?.move(event);
+  }
+
+  protected release(): void {
+    this.#segment()?.release();
+  }
+
+  protected cancel(): void {
+    this.#segment()?.cancel();
+  }
+
+  protected leave(): void {
+    this.#segment()?.leave(this.triggerValue());
+  }
+
+  /**
+   * A tap that ends a drag of the indicator doesn't select this tab: the
+   * drag chose already.
+   */
+  protected onTap(): void {
+    if (this.#segment()?.tap(this.triggerValue()) === false) return;
+    this.select();
+  }
 }
 
 @Component({
   selector: 'ui-tabs-content',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   host: {
@@ -242,6 +444,10 @@ export class UiTabsTrigger {
     // makes the host lay its content out vertically when shown.
     '[style.display]': "isActive() ? 'flex' : 'none'",
     '[style.flexDirection]': "'column'",
+    // A hidden panel's 0×0 doesn't stop iOS drawing its text: each line is
+    // laid out at 0×0 too, and its glyphs spill out from the panel's corner,
+    // over the tab list. Clipping the hidden host to its 0×0 hides them.
+    '[style.overflow]': "isActive() ? null : 'hidden'",
   },
   template: `
     <view #content [class]="contentClass()">
@@ -251,6 +457,7 @@ export class UiTabsTrigger {
 })
 export class UiTabsContent {
   readonly #tabs = inject(UiTabs);
+  readonly #settings = inject(LynxAccessibilitySettings);
 
   readonly contentValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
@@ -282,6 +489,8 @@ export class UiTabsContent {
     if (!this.isActive()) return;
     // Defer one tick so the display flip to 'flex' has applied before we animate.
     setTimeout(() => {
+      // Under Reduce Motion the panel just appears.
+      if (this.#settings.reduceMotion()) return;
       const el = this.contentRef().nativeElement;
 
       this.#anim?.cancel();

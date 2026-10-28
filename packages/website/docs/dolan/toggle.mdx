@@ -20,6 +20,10 @@ import {
 
 Toggle imports `class-variance-authority` (see [Installation](/dolan/#installation)).
 
+:::tip
+Toggle depends on `segmented-control`, which draws the segmented variant and builds on [Glass](/dolan/glass) and [Icon](/dolan/icon). `dolan add` installs them automatically.
+:::
+
 ## Usage
 
 ```typescript title="src/app/app.ts"
@@ -69,6 +73,56 @@ export class App {
 
 Each tap adds or removes that item's value.
 
+### Segmented control
+
+The platform's own segmented control, for picking one of a few options:
+
+```angular-html
+<ui-toggle-group variant="segmented" [(value)]="range">
+  <ui-toggle-group-item value="day" accessibility-label="Day">
+    <text class="text-[13px] text-foreground">Day</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="week" accessibility-label="Week">
+    <text class="text-[13px] text-foreground">Week</text>
+  </ui-toggle-group-item>
+  <ui-toggle-group-item value="month" accessibility-label="Month">
+    <text class="text-[13px] text-foreground">Month</text>
+  </ui-toggle-group-item>
+</ui-toggle-group>
+```
+
+- **The selected item has a thumb that slides** to the item you tap. You can also drag it across the items: it follows your finger and selects where you let go.
+- **On iOS 26 the thumb lifts into Liquid Glass** while it moves, as UIKit's segmented control does, and settles back into a solid thumb. The thumb is the only glass. The items are plain.
+- **One item stays selected.** Tapping it again doesn't clear it, unlike the other variants.
+- **The items share the group's width.** Give one `class="flex-[2]"` to make it wider. The thumb follows each item's measured width, also after a rotation.
+- **Write the item's text `text-foreground`.** On Android the selected item's fill is dark, and the item points `text-foreground` at a color that reads on it.
+- **`size` and the other variants don't apply.** The control has the platform's height: 32pt on iOS, 40dp on Android.
+
+What each platform draws:
+
+| Platform                                       | Segmented control                                                                                               |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| iOS 26 and later                               | A capsule with a white thumb that lifts into Liquid Glass as it slides and while you drag it                    |
+| iOS 15 to 25                                   | The control of iOS 13 to 18: a gray track, hairline separators, and a raised thumb that shrinks while held      |
+| Android                                        | Material 3 Expressive's connected button group: the selected item filled with the primary color and fully round |
+| Android, with [`provideGlass()`](/dolan/glass) | The iOS 26 control, its glass without the refraction                                                            |
+| [Web preview](/guide/glossary#web-preview)     | The iOS 26 control, its glass drawn with WebGL                                                                  |
+
+Android draws Material 3 Expressive's connected button group rather than Material's segmented buttons, which Material 3 Expressive deprecates in its favor. Nothing slides there, as in Material's own group. A press shows Material's state layer.
+
+#### Several at once
+
+```angular-html
+<ui-toggle-group variant="segmented" type="multiple" [(value)]="formats">
+  <ui-toggle-group-item value="bold" accessibility-label="Bold">
+    <ui-icon name="bold" size="sm" />
+  </ui-toggle-group-item>
+  …
+</ui-toggle-group>
+```
+
+One thumb can't mark several items, so in a `multiple` group each pressed item draws its own thumb, and nothing slides or drags. On Android each pressed item fills, as Material's connected group does.
+
 ### Variants and sizes
 
 ```angular-html
@@ -105,14 +159,14 @@ A group passes its `variant` and `size` to every item.
 
 ### UiToggleGroup
 
-| Input      | Type                        | Default     | Description                                      |
-| ---------- | --------------------------- | ----------- | ------------------------------------------------ |
-| `type`     | `'single' \| 'multiple'`    | `'single'`  | Whether one or several items can be pressed.     |
-| `value`    | `string[]`                  | `[]`        | The pressed items' values. Supports `[(value)]`. |
-| `variant`  | `'default' \| 'outline'`    | `'default'` | Style of every item.                             |
-| `size`     | `'default' \| 'sm' \| 'lg'` | `'default'` | Size of every item.                              |
-| `disabled` | `boolean`                   | `false`     | Dims every item and ignores taps.                |
-| `class`    | `string`                    | `''`        | Extra Tailwind classes for the row.              |
+| Input      | Type                                    | Default     | Description                                                          |
+| ---------- | --------------------------------------- | ----------- | -------------------------------------------------------------------- |
+| `type`     | `'single' \| 'multiple'`                | `'single'`  | Whether one or several items can be pressed.                         |
+| `value`    | `string[]`                              | `[]`        | The pressed items' values. Supports `[(value)]`.                     |
+| `variant`  | `'default' \| 'outline' \| 'segmented'` | `'default'` | Style of every item, or the [segmented control](#segmented-control). |
+| `size`     | `'default' \| 'sm' \| 'lg'`             | `'default'` | Size of every item.                                                  |
+| `disabled` | `boolean`                               | `false`     | Dims every item and ignores taps.                                    |
+| `class`    | `string`                                | `''`        | Extra Tailwind classes for the row.                                  |
 
 | Output        | Type       | Description                           |
 | ------------- | ---------- | ------------------------------------- |
@@ -120,17 +174,25 @@ A group passes its `variant` and `size` to every item.
 
 ### UiToggleGroupItem
 
-| Input   | Type     | Default  | Description                          |
-| ------- | -------- | -------- | ------------------------------------ |
-| `value` | `string` | Required | The value this item adds or removes. |
-| `class` | `string` | `''`     | Extra Tailwind classes for the item. |
+| Input                 | Type     | Default  | Description                                                     |
+| --------------------- | -------- | -------- | --------------------------------------------------------------- |
+| `value`               | `string` | Required | The value this item adds or removes.                            |
+| `accessibility-label` | `string` | —        | What a screen reader says. Makes the item a button (see below). |
+| `class`               | `string` | `''`     | Extra Tailwind classes for the item.                            |
 
 No outputs.
 
-The file also exports the `ToggleVariant` and `ToggleSize` types.
+The file also exports the `ToggleVariant`, `ToggleGroupVariant` and `ToggleSize` types.
+
+## Accessibility
+
+- **Give each group item an `accessibility-label`.** The item becomes one button that a screen reader reads by it, `selected` while pressed (iOS reads the trait). An icon-only item needs one. Without it, a screen reader reads the item's text, with no state.
+- **Reduce Motion:** the segmented control's thumb jumps to the selected item instead of sliding, and doesn't lift into glass. A drag still moves it with your finger.
+- **Reduce Transparency:** the thumb stays solid as it moves. **Increase Contrast** gives it an outline, and Android's items an outline too.
 
 ## Related
 
+- [Tabs](/dolan/tabs): the segmented control for switching panels
 - [Button Group](/dolan/button-group): connected buttons for one-off actions
 - [Radio Group](/dolan/radio-group): one option that always stays selected
 - [Switch](/dolan/switch): an on/off control for settings

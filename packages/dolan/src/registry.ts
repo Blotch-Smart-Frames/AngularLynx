@@ -142,6 +142,10 @@ export const registry: RegistryEntry[] = [
     dependencies: ['glass', 'icon'],
     themeColors: ['glass-foreground', 'glass-muted-foreground'],
   },
+  // The segmented control that tabs and toggle groups draw with
+  // `variant="segmented"`: its indicator lifts into glass on iOS 26, and it
+  // picks the thumb's color for the app's color scheme with icon-theme.ts.
+  { name: 'segmented-control', dependencies: ['glass', 'icon'] },
   { name: 'select', dependencies: ['bottom-sheet'] },
   { name: 'separator', dependencies: [] },
   { name: 'sheet', dependencies: ['bottom-sheet'] },
@@ -155,10 +159,15 @@ export const registry: RegistryEntry[] = [
   // The tab bar draws its items' icons from icon's set, in theme colors
   // resolved by icon-theme.ts.
   { name: 'tab-bar', dependencies: ['icon'] },
-  { name: 'tabs', dependencies: [] },
+  { name: 'tabs', dependencies: ['segmented-control'] },
   { name: 'textarea', dependencies: [] },
   { name: 'toast', dependencies: [] },
-  { name: 'toggle', dependencies: [], packages: CVA_PACKAGES },
+  // A segmented toggle group's icons take the segment's content color.
+  {
+    name: 'toggle',
+    dependencies: ['icon', 'segmented-control'],
+    packages: CVA_PACKAGES,
+  },
   // Toolbar items are glass on iOS 26 and later, a prominent one in the glass
   // tint, and they draw their icons from icon's set.
   {

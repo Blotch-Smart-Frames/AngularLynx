@@ -105,6 +105,10 @@ export default defineConfig({
         { text: 'Glass Switch', link: '/dolan/switch#glass' },
         { text: 'Glass Slider', link: '/dolan/slider#glass' },
         { text: 'Glass Alert Dialog', link: '/dolan/alert-dialog#glass' },
+        {
+          text: 'Segmented Control',
+          link: '/dolan/toggle#segmented-control',
+        },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

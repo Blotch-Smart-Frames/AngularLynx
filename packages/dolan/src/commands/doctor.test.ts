@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
+import {
+  createFixture,
+  DEFAULT_CONFIG,
+  installPackage,
+  type Fixture,
+} from '../test-utils';
 
 vi.mock('@clack/prompts', () => ({
   intro: vi.fn(),
@@ -45,13 +50,23 @@ const writePackageJson = (dir: string, content: unknown) =>
   writeFileSync(join(dir, 'package.json'), JSON.stringify(content));
 
 // What doctor requires (no router: no component imports it), plus the
-// package button imports.
+// package button imports. Not Tailwind: doctor reads the version installed
+// (see installPackage), not the one package.json lists.
 const FULL_ANGULAR_DEPS = {
   '@angular/core': '^20.0.0',
   '@blotch/angular-lynx': '^0.0.1',
   '@blotch/dolan': '^0.0.1',
   'class-variance-authority': '^0.7.1',
-  tailwindcss: '^4.0.0',
+};
+
+/**
+ * Every message logged at a level, without the colors picocolors adds in CI.
+ */
+const logged = async (level: 'success' | 'warn'): Promise<string[]> => {
+  const p = await import('@clack/prompts');
+  return vi
+    .mocked(p.log[level])
+    .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
 };
 
 /**
@@ -114,6 +129,7 @@ describe('doctorCommand', () => {
       components: { card: { 'card.ts': '', 'index.ts': '' } },
     });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '3.4.19');
     writeFileSync(
       join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'tailwind-plugin.ts'),
       '',
@@ -134,6 +150,10 @@ describe('doctorCommand', () => {
 
     const p = await import('@clack/prompts');
     expect(p.log.error).not.toHaveBeenCalled();
+    expect(p.log.warn).not.toHaveBeenCalled();
+    expect(await logged('success')).toContain(
+      'tailwindcss 3.4.19 found, set up for Tailwind 3 (tailwind.config.ts)',
+    );
     expect(p.log.success).toHaveBeenCalledWith(
       expect.stringContaining('component(s) healthy'),
     );
@@ -165,9 +185,8 @@ describe('doctorCommand', () => {
 
   it('warns when tailwind-plugin.ts and theme CSS are both missing', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, {
-      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
-    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '3.4.19');
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -202,24 +221,27 @@ describe('doctorCommand', () => {
 
   it('warns when no tailwind config is found on Tailwind 3', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
-    writePackageJson(fixture.dir, {
-      dependencies: { ...FULL_ANGULAR_DEPS, tailwindcss: '^3.4.19' },
-    });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '3.4.19');
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const { doctorCommand } = await import('./doctor');
     await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
 
-    const p = await import('@clack/prompts');
-    expect(p.log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('No Tailwind config found'),
+    // The build runs Tailwind 3 only from a config.
+    expect(await logged('warn')).toContain(
+      'tailwindcss 3.4.19 found, but no Tailwind config: the build runs Tailwind 3 only from a tailwind.config.*. Add one with ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=3',
+    );
+    expect(await logged('success')).not.toContainEqual(
+      expect.stringContaining('set up for'),
     );
   });
 
   it("passes when a Tailwind 4 stylesheet imports the theme's tailwind.css", async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '4.3.3');
     writeFileSync(
       join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'tailwind.css'),
       '',
@@ -235,6 +257,9 @@ describe('doctorCommand', () => {
     await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
 
     const p = await import('@clack/prompts');
+    expect(await logged('success')).toContain(
+      'tailwindcss 4.3.3 found, set up for Tailwind 4',
+    );
     expect(p.log.success).toHaveBeenCalledWith(
       expect.stringContaining('imported in'),
     );
@@ -246,6 +271,7 @@ describe('doctorCommand', () => {
   it("warns when a Tailwind 4 stylesheet, or its absence, doesn't import tailwind.css", async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '4.3.3');
 
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
@@ -269,6 +295,7 @@ describe('doctorCommand', () => {
   it('warns when a tailwind config exists but does not reference blotchPlugin', async () => {
     fixture = createFixture({ config: DEFAULT_CONFIG });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    installPackage(fixture.dir, 'tailwindcss', '3.4.19');
     writeFileSync(
       join(fixture.dir, 'tailwind.config.js'),
       'module.exports = { plugins: [] };',
@@ -330,8 +357,8 @@ describe('doctorCommand', () => {
         /Missing packages: .*@angular\/core.*@blotch\/angular-lynx.*@blotch\/dolan/,
       ),
     );
-    expect(p.log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('tailwindcss'),
+    expect(await logged('warn')).toContain(
+      'tailwindcss not found — required if using dolan UI components. Install it with npm install tailwindcss, or set it up with ng generate @blotch/angular-lynx:add-tailwind',
     );
   });
 
@@ -624,6 +651,116 @@ describe('doctorCommand', () => {
   });
 });
 
+describe('doctorCommand Tailwind', () => {
+  /**
+   * A project in `dir` with nothing wrong but its Tailwind, which the test
+   * installs. Runs doctor.
+   */
+  const runDoctor = async (dir: string, files: Record<string, string> = {}) => {
+    writePackageJson(dir, { dependencies: FULL_ANGULAR_DEPS });
+    for (const [file, content] of Object.entries(files)) {
+      writeFileSync(join(dir, file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+  };
+
+  /** The theme's tailwind.css, imported as dolan init shows. */
+  const IMPORTED = { 'src/styles.css': "@import './styles/tailwind.css';" };
+
+  it('finds the Tailwind a workspace root installs', async () => {
+    // The app's package.json lists no Tailwind: the root's is every package's.
+    fixture = createFixture({});
+    installPackage(fixture.dir, 'tailwindcss', '4.3.3');
+    const app = join(fixture.dir, 'apps', 'app');
+    for (const dir of Object.values(DEFAULT_CONFIG.aliases)) {
+      mkdirSync(join(app, dir), { recursive: true });
+    }
+    writeFileSync(
+      join(app, 'dolan.config.json'),
+      JSON.stringify(DEFAULT_CONFIG),
+    );
+
+    await runDoctor(app, IMPORTED);
+
+    expect(await logged('success')).toContain(
+      'tailwindcss 4.3.3 found, set up for Tailwind 4',
+    );
+    expect(await logged('warn')).not.toContainEqual(
+      expect.stringContaining('tailwindcss'),
+    );
+  });
+
+  it('finds the Tailwind @tailwindcss/postcss depends on, hoisted next to it', async () => {
+    // npm's layout, for an app that lists only the plugin.
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    installPackage(fixture.dir, '@tailwindcss/postcss', '4.3.3');
+    installPackage(fixture.dir, 'tailwindcss', '4.3.3');
+
+    await runDoctor(fixture.dir, IMPORTED);
+
+    expect(await logged('success')).toContain(
+      'tailwindcss 4.3.3 found, set up for Tailwind 4',
+    );
+  });
+
+  it("finds the Tailwind @tailwindcss/postcss depends on in the plugin's own folder", async () => {
+    // pnpm's layout, out of the app's reach. The build still finds it: pnpm
+    // runs `ng` with the packages it hoists on NODE_PATH.
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    installPackage(
+      installPackage(fixture.dir, '@tailwindcss/postcss', '4.3.3'),
+      'tailwindcss',
+      '4.3.3',
+    );
+
+    await runDoctor(fixture.dir, IMPORTED);
+
+    expect(await logged('success')).toEqual(
+      expect.arrayContaining([
+        'tailwindcss 4.3.3 found, set up for Tailwind 4',
+        'tailwind.css imported in src/styles.css',
+      ]),
+    );
+  });
+
+  it('warns about a Tailwind config with Tailwind 4 installed, as the build does', async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    installPackage(fixture.dir, 'tailwindcss', '4.3.3');
+
+    await runDoctor(fixture.dir, {
+      'tailwind.config.js': 'module.exports = { plugins: [blotchPlugin] };',
+    });
+
+    expect(await logged('warn')).toContain(
+      "Found tailwind.config.js, but Tailwind CSS 4.3.3 is installed, which doesn't run from a Tailwind config file. While it's there, dolan sets the theme up for Tailwind 3. Move its settings into your stylesheet and delete it, then run dolan update for the theme's tailwind.css.",
+    );
+    // Tailwind 4 doesn't run the config, so its plugin isn't a pass.
+    expect(await logged('success')).not.toContainEqual(
+      expect.stringMatching(/set up for|blotchPlugin/),
+    );
+  });
+
+  it("names the package manager's command when Tailwind isn't installed", async () => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writeFileSync(join(fixture.dir, 'yarn.lock'), '');
+
+    await runDoctor(fixture.dir);
+
+    expect(await logged('warn')).toContainEqual(
+      expect.stringContaining(
+        'tailwindcss not found — required if using dolan UI components. Install it with yarn add tailwindcss',
+      ),
+    );
+    // Without a version, there's no setup to check.
+    expect(await logged('warn')).not.toContainEqual(
+      expect.stringMatching(/Tailwind config|tailwind\.css not imported/),
+    );
+  });
+});
+
 describe('doctorCommand theme channels', () => {
   /**
    * A plugin that maps primary and border with themeColor(), as dolan's does.
@@ -767,6 +904,7 @@ page {
     const runDoctor4 = async (css: Record<string, string>) => {
       fixture = createFixture({ config: DEFAULT_CONFIG });
       writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+      installPackage(fixture.dir, 'tailwindcss', '4.3.3');
       const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
       for (const [file, content] of Object.entries(css)) {
         writeFileSync(join(themeDir, file), content);
@@ -851,16 +989,6 @@ describe('doctorCommand theme colors components read', () => {
    * A Tailwind 4 project with glass installed and the given theme files,
    * and dolan's own theme if `bundled` is given. Runs doctor.
    */
-  /**
-   * Every warning, without the colors picocolors adds in CI.
-   */
-  const warnings = async (): Promise<string[]> => {
-    const p = await import('@clack/prompts');
-    return vi
-      .mocked(p.log.warn)
-      .mock.calls.map(([message]) => stripVTControlCharacters(String(message)));
-  };
-
   const runDoctor = async (
     theme: Record<string, string>,
     bundled?: Record<string, string>,
@@ -876,6 +1004,12 @@ describe('doctorCommand theme colors components read', () => {
       themeFiles: bundled,
     });
     writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    // A Tailwind config is a Tailwind 3 setup.
+    installPackage(
+      fixture.dir,
+      'tailwindcss',
+      root['tailwind.config.ts'] ? '3.4.19' : '4.3.3',
+    );
     const themeDir = join(fixture.dir, DEFAULT_CONFIG.aliases.theme);
     for (const [file, content] of Object.entries(theme)) {
       writeFileSync(join(themeDir, file), content);
@@ -911,12 +1045,12 @@ describe('doctorCommand theme colors components read', () => {
       { 'default.css': GLASS_CSS },
     );
 
-    expect(await warnings()).toContainEqual(
+    expect(await logged('warn')).toContainEqual(
       expect.stringMatching(
         /default\.css lacks theme colors that glass read: --glass-tint, .*--glass-dim\..*dolan update.*\n--glass-tint: rgba\(24, 24, 27, 1\);\n--glass-tint-rgb: 24, 24, 27;\n/s,
       ),
     );
-    expect(await warnings()).not.toContainEqual(
+    expect(await logged('warn')).not.toContainEqual(
       expect.stringContaining('dark.css lacks'),
     );
     expect(p.log.success).not.toHaveBeenCalledWith(
@@ -927,7 +1061,7 @@ describe('doctorCommand theme colors components read', () => {
   it("points at dolan update alone without dolan's theme to quote", async () => {
     await runDoctor({ 'default.css': 'page {}' });
 
-    expect(await warnings()).toContainEqual(
+    expect(await logged('warn')).toContainEqual(
       expect.stringMatching(/default\.css lacks .*haven't edited\.$/),
     );
   });
@@ -941,7 +1075,7 @@ describe('doctorCommand theme colors components read', () => {
       ),
     });
 
-    expect(await warnings()).toContainEqual(
+    expect(await logged('warn')).toContainEqual(
       expect.stringMatching(
         /tailwind\.css doesn't map theme colors that glass read to classes: glass-dim\./,
       ),

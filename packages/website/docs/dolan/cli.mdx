@@ -87,7 +87,7 @@ Asks two questions, then sets up the project. Pass an option to answer its quest
 | Where should theme files be installed? | `src/styles`        | `--theme`      |
 
 - Writes `dolan.config.json`. If one exists, it asks before overwriting (default No).
-- Copies `default.css`, `dark.css` and `tailwind.css` into the theme folder, or `tailwind-plugin.ts` in place of `tailwind.css` for an app on Tailwind 3 (one with a `tailwind.config.*`), with its test, `tailwind-plugin.test.ts`, if your `package.json` lists `@blotch/angular-lynx-testing-library` (see [add](#add)). If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
+- Copies `default.css`, `dark.css` and `tailwind.css` into the theme folder, or `tailwind-plugin.ts` in place of `tailwind.css` for an app on Tailwind 3 (one with a `tailwind.config.*`, or without Tailwind 4 installed), with its test, `tailwind-plugin.test.ts`, if your `package.json` lists `@blotch/angular-lynx-testing-library` (see [add](#add)). If one is already there and differs, it asks before overwriting (default No) and keeps yours otherwise.
 - Records the hashes of the theme files it copied in `dolan.lock.json`, so [`update`](#update) can tell whether you've edited them.
 - Installs `@blotch/dolan` as a dependency if `package.json` doesn't list it, with your package manager. The copied components import its utilities. If the install fails, the next steps say how to run it.
 - Creates the components folder and prints the next steps: the `@import` lines for the theme files (and, on Tailwind 3, the Tailwind plugin for your config), written relative to your global stylesheet (the first `styles` entry in `angular.json`, `src/styles.css` by default).
@@ -268,19 +268,27 @@ npx @blotch/dolan doctor
 
 Runs these checks in order and exits with code 1 if any fail:
 
-| Check                                                                                                                             | If it doesn't pass |
-| --------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                                                  | Fails and stops    |
-| The components and theme folders exist                                                                                            | Fails              |
-| The theme folder has `tailwind.css` (`tailwind-plugin.ts` on Tailwind 3), and `default.css` or `dark.css`                         | Warns              |
-| Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                     | Warns              |
-| The theme sets and maps the colors the installed components read, such as Glass's `glass-*` colors                                | Warns              |
-| On Tailwind 4, the global stylesheet imports `tailwind.css`; on Tailwind 3, `tailwind.config.ts` or `.js` mentions `blotchPlugin` | Warns              |
-| `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                                                  | Fails              |
-| `package.json` lists `tailwindcss`                                                                                                | Warns              |
-| Every component folder is a known component, has all its files and has its dependencies                                           | Warns              |
-| No component has tests without `@blotch/angular-lynx-testing-library` to run them                                                 | Warns              |
-| `package.json` lists the npm packages the components import, such as `class-variance-authority`                                   | Fails              |
+| Check                                                                                                                                        | If it doesn't pass |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                                                             | Fails and stops    |
+| The components and theme folders exist                                                                                                       | Fails              |
+| The theme folder has `tailwind.css` (`tailwind-plugin.ts` on Tailwind 3), and `default.css` or `dark.css`                                    | Warns              |
+| Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                                | Warns              |
+| The theme sets and maps the colors the installed components read, such as Glass's `glass-*` colors                                           | Warns              |
+| `tailwindcss` is installed, and the app is set up for its version: no `tailwind.config.*` on Tailwind 4, a `tailwind.config.*` on Tailwind 3 | Warns              |
+| On Tailwind 4, the global stylesheet imports `tailwind.css`; on Tailwind 3, the Tailwind config mentions `blotchPlugin`                      | Warns              |
+| `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                                                             | Fails              |
+| Every component folder is a known component, has all its files and has its dependencies                                                      | Warns              |
+| No component has tests without `@blotch/angular-lynx-testing-library` to run them                                                            | Warns              |
+| `package.json` lists the npm packages the components import, such as `class-variance-authority`                                              | Fails              |
+
+It looks for `tailwindcss` the way the build does, from your app's folder, so it finds Tailwind that your workspace root installs, or that `@tailwindcss/postcss` brings when your `package.json` lists only that, and reports its version:
+
+```text
+◆  tailwindcss 4.3.3 found, set up for Tailwind 4
+```
+
+A `tailwind.config.*` with Tailwind 4 installed gets a warning: dolan sets the theme up for Tailwind 3 while the config is there (see [Move to Tailwind 4](/guide/tailwindcss#move-to-tailwind-4)). So does Tailwind 3 without a config, which the build needs to run it.
 
 An ejected component's files aren't checked. A `utils` path in an older config is allowed but not needed. The `-rgb` twins are what [opacity modifiers](/dolan/theming#opacity-modifiers) such as `bg-primary/50` read; the check suggests the line to add for a missing one. A component's colors are missing from a theme copied before the component existed; the check quotes dolan's lines for them.
 

@@ -740,7 +740,8 @@ describe('UiSegmentedControl', () => {
       expect(segment('Day').style.transition).toBe('none');
 
       await update(() => settings.increaseContrast.set(true));
-      expect(segment('Day').classList).toContain('border-foreground');
+      expect(segment('Day').classList).toContain('border-secondary-foreground');
+      expect(segment('Week').classList).toContain('border-primary');
 
       // They don't dim while pressed: a state layer shows instead.
       fireEvent.touchstart(segment('Day'), { touches: [{ pageX: 50 }] });

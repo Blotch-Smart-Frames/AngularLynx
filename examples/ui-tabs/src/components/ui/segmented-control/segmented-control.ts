@@ -559,7 +559,13 @@ export class UiSegmentedControl {
         on
           ? 'rounded-full bg-primary [--foreground:var(--primary-foreground)] [--muted-foreground:var(--primary-foreground)]'
           : 'rounded-[8px] bg-secondary [--foreground:var(--secondary-foreground)] [--muted-foreground:var(--secondary-foreground)]',
-        this.#settings.increaseContrast() && 'border border-foreground',
+        // Increase Contrast outlines the light unselected segments. The
+        // selected one's dark fill stands out already, and its outline in
+        // the fill's own color keeps every segment the same size. Named
+        // colors, not `border-foreground`: the segment redefines that
+        // variable for its content.
+        this.#settings.increaseContrast() &&
+          (on ? 'border border-primary' : 'border border-secondary-foreground'),
       );
     }
     return cn(

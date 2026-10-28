@@ -197,6 +197,7 @@ export class App {
       `Design: ${this.#design()} on ${os}`,
       `Reduce Motion: ${on(this.#settings.reduceMotion())}`,
       `Reduce Transparency: ${on(this.#settings.reduceTransparency())}`,
+      `Increase Contrast: ${on(this.#settings.increaseContrast())}`,
     ].join(' · ');
   });
 }

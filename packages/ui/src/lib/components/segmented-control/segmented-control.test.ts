@@ -173,20 +173,18 @@ const renderControl = async (
       '.bottom-0.top-0:not(.w-\\[1px\\])',
     )!;
   /**
-   * The opaque thumb in the frame. (Angular's `@if` leaves a hidden anchor
-   * view beside it.)
+   * The opaque thumb in the frame, beside the lens. (Angular's `@if` leaves
+   * a hidden anchor view there too.)
    */
   const thumb = () =>
     Array.from(frame().children).find(
       (child) =>
-        child.classList.contains('absolute') &&
-        !child.querySelector('blur-view'),
+        child.classList.contains('absolute') && child.localName !== 'blur-view',
     ) as HTMLElement;
   /**
-   * The glass lens's view, while it's drawn.
+   * The glass lens, while it's drawn.
    */
-  const lens = () =>
-    (frame().querySelector('blur-view')?.parentElement as HTMLElement) ?? null;
+  const lens = () => frame().querySelector<HTMLElement>('blur-view');
   const separators = () =>
     Array.from(underlay()!.querySelectorAll<HTMLElement>('.w-\\[1px\\]'));
   /**
@@ -412,7 +410,6 @@ describe('UiSegmentedControl', () => {
       // Drawn at the thumb's size under the thumb first, so it grows from
       // there.
       expect(lens()!.style.left).toBe('2px');
-      expect(lens()!.querySelector('blur-view')).not.toBeNull();
       expect(thumb().style.opacity).toBe('1');
 
       await after(0);

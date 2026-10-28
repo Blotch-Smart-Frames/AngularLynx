@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createFixture, type Fixture } from '../test-utils';
+import { createFixture, installPackage, type Fixture } from '../test-utils';
 import { hashContent, type Lockfile } from '../lockfile';
 import type * as Packages from '../utils/packages.js';
 import type * as ResolvePaths from '../utils/resolve-paths.js';
@@ -631,15 +631,9 @@ describe('initCommand', () => {
 
     it('copies tailwind.css and imports the theme in the stylesheet on Tailwind 4', async () => {
       writeFileSync(join(fixture.uiDir, 'theme/tailwind.css'), '@theme {}');
-      writeFileSync(
-        join(fixture.dir, 'package.json'),
-        JSON.stringify({
-          devDependencies: {
-            tailwindcss: '^4.3.3',
-            '@tailwindcss/postcss': '^4.3.3',
-          },
-        }),
-      );
+      // As a workspace root or @tailwindcss/postcss may bring it: the
+      // project's package.json doesn't list it.
+      installPackage(fixture.dir, 'tailwindcss', '4.3.3');
       await useDefaultAnswers();
 
       const { initCommand } = await import('./init');

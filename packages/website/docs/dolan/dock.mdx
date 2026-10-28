@@ -1,6 +1,6 @@
 # Dock
 
-The floating bar of your app's top-level screens: the Liquid Glass form of the [tab bar](/dolan/tab-bar). A glass capsule of icon-and-label items at the bottom of the screen, with a separate button beside it, an accessory above it, and a minimized form while content scrolls.
+The floating bar of your app's top-level screens: the Liquid Glass form of the [tab bar](/dolan/tab-bar). A glass capsule of icon-and-label items at the bottom of the screen, with a separate button beside it, an accessory above it, a minimized form while content scrolls, and a search field across the bottom.
 
 <Go example="ui-dock" defaultFile="src/app/app.ts" />
 
@@ -21,7 +21,7 @@ import {
 ```
 
 :::tip
-This also adds [Glass](/dolan/glass), which draws the dock, and [Icon](/dolan/icon), whose icons the items draw.
+This also adds [Glass](/dolan/glass), which draws the dock, [Icon](/dolan/icon), whose icons the items draw, and [Search Field](/dolan/search-field), which the dock can [search](#search) with.
 :::
 
 ## Usage
@@ -113,6 +113,36 @@ inject(UiDockState).minimized.set(false);
 
 On glass, it's a circle in the same [glass group](/dolan/glass#groups) as the bar, so the two merge as they near each other. The `label` is what a screen reader says, since the button shows only its icon.
 
+### Search
+
+Put a [`<ui-search-field>`](/dolan/search-field) in the dock beside a search action, and the action opens a search field at the bottom of the screen, within reach, as iPhone apps search on iOS 26:
+
+```angular-html
+<ui-dock>
+  <ui-dock-item route="/home" icon="home" label="Home" />
+  <ui-dock-item route="/library" icon="music" label="Library" />
+  <ui-dock-action route="/search" icon="search" label="Search" />
+  <ui-search-field
+    placeholder="Artists, songs and more"
+    cancelable
+    [(value)]="query"
+    (submitted)="search($event)"
+  />
+</ui-dock>
+```
+
+- **With a `route`, it's a search tab:** the field is open while its screen shows, which can suggest searches until the field is tapped. Tapping the field brings up the keyboard.
+- **Without a route, the action opens the field over the screen you're on** and gives it the keyboard. `UiDockState`'s `searching` says whether it's open, and sets it from code: `inject(UiDockState).searching.set(true)`.
+- **The dock rises with the field above the keyboard,** and settles when it closes.
+
+What opens on each platform:
+
+- **On glass,** the action grows into the field across the bottom, and the bar shrinks to one button that goes back to the last item you were on. With `cancelable`, a glass circle with an x grows out of the field's end while it's in use: it clears the field and closes the keyboard, and for an action without a route, closes the search.
+- **On Material,** the floating action button grows into Material 3's search bar across the bottom, and the toolbar slides away. The search bar's back arrow goes back.
+- **Before iOS 26,** the tab bar stays, and the field opens in a bar above it, on the same material. With the keyboard up, the bar sits on the keyboard, as Safari's did. Cancel closes a search the action opened; on a search tab it clears the field.
+
+The dock doesn't minimize while it searches. `openSearch()` and `closeSearch()` open and close it from code.
+
 ### The accessory
 
 Mark content with `ui-dock-accessory` and the dock puts it in a glass bar above itself, for something that stays at hand on every screen, such as what's playing:
@@ -171,12 +201,15 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 | `expandLabel` | `string` | `'Show tab bar'` | What a screen reader says for the minimized dock, before the selected item's label.   |
 | `class`       | `string` | `''`             | Extra Tailwind classes for the dock, which places itself at the bottom of its parent. |
 
-| Property       | Type                                         | Description                                                   |
-| -------------- | -------------------------------------------- | ------------------------------------------------------------- |
-| `minimized`    | `Signal<boolean>`                            | Whether the dock is minimized now. It never is before iOS 26. |
-| `design`       | `Signal<'glass' \| 'frosted' \| 'material'>` | The platform's design (see [Glass](/dolan/glass#functions)).  |
-| `selectedItem` | `Signal<UiDockItem \| undefined>`            | The item whose route is active.                               |
-| `expand()`     | method                                       | Brings a minimized dock back.                                 |
+| Property        | Type                                         | Description                                                                              |
+| --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `minimized`     | `Signal<boolean>`                            | Whether the dock is minimized now. It never is before iOS 26, or while it searches.      |
+| `searching`     | `Signal<boolean>`                            | Whether its search field is open (see [Search](#search)).                                |
+| `design`        | `Signal<'glass' \| 'frosted' \| 'material'>` | The platform's design (see [Glass](/dolan/glass#functions)).                             |
+| `selectedItem`  | `Signal<UiDockItem \| undefined>`            | The item whose route is active.                                                          |
+| `expand()`      | method                                       | Brings a minimized dock back.                                                            |
+| `openSearch()`  | method                                       | Opens the search field and gives it the keyboard.                                        |
+| `closeSearch()` | method                                       | Closes it: back to the last item from a search tab, or closes the one the action opened. |
 
 ### UiDockItem
 
@@ -213,19 +246,21 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 | `UiDockAccessory` | `[ui-dock-accessory]`                                 | Marks the content of the accessory above the dock.  |
 | `UiDockScroll`    | `scroll-view[ui-dock-scroll]`, `list[ui-dock-scroll]` | Minimizes the dock as the scroll view scrolls down. |
 
-`UiDockState` is a root service with one signal, `minimized`, which the dock and `ui-dock-scroll` share.
+`UiDockState` is a root service the dock and your screens share, with two signals: `minimized`, which `ui-dock-scroll` sets, and `searching`, whether the search an action without a route opens is open.
 
 ## Accessibility
 
 - **Each item is one button,** named by its `label` and then its badge: "Inbox, 3". The selected item has the `selected` trait, so iOS VoiceOver announces it.
 - **On iOS, the row of items has the `tabbar` trait,** as a native tab bar does.
-- **The minimized dock is one button,** "Show tab bar", with the selected item's label as its value. The hidden items are hidden from screen readers too.
-- **Reduce Motion:** the capsule, the minimizing and the indicator change at once instead of sliding, shrinking or fading.
+- **The minimized dock is one button,** "Show tab bar", with the selected item's label as its value. The hidden items are hidden from screen readers too. While the glass dock searches, the same button goes back, with the last item's label as its value.
+- **The search field is a search field** to screen readers, and its Cancel a button (see [Search Field](/dolan/search-field#accessibility)). The action it opened from is hidden while it's open.
+- **Reduce Motion:** the capsule, the minimizing, the indicator and the search opening change at once instead of sliding, shrinking, growing or fading.
 - **Reduce Transparency and Increase Contrast** are handled by the [glass](/dolan/glass#accessibility).
 
 ## Related
 
 - [Tab Bar](/dolan/tab-bar): the same navigation, as a plain bar along the bottom edge
+- [Search Field](/dolan/search-field): the field the dock searches with
 - [Glass](/dolan/glass): the glass the dock is drawn with
 - [Routing and navigation](/guide/routing): set up the router and its routes
 - [Safe area](/guide/safe-area): the inset the dock clears

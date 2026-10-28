@@ -5304,11 +5304,29 @@ An element an `@if` adds later renders like one that was there from the start.
 
 On the iOS 27 Simulator (Lynx Explorer 4.1), a `<blur-view blur-effect="glass">` (raw, or `ui-glass`) that an `@if` adds to the page after the first frame draws nothing, its children included, though layout leaves room for it. One removed and added again does the same. A plain view, and a `blur-effect="light"` blur view, added the same way draw. Glass inside an `<overlay>` created later (a glass `ui-bottom-sheet` in an `@if`) draws, as does glass that was on the page from the first frame.
 
-The segmented control hit it too, narrowing it down. Probed with a red `glass-tint-color`: a glass blur-view that an `@if` inserted directly into a view already on screen drew nothing, whatever its size, with `ui-glass` or with the attributes written in the template, before or after its siblings. In the same place, a `blur-effect="dark"` blur view drew, and so did a glass blur-view inside a new `<view>` that the same `@if` added. `LynxUIBlurView.m` sets the `UIGlassEffect` on its `UIVisualEffectView` in `propsDidUpdate` either way, so the difference is in how the inserted view reaches UIKit.
-
 ### What we do about it
 
-Wrap glass that comes and goes in a view created with it, as the segmented control's lens does: a `<view>` takes the lens's frame, and the glass fills it (`h-full w-full absolute left-0 top-0`). Glass inside an overlay created later needs nothing, as the sheet shows. The cause, in Lynx's iOS blur view or in the renderer, isn't known.
+It was found while building the glass sheet, whose glass is in an overlay. The cause is how iOS inserts a blur view before a sibling, which is how Angular adds an `@if` block's elements, and the renderer now appends it instead: see the next section.
+
+---
+
+## On iOS, a glass `<blur-view>` at the top of an `@if`, `@switch` or `@for` block draws nothing
+
+### What you'd expect (web)
+
+An element inside a control-flow block shows up where the block is, whatever its tag.
+
+### What Lynx does
+
+On the iOS 27 Simulator in Lynx Explorer 4.1, a glass `<blur-view>` (`ui-glass`, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them, and a `light` blur view draws on iOS too (see the previous section). It happens on the first frame and on any later one.
+
+What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws.
+
+### The fix
+
+`LynxElement.insertBefore()` puts a `<blur-view>` into a parent that isn't one, on iOS, by appending it and then appending the siblings it should come before, in order (`insertHidesBlurView()` and `#appendBefore()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). The native order is the same as an insert's, reached only by appends, in the same flush, so the siblings move as any Angular move does. Covered by `lynx-element-blur-insert.test.ts`. Found with the search field, whose `@switch` picks its glass on iOS 26 and its fill before.
+
+---
 
 ---
 
@@ -5336,7 +5354,7 @@ Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host w
 
 ### What Lynx does
 
-- **`layoutchange` reports a layout relative to the LynxView**, not to the parent (lynx-website's `view.mdx`), and only for the element whose layout changed. When the whole row moves, say because content above it grew, an item whose own frame in its parent didn't change may not report again, so its last `left` is stale. Its `width` stays right.
+- **`layoutchange`'s position isn't the same on each platform**: from the page on iOS, from the parent on Android (see "`layoutchange` reports `top` and `left` from the page on iOS and from the parent on Android" below). And only an element whose layout changed reports again: when the whole row moves, say because content above it grew, an item whose own frame in its parent didn't change may not report, so a page-relative `left` goes stale. Its `width` stays right everywhere.
 - **`boundingClientRect` is current, but asynchronous** (a UI method that answers in a callback, see above), so it can't place an indicator in the same frame as a tap.
 - **Older Android puts the size in `params`**, iOS and the web in `detail`.
 
@@ -5345,3 +5363,40 @@ Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host w
 The segmented control (`segmented-control.ts` in `@blotch/ui`) measures each segment's width from `layoutchange` on the segment's own flex item, which sits in a row with no gap, and adds the widths up for the left edges. Segments of different widths and a rotated or resized control both land right, as each segment reports its new width. Until every width has arrived, the indicator takes an equal share of the track (`width: 33.33%`, `left: n × 33.33%`), which is already right for equal segments, so the first frame needs no measuring. The first placement on measured widths has no transition, so the indicator doesn't slide in from the equal share.
 
 A drag reads the pointer's `pageX`, which touch and mouse events both carry. A `touchmove` goes to the element the touch started on, so the segment that was pressed keeps receiving it as the finger crosses the others. On the web, `mousemove` goes to whichever segment is under the cursor, so every segment forwards it to the shared control. Only the distance from the press matters, never which element reports it.
+
+---
+
+## Lynx doesn't move a field the keyboard covers, and reports the keyboard differently on each platform
+
+### What you'd expect (web)
+
+A mobile browser scrolls a focused field into view above the keyboard, and `visualViewport` (or `env(keyboard-inset-height)`) says how much of the page the keyboard covers.
+
+### What Lynx does
+
+Measured in Lynx Explorer 4.1 (iOS 27 Simulator, Android 14 emulator), with an `<input>` at the bottom of the screen:
+
+- **Nothing moves.** The keyboard covers the field on both platforms. Lynx Explorer neither resizes nor pans its Lynx view.
+- **`avoid-keyboard="true"` on the `<input>`** (with `avoid-keyboard-spacing="8px"`; Android parses only a string with a unit there) moves the whole Lynx view up until the field clears the keyboard: iOS animates the root view's frame with the keyboard (`LynxKeyboardEventDispatcher.m`), so the top of the page goes off screen, as Android's `adjustPan` does. Fine for a form, wrong for a bar at the bottom, which should rise on its own while the content stays.
+- **The input's own `keyboardheightchange` event** (`detail.height`) arrives on the main thread while it's focused: as the keyboard shows, when it changes size, and with 0 as it hides. iOS sends points measured up from the bottom of the **window**. Android sends **physical pixels** measured up from the bottom of the **Lynx view**: our bundles target SDK 3.2, which turns on the `keyboardCallbackPassRelativeHeight` page config (on from 2.2), so Android reports how far the keyboard reaches into the Lynx view, and re-reports it when the view's layout changes. Lynx Explorer's 312dp keyboard arrived as 819 at 2.625x.
+- **The global `keyboardstatuschanged` event** (through `GlobalEventEmitter`, so on the background thread, relayed to Angular's main thread) carries `['on', 328]` on iOS and `['on', 312, 312]` on Android (both in points/dp), and `['off', 0]`. Both events came about 80–100 ms after `focus`; the first keyboard of a fresh simulator took 700 ms.
+- **The iOS-only `keyboard` event** sends `safeAreaBottom` of the input's own view, which is 0, so it can't stand in for the window's inset.
+- **`boundingClientRect` with `relativeTo: 'screen'`** is in window coordinates on iOS (`convertRect:toView:nil`), and relative to the window's root view on Android (`LynxUIHelper.convertRectFromUIToScreen`). Without `relativeTo`, both measure from the Lynx view.
+
+So where the keyboard's top is depends on the platform: on iOS the screen's height less the keyboard's, and on Android the Lynx view's bottom less it. The iOS app `ng build --platform ios` makes insets its Lynx view above the home indicator, so the window's measure and the view's differ by 34pt there.
+
+### What we do about it
+
+The search field reads `keyboardheightchange` (`packages/ui/src/lib/components/search-field/keyboard.ts`): it measures its host and the page on screen, works out how far the keyboard reaches over it on each platform, and rises by that, plus an 8px gap, with a transform on an inner view, so the host it measures doesn't move. In the dock, the dock measures its own host, which stays at the bottom of the page, and pads itself above the keyboard. The forms guide's advice for other inputs stands: put long forms in a `<scroll-view>`.
+
+---
+
+## `layoutchange` reports `top` and `left` from the page on iOS and from the parent on Android
+
+### What you'd expect (web)
+
+A `ResizeObserver` entry has no position, and `getBoundingClientRect()` measures from the viewport.
+
+### What Lynx does
+
+In Lynx Explorer 4.1, a 42px bar at the bottom of the screen reported `{ top: 797, bottom: 839 }` with `layoutchange` on iOS, measured from the page, and `{ top: 0, bottom: 41.9 }` on Android, measured from its parent. `width` and `height` agree. Read only the size from `layoutchange` (as the dock does for its width), and measure a position with `boundingClientRect`.

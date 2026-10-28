@@ -818,16 +818,12 @@ export class UiSegmentedControl {
     @if (control.slides()) {
       <view class="absolute bottom-0 top-0" [style]="control.frameStyle()">
         @if (control.lensShown()) {
-          <!-- The glass sits in a view of its own, made with it: on iOS, a
-               glass blur-view added to a view that's already on screen draws
-               nothing, where one added inside a new view draws. -->
-          <view class="absolute" [style]="control.lensStyle()">
-            <blur-view
-              ui-glass
-              variant="clear"
-              class="h-full w-full absolute left-0 top-0"
-            ></blur-view>
-          </view>
+          <blur-view
+            ui-glass
+            variant="clear"
+            class="absolute"
+            [style]="control.lensStyle()"
+          ></blur-view>
         }
         <view
           [class]="control.thumbClass()"

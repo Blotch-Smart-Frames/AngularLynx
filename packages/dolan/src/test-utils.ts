@@ -87,6 +87,28 @@ export const createFixture = (options: FixtureOptions = {}): Fixture => {
   };
 };
 
+/**
+ * Puts a package in `dir`'s node_modules, as installing it would: its
+ * package.json, with an entry point for `require.resolve` to find. Returns
+ * the package's folder, so a test can put a dependency in the package's own
+ * node_modules, out of the app's reach, as pnpm's layout leaves it (and npm's
+ * leaves a version that conflicts with the hoisted one).
+ */
+export const installPackage = (
+  dir: string,
+  name: string,
+  version: string,
+): string => {
+  const packageDir = join(dir, 'node_modules', name);
+  mkdirSync(packageDir, { recursive: true });
+  writeFileSync(
+    join(packageDir, 'package.json'),
+    JSON.stringify({ name, version, main: 'index.js' }),
+  );
+  writeFileSync(join(packageDir, 'index.js'), '');
+  return packageDir;
+};
+
 export const DEFAULT_CONFIG: DolanConfig = {
   aliases: {
     components: 'src/components/ui',
@@ -99,9 +121,9 @@ export const DEFAULT_CONFIG: DolanConfig = {
  * Sets the project in `dir` up for a Tailwind version as apps have it:
  * Tailwind 4 as `ng add` installs it (`tailwindcss` and `@tailwindcss/postcss`,
  * no Tailwind config), or Tailwind 3 with a `tailwind.config.ts`. Tailwind is
- * both listed and installed, so it's found by reading `package.json` or by
- * resolving the package. `testing` adds the testing library, so dolan copies
- * tests, and `dependencies` are listed as well.
+ * listed and installed, as in an app: dolan reads the installed version (see
+ * installPackage). `testing` adds the testing library, so dolan copies tests,
+ * and `dependencies` are listed as well.
  */
 export const onTailwind = (
   dir: string,
@@ -123,11 +145,7 @@ export const onTailwind = (
       },
     }),
   );
-  mkdirSync(join(dir, 'node_modules', 'tailwindcss'), { recursive: true });
-  writeFileSync(
-    join(dir, 'node_modules', 'tailwindcss', 'package.json'),
-    JSON.stringify({ name: 'tailwindcss', version: installed }),
-  );
+  installPackage(dir, 'tailwindcss', installed);
   if (version === 3) {
     writeFileSync(join(dir, 'tailwind.config.ts'), 'export default {};');
   }

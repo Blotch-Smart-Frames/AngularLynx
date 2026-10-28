@@ -49,7 +49,18 @@ export const registry: RegistryEntry[] = [
   },
   { name: 'accordion', dependencies: [] },
   { name: 'alert', dependencies: [], packages: CVA_PACKAGES },
-  { name: 'alert-dialog', dependencies: [] },
+  // The glass variant's panel is glass, and its text and buttons take the
+  // glass foreground and tint.
+  {
+    name: 'alert-dialog',
+    dependencies: ['glass'],
+    themeColors: [
+      'glass-tint',
+      'glass-tint-foreground',
+      'glass-foreground',
+      'glass-muted-foreground',
+    ],
+  },
   // The chart presets are TanStack Charts definitions drawn by <ui-chart>.
   { name: 'area-chart', dependencies: ['chart'] },
   { name: 'aspect-ratio', dependencies: [] },

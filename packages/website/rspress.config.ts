@@ -102,6 +102,7 @@ export default defineConfig({
         { text: 'Popover', link: '/dolan/popover' },
         { text: 'Glass Switch', link: '/dolan/switch#glass' },
         { text: 'Glass Slider', link: '/dolan/slider#glass' },
+        { text: 'Glass Alert Dialog', link: '/dolan/alert-dialog#glass' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

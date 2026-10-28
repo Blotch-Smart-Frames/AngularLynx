@@ -248,6 +248,14 @@ describe('UiActionSheet', () => {
     expect(host.closed).toHaveBeenCalledOnce();
   });
 
+  it("closes on Android's back button", async () => {
+    const { host, overlay } = await renderSheet();
+    await openSheet(host);
+
+    fireLynxEvent(overlay, 'requestclose');
+    expect(host.open()).toBe(false);
+  });
+
   it('stays open when the panel is tapped', async () => {
     const { host, panel } = await renderSheet();
     await openSheet(host);

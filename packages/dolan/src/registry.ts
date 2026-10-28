@@ -40,7 +40,13 @@ const GLASS_COLORS = [
 ];
 
 export const registry: RegistryEntry[] = [
-  { name: 'action-sheet', dependencies: [] },
+  // Opened from a control, the action sheet is a popover: glass on iOS 26
+  // and a Material menu on Android, whose actions take the glass colors.
+  {
+    name: 'action-sheet',
+    dependencies: ['glass', 'popover'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground'],
+  },
   { name: 'accordion', dependencies: [] },
   { name: 'alert', dependencies: [], packages: CVA_PACKAGES },
   { name: 'alert-dialog', dependencies: [] },
@@ -102,6 +108,13 @@ export const registry: RegistryEntry[] = [
   { name: 'nav-drawer', dependencies: ['icon'] },
   // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.
   { name: 'pagination', dependencies: ['icon'] },
+  // The popover is glass, placed by the menu's placement, and its content
+  // reads the glass colors.
+  {
+    name: 'popover',
+    dependencies: ['glass', 'menu'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground'],
+  },
   { name: 'progress', dependencies: [] },
   { name: 'radio-group', dependencies: [] },
   { name: 'scatter-chart', dependencies: ['chart'] },

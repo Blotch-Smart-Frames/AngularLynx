@@ -4,7 +4,7 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import {
   type MockInstance,
   afterEach,
@@ -22,6 +22,7 @@ import {
 } from '../../../test-utils/lynx-main-thread';
 import {
   UiActionSheet,
+  UiActionSheetAnchor,
   UiActionSheetCancel,
   UiActionSheetItem,
   UiActionSheetTitle,
@@ -69,6 +70,57 @@ class ActionSheetHost {
   `,
 })
 class CancelLabelHost {}
+
+/**
+ * An action sheet opened from the button that presents it.
+ */
+@Component({
+  imports: [
+    UiActionSheet,
+    UiActionSheetAnchor,
+    UiActionSheetTitle,
+    UiActionSheetItem,
+    UiActionSheetCancel,
+    LYNX_ELEMENTS,
+  ],
+  template: `
+    @if (anchored()) {
+      <view
+        class="share"
+        [uiActionSheetAnchor]="sheet"
+        (bindtap)="open.set(true)"
+      >
+        <text>Share</text>
+      </view>
+    }
+    <ui-action-sheet #sheet [(open)]="open" (closed)="closed()">
+      <ui-action-sheet-title>Delete this draft?</ui-action-sheet-title>
+      <ui-action-sheet-item (pressed)="saved()"
+        >Save Draft</ui-action-sheet-item
+      >
+      <ui-action-sheet-item variant="destructive" (pressed)="deleted()">
+        Delete Draft
+      </ui-action-sheet-item>
+      <ui-action-sheet-cancel />
+    </ui-action-sheet>
+  `,
+})
+class AnchoredHost {
+  readonly open = signal(false);
+  readonly anchored = signal(true);
+  readonly closed = vi.fn();
+  readonly saved = vi.fn();
+  readonly deleted = vi.fn();
+}
+
+/**
+ * A title on its own, outside any action sheet.
+ */
+@Component({
+  imports: [UiActionSheetTitle],
+  template: `<ui-action-sheet-title>Alone</ui-action-sheet-title>`,
+})
+class LoneTitleHost {}
 
 /**
  * The Lynx function an element's `invoke()` calls to run one of its UI
@@ -347,5 +399,265 @@ describe('UiActionSheetCancel', () => {
   it('scales down while pressed, and back on release', async () => {
     const { button } = await renderSheet();
     expectPressFeedback(button('Cancel'));
+  });
+});
+
+/**
+ * The Lynx function that runs an element's UI methods, here measuring the
+ * anchor and the popover (`boundingClientRect`) as on a phone.
+ */
+type MeasureUIMethod = {
+  __InvokeUIMethod: (
+    element: Element,
+    method: string,
+    params: Record<string, unknown>,
+    callback: (result: { code: number; data?: unknown }) => void,
+  ) => void;
+};
+
+/** Accessibility settings a test can change, as the host app would. */
+const settings = {
+  reduceMotion: signal(false),
+  reduceTransparency: signal(false),
+  increaseContrast: signal(false),
+};
+
+/**
+ * Renders the anchored sheet on a platform (none for Material), with the
+ * safe area's markers a phone's screen, the popover's content 270 by 150,
+ * and the anchor a button near the top.
+ */
+const renderAnchored = async (
+  platform: { platform: string; osVersion: string } | null = {
+    platform: 'iOS',
+    osVersion: '26.0',
+  },
+) => {
+  vi.stubGlobal('SystemInfo', platform ?? undefined);
+  vi.spyOn(
+    globalThis as unknown as MeasureUIMethod,
+    '__InvokeUIMethod',
+  ).mockImplementation((element, method, _params, callback) => {
+    if (method !== 'boundingClientRect') {
+      callback({ code: 0 });
+      return;
+    }
+    const style = element.getAttribute('style') ?? '';
+    const data = style.includes('safe-area-inset')
+      ? { left: 0, top: 0, width: 402, height: 840 }
+      : element.classList.contains('shrink-0')
+        ? { left: 0, top: 0, width: 270, height: 150 }
+        : { left: 16, top: 80, width: 80, height: 44 };
+    callback({ code: 0, data });
+  });
+  const result = await render(AnchoredHost, {
+    providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+  });
+  const query = (selector: string) =>
+    result.container.querySelector(selector) as HTMLElement | null;
+  return {
+    ...result,
+    host: result.componentRef.instance as AnchoredHost,
+    overlay: () => query('overlay')!,
+    anchor: () => query('.share')!,
+    popover: () => query('blur-view[ui-glass]'),
+    content: () => query('.shrink-0')!,
+    // A button's pressable row: the view around its label.
+    button: (label: string) => result.getByText(label).parentElement!,
+  };
+};
+
+type Anchored = Awaited<ReturnType<typeof renderAnchored>>;
+
+/**
+ * Opens the anchored sheet and waits until its popover has grown.
+ */
+const openAnchored = async (rendered: Anchored) => {
+  fireEvent.tap(rendered.anchor());
+  await vi.waitFor(() => expect(rendered.content().style.opacity).toBe('1'));
+};
+
+/**
+ * Lets Lynx's timers run: the touch check waits for the next one.
+ */
+const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+describe('UiActionSheet opened from its control', () => {
+  beforeEach(() => {
+    // The renderer warns that the components aren't Lynx elements.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('grows out of its control as Liquid Glass on iOS 26, leaving the screen undimmed', async () => {
+    const rendered = await renderAnchored();
+    await openAnchored(rendered);
+
+    const popover = rendered.popover()!;
+    expect(popover.getAttribute('blur-effect')).toBe('glass');
+    expect(popover.style.width).toBe('270px');
+    // The bottom sheet and its backdrop stay hidden.
+    expect(rendered.overlay().getAttribute('visible')).toBe('false');
+    // The control hides under the glass that grows out of it.
+    expect(rendered.anchor().style.opacity).toBe('0');
+    // Its title and actions, as iOS 26 lays them out, and no Cancel: a
+    // touch outside cancels.
+    expect(popover.contains(rendered.getByText('Delete this draft?'))).toBe(
+      true,
+    );
+    expect(rendered.getByText('Delete this draft?').classList).toContain(
+      'text-glass-muted-foreground',
+    );
+    expect(rendered.getByText('Save Draft').classList).toContain(
+      'text-glass-foreground',
+    );
+    expect(rendered.getByText('Delete Draft').classList).toContain(
+      'text-destructive',
+    );
+    expect(rendered.button('Save Draft').classList).toContain('min-h-[44px]');
+    expect(rendered.button('Save Draft').classList).toContain('justify-center');
+    expect(popover.contains(rendered.getByText('Cancel'))).toBe(false);
+  });
+
+  it('chooses an action, and closes', async () => {
+    const rendered = await renderAnchored();
+    await openAnchored(rendered);
+
+    fireEvent.tap(rendered.button('Delete Draft'));
+    expect(rendered.host.deleted).toHaveBeenCalledTimes(1);
+    expect(rendered.host.open()).toBe(false);
+    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+    await waitForUpdate();
+    expect(rendered.popover()).toBeNull();
+    expect(rendered.anchor().style.opacity).toBe('');
+    expect(rendered.host.closed).toHaveBeenCalledTimes(1);
+  });
+
+  it('lights a row up while it is pressed, rather than shrinking it', async () => {
+    const rendered = await renderAnchored();
+    await openAnchored(rendered);
+    const row = rendered.button('Save Draft');
+    const highlight = row.querySelector('.bg-glass-foreground') as HTMLElement;
+
+    fireEvent.touchstart(row);
+    await waitForUpdate();
+    expect(highlight.style.opacity).toBe('0.1');
+    expect(row.style.transform).toBe('');
+    fireEvent.touchend(row);
+    await waitForUpdate();
+    expect(highlight.style.opacity).toBe('0');
+    fireEvent.mousedown(row);
+    await waitForUpdate();
+    expect(highlight.style.opacity).toBe('0.1');
+    fireLynxEvent(row, 'mouseleave');
+    await waitForUpdate();
+    expect(highlight.style.opacity).toBe('0');
+  });
+
+  it('closes on a touch outside it, without counting one on its control', async () => {
+    const rendered = await renderAnchored();
+    await openAnchored(rendered);
+
+    // A touch on the control that presented it isn't outside it.
+    fireLynxEvent(rendered.anchor(), 'touchstart', {}, 'bindEvent');
+    fireLynxEvent(rendered.popover()!, 'touchstart', {}, 'global-bindEvent');
+    await nextTimer();
+    fireLynxEvent(rendered.anchor(), 'mousedown', {}, 'bindEvent');
+    fireLynxEvent(rendered.popover()!, 'mousedown', {}, 'global-bindEvent');
+    await nextTimer();
+    expect(rendered.host.open()).toBe(true);
+
+    fireLynxEvent(rendered.popover()!, 'touchstart', {}, 'global-bindEvent');
+    await nextTimer();
+    expect(rendered.host.open()).toBe(false);
+  });
+
+  it('is a Material 3 menu beside its control on Android', async () => {
+    const rendered = await renderAnchored(null);
+    await openAnchored(rendered);
+
+    const popover = rendered.popover()!;
+    expect(popover.style.width).toBe('280px');
+    expect(popover.classList).toContain('bg-secondary');
+    // Beside the control, which stays in view.
+    expect(rendered.anchor().style.opacity).toBe('');
+    expect(rendered.button('Save Draft').classList).toContain('min-h-[48px]');
+    expect(rendered.button('Save Draft').classList).not.toContain(
+      'justify-center',
+    );
+    expect(rendered.getByText('Save Draft').classList).toContain('text-[16px]');
+    expect(
+      rendered.getByText('Delete this draft?').parentElement?.classList,
+    ).toContain('px-3');
+  });
+
+  it('rises from the bottom before iOS 26, as iPhone action sheets did', async () => {
+    const rendered = await renderAnchored({
+      platform: 'iOS',
+      osVersion: '18.5',
+    });
+    fireEvent.tap(rendered.anchor());
+    for (let i = 0; i < 3; i++) await waitForUpdate();
+
+    expect(rendered.overlay().getAttribute('visible')).toBe('true');
+    expect(rendered.popover()).toBeNull();
+    expect(rendered.getByText('Save Draft').classList).toContain(
+      'text-primary',
+    );
+    expect(rendered.anchor().style.opacity).toBe('');
+  });
+
+  it('rises from the bottom again once its control is gone', async () => {
+    const rendered = await renderAnchored();
+    rendered.host.anchored.set(false);
+    await waitForUpdate();
+
+    rendered.host.open.set(true);
+    for (let i = 0; i < 3; i++) await waitForUpdate();
+    expect(rendered.overlay().getAttribute('visible')).toBe('true');
+    expect(rendered.popover()).toBeNull();
+    // Its actions are back in the sheet's group, with Cancel below.
+    expect(rendered.button('Save Draft').classList).toContain('border-t');
+    expect(rendered.getByText('Cancel')).toBeTruthy();
+  });
+
+  it("doesn't report a close when its control comes or goes while it's closed", async () => {
+    const rendered = await renderAnchored();
+    // Opened and closed from the bottom once...
+    rendered.host.anchored.set(false);
+    await waitForUpdate();
+    rendered.host.open.set(true);
+    for (let i = 0; i < 3; i++) await waitForUpdate();
+    rendered.host.open.set(false);
+    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+
+    // ...then given its control back, closed.
+    rendered.host.anchored.set(true);
+    await waitForUpdate();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(rendered.host.closed).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('UiActionSheet accessibility', () => {
+  it('reads its title as a heading and its actions as buttons', async () => {
+    const { getByText } = await renderSheet();
+    expect(getByText('Pick').getAttribute('accessibility-traits')).toBe(
+      'header',
+    );
+    expect(getByText('Share').getAttribute('accessibility-traits')).toBe(
+      'button',
+    );
+    expect(getByText('Cancel').getAttribute('accessibility-traits')).toBe(
+      'button',
+    );
+  });
+
+  it('draws a title outside an action sheet as in one', async () => {
+    const { getByText } = await render(LoneTitleHost);
+    expect(getByText('Alone').classList).toContain('text-muted-foreground');
   });
 });

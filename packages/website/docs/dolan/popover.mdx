@@ -1,0 +1,155 @@
+# Popover
+
+Show a little content from the control that opens it, in Liquid Glass on iOS 26, without taking over the screen.
+
+<Go example="ui-popover" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add popover
+```
+
+```typescript
+import {
+  UiPopover,
+  UiPopoverContent,
+  UiPopoverTrigger,
+} from '../components/ui/popover';
+```
+
+:::tip
+This also adds [Glass](/dolan/glass), which draws the popover, and [Menu](/dolan/menu), whose placement it shares.
+:::
+
+## Usage
+
+```typescript
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiGlass } from '../components/ui/glass';
+import { UiIcon } from '../components/ui/icon';
+import {
+  UiPopover,
+  UiPopoverContent,
+  UiPopoverTrigger,
+} from '../components/ui/popover';
+
+@Component({
+  selector: 'app-trip-header',
+  imports: [
+    LYNX_ELEMENTS,
+    UiGlass,
+    UiIcon,
+    UiPopover,
+    UiPopoverContent,
+    UiPopoverTrigger,
+  ],
+  template: `
+    <ui-popover>
+      <blur-view
+        ui-glass
+        uiPopoverTrigger
+        shape="circle"
+        class="h-11 w-11 items-center flex justify-center"
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        accessibility-label="About this trip"
+      >
+        <ui-icon name="info" />
+      </blur-view>
+
+      <ui-popover-content class="w-64">
+        <text class="text-base font-semibold text-glass-foreground">
+          Kyoto, April 2 to 9
+        </text>
+        <text class="text-sm text-glass-muted-foreground">
+          Seven nights, three temples a day.
+        </text>
+      </ui-popover-content>
+    </ui-popover>
+  `,
+})
+export class TripHeader {}
+```
+
+- **`uiPopoverTrigger` marks the element that opens it.** A tap on it opens the popover, and closes it again where the popover opens beside it. Anything can be the trigger: a glass button, a [Button](/dolan/button), or your own view.
+- **`<ui-popover-content>` is the popover.** Put any Lynx elements in it: text, buttons, a stepper. It's a padded column; its `class` sets its width, padding and spacing.
+- **Color text with `text-glass-foreground` and `text-glass-muted-foreground`.** They stay legible on glass and on Android's solid surface.
+- **A touch anywhere else closes it, and still does what it would have.** Nothing dims and nothing blocks the screen, so one tap can close the popover and press the button under your finger.
+- **It stays on screen and inside the safe area.** Near the bottom of the screen it opens upward, and in the right half it lines up with the trigger's right edge.
+- **`[(open)]` opens and closes it from code**, as with [Dialog](/dolan/dialog).
+
+### What each platform draws
+
+| Platform                                           | What you get                                                                  |
+| -------------------------------------------------- | ----------------------------------------------------------------------------- |
+| iOS 26 and later                                   | Liquid Glass that grows out of the trigger, over it, and shrinks back into it |
+| iOS 15 to 25                                       | The frosted material beside the trigger, with an arrow pointing at it         |
+| Android                                            | A Material 3 menu surface that unfolds below the trigger, solid with a shadow |
+| Android, with `provideGlass({ android: 'glass' })` | Liquid Glass, as on iOS 26                                                    |
+| [Web preview](/guide/glossary#web-preview)         | Liquid Glass, as on iOS 26                                                    |
+
+- **iOS 26** grows a popover out of its source control and hides the control until it closes. The popover is one glass shape whose frame grows, so the trigger seems to open into it.
+- **Before iOS 26**, Apple's guidelines sent popovers on iPhone to a sheet. This one stays a floating panel by its trigger, as UIKit drew a popover when the app kept it one, so the same code doesn't turn into a sheet that covers the screen.
+- **On Android**, Material 3 has no popover. Its menu surface is the container it anchors to a control for content of any kind. A rich tooltip holds only a title, a few lines of text and up to two text buttons, so it can't take the controls a popover can.
+
+### Without a trigger
+
+Leave out `uiPopoverTrigger` and the popover opens from `<ui-popover>`'s own element, from code:
+
+```angular-html
+<ui-popover [(open)]="showHint">
+  <text class="text-sm text-muted-foreground">Swipe a trip to archive it</text>
+  <ui-popover-content>
+    <text class="text-sm text-glass-foreground">Try it on Kyoto.</text>
+  </ui-popover-content>
+</ui-popover>
+```
+
+## API
+
+### UiPopover
+
+| Input  | Type      | Default | Description                                       |
+| ------ | --------- | ------- | ------------------------------------------------- |
+| `open` | `boolean` | `false` | Whether the popover is open. Supports `[(open)]`. |
+
+| Output       | Type      | Description                                                      |
+| ------------ | --------- | ---------------------------------------------------------------- |
+| `openChange` | `boolean` | Emits when the trigger or a touch outside it opens or closes it. |
+| `closed`     | `void`    | Emits after the close animation finishes.                        |
+
+| Method     | Description                  |
+| ---------- | ---------------------------- |
+| `toggle()` | Opens or closes the popover. |
+| `close()`  | Closes the popover.          |
+
+### UiPopoverTrigger
+
+Selector: `[uiPopoverTrigger]`. Put it on the element inside `<ui-popover>` that opens it. A touch on it doesn't count as one outside the popover, so tapping it again closes the popover rather than reopening it.
+
+### UiPopoverContent
+
+| Input   | Type     | Default | Description                                                         |
+| ------- | -------- | ------- | ------------------------------------------------------------------- |
+| `class` | `string` | `''`    | Classes for the content's column, merged with `flex-col gap-1 p-4`. |
+
+### Theme colors
+
+The content's text reads `glass-foreground` and `glass-muted-foreground`. See [Glass](/dolan/glass#theme-colors).
+
+## Accessibility
+
+- **When the popover opens, a screen reader moves into it.** The rest of the screen stays reachable, as it does for touch. Activating something else there closes the popover, as a tap would.
+- **Name an icon-only trigger** with `accessibility-label`, as in the example.
+- **Reduce Motion:** the popover doesn't grow or shrink. It appears in place, and its content fades in.
+- **Reduce Transparency and Increase Contrast** apply as on all [glass](/dolan/glass#accessibility).
+- **Android's back button doesn't close it.** It isn't a window over the app, so the button goes back as usual.
+
+## Related
+
+- [Action Sheet](/dolan/action-sheet#from-its-control): choices about an action, opened from its control the same way
+- [Menu](/dolan/menu): a list of actions that grows out of its button
+- [Glass](/dolan/glass): the material the popover is drawn with
+- [Dialogs and overlays](/guide/overlays): how overlays work and which one to use

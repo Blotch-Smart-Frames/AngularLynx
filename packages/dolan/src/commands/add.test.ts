@@ -151,13 +151,15 @@ describe('addCommand', () => {
   });
 
   it('surfaces auto-added transitive dependencies', async () => {
-    // button depends on spinner, and spinner on icon (registry.ts) — requesting
-    // only "button" should pull both in automatically and announce them.
+    // button depends on spinner, glass and icon, and spinner and glass on
+    // icon (registry.ts) — requesting only "button" should pull them all in
+    // automatically and announce them.
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       uiSource: {
         button: { 'button.ts': 'export const Button = {};' },
         spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        glass: { 'glass.ts': 'export const Glass = {};' },
         icon: { 'icon.ts': 'export const Icon = {};' },
       },
     });
@@ -177,6 +179,7 @@ describe('addCommand', () => {
     expect(
       readInstalledFile(fixture.dir, 'spinner', 'spinner.ts'),
     ).toBeDefined();
+    expect(readInstalledFile(fixture.dir, 'glass', 'glass.ts')).toBeDefined();
     expect(readInstalledFile(fixture.dir, 'icon', 'icon.ts')).toBeDefined();
   });
 
@@ -186,13 +189,14 @@ describe('addCommand', () => {
       uiSource: {
         button: { 'button.ts': 'export const Button = {};' },
         spinner: { 'spinner.ts': 'export const Spinner = {};' },
+        glass: { 'glass.ts': 'export const Glass = {};' },
         icon: { 'icon.ts': 'export const Icon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const { addCommand } = await import('./add');
-    await addCommand(['button', 'spinner', 'icon']);
+    await addCommand(['button', 'spinner', 'glass', 'icon']);
 
     const p = await import('@clack/prompts');
     expect(p.log.info).not.toHaveBeenCalledWith(

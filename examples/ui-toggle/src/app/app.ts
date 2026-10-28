@@ -1,15 +1,28 @@
-import { Component, signal } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { Component, computed, inject, signal } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxSystemInfo,
+} from '@blotch/angular-lynx';
+import { injectGlassDesign } from '../components/ui/glass';
+import { UiIcon } from '../components/ui/icon';
+import { UiLabel } from '../components/ui/label';
 import {
   UiToggle,
   UiToggleGroup,
   UiToggleGroupItem,
 } from '../components/ui/toggle';
-import { UiLabel } from '../components/ui/label';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, UiToggle, UiToggleGroup, UiToggleGroupItem, UiLabel],
+  imports: [
+    LYNX_ELEMENTS,
+    UiToggle,
+    UiToggleGroup,
+    UiToggleGroupItem,
+    UiLabel,
+    UiIcon,
+  ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
       <view class="flex-col gap-6 p-6 flex">
@@ -18,6 +31,65 @@ import { UiLabel } from '../components/ui/label';
           A two-state button that can be toggled on or off, with support for
           groups.
         </text>
+
+        <!-- Segmented: the platform's segmented control. On iOS 26 the thumb
+             lifts into Liquid Glass as it slides, and can be dragged; before
+             iOS 26 it's iOS 13's raised thumb, and on Android Material 3
+             Expressive's connected button group. -->
+        <view class="flex-col gap-3 flex">
+          <text class="text-lg font-semibold text-foreground">Segmented</text>
+          <text class="text-xs text-muted-foreground">{{ status() }}</text>
+          <ui-toggle-group variant="segmented" [(value)]="range">
+            @for (option of ranges; track option) {
+              <ui-toggle-group-item
+                [value]="option"
+                [accessibility-label]="option"
+              >
+                <text class="text-[13px] text-foreground">{{ option }}</text>
+              </ui-toggle-group-item>
+            }
+          </ui-toggle-group>
+          <text class="text-xs text-muted-foreground">
+            Range: {{ range() }}
+          </text>
+
+          <ui-label>Segments of different widths</ui-label>
+          <ui-toggle-group variant="segmented" [(value)]="mailbox">
+            <ui-toggle-group-item value="all" accessibility-label="All">
+              <text class="text-[13px] text-foreground">All</text>
+            </ui-toggle-group-item>
+            <ui-toggle-group-item value="unread" accessibility-label="Unread">
+              <text class="text-[13px] text-foreground">Unread</text>
+            </ui-toggle-group-item>
+            <ui-toggle-group-item
+              value="flagged"
+              class="flex-[2]"
+              accessibility-label="Flagged and important"
+            >
+              <text class="text-[13px] text-foreground">
+                Flagged and important
+              </text>
+            </ui-toggle-group-item>
+          </ui-toggle-group>
+
+          <ui-label
+            >Several at once: each pressed segment has its thumb</ui-label
+          >
+          <ui-toggle-group
+            variant="segmented"
+            type="multiple"
+            [(value)]="style"
+          >
+            @for (format of formats; track format.value) {
+              <ui-toggle-group-item
+                [value]="format.value"
+                [accessibility-label]="format.label"
+              >
+                <ui-icon [name]="format.icon" size="sm" />
+              </ui-toggle-group-item>
+            }
+          </ui-toggle-group>
+        </view>
 
         <!-- Single toggle -->
         <view class="flex-col gap-2 flex">
@@ -132,6 +204,32 @@ import { UiLabel } from '../components/ui/label';
   `,
 })
 export class App {
+  readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #system = inject(LynxSystemInfo);
+  readonly #design = injectGlassDesign();
+
+  readonly ranges = ['Day', 'Week', 'Month', 'Year'];
+  readonly range = signal<string[]>(['Week']);
+  readonly mailbox = signal<string[]>(['all']);
+  readonly formats = [
+    { value: 'bold', label: 'Bold', icon: 'bold' },
+    { value: 'quote', label: 'Quote', icon: 'quote' },
+    { value: 'list', label: 'List', icon: 'list' },
+    { value: 'code', label: 'Code', icon: 'code' },
+  ] as const;
+  readonly style = signal<string[]>(['bold']);
+
+  /** What the segmented controls draw here, and the settings they follow. */
+  readonly status = computed(() => {
+    const on = (value: boolean) => (value ? 'on' : 'off');
+    const os = `${this.#system.platform} ${this.#system.osVersion}`.trim();
+    return [
+      `Design: ${this.#design()} on ${os}`,
+      `Reduce Motion: ${on(this.#settings.reduceMotion())}`,
+      `Reduce Transparency: ${on(this.#settings.reduceTransparency())}`,
+    ].join(' · ');
+  });
+
   bold = signal(false);
   italic = signal(false);
   underline = signal(false);

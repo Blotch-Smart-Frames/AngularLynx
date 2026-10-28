@@ -1,13 +1,16 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, viewChild } from '@angular/core';
 import {
   fireEvent,
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it } from 'vitest';
+import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { UiIcon } from '../icon/icon';
+import { ICON_LIGHT_COLORS, UI_ICON_COLOR } from '../icon/icon-theme';
 import {
+  type ToggleGroupVariant,
   type ToggleSize,
   type ToggleVariant,
   UiToggle,
@@ -61,9 +64,10 @@ class ToggleHost {
 class ToggleGroupHost {
   readonly type = signal<'single' | 'multiple'>('single');
   readonly align = signal<string[]>([]);
-  readonly variant = signal<ToggleVariant>('default');
+  readonly variant = signal<ToggleGroupVariant>('default');
   readonly size = signal<ToggleSize>('default');
   readonly disabled = signal(false);
+  readonly group = viewChild.required(UiToggleGroup);
 }
 
 /**
@@ -264,6 +268,14 @@ describe('UiToggleGroup', () => {
     expect(host.align()).toEqual([]);
   });
 
+  it("ignores toggle() from code while it's disabled", async () => {
+    const { host } = await renderGroup();
+    host.disabled.set(true);
+    await waitForUpdate();
+    host.group().toggle('left');
+    expect(host.align()).toEqual([]);
+  });
+
   it("styles every item with the group's variant and size, and its own class", async () => {
     const { host, item } = await renderGroup();
     expect(item('Left').classList).toContain('h-10');
@@ -289,5 +301,281 @@ describe('UiToggleGroup', () => {
     host.disabled.set(true);
     await waitForUpdate();
     expectNoPressFeedback(item('Center'));
+  });
+});
+
+@Component({
+  imports: [UiToggleGroup, UiToggleGroupItem, UiIcon, LYNX_ELEMENTS],
+  template: `
+    <ui-toggle-group
+      [variant]="variant()"
+      [type]="type()"
+      [value]="range()"
+      (valueChange)="range.set($event)"
+      [disabled]="disabled()"
+    >
+      @for (option of options(); track option) {
+        <ui-toggle-group-item
+          [value]="option"
+          [accessibility-label]="option"
+          [class]="option === 'Month' ? 'flex-[2]' : ''"
+          ><text class="text-foreground">{{
+            option
+          }}</text></ui-toggle-group-item
+        >
+      }
+      <ui-toggle-group-item value="Star"
+        ><ui-icon name="star"
+      /></ui-toggle-group-item>
+    </ui-toggle-group>
+  `,
+})
+class SegmentedGroupHost {
+  readonly variant = signal<ToggleGroupVariant>('segmented');
+  readonly type = signal<'single' | 'multiple'>('single');
+  readonly range = signal<string[]>(['Week']);
+  readonly options = signal(['Day', 'Week', 'Month']);
+  readonly disabled = signal(false);
+}
+
+/**
+ * A group inside something that colors its icons, such as glass.
+ */
+@Component({
+  imports: [UiToggleGroup, UiToggleGroupItem, UiIcon, LYNX_ELEMENTS],
+  providers: [
+    { provide: UI_ICON_COLOR, useValue: signal('var(--primary)').asReadonly() },
+  ],
+  template: `
+    <ui-toggle-group [variant]="variant()">
+      <ui-toggle-group-item value="star"
+        ><ui-icon name="star"
+      /></ui-toggle-group-item>
+    </ui-toggle-group>
+  `,
+})
+class TintedGroupHost {
+  readonly variant = signal<ToggleGroupVariant>('default');
+}
+
+/** Accessibility settings a test can change, as the host app would. */
+const settings = {
+  reduceMotion: signal(false),
+  reduceTransparency: signal(false),
+  increaseContrast: signal(false),
+};
+
+const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+const ANDROID = { platform: 'Android', osVersion: '15' };
+
+describe('UiToggleGroup, segmented', () => {
+  // The indicator's and the icon's selectors aren't Lynx elements, so the
+  // renderer falls back to a <view> for them and warns.
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    settings.reduceMotion.set(false);
+  });
+
+  const renderSegmented = async (
+    platform: { platform: string; osVersion: string } = IOS_26,
+  ) => {
+    vi.stubGlobal('SystemInfo', platform);
+    const result = await render(SegmentedGroupHost, {
+      providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+    });
+    /**
+     * An item's own view: around its label, or around the star icon.
+     */
+    const item = (label: string) =>
+      label === 'Star'
+        ? result.container.querySelector('svg')!.parentElement!.parentElement!
+        : viewOf(result.getByText(label));
+    /**
+     * An item's host, the track's flex item.
+     */
+    const slot = (label: string) => item(label).parentElement!;
+    const track = () => slot('Day').parentElement!;
+    /**
+     * The indicator's frame, which moves between the items.
+     */
+    const frame = () =>
+      track().querySelector<HTMLElement>('.h-full .bottom-0.top-0');
+    const measure = async () => {
+      for (const label of ['Day', 'Week', 'Month', 'Star']) {
+        fireEvent.layoutchange(slot(label), {
+          detail: { width: label === 'Month' ? 160 : 80 },
+        });
+      }
+      await waitForUpdate();
+    };
+    return {
+      ...result,
+      host: result.componentRef.instance as SegmentedGroupHost,
+      item,
+      slot,
+      track,
+      frame,
+      measure,
+      tap: async (label: string) => {
+        fireEvent.tap(item(label));
+        await waitForUpdate();
+      },
+    };
+  };
+
+  it("draws the platform's segmented control, its items sharing the track", async () => {
+    const { track, slot, item, frame } = await renderSegmented();
+    expect(track().classList).toContain('rounded-full');
+    expect(track().classList).toContain('bg-muted');
+    expect(slot('Day').classList).toContain('flex-1');
+    // An item's own class sizes its slot too.
+    expect(slot('Month').classList).toContain('flex-[2]');
+    expect(slot('Month').classList).not.toContain('flex-1');
+    expect(item('Day').classList).toContain('justify-center');
+    expect(frame()).not.toBeNull();
+  });
+
+  it('keeps one item selected: tapping it again leaves it selected', async () => {
+    const { host, tap } = await renderSegmented();
+    await tap('Day');
+    expect(host.range()).toEqual(['Day']);
+    await tap('Day');
+    expect(host.range()).toEqual(['Day']);
+  });
+
+  it('marks the selected item selected for screen readers', async () => {
+    const { getByRole, tap } = await renderSegmented();
+    expect(getByRole('button', { name: 'Week', selected: true })).toBeTruthy();
+    expect(getByRole('button', { name: 'Day', selected: false })).toBeTruthy();
+    await tap('Day');
+    expect(getByRole('button', { name: 'Day', selected: true })).toBeTruthy();
+  });
+
+  it('moves the indicator to the item it was dragged to', async () => {
+    const { host, item, frame, measure } = await renderSegmented();
+    await measure();
+    expect(frame()!.style.left).toBe('80px');
+
+    fireEvent.touchstart(item('Week'), { touches: [{ pageX: 120 }] });
+    fireEvent.touchmove(item('Week'), { touches: [{ pageX: 220 }] });
+    fireEvent.touchend(item('Week'));
+    // Lynx may send a tap as the finger lifts: the drag chose already.
+    fireEvent.tap(item('Week'));
+    await waitForUpdate();
+    expect(host.range()).toEqual(['Month']);
+    expect(frame()!.style.left).toBe('160px');
+    expect(frame()!.style.width).toBe('160px');
+  });
+
+  it('lets go of a drag the touch is taken from, or the mouse leaves', async () => {
+    const { host, item, track, frame, measure } = await renderSegmented();
+    await measure();
+
+    fireEvent.touchstart(item('Week'), { touches: [{ pageX: 120 }] });
+    fireEvent.touchmove(item('Week'), { touches: [{ pageX: 220 }] });
+    fireEvent.touchcancel(item('Week'));
+    await waitForUpdate();
+    expect(frame()!.style.left).toBe('80px');
+
+    fireEvent.mousedown(item('Week'), { pageX: 120 });
+    fireEvent.mousemove(item('Week'), { pageX: 220 });
+    fireLynxEvent(item('Week'), 'mouseleave');
+    await waitForUpdate();
+    expect(frame()!.style.left).toBe('180px');
+    fireLynxEvent(track(), 'mouseleave');
+    await waitForUpdate();
+    expect(frame()!.style.left).toBe('80px');
+
+    fireEvent.mousedown(item('Week'), { pageX: 120 });
+    fireEvent.mousemove(item('Day'), { pageX: 20 });
+    fireEvent.mouseup(item('Day'));
+    await waitForUpdate();
+    expect(host.range()).toEqual(['Day']);
+  });
+
+  it("ignores touches while it's disabled", async () => {
+    const { host, item, frame, measure } = await renderSegmented();
+    await measure();
+    host.disabled.set(true);
+    await waitForUpdate();
+    fireEvent.touchstart(item('Week'), { touches: [{ pageX: 120 }] });
+    fireEvent.touchmove(item('Week'), { touches: [{ pageX: 220 }] });
+    fireEvent.touchend(item('Week'));
+    fireEvent.tap(item('Day'));
+    await waitForUpdate();
+    expect(host.range()).toEqual(['Week']);
+    expect(frame()!.style.left).toBe('80px');
+  });
+
+  it('gives each pressed item its own thumb in a multiple selection', async () => {
+    const { host, item, frame, tap } = await renderSegmented();
+    host.type.set('multiple');
+    await waitForUpdate();
+    expect(frame()).toBeNull();
+    expect(item('Week').classList).toContain('bg-background');
+
+    await tap('Day');
+    expect(host.range()).toEqual(['Week', 'Day']);
+    expect(item('Day').classList).toContain('bg-background');
+    await tap('Day');
+    expect(host.range()).toEqual(['Week']);
+  });
+
+  it("is Material's connected button group on Android, its icons in the fill's content color", async () => {
+    const { host, item, getByText, container, tap } =
+      await renderSegmented(ANDROID);
+    expect(item('Week').classList).toContain('bg-primary');
+    expect(item('Week').style.transition).toContain('background-color');
+    expect(item('Day').classList).toContain('bg-secondary');
+    const star = () =>
+      container.querySelector('svg')!.getAttribute('content') ?? '';
+    expect(star()).toContain(ICON_LIGHT_COLORS['secondary-foreground']);
+
+    await tap('Star');
+    expect(host.range()).toEqual(['Star']);
+    expect(star()).toContain(ICON_LIGHT_COLORS['primary-foreground']);
+
+    // A press shows Material's state layer.
+    fireEvent.touchstart(item('Day'), { touches: [{ pageX: 20 }] });
+    await waitForUpdate();
+    expect(item('Day').querySelector('.opacity-10')).not.toBeNull();
+    fireEvent.touchend(item('Day'));
+    await waitForUpdate();
+    expect(item('Day').querySelector('.opacity-10')).toBeNull();
+    expect(getByText('Day')).toBeTruthy();
+  });
+
+  it('leaves an icon the color around the group in the other variants', async () => {
+    vi.stubGlobal('SystemInfo', IOS_26);
+    const tinted = await render(TintedGroupHost);
+    const star = () =>
+      tinted.container.querySelector('svg')!.getAttribute('content') ?? '';
+    expect(star()).toContain(ICON_LIGHT_COLORS['primary']);
+
+    // A segmented control on iOS leaves it alone too.
+    (tinted.componentRef.instance as TintedGroupHost).variant.set('segmented');
+    await waitForUpdate();
+    expect(star()).toContain(ICON_LIGHT_COLORS['primary']);
+    tinted.unmount();
+
+    // With nothing around it, an icon takes its own default.
+    const plain = await renderSegmented();
+    expect(
+      plain.container.querySelector('svg')!.getAttribute('content'),
+    ).toContain(ICON_LIGHT_COLORS['foreground']);
+  });
+
+  it('goes back to the toggle look when the variant changes', async () => {
+    const { host, item, frame } = await renderSegmented();
+    host.variant.set('outline');
+    await waitForUpdate();
+    expect(frame()).toBeNull();
+    expect(item('Week').classList).toContain('border-border');
+    expect(item('Week').classList).toContain('bg-accent');
   });
 });

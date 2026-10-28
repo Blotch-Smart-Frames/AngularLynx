@@ -19,6 +19,10 @@ import {
 } from '../components/ui/tabs';
 ```
 
+:::tip
+Tabs depends on `segmented-control`, which draws the segmented variant and builds on [Glass](/dolan/glass) and [Icon](/dolan/icon). `dolan add` installs them automatically.
+:::
+
 ## Usage
 
 ```typescript title="src/app/app.ts"
@@ -58,6 +62,29 @@ export class App {
 - Set a starting `value`. With the default `''`, no tab is active and every panel is hidden.
 - Triggers wrap their content in `<text>`, so pass plain text.
 - The tab bar hugs its triggers instead of filling the width.
+
+### Segmented control
+
+Switch between closely related views with the platform's segmented control:
+
+```angular-html
+<ui-tabs [(value)]="view">
+  <ui-tabs-list variant="segmented">
+    <ui-tabs-trigger value="photos">Photos</ui-tabs-trigger>
+    <ui-tabs-trigger value="albums">Albums</ui-tabs-trigger>
+    <ui-tabs-trigger value="people">People</ui-tabs-trigger>
+  </ui-tabs-list>
+  <ui-tabs-content value="photos">…</ui-tabs-content>
+  <ui-tabs-content value="albums">…</ui-tabs-content>
+  <ui-tabs-content value="people">…</ui-tabs-content>
+</ui-tabs>
+```
+
+- **A thumb slides to the tab you tap,** or follows your finger when you drag it, and the panel switches where you let go.
+- **On iOS 26 the thumb lifts into Liquid Glass** while it moves, as UIKit's segmented control does. Before iOS 26 it's the control of iOS 13 to 18, and on Android Material 3 Expressive's connected button group. See [Toggle](/dolan/toggle#segmented-control) for what each platform draws.
+- **It fills the width it's given,** and the tabs share it. `class="flex-[2]"` on a trigger makes it wider.
+
+Apple's guidelines suggest a segmented control for views that belong together, and a [tab bar](/dolan/tab-bar) for separate sections of an app. Keep it to about five tabs on a phone.
 
 ### Without a signal
 
@@ -105,7 +132,19 @@ No outputs.
 
 No outputs.
 
-All other sub-components (`UiTabsList`) accept `class`.
+### UiTabsList
+
+| Input     | Type                       | Default     | Description                                                  |
+| --------- | -------------------------- | ----------- | ------------------------------------------------------------ |
+| `variant` | `'default' \| 'segmented'` | `'default'` | The tab row, or the [segmented control](#segmented-control). |
+| `class`   | `string`                   | `''`        | Extra Tailwind classes for the row.                          |
+
+No outputs. The file also exports the `TabsListVariant` type.
+
+## Accessibility
+
+- **The list is a tab bar** to VoiceOver, which reads each trigger as a tab and the selected one as selected.
+- **Reduce Motion:** panels appear without sliding in, and the segmented control's thumb jumps instead of sliding or lifting into glass.
 
 ## Related
 

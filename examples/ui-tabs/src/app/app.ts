@@ -1,5 +1,10 @@
-import { Component } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { Component, computed, inject, signal } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  LynxSystemInfo,
+} from '@blotch/angular-lynx';
+import { injectGlassDesign } from '../components/ui/glass';
 import {
   UiTabs,
   UiTabsList,
@@ -35,6 +40,38 @@ import {
         <text class="text-sm text-muted-foreground">
           A set of layered sections of content, known as tab panels.
         </text>
+
+        <!-- Segmented: the platform's segmented control, for switching
+             between closely related views. On iOS 26 the thumb lifts into
+             Liquid Glass as it slides, and can be dragged across the tabs. -->
+        <view class="flex-col gap-3 flex">
+          <text class="text-lg font-semibold text-foreground">Segmented</text>
+          <text class="text-xs text-muted-foreground">{{ status() }}</text>
+          <ui-tabs [(value)]="view">
+            <ui-tabs-list variant="segmented">
+              <ui-tabs-trigger value="photos">Photos</ui-tabs-trigger>
+              <ui-tabs-trigger value="albums">Albums</ui-tabs-trigger>
+              <ui-tabs-trigger value="people">People</ui-tabs-trigger>
+            </ui-tabs-list>
+            <ui-tabs-content value="photos">
+              <text class="text-sm text-muted-foreground">
+                1,204 photos, newest first.
+              </text>
+            </ui-tabs-content>
+            <ui-tabs-content value="albums">
+              <text class="text-sm text-muted-foreground">
+                Recents, Favorites and 12 of your own.
+              </text>
+            </ui-tabs-content>
+            <ui-tabs-content value="people">
+              <text class="text-sm text-muted-foreground">
+                38 people and 4 pets.
+              </text>
+            </ui-tabs-content>
+          </ui-tabs>
+        </view>
+
+        <text class="text-lg font-semibold text-foreground">Default</text>
 
         <!-- Basic tabs -->
         <ui-tabs value="account">
@@ -145,4 +182,21 @@ import {
     </scroll-view>
   `,
 })
-export class App {}
+export class App {
+  readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #system = inject(LynxSystemInfo);
+  readonly #design = injectGlassDesign();
+
+  readonly view = signal('photos');
+
+  /** What the segmented control draws here, and the settings it follows. */
+  readonly status = computed(() => {
+    const on = (value: boolean) => (value ? 'on' : 'off');
+    const os = `${this.#system.platform} ${this.#system.osVersion}`.trim();
+    return [
+      `Design: ${this.#design()} on ${os}`,
+      `Reduce Motion: ${on(this.#settings.reduceMotion())}`,
+      `Reduce Transparency: ${on(this.#settings.reduceTransparency())}`,
+    ].join(' · ');
+  });
+}

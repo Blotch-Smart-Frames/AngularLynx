@@ -5254,3 +5254,55 @@ Native Lynx recognizes long presses itself. `@lynx-js/web-core` (0.26) has no re
 ### The fix
 
 On the web, an element that gets a `longpress` listener recognizes long presses from its own touch and mouse events (`WebLongPress` in `packages/runtime/src/lib/lynx-element/web-long-press.ts`): a press with the main button or a finger, held 500ms without moving more than 10px, runs its `longpress` listeners with the press's position in `detail`, as native Lynx does. The browser's `click` when the press ends, which web-core turns into `tap`, is dropped for any element, as native Lynx sends no tap after a long press.
+
+---
+
+## On iOS, a glass `<blur-view>` added to a view that's already on screen draws nothing
+
+### What you'd expect (parity with the web and with glass drawn on the first frame)
+
+A `<blur-view blur-effect="glass">` that an `@if` adds later draws Liquid Glass, as one in the first frame does.
+
+### What Lynx does
+
+Checked in Lynx Explorer 4.1 on the iOS 27 Simulator, with a red `glass-tint-color` to make it obvious. A glass blur-view that an `@if` inserted directly into a view already on screen drew nothing at all, whatever its size, with `ui-glass` or with the attributes written in the template, before or after its siblings. In the same place, a `blur-effect="dark"` blur-view drew, a plain `<view>` drew, a glass blur-view rendered with the first frame drew, and a glass blur-view inside a new `<view>` that the same `@if` added drew too. No error is logged. `LynxUIBlurView.m` sets the `UIGlassEffect` on its `UIVisualEffectView` in `propsDidUpdate`, the same for both cases, so the difference is somewhere in how the inserted view reaches UIKit.
+
+### What we do about it
+
+Wrap glass that comes and goes in a view created with it. The segmented control's lens is a `<view>` with the lens's frame, and the glass fills it (`h-full w-full absolute left-0 top-0`). Glass that's there from the start, like the dock's and the buttons', needs nothing.
+
+---
+
+## A `display: none` element still draws its text on iOS, from its corner
+
+### What you'd expect (web)
+
+An element with `display: none` draws nothing, and nor does anything in it.
+
+### What Lynx does
+
+Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) a `<text>` in it still draws its glyphs, spilling out of the 0×0 box from its top-left corner. The tabs' hidden panels did this: their first letters overlapped the tab list.
+
+### The fix
+
+Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0.
+
+---
+
+## Measuring a row of segments: `layoutchange` gives sizes you can rely on, not positions
+
+### What you'd expect (web)
+
+`getBoundingClientRect()` gives each item's position and size at any moment, so an indicator under a row of items can be placed from the item's left edge.
+
+### What Lynx does
+
+- **`layoutchange` reports a layout relative to the LynxView**, not to the parent (lynx-website's `view.mdx`), and only for the element whose layout changed. When the whole row moves, say because content above it grew, an item whose own frame in its parent didn't change may not report again, so its last `left` is stale. Its `width` stays right.
+- **`boundingClientRect` is current, but asynchronous** (a UI method that answers in a callback, see above), so it can't place an indicator in the same frame as a tap.
+- **Older Android puts the size in `params`**, iOS and the web in `detail`.
+
+### What we do about it
+
+The segmented control (`segmented-control.ts` in `@blotch/ui`) measures each segment's width from `layoutchange` on the segment's own flex item, which sits in a row with no gap, and adds the widths up for the left edges. Segments of different widths and a rotated or resized control both land right, as each segment reports its new width. Until every width has arrived, the indicator takes an equal share of the track (`width: 33.33%`, `left: n × 33.33%`), which is already right for equal segments, so the first frame needs no measuring. The first placement on measured widths has no transition, so the indicator doesn't slide in from the equal share.
+
+A drag reads the pointer's `pageX`, which touch and mouse events both carry. A `touchmove` goes to the element the touch started on, so the segment that was pressed keeps receiving it as the finger crosses the others. On the web, `mousemove` goes to whichever segment is under the cursor, so every segment forwards it to the shared control. Only the distance from the press matters, never which element reports it.

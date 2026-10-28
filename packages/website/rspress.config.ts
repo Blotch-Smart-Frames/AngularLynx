@@ -97,6 +97,10 @@ export default defineConfig({
         { text: 'Dock', link: '/dolan/dock' },
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
+        {
+          text: 'Segmented Control',
+          link: '/dolan/toggle#segmented-control',
+        },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Navigation' },
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },

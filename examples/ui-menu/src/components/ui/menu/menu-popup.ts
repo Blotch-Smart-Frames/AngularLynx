@@ -176,6 +176,7 @@ export const measureMenuElement = async (
         <view
           #area
           style="position: absolute; top: env(safe-area-inset-top); bottom: env(safe-area-inset-bottom); left: env(safe-area-inset-left); right: env(safe-area-inset-right);"
+          (bindlayoutchange)="onAreaLayout($event)"
         >
           <!-- A context menu's element, lifted above the dimming layer. -->
           <view
@@ -400,6 +401,24 @@ export class UiMenuPopup implements OnDestroy {
   });
 
   /**
+   * The safe area's width as laid out, in the app's own pixels, from its
+   * `layoutchange` event; 0 until that arrives.
+   *
+   * `boundingClientRect` measures in the screen's pixels, and the docs' web
+   * previews draw the app scaled down to fit their pane, so there it gave
+   * boxes 0.68 of their size, and the menu opened in the wrong place and
+   * too short for its items. The previews hand `layoutchange` to the app in
+   * its own pixels, so the two widths give the scale to undo. On a phone
+   * they're the same.
+   */
+  #areaWidth = 0;
+
+  protected onAreaLayout(event: unknown): void {
+    this.#areaWidth =
+      (event as { detail?: { width?: number } }).detail?.width ?? 0;
+  }
+
+  /**
    * No-op tap handler for the menu. `catchtap` (vs `bindtap`) stops a tap on
    * the menu from reaching the backdrop behind it, which would dismiss it.
    */
@@ -440,8 +459,17 @@ export class UiMenuPopup implements OnDestroy {
     ]);
     if (run !== this.#run) return;
 
-    const areaRect = area ?? ZERO_RECT;
-    const anchorRect = anchor ?? ZERO_RECT;
+    // Measured boxes in the app's own pixels: see #areaWidth.
+    const scale =
+      area && this.#areaWidth > 0 ? area.width / this.#areaWidth : 1;
+    const inPixels = (box: MenuRect | null): MenuRect => ({
+      left: (box?.left ?? 0) / scale,
+      top: (box?.top ?? 0) / scale,
+      width: (box?.width ?? 0) / scale,
+      height: (box?.height ?? 0) / scale,
+    });
+    const areaRect = inPixels(area);
+    const anchorRect = inPixels(anchor);
     const inArea: MenuRect = {
       ...anchorRect,
       left: anchorRect.left - areaRect.left,
@@ -454,7 +482,7 @@ export class UiMenuPopup implements OnDestroy {
         area: areaRect,
         menu: {
           width: this.metrics().width,
-          height: content?.height ?? 0,
+          height: inPixels(content).height,
         },
         mode: this.#material() || this.#context() ? 'beside' : 'grow',
         movableAnchor: this.#lifts(),

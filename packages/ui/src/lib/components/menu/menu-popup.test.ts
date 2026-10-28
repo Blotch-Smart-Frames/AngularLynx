@@ -90,8 +90,12 @@ const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const renderPopup = async ({
   platform = IOS_26,
   anchorRect = { left: 16, top: 162, width: 370, height: 96 },
+  area = AREA,
+  contentHeight = CONTENT_HEIGHT,
   providers = [],
 }: {
+  area?: MenuRect;
+  contentHeight?: number;
   /** `SystemInfo`, or null for none, as in a test, where design is Material. */
   platform?: { platform: string; osVersion: string } | null;
   anchorRect?: MenuRect;
@@ -113,8 +117,8 @@ const renderPopup = async ({
         : isAnchor
           ? anchorRect
           : element.parentElement?.tagName.toLowerCase() === 'scroll-view'
-            ? { left: 0, top: 0, width: 250, height: CONTENT_HEIGHT }
-            : AREA;
+            ? { left: 0, top: 0, width: 250, height: contentHeight }
+            : area;
       const answer = () => callback({ code: 0, data: box });
       if (isAnchor ? held.anchor : held.menu) pending.push(answer);
       else answer();
@@ -316,6 +320,42 @@ describe('UiMenuPopup', () => {
     fireEvent.tap(rendered.backdrop());
     fireLynxEvent(rendered.overlay(), 'requestclose');
     expect(rendered.host.dismissed).toHaveBeenCalledTimes(2);
+  });
+
+  it("measures in the app's pixels where the app is drawn scaled", async () => {
+    // A docs preview draws the app at half its size: boundingClientRect gives
+    // boxes half their size, and the safe area's layout gives its real width.
+    const half = (box: MenuRect): MenuRect => ({
+      left: box.left / 2,
+      top: box.top / 2,
+      width: box.width / 2,
+      height: box.height / 2,
+    });
+    const rendered = await renderPopup({
+      anchorRect: half({ left: 16, top: 162, width: 370, height: 96 }),
+      area: half(AREA),
+      contentHeight: CONTENT_HEIGHT / 2,
+    });
+    const area = rendered.panel().parentElement!;
+    fireLynxEvent(area, 'layoutchange', { detail: { width: AREA.width } });
+
+    await openMenu(rendered);
+
+    expect(box(rendered.panel())).toEqual({
+      left: 16,
+      top: 100,
+      width: 250,
+      height: 120,
+    });
+  });
+
+  it('takes a layout without a size as unknown', async () => {
+    const rendered = await renderPopup();
+    fireLynxEvent(rendered.panel().parentElement!, 'layoutchange');
+
+    await openMenu(rendered);
+
+    expect(box(rendered.panel()).width).toBe(250);
   });
 
   it('opens even where the elements answer without a box', async () => {

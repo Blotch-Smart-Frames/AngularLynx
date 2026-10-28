@@ -175,8 +175,9 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
   encapsulation: ViewEncapsulation.None,
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
-      <!-- The overlay sizes only its first child, to the screen, and the
-           @if below would put its own anchor first. -->
+      <!-- The overlay sizes only its first child, to the screen. With the
+           @if straight inside it, the glass panel drew in the top-left
+           corner on iOS (see investigations/lynx-vs-web-differences.md). -->
       <view class="h-full w-full">
         @if (look() === 'default') {
           <view #backdrop [class]="backdropClass()">
@@ -194,7 +195,15 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
             class="h-full w-full items-center px-[40px] flex justify-center"
           >
             <view #backdrop [class]="dimClass()"></view>
-            <view #shell class="w-full flex-col items-center flex">
+            <!-- What scales and fades: see the class's comment. A view of its
+                 own (not flattened into its parent): on Android, the shadow
+                 of the Material panel inside an animated flattened view drew
+                 at twice the view's offset, off at the screen's corner. -->
+            <view
+              #shell
+              class="w-full flex-col items-center flex"
+              [flatten]="false"
+            >
               <blur-view
                 #panel
                 ui-glass

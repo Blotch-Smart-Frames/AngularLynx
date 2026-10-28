@@ -5288,3 +5288,19 @@ On the iOS 27 Simulator, an `animate()` of a glass `<blur-view>`'s own opacity m
 ### What we do about it
 
 Fade and scale a plain view around a blur view, never the blur view. The alert dialog's glass variant animates the view its panel sits in, and keeps its dimming layer beside that view rather than around it. The menus avoid the question by growing their glass instead of fading it. A blur view that stays faded (a disabled control) is still a washed-out patch, so components dim the content inside the glass for that (see the `ui-component` skill).
+
+---
+
+## On Android, a shadow inside an animated flattened view draws at twice the view's offset
+
+### What you'd expect (web)
+
+`box-shadow` draws around its element wherever the element is, whatever its parent's transform or opacity.
+
+### What Lynx does
+
+On the Android 14 emulator (Lynx Explorer 4.1), the alert dialog's Material panel, a `<blur-view>` with `ui-glass`'s elevation shadow, sat in a plain view that `animate()` scaled and faded (`fill: 'forwards'`). The panel drew in place, but its shadow drew a second time with its top-left corner at twice the plain view's offset in the overlay (80dp, 712dp for a view at 40dp, 356dp), a big rounded outline running off the bottom-right of the screen. Lynx had flattened the plain view into its parent, which it does for a view with nothing of its own to draw. Each of these took the stray shadow away: no `box-shadow` on the panel, no animation on the plain view, or `flatten="false"` on it. iOS and the web drew the shadow once, in place.
+
+### The fix
+
+Give an animated view that holds a shadowed element a native view of its own with `[flatten]="false"`, as the alert dialog's shell does. The gesture detector already does the same for views it listens on (see the gesture entries above).

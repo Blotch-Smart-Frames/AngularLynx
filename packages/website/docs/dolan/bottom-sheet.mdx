@@ -16,6 +16,10 @@ npx @blotch/dolan add bottom-sheet
 import { UiBottomSheet } from '../components/ui/bottom-sheet';
 ```
 
+:::tip
+This also adds [Glass](/dolan/glass) and [Icon](/dolan/icon), which the glass variant draws with.
+:::
+
 ## Usage
 
 ```typescript
@@ -57,6 +61,7 @@ export class SortPicker {
 - The panel's bottom is padded by the safe area, so content stays clear of the home indicator.
 - The sheet draws in an [`<overlay>`](/api/elements/overlay), so it covers the whole screen wherever it sits in your template.
 - When it opens, a screen reader moves into the panel and stays inside it until the sheet closes.
+- Android's back button closes it.
 
 ### Drag to dismiss
 
@@ -66,6 +71,74 @@ The bar at the top is a drag handle. Only the handle responds to dragging, so sc
 - A shorter drag springs the panel back up.
 - The backdrop lightens as the panel moves down.
 - On web, the handle drags with a mouse too.
+
+### Detents
+
+**Detents** are the heights a sheet rests at, as on iOS. A sheet fits its content by default. Give it more than one detent and the handle drags it between them:
+
+```angular-html
+<ui-bottom-sheet [(open)]="open" [detents]="['medium', 'large']">
+  <scroll-view scroll-orientation="vertical" class="flex-1">
+    <!-- rows -->
+  </scroll-view>
+</ui-bottom-sheet>
+```
+
+| Detent     | Height                                |
+| ---------- | ------------------------------------- |
+| `'fit'`    | Its content's (the default)           |
+| `'medium'` | Half the screen                       |
+| `'large'`  | The whole screen below the status bar |
+
+- It opens at the first detent in the list.
+- Dragged more than 50px toward another detent, it moves on to it. A shorter drag settles back.
+- A tap on the handle moves it to the next detent, and from the tallest back to the shortest. Screen readers announce the handle as a button, so it's how their users resize the sheet.
+- Dragged down from its shortest detent, it closes as before.
+- At `medium` and `large` the panel has a height of its own, so a `flex-1` scroll view inside it takes the height that's left.
+
+`[(detent)]` binds the detent it rests at. Set it to move an open sheet, or before opening to open at another detent:
+
+```angular-html
+<ui-bottom-sheet
+  [(open)]="open"
+  [detents]="['medium', 'large']"
+  [(detent)]="detent"
+>
+  …
+</ui-bottom-sheet>
+```
+
+It's `undefined` while the sheet is closed, so each open starts at the first detent unless you set one.
+
+### Glass
+
+`variant="glass"` draws each platform's own sheet. On iOS 26 and later, that's Liquid Glass:
+
+```angular-html
+<ui-bottom-sheet
+  variant="glass"
+  [detents]="['medium', 'large']"
+  [(open)]="open"
+>
+  …
+</ui-bottom-sheet>
+```
+
+- **Below full height it floats.** The glass sheet is inset 8px from the screen's sides and bottom, so the page shows around it. Its corners are concentric with the screen's.
+- **At full height it turns opaque** and meets the edges, as iOS 26 sheets do. Dragging between the two blends from one to the other.
+- **The backdrop dims less**, as iOS dims behind a sheet.
+
+What each platform draws:
+
+| Platform                                       | Below full height                                  | At full height       |
+| ---------------------------------------------- | -------------------------------------------------- | -------------------- |
+| iOS 26 and later                               | Liquid Glass, inset, with concentric corners       | Opaque, edge to edge |
+| iOS 15 to 25                                   | The sheet of that time: opaque, 10pt top corners   | The same             |
+| Android                                        | A Material 3 bottom sheet: 28dp top corners, scrim | The same             |
+| Android, with [`provideGlass()`](/dolan/glass) | Glass without the refraction, inset                | Opaque, edge to edge |
+| [Web preview](/guide/glossary#web-preview)     | Liquid Glass, drawn with WebGL, inset              | Opaque, edge to edge |
+
+Each has its platform's grabber: iOS 26's wide one, iOS 15 to 25's short one, or Material's drag handle. Without `variant`, the sheet looks as it always has, on every platform.
 
 ### Long content
 
@@ -87,15 +160,25 @@ The panel grows with its content and has no maximum height. For a long list, put
 
 ### UiBottomSheet
 
-| Input   | Type      | Default | Description                                      |
-| ------- | --------- | ------- | ------------------------------------------------ |
-| `open`  | `boolean` | `false` | Whether the sheet is shown. Supports `[(open)]`. |
-| `class` | `string`  | `''`    | Extra Tailwind classes for the panel.            |
+| Input     | Type                       | Default     | Description                                                                       |
+| --------- | -------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `open`    | `boolean`                  | `false`     | Whether the sheet is shown. Supports `[(open)]`.                                  |
+| `variant` | `'default' \| 'glass'`     | `'default'` | `'glass'` draws each platform's own sheet. See [Glass](#glass).                   |
+| `detents` | `SheetDetent[]`            | `['fit']`   | The heights it rests at: `'fit'`, `'medium'`, `'large'`. See [Detents](#detents). |
+| `detent`  | `SheetDetent \| undefined` | `undefined` | The detent it rests at while open. Supports `[(detent)]`.                         |
+| `class`   | `string`                   | `''`        | Extra Tailwind classes for the panel.                                             |
 
-| Output       | Type      | Description                                                                       |
-| ------------ | --------- | --------------------------------------------------------------------------------- |
-| `openChange` | `boolean` | Emits `false` when a backdrop tap or a drag closes the sheet. Part of `[(open)]`. |
-| `closed`     | `void`    | Emits after the close animation finishes.                                         |
+| Output         | Type                       | Description                                                                                               |
+| -------------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `openChange`   | `boolean`                  | Emits `false` when a backdrop tap, a drag or Android's back button closes the sheet. Part of `[(open)]`.  |
+| `detentChange` | `SheetDetent \| undefined` | Emits when the sheet comes to rest at a detent, and `undefined` once it has closed. Part of `[(detent)]`. |
+| `closed`       | `void`                     | Emits after the close animation finishes.                                                                 |
+
+## Accessibility
+
+- When the sheet opens, a screen reader moves into the panel and can't leave it until the sheet closes.
+- A sheet with more than one detent has a handle that screen readers read as "Sheet grabber", a button. Activating it moves the sheet to its next detent.
+- Under **Reduce Motion**, the glass variant doesn't slide or animate between detents: it fades in and out with the backdrop, and moves between detents at once. A drag still follows the finger.
 
 ## Related
 
@@ -103,3 +186,4 @@ The panel grows with its content and has no maximum height. For a long list, put
 - [Sheet](/dolan/sheet): a padded panel with a title and footer
 - [Select](/dolan/select): a picker that opens in a bottom sheet
 - [Action Sheet](/dolan/action-sheet): a list of actions from the bottom
+- [Glass](/dolan/glass): the Liquid Glass the glass variant draws with

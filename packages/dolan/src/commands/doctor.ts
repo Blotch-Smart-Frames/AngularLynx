@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { configExists, readConfig, type DolanConfig } from '../config.js';
 import { getOrCreateLockfile } from '../lockfile.js';
 import { getEntry, resolvePackages } from '../registry.js';
+import { droppedThemeFiles } from '../utils/installed.js';
 import {
   copiesTests,
   detectPackageManager,
@@ -19,6 +20,7 @@ import {
   majorVersion,
   tailwindConfigFile,
   themeFilesFor,
+  usesTailwind4,
 } from '../utils/tailwind.js';
 import { globalStylesheet } from './init.js';
 
@@ -80,7 +82,7 @@ export const doctorCommand = async () => {
 
   // --- 4. Tailwind integration ---
 
-  checkTailwind(cwd, pass, warn);
+  checkTailwind(cwd, config, pass, warn);
 
   // --- 5. Package dependencies ---
 
@@ -407,12 +409,13 @@ const checkComponentColors = (
  * workspace root or `@tailwindcss/postcss` can bring it. A Tailwind config
  * means a Tailwind 3 setup (see usesTailwind4), so the mismatches are
  * Tailwind 4 with a config and Tailwind 3 without one. A matching setup gets
- * the check of what maps the theme to classes: the stylesheet's
- * `tailwind.css` import on Tailwind 4, `blotchPlugin` in the config on
- * Tailwind 3.
+ * the checks of the theme files the other version leaves, and of what maps
+ * the theme to classes: the stylesheet's `tailwind.css` import on Tailwind 4,
+ * `blotchPlugin` in the config on Tailwind 3.
  */
 const checkTailwind = (
   cwd: string,
+  config: DolanConfig,
   pass: (msg: string) => void,
   warn: (msg: string) => void,
 ) => {
@@ -426,21 +429,23 @@ const checkTailwind = (
 
   const found = `${pc.cyan(`tailwindcss ${version}`)} found`;
   const tailwind4 = majorVersion(version) >= 4;
-  const config = tailwindConfigFile(cwd);
+  const configFile = tailwindConfigFile(cwd);
 
-  if (tailwind4 && config) {
+  if (tailwind4 && configFile) {
     // The build warns about a config Tailwind 4 doesn't run, in these words.
     // dolan still reads it as a Tailwind 3 setup, and gives the theme the
     // Tailwind 3 plugin.
     warn(
-      `Found ${pc.dim(config)}, but Tailwind CSS ${version} is installed, which doesn't run from a Tailwind config file. While it's there, dolan sets the theme up for Tailwind 3. Move its settings into your stylesheet and delete it, then run ${pc.bold('dolan update')} for the theme's ${pc.cyan('tailwind.css')}.`,
+      `Found ${pc.dim(configFile)}, but Tailwind CSS ${version} is installed, which doesn't run from a Tailwind config file. While it's there, dolan sets the theme up for Tailwind 3. Move its settings into your stylesheet and delete it, then run ${pc.bold('dolan update')} for the theme's ${pc.cyan('tailwind.css')}.`,
     );
   } else if (tailwind4) {
     pass(`${found}, set up for Tailwind 4`);
+    checkLeftoverThemeFiles(cwd, config, warn);
     checkTailwind4Theme(cwd, pass, warn);
-  } else if (config) {
-    pass(`${found}, set up for Tailwind 3 (${pc.dim(config)})`);
-    checkBlotchPlugin(cwd, config, pass, warn);
+  } else if (configFile) {
+    pass(`${found}, set up for Tailwind 3 (${pc.dim(configFile)})`);
+    checkLeftoverThemeFiles(cwd, config, warn);
+    checkBlotchPlugin(cwd, configFile, pass, warn);
   } else {
     warn(
       `${found}, but no Tailwind config: the build runs Tailwind 3 only from a ${pc.dim('tailwind.config.*')}. Add one with ${pc.bold('ng generate @blotch/angular-lynx:add-tailwind --tailwind-version=3')}`,
@@ -485,6 +490,41 @@ const checkTailwind4Theme = (
       `${pc.cyan('tailwind.css')} not imported in ${pc.dim(stylesheet)} — import it after Tailwind, as dolan init shows`,
     );
   }
+};
+
+/**
+ * The theme files for the Tailwind version the app doesn't use: the plugin
+ * and its test in a Tailwind 4 app, or `tailwind.css` in a Tailwind 3 one. A
+ * move between the two leaves them in the theme folder, where nothing uses
+ * them, and the plugin is an uncovered file in the app's coverage report.
+ * `dolan update` deletes the ones dolan tracks (asking first about an edited
+ * one), so only those get that advice: one the app chose to keep, or edited
+ * before dolan recorded it, is the app's own. checkTailwind runs it once the
+ * app is set up for the Tailwind it has: without Tailwind, neither version's
+ * files are left over, and a mismatch has its own warning.
+ */
+const checkLeftoverThemeFiles = (
+  cwd: string,
+  config: DolanConfig,
+  warn: (msg: string) => void,
+) => {
+  const tailwind4 = usesTailwind4(cwd);
+  const takes = themeFilesFor(cwd, { tests: true });
+  const themeDir = resolve(cwd, config.aliases.theme);
+  const leftover = [
+    'tailwind.css',
+    'tailwind-plugin.ts',
+    'tailwind-plugin.test.ts',
+  ].filter((file) => !takes.includes(file) && existsSync(join(themeDir, file)));
+  if (leftover.length === 0) return;
+  const them = leftover.length === 1 ? 'it' : 'them';
+  const dropped = droppedThemeFiles(cwd, themeDir, getOrCreateLockfile(cwd));
+  const advice = leftover.every((file) => dropped.includes(file))
+    ? `Run ${pc.bold('dolan update')} to delete ${them}, or delete ${them}.`
+    : `Delete ${them}, unless your own code uses ${them}.`;
+  warn(
+    `Found ${leftover.map((file) => pc.cyan(file)).join(', ')} in ${pc.dim(config.aliases.theme)}, but the app uses Tailwind ${tailwind4 ? 4 : 3}, which takes the theme's classes from ${pc.cyan(takes[2]!)}. ${advice}`,
+  );
 };
 
 const checkPackageDeps = (

@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEmptyLockfile } from '../lockfile';
+import { onTailwind } from '../test-utils';
 import {
   componentsOnDisk,
   droppedFiles,
+  droppedThemeFiles,
   trackedComponents,
   untrackedComponents,
 } from './installed';
@@ -64,5 +66,45 @@ describe('droppedFiles', () => {
 
   it('is empty for a component the lockfile has no entry for', () => {
     expect(droppedFiles('button', createEmptyLockfile())).toEqual([]);
+  });
+});
+
+describe('droppedThemeFiles', () => {
+  /**
+   * A project on this Tailwind version, without the testing library.
+   */
+  const project = (tailwind: 3 | 4) => {
+    root = mkdtempSync(join(tmpdir(), 'dolan-installed-'));
+    onTailwind(root, tailwind);
+    return root;
+  };
+  /**
+   * A lockfile that records every theme file either version takes.
+   */
+  const lockfile = () => {
+    const locked = createEmptyLockfile();
+    for (const file of [
+      'default.css',
+      'dark.css',
+      'tailwind.css',
+      'tailwind-plugin.ts',
+      'tailwind-plugin.test.ts',
+    ]) {
+      locked.theme[file] = { hash: file };
+    }
+    return locked;
+  };
+
+  it('lists the Tailwind 3 plugin and its test on Tailwind 4', () => {
+    const cwd = project(4);
+    expect(droppedThemeFiles(cwd, cwd, lockfile())).toEqual([
+      'tailwind-plugin.ts',
+      'tailwind-plugin.test.ts',
+    ]);
+  });
+
+  it("lists tailwind.css on Tailwind 3, but not the plugin's test a project without the testing library doesn't get", () => {
+    const cwd = project(3);
+    expect(droppedThemeFiles(cwd, cwd, lockfile())).toEqual(['tailwind.css']);
   });
 });

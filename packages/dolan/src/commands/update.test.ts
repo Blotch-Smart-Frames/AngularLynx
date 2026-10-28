@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import {
   createFixture,
   DEFAULT_CONFIG,
+  onTailwind,
   shippedTheme,
   type Fixture,
 } from '../test-utils';
@@ -2322,5 +2330,347 @@ describe('updateCommand — files upstream no longer ships', () => {
 
     expect(readInstalledFile(fixture.dir, 'card', 'card.test.ts')).toBe(test);
     expect(lockedCard()['card.test.ts']).toEqual({ hash: hashContent(test) });
+  });
+});
+
+// An app that moved from Tailwind 3 to Tailwind 4 kept the plugin and its
+// test: `update` only looked at the theme files the app takes now, so
+// nothing offered to delete them, though nothing imports the plugin and the
+// app's coverage counted it.
+describe('updateCommand — theme files for the Tailwind version the app left', () => {
+  const theme = {
+    'default.css': ':root { --primary: rgba(1, 1, 1, 1); }',
+    'dark.css': 'page.dark { --primary: rgba(2, 2, 2, 1); }',
+    'tailwind.css': '@theme inline { --color-primary: var(--primary); }',
+    'tailwind-plugin.ts': 'export const blotchPlugin = {};',
+    'tailwind-plugin.test.ts':
+      "import { blotchPlugin } from './tailwind-plugin';",
+  };
+  type ThemeFile = keyof typeof theme;
+  const PLUGIN = 'tailwind-plugin.ts';
+  const PLUGIN_TEST = 'tailwind-plugin.test.ts';
+  const edited = `${theme[PLUGIN]}\n// mine\n`;
+  const themePath = (file: string) =>
+    join(fixture.dir, DEFAULT_CONFIG.aliases.theme, file);
+  const recorded = (files: ThemeFile[]) =>
+    Object.fromEntries(
+      files.map((file) => [file, { hash: hashContent(theme[file]) }]),
+    );
+
+  /**
+   * An app `init` set up on Tailwind 3 with the testing library, now on
+   * `tailwind` (4 unless it says otherwise). Dolan's theme ships every file.
+   * `locked` are the theme files the lockfile records and the folder has as
+   * copied, and `onDisk` overrides what the folder has: a string replaces a
+   * file, and null deletes it.
+   */
+  const setup = ({
+    tailwind = 4,
+    locked = ['default.css', 'dark.css', PLUGIN, PLUGIN_TEST],
+    onDisk = {},
+  }: {
+    tailwind?: 3 | 4;
+    locked?: ThemeFile[];
+    onDisk?: Partial<Record<ThemeFile, string | null>>;
+  } = {}) => {
+    fixture = createFixture({
+      config: DEFAULT_CONFIG,
+      lockfile: { version: 1, components: {}, theme: recorded(locked) },
+      themeFiles: theme,
+    });
+    onTailwind(fixture.dir, tailwind, { testing: true });
+    for (const file of locked) writeFileSync(themePath(file), theme[file]);
+    for (const [file, content] of Object.entries(onDisk)) {
+      if (content === null) rmSync(themePath(file));
+      else writeFileSync(themePath(file), content);
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+  };
+  const lockedTheme = () => readLockfile(fixture.dir).theme;
+  /**
+   * What a log function was called with, colors stripped.
+   */
+  const logged = (log: unknown) =>
+    (log as ReturnType<typeof vi.fn>).mock.calls
+      .map(([message]) => stripVTControlCharacters(message as string))
+      .join('\n');
+
+  beforeEach(async () => {
+    // A reset drops answers an earlier test queued and never used.
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockResolvedValue('upstream');
+  });
+
+  it('deletes the plugin and its test nobody edited, with their lockfile entries, after the usual question', async () => {
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Apply 3 auto-update(s)?' }),
+    );
+    expect(p.select).not.toHaveBeenCalled();
+    expect(logged(p.log.message)).toContain(
+      [
+        'Shared files:',
+        '  ✓ theme/default.css — up to date',
+        '  ✓ theme/dark.css — up to date',
+        '  + theme/tailwind.css — new file from upstream',
+        '  − theme/tailwind-plugin.ts — the app uses Tailwind 4 → delete',
+        '  − theme/tailwind-plugin.test.ts — the app uses Tailwind 4 → delete',
+      ].join('\n'),
+    );
+    expect(existsSync(themePath(PLUGIN))).toBe(false);
+    expect(existsSync(themePath(PLUGIN_TEST))).toBe(false);
+    expect(readFileSync(themePath('tailwind.css'), 'utf-8')).toBe(
+      theme['tailwind.css'],
+    );
+    expect(lockedTheme()).toEqual(
+      recorded(['default.css', 'dark.css', 'tailwind.css']),
+    );
+    expect(logged(p.log.success)).toContain(
+      '2 theme file(s) deleted: the app uses Tailwind 4.',
+    );
+  });
+
+  it('deletes them without a terminal too', async () => {
+    interactive = false;
+    setup();
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(p.confirm).not.toHaveBeenCalled();
+    expect(existsSync(themePath(PLUGIN))).toBe(false);
+    expect(lockedTheme()).not.toHaveProperty(PLUGIN);
+    expect(p.outro).toHaveBeenCalledWith('Update complete.');
+  });
+
+  it('asks before deleting a plugin you edited, and deletes it when told to', async () => {
+    setup({ onDisk: { [PLUGIN]: edited } });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(logged(p.log.message)).toContain(
+      '  ⚠ theme/tailwind-plugin.ts — the app uses Tailwind 4, and you modified it',
+    );
+    expect(p.select).toHaveBeenCalledTimes(1);
+    const [{ message, options }] = (p.select as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [{ message: string; options: { value: string }[] }];
+    expect(stripVTControlCharacters(message)).toBe(
+      'shared/theme/tailwind-plugin.ts — you modified it, and the app uses Tailwind 4',
+    );
+    // A deletion is all or nothing, so there are no hunks to review.
+    expect(options.map(({ value }) => value)).toEqual([
+      'diff',
+      'keep',
+      'upstream',
+    ]);
+    expect(existsSync(themePath(PLUGIN))).toBe(false);
+    expect(existsSync(themePath(PLUGIN_TEST))).toBe(false);
+    expect(lockedTheme()).not.toHaveProperty(PLUGIN);
+  });
+
+  it('keeps a plugin you edited when told to, as your own file from then on', async () => {
+    setup({ onDisk: { [PLUGIN]: edited } });
+    const p = await import('@clack/prompts');
+    (p.select as ReturnType<typeof vi.fn>).mockResolvedValueOnce('keep');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(edited);
+    expect(lockedTheme()).not.toHaveProperty(PLUGIN);
+    expect(logged(p.log.info)).toContain('1 file(s) kept as-is.');
+
+    vi.clearAllMocks();
+    await updateCommand({});
+    expect(p.select).not.toHaveBeenCalled();
+    expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(edited);
+  });
+
+  it('leaves a plugin you edited for a terminal to ask about without one, and exits 1', async () => {
+    interactive = false;
+    setup({ onDisk: { [PLUGIN]: edited } });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await expect(updateCommand({})).rejects.toThrow('process.exit(1)');
+
+    expect(p.select).not.toHaveBeenCalled();
+    expect(logged(p.log.warn)).toContain('1 conflict(s) left as they are');
+    expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(edited);
+    expect(lockedTheme()[PLUGIN]).toEqual({
+      hash: hashContent(theme[PLUGIN]),
+    });
+    // The test nobody edited goes anyway, as auto-updates do.
+    expect(existsSync(themePath(PLUGIN_TEST))).toBe(false);
+  });
+
+  it('deletes a plugin you edited with --force', async () => {
+    interactive = false;
+    setup({ onDisk: { [PLUGIN]: edited } });
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({ force: true });
+
+    expect(existsSync(themePath(PLUGIN))).toBe(false);
+    expect(lockedTheme()).not.toHaveProperty(PLUGIN);
+  });
+
+  describe('with --selective', () => {
+    it('asks about each deletion, and "Skip for now" keeps the file and its entry', async () => {
+      setup();
+      const p = await import('@clack/prompts');
+      (p.select as ReturnType<typeof vi.fn>).mockResolvedValue('keep');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({ selective: true });
+
+      const messages = (p.select as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([{ message }]) => stripVTControlCharacters(message as string),
+      );
+      expect(messages).toEqual([
+        'shared/theme/tailwind.css — new file from upstream',
+        'shared/theme/tailwind-plugin.ts — the app uses Tailwind 4',
+        'shared/theme/tailwind-plugin.test.ts — the app uses Tailwind 4',
+      ]);
+      expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(theme[PLUGIN]);
+      expect(lockedTheme()).toEqual(
+        recorded(['default.css', 'dark.css', PLUGIN, PLUGIN_TEST]),
+      );
+      expect(logged(p.log.info)).toContain('3 file(s) skipped');
+    });
+
+    it('deletes them when accepted', async () => {
+      setup();
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({ selective: true });
+
+      expect(existsSync(themePath(PLUGIN))).toBe(false);
+      expect(existsSync(themePath(PLUGIN_TEST))).toBe(false);
+      expect(lockedTheme()).toEqual(
+        recorded(['default.css', 'dark.css', 'tailwind.css']),
+      );
+    });
+  });
+
+  describe('already deleted by hand', () => {
+    it('drops their entries when nothing else changed', async () => {
+      setup({
+        locked: [
+          'default.css',
+          'dark.css',
+          'tailwind.css',
+          PLUGIN,
+          PLUGIN_TEST,
+        ],
+        onDisk: { [PLUGIN]: null, [PLUGIN_TEST]: null },
+      });
+      const p = await import('@clack/prompts');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(p.confirm).not.toHaveBeenCalled();
+      expect(logged(p.log.message)).not.toContain(PLUGIN);
+      expect(p.outro).toHaveBeenCalledWith('Everything is up to date.');
+      expect(lockedTheme()).toEqual(
+        recorded(['default.css', 'dark.css', 'tailwind.css']),
+      );
+    });
+
+    it('drops their entries alongside an update', async () => {
+      setup({ onDisk: { [PLUGIN]: null, [PLUGIN_TEST]: null } });
+      const p = await import('@clack/prompts');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(p.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Apply 1 auto-update(s)?' }),
+      );
+      expect(logged(p.log.success)).not.toContain('deleted');
+      expect(lockedTheme()).toEqual(
+        recorded(['default.css', 'dark.css', 'tailwind.css']),
+      );
+    });
+  });
+
+  it('deletes tailwind.css after a move back to Tailwind 3, and brings the plugin back', async () => {
+    setup({ tailwind: 3, locked: ['default.css', 'dark.css', 'tailwind.css'] });
+    const p = await import('@clack/prompts');
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(logged(p.log.message)).toContain(
+      '  − theme/tailwind.css — the app uses Tailwind 3 → delete',
+    );
+    expect(existsSync(themePath('tailwind.css'))).toBe(false);
+    expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(theme[PLUGIN]);
+    expect(lockedTheme()).toEqual(
+      recorded(['default.css', 'dark.css', PLUGIN, PLUGIN_TEST]),
+    );
+    expect(logged(p.log.success)).toContain(
+      '1 theme file(s) deleted: the app uses Tailwind 3.',
+    );
+  });
+
+  it("keeps the plugin's test that a project without the testing library doesn't get", async () => {
+    // Upstream still ships it to a Tailwind 3 app, as it does a component's
+    // tests, so it isn't deleted for want of the library.
+    setup({ tailwind: 3 });
+    onTailwind(fixture.dir, 3);
+
+    const { updateCommand } = await import('./update');
+    await updateCommand({});
+
+    expect(readFileSync(themePath(PLUGIN_TEST), 'utf-8')).toBe(
+      theme[PLUGIN_TEST],
+    );
+    expect(lockedTheme()[PLUGIN_TEST]).toEqual({
+      hash: hashContent(theme[PLUGIN_TEST]),
+    });
+  });
+
+  // Tailwind 3 apps were mostly set up by a release whose `init` recorded no
+  // theme hashes, so their plugin isn't in the lockfile.
+  describe('copied by an older init', () => {
+    it('deletes an untouched copy', async () => {
+      setup({
+        locked: [],
+        onDisk: { [PLUGIN]: shippedTheme('tailwind-plugin.ts') },
+      });
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(existsSync(themePath(PLUGIN))).toBe(false);
+      expect(lockedTheme()).toEqual(
+        recorded(['default.css', 'dark.css', 'tailwind.css']),
+      );
+    });
+
+    it('leaves an edited copy alone, since nothing says it was dolan’s', async () => {
+      const mine = `${shippedTheme('tailwind-plugin.ts')}\n// mine\n`;
+      setup({ locked: [], onDisk: { [PLUGIN]: mine } });
+      const p = await import('@clack/prompts');
+
+      const { updateCommand } = await import('./update');
+      await updateCommand({});
+
+      expect(p.select).not.toHaveBeenCalled();
+      expect(logged(p.log.message)).not.toContain(PLUGIN);
+      expect(readFileSync(themePath(PLUGIN), 'utf-8')).toBe(mine);
+    });
   });
 });

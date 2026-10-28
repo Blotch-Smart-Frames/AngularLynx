@@ -118,11 +118,52 @@ export const DEFAULT_CONFIG: DolanConfig = {
 };
 
 /**
- * A theme file exactly as 22.2.2's `init` copied it (from the v22.2.2 tag),
- * which left the lockfile without its hash. lockfile.ts knows its hash.
+ * Sets the project in `dir` up for a Tailwind version as apps have it:
+ * Tailwind 4 as `ng add` installs it (`tailwindcss` and `@tailwindcss/postcss`,
+ * no Tailwind config), or Tailwind 3 with a `tailwind.config.ts`. Tailwind is
+ * listed and installed, as in an app: dolan reads the installed version (see
+ * installPackage). `testing` adds the testing library, so dolan copies tests,
+ * and `dependencies` are listed as well.
  */
-export const shippedTheme = (file: 'default.css' | 'dark.css'): string =>
+export const onTailwind = (
+  dir: string,
+  version: 3 | 4,
+  {
+    testing = false,
+    dependencies = {},
+  }: { testing?: boolean; dependencies?: Record<string, string> } = {},
+): void => {
+  const installed = version === 4 ? '4.3.3' : '3.4.19';
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({
+      dependencies,
+      devDependencies: {
+        tailwindcss: `^${installed}`,
+        ...(version === 4 && { '@tailwindcss/postcss': `^${installed}` }),
+        ...(testing && { '@blotch/angular-lynx-testing-library': '^22.2.4' }),
+      },
+    }),
+  );
+  installPackage(dir, 'tailwindcss', installed);
+  if (version === 3) {
+    writeFileSync(join(dir, 'tailwind.config.ts'), 'export default {};');
+  }
+};
+
+/**
+ * A theme file exactly as 22.2.2's `init` copied it (from the v22.2.2 tag),
+ * which left the lockfile without its hash. lockfile.ts knows its hash. The
+ * plugin is stored as `.txt`, so the build, lint, format and coverage, which
+ * would each take it for dolan's own source, leave it alone.
+ */
+export const shippedTheme = (
+  file: 'default.css' | 'dark.css' | 'tailwind-plugin.ts',
+): string =>
   readFileSync(
-    new URL(`./fixtures/theme-22.2.2/${file}`, import.meta.url),
+    new URL(
+      `./fixtures/theme-22.2.2/${file.endsWith('.ts') ? `${file}.txt` : file}`,
+      import.meta.url,
+    ),
     'utf-8',
   );

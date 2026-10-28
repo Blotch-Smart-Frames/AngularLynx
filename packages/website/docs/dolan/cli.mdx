@@ -204,6 +204,22 @@ Merges the bundled source into every installed component, file by file:
 - **Files the bundled source no longer has are deleted**, along with their lockfile entries. 22.2.3 stopped copying the `*-render.test.ts` files, for example. If you keep one you edited, it's yours: dolan stops tracking it.
 - **Ejected components are left alone.** `update`, `list`, `diff` and `outdated` only look at the components in `dolan.lock.json`. See [`eject`](#eject).
 - **Theme files** (`default.css`, `dark.css`, and `tailwind.css` or `tailwind-plugin.ts`, with `tailwind-plugin.test.ts` when you have the testing library) are merged the same way. Themes you made with [`theme`](#theme) aren't.
+- **The theme follows a move between Tailwind versions.** After a [move to Tailwind 4](/guide/tailwindcss#move-to-tailwind-4), `update` copies `tailwind.css` and deletes `tailwind-plugin.ts` and its test, by the rules above: unchanged, they go with the other changes; edited, it asks. A move back to Tailwind 3 swaps them the other way. A plugin that an `init` from 22.2.3 or earlier copied counts as unchanged while it's exactly as that release shipped it. If you edited one of those, `update` can't tell it was dolan's and leaves it, and [`doctor`](#doctor) warns about it.
+
+  ```text
+  │  Shared files:
+  │
+  │    ✓ theme/default.css — up to date
+  │
+  │    ✓ theme/dark.css — up to date
+  │
+  │    + theme/tailwind.css — new file from upstream
+  │
+  │    − theme/tailwind-plugin.ts — the app uses Tailwind 4 → delete
+  │
+  │    − theme/tailwind-plugin.test.ts — the app uses Tailwind 4 → delete
+  ```
+
 - **New dependencies are added.** If a component's new version needs another component, `update` copies it in.
 - **npm packages are installed** the same way [`add`](#add) does.
 - **You're asked about a conflict once.** After you choose, the lockfile records the new upstream hash. If you kept your version, the file shows as modified until upstream changes again.
@@ -276,6 +292,7 @@ Runs these checks in order and exits with code 1 if any fail:
 | Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                                | Warns              |
 | The theme sets and maps the colors the installed components read, such as Glass's `glass-*` colors                                           | Warns              |
 | `tailwindcss` is installed, and the app is set up for its version: no `tailwind.config.*` on Tailwind 4, a `tailwind.config.*` on Tailwind 3 | Warns              |
+| No theme files for the other Tailwind version: `tailwind-plugin.ts` and its test on Tailwind 4, `tailwind.css` on Tailwind 3                 | Warns              |
 | On Tailwind 4, the global stylesheet imports `tailwind.css`; on Tailwind 3, the Tailwind config mentions `blotchPlugin`                      | Warns              |
 | `package.json` lists `@angular/core`, `@blotch/angular-lynx` and `@blotch/dolan`                                                             | Fails              |
 | Every component folder is a known component, has all its files and has its dependencies                                                      | Warns              |

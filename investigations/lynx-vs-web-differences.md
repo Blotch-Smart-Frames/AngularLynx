@@ -174,6 +174,8 @@ The native `<overlay>` element occupies **no space** (`OverlayShadowNode::Measur
 
 Make the overlay's first child a **full-size backdrop view** (`class="h-full w-full"`), then position content inside it. This is why `bottom-sheet` (overlay → `h-full w-full` backdrop → `position: absolute; bottom: 0` panel) docks correctly, and the toast did not until wrapped the same way.
 
+An `@if` directly inside the overlay does the same, even with a full-size view in it: Angular inserts a hidden `<view>` to anchor the block and puts the block's content before it, and the overlay still didn't size that content. The alert dialog had its two panels in an `@if` straight under `<overlay>`, and on the iOS 27 Simulator its glass panel drew in the top-left corner. Wrapping the `@if` in an `h-full w-full` view fixed it.
+
 Caveats for **non-modal** overlays (e.g. toast): a full-screen first child captures touches for the app behind it, and on iOS this held true no matter what was tried — `pointer-events` errors the build (see above), `events-pass-through`/`custom-layout` are web-platform-only overlay attributes (the native overlay API exposes only `ios-enable-swipe-back`, `level`, `mode`, `visible`), and even the general-purpose `event-through` attribute did not help in practice, despite checking out against the native source on paper:
 
 - **Harmony**: `UIOverlay::OnNodeEvent` (`platform/harmony/lynx_xelement/overlay/ui_overlay.cc`) hit-tests its own subtree, and if the deepest hit element has `EventThrough` set, redispatches the touch to the page root instead of handling it.
@@ -5320,7 +5322,7 @@ An element inside a control-flow block shows up where the block is, whatever its
 
 On the iOS 27 Simulator in Lynx Explorer 4.1, a glass `<blur-view>` (`ui-glass`, or a bare `blur-effect="glass"`) that's one of the top elements of an `@if`, `@switch` or `@for` block inside a plain `<view>` drew nothing: neither its material nor its children, though the layout kept its space. The same markup outside the block drew, as did a blur-view wrapped in a `<view>` inside the block, and one in a block inside another blur-view (a `glass-container`, as in the dock). Android and the web drew all of them, and a `light` blur view draws on iOS too (see the previous section). It happens on the first frame and on any later one.
 
-What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws.
+What the failing ones share: Angular puts a block's top elements in with `__InsertElementBefore`, before the block's anchor (an invisible view), where everything else is appended. Lynx's iOS `LynxUI insertChild:atIndex:` then reorders the new child's view and layer against its neighbors' (`LynxUI.m`), which a plain view survives and a UIVisualEffectView, it seems, doesn't. `LynxUIBlurView` inserts its own children differently, into its `contentView`, which is why a blur-view inside another one draws. Two more data points, from the navigation bar's probes: a blur-view inserted the same way but given `glass` only in a later flush (created with no effect, or `light`) draws, and one that has drawn nothing doesn't recover when its effect is set again. Every glass control in a routed screen hit this, since their glass sits at the top of `@if` blocks.
 
 ### The fix
 
@@ -5400,3 +5402,190 @@ A `ResizeObserver` entry has no position, and `getBoundingClientRect()` measures
 ### What Lynx does
 
 In Lynx Explorer 4.1, a 42px bar at the bottom of the screen reported `{ top: 797, bottom: 839 }` with `layoutchange` on iOS, measured from the page, and `{ top: 0, bottom: 41.9 }` on Android, measured from its parent. `width` and `height` agree. Read only the size from `layoutchange` (as the dock does for its width), and measure a position with `boundingClientRect`.
+
+---
+
+Nothing yet: it was found while building the glass sheet, whose glass is in an overlay. A glass component on a page shown later (a routed screen, an `@if`) may be affected, and the cause, in Lynx's iOS blur view or in the renderer, isn't known.
+
+---
+
+## A popover that leaves the screen usable: a `position: fixed` panel and `global-bind` listeners, not an `<overlay>`
+
+### What you'd expect (web)
+
+A non-modal popover is an element above the page, and a `click` listener on `document` hears every click: one outside the popover closes it, and still reaches what it landed on, so one tap closes a popover and presses the button under the finger.
+
+### What Lynx does
+
+- **An `<overlay>` takes every touch** while it's shown (see the toast's entry above), so a popover in one blocks the screen, as the menus and the bottom action sheet do on purpose.
+- **There's no `document` to listen on.** A listener on the page root hears only the touches that bubble up to it, and a `catch` listener on the way stops them.
+- **`global-bind` listeners run for a touch on any element** (`global-bindtouchstart`), however it bubbles: Lynx queues them before the touched element's own capture and bubble listeners (`TouchEventHandler::HandleEventInternal` in `core/renderer/events/touch_event_handler.cc`), and web-core runs them in the same dispatch. On the iOS 27 Simulator in Lynx Explorer 4.1, the global listener ran first, then the touched element's.
+- **`capture-bind` listeners didn't run on iOS.** A `capture-bindtouchstart` or `capture-bindtap` on a view or a blur view never ran there in Lynx Explorer 4.1, while a `bindtouchstart` on the same element did. Not traced further.
+
+### What we do about it
+
+`UiPopoverPanel` (`packages/ui/src/lib/components/popover/popover-panel.ts`), behind `ui-popover` and the anchored `ui-action-sheet`:
+
+- The panel is a `position: fixed` view with `z-index: 999`. Lynx lifts it to the page root, above the page, and hit-tests it like any other view, so the rest of the screen keeps its touches. It's placed in page coordinates: two marker views of no size (the safe area's top edge, and an edge from the page's top to the safe area's bottom) are measured with `boundingClientRect` alongside the anchor, relative to the screen, and the safe area's offset in the page is added to the menu's `placeMenu()` frame.
+- While it's shown, it has `global-bindtouchstart` and `global-bindmousedown` listeners (mouse for the web preview, where touch events come only from a touch screen). A touch on the panel, or on its trigger, sets a flag through ordinary `bindtouchstart` listeners; the global listener checks the flag on the next timer, which runs after every listener of that touch, and closes the panel if nothing set it. A `catchtouchstart` inside the panel would hide a touch from it, and close it.
+- A touch, not a tap, closes it, so a scroll that starts outside closes it too, rather than moving its anchor away from under it.
+
+---
+
+## A touch's `x` is relative to the touched element on iOS and Android, but to the `<lynx-view>` on the web
+
+### What you'd expect (parity between platforms)
+
+A touch event's `touches[0].x` means the same thing everywhere, so a slider can read where on its track the finger is.
+
+### What Lynx does
+
+- **iOS and Android:** `x` and `y` are relative to the element the touch landed on, its `target` (`[touch locationInView:ui.view]` in `LynxTouchHandler.mm`, `convertToViewPoint(mActiveUI, …)` in `TouchEventDispatcher.java`). `pageX` is relative to the LynxView and `clientX` to the window. A tap's `detail.x` is the page position.
+- **Lynx for Web:** web-core sets `x` to `clientX` minus the `<lynx-view>`'s left edge (`createCrossThreadEvent.js`), for touches and the mouse alike, whatever element was touched. `pageX` and `clientX` keep their web meaning: the document and the browser's viewport.
+
+So no single field tells a control where on it the finger is on every platform.
+
+### What we do about it
+
+The slider (`packages/ui/src/lib/components/slider/slider.ts`) makes everything inside it ignore touches (`user-interaction-enabled="false"`), so the touched element is always the slider itself, and reads `x`: on iOS and Android that's already relative to the slider. On the web it measures its own left edge in the `<lynx-view>` when a press starts (`boundingClientRect`, which answers asynchronously) and subtracts it. In the docs' scaled previews the measurement is in screen pixels while events and `layoutchange` are in the app's, so it divides by the ratio of the measured width to the laid-out one, as the menu does. Moves that arrive before the measurement are held until it does. The switch only needs how far the finger moved, which is the same in either space.
+
+---
+
+## Lynx's iOS views don't implement `accessibilityIncrement`, so VoiceOver can't swipe an adjustable element
+
+### What you'd expect (UIKit)
+
+An element with the adjustable trait changes its value when a VoiceOver user swipes up or down: VoiceOver calls its `accessibilityIncrement` and `accessibilityDecrement`, as it does on a `UISlider`.
+
+### What Lynx does
+
+`accessibility-traits="adjustable"` sets `UIAccessibilityTraitAdjustable` (`LynxConverter+UI.m`), and VoiceOver announces the element as adjustable, but nothing in Lynx's iOS code implements `accessibilityIncrement` or `accessibilityDecrement` (searched `platform/darwin` on Lynx's develop branch, October 2026). The swipe calls UIView's empty defaults and nothing happens. Android ignores the trait: it reads only `none`, `image` and `button` (`LynxAccessibilityTraits`).
+
+### What we do about it
+
+The slider is adjustable, and it also offers `accessibility-actions` named Increase and Decrease. Lynx turns those into `UIAccessibilityCustomAction`s on iOS and custom accessibility actions on Android, and both fire `accessibilityaction` with the action's name, so VoiceOver users reach them through the Actions rotor and TalkBack users through its actions menu. `accessibility-role-description="slider"` names the role on Android. A fix in Lynx would send an `accessibilityaction` (or a new event) from `accessibilityIncrement` and `accessibilityDecrement` on adjustable elements.
+
+---
+
+## Lynx for Web's glass refracts only its nearest painted ancestor, cut to that ancestor's box
+
+### What you'd expect (parity with iOS)
+
+A glass shape bends whatever is on screen behind it, including content outside its parent's box when it overflows its parent.
+
+### What Lynx does
+
+The runtime's WebGL glass (`backdropOf` in `packages/runtime/src/lib/web-glass/glass-group.ts`) refracts an image of one ancestor: the nearest that paints an opaque background or an image. When that ancestor is smaller than the glass, the image ends at the ancestor's edge, and the glass beyond it samples the image's clamped edge rather than what's really behind. iOS's glass samples the screen, and Android's blur captures the page.
+
+### What we do about it
+
+The switch's glass lens is bigger than its track (59 by 38pt over a 63 by 28pt track, as on iOS 26), so the track can't be the lens's parent and paint the background: the switch draws the track with a view of its own, before the lens, and the lens's backdrop is the card or page around the switch. Clear glass over white is faint in the web drawing either way: the lens shows mostly as the bend it puts in the track.
+
+---
+
+## A drag handled in template event handlers keeps up with the finger
+
+### What you'd expect (React Lynx's guidance)
+
+React Lynx runs component code on the background thread, so a drag handled there reaches the screen a thread hop later, and its docs recommend main-thread scripts for touch-driven UI.
+
+### What Lynx does
+
+AngularLynx runs Angular on the main thread (see `lynx-architecture`), so template handlers like `(bindtouchmove)` already run beside the native touch handling. Measured with a probe around `ui-slider` in Lynx Explorer 4.1 (a `(bindtouchmove)` on its parent that compares the event's `timestamp` with `Date.now()`, and an `afterRenderEffect` on the value), dragging with Maestro over 2 seconds:
+
+|                     | touchmove interval     | event to handler                  | handler to render                  |
+| ------------------- | ---------------------- | --------------------------------- | ---------------------------------- |
+| iOS 27 Simulator    | 16.7 to 17.2ms average | 0.6ms average, 2ms at most        | 3ms average, 7ms at most           |
+| Android 14 emulator | 17.1 to 20ms average   | 1.1 to 1.7ms average, 7ms at most | 3.5 to 4.8ms average, 19ms at most |
+
+Runs while the host machine was overloaded (a load average near 40 on 18 cores) dropped to a move every 35 to 125ms on the emulator, with renders up to 270ms behind; those are the emulator starving, not the handlers.
+
+### What we do about it
+
+Nothing: the slider and the switch set a signal in their handlers and let change detection apply the styles, under a frame from the native event to the render. A main-thread script would save no thread hop, and the change detection it would skip costs about 3ms for these controls.
+
+---
+
+## On iOS, a scroll view scrolls alongside a drag that Lynx's touch events are following
+
+### What you'd expect (UIKit)
+
+A control dragged sideways inside a vertical scroll view keeps the drag to itself: `UISlider` and `UISwitch` stop the scroll view's pan from starting while they track a touch.
+
+### What Lynx does
+
+Lynx delivers touch events from its own gesture recognizer on the LynxView, and a `<scroll-view>`'s `UIScrollView` pan recognizes alongside it. A drag on a slider that drifted 40pt down over a 226pt swipe moved the slider all the way and scrolled the page 66 times (Lynx Explorer 4.1, iOS 27 Simulator). On the Android 14 emulator the same drag didn't scroll: Lynx's scroll view only takes over when the movement is mostly vertical.
+
+### The fix
+
+`consume-slide-event` takes swipe angle ranges, in degrees from the right (`atan2(dy, dx)`), and Lynx fails the platform's pan gestures for a swipe inside them (`dispatchPanEvent:` in `LynxEventHandler.m`). The slider and the switch set `[[-45, 45], [135, 180], [-180, -135]]`, within 45 degrees of sideways: the diagonal drag above no longer scrolled the page, and a swipe up that starts on the slider still scrolls it, on iOS and Android. It matches the controls' own rule for starting a drag, more sideways than up or down.
+
+---
+
+## There's no `backdrop-filter`, and `backdrop-blur-*` generates nothing
+
+### What you'd expect (web)
+
+`backdrop-filter: blur(4px)`, or Tailwind's `backdrop-blur-sm`, blurs whatever is behind the element: the classic frosted backdrop behind a dialog.
+
+### What Lynx does
+
+Lynx's CSS has no `backdrop-filter` (it isn't in `core/renderer/css`; only the desktop Clay renderer has a backdrop filter layer). On the iOS 27 Simulator and the Android 14 emulator, a view with an inline `backdrop-filter: blur(12px)` over text left the text sharp. The class doesn't get that far: the Lynx Tailwind 3 preset leaves the backdrop utilities out (its "Unsupported" table), so `examples/ui-dialog`'s bundle had no rule for the `backdrop-blur-sm` its dialog used, and with Tailwind 4 the build plugin drops properties Lynx lacks (`dropUnsupportedProperties` in `tailwind-v4/declarations.ts`), so the web preview doesn't blur either. The dialog's comment called the blur "web-only"; it blurred nowhere.
+
+### The fix
+
+Blur with a `<blur-view>`, which is what Lynx has for it on every platform. The dialog's no-op class is gone. The alert dialog's glass variant dims the screen with a plain layer, as iOS and Material do behind an alert.
+
+---
+
+## Fading a `<blur-view>` itself hides its material on iOS; fading a parent fades it
+
+### What you'd expect (web)
+
+`opacity` on an element fades it and everything it draws, a backdrop blur included.
+
+### What Lynx does
+
+On the iOS 27 Simulator, an `animate()` of a glass `<blur-view>`'s own opacity made its Liquid Glass disappear at once: its text and buttons stayed, on nothing. (UIKit warns that a `UIVisualEffectView` asked to animate its opacity looks broken until it's back at 1.) The same animation on a plain `<view>` around the blur view works: iOS draws the glass as a translucent frosted sheet that fades with it, then as glass once it's opaque. That's what UIKit draws for its own alerts as they come and go (frames of a `UIAlertController` with the window's layer slowed 20×).
+
+### What we do about it
+
+Fade and scale a plain view around a blur view, never the blur view. The alert dialog's glass variant animates the view its panel sits in, and keeps its dimming layer beside that view rather than around it. The menus avoid the question by growing their glass instead of fading it. A blur view that stays faded (a disabled control) is still a washed-out patch, so components dim the content inside the glass for that (see the `ui-component` skill).
+
+---
+
+## On Android, a shadow inside an animated flattened view draws at twice the view's offset
+
+### What you'd expect (web)
+
+`box-shadow` draws around its element wherever the element is, whatever its parent's transform or opacity.
+
+### What Lynx does
+
+On the Android 14 emulator (Lynx Explorer 4.1), the alert dialog's Material panel, a `<blur-view>` with `ui-glass`'s elevation shadow, sat in a plain view that `animate()` scaled and faded (`fill: 'forwards'`). The panel drew in place, but its shadow drew a second time with its top-left corner at twice the plain view's offset in the overlay (80dp, 712dp for a view at 40dp, 356dp), a big rounded outline running off the bottom-right of the screen. Lynx had flattened the plain view into its parent, which it does for a view with nothing of its own to draw. Each of these took the stray shadow away: no `box-shadow` on the panel, no animation on the plain view, or `flatten="false"` on it. iOS and the web drew the shadow once, in place.
+
+### The fix
+
+Give an animated view that holds a shadowed element a native view of its own with `[flatten]="false"`, as the alert dialog's shell does. The gesture detector already does the same for views it listens on (see the gesture entries above).
+
+---
+
+## Fading content under a bar: masks work on `<scroll-view>`, gradient stops must be percentages, and the web's scroll view reports no layout
+
+### What you'd expect (web)
+
+`mask-image: linear-gradient(to bottom, transparent 0, black 100px)` on a scrolling element fades its top 100px, whatever it scrolls, and a `ResizeObserver` (or Lynx's `layoutchange`) says how tall it is.
+
+### What Lynx does
+
+Checked for the navigation bar's scroll edge effect, in Lynx Explorer 4.1 on the iOS 27 Simulator and an Android 14 emulator, and in Lynx for Web (Chromium), with a probe of each way to soften content under a bar:
+
+- **`mask-image` on a `<scroll-view>` works on iOS and the web, not on Android**, which draws the scroll view unmasked (Lynx's docs say the property applies to `view` only). On iOS the mask stays put while the content scrolls: it doesn't move with the UIScrollView's bounds. On a plain view, and on a wrapper view around the scroll view, it works on all three.
+- **Gradient stops are percentages only on native Lynx**, as for backgrounds, so stops a fixed distance from an edge come from the element's measured height. The browser reads `px` and `calc(100% - 50px)` stops as usual.
+- **`<x-scroll-view>` sends no `layoutchange` on Lynx for Web**: web-elements' `ScrollView` doesn't set `layoutChangeTarget`, as `XView` does (the same gap as `<blur-view>`, above). A plain view inside it still reports its size.
+- **A gradient overlay** in the page's background color fades content too, but only to that color, not to an image behind. `rgba(var(--background-rgb), 0.5)` stops work in it on all three.
+- **A `<blur-view>` with a gradient `mask-image`** blurs progressively, more toward the edge, on iOS and the web; Android ignores the mask and blurs a hard-edged band. Three stacked blur-views of rising radius band visibly instead.
+
+### What we do about it
+
+`ui-bar-scroll` puts the mask on its own scroll view: under glass bars, content fades out over the bar's space, to whatever is behind it. Its stops come from its spacers' `layoutchange` heights, which count the safe area, and on iOS from the scroll view's own height, as percentages; on the web, where there's no height to read, from each end as lengths. On Android, with the glass opt-in, the bars draw the same fade themselves as a gradient in the theme's background color (`edgeFadeOverlay()`), so content fades to that color there. The masked blur isn't used: the blur-view's material would tint the strip, Android ignores its mask, and on Android every blur-view redraws the page each frame.

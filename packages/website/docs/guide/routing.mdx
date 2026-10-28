@@ -126,6 +126,7 @@ export class Details {
 - **`Location.back()` and `Location.forward()`** move through the router's in-memory history.
 - **`history.back()` does nothing** on a device, because there's no browser history.
 - **The Android back button goes back a screen** in an app built with `ng build --platform android`. The router handles it like the browser's back button on the web, so guards such as `canDeactivate` still run. On the first screen, it leaves the app.
+- **For a Back button in a top bar**, use the [Navigation Bar](/dolan/navigation-bar): it shows its Back button only while there's a screen to go back to, and calls `Location.back()`.
 
 ## Read route parameters
 
@@ -205,4 +206,5 @@ Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and
 - [Multi-page apps](/guide/multi-page): separate bundles, each its own Angular app, instead of routes
 - [Tab Bar](/dolan/tab-bar): a ready-made bottom tab bar that navigates between routes
 - [Dock](/dolan/dock): the same as a floating Liquid Glass bar
+- [Navigation Bar](/dolan/navigation-bar): a screen's top bar, with a Back button that goes back through the router
 - [Angular routing guide](https://angular.dev/guide/routing)

@@ -3,10 +3,10 @@
   "components": {
     "action-sheet": {
       "action-sheet.ts": {
-        "hash": "14c4f395bb3b6a85"
+        "hash": "5f65fa96c0e0d2bd"
       },
       "index.ts": {
-        "hash": "45c3648e1702c423"
+        "hash": "c13d8cb001d506c2"
       }
     },
     "spinner": {
@@ -26,6 +26,59 @@
       },
       "index.ts": {
         "hash": "571fcd53d172c512"
+      }
+    },
+    "icon": {
+      "icon-theme.ts": {
+        "hash": "1efb1f9b494fbf74"
+      },
+      "icon.ts": {
+        "hash": "e7fa61d7a0337601"
+      },
+      "icons.ts": {
+        "hash": "2d54632a5080d6fc"
+      },
+      "index.ts": {
+        "hash": "d175df85291c8009"
+      }
+    },
+    "glass": {
+      "concentric-radius.ts": {
+        "hash": "41fd4168e55e3f08"
+      },
+      "glass-design.ts": {
+        "hash": "f55143a5e91687c5"
+      },
+      "glass.ts": {
+        "hash": "0ec9695c391d7cb7"
+      },
+      "index.ts": {
+        "hash": "f9f59d5807c760b6"
+      }
+    },
+    "menu": {
+      "index.ts": {
+        "hash": "6844fe66f0fbae47"
+      },
+      "menu-placement.ts": {
+        "hash": "76c669fffb01282d"
+      },
+      "menu-popup.ts": {
+        "hash": "f85b73ee14e01983"
+      },
+      "menu.ts": {
+        "hash": "4168935ddb40e04a"
+      }
+    },
+    "popover": {
+      "index.ts": {
+        "hash": "0d2b380cbbe27ed0"
+      },
+      "popover-panel.ts": {
+        "hash": "a9c7465b6c0844de"
+      },
+      "popover.ts": {
+        "hash": "52cc5fc2fd6f4410"
       }
     }
   },

@@ -40,7 +40,13 @@ const GLASS_COLORS = [
 ];
 
 export const registry: RegistryEntry[] = [
-  { name: 'action-sheet', dependencies: [] },
+  // Opened from a control, the action sheet is a popover: glass on iOS 26
+  // and a Material menu on Android, whose actions take the glass colors.
+  {
+    name: 'action-sheet',
+    dependencies: ['glass', 'popover'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground'],
+  },
   { name: 'accordion', dependencies: [] },
   { name: 'alert', dependencies: [], packages: CVA_PACKAGES },
   // The glass variant's panel is glass, and its text and buttons take the
@@ -115,6 +121,13 @@ export const registry: RegistryEntry[] = [
   { name: 'nav-drawer', dependencies: ['icon'] },
   // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.
   { name: 'pagination', dependencies: ['icon'] },
+  // The popover is glass, placed by the menu's placement, and its content
+  // reads the glass colors.
+  {
+    name: 'popover',
+    dependencies: ['glass', 'menu'],
+    themeColors: ['glass-foreground', 'glass-muted-foreground'],
+  },
   { name: 'progress', dependencies: [] },
   { name: 'radio-group', dependencies: [] },
   { name: 'scatter-chart', dependencies: ['chart'] },
@@ -130,8 +143,12 @@ export const registry: RegistryEntry[] = [
   { name: 'separator', dependencies: [] },
   { name: 'sheet', dependencies: ['bottom-sheet'] },
   { name: 'skeleton', dependencies: [] },
+  // The glass variant's thumb turns into a glass lens while it's dragged,
+  // and its iOS colors follow the app's color scheme through icon-theme.ts.
+  { name: 'slider', dependencies: ['glass', 'icon'] },
   { name: 'spinner', dependencies: ['icon'] },
-  { name: 'switch', dependencies: [] },
+  // As the slider.
+  { name: 'switch', dependencies: ['glass', 'icon'] },
   // The tab bar draws its items' icons from icon's set, in theme colors
   // resolved by icon-theme.ts.
   { name: 'tab-bar', dependencies: ['icon'] },

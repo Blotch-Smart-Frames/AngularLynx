@@ -1,7 +1,9 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
-  type ElementRef,
   type OnDestroy,
   Component,
+  Directive,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
@@ -27,13 +29,52 @@ import {
   slideOut,
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
+import { injectGlassDesign } from '../glass/glass-design';
+import { type PopoverAnchor, UiPopoverPanel } from '../popover/popover-panel';
 
+/**
+ * The width of an action sheet opened from a control: iOS's, and Material's
+ * widest menu.
+ */
+const ANCHORED_WIDTH = { glass: 270, material: 280 } as const;
+
+/**
+ * An action sheet: a short list of choices about an action the user took,
+ * such as saving or deleting a draft.
+ *
+ * ```html
+ * <ui-button (pressed)="open.set(true)">Share</ui-button>
+ * <ui-action-sheet [(open)]="open">
+ *   <ui-action-sheet-title>Share this document</ui-action-sheet-title>
+ *   <ui-action-sheet-item (pressed)="copyLink()">Copy link</ui-action-sheet-item>
+ *   <ui-action-sheet-item variant="destructive" (pressed)="remove()">Delete</ui-action-sheet-item>
+ *   <ui-action-sheet-cancel />
+ * </ui-action-sheet>
+ * ```
+ *
+ * By default it slides up from the bottom of the screen over a dimmed
+ * backdrop, with Cancel in a tile of its own below the actions, and takes
+ * the screen until it closes.
+ *
+ * Mark the control that presents it with `[uiActionSheetAnchor]="sheet"`
+ * to open it from that control instead, as iOS 26 does: there it's Liquid
+ * Glass that grows out of the control, and on Android a Material 3 menu
+ * that unfolds beside it. Nothing dims, Cancel gives way to a touch outside,
+ * and that touch still reaches what it lands on. Before iOS 26, iPhone
+ * action sheets always rose from the bottom, so it does there too.
+ */
 @Component({
   selector: 'ui-action-sheet',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiPopoverPanel],
   encapsulation: ViewEncapsulation.None,
   template: `
-    <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
+    <!-- Android's back button asks the overlay to close (requestclose),
+         which closes the sheet as Cancel does. -->
+    <overlay
+      [attr.visible]="overlayVisible()"
+      [style]="overlayStyle()"
+      (bindrequestclose)="close()"
+    >
       <!-- bg-black/50 dims the content behind the sheet. The fadeIn/fadeOut in
            #animateIn/#animateOut already tween this element's opacity over
            DURATION.normal, so the dim animates in lockstep with the panel slide —
@@ -62,7 +103,9 @@ import { cn } from '../../utils/cn';
             class="flex-col rounded-lg border border-border bg-card flex overflow-hidden"
             style="box-shadow: 0 2px 16px rgba(0, 0, 0, 0.15);"
           >
-            <ng-content />
+            @if (!anchored()) {
+              <ng-container [ngTemplateOutlet]="actions" />
+            }
           </view>
           <!-- Cancel button is slotted separately so it renders outside the
                rounded card — matching the iOS action sheet visual convention
@@ -71,6 +114,27 @@ import { cn } from '../../utils/cn';
         </view>
       </view>
     </overlay>
+    @if (anchorElement(); as anchor) {
+      <!-- Opened from its control: a popover's panel, which leaves the rest
+           of the screen as it was. A touch outside it is the cancel, as
+           UIKit drops an action sheet's Cancel when it shows it as a
+           popover, so the Cancel tile above stays hidden. -->
+      <ui-popover-panel
+        #anchoredPanel
+        [open]="open()"
+        [anchor]="anchor"
+        [width]="anchoredWidth()"
+        (dismissed)="close()"
+        (closed)="closed.emit()"
+      >
+        <view [class]="anchoredClass()">
+          <ng-container [ngTemplateOutlet]="actions" />
+        </view>
+      </ui-popover-panel>
+    }
+    <!-- One copy of the title and items, for whichever form the sheet takes:
+         Angular projects content once, so it can't be in both. -->
+    <ng-template #actions><ng-content /></ng-template>
   `,
 })
 export class UiActionSheet implements OnDestroy {
@@ -78,6 +142,50 @@ export class UiActionSheet implements OnDestroy {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly closed = output<void>();
+
+  readonly design = injectGlassDesign();
+  readonly #anchor = signal<PopoverAnchor | null>(null);
+
+  /**
+   * The control the sheet opens from, on a design that opens it there: iOS
+   * 26's glass and Android's Material. iPhone action sheets rose from the
+   * bottom edge before iOS 26 whatever presented them, so `frosted` keeps
+   * the bottom sheet.
+   */
+  protected readonly anchorElement = computed(() =>
+    this.design() === 'frosted' ? null : this.#anchor(),
+  );
+
+  /** Whether the sheet opens from its control rather than from the bottom. */
+  readonly anchored = computed(() => this.anchorElement() !== null);
+
+  // Optional: only there while the sheet is anchored.
+  readonly anchoredPanel = viewChild<UiPopoverPanel>('anchoredPanel');
+
+  /**
+   * Whether the sheet covers its control now: on iOS 26 it grows out of the
+   * control and shrinks back into it, which hides meanwhile.
+   */
+  readonly coversAnchor = computed(
+    () => this.anchoredPanel()?.coversAnchor() ?? false,
+  );
+
+  /**
+   * How the sheet's title and items draw: as today's bottom sheet, as
+   * iOS 26's glass popover, or as a Material 3 menu.
+   */
+  readonly look = computed<'sheet' | 'glass' | 'material'>(() => {
+    if (!this.anchored()) return 'sheet';
+    return this.design() === 'material' ? 'material' : 'glass';
+  });
+
+  protected readonly anchoredWidth = computed(() =>
+    this.look() === 'material' ? ANCHORED_WIDTH.material : ANCHORED_WIDTH.glass,
+  );
+
+  protected readonly anchoredClass = computed(() =>
+    cn('flex-col flex', this.look() === 'material' ? 'py-2' : 'py-1.5'),
+  );
 
   protected readonly overlayVisible = signal(false);
   /**
@@ -98,7 +206,7 @@ export class UiActionSheet implements OnDestroy {
   readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
-  #hasBeenOpen = false;
+  #sheetOpen = false;
   // The open and close sequences' pending timers, so ngOnDestroy can stop
   // them.
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
@@ -108,17 +216,20 @@ export class UiActionSheet implements OnDestroy {
    * constructor: Angular's test build keeps a function for a constructor that
    * nothing calls, which an app's coverage report would show as uncovered.
    *
-   * `#hasBeenOpen` prevents the close animation from running on the initial
-   * effect evaluation when `open` starts as false. Without this guard, the
-   * first run would call #doClose() and emit `closed` before the action
-   * sheet has ever been opened.
+   * `#sheetOpen` says the bottom sheet is open or opening, so only a sheet
+   * that opened closes. Without it, the first run, with `open` false, would
+   * call #doClose() and emit `closed` before the action sheet ever opened,
+   * and so would an anchor arriving or leaving while it's closed.
    */
   protected readonly openOrClose = effect(() => {
-    const isOpen = this.open();
+    // An anchored sheet opens in its popover panel instead, which follows
+    // `open` itself.
+    const isOpen = this.open() && !this.anchored();
     if (isOpen) {
-      this.#hasBeenOpen = true;
+      this.#sheetOpen = true;
       this.#doOpen();
-    } else if (this.#hasBeenOpen) {
+    } else if (this.#sheetOpen) {
+      this.#sheetOpen = false;
       this.#doClose();
     }
   });
@@ -137,6 +248,21 @@ export class UiActionSheet implements OnDestroy {
 
   close(): void {
     this.open.set(false);
+  }
+
+  /**
+   * @internal Called by the `uiActionSheetAnchor` directive.
+   */
+  setAnchor(anchor: PopoverAnchor | null): void {
+    this.#anchor.set(anchor);
+  }
+
+  /**
+   * @internal A touch began on the anchor, which opens the sheet rather than
+   * landing outside it (see UiPopoverPanel.touchedAnchor).
+   */
+  touchedAnchor(): void {
+    this.anchoredPanel()?.touchedAnchor();
   }
 
   /**
@@ -229,28 +355,73 @@ export class UiActionSheet implements OnDestroy {
   }
 }
 
+/** How an action sheet's title and items draw; see UiActionSheet.look. */
+type ActionSheetLook = 'sheet' | 'glass' | 'material';
+
+/**
+ * The look of the sheet a title or item is in. Today's bottom sheet when
+ * it's in none.
+ */
+const lookOf = (sheet: UiActionSheet | null) =>
+  computed<ActionSheetLook>(() => sheet?.look() ?? 'sheet');
+
+// The bottom sheet's tiles; iOS 26's popover, whose rows are 44pt tall with
+// the text in the middle, as UIKit's action sheets keep it in every form;
+// and Material 3's menu, with 48dp rows and the text at the start.
+const TITLE_CONTAINER: Readonly<Record<ActionSheetLook, string>> = {
+  sheet: 'items-center px-4 py-3 flex justify-center',
+  glass: 'items-center px-4 pb-1 pt-2 flex justify-center',
+  material: 'items-center px-3 pb-1 pt-2 flex',
+};
+const TITLE_TEXT: Readonly<Record<ActionSheetLook, string>> = {
+  sheet: 'text-sm text-muted-foreground',
+  glass: 'text-center text-[13px] text-glass-muted-foreground',
+  material: 'text-[13px] text-glass-muted-foreground',
+};
+const ITEM_CONTAINER: Readonly<Record<ActionSheetLook, string>> = {
+  sheet: 'items-center border-t border-border px-4 py-3 flex justify-center',
+  glass:
+    'min-h-[44px] items-center px-4 py-[11px] flex justify-center relative',
+  material: 'min-h-[48px] items-center px-3 py-3 flex relative',
+};
+const ITEM_TEXT: Readonly<Record<ActionSheetLook, string>> = {
+  sheet: 'text-base',
+  glass: 'text-center text-[17px]',
+  material: 'text-[16px]',
+};
+
+/**
+ * The action sheet's title, muted, above its items. A screen reader reads
+ * it as a heading.
+ */
 @Component({
   selector: 'ui-action-sheet-title',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
     <view [class]="containerClass()">
-      <text [class]="textClass()"><ng-content /></text>
+      <text [class]="textClass()" accessibility-traits="header"
+        ><ng-content
+      /></text>
     </view>
   `,
 })
 export class UiActionSheetTitle {
+  readonly #look = lookOf(inject(UiActionSheet, { optional: true }));
+
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('items-center px-4 py-3 flex justify-center', this.userClass()),
+    cn(TITLE_CONTAINER[this.#look()], this.userClass()),
   );
 
-  protected readonly textClass = computed(() =>
-    cn('text-sm text-muted-foreground'),
-  );
+  protected readonly textClass = computed(() => TITLE_TEXT[this.#look()]);
 }
 
+/**
+ * One of the action sheet's choices: a tap emits `pressed` and closes the
+ * sheet. A screen reader reads it as a button.
+ */
 @Component({
   selector: 'ui-action-sheet-item',
   imports: [LYNX_ELEMENTS],
@@ -267,12 +438,23 @@ export class UiActionSheetTitle {
       (bindmouseleave)="onPressCancel()"
       (bindtap)="onTap()"
     >
-      <text [class]="textClass()"><ng-content /></text>
+      @if (look() !== 'sheet') {
+        <!-- A menu row's pressed highlight (see UiMenuItem): rows in a
+             popover light up rather than shrink. -->
+        <view
+          class="h-full w-full bg-glass-foreground absolute left-0 top-0"
+          [style.opacity]="held() ? 0.1 : 0"
+        ></view>
+      }
+      <text [class]="textClass()" accessibility-traits="button"
+        ><ng-content
+      /></text>
     </view>
   `,
 })
 export class UiActionSheetItem {
   readonly #sheet = inject(UiActionSheet);
+  protected readonly look = lookOf(this.#sheet);
 
   readonly variant = input<'default' | 'destructive'>('default');
   readonly userClass = input<string>('', { alias: 'class' });
@@ -283,21 +465,28 @@ export class UiActionSheetItem {
   readonly containerRef = viewChild.required<ElementRef>('container');
   #pressAnim?: AnimationHandle;
 
+  /** Whether a finger (or the mouse) is down on a row in a popover. */
+  protected readonly held = signal(false);
+
   protected readonly containerClass = computed(() =>
-    cn(
-      'items-center border-t border-border px-4 py-3 flex justify-center',
-      this.userClass(),
-    ),
+    cn(ITEM_CONTAINER[this.look()], this.userClass()),
   );
 
-  protected readonly textClass = computed(() =>
-    cn(
-      'text-base',
-      this.variant() === 'destructive' ? 'text-destructive' : 'text-primary',
-    ),
-  );
+  protected readonly textClass = computed(() => {
+    const destructive = this.variant() === 'destructive';
+    return cn(
+      ITEM_TEXT[this.look()],
+      destructive && 'text-destructive',
+      !destructive &&
+        (this.look() === 'sheet' ? 'text-primary' : 'text-glass-foreground'),
+    );
+  });
 
   protected onPressStart(): void {
+    if (this.look() !== 'sheet') {
+      this.held.set(true);
+      return;
+    }
     this.#pressAnim?.cancel();
     this.#pressAnim = pressDown(
       this.containerRef().nativeElement,
@@ -306,11 +495,13 @@ export class UiActionSheetItem {
   }
 
   protected onPressEnd(): void {
+    this.held.set(false);
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
 
   protected onPressCancel(): void {
+    this.held.set(false);
     this.#pressAnim?.cancel();
     this.#pressAnim = pressRelease(this.containerRef().nativeElement);
   }
@@ -321,6 +512,11 @@ export class UiActionSheetItem {
   }
 }
 
+/**
+ * The action sheet's Cancel, in a tile of its own below the actions: a tap
+ * closes the sheet. An action sheet opened from its control has none: a
+ * touch outside it cancels.
+ */
 @Component({
   selector: 'ui-action-sheet-cancel',
   imports: [LYNX_ELEMENTS],
@@ -338,7 +534,9 @@ export class UiActionSheetItem {
       (bindmouseleave)="onPressCancel()"
       (bindtap)="onTap()"
     >
-      <text [class]="textClass()">{{ label() }}</text>
+      <text [class]="textClass()" accessibility-traits="button">{{
+        label()
+      }}</text>
     </view>
   `,
 })
@@ -384,4 +582,50 @@ export class UiActionSheetCancel {
   protected onTap(): void {
     this.#sheet.close();
   }
+}
+
+/**
+ * Marks the control that presents an action sheet, which then opens from it
+ * instead of from the bottom of the screen: Liquid Glass that grows out of
+ * it on iOS 26, and a Material 3 menu beside it on Android.
+ *
+ * ```html
+ * <ui-button [uiActionSheetAnchor]="sheet" (pressed)="open.set(true)">
+ *   Share
+ * </ui-button>
+ * <ui-action-sheet #sheet [(open)]="open">…</ui-action-sheet>
+ * ```
+ *
+ * It only says where the sheet opens from: open it as before, from the
+ * control's own tap handler. A touch on the control doesn't count as one
+ * outside the sheet, so it doesn't close it.
+ */
+@Directive({
+  selector: '[uiActionSheetAnchor]',
+  host: {
+    // Bubbling, from what the touch landed on in the control: Lynx 4.1 ran
+    // no capture listener on iOS (see UiPopoverPanel).
+    '(bindtouchstart)': 'sheet().touchedAnchor()',
+    '(bindmousedown)': 'sheet().touchedAnchor()',
+    '[style.opacity]': 'sheet().coversAnchor() ? 0 : null',
+  },
+})
+export class UiActionSheetAnchor {
+  /** The action sheet this control presents. */
+  readonly sheet = input.required<UiActionSheet>({
+    alias: 'uiActionSheetAnchor',
+  });
+
+  readonly #element =
+    inject<ElementRef<PopoverAnchor>>(ElementRef).nativeElement;
+
+  /**
+   * Points the sheet at this control, and away from it when the directive
+   * is destroyed or points at another sheet.
+   */
+  protected readonly register = effect((onCleanup) => {
+    const sheet = this.sheet();
+    sheet.setAnchor(this.#element);
+    onCleanup(() => sheet.setAnchor(null));
+  });
 }

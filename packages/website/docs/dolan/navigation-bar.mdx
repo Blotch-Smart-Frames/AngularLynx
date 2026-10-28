@@ -1,0 +1,174 @@
+# Navigation Bar
+
+The bar at the top of a screen: its title, a Back button that goes back through the router, and the screen's actions. On iOS 26 its controls float in Liquid Glass, and content fades as it scrolls beneath them.
+
+<Go example="ui-navigation-bar" defaultFile="src/app/screens.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add navigation-bar
+```
+
+```typescript
+import { UiNavigationBar } from '../components/ui/navigation-bar';
+import {
+  UiBarScroll,
+  UiToolbarGroup,
+  UiToolbarItem,
+} from '../components/ui/toolbar';
+```
+
+:::tip
+This also adds [Toolbar](/dolan/toolbar), whose items and groups go in the bar, [Glass](/dolan/glass) and [Icon](/dolan/icon).
+:::
+
+## Usage
+
+Put the bar after the screen's `<scroll-view>`, and `ui-bar-scroll` on the scroll view:
+
+```typescript title="src/app/notes.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiNavigationBar } from '../components/ui/navigation-bar';
+import {
+  UiBarScroll,
+  UiToolbarGroup,
+  UiToolbarItem,
+} from '../components/ui/toolbar';
+
+@Component({
+  selector: 'app-notes',
+  imports: [
+    LYNX_ELEMENTS,
+    UiBarScroll,
+    UiNavigationBar,
+    UiToolbarGroup,
+    UiToolbarItem,
+  ],
+  host: { class: 'flex flex-1 flex-col' },
+  template: `
+    <scroll-view
+      ui-bar-scroll
+      scroll-orientation="vertical"
+      class="h-full w-full"
+    >
+      <view class="flex-col gap-3 px-4 pb-4 flex">…</view>
+    </scroll-view>
+
+    <ui-navigation-bar title="Notes" largeTitle>
+      <ui-toolbar-item leading label="Edit" (pressed)="edit()" />
+      <ui-toolbar-group>
+        <ui-toolbar-item icon="search" label="Search" (pressed)="search()" />
+        <ui-toolbar-item icon="plus" label="New note" (pressed)="add()" />
+      </ui-toolbar-group>
+    </ui-navigation-bar>
+  `,
+})
+export class Notes {}
+```
+
+- **The bar floats over the content** at the top of the screen, below the status bar. Content scrolls beneath it.
+- **`ui-bar-scroll` makes room for it:** the content starts below the bar and the status bar, so you don't pad for either.
+- **Items go at the trailing end.** Add `leading` to put one after the Back button. [Group](/dolan/toolbar#groups) related ones.
+- **The title is the screen's heading** for screen readers. Keep it short: Apple suggests under 15 characters.
+
+### What each platform draws
+
+| Platform                                   | What you get                                                                                                                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iOS 26 and later                           | No bar background. The items float in Liquid Glass, grouped ones on one capsule, and the Back button is a glass circle. Content fades out as it scrolls under the bar. |
+| iOS 15 to 25                               | The navigation bar of that time: clear at the top of the content, and on the blur material with a hairline once content scrolls under it. Items are in the tint color. |
+| Android                                    | Material 3's small top app bar, or center-aligned with `titleCentered`. It turns from the surface color to the surface container's as content scrolls under it.        |
+| Android, with `provideGlass()`             | The iOS 26 bar, drawn with Android's blur.                                                                                                                             |
+| [Web preview](/guide/glossary#web-preview) | The iOS 26 bar, drawn with WebGL.                                                                                                                                      |
+
+### The Back button
+
+The bar shows a Back button while the router has a screen to go back to, and a tap calls `Location.back()`. The router then goes back as for the browser's back button, so guards such as `canDeactivate` still run. On the app's first screen there's no Back button.
+
+```angular-html
+<ui-navigation-bar
+  [title]="note().title"
+  backLabel="Notes"
+  backRoute="/notes"
+/>
+```
+
+- **`backLabel`** is the previous screen's title. iOS 15 to 25 show it beside the chevron, and screen readers say it everywhere. It's `Back` by default.
+- **`backRoute`** is where Back goes when there's no history, such as a note the app opened on from a link. The Back button then shows anyway, and replaces the screen with that route.
+- **`backButtonHidden`** hides it, for a screen that starts a flow though there's history behind it, such as a tab's first screen in a [Dock](/dolan/dock).
+
+It needs `provideRouter()` from `@blotch/angular-lynx`, whose in-memory history knows whether there's a screen to go back to. For a Back button that does something else, set `backButtonHidden` and add your own as a leading item: `back` draws the platform's Back button.
+
+```angular-html
+<ui-navigation-bar title="Step 2" backButtonHidden>
+  <ui-toolbar-item leading back label="Step 1" (pressed)="previousStep()" />
+</ui-navigation-bar>
+```
+
+### Large title
+
+With `largeTitle`, the title starts large at the top of the content and scrolls away with it. Once it has gone under the bar, the bar shows the title instead:
+
+```angular-html
+<ui-navigation-bar title="Notes" largeTitle />
+```
+
+`ui-bar-scroll` draws the large title, so it needs a scroll view with it. On Android it's Material 3 Expressive's medium flexible app bar, which collapses into the small one the same way.
+
+### The scroll edge effect
+
+On iOS 26 and later, content fades out as it passes under the glass bar, so the bar's controls stay legible over whatever is beneath them, as iOS's scroll edge effect does. It's a mask on the scroll view, so content fades to whatever is behind it: the screen's background, or an image.
+
+The other designs mark the edge with the bar's own background instead: the frosted material before iOS 26, and Material's container color on Android.
+
+### Two bars at once
+
+`ui-bar-scroll` and the bars find each other through `UiBarState`, a root service, which fits one screen at a time. When two screens with bars show at once, such as a sheet with its own navigation bar over a screen, give the sheet's component its own:
+
+```typescript
+@Component({ providers: [UiBarState], … })
+export class EditNoteSheet {}
+```
+
+### Dark mode
+
+The icons draw with the light theme's colors until you say otherwise, and the glass follows the same setting. If your app switches to dark mode, set the color scheme with [`provideIconTheme()`](/dolan/icon#dark-mode).
+
+## API
+
+### UiNavigationBar
+
+| Input              | Type                  | Default     | Description                                                                                          |
+| ------------------ | --------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `title`            | `string`              | `''`        | The screen's title.                                                                                  |
+| `largeTitle`       | `boolean`             | `false`     | Starts the title large at the top of the content. Needs `ui-bar-scroll`.                             |
+| `titleCentered`    | `boolean`             | `false`     | Material's center-aligned top app bar. iOS always centers the title.                                 |
+| `backLabel`        | `string`              | `'Back'`    | The previous screen's title, shown beside the Back button before iOS 26 and read by screen readers.  |
+| `backRoute`        | `string \| undefined` | `undefined` | Where Back goes when there's no history, in place of the screen: a URL for `Router.navigateByUrl()`. |
+| `backButtonHidden` | `boolean`             | `false`     | Hides the Back button.                                                                               |
+| `class`            | `string`              | `''`        | Extra Tailwind classes for the bar, which places itself at the top of its parent.                    |
+
+| Property    | Type                                         | Description                                                          |
+| ----------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| `canGoBack` | `Signal<boolean>`                            | Whether there's a screen to go back to in the router's history.      |
+| `design`    | `Signal<'glass' \| 'frosted' \| 'material'>` | The platform's design (see [Glass](/dolan/glass#functions)).         |
+| `goBack()`  | method                                       | Goes back as the Back button does. With nowhere to go, does nothing. |
+
+`ui-bar-scroll` and the items are on the [Toolbar](/dolan/toolbar#api) page.
+
+## Accessibility
+
+- **The title is a heading.** With a large title, the bar's copy is hidden from screen readers until the large one has scrolled under it.
+- **The Back button is a button** named by `backLabel`. Each item is a button named by its `label`, which icon-only items need too.
+- **Reduce Motion:** the title appears at once instead of fading in, and Material's bar changes color at once.
+- **Reduce Transparency and Increase Contrast** are handled by the [glass](/dolan/glass#accessibility).
+
+## Related
+
+- [Toolbar](/dolan/toolbar): the items and groups, and a bar of actions along the bottom
+- [Routing and navigation](/guide/routing#go-back): going back through the router
+- [Dock](/dolan/dock): a floating glass tab bar for the app's top-level screens
+- [Glass](/dolan/glass): the glass the bar's controls are drawn with
+- [Safe area](/guide/safe-area): the inset the bar clears

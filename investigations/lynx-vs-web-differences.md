@@ -5271,3 +5271,24 @@ Checked in Lynx Explorer 4.1 on the iOS 27 Simulator: a blur-view created after 
 
 The runtime holds back a new blur-view's glass until a flush has drawn it (`holdGlassUntilDrawn()` and `releaseHeldGlass()` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). On iOS, after the first render, a blur-view LynxDocument creates (or rebuilds on remount) doesn't send a `glass` or `glass-container` `blur-effect` to the element until `LynxRendererFactory2.end()` or the settle flush has flushed it; then they set it and flush again, in the same task, so the glass is there in the same frame. Any other effect goes to the element at once. Android and the web draw glass their own way and hold nothing. Covered by `held-glass.test.ts`.
 
+---
+
+## Fading content under a bar: masks work on `<scroll-view>`, gradient stops must be percentages, and the web's scroll view reports no layout
+
+### What you'd expect (web)
+
+`mask-image: linear-gradient(to bottom, transparent 0, black 100px)` on a scrolling element fades its top 100px, whatever it scrolls, and a `ResizeObserver` (or Lynx's `layoutchange`) says how tall it is.
+
+### What Lynx does
+
+Checked for the navigation bar's scroll edge effect, in Lynx Explorer 4.1 on the iOS 27 Simulator and in Lynx for Web (Chromium), with a probe of each way to soften content under a bar:
+
+- **`mask-image` on a `<scroll-view>` works** though Lynx's docs say it applies to `view` only, and the mask stays put while the content scrolls (iOS doesn't move it with the UIScrollView's bounds). On a wrapper view around the scroll view it works too.
+- **Gradient stops are percentages only on native Lynx**, as for backgrounds, so stops a fixed distance from an edge come from the element's measured height. The browser reads `px` and `calc(100% - 50px)` stops as usual.
+- **`<x-scroll-view>` sends no `layoutchange` on Lynx for Web**: web-elements' `ScrollView` doesn't set `layoutChangeTarget`, as `XView` does (the same gap as `<blur-view>`, above). A plain view inside it still reports its size.
+- **A gradient overlay** in the page's background color fades content too, but only to that color, not to an image behind.
+- **A `<blur-view>` with a gradient `mask-image`** blurs progressively, more toward the edge, on iOS and the web. Three stacked blur-views of rising radius band visibly instead.
+
+### What we do about it
+
+`ui-bar-scroll` puts the mask on its own scroll view: under glass bars, content fades out over the bar's space, to whatever is behind it. Its stops come from its spacers' `layoutchange` heights, which count the safe area, and on native from the scroll view's own height, as percentages; on the web, where there's no height to read, from each end as lengths. The masked blur isn't used: the blur-view's material would tint the strip, and on Android every blur-view redraws the page each frame.

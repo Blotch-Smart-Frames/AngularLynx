@@ -100,6 +100,9 @@ export const registry: RegistryEntry[] = [
   },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
+  // The navigation bar's Back button and items are toolbar items, it shares
+  // the toolbar's scroll view, and the frosted bar's material is glass.
+  { name: 'navigation-bar', dependencies: ['glass', 'toolbar'] },
   // Pagination and the spinner draw SVGs in theme colors with icon-theme.ts.
   { name: 'pagination', dependencies: ['icon'] },
   { name: 'progress', dependencies: [] },
@@ -119,6 +122,13 @@ export const registry: RegistryEntry[] = [
   { name: 'textarea', dependencies: [] },
   { name: 'toast', dependencies: [] },
   { name: 'toggle', dependencies: [], packages: CVA_PACKAGES },
+  // Toolbar items are glass on iOS 26 and later, a prominent one in the glass
+  // tint, and they draw their icons from icon's set.
+  {
+    name: 'toolbar',
+    dependencies: ['glass', 'icon'],
+    themeColors: ['glass-foreground', 'glass-tint', 'glass-tint-foreground'],
+  },
   { name: 'typography', dependencies: [], packages: CVA_PACKAGES },
   { name: 'icon', dependencies: [] },
 ];

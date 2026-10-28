@@ -95,6 +95,8 @@ export default defineConfig({
         { text: 'Glass', link: '/dolan/glass' },
         { text: 'Glass Buttons', link: '/dolan/button#glass' },
         { text: 'Dock', link: '/dolan/dock' },
+        { text: 'Navigation Bar', link: '/dolan/navigation-bar' },
+        { text: 'Toolbar', link: '/dolan/toolbar' },
         { text: 'Menu', link: '/dolan/menu' },
         { text: 'Context Menu', link: '/dolan/context-menu' },
         { dividerType: 'solid' },

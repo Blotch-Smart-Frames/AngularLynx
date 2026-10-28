@@ -181,4 +181,4 @@ Tailwind 4 writes CSS Lynx drops (cascade layers, `oklch()`, `color-mix()`, `pad
 
 **Tailwind CSS 3** still works: if a `tailwind.config.js` or `tailwind.config.ts` is present, the plugin runs the app's Tailwind 3 as a PostCSS plugin, with `@lynx-js/tailwind-preset` in the config. Tailwind 3 generates CSS for the classes in the files its `content` globs match, so keep `./src/**/*.{html,ts}` there: classes in an `.html` template the glob misses get no CSS.
 
-The `@blotch/ui` theme maps its colors to utilities with `tailwind.css` (import it after Tailwind) on Tailwind 4, and with `tailwind-plugin.ts` on Tailwind 3.
+The `@blotch/ui` theme maps its colors to utilities with `tailwind.css` (import it after Tailwind) on Tailwind 4, and with `tailwind-plugin.ts` on Tailwind 3. After moving an app from one version to the other, run `npx dolan update`: it copies the file the new version takes and deletes the other one (asking first if it was edited). `npx dolan doctor` warns about one left behind.

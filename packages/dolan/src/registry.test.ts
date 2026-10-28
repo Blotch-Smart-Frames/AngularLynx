@@ -67,11 +67,21 @@ describe('resolveDependencies', () => {
   });
 
   it('resolves select with its bottom-sheet dependency', () => {
-    expect(resolveDependencies(['select'])).toEqual(['bottom-sheet', 'select']);
+    expect(resolveDependencies(['select'])).toEqual([
+      'icon',
+      'glass',
+      'bottom-sheet',
+      'select',
+    ]);
   });
 
   it('resolves sheet with its bottom-sheet dependency', () => {
-    expect(resolveDependencies(['sheet'])).toEqual(['bottom-sheet', 'sheet']);
+    expect(resolveDependencies(['sheet'])).toEqual([
+      'icon',
+      'glass',
+      'bottom-sheet',
+      'sheet',
+    ]);
   });
 
   it.each([
@@ -86,6 +96,8 @@ describe('resolveDependencies', () => {
 
   it('deduplicates bottom-sheet when both select and sheet are selected', () => {
     expect(resolveDependencies(['select', 'sheet'])).toEqual([
+      'icon',
+      'glass',
       'bottom-sheet',
       'select',
       'sheet',

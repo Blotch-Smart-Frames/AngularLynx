@@ -1,6 +1,8 @@
 import { Component, ViewEncapsulation, input } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
+import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from './icon-theme';
 import { type IconName, ICONS } from './icons';
 
 const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
@@ -16,39 +18,54 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   template: `
-    <svg [attr.content]="svgContent()" [attr.style]="sizeStyle()" />
+    <svg
+      [attr.content]="svgContent()"
+      [attr.style]="sizeStyle()"
+      [class]="svgClass()"
+    />
   `,
 })
 export class UiIcon {
   readonly name = input.required<IconName>();
   readonly size = input<'xs' | 'sm' | 'md' | 'lg'>('md');
+  /**
+   * A literal color or a theme token (`var(--primary)`). Without one, the icon
+   * takes the color its container sets (see `UI_ICON_COLOR`), then the theme's
+   * foreground.
+   */
   readonly color = input<string | undefined>(undefined);
+  readonly userClass = input<string>('', { alias: 'class' });
+
+  readonly #resolveColor = injectIconColor();
 
   protected svgContent(): string {
-    let svg = ICONS[this.name()];
-    const c = this.color();
-    if (c) {
-      // Lynx SVG elements don't propagate the CSS `color` property into SVG
-      // stroke attributes, so we substitute the literal `currentColor` in the
-      // markup string rather than relying on `currentColor` CSS propagation.
-      //
-      // Uses split().join() instead of String.prototype.replaceAll(). replaceAll
-      // is ES2021, but Lynx's main thread runs on PrimJS at an ES2019 target;
-      // because it's a runtime method (not syntax) the build's down-leveling does
-      // not polyfill it, so it simply doesn't exist there. Calling it throws
-      // "main-thread.js exception: not a function" from inside Angular change
-      // detection, which aborts the whole tick before Lynx flushes the element
-      // tree — so NO icon paints (not just a colored one), and the error count
-      // climbs on every render/interaction as each tick re-runs and re-throws.
-      // split/join is ES2019-safe and is preferred over `replace(/.../g)` here
-      // because the search term is a plain literal and needs no regex escaping.
-      svg = svg.split('currentColor').join(c);
-    }
-    return svg;
+    // Lynx SVG elements don't propagate the CSS `color` property into SVG
+    // stroke attributes, so we substitute the literal `currentColor` in the
+    // markup string rather than relying on `currentColor` CSS propagation.
+    // The color is resolved first: the SVG parser can't read `var(--x)` either
+    // (see icon-theme.ts).
+    //
+    // Uses split().join() instead of String.prototype.replaceAll(). replaceAll
+    // is ES2021, but Lynx's main thread runs on PrimJS at an ES2019 target;
+    // because it's a runtime method (not syntax) the build's down-leveling does
+    // not polyfill it, so it simply doesn't exist there. Calling it throws
+    // "main-thread.js exception: not a function" from inside Angular change
+    // detection, which aborts the whole tick before Lynx flushes the element
+    // tree — so NO icon paints (not just a colored one), and the error count
+    // climbs on every render/interaction as each tick re-runs and re-throws.
+    // split/join is ES2019-safe and is preferred over `replace(/.../g)` here
+    // because the search term is a plain literal and needs no regex escaping.
+    return ICONS[this.name()]
+      .split('currentColor')
+      .join(this.#resolveColor(this.color()));
   }
 
   protected sizeStyle(): string {
     const px = SIZE_MAP[this.size()];
     return `width: ${px}px; height: ${px}px;`;
+  }
+
+  protected svgClass(): string {
+    return cn(this.userClass());
   }
 }

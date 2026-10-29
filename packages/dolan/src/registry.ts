@@ -86,14 +86,18 @@ export const registry: RegistryEntry[] = [
   { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
   // Renders any TanStack Charts definition with Lynx elements; the presets
-  // below build on it.
-  { name: 'chart', dependencies: [], packages: CHART_PACKAGES },
+  // below build on it. Colors set at runtime above a chart, such as
+  // dynamic-color's, reach its marks through icon-theme.ts.
+  { name: 'chart', dependencies: ['icon'], packages: CHART_PACKAGES },
   { name: 'checkbox', dependencies: [] },
   { name: 'collapsible', dependencies: [] },
   // The context menu is a menu that opens on a long press: it shares the
   // menu's items and its overlay.
   { name: 'context-menu', dependencies: ['menu'] },
   { name: 'dialog', dependencies: [] },
+  // Gives icons, glass tints and charts the wallpaper's colors through
+  // icon-theme.ts, and follows its color scheme.
+  { name: 'dynamic-color', dependencies: ['icon'] },
   // The dock's bar, button and accessory are glass, and its items draw their
   // icons from icon's set. Its selection capsule and the items on glass take
   // the glass foreground. It holds a search field in its glass, and rises

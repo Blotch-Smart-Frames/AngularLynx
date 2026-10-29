@@ -74,6 +74,7 @@ export default defineConfig({
       '/dolan/': [
         { text: 'Overview', link: '/dolan/' },
         { text: 'Theming', link: '/dolan/theming' },
+        { text: 'Dynamic Color', link: '/dolan/dynamic-color' },
         { text: 'CLI', link: '/dolan/cli' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'General' },

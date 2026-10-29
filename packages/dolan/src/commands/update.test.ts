@@ -1672,6 +1672,7 @@ describe('updateCommand dependencies', () => {
       uiSource: {
         'line-chart': { 'line-chart.ts': lineChart },
         chart: { 'chart.ts': 'export const UiChart = {};' },
+        icon: { 'icon.ts': 'export const UiIcon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
@@ -1687,6 +1688,7 @@ describe('updateCommand dependencies', () => {
     );
     expect(installComponentPackages).toHaveBeenCalledWith(fixture.dir, [
       'chart',
+      'icon',
       'line-chart',
     ]);
   });
@@ -1707,6 +1709,7 @@ describe('updateCommand dependencies', () => {
       uiSource: {
         'line-chart': { 'line-chart.ts': lineChart },
         chart: { 'chart.ts': 'export const UiChart = {};' },
+        icon: { 'icon.ts': 'export const UiIcon = {};' },
       },
     });
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);

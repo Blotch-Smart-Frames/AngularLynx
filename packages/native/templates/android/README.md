@@ -34,6 +34,13 @@ Build commands and outputs (no flavors, so the names are fixed):
 
 Back is off by default, so it leaves the app like any root screen. The runtime turns it on while the Router has history by calling `NativeModules.AngularLynxShell.setBackHandlerEnabled(true)`, and off again on the first screen (`LynxBackButton` in `packages/runtime/src/lib/router/lynx-back-button.ts`, which `provideRouter()` starts; the call goes through the background thread, where `NativeModules` lives). While it's on, a back press sends the global event `angularLynxBack` instead, which the runtime turns into `Location.back()`. The app has to say beforehand because Android decides synchronously, at the start of the gesture, whether an app handles back (predictive back animates differently). Layer 6's `native/back-button.yaml` checks both ends.
 
+## Global props
+
+`MainActivity.globalProps()` sends what the runtime reads and Lynx has no API for (see the package README), again on every configuration change and accessibility setting change.
+
+- **Dynamic color.** On Android 12 and later, `dynamicColors` carries the wallpaper's colors as Material 3's color roles, light and dark, as hex colors such as `#6750a4` (`DynamicColors.kt`, read by `LynxTheme.dynamicColors`). Android 14 has a color resource for most roles, which follows its contrast setting; on Android 12 and 13 each role takes its tone from the five tonal palettes, as Material Components does (a palette's own shade, or tone 40 moved to the tone with `ColorStateList.withLStar`). On the Android 14 emulator the two agree to within a few levels on the surfaces and exactly elsewhere.
+- **A new wallpaper doesn't restart the activity.** Android applies the new colors as a configuration change, which `onConfigurationChanged` handles like a dark mode switch, so the running app restyles with its state intact.
+
 ## Versions
 
 Pinned in `app/build.gradle.kts`, `build.gradle.kts` and `gradle/wrapper/gradle-wrapper.properties`:

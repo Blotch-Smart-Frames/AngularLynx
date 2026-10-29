@@ -11,10 +11,12 @@ import {
   ICON_LIGHT_COLORS,
   UI_ICON_COLOR,
   UI_ICON_THEME,
+  UI_THEME_COLORS,
   injectColorScheme,
   injectIconColor,
   provideIconTheme,
   resolveIconColor,
+  type ThemeColors,
 } from './icon-theme';
 
 const LIGHT_FOREGROUND = ICON_LIGHT_COLORS['foreground'];
@@ -165,5 +167,31 @@ describe('injectIconColor', () => {
     // A container that sets no color leaves the foreground.
     inherited.set(undefined);
     expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
+  });
+});
+
+describe('UI_THEME_COLORS', () => {
+  it('replaces the table’s colors for the active scheme, and only those it sets', () => {
+    const replaced = signal<ThemeColors>({
+      light: { primary: 'rgba(103, 80, 164, 1)' },
+      dark: { primary: 'rgba(208, 188, 255, 1)' },
+    });
+    const dark = signal(false);
+    const resolve = setup(
+      [
+        provideIconTheme({ colorScheme: 'system' }),
+        { provide: UI_THEME_COLORS, useValue: replaced },
+      ],
+      dark,
+    );
+    expect(resolve('var(--primary)')).toBe('rgba(103, 80, 164, 1)');
+    expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
+
+    dark.set(true);
+    expect(resolve('var(--primary)')).toBe('rgba(208, 188, 255, 1)');
+
+    // An element with no colors to set leaves the theme's.
+    replaced.set({});
+    expect(resolve('var(--primary)')).toBe(ICON_DARK_COLORS['primary']);
   });
 });

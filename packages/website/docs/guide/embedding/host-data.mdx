@@ -165,6 +165,7 @@ The apps `ng build --platform` makes are host apps too. They pass:
 | `safeAreaTop`, `safeAreaBottom`, `safeAreaLeft`, `safeAreaRight` | The safe-area insets, in the same units as CSS pixels. The page already sits inside them.                                                                                                     |
 | `osVersion`                                                      | The OS version, such as `'26.1'`, which [`LynxSystemInfo`](/api/angular-lynx/system-info#lynxsysteminfoosversion) can't otherwise read in time                                                |
 | `reduceMotion`, `reduceTransparency`, `increaseContrast`         | The user's display settings, sent again when they change. See [`LynxAccessibilitySettings`](/api/angular-lynx/accessibility#lynxaccessibilitysettings). Android sends no `reduceTransparency` |
+| `dynamicColors`                                                  | Android 12 and later only: the wallpaper's colors, sent again when the user changes them. See [`LynxTheme.dynamicColors`](/api/angular-lynx/theme#lynxthemedynamiccolors)                     |
 
 They pass no InitData.
 
@@ -174,7 +175,7 @@ To pass anything else, [eject](/guide/native-apps#eject-the-native-projects) or 
 
 Two GlobalData values have services of their own. Use them instead of reading `globalData()`:
 
-- **[`LynxTheme`](/api/angular-lynx/theme)** reads `theme`, `'Dark'` or `'Light'`, and defaults to `'Light'`. See [Dark mode](/guide/dark-mode).
+- **[`LynxTheme`](/api/angular-lynx/theme)** reads `theme`, `'Dark'` or `'Light'`, and defaults to `'Light'`. See [Dark mode](/guide/dark-mode). It reads `dynamicColors` too.
 - **[`LynxLocale`](/api/angular-lynx/locale)** reads `appLocale`. It falls back to the `sourceLocale` in `angular.json`, then to `'en-US'`. See [Internationalization](/guide/i18n).
 
 They apply those defaults and check the values for you. Have your native app send `theme` and `appLocale` under exactly those names.

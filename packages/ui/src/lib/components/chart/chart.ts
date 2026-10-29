@@ -46,6 +46,7 @@ import type {
 } from '@tanstack/charts/types';
 
 import { cn } from '../../utils/cn';
+import { UI_THEME_COLORS } from '../icon/icon-theme';
 import { adjacentFocusPoint, createChartFocusModel } from './chart-focus';
 import {
   type ChartLabel,
@@ -363,6 +364,7 @@ export class UiChart {
 
   readonly #theme = inject(UI_CHART_THEME);
   readonly #appearance = inject(LynxTheme);
+  readonly #replacedColors = inject(UI_THEME_COLORS, { optional: true });
   readonly #idPrefix = `chart${nextChartId++}`;
   readonly #runtime = createChartRuntime({ defaultTheme: this.#theme.chart });
   readonly #measureText = lynxTextMeasurer();
@@ -468,7 +470,11 @@ export class UiChart {
         : typeof option === 'function'
           ? option()
           : option;
-    return scheme === 'dark' ? this.#theme.dark : this.#theme.light;
+    // Colors set at runtime above the chart, such as Android's wallpaper
+    // colors, take the place of the theme's (see UI_THEME_COLORS).
+    const replaced = this.#replacedColors?.()[scheme];
+    const colors = scheme === 'dark' ? this.#theme.dark : this.#theme.light;
+    return replaced ? { ...colors, ...replaced } : colors;
   });
 
   readonly #svgOptions = computed(() => {

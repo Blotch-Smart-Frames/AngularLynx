@@ -91,7 +91,8 @@ describe('resolveDependencies', () => {
     'scatter-chart',
     'candlestick-chart',
   ])('resolves %s with the chart it builds on first', (preset) => {
-    expect(resolveDependencies([preset])).toEqual(['chart', preset]);
+    // The chart reads colors set at runtime through icon's icon-theme.ts.
+    expect(resolveDependencies([preset])).toEqual(['icon', 'chart', preset]);
   });
 
   it('deduplicates bottom-sheet when both select and sheet are selected', () => {

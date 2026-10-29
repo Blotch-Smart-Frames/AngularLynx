@@ -85,6 +85,7 @@ describe('addCommand', () => {
     fixture = createFixture({
       config: DEFAULT_CONFIG,
       uiSource: {
+        icon: { 'icon.ts': 'export const UiIcon = {};' },
         chart: { 'chart.ts': 'export const UiChart = {};' },
         'line-chart': { 'line-chart.ts': 'export const UiLineChart = {};' },
       },
@@ -95,6 +96,7 @@ describe('addCommand', () => {
     await addCommand(['line-chart']);
 
     expect(installComponentPackages).toHaveBeenCalledWith(fixture.dir, [
+      'icon',
       'chart',
       'line-chart',
     ]);

@@ -15,9 +15,9 @@ import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { cn } from '../../utils/cn';
 import {
   injectColorScheme,
+  injectThemeColors,
   resolveIconColor,
   UI_ICON_COLOR,
-  UI_ICON_THEME,
 } from '../icon/icon-theme';
 import { injectGlassDesign, injectSystemDrawsGlass } from './glass-design';
 
@@ -199,7 +199,7 @@ export class UiGlass {
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
   readonly #scheme = injectColorScheme();
-  readonly #theme = inject(UI_ICON_THEME);
+  readonly #colors = injectThemeColors();
   readonly #host = inject<ElementRef<BlurViewElement>>(ElementRef);
 
   /**
@@ -261,7 +261,7 @@ export class UiGlass {
    */
   readonly #tintColor = computed(() => {
     const tint = this.tint();
-    return tint ? resolveIconColor(tint, this.#theme[this.#scheme()]) : null;
+    return tint ? resolveIconColor(tint, this.#colors()) : null;
   });
 
   /**

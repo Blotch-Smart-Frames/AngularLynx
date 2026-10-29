@@ -1,0 +1,136 @@
+# Dynamic Color
+
+Give your app the colors of the user's wallpaper on Android 12 and later, as Material You apps have them. One directive recolors the theme, and every component follows.
+
+<Go example="ui-dynamic-color" defaultFile="src/app/app.ts" />
+
+The preview runs in your browser, which has no wallpaper, so it shows the theme as it is. Build the example for Android with [`ng build --platform android`](/guide/building-for-production) to see it take your wallpaper's colors.
+
+## Installation
+
+```bash
+npx @blotch/dolan add dynamic-color
+```
+
+```typescript
+import { UiDynamicColor } from '../components/ui/dynamic-color';
+```
+
+:::tip
+Dynamic Color depends on [Icon](/dolan/icon), whose copy of the theme it colors too. `dolan add` installs it automatically.
+:::
+
+## Usage
+
+Put `uiDynamicColor` on your root view:
+
+```typescript title="src/app/app.ts"
+import { Component, inject } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
+import { UiDynamicColor } from '../components/ui/dynamic-color';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, RouterOutlet, UiDynamicColor],
+  template: `
+    <view
+      class="h-full bg-background"
+      [class.dark]="theme.isDarkMode()"
+      uiDynamicColor
+    >
+      <router-outlet />
+    </view>
+  `,
+})
+export class App {
+  protected readonly theme = inject(LynxTheme);
+}
+```
+
+- **There are no colors to set.** It sets the theme's own variables, such as `--primary` and `--secondary`, to the wallpaper's. The components' Material designs, and your own `bg-primary` and `text-muted-foreground`, follow them.
+- **Everything inside the view gets the colors.** Put it on the view that switches the `dark` class, or on your root view if your app has no dark mode.
+- **Icons, glass tints and charts follow too.** They draw with a TypeScript copy of the theme, and the directive gives them the same colors.
+- **It follows the wallpaper while the app is open.** A new wallpaper, new colors in the phone's settings or a dark mode switch restyles the app at once.
+- **Elsewhere, nothing changes.** On iOS, in the web preview, in [Lynx Explorer](/guide/glossary#lynx-explorer) and before Android 12 there are no wallpaper colors, and the theme stays as it is.
+
+### Light and dark
+
+The directive sets the light or the dark colors, as the icons pick theirs: from `provideIconTheme()`'s `colorScheme`, `'light'` by default. Make it match how your app switches the `dark` class:
+
+```typescript title="src/app/app.config.ts"
+import { provideIconTheme } from '../components/ui/icon/icon-theme';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    // The dark class follows the phone, so the colors do too.
+    provideIconTheme({ colorScheme: 'system' }), // [!code highlight]
+  ],
+};
+```
+
+To switch the `dark` class at runtime, move `dark.css`'s values onto a `.dark` class first. See [Theming](/dolan/theming#dark-mode).
+
+### Which colors change
+
+Each theme color takes one of [Material 3's color roles](https://m3.material.io/styles/color/roles):
+
+| Theme color                                                                 | Material role             |
+| --------------------------------------------------------------------------- | ------------------------- |
+| `background`, `card`                                                        | `surface`                 |
+| `foreground`, `card-foreground`, `secondary-foreground`, `glass-foreground` | `onSurface`               |
+| `primary`, `ring`, `glass-tint`                                             | `primary`                 |
+| `primary-foreground`, `glass-tint-foreground`                               | `onPrimary`               |
+| `secondary`                                                                 | `surfaceContainerHigh`    |
+| `muted`                                                                     | `surfaceContainerHighest` |
+| `muted-foreground`, `glass-muted-foreground`                                | `onSurfaceVariant`        |
+| `accent`                                                                    | `secondaryContainer`      |
+| `accent-foreground`                                                         | `onSecondaryContainer`    |
+| `border`, `input`                                                           | `outlineVariant`          |
+
+- **`ring-subtle` is the primary at 40%,** as in the theme.
+- **Each color's `-rgb` twin changes with it,** so opacity modifiers such as `bg-primary/10` follow too.
+- **The rest stay the theme's.** Material keeps errors red, so `destructive` doesn't change. The `chart-*` colors tell data apart, so they don't either, and nor do clear glass's white and `glass-dim`.
+
+### Use the colors yourself
+
+[`LynxTheme.dynamicColors()`](/api/angular-lynx/theme#lynxthemedynamiccolors) has all 30 roles, in light and dark, such as `tertiary` for an accent of your own:
+
+```typescript
+const theme = inject(LynxTheme);
+
+const accent = computed(
+  () => theme.dynamicColors()?.light.tertiary ?? '#7d5260',
+);
+```
+
+It's `null` where there are no wallpaper colors.
+
+### In your own native app
+
+The colors come from the [host app](/guide/glossary#host-app): the app that `ng build --platform android` builds sends them as its `dynamicColors` GlobalData value. If you [embed the app in your own](/guide/embedding/), send them the same way. See [`LynxTheme.dynamicColors`](/api/angular-lynx/theme#lynxthemedynamiccolors) for the shape.
+
+## API
+
+### UiDynamicColor
+
+Selector: `[uiDynamicColor]`. It has no inputs.
+
+| Export                       | Description                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `DYNAMIC_THEME_ROLES`        | The Material role each theme color takes, as in the table above.                            |
+| `dynamicThemeColors(scheme)` | A scheme's theme colors, by name without `--`, each a complete `rgba()`.                    |
+| `UI_THEME_COLORS`            | In `icon-theme.ts`: the colors the directive gives the icons, glass tints and charts in it. |
+
+## Accessibility
+
+- **Material's roles keep text readable.** Each `on` color is made to contrast with the color it sits on.
+- **Android 14's contrast setting carries over.** At medium or high contrast, Android gives stronger colors, and the app gets them.
+
+## Related
+
+- [Theming](/dolan/theming): the theme's colors and dark mode
+- [Glass](/dolan/glass): the Material designs on Android
+- [`LynxTheme`](/api/angular-lynx/theme): the wallpaper's colors as a signal

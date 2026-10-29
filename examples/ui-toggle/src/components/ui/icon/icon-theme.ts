@@ -23,7 +23,9 @@ import { LynxTheme } from '@blotch/angular-lynx';
  *
  * The tables mirror `default.css` and `dark.css` (a test in the theme folder
  * keeps them in step). If you change a color there, change it here too, or pass
- * your own with {@link provideIconTheme}.
+ * your own with {@link provideIconTheme}. Colors set at runtime, such as
+ * Android's wallpaper colors, come from an element above instead (see
+ * {@link UI_THEME_COLORS}).
  */
 
 /** Theme token name (without `--`) to a complete CSS color. */
@@ -207,6 +209,40 @@ export const injectColorScheme = (): Signal<IconColorScheme> => {
   );
 };
 
+/** Theme colors for each scheme, each a complete CSS color, as in the tables. */
+export type ThemeColors = {
+  readonly light?: IconColorTokens;
+  readonly dark?: IconColorTokens;
+};
+
+/**
+ * Theme colors that replace the tables' for everything inside an element,
+ * as a signal: an element that sets the theme's CSS variables at runtime
+ * provides the values it sets, since SVGs and native attributes can't read
+ * them. `UiDynamicColor` provides Android's wallpaper colors this way. Icons,
+ * glass tints and charts inside it resolve their tokens against them.
+ */
+export const UI_THEME_COLORS = new InjectionToken<Signal<ThemeColors>>(
+  'UI_THEME_COLORS',
+);
+
+/**
+ * The color table for the app's color scheme, for a component's constructor:
+ * the theme's copy, with what an element above sets in its place (see
+ * {@link UI_THEME_COLORS}). A signal, so it follows scheme and theme changes.
+ */
+export const injectThemeColors = (): Signal<IconColorTokens> => {
+  const theme = inject(UI_ICON_THEME);
+  const scheme = injectColorScheme();
+  const replaced = inject(UI_THEME_COLORS, { optional: true });
+
+  return computed(() => {
+    const active = scheme();
+    const colors = replaced?.()[active];
+    return colors ? { ...theme[active], ...colors } : theme[active];
+  });
+};
+
 /**
  * For an SVG component's constructor: a function that resolves its `color`
  * input (or, without one, the surrounding {@link UI_ICON_COLOR}, then the
@@ -214,13 +250,8 @@ export const injectColorScheme = (): Signal<IconColorScheme> => {
  * `computed()` calling it follows scheme and theme changes.
  */
 export const injectIconColor = (): ((color: string | undefined) => string) => {
-  const theme = inject(UI_ICON_THEME);
-  const scheme = injectColorScheme();
+  const tokens = injectThemeColors();
   const inherited = inject(UI_ICON_COLOR, { optional: true });
-
-  const tokens = computed(() =>
-    scheme() === 'dark' ? theme.dark : theme.light,
-  );
 
   return (color) =>
     resolveIconColor(color ?? inherited?.() ?? DEFAULT_ICON_COLOR, tokens());

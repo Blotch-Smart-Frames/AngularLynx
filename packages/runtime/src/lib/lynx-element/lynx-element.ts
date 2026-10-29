@@ -406,6 +406,25 @@ export class LynxElement implements BaseLynxElement {
   static #pendingTextNormalization = new Set<LynxElement>();
 
   /**
+   * Elements with attributes removed this cycle, which reach Lynx only when
+   * the cycle flushes (see #removedAttributes).
+   */
+  static #pendingAttributeRemovals = new Set<LynxElement>();
+
+  /**
+   * The attributes removed (set to null) since the last flush, which haven't
+   * reached Lynx yet. Lynx queues a removal apart from the values set in the
+   * same flush and applies it after them (`Element::SetAttribute` puts an
+   * empty value in `reset_attr_vec_`, and `ConsumeAllAttributes` resets those
+   * after setting `updated_attr_map_`), so an attribute removed and then set
+   * again before a flush stayed removed on native. A glass button that a
+   * sheet pairs with its glass in the same change detection as the button's
+   * first render, for one, kept no `glass-effect-id`. So a removal waits here
+   * for the flush, and a value set meanwhile takes it back.
+   */
+  readonly #removedAttributes = new Set<string>();
+
+  /**
    * Native-ref → canonical wrapper registry, keyed by the native unique ID.
    *
    * Angular locates an insertion parent for embedded views (@if/@for content)
@@ -535,7 +554,15 @@ export class LynxElement implements BaseLynxElement {
         this.#ownTraits = value ?? null;
         value = withAddedTraits(this.#ownTraits, this.#addedTraits);
       }
-      __SetAttribute(this.element, name, value);
+      if (value == null) {
+        // At the flush, unless it's set again first: see #removedAttributes.
+        this.#removedAttributes.add(name);
+        LynxElement.#pendingAttributeRemovals.add(this);
+        scheduleSettleFlush();
+      } else {
+        this.#removedAttributes.delete(name);
+        __SetAttribute(this.element, name, value);
+      }
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text
       // carries its text via the 'text' attribute (renderer.setValue) — keep
@@ -808,6 +835,24 @@ export class LynxElement implements BaseLynxElement {
    * itself from the set via #cancelPendingRemoval, so only genuine destroys
    * remain.
    */
+  /**
+   * Sends Lynx the attribute removals that weren't taken back this cycle
+   * (see #removedAttributes). Called by `LynxRendererFactory2.end()` and the
+   * settle flush, after removals and before `__FlushElementTree()`, so the
+   * removals land in the same flush as the cycle's other mutations.
+   */
+  static commitPendingAttributeRemovals(): void {
+    if (LynxElement.#pendingAttributeRemovals.size === 0) return;
+    const elements = [...LynxElement.#pendingAttributeRemovals];
+    LynxElement.#pendingAttributeRemovals.clear();
+    for (const el of elements) {
+      for (const name of el.#removedAttributes) {
+        __SetAttribute(el.element, name, null);
+      }
+      el.#removedAttributes.clear();
+    }
+  }
+
   static commitPendingRemovals(): void {
     if (LynxElement.#pendingRemovals.size === 0) return;
     const items = [...LynxElement.#pendingRemovals];
@@ -1460,6 +1505,17 @@ export const processPendingRemovals = (): void => {
 };
 
 /**
+ * Commits this cycle's attribute removals (see LynxElement's
+ * `#removedAttributes`). A free-function wrapper over
+ * `LynxElement.commitPendingAttributeRemovals()` so
+ * `LynxRendererFactory2.end()` can drain them (via the lynx-element barrel)
+ * right after element removals and before `__FlushElementTree()`.
+ */
+export const processPendingAttributeRemovals = (): void => {
+  LynxElement.commitPendingAttributeRemovals();
+};
+
+/**
  * Re-derives positional edge whitespace for every text touched this cycle — a
  * free-function wrapper over `LynxElement.commitPendingTextNormalization()` so
  * `LynxRendererFactory2.end()` can drain it (via the lynx-element barrel) right
@@ -1516,6 +1572,7 @@ export const scheduleSettleFlush = (): void => {
     // #pendingRemovals / #pendingTextNormalization). List children are driven by
     // their own update-list-info path, so no list handling here.
     LynxElement.commitPendingRemovals();
+    LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
     __FlushElementTree();
   });

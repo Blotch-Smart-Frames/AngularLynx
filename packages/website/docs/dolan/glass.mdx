@@ -158,7 +158,43 @@ iOS 15 to 25 has no Liquid Glass, so the glass draws one of UIKit's blur materia
 
 - **Put the glass directly inside the group.** A wrapper that draws anything itself comes between them.
 - **Shapes merge on iOS 26 and in the web preview.** Android's glass doesn't merge.
-- **Moving or resizing a shape morphs the glass with it,** with a CSS transition for example. A shape you add or remove appears or disappears at once.
+- **Moving or resizing a shape morphs the glass with it,** with a CSS transition for example.
+- **Glass that comes and goes materializes and dissolves.** A shape you add or remove (`@if`), or show and hide with `visibility`, fades in or out the way UIKit's glass does, and a change of tint or variant eases to the new one. That's on iOS 26, in the app [`ng build --platform ios`](/guide/building-for-production) builds: in Lynx Explorer, on Android and in the web preview the shape appears and disappears at once.
+
+### Morphing
+
+Give two shapes the same `glassId`, and when one replaces the other, the group morphs the first into the second, as SwiftUI's `glassEffectID` does: here a button turns into the panel it opens, and back.
+
+```angular-html
+<blur-view ui-glass-group class="relative h-[200px]">
+  @if (composing()) {
+    <blur-view
+      ui-glass
+      shape="rounded"
+      glassId="compose"
+      class="absolute bottom-0 left-0 right-0 top-0 p-4"
+    >
+      …
+    </blur-view>
+  } @else {
+    <blur-view
+      ui-glass
+      shape="circle"
+      interactive
+      glassId="compose"
+      class="absolute bottom-0 right-0 h-14 w-14"
+      (bindtap)="composing.set(true)"
+    >
+      …
+    </blur-view>
+  }
+</blur-view>
+```
+
+- **Swap them in one update:** remove or hide one shape and add or show the other, as `@if` and `@else` do.
+- **In a group,** the new shape grows out of the old one's frame and corners while the old one's glass flows into it, and the group merges the two as they move. The old content fades out and the new fades in.
+- **Across groups or windows,** such as a button in the page and a panel in an `<overlay>`, the new shape takes over where it is: it starts from the old one's corners, and the old content fades out over it. Place it where the old one was and grow it from there, as the [menus](/dolan/menu), [popovers](/dolan/popover) and [sheets](/dolan/sheet#from-the-button-that-presents-it) do with a glass button.
+- **It's iOS 26, in the app `ng build --platform ios` builds.** Elsewhere one shape replaces the other at once, and under Reduce Motion the two cross-fade in place.
 
 ### Dark mode
 
@@ -170,14 +206,15 @@ Glass follows your app's theme, not the phone's. It takes the color scheme you g
 
 Selector: `blur-view[ui-glass]`.
 
-| Input         | Type                                                         | Default     | Description                                         |
-| ------------- | ------------------------------------------------------------ | ----------- | --------------------------------------------------- |
-| `variant`     | `'regular' \| 'clear'`                                       | `'regular'` | Frosted glass, or clear glass for over media.       |
-| `shape`       | `'capsule' \| 'circle' \| 'rounded'`                         | `'capsule'` | The glass's outline.                                |
-| `radius`      | `number`                                                     | `20`        | Corner radius of a `rounded` shape, in px.          |
-| `tint`        | `string`                                                     | —           | A theme token (`var(--glass-tint)`) or a CSS color. |
-| `interactive` | `boolean`                                                    | `false`     | Reacts to touch. iOS 26 and the web preview.        |
-| `material`    | `'ultra-thin' \| 'thin' \| 'regular' \| 'thick' \| 'chrome'` | `'regular'` | The blur material before iOS 26 (see above).        |
+| Input         | Type                                                         | Default     | Description                                                             |
+| ------------- | ------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------- |
+| `variant`     | `'regular' \| 'clear'`                                       | `'regular'` | Frosted glass, or clear glass for over media.                           |
+| `shape`       | `'capsule' \| 'circle' \| 'rounded'`                         | `'capsule'` | The glass's outline.                                                    |
+| `radius`      | `number`                                                     | `20`        | Corner radius of a `rounded` shape, in px.                              |
+| `tint`        | `string`                                                     | —           | A theme token (`var(--glass-tint)`) or a CSS color.                     |
+| `interactive` | `boolean`                                                    | `false`     | Reacts to touch. iOS 26 and the web preview.                            |
+| `material`    | `'ultra-thin' \| 'thin' \| 'regular' \| 'thick' \| 'chrome'` | `'regular'` | The blur material before iOS 26 (see above).                            |
+| `glassId`     | `string`                                                     | —           | Pairs the shape with another to morph into (see [Morphing](#morphing)). |
 
 Components built on the glass read these signals:
 

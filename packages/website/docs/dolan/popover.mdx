@@ -90,7 +90,7 @@ export class TripHeader {}
 | Android, with `provideGlass({ android: 'glass' })` | Liquid Glass, as on iOS 26                                                    |
 | [Web preview](/guide/glossary#web-preview)         | Liquid Glass, as on iOS 26                                                    |
 
-- **iOS 26** grows a popover out of its source control and hides the control until it closes. The popover is one glass shape whose frame grows, so the trigger seems to open into it.
+- **iOS 26** grows a popover out of its source control and hides the control until it closes. The popover is one glass shape whose frame grows, so the trigger seems to open into it. A trigger that's glass itself hands its glass over, in the app `ng build --platform ios` builds: its icon fades out as the popover grows, and back in as it closes (see [Glass](/dolan/glass#morphing)).
 - **Before iOS 26**, Apple's guidelines sent popovers on iPhone to a sheet. This one stays a floating panel by its trigger, as UIKit drew a popover when the app kept it one, so the same code doesn't turn into a sheet that covers the screen.
 - **On Android**, Material 3 has no popover. Its menu surface is the container it anchors to a control for content of any kind. A rich tooltip holds only a title, a few lines of text and up to two text buttons, so it can't take the controls a popover can.
 

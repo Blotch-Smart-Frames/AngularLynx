@@ -18,6 +18,7 @@ import {
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
+import { UiGlass } from '../glass/glass';
 import { injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
 import { type IconName } from '../icon/icons';
@@ -271,6 +272,9 @@ export class UiMenuSeparator {
   });
 }
 
+/** How many pull-down menus there have been, for their glass ids. */
+let menuCount = 0;
+
 /**
  * The `ui-menu` a trigger is in, for `UI_MENU`. A named function rather than
  * an inline factory: the component's metadata keeps its own copy of an
@@ -314,6 +318,7 @@ const pullDownMenu = (): UiMenuHost => inject(UiMenu);
       #popup
       [open]="open()"
       [anchor]="anchor()"
+      [glassId]="glassId"
       (dismissed)="close()"
       (closed)="closed.emit()"
     >
@@ -330,6 +335,13 @@ export class UiMenu implements UiMenuHost {
   readonly #host = inject<ElementRef<MenuElement>>(ElementRef);
   readonly #trigger = signal<MenuElement | null>(null);
 
+  /**
+   * The id the menu's glass and a glass trigger share (see UiGlass's
+   * `glassId`), unique to the menu, so the menu takes over the trigger's
+   * glass as it grows out of it.
+   */
+  readonly glassId = `ui-menu-${++menuCount}`;
+
   // Required: always in the template.
   readonly popup = viewChild.required<UiMenuPopup>('popup');
 
@@ -345,6 +357,13 @@ export class UiMenu implements UiMenuHost {
    * Whether the menu covers its trigger now: a glass or frosted menu grows
    * out of it and shrinks back into it, so the trigger hides meanwhile, as
    * on iOS. A Material menu opens beside it.
+   *
+   * It hides with `visibility`, in the same update that shows the menu's
+   * glass at the trigger's place, and shows again in the one that hides the
+   * glass. On iOS 26 and later, the shell pairs a glass trigger with the menu
+   * across that change (see UiGlass's `glassId`): the menu takes over the
+   * trigger's corners, and the trigger's content fades out in it, and back in
+   * as the menu closes.
    */
   readonly coversTrigger = computed(() => {
     const popup = this.popup();
@@ -387,29 +406,41 @@ export class UiMenu implements UiMenuHost {
   selector: '[uiMenuTrigger]',
   host: {
     '(click)': 'menu.toggle()',
-    '[style.opacity]': 'menu.coversTrigger() ? 0 : null',
+    '[style.visibility]': 'menu.coversTrigger() ? "hidden" : null',
   },
 })
 export class UiMenuTrigger {
   protected readonly menu = inject(UiMenu);
 
-  /** Points the menu at this element until the directive is destroyed. */
+  /**
+   * Points the menu at this element until the directive is destroyed. A
+   * trigger that's glass itself (`<blur-view ui-glass uiMenuTrigger>`)
+   * shares the menu's glass id meanwhile, so the menu takes its glass over
+   * (see UiMenu's coversTrigger).
+   */
   protected readonly unregister = registerTrigger(
     this.menu,
     inject<ElementRef<MenuElement>>(ElementRef).nativeElement,
+    inject(UiGlass, { self: true, optional: true }),
     inject(DestroyRef),
   );
 }
 
 /**
- * Makes `trigger` the element `menu` grows out of, until `destroyRef` is
- * destroyed. Returns what takes the registration back early.
+ * Makes `trigger` the element `menu` grows out of, and pairs its `glass`, if
+ * it's glass, with the menu's, until `destroyRef` is destroyed. Returns what
+ * takes the registration back early.
  */
 const registerTrigger = (
   menu: UiMenu,
   trigger: MenuElement,
+  glass: UiGlass | null,
   destroyRef: DestroyRef,
 ): (() => void) => {
   menu.setTrigger(trigger);
-  return destroyRef.onDestroy(() => menu.setTrigger(null));
+  glass?.pair(menu.glassId);
+  return destroyRef.onDestroy(() => {
+    menu.setTrigger(null);
+    glass?.pair(null);
+  });
 };

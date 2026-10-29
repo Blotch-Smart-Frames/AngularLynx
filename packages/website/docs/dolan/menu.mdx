@@ -105,7 +105,7 @@ export class TripsToolbar {
 | Android, with `provideGlass({ android: 'glass' })` | Liquid Glass, as on iOS                                                                              |
 | [Web preview](/guide/glossary#web-preview)         | Liquid Glass, as on iOS                                                                              |
 
-On iOS the menu is one glass shape whose frame grows from the trigger's to the menu's, and the trigger hides under it meanwhile. Liquid Glass follows a shape as it moves and resizes, so the trigger seems to open into the menu.
+On iOS the menu is one glass shape whose frame grows from the trigger's to the menu's, and the trigger hides under it meanwhile. Liquid Glass follows a shape as it moves and resizes, so the trigger seems to open into the menu. A trigger that's glass itself (`<blur-view ui-glass uiMenuTrigger>`) hands its glass over to the menu on iOS 26, in the app [`ng build --platform ios`](/guide/building-for-production) builds: the menu takes over its corners, and its icon fades out as the menu grows, and back in as it closes (see [Glass](/dolan/glass#morphing)).
 
 ### Items
 

@@ -29,8 +29,12 @@ import {
   slideOut,
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
+import { UiGlass } from '../glass/glass';
 import { injectGlassDesign } from '../glass/glass-design';
 import { type PopoverAnchor, UiPopoverPanel } from '../popover/popover-panel';
+
+/** How many action sheets there have been, for their glass ids. */
+let sheetCount = 0;
 
 /**
  * The width of an action sheet opened from a control: iOS's, and Material's
@@ -124,6 +128,7 @@ const ANCHORED_WIDTH = { glass: 270, material: 280 } as const;
         [open]="open()"
         [anchor]="anchor"
         [width]="anchoredWidth()"
+        [glassId]="glassId"
         (dismissed)="close()"
         (closed)="closed.emit()"
       >
@@ -145,6 +150,13 @@ export class UiActionSheet implements OnDestroy {
 
   readonly design = injectGlassDesign();
   readonly #anchor = signal<PopoverAnchor | null>(null);
+
+  /**
+   * The id the anchored sheet's glass and a glass control share (see
+   * UiGlass's `glassId`), unique to the sheet, so it takes over the
+   * control's glass as it grows out of it.
+   */
+  readonly glassId = `ui-action-sheet-${++sheetCount}`;
 
   /**
    * The control the sheet opens from, on a design that opens it there: iOS
@@ -607,7 +619,7 @@ export class UiActionSheetCancel {
     // no capture listener on iOS (see UiPopoverPanel).
     '(bindtouchstart)': 'sheet().touchedAnchor()',
     '(bindmousedown)': 'sheet().touchedAnchor()',
-    '[style.opacity]': 'sheet().coversAnchor() ? 0 : null',
+    '[style.visibility]': 'sheet().coversAnchor() ? "hidden" : null',
   },
 })
 export class UiActionSheetAnchor {
@@ -618,14 +630,22 @@ export class UiActionSheetAnchor {
 
   readonly #element =
     inject<ElementRef<PopoverAnchor>>(ElementRef).nativeElement;
+  readonly #glass = inject(UiGlass, { self: true, optional: true });
 
   /**
    * Points the sheet at this control, and away from it when the directive
-   * is destroyed or points at another sheet.
+   * is destroyed or points at another sheet. A control that's glass itself
+   * (`<blur-view ui-glass [uiActionSheetAnchor]>`) shares the sheet's glass
+   * id meanwhile, so the sheet takes its glass over (see UiPopoverPanel's
+   * coversAnchor).
    */
   protected readonly register = effect((onCleanup) => {
     const sheet = this.sheet();
     sheet.setAnchor(this.#element);
-    onCleanup(() => sheet.setAnchor(null));
+    this.#glass?.pair(sheet.glassId);
+    onCleanup(() => {
+      sheet.setAnchor(null);
+      this.#glass?.pair(null);
+    });
   });
 }

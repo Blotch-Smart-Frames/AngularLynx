@@ -15,7 +15,11 @@ import {
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
+import { UiGlass } from '../glass/glass';
 import { type PopoverAnchor, UiPopoverPanel } from './popover-panel';
+
+/** How many popovers there have been, for their glass ids. */
+let popoverCount = 0;
 
 /**
  * A popover's content: a column, padded, that a `ui-popover` shows when it
@@ -87,6 +91,7 @@ export class UiPopoverContent {
       #panel
       [open]="open()"
       [anchor]="anchor()"
+      [glassId]="glassId"
       (dismissed)="close()"
       (closed)="closed.emit()"
     >
@@ -102,6 +107,13 @@ export class UiPopover {
 
   readonly #host = inject<ElementRef<PopoverAnchor>>(ElementRef);
   readonly #trigger = signal<PopoverAnchor | null>(null);
+
+  /**
+   * The id the popover's glass and a glass trigger share (see UiGlass's
+   * `glassId`), unique to the popover, so it takes over the trigger's glass
+   * as it grows out of it.
+   */
+  readonly glassId = `ui-popover-${++popoverCount}`;
 
   // Required: always in the template.
   readonly panel = viewChild.required<UiPopoverPanel>('panel');
@@ -155,29 +167,41 @@ export class UiPopover {
     // no capture listener on iOS (see UiPopoverPanel).
     '(bindtouchstart)': 'popover.panel().touchedAnchor()',
     '(bindmousedown)': 'popover.panel().touchedAnchor()',
-    '[style.opacity]': 'popover.coversTrigger() ? 0 : null',
+    '[style.visibility]': 'popover.coversTrigger() ? "hidden" : null',
   },
 })
 export class UiPopoverTrigger {
   protected readonly popover = inject(UiPopover);
 
-  /** Points the popover at this element until the directive is destroyed. */
+  /**
+   * Points the popover at this element until the directive is destroyed. A
+   * trigger that's glass itself (`<blur-view ui-glass uiPopoverTrigger>`)
+   * shares the popover's glass id meanwhile, so the popover takes its glass
+   * over (see UiPopoverPanel's coversAnchor).
+   */
   protected readonly unregister = registerTrigger(
     this.popover,
     inject<ElementRef<PopoverAnchor>>(ElementRef).nativeElement,
+    inject(UiGlass, { self: true, optional: true }),
     inject(DestroyRef),
   );
 }
 
 /**
- * Makes `trigger` the element `popover` opens from, until `destroyRef` is
- * destroyed. Returns what takes the registration back early.
+ * Makes `trigger` the element `popover` opens from, and pairs its `glass`,
+ * if it's glass, with the popover's, until `destroyRef` is destroyed.
+ * Returns what takes the registration back early.
  */
 const registerTrigger = (
   popover: UiPopover,
   trigger: PopoverAnchor,
+  glass: UiGlass | null,
   destroyRef: DestroyRef,
 ): (() => void) => {
   popover.setTrigger(trigger);
-  return destroyRef.onDestroy(() => popover.setTrigger(null));
+  glass?.pair(popover.glassId);
+  return destroyRef.onDestroy(() => {
+    popover.setTrigger(null);
+    glass?.pair(null);
+  });
 };

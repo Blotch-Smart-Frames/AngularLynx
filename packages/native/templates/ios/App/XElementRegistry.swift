@@ -11,8 +11,8 @@ import XElement
 /// support, so the frameworks build leaves it out
 /// (scripts/build-lynx-ios-frameworks.sh) and the shell registers the same
 /// classes under the same names here, before the first LynxConfig or LynxView
-/// exists. `<blur-view>` is XElement's with UIKit's blur materials added
-/// (MaterialBlurView).
+/// exists. `<blur-view>` is XElement's with UIKit's blur materials and glass
+/// transitions added (BlurView).
 enum XElementRegistry {
   static func register() {
     let elements: [(String, AnyClass)] = [
@@ -20,7 +20,7 @@ enum XElementRegistry {
       ("textarea", LynxUITextArea.self),
       ("overlay", LynxUIOverlay.self),
       ("svg", LynxUISVG.self),
-      ("blur-view", MaterialBlurView.self),
+      ("blur-view", BlurView.self),
       ("viewpager", LynxUIViewPager.self),
       ("viewpager-item", LynxUIViewPagerItem.self),
       ("refresh", LynxUIRefresh.self),

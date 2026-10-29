@@ -8,6 +8,7 @@ import {
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { UiGlass } from '../glass/glass';
 import {
   UiMenu,
   UiMenuItem,
@@ -19,6 +20,7 @@ import {
 @Component({
   imports: [
     LYNX_ELEMENTS,
+    UiGlass,
     UiMenu,
     UiMenuTrigger,
     UiMenuItem,
@@ -31,7 +33,18 @@ import {
       (openChange)="open.set($event)"
       (closed)="closed()"
     >
-      @if (withTrigger()) {
+      @if (glassTrigger()) {
+        <blur-view
+          ui-glass
+          uiMenuTrigger
+          class="trigger"
+          [accessibility-element]="true"
+          accessibility-traits="button"
+          accessibility-label="Sort"
+        >
+          <text>Sort</text>
+        </blur-view>
+      } @else if (withTrigger()) {
         <view
           uiMenuTrigger
           class="trigger"
@@ -76,6 +89,7 @@ import {
 class MenuHost {
   readonly open = signal(false);
   readonly withTrigger = signal(true);
+  readonly glassTrigger = signal(false);
   readonly sort = signal<'name' | 'date'>('date');
   readonly closed = vi.fn();
   readonly shared = vi.fn();
@@ -223,13 +237,44 @@ describe('UiMenu', () => {
       { relativeTo: 'screen' },
       expect.any(Function),
     );
-    expect(style(trigger(), 'opacity')).toBe('0');
+    expect(style(trigger(), 'visibility')).toBe('hidden');
 
     // A tap on the trigger again closes it, and the trigger comes back.
     fireEvent.tap(trigger());
     await waitForClose(rendered);
     expect(host.open()).toBe(false);
-    expect(style(trigger(), 'opacity')).toBe('');
+    expect(style(trigger(), 'visibility')).toBe('');
+    // A trigger that isn't glass has no glass to hand over.
+    expect(trigger().hasAttribute('glass-effect-id')).toBe(false);
+  });
+
+  it("takes a glass trigger's glass over, shown as the trigger hides", async () => {
+    const rendered = await renderMenu();
+    rendered.host.glassTrigger.set(true);
+    await waitForUpdate();
+    const { trigger, panel } = rendered;
+
+    // The trigger and the menu share an id of the menu's own, for the shell
+    // to pair the two across the change.
+    const id = trigger().getAttribute('glass-effect-id');
+    expect(id).toMatch(/^ui-menu-\d+$/);
+    expect(panel().getAttribute('glass-effect-id')).toBe(id);
+    expect(style(panel(), 'visibility')).toBe('hidden');
+
+    fireEvent.tap(trigger());
+    await waitForOpen(rendered);
+    expect(style(panel(), 'visibility')).toBe('');
+    expect(style(trigger(), 'visibility')).toBe('hidden');
+
+    fireEvent.tap(trigger());
+    await waitForClose(rendered);
+    expect(style(panel(), 'visibility')).toBe('hidden');
+    expect(style(trigger(), 'visibility')).toBe('');
+
+    // A trigger that goes takes its glass with it.
+    rendered.host.glassTrigger.set(false);
+    await waitForUpdate();
+    expect(trigger().tagName.toLowerCase()).toBe('view');
   });
 
   it('closes when an item is chosen, after telling it', async () => {
@@ -279,7 +324,7 @@ describe('UiMenu', () => {
     fireEvent.tap(rendered.trigger());
     await waitForOpen(rendered);
 
-    expect(style(rendered.trigger(), 'opacity')).toBe('');
+    expect(style(rendered.trigger(), 'visibility')).toBe('');
     // Below the trigger, a gap away.
     expect(style(rendered.panel(), 'top')).toBe(`${80 + 44 + 8}px`);
   });

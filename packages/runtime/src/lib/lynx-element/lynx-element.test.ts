@@ -275,6 +275,7 @@ describe('LynxElement', () => {
       element = new LynxElement(fakeRef);
       element.setAccessibilityTrait('selected', true);
       element.setAccessibilityTrait('selected', false);
+      LynxElement.commitPendingAttributeRemovals();
 
       expect(traits()).toEqual(['selected', null]);
     });

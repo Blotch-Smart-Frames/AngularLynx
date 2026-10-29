@@ -20,10 +20,12 @@ import {
   type LynxMainThread,
   lynxMainThread,
 } from '../../../test-utils/lynx-main-thread';
+import { UiGlass } from '../glass/glass';
 import {
   type BottomSheetVariant,
   type SheetDetent,
   UiBottomSheet,
+  UiSheetSource,
 } from './bottom-sheet';
 
 @Component({
@@ -1013,6 +1015,372 @@ describe('UiBottomSheet detents and glass variant', () => {
     expect(style(sheet.panel, 'height')).toBe(`${MEDIUM}px`);
     expect(sheet.backdrop.getAttribute('style')).toContain(
       'rgba(0, 0, 0, 0.5)',
+    );
+  });
+});
+
+/**
+ * A glass sheet presented by a control marked `uiSheetSource`: a glass
+ * button, or one that isn't glass.
+ */
+@Component({
+  imports: [UiBottomSheet, UiSheetSource, UiGlass, LYNX_ELEMENTS],
+  template: `
+    @if (glassSource()) {
+      <blur-view ui-glass class="source" [uiSheetSource]="sheet">
+        <text>Add</text>
+      </blur-view>
+    } @else if (withSource()) {
+      <view class="source" [uiSheetSource]="sheet"><text>Add</text></view>
+    }
+    <ui-bottom-sheet
+      #sheet
+      [(open)]="open"
+      [variant]="variant()"
+      [detents]="detents()"
+      (closed)="closed()"
+    >
+      <text>Panel</text>
+    </ui-bottom-sheet>
+  `,
+})
+class SourceHost {
+  readonly open = signal(false);
+  readonly variant = signal<BottomSheetVariant>('glass');
+  readonly detents = signal<readonly SheetDetent[]>(['medium']);
+  readonly glassSource = signal(true);
+  readonly withSource = signal(true);
+  readonly closed = vi.fn();
+}
+
+/** The phone's width, beside SCREEN. */
+const WIDTH = 402;
+/** Where the control sits: a 44px circle near the top right. */
+const SOURCE = { left: 340, top: 60, width: 44, height: 44 };
+/** Where the sheet starts from and ends at: the control, as its style puts it. */
+const SOURCE_FRAME = {
+  left: '340px',
+  right: `${WIDTH - 340 - 44}px`,
+  bottom: `${SCREEN - 60 - 44}px`,
+  height: '44px',
+};
+
+/**
+ * Renders the host on a platform, measuring the screen as
+ * `boundingClientRect` would, and the control once the test lets the answer
+ * through (see measureSource), or failing to measure it.
+ */
+const renderSource = async (
+  platform: { platform: string; osVersion: string } = IOS_26,
+  { measurable = true } = {},
+) => {
+  vi.stubGlobal('SystemInfo', platform);
+  const answers: (() => void)[] = [];
+  vi.spyOn(
+    globalThis as unknown as InvokeUIMethod,
+    '__InvokeUIMethod',
+  ).mockImplementation((element, method, _params, callback) => {
+    if (method !== 'boundingClientRect') {
+      callback({ code: 0 });
+      return;
+    }
+    const answer = callback as (result: {
+      code: number;
+      data?: unknown;
+    }) => void;
+    if (!element.classList.contains('source')) {
+      answer({
+        code: 0,
+        data: { left: 0, top: 0, width: WIDTH, height: SCREEN },
+      });
+    } else if (measurable) {
+      answers.push(() => answer({ code: 0, data: SOURCE }));
+    } else {
+      answers.push(() => answer({ code: 1 }));
+    }
+  });
+  const result = await render(SourceHost, {
+    providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+  });
+  const host = result.componentRef.instance as SourceHost;
+  const backdrop = result.container.querySelector('overlay > view')!;
+  const panel = backdrop.children[1] as HTMLElement;
+  fireEvent.layoutchange(backdrop, {
+    detail: { height: SCREEN, width: WIDTH },
+  });
+  fireEvent.layoutchange(backdrop.children[0], { detail: { height: LARGE } });
+  fireEvent.layoutchange(panel, { detail: { height: FIT } });
+  await waitForUpdate();
+  return {
+    ...result,
+    host,
+    overlay: result.container.querySelector('overlay')!,
+    backdrop,
+    panel,
+    source: () => result.container.querySelector('.source') as HTMLElement,
+    glass: () => panel.querySelector('blur-view')!,
+    // The handle and the content, which fade as the sheet grows.
+    content: () => panel.querySelector('.grow') as HTMLElement,
+    /**
+     * Waits until the sheet measures its control, and answers. The sheet
+     * then shows at the control's frame for a frame, which the test sees
+     * right after the update.
+     */
+    measureSource: async () => {
+      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
+      for (const answer of answers.splice(0)) answer();
+      await waitForUpdate();
+    },
+  };
+};
+
+type SourceRendered = Awaited<ReturnType<typeof renderSource>>;
+
+/**
+ * The panel's frame, from its inline style.
+ */
+const frameOf = (panel: Element) => ({
+  left: style(panel, 'left'),
+  right: style(panel, 'right'),
+  bottom: style(panel, 'bottom'),
+  height: style(panel, 'height'),
+});
+
+/**
+ * Answers the sheet's measuring of its control, and checks it then shows at
+ * the control's frame, to grow out of it or as it shrinks into it.
+ */
+const atSource = async (sheet: SourceRendered) => {
+  await sheet.measureSource();
+  expect(frameOf(sheet.panel)).toEqual(SOURCE_FRAME);
+};
+
+/** The frame of the sheet at rest at its medium detent. */
+const MEDIUM_FRAME = {
+  left: '8px',
+  right: '8px',
+  bottom: '8px',
+  height: `${MEDIUM - 8}px`,
+};
+
+/**
+ * Waits for a sheet growing out of its control to come to rest: the grow
+ * takes longer than a settle between detents.
+ */
+const grown = async () => {
+  await new Promise((resolve) => setTimeout(resolve, DURATION.slow + 140));
+  await waitForUpdate();
+};
+
+describe('UiBottomSheet grown out of its control', () => {
+  let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
+  beforeEach(() => {
+    animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
+    // The renderer warns that the components aren't Lynx elements.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    settings.reduceMotion.set(false);
+  });
+
+  it('grows out of the control that presents it, which hides meanwhile', async () => {
+    const sheet = await renderSource();
+    // The control and the sheet's glass share an id, for the shell to pair
+    // them; the sheet's glass is hidden until the control hides.
+    const id = sheet.source().getAttribute('glass-effect-id');
+    expect(id).toMatch(/^ui-sheet-\d+$/);
+    expect(sheet.glass().getAttribute('glass-effect-id')).toBe(id);
+    expect(style(sheet.glass(), 'visibility')).toBe('hidden');
+    expect(style(sheet.source(), 'visibility')).toBe('');
+
+    sheet.host.open.set(true);
+    await atSource(sheet);
+    expect(style(sheet.source(), 'visibility')).toBe('hidden');
+    expect(style(sheet.glass(), 'visibility')).toBe('');
+    expect(style(sheet.content(), 'opacity')).toBe('0');
+    expect(style(sheet.panel, 'overflow')).toBe('hidden');
+    // The backdrop dims through its color rather than fading in, which
+    // would fade the glass in it too.
+    expect(sheet.backdrop.getAttribute('style')).toContain(
+      'rgba(0, 0, 0, 0.2)',
+    );
+    expect(style(sheet.backdrop, 'transition')).toContain('background-color');
+
+    // On to its detent, on the sheet's curve, its content fading in.
+    await vi.waitFor(() => expect(style(sheet.panel, 'left')).toBe('8px'));
+    expect(frameOf(sheet.panel)).toEqual(MEDIUM_FRAME);
+    expect(style(sheet.panel, 'transition')).toContain(
+      `height ${DURATION.slow + 100}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+    );
+    expect(style(sheet.content(), 'opacity')).toBe('1');
+    // It grows rather than slides, and nothing fades.
+    expect(animate).not.toHaveBeenCalledWith(sheet.panel, expect.anything());
+    expect(animate).not.toHaveBeenCalledWith(sheet.backdrop, expect.anything());
+
+    await grown();
+    expect(style(sheet.panel, 'transition')).toBe('');
+    expect(style(sheet.panel, 'overflow')).toBe('');
+  });
+
+  it('shrinks back into its control as it closes, which shows again', async () => {
+    const sheet = await renderSource();
+    sheet.host.open.set(true);
+    await atSource(sheet);
+    await grown();
+
+    sheet.host.open.set(false);
+    await sheet.measureSource();
+    // Its height pinned for a frame, then into the control.
+    await vi.waitFor(() => expect(frameOf(sheet.panel)).toEqual(SOURCE_FRAME));
+    expect(style(sheet.panel, 'transition')).toContain(
+      `height ${DURATION.normal}ms`,
+    );
+    expect(style(sheet.content(), 'opacity')).toBe('0');
+    expect(style(sheet.source(), 'visibility')).toBe('hidden');
+    expect(sheet.backdrop.getAttribute('style')).toContain('rgba(0, 0, 0, 0)');
+
+    // The control shows in the update that hides the sheet's glass.
+    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+    await waitForUpdate();
+    expect(sheet.overlay.getAttribute('visible')).toBe('false');
+    expect(style(sheet.source(), 'visibility')).toBe('');
+    expect(style(sheet.glass(), 'visibility')).toBe('hidden');
+  });
+
+  it("slides up and down when its control can't be measured", async () => {
+    const sheet = await renderSource(IOS_26, { measurable: false });
+    sheet.host.open.set(true);
+    await sheet.measureSource();
+    await vi.waitFor(() =>
+      expect(animate).toHaveBeenCalledWith(sheet.panel, [
+        START,
+        expect.any(String),
+        [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
+        expect.anything(),
+      ]),
+    );
+    expect(style(sheet.panel, 'left')).toBe('8px');
+
+    sheet.host.open.set(false);
+    await sheet.measureSource();
+    await vi.waitFor(() =>
+      expect(animate).toHaveBeenCalledWith(sheet.panel, [
+        START,
+        expect.any(String),
+        [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
+        expect.anything(),
+      ]),
+    );
+    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+  });
+
+  it('goes on down from the finger when dragged closed', async () => {
+    const sheet = await renderSource();
+    sheet.host.open.set(true);
+    await atSource(sheet);
+    await grown();
+
+    const handle = sheet.panel.querySelector('.rounded-full')!.parentElement!;
+    fireEvent.touchstart(handle, touchAt(MEDIUM));
+    fireEvent.touchmove(handle, touchAt(MEDIUM + 200));
+    await waitForUpdate();
+    fireEvent.touchend(handle, { eventType: 'catchEvent' });
+    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+    expect(animate).toHaveBeenCalledWith(sheet.panel, [
+      START,
+      expect.any(String),
+      [
+        { transform: 'translateY(200px)' },
+        { transform: `translateY(${SCREEN}px)` },
+      ],
+      expect.anything(),
+    ]);
+    await waitForUpdate();
+    expect(style(sheet.source(), 'visibility')).toBe('');
+  });
+
+  it('lets a drag that begins as it grows have it', async () => {
+    const sheet = await renderSource();
+    sheet.host.detents.set(['medium', 'large']);
+    sheet.host.open.set(true);
+    await atSource(sheet);
+    await vi.waitFor(() => expect(style(sheet.panel, 'left')).toBe('8px'));
+
+    const handle = sheet.panel.querySelector('.rounded-full')!.parentElement!;
+    fireEvent.touchstart(handle, touchAt(MEDIUM));
+    fireEvent.touchmove(handle, touchAt(MEDIUM - 100));
+    await waitForUpdate();
+    const dragged = style(sheet.panel, 'height');
+    expect(dragged).not.toBe(MEDIUM_FRAME.height);
+    await grown();
+    // Still where the finger has it, not back at the detent.
+    expect(style(sheet.panel, 'height')).toBe(dragged);
+  });
+
+  it('stops growing when it closes first, and shrinking when it opens again', async () => {
+    const sheet = await renderSource();
+    // Closed while it measures its control: it never shows.
+    sheet.host.open.set(true);
+    await vi.waitFor(() =>
+      expect(sheet.overlay.getAttribute('visible')).toBe('true'),
+    );
+    sheet.host.open.set(false);
+    await waitForUpdate();
+    await sheet.measureSource();
+    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+    await waitForUpdate();
+    expect(style(sheet.source(), 'visibility')).toBe('');
+
+    // Opened again while it measures its control to shrink into it: it
+    // grows again instead.
+    sheet.host.open.set(true);
+    await atSource(sheet);
+    await grown();
+    sheet.host.open.set(false);
+    await waitForUpdate();
+    sheet.host.open.set(true);
+    await waitForUpdate();
+    await sheet.measureSource();
+    await sheet.measureSource();
+    await grown();
+    expect(sheet.overlay.getAttribute('visible')).toBe('true');
+    expect(frameOf(sheet.panel)).toEqual(MEDIUM_FRAME);
+  });
+
+  it('appears as without one under Reduce Motion', async () => {
+    settings.reduceMotion.set(true);
+    const sheet = await renderSource();
+    await openSheet(sheet.host);
+    expect(style(sheet.source(), 'visibility')).toBe('');
+    expect(sheet.content().getAttribute('style') ?? '').toBe('');
+  });
+
+  it('slides as without one before iOS 26', async () => {
+    const sheet = await renderSource(IOS_18);
+    await openSheet(sheet.host);
+    expect(style(sheet.source(), 'visibility')).toBe('');
+  });
+
+  it("leaves a control that isn't glass unpaired, and lets go of one that goes", async () => {
+    const sheet = await renderSource();
+    sheet.host.glassSource.set(false);
+    await waitForUpdate();
+    expect(sheet.source().tagName.toLowerCase()).toBe('view');
+    expect(sheet.source().hasAttribute('glass-effect-id')).toBe(false);
+
+    // Without a control, the glass sheet slides up again.
+    sheet.host.withSource.set(false);
+    await waitForUpdate();
+    await openSheet(sheet.host);
+    await vi.waitFor(() =>
+      expect(animate).toHaveBeenCalledWith(sheet.panel, [
+        START,
+        expect.any(String),
+        [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
+        expect.anything(),
+      ]),
     );
   });
 });

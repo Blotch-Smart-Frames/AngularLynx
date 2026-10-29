@@ -116,11 +116,37 @@ describe('LynxElement setAttribute id / data- branches', () => {
     const el = new LynxElement(makeRef() as unknown as ElementRef);
     el.setAttribute('foo', 'bar');
     el.removeAttribute('foo');
+    LynxElement.commitPendingAttributeRemovals();
     expect(globalThis.__SetAttribute).toHaveBeenLastCalledWith(
       expect.anything(),
       'foo',
       null,
     );
+  });
+
+  it('sends a removal at the flush, and drops one the attribute is set again after', () => {
+    const el = new LynxElement(makeRef() as unknown as ElementRef);
+    el.setAttribute('foo', null);
+    el.setAttribute('bar', null);
+    // Nothing reaches Lynx before the flush: it would apply the removal after
+    // a value set in the same flush.
+    expect(globalThis.__SetAttribute).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'foo',
+      null,
+    );
+    el.setAttribute('foo', 'again');
+    LynxElement.commitPendingAttributeRemovals();
+    const calls = vi.mocked(globalThis.__SetAttribute).mock.calls;
+    expect(calls.filter(([, name]) => name === 'foo')).toEqual([
+      [expect.anything(), 'foo', 'again'],
+    ]);
+    expect(calls.filter(([, name]) => name === 'bar')).toEqual([
+      [expect.anything(), 'bar', null],
+    ]);
+    // Committed once.
+    LynxElement.commitPendingAttributeRemovals();
+    expect(calls.filter(([, name]) => name === 'bar')).toHaveLength(1);
   });
 
   it('mirrors raw-text "text" attribute and stashes the raw source for normalization', () => {
@@ -139,6 +165,7 @@ describe('LynxElement setAttribute id / data- branches', () => {
     el.tagName = 'raw-text';
     el.setAttribute('text', 'hi');
     el.setAttribute('text', null);
+    LynxElement.commitPendingAttributeRemovals();
     // The removeAttribute path funnels the null through — no throw.
     expect(globalThis.__SetAttribute).toHaveBeenLastCalledWith(
       expect.anything(),
@@ -166,6 +193,7 @@ describe('LynxElement getters / removers', () => {
   it('removeAttribute funnels through setAttribute(null)', () => {
     const el = new LynxElement(makeRef() as unknown as ElementRef);
     el.removeAttribute('foo');
+    LynxElement.commitPendingAttributeRemovals();
     expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
       expect.anything(),
       'foo',

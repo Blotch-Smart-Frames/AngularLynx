@@ -1,4 +1,4 @@
-import { Component, type Provider, signal } from '@angular/core';
+import { Component, type Provider, signal, viewChild } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,6 +31,7 @@ import { provideGlass } from './glass-design';
         [tint]="tint()"
         [interactive]="interactive()"
         [material]="material()"
+        [glassId]="glassId()"
       >
         <text class="text-glass-foreground">Now playing</text>
         <ui-icon name="play" />
@@ -46,6 +47,8 @@ class GlassHost {
   readonly tint = signal<string | undefined>(undefined);
   readonly interactive = signal(false);
   readonly material = signal<GlassMaterial>('regular');
+  readonly glassId = signal<string | undefined>(undefined);
+  readonly glass = viewChild.required(UiGlass);
 }
 
 /** Accessibility settings a test can change, as the host app would. */
@@ -116,6 +119,24 @@ describe('UiGlass', () => {
     expect(glass.classList).toContain('px-4');
     expect(glass.classList).toContain('rounded-full');
     expect(glass.classList).not.toContain('bg-secondary');
+  });
+
+  it('pairs the shape under its glass id, or the one a component pairs it under', async () => {
+    const { glass, host, update } = await renderOn(IOS_26);
+    expect(glass.hasAttribute('glass-effect-id')).toBe(false);
+
+    await update(() => host.glassId.set('search'));
+    expect(glass.getAttribute('glass-effect-id')).toBe('search');
+
+    // A menu that grows out of the shape pairs it under its own id, until
+    // it lets go.
+    await update(() => host.glass().pair('ui-menu-1'));
+    expect(glass.getAttribute('glass-effect-id')).toBe('ui-menu-1');
+    await update(() => host.glass().pair(null));
+    expect(glass.getAttribute('glass-effect-id')).toBe('search');
+
+    await update(() => host.glassId.set(undefined));
+    expect(glass.hasAttribute('glass-effect-id')).toBe(false);
   });
 
   it('keeps its content inside the glass', async () => {

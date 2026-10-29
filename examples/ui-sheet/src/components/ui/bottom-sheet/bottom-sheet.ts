@@ -1,8 +1,9 @@
 // cspell:words WAAPI tweens
 import {
-  type ElementRef,
   type OnDestroy,
   Component,
+  Directive,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
@@ -14,7 +15,11 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  MainThreadElement,
+} from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -50,8 +55,57 @@ export type SheetDetent = 'fit' | 'medium' | 'large';
 /** What the sheet draws: its own default look, or a glass design's. */
 type SheetLook = 'default' | GlassDesign;
 
-/** Where the sheet's height is going: nowhere, after the finger, or to a detent. */
-type SheetMotion = 'rest' | 'drag' | 'settle';
+/**
+ * Where the sheet is going: nowhere, after the finger, to a detent, out of
+ * the control that presents it, or back into it (see UiSheetSource).
+ */
+type SheetMotion = 'rest' | 'drag' | 'settle' | 'grow' | 'shrink';
+
+/**
+ * AngularLynx's element, which an `ElementRef` to a Lynx element holds: the
+ * control a sheet grows out of.
+ */
+type SourceElement = { readonly element: unknown };
+
+/**
+ * The panel's place on the screen, as its style sets it: how far it is from
+ * the left, right and bottom edges, and its height, in px.
+ */
+type PanelFrame = {
+  readonly left: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly height: number;
+};
+
+/**
+ * A sheet a control presents (see UiSheetSource): `ui-bottom-sheet`, or
+ * `ui-sheet`, which hands the control on to its own.
+ */
+export type SheetSourceTarget = {
+  /** Whether the sheet covers the control now, which hides meanwhile. */
+  coversSource(): boolean;
+  /** @internal Called by the `uiSheetSource` directive. */
+  setSource(source: SourceElement | null, glass: UiGlass | null): void;
+};
+
+/** How many sheets there have been, for their glass ids. */
+let sheetCount = 0;
+
+/**
+ * An element's box on the screen, or null where it can't be measured. Lynx
+ * gives a script an element's position only through `boundingClientRect`,
+ * which answers later.
+ */
+const measure = async (element: SourceElement) => {
+  try {
+    return await new MainThreadElement(
+      element.element as ConstructorParameters<typeof MainThreadElement>[0],
+    ).getBoundingClientRect({ relativeTo: 'screen' });
+  } catch {
+    return null;
+  }
+};
 
 // Drag-to-dismiss tuning for the handle strip at the top of the sheet.
 //
@@ -178,6 +232,12 @@ const layoutHeight = (event: unknown): number =>
   (event as { readonly detail: { readonly height: number } }).detail.height;
 
 /**
+ * The width a `layoutchange` event reports; see layoutHeight.
+ */
+const layoutWidth = (event: unknown): number =>
+  (event as { readonly detail: { readonly width: number } }).detail.width;
+
+/**
  * Low-level bottom-sheet primitive: a full-screen `<overlay>` with a dimmed
  * backdrop and a panel docked to the bottom that slides up on open, slides
  * down on close, and can be dragged by its handle between its detents or
@@ -194,6 +254,10 @@ const layoutHeight = (event: unknown): number =>
  * it meets the edges and turns opaque. Lynx can't animate `border-radius`, so
  * that transition never changes one: it animates the glass's frame, which
  * iOS's glass follows frame by frame, and fades an opaque layer in over it.
+ *
+ * Mark the control that presents it with `uiSheetSource`, and the Liquid
+ * Glass sheet grows out of that control rather than sliding up, and shrinks
+ * back into it as it closes, as iOS 26 grows a sheet out of its button.
  */
 @Component({
   selector: 'ui-bottom-sheet',
@@ -251,25 +315,31 @@ const layoutHeight = (event: unknown): number =>
               ui-glass
               shape="rounded"
               [radius]="glassRadius"
+              [glassId]="glassId"
               class="h-full w-full absolute left-0 top-0"
+              [style.visibility]="glassVisibility()"
             ></blur-view>
             <view class="bg-background absolute" [style]="opaqueStyle()"></view>
           }
-          <view
-            [class]="handleClass()"
-            [accessibility-element]="resizable()"
-            [attr.accessibility-traits]="resizable() ? 'button' : null"
-            [attr.accessibility-label]="resizable() ? 'Sheet grabber' : null"
-            (catchtouchstart)="onHandleTouchStart($event)"
-            (catchtouchmove)="onHandleTouchMove($event)"
-            (catchtouchend)="onDragEnd()"
-            (catchtouchcancel)="onDragEnd()"
-            (catchmousedown)="onHandleMouseDown($event)"
-            (catchtap)="onHandleTap()"
-          >
-            <view [class]="grabberClass()" />
+          <!-- The handle and the content, which fade in as the sheet grows
+               out of the control that presents it. -->
+          <view class="grow flex-col flex" [style]="contentStyle()">
+            <view
+              [class]="handleClass()"
+              [accessibility-element]="resizable()"
+              [attr.accessibility-traits]="resizable() ? 'button' : null"
+              [attr.accessibility-label]="resizable() ? 'Sheet grabber' : null"
+              (catchtouchstart)="onHandleTouchStart($event)"
+              (catchtouchmove)="onHandleTouchMove($event)"
+              (catchtouchend)="onDragEnd()"
+              (catchtouchcancel)="onDragEnd()"
+              (catchmousedown)="onHandleMouseDown($event)"
+              (catchtap)="onHandleTap()"
+            >
+              <view [class]="grabberClass()" />
+            </view>
+            <ng-content />
           </view>
-          <ng-content />
         </view>
       </view>
     </overlay>
@@ -305,6 +375,13 @@ export class UiBottomSheet implements OnDestroy {
 
   protected readonly glassRadius = GLASS_RADIUS;
 
+  /**
+   * The id the sheet's glass and a glass control that presents it share
+   * (see UiGlass's `glassId`), unique to the sheet, so the sheet takes over
+   * the control's glass as it grows out of it.
+   */
+  readonly glassId = `ui-sheet-${++sheetCount}`;
+
   protected readonly overlayVisible = signal(false);
   /**
    * `width`/`height`/`top`/`left` are web-only necessities: on web
@@ -333,6 +410,7 @@ export class UiBottomSheet implements OnDestroy {
   // The screen's height, the large detent's (the screen below the status
   // bar), and the panel's at its content's height. 0 until laid out.
   readonly #screenHeight = signal(0);
+  readonly #screenWidth = signal(0);
   readonly #largeHeight = signal(0);
   readonly #fitHeight = signal(0);
 
@@ -348,6 +426,17 @@ export class UiBottomSheet implements OnDestroy {
   // on iOS, glass that an ancestor hides as it's set up draws nothing once
   // shown.
   readonly #presented = signal(false);
+
+  // --- The control that presents it (see UiSheetSource) ---
+  readonly #source = signal<SourceElement | null>(null);
+  // The control's own glass, which shares the sheet's glass id.
+  #sourceGlass: UiGlass | null = null;
+  // The control's frame while the sheet grows out of it or shrinks back
+  // into it, which the panel takes instead of its own; null otherwise.
+  readonly #sourceFrame = signal<PanelFrame | null>(null);
+  // Increases with every open and close, so a step of one that the other
+  // interrupts doesn't run.
+  #sequence = 0;
   // The detent the sheet last came to rest at, to tell an app's change of
   // `detent` from the sheet's own.
   #restingAt?: SheetDetent;
@@ -471,6 +560,40 @@ export class UiBottomSheet implements OnDestroy {
     () => this.look() !== 'default' && this.#reduceMotion(),
   );
 
+  /**
+   * Whether the sheet grows out of the control that presents it, and back
+   * into it, as iOS 26 grows a sheet out of its button: the Liquid Glass
+   * sheet, with a control marked `uiSheetSource`, unless Reduce Motion is on.
+   */
+  readonly #grows = computed(
+    () => this.look() === 'glass' && !this.#calm() && this.#source() !== null,
+  );
+
+  /** Whether the sheet covers its control now, which hides meanwhile. */
+  readonly coversSource = computed(() => this.#grows() && this.#presented());
+
+  /**
+   * A sheet that grows out of its control shows its glass in the same update
+   * that hides the control, and hides it in the one that shows the control
+   * again. On iOS 26 and later the shell pairs the two across those changes
+   * (see glassId): the sheet takes over a glass control's corners, and the
+   * control's content fades out in it, and back in as the sheet closes.
+   */
+  protected readonly glassVisibility = computed(() =>
+    this.#grows() && !this.#presented() ? 'hidden' : null,
+  );
+
+  /**
+   * The handle and content fade in once the sheet growing out of its
+   * control has room for them, and out as it shrinks back.
+   */
+  protected readonly contentStyle = computed(() => {
+    if (!this.#grows()) return null;
+    return this.#presented() && this.#sourceFrame() === null
+      ? `opacity: 1; transition: opacity ${DURATION.normal}ms ${EASING.decelerate} ${DURATION.fast}ms;`
+      : `opacity: 0; transition: opacity ${DURATION.fast}ms ${EASING.accelerate};`;
+  });
+
   protected readonly panelClass = computed(() =>
     cn(
       'flex-col flex',
@@ -505,19 +628,41 @@ export class UiBottomSheet implements OnDestroy {
     const inset = this.#inset();
     const height = this.#height();
     const offset = this.#presented() ? `${this.dragOffset()}px` : '110%';
-    const styles = [
-      `position: absolute; bottom: ${inset}px; left: ${inset}px; right: ${inset}px;`,
-      `transform: translateY(${offset});`,
-    ];
-    if (height !== null) styles.push(`height: ${height - inset}px;`);
+    // Growing out of the control that presents it, or shrinking back into
+    // it, the sheet starts from the control's frame, or ends at it.
+    const source = this.#sourceFrame();
+    const styles = source
+      ? [
+          `position: absolute; bottom: ${source.bottom}px; left: ${source.left}px; right: ${source.right}px;`,
+          `transform: translateY(0px); height: ${source.height}px;`,
+        ]
+      : [
+          `position: absolute; bottom: ${inset}px; left: ${inset}px; right: ${inset}px;`,
+          `transform: translateY(${offset});`,
+        ];
+    if (!source && height !== null) styles.push(`height: ${height - inset}px;`);
     if (this.look() === 'material') {
       styles.push(`box-shadow: ${MATERIAL_ELEVATION};`);
     }
-    if (this.#motion() === 'settle') {
-      const timing = `${DURATION.slow}ms ${EASING.sheet}`;
+    const motion = this.#motion();
+    if (motion === 'settle' || motion === 'grow' || motion === 'shrink') {
+      // Out of the control on the sheet's curve, a little longer for the
+      // way it travels (a spring that starts as quickly as the menus' covers
+      // most of it in the first frame), and back into it quicker.
+      const timing =
+        motion === 'settle'
+          ? `${DURATION.slow}ms ${EASING.sheet}`
+          : motion === 'grow'
+            ? `${DURATION.slow + 100}ms ${EASING.sheet}`
+            : `${DURATION.normal}ms ${EASING.standard}`;
       styles.push(
         `transition: height ${timing}, left ${timing}, right ${timing}, bottom ${timing};`,
       );
+    }
+    // The content, laid out at the sheet's size, stays inside the glass
+    // while it's smaller.
+    if (motion === 'grow' || motion === 'shrink' || source) {
+      styles.push('overflow: hidden;');
     }
     return styles.join(' ');
   });
@@ -556,15 +701,27 @@ export class UiBottomSheet implements OnDestroy {
   // it composes cleanly with the fadeIn/fadeOut opacity animations without the
   // two mechanisms fighting over the same property. Clear until the sheet is
   // presented.
+  //
+  // A sheet growing out of its control, or shrinking back into it, dims
+  // the backdrop through this color, with a transition, rather than fading
+  // the backdrop itself in and out: the panel is in the backdrop, and on
+  // screen meanwhile, and glass under a fading parent would vanish with it,
+  // or draw washed out.
   protected readonly backdropStyle = computed(() => {
-    const revealed = this.#presented()
-      ? Math.max(0, 1 - this.dragOffset() / BACKDROP_CLEAR_DISTANCE)
-      : 0;
-    return `background-color: rgba(0, 0, 0, ${BACKDROP_DIM[this.look()] * revealed});`;
+    const motion = this.#motion();
+    const revealed =
+      this.#presented() && motion !== 'shrink'
+        ? Math.max(0, 1 - this.dragOffset() / BACKDROP_CLEAR_DISTANCE)
+        : 0;
+    const color = `background-color: rgba(0, 0, 0, ${BACKDROP_DIM[this.look()] * revealed});`;
+    return this.#sourceFrame() || motion === 'grow' || motion === 'shrink'
+      ? `${color} transition: background-color ${DURATION.normal}ms ${EASING.standard};`
+      : color;
   });
 
   protected onScreenLayout(event: unknown): void {
     this.#screenHeight.set(layoutHeight(event));
+    this.#screenWidth.set(layoutWidth(event));
   }
 
   protected onLargeLayout(event: unknown): void {
@@ -576,7 +733,20 @@ export class UiBottomSheet implements OnDestroy {
    * while the panel has a height of its own.
    */
   protected onPanelLayout(event: unknown): void {
-    if (this.#height() === null) this.#fitHeight.set(layoutHeight(event));
+    if (this.#height() === null && this.#sourceFrame() === null) {
+      this.#fitHeight.set(layoutHeight(event));
+    }
+  }
+
+  /**
+   * @internal Called by the `uiSheetSource` directive: the control that
+   * presents the sheet, and its glass, which pairs with the sheet's.
+   */
+  setSource(source: SourceElement | null, glass: UiGlass | null): void {
+    this.#sourceGlass?.pair(null);
+    this.#source.set(source);
+    this.#sourceGlass = glass;
+    glass?.pair(this.glassId);
   }
 
   protected onBackdropTap(): void {
@@ -860,9 +1030,10 @@ export class UiBottomSheet implements OnDestroy {
    * targets elements that haven't been flushed to native yet and silently fails.
    */
   #doOpen(): void {
+    const sequence = ++this.#sequence;
     this.#later(() => {
       this.overlayVisible.set(true);
-      this.#later(() => this.#present(LAYOUT_TRIES), 0);
+      this.#later(() => this.#present(LAYOUT_TRIES, sequence), 0);
     }, 0);
   }
 
@@ -872,12 +1043,15 @@ export class UiBottomSheet implements OnDestroy {
    * hasn't been laid out yet (the first time the overlay shows), wait for it,
    * a frame at a time, then open at the content's height if it still isn't.
    */
-  #present(tries: number): void {
+  #present(tries: number, sequence: number): void {
     const detents = this.#detentList();
     const laidOut = this.#screenHeight() > 0 && this.#largeHeight() > 0;
-    const needsLayout = detents.some((detent) => detent !== 'fit');
+    // Growing out of its control needs the screen's size, as other detents
+    // than the content's height do.
+    const needsLayout =
+      this.#grows() || detents.some((detent) => detent !== 'fit');
     if (needsLayout && !laidOut && tries > 0) {
-      this.#later(() => this.#present(tries - 1), FRAME);
+      this.#later(() => this.#present(tries - 1, sequence), FRAME);
       return;
     }
     const chosen = this.detent();
@@ -887,8 +1061,97 @@ export class UiBottomSheet implements OnDestroy {
     this.detent.set(detent);
     this.#height.set(laidOut ? this.#restingHeight(detent) : null);
     this.#motion.set('rest');
+    const source = this.#grows() ? this.#source() : null;
+    if (source && laidOut) {
+      void this.#growIn(source, detent, sequence);
+      return;
+    }
     this.#presented.set(true);
     this.#animateIn();
+  }
+
+  /**
+   * Grows the sheet out of the control that presents it: the panel shows at
+   * the control's frame, in the same update that hides the control, then
+   * moves and resizes to its detent, which iOS's glass follows frame by
+   * frame. A control that can't be measured gets the slide instead.
+   */
+  async #growIn(
+    source: SourceElement,
+    detent: SheetDetent,
+    sequence: number,
+  ): Promise<void> {
+    const frame = await this.#measureSource(source);
+    this.#inSequence(sequence, () => {
+      this.#sourceFrame.set(frame);
+      this.#presented.set(true);
+      if (!frame) {
+        this.#animateIn();
+        return;
+      }
+      // The backdrop dims through its color (see backdropStyle).
+      this.#backdropAnim?.cancel();
+      // See #animateIn.
+      this.panelRef().nativeElement.invoke?.('requestAccessibilityFocus');
+      // A frame at the control's place, so the native side draws it there,
+      // then on to the detent, with a height to transition to (one that
+      // fits the content is `auto`, which a transition jumps to), which the
+      // content's own takes over at rest.
+      this.#later(
+        () =>
+          this.#inSequence(sequence, () => {
+            this.#height.set(this.#detentHeight(detent));
+            this.#motion.set('grow');
+            this.#sourceFrame.set(null);
+            // +20ms: Lynx's timers can fire a little early (see #doClose).
+            this.#later(
+              () =>
+                this.#inSequence(sequence, () => {
+                  // A drag that began meanwhile has the sheet now.
+                  if (this.#motion() !== 'grow') return;
+                  this.#height.set(this.#restingHeight(detent));
+                  this.#motion.set('rest');
+                }),
+              DURATION.slow + 120,
+            );
+          }),
+        FRAME,
+      );
+    });
+  }
+
+  /**
+   * Runs `step` of the open or close sequence numbered `sequence`, unless
+   * another has started since.
+   */
+  #inSequence(sequence: number, step: () => void): void {
+    if (sequence === this.#sequence) step();
+  }
+
+  /**
+   * The control's frame, as the panel's style places it, or null when it
+   * can't be measured. Measured boxes are in the screen's pixels, which the
+   * docs' web previews scale down: the backdrop's measured width against its
+   * laid out one undoes that (see UiMenuPopup, which does the same).
+   */
+  async #measureSource(source: SourceElement): Promise<PanelFrame | null> {
+    const [box, screen] = await Promise.all([
+      measure(source),
+      measure(this.backdropRef().nativeElement),
+    ]);
+    const width = this.#screenWidth();
+    // Gone, or nowhere: a control removed, or hidden with `display: none`.
+    if (!box || !screen || !box.width || !width) return null;
+    const scale = screen.width / width;
+    const left = (box.left - screen.left) / scale;
+    const top = (box.top - screen.top) / scale;
+    const height = box.height / scale;
+    return {
+      left,
+      right: width - left - box.width / scale,
+      bottom: this.#screenHeight() - top - height,
+      height,
+    };
   }
 
   /**
@@ -898,20 +1161,67 @@ export class UiBottomSheet implements OnDestroy {
    * before the fade finishes.
    */
   #doClose(): void {
+    const sequence = ++this.#sequence;
     this.#later(() => {
+      // A sheet dragged down goes on down, from the finger.
+      const source =
+        this.#grows() && this.#presented() && this.dragOffset() === 0
+          ? this.#source()
+          : null;
+      if (source) {
+        void this.#shrinkOut(source, sequence);
+        return;
+      }
       this.#animateOut();
-      this.#later(() => {
-        this.overlayVisible.set(false);
-        this.#presented.set(false);
-        this.closed.emit();
-        // Reset for the next open: the sheet returns to its docked position
-        // while hidden, so a fresh open animates cleanly from off-screen,
-        // at its first detent unless the app sets another.
-        this.dragOffset.set(0);
-        this.#restingAt = undefined;
-        this.detent.set(undefined);
-      }, DURATION.normal + 20);
+      this.#later(() => this.#finishClose(), DURATION.normal + 20);
     }, 0);
+  }
+
+  /**
+   * Shrinks the sheet back into the control that presented it, wherever the
+   * control is now, or slides it down if it can't be measured.
+   */
+  async #shrinkOut(source: SourceElement, sequence: number): Promise<void> {
+    const frame = await this.#measureSource(source);
+    this.#inSequence(sequence, () => {
+      if (!frame) {
+        this.#animateOut();
+        this.#later(() => this.#finishClose(), DURATION.normal + 20);
+        return;
+      }
+      // The backdrop clears through its color (see backdropStyle).
+      this.#backdropAnim?.cancel();
+      // A height to transition from (see #growIn) for a frame, then into
+      // the control.
+      this.#height.set(this.#currentHeight());
+      this.#motion.set('shrink');
+      this.#later(
+        () =>
+          this.#inSequence(sequence, () => {
+            this.#sourceFrame.set(frame);
+            this.#later(() => this.#finishClose(), DURATION.normal + 20);
+          }),
+        FRAME,
+      );
+    });
+  }
+
+  /**
+   * Hides the overlay once the sheet has gone. A sheet that grew out of its
+   * control hides its glass here too, in the update that shows the control.
+   */
+  #finishClose(): void {
+    this.overlayVisible.set(false);
+    this.#presented.set(false);
+    this.#sourceFrame.set(null);
+    this.#motion.set('rest');
+    this.closed.emit();
+    // Reset for the next open: the sheet returns to its docked position
+    // while hidden, so a fresh open animates cleanly from off-screen,
+    // at its first detent unless the app sets another.
+    this.dragOffset.set(0);
+    this.#restingAt = undefined;
+    this.detent.set(undefined);
   }
 
   #animateIn(): void {
@@ -1016,4 +1326,57 @@ export class UiBottomSheet implements OnDestroy {
     // agree once fill:'forwards' hands control back to the style binding.
     this.dragOffset.set(0);
   }
+}
+
+/**
+ * Marks the control that presents a sheet, which then grows out of it, as
+ * iOS 26 grows a sheet out of the button that presents it, and shrinks back
+ * into it as it closes.
+ *
+ * ```html
+ * <blur-view
+ *   ui-glass
+ *   shape="circle"
+ *   class="h-11 w-11 items-center flex justify-center"
+ *   [uiSheetSource]="sheet"
+ *   (bindtap)="open.set(true)"
+ * >
+ *   <ui-icon name="plus" />
+ * </blur-view>
+ * <ui-sheet #sheet variant="glass" [(open)]="open">…</ui-sheet>
+ * ```
+ *
+ * It only says where the sheet comes from: open it as before. The Liquid
+ * Glass sheet (`variant="glass"` on iOS 26 and later, in the web preview,
+ * and on Android with `provideGlass({ android: 'glass' })`) grows out of the
+ * control, which hides meanwhile. A control that's glass itself shares the
+ * sheet's glass id, so on iOS the sheet takes its glass over (see UiGlass's
+ * `glassId`). Elsewhere, and under Reduce Motion, the sheet slides up as it
+ * does without one.
+ */
+@Directive({
+  selector: '[uiSheetSource]',
+  host: {
+    '[style.visibility]': 'sheet().coversSource() ? "hidden" : null',
+  },
+})
+export class UiSheetSource {
+  /** The sheet this control presents: a `ui-sheet` or `ui-bottom-sheet`. */
+  readonly sheet = input.required<SheetSourceTarget>({
+    alias: 'uiSheetSource',
+  });
+
+  readonly #element =
+    inject<ElementRef<SourceElement>>(ElementRef).nativeElement;
+  readonly #glass = inject(UiGlass, { self: true, optional: true });
+
+  /**
+   * Points the sheet at this control, and away from it when the directive
+   * is destroyed or points at another sheet.
+   */
+  protected readonly register = effect((onCleanup) => {
+    const sheet = this.sheet();
+    sheet.setSource(this.#element, this.#glass);
+    onCleanup(() => sheet.setSource(null, null));
+  });
 }

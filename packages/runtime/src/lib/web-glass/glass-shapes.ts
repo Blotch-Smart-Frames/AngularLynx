@@ -46,14 +46,14 @@ export const cornerRadius = (
   return Math.min(radius, shorter / 2);
 };
 
-// How much an interactive shape swells while pressed, as on iOS.
-const PRESS_GROWTH = 0.06;
+/** How much an interactive shape swells while pressed, as on iOS. */
+export const PRESS_GROWTH = 0.06;
 
 /**
  * Reads one shape for a frame, relative to the group canvas at `origin`.
  * Advances its press animation by `elapsed` milliseconds; only containers let
- * a pressed shape `grow`, since a standalone shape's canvas is its own box
- * and Lynx clips anything drawn outside it.
+ * a pressed shape `grow` here, since a standalone shape's canvas is its own
+ * box. The manager swells a standalone shape's element instead.
  *
  * The shape's box and `origin` are in screen pixels, drawn at `zoom` screen
  * pixels per CSS pixel (see drawn-scale.ts); the frame is in CSS pixels, like

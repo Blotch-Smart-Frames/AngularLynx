@@ -85,9 +85,15 @@ describe('snapshotBackdrop', () => {
     );
 
     const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
-    // The viewBox crops the whole root down to the region.
-    expect(svg).toContain('width="400" height="200" viewBox="50 0 200 100"');
-    expect(svg).toContain('<foreignObject width="400" height="300">');
+    // The copy is moved and scaled to fill the image with the region:
+    // Safari ignores a viewBox for a <foreignObject>'s content.
+    expect(svg).toContain(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">' +
+        '<foreignObject width="400" height="200">',
+    );
+    expect(svg).toContain(
+      'transform-origin: 0 0; transform: scale(2,2) translate(-50px,0px);',
+    );
     expect(svg).toContain('backdrop');
   });
 
@@ -100,8 +106,8 @@ describe('snapshotBackdrop', () => {
     expect(snapshot).toMatchObject({ x: 100, y: 0, width: 400, height: 200 });
     expect(snapshot!.image.width).toBe(800);
     const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
-    expect(svg).toContain('width="800" height="400" viewBox="100 0 400 200"');
-    expect(svg).toContain('<foreignObject width="800" height="600">');
+    expect(svg).toContain('<foreignObject width="800" height="400">');
+    expect(svg).toContain('transform: scale(2,2) translate(-100px,0px);');
   });
 
   it('fills the image to its edges', async () => {
@@ -109,13 +115,11 @@ describe('snapshotBackdrop', () => {
     await snapshotBackdrop(element, options(0, 0, 360, 356.47, 1.36));
     const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
     // 360 × 1.36 and 356.47 × 1.36 round to 490 and 485 pixels, a shape a
-    // little off the viewBox's, so the viewBox is stretched to fit.
+    // little off the region's, so the copy is stretched to fit.
+    expect(svg).toContain('<foreignObject width="490" height="485">');
     expect(svg).toContain(
-      'width="490" height="485" viewBox="0 0 360 356.47" ' +
-        'preserveAspectRatio="none"',
+      `scale(${490 / 360},${485 / 356.47}) translate(0px,0px)`,
     );
-    // As big as the copy's frame, which is rounded up to whole pixels.
-    expect(svg).toContain('<foreignObject width="360" height="357">');
   });
 
   it('keeps the image inside the texture size limit', async () => {

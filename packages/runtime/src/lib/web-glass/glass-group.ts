@@ -9,6 +9,11 @@ import { containerShapes, readShape } from './glass-shapes';
 // The lens samples up to about half a shape's radius past its edge, so the
 // captured region reaches this far beyond the group.
 const CAPTURE_MARGIN = 48;
+// How far a container's canvas reaches past its box: room for its shapes'
+// shadow, which fades out over about 20px, and for a pressed shape's swell.
+// A container hugs its shapes, so with no margin both were cut off in a
+// straight line at its edge.
+const CONTAINER_MARGIN = 32;
 // Captures run on the main thread, so they're spaced out: at least this many
 // milliseconds apart, and four times as long as the last one took.
 const MIN_CAPTURE_INTERVAL = 100;
@@ -17,28 +22,98 @@ const MAX_SCALE = 2;
 // Backdrops darker than this get the dark material, like iOS in dark mode.
 const DARK_LUMINANCE = 0.4;
 
+/** What a glass group refracts (see backdropOf). */
+export type Backdrop = {
+  /** The element whose drawing the glass refracts. */
+  readonly element: HTMLElement;
+  /**
+   * The fixed-position element the glass is in, or is, such as a Lynx
+   * overlay on the web: it paints above the page wherever it sits in the
+   * DOM. Null when the glass is in the page's flow.
+   */
+  readonly layer: HTMLElement | null;
+};
+
+const isFixed = (win: Window, element: Element) =>
+  win.getComputedStyle(element).position === 'fixed';
+
 /**
- * The element whose drawing a glass group refracts: the nearest ancestor that
- * paints over everything behind it, with an opaque background color or a
- * background image, or else the topmost one, the page. The glass's own parent
- * is often a row or a wrapper that draws nothing, while what the glass floats
- * over belongs to an ancestor: a card's gradient, or the screen's content.
- * iOS's glass shows whatever is on screen behind it.
+ * What a glass group refracts: the nearest ancestor that paints over
+ * everything behind it, with an opaque background color or a background
+ * image, or else the topmost one, the page. The glass's own parent is often a
+ * row or a wrapper that draws nothing, while what the glass floats over
+ * belongs to an ancestor: a card's gradient, or the screen's content. iOS's
+ * glass shows whatever is on screen behind it.
+ *
+ * Glass that's fixed, or in something fixed below that ancestor, refracts
+ * the page instead: a menu's overlay sits in the DOM beside the button that
+ * opened it, often in a row or a card, but it's drawn over the whole screen.
  */
-export const backdropOf = (root: HTMLElement): HTMLElement | null => {
+export const backdropOf = (root: HTMLElement): Backdrop | null => {
   const win = root.ownerDocument.defaultView!;
+  let layer = isFixed(win, root) ? root : null;
   let element = root.parentElement;
   while (element?.parentElement) {
-    const style = win.getComputedStyle(element);
-    if (
-      (style.backgroundImage && style.backgroundImage !== 'none') ||
-      parseNormalizedColor(style.backgroundColor)[3] >= 1
-    ) {
-      return element;
+    if (!layer) {
+      const style = win.getComputedStyle(element);
+      if (
+        (style.backgroundImage && style.backgroundImage !== 'none') ||
+        parseNormalizedColor(style.backgroundColor)[3] >= 1
+      ) {
+        return { element, layer };
+      }
+      if (style.position === 'fixed') layer = element;
     }
     element = element.parentElement;
   }
-  return element;
+  return element && { element, layer };
+};
+
+/**
+ * Whether `element` is drawn above the glass, and so left out of what it
+ * refracts. In the page's flow, that's the glass, and everything after it
+ * and after each of its ancestors up to the backdrop: later content paints
+ * on top. A fixed layer paints above the content around it, so there it's
+ * the layer, and any other fixed element stacked above it: a higher
+ * `z-index`, or the same one and later in the page, such as a second menu.
+ */
+const drawnAbove = (
+  root: HTMLElement,
+  { element: backdrop, layer }: Backdrop,
+): ((element: Element) => boolean) => {
+  const win = root.ownerDocument.defaultView!;
+  if (layer) {
+    const zIndex = (element: Element) =>
+      parseInt(win.getComputedStyle(element).zIndex, 10) || 0;
+    const layerZ = zIndex(layer);
+    return (element) => {
+      if (element === layer) return true;
+      if (element.contains(layer) || !isFixed(win, element)) return false;
+      const z = zIndex(element);
+      return (
+        z > layerZ ||
+        (z === layerZ &&
+          // Node.DOCUMENT_POSITION_FOLLOWING, spelled out: the elements
+          // belong to the page, not to the main thread's realm.
+          (layer.compareDocumentPosition(element) & 4) !== 0)
+      );
+    };
+  }
+  const above = new Set<Element>([root]);
+  for (
+    let node: Element | null = root;
+    node && node !== backdrop;
+    node = node.parentElement
+  ) {
+    for (
+      let sibling = node.nextElementSibling;
+      sibling;
+      sibling = sibling.nextElementSibling
+    ) {
+      above.add(sibling);
+    }
+  }
+  return (element) => above.has(element);
 };
 
 /**
@@ -56,7 +131,8 @@ export class GlassGroup {
   readonly #win: Window;
   readonly #canvas: HTMLCanvasElement;
   readonly #renderer: GlassRenderer | null;
-  readonly #backdrop: HTMLElement | null;
+  readonly #backdrop: Backdrop | null;
+  readonly #margin: number;
   #stopObserving: (() => void) | null = null;
   #snapshot: BackdropSnapshot | null = null;
   #stale = true;
@@ -73,18 +149,32 @@ export class GlassGroup {
     this.#win = doc.defaultView!;
     this.#canvas = doc.createElement('canvas');
     this.#canvas.setAttribute('aria-hidden', 'true');
-    // Fades in over the frosted fallback once the first frame is drawn.
+    // A container's canvas reaches past it (see CONTAINER_MARGIN), and the
+    // container doesn't clip it (see glass-host-style.ts). A lone shape's is
+    // its own box: its shadow is CSS, and it swells as a whole element. It's
+    // sized with width and height, not by insets: a canvas is a replaced
+    // element, which insets place but don't stretch. It fades in over the
+    // frosted fallback once the first frame is drawn.
+    this.#margin = container ? CONTAINER_MARGIN : 0;
+    const size = `calc(100% + ${2 * this.#margin}px)`;
     this.#canvas.style.cssText =
-      'position:absolute;left:0;top:0;width:100%;height:100%;' +
+      `position:absolute;left:${-this.#margin}px;top:${-this.#margin}px;` +
+      `width:${size};height:${size};` +
       'pointer-events:none;z-index:-1;opacity:0;transition:opacity 0.2s';
     const shadow = root.shadowRoot;
     shadow?.insertBefore(this.#canvas, shadow.querySelector('slot'));
     this.#renderer = shadow ? GlassRenderer.create(this.#canvas) : null;
     this.#backdrop = backdropOf(root);
     if (this.#renderer && this.#backdrop) {
-      this.#stopObserving = observeBackdrop(this.#backdrop, root, () => {
-        this.#stale = true;
-      });
+      // Changes inside the glass, or inside the fixed layer it's in, don't
+      // change what's behind it.
+      this.#stopObserving = observeBackdrop(
+        this.#backdrop.element,
+        this.#backdrop.layer ?? root,
+        () => {
+          this.#stale = true;
+        },
+      );
     }
   }
 
@@ -114,7 +204,7 @@ export class GlassGroup {
    */
   frame(elapsed: number): void {
     const renderer = this.#renderer;
-    const backdrop = this.#backdrop;
+    const backdrop = this.#backdrop?.element;
     if (!renderer || !backdrop || this.#failed) return;
     // Boxes are measured in screen pixels, and the frame is drawn in CSS
     // pixels, which differ when the page is drawn scaled (see drawn-scale.ts).
@@ -130,18 +220,24 @@ export class GlassGroup {
     // Device pixels per CSS pixel, so the canvas stays sharp at any zoom.
     const scale = Math.min(this.#win.devicePixelRatio || 1, MAX_SCALE) * zoom;
     const elements = this.shapes;
-    const shapes = elements.map((element) =>
+    const read = elements.map((element) =>
       readShape(element, origin, zoom, elapsed, this.container),
     );
     // The press glow follows whichever shape is pressed the most.
     let pointer: [number, number, number] = [0, 0, 0];
     elements.forEach((element, i) => {
-      const value = shapes[i]!.press;
+      const value = read[i]!.press;
       if (value > pointer[2]) {
         const { x, y } = pressOf(element)!;
         pointer = [(x - origin.left) / zoom, (y - origin.top) / zoom, value];
       }
     });
+    // A shape with no width or height draws nothing on iOS, but its distance
+    // field is a line, which the smooth union bulges into the shapes beside
+    // it: the search field's cancel button, collapsed beside the field.
+    const shapes = read.filter(
+      (shape) => shape.halfWidth >= 0.5 && shape.halfHeight >= 0.5,
+    );
     const spacing = parseFloat(this.root.getAttribute('spacing') ?? '') || 0;
     const frame: GlassFrame = {
       scale,
@@ -211,26 +307,12 @@ export class GlassGroup {
     this.#capturing = true;
     this.#stale = false;
     const started = win.performance.now();
-    // The glass, and everything after it and after each of its ancestors in
-    // the backdrop, paints on top of the glass, not behind it.
-    const above = new Set<Element>([this.root]);
-    for (
-      let node: Element | null = this.root;
-      node && node !== backdrop;
-      node = node.parentElement
-    ) {
-      for (
-        let sibling = node.nextElementSibling;
-        sibling;
-        sibling = sibling.nextElementSibling
-      ) {
-        above.add(sibling);
-      }
-    }
-    // The region is in screen pixels, and the margin in CSS pixels.
-    const margin = CAPTURE_MARGIN * zoom;
+    // The region is in screen pixels, and the margins in CSS pixels. It's
+    // measured from the root, which a container's canvas reaches past: the
+    // shapes inside it are what sample the image.
+    const margin = (CAPTURE_MARGIN - this.#margin) * zoom;
     snapshotBackdrop(backdrop, {
-      exclude: (element) => above.has(element),
+      exclude: drawnAbove(this.root, this.#backdrop!),
       region: {
         left: origin.left - margin,
         top: origin.top - margin,

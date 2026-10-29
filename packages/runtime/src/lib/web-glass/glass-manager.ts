@@ -1,7 +1,7 @@
 import { GlassGroup } from './glass-group';
 import { applyHostStyle } from './glass-host-style';
-import { trackPress } from './glass-press';
-import { glassRole } from './glass-shapes';
+import { pressOf, trackPress } from './glass-press';
+import { glassRole, PRESS_GROWTH } from './glass-shapes';
 
 // The attributes that change what a `<blur-view>` looks like as glass.
 const GLASS_ATTRIBUTES = [
@@ -149,12 +149,20 @@ export class GlassManager {
       }
     }
     for (const element of styled) {
+      const group = this.#groups.get(element);
+      const glass = element.getAttribute('blur-effect') === 'glass';
+      const fallback = glass && !rendered.has(element);
+      // A lone shape's canvas is its own box, so it can't swell or cast a
+      // shadow there the way a container's shapes do. It swells as a whole,
+      // content and all, as UIKit's interactive glass does, and its CSS
+      // shadow (see glassShadow) grows with it.
+      const lone = group !== undefined && !group.container;
       applyHostStyle(element, {
-        hostsCanvas: this.#groups.get(element)?.active ?? false,
+        hostsCanvas: group?.active ?? false,
         rendered: rendered.has(element),
-        fallback:
-          element.getAttribute('blur-effect') === 'glass' &&
-          !rendered.has(element),
+        fallback,
+        shadow: glass && (lone || fallback),
+        scale: lone ? 1 + PRESS_GROWTH * (pressOf(element)?.value ?? 0) : 1,
       });
     }
 

@@ -346,9 +346,9 @@ export class UiToolbarItem {
 
   /**
    * The press's highlight: Material's state layer, and on glass a shade
-   * under the finger where the glass doesn't react by itself (a grouped
-   * item, Android's glass, or the web's under Reduce Motion). It comes and
-   * goes with the finger, with no motion.
+   * under the finger where the glass doesn't react by itself (Android's
+   * glass, or the web's under Reduce Motion). It comes and goes with the
+   * finger, with no motion.
    */
   protected readonly highlightClass = computed(() => {
     if (!this.pressing() || this.design() === 'frosted') return null;
@@ -364,10 +364,10 @@ export class UiToolbarItem {
         prominent ? 'bg-primary-foreground' : !this.iconOnly() && 'bg-primary',
       );
     }
-    // A glass item on its own swells under the finger by itself, except on
+    // The glass swells under the finger by itself: an item's own, or the
+    // group's capsule around a grouped item, as iOS 26's does. Except on
     // Android, whose glass doesn't react, and where Reduce Motion stills it.
-    const glassReacts =
-      !this.#group && this.interactive() && this.#platform !== 'Android';
+    const glassReacts = this.interactive() && this.#platform !== 'Android';
     return glassReacts
       ? null
       : 'h-full w-full rounded-full bg-glass-foreground opacity-15 absolute left-0 top-0';

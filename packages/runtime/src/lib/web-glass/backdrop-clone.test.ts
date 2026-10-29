@@ -76,6 +76,30 @@ afterEach(() => {
 });
 
 describe('cloneBackdrop', () => {
+  it('compares with a plain div as the image draws it, without the page’s styles', async () => {
+    // The page's own stylesheet makes everything in it border-box, as the
+    // docs site does; the image has only the browser's styles.
+    vi.mocked(window.getComputedStyle).mockImplementation((node) => {
+      const style = computed(node);
+      if (node.getRootNode() !== document) return style;
+      return computed(
+        element('div', { 'box-sizing': 'border-box', ...styles.get(node) }),
+      );
+    });
+    // A fresh module, whose defaults aren't cached from other tests.
+    vi.resetModules();
+    const fresh = await import('./backdrop-clone');
+    const card = element('x-view', { 'box-sizing': 'border-box' });
+
+    const copy = fresh.cloneBackdrop(card, {
+      exclude: () => false,
+      region: EVERYWHERE,
+    }).firstElementChild as HTMLElement;
+    expect(copy.getAttribute('style')).toContain('box-sizing: border-box');
+    // The probe is gone again.
+    expect(document.documentElement.lastElementChild!.localName).toBe('body');
+  });
+
   it('inlines only what a plain div or the parent would not give', () => {
     const child = element('x-text', { color: 'rgb(0, 0, 0)' });
     const root = element(

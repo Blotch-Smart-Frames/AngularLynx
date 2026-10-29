@@ -31,8 +31,8 @@ const MAX_IMAGE_SIZE = 4096;
  * Captures part of `root` as an image. The browser can't hand page pixels to
  * WebGL, so the page is redrawn instead: the subtree is copied with inlined
  * styles (see backdrop-clone.ts), wrapped in an SVG `<foreignObject>` and
- * drawn to a canvas. The SVG's viewBox crops it to `region`, so only the area
- * the glass can show is rasterized.
+ * drawn to a canvas. The SVG is the size of `region`, so only the area the
+ * glass can show is rasterized.
  *
  * Resolves to null when the region doesn't overlap `root`.
  */
@@ -60,24 +60,30 @@ export const snapshotBackdrop = async (
     MAX_IMAGE_SIZE / Math.max(width, height),
   );
 
-  const markup = new win.XMLSerializer().serializeToString(
-    cloneBackdrop(root, options),
-  );
   const pixelWidth = Math.max(1, Math.round(width * scale));
   const pixelHeight = Math.max(1, Math.round(height * scale));
+  // The copy itself is moved and scaled so the region fills the image, with a
+  // CSS transform. An SVG viewBox does the same in Chromium, but Safari
+  // ignores a viewBox for a <foreignObject>'s content, drawing it from the
+  // root's corner at one pixel per CSS pixel: a menu near the top right of
+  // the page refracted the content to the left of it, and the image's
+  // unfilled part as a dark band.
+  //
   // The image's edges must be opaque: the glass clamps to them where its lens
   // looks past the image, so a transparent row there shows as a dark band.
   // Rounding the image's width and height separately leaves its shape a
-  // little off the viewBox's, which the default `preserveAspectRatio` would
-  // fit with an empty strip along one edge, so the viewBox is stretched
-  // instead. The <foreignObject> matches the copy's frame, which is rounded up
-  // to whole pixels (see cloneBackdrop).
+  // little off the region's, so the copy is stretched to it rather than
+  // scaled evenly. The copy's frame is rounded up to whole pixels (see
+  // cloneBackdrop), so it covers the region's last row.
+  const frame = cloneBackdrop(root, options);
+  frame.style.cssText +=
+    `transform-origin:0 0;transform:scale(${pixelWidth / width},` +
+    `${pixelHeight / height}) translate(${-x}px,${-y}px);`;
+  const markup = new win.XMLSerializer().serializeToString(frame);
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${pixelWidth}" ` +
-    `height="${pixelHeight}" viewBox="${x} ${y} ${width} ${height}" ` +
-    `preserveAspectRatio="none">` +
-    `<foreignObject width="${Math.ceil(bounds.width / zoom)}" ` +
-    `height="${Math.ceil(bounds.height / zoom)}">` +
+    `height="${pixelHeight}">` +
+    `<foreignObject width="${pixelWidth}" height="${pixelHeight}">` +
     `${markup}</foreignObject></svg>`;
   const picture = new win.Image();
   picture.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

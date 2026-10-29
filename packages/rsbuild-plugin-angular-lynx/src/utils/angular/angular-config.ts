@@ -1,7 +1,27 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RsbuildPluginAPI } from '@lynx-js/rspeedy';
+import type { RsbuildConfig } from '@rsbuild/core';
 import type { NormalizedOptions } from './options.js';
+
+/**
+ * Matches the `ios` and `android` folders right inside the dist folder, and
+ * nothing deeper, so an asset that happens to sit in a folder of that name
+ * is still cleaned. It's anchored to the absolute path because Rsbuild tests
+ * `keep` against each entry's absolute path, in POSIX form even on Windows:
+ * an unanchored `/ios/` would keep everything in a project under ~/ios.
+ */
+const nativeOutputPattern = (
+  rootPath: string,
+  distPath: NonNullable<RsbuildConfig['output']>['distPath'],
+): RegExp => {
+  const root = typeof distPath === 'string' ? distPath : distPath?.root;
+  const dist = path
+    .resolve(rootPath, root ?? 'dist')
+    .replaceAll(path.sep, '/')
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${dist}/(?:ios|android)$`);
+};
 
 export const applyAngularConfig = (
   api: RsbuildPluginAPI,
@@ -21,7 +41,15 @@ export const applyAngularConfig = (
         root: buildOptions.outputPath,
       };
     }
-    config.output.cleanDistPath = true;
+    // `ng build --platform` writes its apps into <outputPath>/ios and
+    // <outputPath>/android. Emptying those too would delete the other
+    // platform's app on every build, and both on `ng serve`, leaving nothing
+    // to install. Each native build empties its own folder instead
+    // (`buildNativeApp`).
+    config.output.cleanDistPath = {
+      enable: true,
+      keep: [nativeOutputPattern(api.context.rootPath, config.output.distPath)],
+    };
     // const hashFormat = getOutputHashFormat(OutputHashing.None, 8);
     // config.output.filename ??= {};
     // config.output.filename.js = `[name]${hashFormat.chunk}.js`;

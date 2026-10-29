@@ -16,6 +16,9 @@ const ERROR_LINE = /(^|:\d+(:\d+)?:\s|^\s*e:\s)error:|^error:|^e: /;
  * terminal. xcodebuild and Gradle print thousands of lines on success, which
  * would bury the builder's own progress; on failure, the end of the log is
  * almost always the error, so that's what the thrown error quotes.
+ *
+ * Resolves with the tool's stdout, for the short commands whose answer is
+ * there, such as `simctl create` printing the new simulator's UDID.
  */
 export const run = (
   command: string,
@@ -25,7 +28,7 @@ export const run = (
     readonly logFile: string;
     readonly env?: NodeJS.ProcessEnv;
   },
-): Promise<void> => {
+): Promise<string> => {
   mkdirSync(path.dirname(options.logFile), { recursive: true });
   appendFileSync(
     options.logFile,
@@ -39,6 +42,7 @@ export const run = (
     });
     const recent: string[] = [];
     const errors = new Set<string>();
+    let stdout = '';
     let partial = '';
     const record = (chunk: Buffer) => {
       appendFileSync(options.logFile, chunk);
@@ -55,7 +59,10 @@ export const run = (
       recent.push(...lines);
       recent.splice(0, Math.max(0, recent.length - TAIL_LINES));
     };
-    child.stdout.on('data', record);
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+      record(chunk);
+    });
     child.stderr.on('data', record);
     child.on('error', (error) =>
       reject(
@@ -64,7 +71,7 @@ export const run = (
     );
     child.on('close', (code) => {
       if (code === 0) {
-        resolve();
+        resolve(stdout);
         return;
       }
       const detail =

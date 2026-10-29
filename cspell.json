@@ -309,6 +309,7 @@
     "transitionend",
     "transitionstart",
     "tslib",
+    "UDID",
     "UiAutomator",
     "unflushed",
     "unlisten",

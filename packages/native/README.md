@@ -9,6 +9,7 @@ User documentation: [Publishing your App](../website/docs/guide/building-for-pro
 1. **Generates** the native project from `templates/ios` or `templates/android` into the project's folder in Angular's build cache (`.angular/cache/<Angular version>/<project>/lynx-native/<platform>`, which `ng new` already gitignores and `ng cache clean` clears), writing the app options from `angular.json` into the few files the templates mark for it. It regenerates only when a hash of its inputs changes (this package's version, the template, the options, the icon), so Xcode and Gradle keep their incremental state.
 2. **Copies** `dist/` (without the web bundle) into the project.
 3. **Builds** it with `xcodebuild` or Gradle and copies the binaries to `dist/<platform>/`.
+4. **Runs** it, with `--run` (`src/ios/run.ts`, `src/android/run.ts`): picks a simulator, emulator or phone (`--device`, else a running one, else the newest iPhone simulator or the first AVD) and starts it before step 3, so it boots while the app compiles; then installs the app and opens it. iOS uses `simctl` and shows the simulator in DeviceHub (`devices://device/open?id=<UDID>`) or, before Xcode 27.1, the Simulator app. Android uses the SDK's `adb` and `emulator` and opens the launcher activity by component.
 
 An ejected project (`ios/` or `android/` with a `.angular-lynx-ejected` marker, written by `ng generate @blotch/angular-lynx:eject`) is built as it is and never regenerated.
 

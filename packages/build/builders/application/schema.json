@@ -11,6 +11,15 @@
       "enum": ["ios", "android", "all"],
       "description": "Also build native binaries into dist/<platform>/. Without it, only the bundle is built, as `rspeedy build` does."
     },
+    "run": {
+      "type": "boolean",
+      "default": false,
+      "description": "After --platform builds the app, install it on a simulator, emulator or phone and open it. iOS uses the running simulator, or else starts the newest iPhone simulator; Android uses the running emulator or connected phone, or else starts the first virtual device."
+    },
+    "device": {
+      "type": "string",
+      "description": "With --run, where to open the app: on iOS a simulator's name (e.g. \"iPhone 18 Pro\") or UDID, on Android a virtual device's name or an adb serial (e.g. emulator-5554)."
+    },
     "watch": {
       "type": "boolean",
       "default": false,

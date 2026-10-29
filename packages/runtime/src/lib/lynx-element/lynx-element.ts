@@ -106,6 +106,13 @@ const withAddedTraits = (own: unknown, added: readonly string[]): unknown => {
 };
 
 /**
+ * Whether a `setStyle` name is a CSS variable (`--x`), which only
+ * `__SetInlineStyles` can set: `__AddInlineStyle` looks the name up as a CSS
+ * property and drops it.
+ */
+const isCustomProperty = (name: string): boolean => name.startsWith('--');
+
+/**
  * True if attaching `candidate` under `parent` would form a cycle — i.e.
  * `candidate` is `parent` itself or an ancestor of `parent` in the native tree.
  *
@@ -308,6 +315,12 @@ export class LynxElement implements BaseLynxElement {
    * `__AddInlineStyle` drops any name that isn't a CSS property.
    */
   #runtimeStyle = '';
+  /**
+   * The CSS variables `[style.--x]` bindings set, which go into the inline
+   * style string after the app's style="...", for the same reason as
+   * #runtimeStyle.
+   */
+  #customProperties = new Map<string, string>();
   /**
    * The app's own `accessibility-traits`, and the traits the runtime adds to
    * them (see setAccessibilityTrait). They're kept apart so that the app
@@ -621,10 +634,26 @@ export class LynxElement implements BaseLynxElement {
   }
 
   setStyle(key: string, value: unknown): void {
+    if (isCustomProperty(key)) {
+      // Angular removes a binding's style with an empty or null value too.
+      if (value == null || value === '') {
+        this.removeStyle(key);
+        return;
+      }
+      const text = String(value);
+      if (this.#customProperties.get(key) === text) return;
+      this.#customProperties.set(key, text);
+      this.#rewriteInlineStyle();
+      return;
+    }
     __AddInlineStyle(this.element, key, value);
     this.#inlineStyleKeys.set(key, value);
   }
   removeStyle(key: string): void {
+    if (isCustomProperty(key)) {
+      if (this.#customProperties.delete(key)) this.#rewriteInlineStyle();
+      return;
+    }
     __AddInlineStyle(this.element, key, null);
     this.#inlineStyleKeys.delete(key);
   }
@@ -635,19 +664,33 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * The whole inline style to give the native element: the runtime's
-   * declarations first, so the app's own wins where both set the same name.
-   * Without runtime declarations it's the app's value as is.
+   * declarations first, so the app's own wins where both set the same name,
+   * then the app's style="...", then its `[style.--x]` variables, which win
+   * over the attribute as bindings do on the web. Without runtime
+   * declarations or variables it's the app's value as is.
    */
   #withRuntimeStyle(inlineStyle: string | null): string | null {
-    if (!this.#runtimeStyle) return inlineStyle;
-    return inlineStyle
-      ? `${this.#runtimeStyle}; ${inlineStyle}`
-      : this.#runtimeStyle;
+    if (!this.#runtimeStyle && this.#customProperties.size === 0) {
+      return inlineStyle;
+    }
+    const variables = [...this.#customProperties]
+      .map(([name, value]) => `${name}: ${value}`)
+      .join('; ');
+    return [this.#runtimeStyle, inlineStyle?.replace(/[\s;]+$/, ''), variables]
+      .filter(Boolean)
+      .join('; ');
   }
 
   #setRuntimeStyle(style: string): void {
     if (style === this.#runtimeStyle) return;
     this.#runtimeStyle = style;
+    this.#rewriteInlineStyle();
+  }
+
+  /**
+   * Gives the native element its whole inline style again.
+   */
+  #rewriteInlineStyle(): void {
     __SetInlineStyles(
       this.element,
       this.#withRuntimeStyle(this.#inlineStyleWhole),

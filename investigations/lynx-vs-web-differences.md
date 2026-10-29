@@ -4882,11 +4882,13 @@ The iOS shell registers its own class for `blur-view`, `BlurView` (`packages/nat
 
 ### What Lynx does
 
-`__AddInlineStyle(element, '--x', 'red')` looks the name up as a CSS property (`CSSProperty::GetPropertyID`), finds none, and the variable never reaches the element. Only `__SetInlineStyles` sets inline CSS variables: its string form parses `--x: red` declarations when the page config has `enableCSSInlineVariables`, which the build plugin turns on (Lynx 4.1, `FiberElement::ParseRawInlineStyles`). `__SetInlineStyles` replaces every inline style, including those set with `__AddInlineStyle`. Checked on the Android emulator: `style="--probe: red; background-color: var(--probe, blue)"` is red, while `[style.--probe]="'red'"` leaves `var(--probe, blue)` blue. So `[style.--x]` bindings don't work in AngularLynx yet.
+`__AddInlineStyle(element, '--x', 'red')` looks the name up as a CSS property (`CSSProperty::GetPropertyID`), finds none, and the variable never reaches the element. Only `__SetInlineStyles` sets inline CSS variables: its string form parses `--x: red` declarations when the page config has `enableCSSInlineVariables`, which the build plugin turns on (Lynx 4.1, `FiberElement::ParseRawInlineStyles`). `__SetInlineStyles` replaces every inline style, including those set with `__AddInlineStyle`. Checked on the Android emulator: `style="--probe: red; background-color: var(--probe, blue)"` is red, while `__AddInlineStyle` with `--probe` leaves `var(--probe, blue)` blue.
 
 ### The fix
 
-The runtime's own variables (the blur-view materials above) go in front of the app's `style` string, in one `__SetInlineStyles` call, and the `[style.x]` styles are re-added after it (`#setRuntimeStyle` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`). `[style.--x]` bindings still need the same treatment.
+`LynxElement` writes the whole inline style with `__SetInlineStyles` whenever a variable changes: the runtime's own variables first (the blur-view materials above), then the app's `style` string, then the `[style.--x]` bindings, which win over the attribute as they do on the web. The `[style.x]` styles are re-added after it, since `__SetInlineStyles` drops them (`#rewriteInlineStyle` in `packages/runtime/src/lib/lynx-element/lynx-element.ts`).
+
+An inline variable reaches the element's descendants, as on the web, and changing it restyles them. Checked on the Android emulator (Lynx 4.1) and in the web preview with Dynamic Color's `uiDynamicColor`, which sets the theme's variables on the app's root view with a host `[style]` binding, and changes them when the wallpaper or dark mode does.
 
 ---
 

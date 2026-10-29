@@ -185,6 +185,84 @@ describe('LynxElement', () => {
     });
   });
 
+  describe('CSS variables from [style.--x] bindings', () => {
+    beforeEach(() => {
+      globalThis.__SetInlineStyles = vi.fn();
+      globalThis.__AddInlineStyle = vi.fn();
+    });
+
+    it('sets them in the inline style string, after the app’s style attribute', () => {
+      element = new LynxElement(fakeRef);
+      element.setInlineStyles('width: 10px;');
+      element.setStyle('--primary', 'rgba(103, 80, 164, 1)');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        'width: 10px; --primary: rgba(103, 80, 164, 1)',
+      );
+
+      element.setStyle('--primary-rgb', '103, 80, 164');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        'width: 10px; --primary: rgba(103, 80, 164, 1); --primary-rgb: 103, 80, 164',
+      );
+
+      element.setInlineStyles('width: 20px');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        'width: 20px; --primary: rgba(103, 80, 164, 1); --primary-rgb: 103, 80, 164',
+      );
+      expect(globalThis.__AddInlineStyle).not.toHaveBeenCalled();
+    });
+
+    it('takes them out when the binding is removed or empty', () => {
+      element = new LynxElement(fakeRef);
+      element.setStyle('--a', 'red');
+      element.setStyle('--b', 'blue');
+
+      element.removeStyle('--a');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        '--b: blue',
+      );
+      element.setStyle('--b', '');
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        null,
+      );
+      element.setStyle('--b', 'blue');
+      element.setStyle('--b', null);
+      expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+        fakeRef,
+        null,
+      );
+    });
+
+    it('writes nothing while a variable keeps its value, or one that was never set is removed', () => {
+      element = new LynxElement(fakeRef);
+      element.setStyle('--a', 'red');
+      vi.mocked(globalThis.__SetInlineStyles).mockClear();
+
+      element.setStyle('--a', 'red');
+      element.removeStyle('--never-set');
+
+      expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+    });
+
+    it('puts [style.x] styles back after replacing the inline style', () => {
+      element = new LynxElement(fakeRef);
+      element.setStyle('opacity', 0.5);
+      vi.mocked(globalThis.__AddInlineStyle).mockClear();
+
+      element.setStyle('--a', 'red');
+
+      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+        fakeRef,
+        'opacity',
+        0.5,
+      );
+    });
+  });
+
   describe('svg content', () => {
     const svg = () => {
       const el = new LynxElement(fakeRef);

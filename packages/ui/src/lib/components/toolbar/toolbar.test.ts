@@ -219,16 +219,14 @@ describe('UiToolbar on iOS 26 and later', () => {
     expect(item('Compose').getAttribute('accessibility-label')).toBe('Compose');
   });
 
-  it('leaves a press to the glass on its own, and highlights a grouped item', async () => {
-    const { press, release, button } = await renderToolbar(IOS_26);
+  it('leaves a press to the glass, its own or the group’s capsule', async () => {
+    const { press, button } = await renderToolbar(IOS_26);
     await press('Compose');
     expect(highlightOf(button('Compose'))).toBeUndefined();
 
+    // The group's interactive glass swells under the finger, as iOS 26's
+    // capsule does, with no gray shade.
     await press('Checklist');
-    expect(highlightOf(button('Checklist'))?.className).toContain(
-      'bg-glass-foreground',
-    );
-    await release('Checklist');
     expect(highlightOf(button('Checklist'))).toBeUndefined();
   });
 
@@ -382,8 +380,8 @@ describe('UiToolbar with glass on Android and the web', () => {
     expect(fade).toContain('var(--background-rgb)');
   });
 
-  it('highlights an item on its own on Android, whose glass doesn’t react to touch', async () => {
-    const { ownGlass, press, button } = await renderToolbar(ANDROID, [
+  it('highlights an item on Android, whose glass doesn’t react to touch', async () => {
+    const { ownGlass, press, release, button } = await renderToolbar(ANDROID, [
       provideGlass({ android: 'glass' }),
     ]);
     expect(ownGlass('Compose')?.getAttribute('blur-effect')).toBe('glass');
@@ -391,6 +389,14 @@ describe('UiToolbar with glass on Android and the web', () => {
     expect(highlightOf(button('Compose'))?.className).toContain(
       'bg-glass-foreground',
     );
+
+    // A grouped item too: the group's capsule doesn't react either.
+    await press('Checklist');
+    expect(highlightOf(button('Checklist'))?.className).toContain(
+      'bg-glass-foreground',
+    );
+    await release('Checklist');
+    expect(highlightOf(button('Checklist'))).toBeUndefined();
   });
 
   it('stills the web’s glass under Reduce Motion, and highlights the item instead', async () => {
@@ -399,11 +405,16 @@ describe('UiToolbar with glass on Android and the web', () => {
     expect(ownGlass('Compose')?.getAttribute('glass-interactive')).toBe('true');
     expect(groupGlass().getAttribute('glass-interactive')).toBe('true');
 
+    await press('Checklist');
+    expect(highlightOf(button('Checklist'))).toBeUndefined();
+
     await update(() => settings.reduceMotion.set(true));
     expect(ownGlass('Compose')?.getAttribute('glass-interactive')).toBeNull();
     expect(groupGlass().getAttribute('glass-interactive')).toBeNull();
     await press('Compose');
     expect(highlightOf(button('Compose'))).toBeDefined();
+    await press('Checklist');
+    expect(highlightOf(button('Checklist'))).toBeDefined();
   });
 
   it('releases a press the scroll took, or the mouse left', async () => {

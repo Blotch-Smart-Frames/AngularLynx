@@ -2,12 +2,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyHostStyle,
+  FALLBACK_EDGES,
   fallbackGlassCss,
+  glassShadow,
   hostStyleCss,
   materialCss,
 } from './glass-host-style';
 
-const NONE = { fallback: false, rendered: false, hostsCanvas: false };
+const NONE = {
+  fallback: false,
+  rendered: false,
+  hostsCanvas: false,
+  shadow: false,
+  scale: 1,
+};
 
 const host = (attributes: Record<string, string> = {}) => {
   const element = document.createElement('x-blur-view');
@@ -38,6 +46,47 @@ describe('fallbackGlassCss', () => {
     );
     expect(css).toContain('blur(20px)');
     expect(css).toContain('background-color:blue');
+  });
+});
+
+describe('FALLBACK_EDGES', () => {
+  it('outlines the glass with a gray hairline, and a bright rim inside it', () => {
+    expect(FALLBACK_EDGES).toMatch(/^inset 0 0 0 1px rgba\(0, 0, 0, 0\.08\)/);
+    expect(FALLBACK_EDGES).toContain('inset 0 2px 0 rgba(255, 255, 255, 0.5)');
+  });
+});
+
+describe('glassShadow', () => {
+  /**
+   * A glass element laid out `width` by `height` CSS pixels.
+   */
+  const sized = (width: number, height: number) => {
+    const element = host();
+    Object.defineProperties(element, {
+      offsetWidth: { value: width },
+      offsetHeight: { value: height },
+    });
+    return element;
+  };
+
+  it('casts a faint shadow under a bar button', () => {
+    expect(glassShadow(sized(44, 44))).toBe('0 2px 10px rgba(0, 0, 0, 0.06)');
+    // A capsule's height decides it, not its length.
+    expect(glassShadow(sized(300, 44))).toBe(glassShadow(sized(44, 44)));
+  });
+
+  it('casts a wide, soft one under a menu or an action sheet', () => {
+    expect(glassShadow(sized(250, 160))).toBe(
+      '0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04)',
+    );
+    expect(glassShadow(sized(400, 600))).toBe(glassShadow(sized(250, 160)));
+  });
+
+  it('grows between the two in tenths', () => {
+    expect(glassShadow(sized(102, 102))).toBe(
+      '0 5px 21px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.02)',
+    );
+    expect(glassShadow(sized(104, 104))).toBe(glassShadow(sized(102, 102)));
   });
 });
 
@@ -76,7 +125,7 @@ describe('hostStyleCss', () => {
 
   it('combines the rules that apply', () => {
     const css = hostStyleCss(host(), {
-      fallback: false,
+      ...NONE,
       rendered: true,
       hostsCanvas: true,
     });
@@ -84,6 +133,32 @@ describe('hostStyleCss', () => {
     expect(css).toContain('backdrop-filter:none!important');
     expect(hostStyleCss(host(), { ...NONE, fallback: true })).toContain(
       'saturate(180%)',
+    );
+  });
+
+  it('puts the shadow and the fallback’s rims in one box-shadow', () => {
+    const shadow = glassShadow(host());
+    expect(hostStyleCss(host(), { ...NONE, shadow: true })).toBe(
+      `:host{box-shadow:${shadow}}`,
+    );
+    expect(hostStyleCss(host(), { ...NONE, fallback: true })).toContain(
+      `:host{box-shadow:${FALLBACK_EDGES}}`,
+    );
+    expect(
+      hostStyleCss(host(), { ...NONE, fallback: true, shadow: true }),
+    ).toContain(`:host{box-shadow:${shadow}, ${FALLBACK_EDGES}}`);
+  });
+
+  it('lets a container’s canvas and shadows reach past its box', () => {
+    expect(hostStyleCss(host({ 'blur-effect': 'glass-container' }), NONE)).toBe(
+      ':host{overflow:visible!important}',
+    );
+    expect(hostStyleCss(host({ 'blur-effect': 'glass' }), NONE)).toBe('');
+  });
+
+  it('swells a pressed shape with the scale property', () => {
+    expect(hostStyleCss(host(), { ...NONE, scale: 1.0123456 })).toBe(
+      ':host{scale:1.012}',
     );
   });
 });

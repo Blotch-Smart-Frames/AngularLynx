@@ -80,11 +80,11 @@ export const UI_MENU = new InjectionToken<UiMenuHost>('UI_MENU');
       (bindmouseleave)="hold(false)"
       (bindtap)="choose()"
     >
-      <!-- The pressed highlight: the glass's own foreground at a tenth, so it
-           suits light and dark glass, and is Material's state layer. -->
+      <!-- The pressed highlight, in the glass's own foreground, so it suits
+           light and dark glass (see highlightClass). -->
       <view
-        class="h-full w-full bg-glass-foreground absolute left-0 top-0"
-        [style.opacity]="held() ? 0.1 : 0"
+        [class]="highlightClass()"
+        [style.opacity]="highlightOpacity()"
       ></view>
       @if (checked() !== undefined) {
         <!-- A checkable item keeps the column for the checkmark when it's
@@ -153,6 +153,25 @@ export class UiMenuItem {
   protected readonly trailingIcon = computed(() =>
     this.#iconLeads() ? undefined : this.icon(),
   );
+
+  /**
+   * iOS 26's menus highlight a pressed row with a capsule inset 10pt from
+   * the menu's sides, 8% darker than the glass, measured on iOS 27's Files
+   * menu. Before, Apple's menus filled the row edge to edge, and so does
+   * Material's state layer, at a tenth.
+   */
+  protected readonly highlightClass = computed(() =>
+    cn(
+      'bg-glass-foreground absolute bottom-0 top-0',
+      this.#design() === 'glass'
+        ? 'rounded-full left-[10px] right-[10px]'
+        : 'left-0 right-0',
+    ),
+  );
+  protected readonly highlightOpacity = computed(() => {
+    if (!this.held()) return 0;
+    return this.#design() === 'glass' ? 0.08 : 0.1;
+  });
 
   protected readonly rowClass = computed(() =>
     cn(

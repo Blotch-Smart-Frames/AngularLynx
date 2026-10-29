@@ -167,15 +167,20 @@ describe('GlassManager', () => {
     manager.register(container);
 
     frame(1000);
+    // The fallback casts its own shadow; the container's canvas isn't up.
     expect(styleOf(member)).toEqual({
       hostsCanvas: false,
       rendered: false,
       fallback: true,
+      shadow: true,
+      scale: 1,
     });
     expect(styleOf(plain)).toEqual({
       hostsCanvas: false,
       rendered: false,
       fallback: false,
+      shadow: false,
+      scale: 1,
     });
 
     groups[0]!.active = true;
@@ -184,8 +189,36 @@ describe('GlassManager', () => {
       hostsCanvas: false,
       rendered: true,
       fallback: false,
+      shadow: false,
+      scale: 1,
     });
     expect(styleOf(container)).toMatchObject({ hostsCanvas: true });
+  });
+
+  it('gives a lone shape a CSS shadow, and swells it while it’s pressed', () => {
+    const { manager, show, frame } = fakeWindow();
+    const member = blurView('glass');
+    const container = blurView('glass-container', member);
+    const lone = blurView('glass');
+    document.body.append(container, lone);
+    manager.register(member);
+    manager.register(lone);
+    show(container, lone);
+    frame(1000);
+    for (const group of groups) group.active = true;
+    pressOf(member)!.value = 1;
+    pressOf(lone)!.value = 0.5;
+    frame(1016);
+
+    expect(styleOf(lone)).toEqual({
+      hostsCanvas: true,
+      rendered: true,
+      fallback: false,
+      shadow: true,
+      scale: 1.03,
+    });
+    // The container swells its shapes, and draws their shadow, on its canvas.
+    expect(styleOf(member)).toMatchObject({ shadow: false, scale: 1 });
   });
 
   it('runs frames while glass is visible, with capped elapsed times', () => {

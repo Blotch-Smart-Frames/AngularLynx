@@ -153,6 +153,11 @@ describe('GlassGroup', () => {
     expect(canvas.getAttribute('aria-hidden')).toBe('true');
     expect(canvas.style.zIndex).toBe('-1');
     expect(canvas.style.opacity).toBe('0');
+    // A container's canvas reaches past its box, for the shadow and swell.
+    expect(canvas.style.left).toBe('-32px');
+    expect(canvas.style.top).toBe('-32px');
+    expect(canvas.style.width).toBe('calc(100% + 64px)');
+    expect(canvas.style.height).toBe('calc(100% + 64px)');
   });
 
   it('stays inert without a shadow root, WebGL or a backdrop', () => {
@@ -191,11 +196,12 @@ describe('GlassGroup', () => {
     group.frame(16);
     const [target, options] = mocks.snapshot.mock.lastCall!;
     expect(target).toBe(backdrop);
+    // 48px around the container: 16px past its canvas's margin.
     expect(options.region).toEqual({
-      left: -38,
-      top: -28,
-      right: 258,
-      bottom: 168,
+      left: -6,
+      top: 4,
+      right: 226,
+      bottom: 136,
     });
     expect(options.scale).toBe(2);
     expect(options.exclude(text)).toBe(false);
@@ -262,12 +268,12 @@ describe('GlassGroup', () => {
 
     group.frame(16);
     const [, options] = mocks.snapshot.mock.lastCall!;
-    // A 48 CSS pixel margin is 24 screen pixels.
+    // 16 CSS pixels past the canvas are 8 screen pixels.
     expect(options.region).toEqual({
-      left: -14,
-      top: -4,
-      right: 234,
-      bottom: 144,
+      left: 2,
+      top: 12,
+      right: 218,
+      bottom: 128,
     });
     expect(options.scale).toBe(1);
 
@@ -305,6 +311,22 @@ describe('GlassGroup', () => {
     expect(lastFrame().smoothing).toBe(0);
   });
 
+  it('leaves out a shape with no width, which iOS doesn’t draw', async () => {
+    const { root, blob } = container();
+    const collapsed = placed(
+      blurView({ 'blur-effect': 'glass' }),
+      rect(80, 40, 0, 50),
+    );
+    blob.after(collapsed);
+    scene(root);
+    const group = new GlassGroup(root, true);
+    await captured(group);
+    group.frame(16);
+    expect(group.shapes).toContain(collapsed);
+    expect(lastFrame().shapes).toHaveLength(1);
+    expect(lastFrame().shapes[0]!.halfWidth).toBe(25);
+  });
+
   it('keeps the canvas allocation while its size holds', async () => {
     const { root } = container();
     scene(root);
@@ -331,6 +353,14 @@ describe('GlassGroup', () => {
     group.frame(16);
     expect(group.shapes).toEqual([root]);
     expect(lastFrame()).toMatchObject({ scale: 1, smoothing: 0, shadow: 0 });
+    // Its canvas is its own box: its shadow is CSS (see glass-host-style.ts).
+    const canvas = root.shadowRoot!.querySelector('canvas')!;
+    expect([canvas.style.left, canvas.style.width]).toEqual([
+      '0px',
+      'calc(100% + 0px)',
+    ]);
+    const [, options] = mocks.snapshot.mock.lastCall!;
+    expect(options.region.left).toBe(10 - 48);
   });
 
   it.each([
@@ -475,6 +505,12 @@ describe('backdropOf', () => {
   afterEach(() => document.body.replaceChildren());
 
   /**
+   * The topmost element, which backdropOf falls back to: in jsdom the
+   * document's <html>, in Lynx for Web the top of the <lynx-view>'s page.
+   */
+  const body = () => document.documentElement;
+
+  /**
    * A view with an inline style, holding `children`.
    */
   const view = (style: string, ...children: Element[]) => {
@@ -490,7 +526,7 @@ describe('backdropOf', () => {
     const card = view('background-image: linear-gradient(red, blue)', row);
     document.body.append(view('background-color: rgb(0, 0, 0)', card));
 
-    expect(backdropOf(glass)).toBe(card);
+    expect(backdropOf(glass)).toEqual({ element: card, layer: null });
   });
 
   it('looks through a translucent background, such as a dimming layer', () => {
@@ -499,7 +535,7 @@ describe('backdropOf', () => {
     const screen = view('background-color: rgb(255, 255, 255)', dim);
     document.body.append(view('background-image: none', screen));
 
-    expect(backdropOf(glass)).toBe(screen);
+    expect(backdropOf(glass)).toEqual({ element: screen, layer: null });
   });
 
   it('falls back to the topmost element, the page, when nothing paints', () => {
@@ -508,8 +544,86 @@ describe('backdropOf', () => {
     // In Lynx for Web, the page is the top of the <lynx-view>'s shadow root.
     document.createElement('div').attachShadow({ mode: 'open' }).append(page);
 
-    expect(backdropOf(glass)).toBe(page);
+    expect(backdropOf(glass)).toEqual({ element: page, layer: null });
     expect(backdropOf(blurView({}))).toBeNull();
+  });
+
+  it('refracts the page under glass in a fixed overlay, past painted cards', () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    const overlay = view('position: fixed; z-index: 999', view('', glass));
+    const card = view('background-color: rgb(255, 0, 0)', overlay);
+    const page = view('background-color: rgb(255, 255, 255)', card);
+    document.body.append(page);
+
+    expect(backdropOf(glass)).toEqual({ element: body(), layer: overlay });
+  });
+
+  it('refracts the page under glass that is fixed itself', () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    glass.style.position = 'fixed';
+    const card = view('background-color: rgb(255, 0, 0)', glass);
+    document.body.append(card);
+
+    expect(backdropOf(glass)).toEqual({ element: body(), layer: glass });
+  });
+
+  it('keeps a painted background inside the overlay as the backdrop', () => {
+    const glass = blurView({ 'blur-effect': 'glass' });
+    const sheet = view('background-color: rgb(255, 255, 255)', glass);
+    document.body.append(view('position: fixed', sheet));
+
+    expect(backdropOf(glass)).toEqual({ element: sheet, layer: null });
+  });
+});
+
+describe('GlassGroup in a fixed overlay', () => {
+  const fixed = (zIndex: string, ...children: Element[]) => {
+    const element = placed(
+      document.createElement('x-view'),
+      rect(0, 0, 400, 800),
+    );
+    element.style.position = 'fixed';
+    element.style.zIndex = zIndex;
+    element.append(...children);
+    return element;
+  };
+
+  it('refracts what’s after it in the page, and leaves out what’s stacked above', () => {
+    const { root } = container();
+    const overlay = fixed('999', root);
+    const header = document.createElement('x-view');
+    header.append(overlay);
+    const cards = document.createElement('x-view');
+    const below = fixed('1');
+    const unstacked = fixed('auto');
+    const sameLater = fixed('999');
+    const higherEarlier = fixed('1000');
+    const sheet = fixed('');
+    sheet.append(header, cards, sameLater);
+    const page = placed(document.createElement('x-view'), rect(0, 0, 400, 800));
+    page.style.backgroundColor = 'rgb(255, 255, 255)';
+    page.append(higherEarlier, below, sheet, unstacked);
+    document.body.append(page);
+
+    new GlassGroup(root, true).frame(16);
+    const [target, options] = mocks.snapshot.mock.lastCall!;
+
+    expect(target).toBe(document.documentElement);
+    expect(mocks.observe).toHaveBeenCalledWith(
+      document.documentElement,
+      overlay,
+      expect.any(Function),
+    );
+    expect(options.exclude(overlay)).toBe(true);
+    // The trip cards after the menu's row are behind it on screen.
+    expect(options.exclude(cards)).toBe(false);
+    // So is the sheet it's in, and an overlay stacked lower.
+    expect(options.exclude(sheet)).toBe(false);
+    expect(options.exclude(below)).toBe(false);
+    expect(options.exclude(unstacked)).toBe(false);
+    // Another overlay above it isn't.
+    expect(options.exclude(sameLater)).toBe(true);
+    expect(options.exclude(higherEarlier)).toBe(true);
   });
 });
 

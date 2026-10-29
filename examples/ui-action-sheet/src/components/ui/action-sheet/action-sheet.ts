@@ -451,11 +451,11 @@ export class UiActionSheetTitle {
       (bindtap)="onTap()"
     >
       @if (look() !== 'sheet') {
-        <!-- A menu row's pressed highlight (see UiMenuItem): rows in a
-             popover light up rather than shrink. -->
+        <!-- A menu row's pressed highlight (see UiMenuItem's highlightClass):
+             rows in a popover light up rather than shrink. -->
         <view
-          class="bg-glass-foreground h-full w-full absolute left-0 top-0"
-          [style.opacity]="held() ? 0.1 : 0"
+          [class]="highlightClass()"
+          [style.opacity]="held() ? highlightOpacity() : 0"
         ></view>
       }
       <text [class]="textClass()" accessibility-traits="button"
@@ -479,6 +479,20 @@ export class UiActionSheetItem {
 
   /** Whether a finger (or the mouse) is down on a row in a popover. */
   protected readonly held = signal(false);
+
+  // As UiMenuItem's: iOS 26's inset capsule, and Material's full-width
+  // state layer.
+  protected readonly highlightClass = computed(() =>
+    cn(
+      'bg-glass-foreground absolute bottom-0 top-0',
+      this.look() === 'glass'
+        ? 'rounded-full left-[10px] right-[10px]'
+        : 'left-0 right-0',
+    ),
+  );
+  protected readonly highlightOpacity = computed(() =>
+    this.look() === 'glass' ? 0.08 : 0.1,
+  );
 
   protected readonly containerClass = computed(() =>
     cn(ITEM_CONTAINER[this.look()], this.userClass()),

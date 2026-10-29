@@ -380,10 +380,40 @@ describe('UiMenuItem', () => {
     ]) {
       fireLynxEvent(share, down!);
       await waitForUpdate();
-      expect(style(highlight, 'opacity')).toBe('0.1');
+      expect(style(highlight, 'opacity')).toBe('0.08');
       fireLynxEvent(share, up!);
       await waitForUpdate();
       expect(style(highlight, 'opacity')).toBe('0');
+    }
+  });
+
+  it('highlights a pressed row as its platform does', async () => {
+    const pressed = async (
+      platform: { platform: string; osVersion: string } | null,
+    ) => {
+      const rendered = await renderOpenMenu(platform);
+      const share = row(rendered, 'Share');
+      fireLynxEvent(share, 'touchstart');
+      await waitForUpdate();
+      const highlight = share.firstElementChild!;
+      return {
+        classes: highlight.className.split(' '),
+        opacity: style(highlight, 'opacity'),
+      };
+    };
+
+    // iOS 26's capsule, inset from the menu's sides.
+    const glass = await pressed(IOS_26);
+    expect(glass.classes).toEqual(
+      expect.arrayContaining(['left-[10px]', 'right-[10px]', 'rounded-full']),
+    );
+    expect(glass.opacity).toBe('0.08');
+    // Edge to edge before iOS 26, and as Material's state layer.
+    for (const platform of [IOS_18, null]) {
+      const { classes, opacity } = await pressed(platform);
+      expect(classes).toEqual(expect.arrayContaining(['left-0', 'right-0']));
+      expect(classes).not.toContain('rounded-full');
+      expect(opacity).toBe('0.1');
     }
   });
 

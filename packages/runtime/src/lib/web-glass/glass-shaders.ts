@@ -56,7 +56,8 @@ void main() {
  *   merged shapes crease, which would otherwise show a seam.
  * - `regular` glass mixes in a blurred, brightened backdrop; `clear` glass
  *   keeps it sharp. Tint, a specular rim lit from the top left, and a press
- *   glow for interactive glass go on top.
+ *   glow for interactive glass go on top, and the light material's edge
+ *   gets a gray hairline, which is what shows it over white.
  */
 export const GLASS_FRAGMENT_SHADER = `
 precision highp float;
@@ -169,5 +170,11 @@ void main() {
   float reach = length(p - u_pointer.xy);
   color += u_pointer.z * 0.2 * exp(-reach * reach / (1.2 * lens * lens));
 
-  gl_FragColor = vec4(clamp(color, 0.0, 1.0) * coverage, coverage + shadow * (1.0 - coverage));
+  // Light glass over white is white on white: the frost, the rim and the glow
+  // all brighten. UIKit outlines it with a gray hairline, about two device
+  // pixels deep, and so does this. The dark material keeps its bright rim.
+  float hairline = (1.0 - smoothstep(0.0, 2.5, depth * u_scale)) * (1.0 - u_dark);
+  color = clamp(color, 0.0, 1.0) * (1.0 - 0.32 * hairline);
+
+  gl_FragColor = vec4(color * coverage, coverage + shadow * (1.0 - coverage));
 }`;

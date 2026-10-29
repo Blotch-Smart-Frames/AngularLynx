@@ -573,20 +573,37 @@ describe('UiActionSheet opened from its control', () => {
     await openAnchored(rendered);
     const row = rendered.button('Save Draft');
     const highlight = row.querySelector('.bg-glass-foreground') as HTMLElement;
+    // iOS 26's menu rows light up in a capsule, inset from the sides.
+    expect(highlight.className.split(' ')).toEqual(
+      expect.arrayContaining(['left-[10px]', 'right-[10px]', 'rounded-full']),
+    );
 
     fireEvent.touchstart(row);
     await waitForUpdate();
-    expect(highlight.style.opacity).toBe('0.1');
+    expect(highlight.style.opacity).toBe('0.08');
     expect(row.style.transform).toBe('');
     fireEvent.touchend(row);
     await waitForUpdate();
     expect(highlight.style.opacity).toBe('0');
     fireEvent.mousedown(row);
     await waitForUpdate();
-    expect(highlight.style.opacity).toBe('0.1');
+    expect(highlight.style.opacity).toBe('0.08');
     fireLynxEvent(row, 'mouseleave');
     await waitForUpdate();
     expect(highlight.style.opacity).toBe('0');
+  });
+
+  it('lights a Material row up edge to edge', async () => {
+    const rendered = await renderAnchored(null);
+    await openAnchored(rendered);
+    const row = rendered.button('Save Draft');
+    const highlight = row.querySelector('.bg-glass-foreground') as HTMLElement;
+    expect(highlight.className.split(' ')).toEqual(
+      expect.arrayContaining(['left-0', 'right-0']),
+    );
+    fireEvent.touchstart(row);
+    await waitForUpdate();
+    expect(highlight.style.opacity).toBe('0.1');
   });
 
   it('closes on a touch outside it, without counting one on its control', async () => {

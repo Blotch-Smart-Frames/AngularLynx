@@ -46,18 +46,29 @@ const TEXT_NODE = 3;
 const defaultsByDocument = new WeakMap<Document, Map<string, string>>();
 
 /**
- * A plain div's computed style: anything matching it needn't be inlined.
+ * A plain div's computed style, as the copy's image draws it: anything
+ * matching it needn't be inlined. The image has the browser's own styles
+ * and no others, so the div is probed in a shadow root of its own, reset
+ * with `all: initial`. Probed in the page, it took the page's styles too:
+ * the docs site makes every element `border-box`, which was then left out,
+ * and in the image a padded card grew by its padding and pushed what's in
+ * it down.
  */
 const defaultStyle = (doc: Document, win: Window): Map<string, string> => {
   let defaults = defaultsByDocument.get(doc);
   if (!defaults) {
+    const host = doc.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    const reset = doc.createElement('style');
+    reset.textContent = ':host{all:initial}';
     const probe = doc.createElement('div');
-    doc.documentElement.appendChild(probe);
+    root.append(reset, probe);
+    doc.documentElement.appendChild(host);
     const style = win.getComputedStyle(probe);
     defaults = new Map(
       Array.from(style, (name) => [name, style.getPropertyValue(name)]),
     );
-    probe.remove();
+    host.remove();
     defaultsByDocument.set(doc, defaults);
   }
   return defaults;

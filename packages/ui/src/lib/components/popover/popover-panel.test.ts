@@ -130,6 +130,8 @@ const renderPanel = async ({
     host,
     invoke,
     held,
+    /** How many measurements `held` is keeping back. */
+    pendingCount: () => pending.length,
     /** Answers the measurements `held` kept back. */
     release: () => {
       for (const answer of pending.splice(0)) answer();
@@ -170,7 +172,7 @@ const box = (element: Element) => ({
 const toStartFrame = async (rendered: Rendered) => {
   rendered.held.rest = true;
   rendered.host.open.set(true);
-  await vi.waitFor(() => expect(rendered.panel()).not.toBeNull());
+  await waitForHeld(rendered);
   rendered.held.rest = false;
   rendered.release();
   await settle();
@@ -218,6 +220,15 @@ const settle = async () => {
 };
 
 /**
+ * Waits until the panel has asked for the measurements `held` keeps back, so
+ * that `release()` has them to answer. Waiting for the panel to appear isn't
+ * enough: it appears first, and measures itself only after LAYOUT_DELAY, a
+ * real timer, which a busy CI runner can fire well after that.
+ */
+const waitForHeld = (rendered: Rendered) =>
+  vi.waitFor(() => expect(rendered.pendingCount()).toBeGreaterThan(0));
+
+/**
  * Lets Lynx's timers run: the touch check waits for the next one.
  */
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -249,7 +260,7 @@ describe('UiPopoverPanel', () => {
     rendered.held.rest = true;
     host.open.set(true);
     // Measured off screen at its natural size first.
-    await vi.waitFor(() => expect(panel()).not.toBeNull());
+    await waitForHeld(rendered);
     expect(style(panel()!, 'left')).toBe('-10000px');
     expect(style(panel()!, 'width')).toBe('');
     expect(style(panel()!, 'transition')).toBe('none');
@@ -337,7 +348,7 @@ describe('UiPopoverPanel', () => {
     await waitForUpdate();
     rendered.held.rest = true;
     rendered.host.open.set(true);
-    await vi.waitFor(() => expect(rendered.panel()).not.toBeNull());
+    await waitForHeld(rendered);
     expect(style(rendered.content(), 'width')).toBe('270px');
     rendered.release();
 
@@ -591,7 +602,7 @@ describe('UiPopoverPanel', () => {
       const rendered = await renderPanel();
       rendered.held.rest = true;
       rendered.host.open.set(true);
-      await vi.waitFor(() => expect(rendered.panel()).not.toBeNull());
+      await waitForHeld(rendered);
 
       rendered.host.open.set(false);
       await waitForUpdate();

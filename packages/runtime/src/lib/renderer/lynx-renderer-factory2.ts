@@ -9,6 +9,7 @@ import {
 import { devStats, endCdTiming, startCdTiming } from '../devtools/stats';
 import type { LynxDocumentBase } from '../lynx-document';
 import {
+  processPendingAttributeRemovals,
   processPendingListUpdates,
   processPendingRemovals,
   processPendingTextNormalization,
@@ -89,7 +90,8 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *      calls land in the SAME flush as the cycle's other mutations; draining
    *      them later (the old queueMicrotask) left removed subtrees occupying
    *      native layout until a later cycle happened to flush ("hidden element
-   *      leaves a gap").
+   *      leaves a gap"). The cycle's attribute removals follow, for the same
+   *      flush (see processPendingAttributeRemovals).
    *   2. __FlushElementTree() — commits all pending element mutations to native
    *   3. processPendingListUpdates() — sends update-list-info for lists that
    *      gained/lost children during this CD cycle, then does a targeted flush
@@ -143,6 +145,10 @@ export class LynxRendererFactory2 implements RendererFactory2 {
       // __RemoveElement calls mutate native elements directly, and native
       // performs its own flush once renderPage returns.
       processPendingRemovals();
+      // Then the attributes removed this cycle and not set again: Lynx would
+      // apply a removal after a value set in the same flush (see
+      // LynxElement's #removedAttributes), so they wait until now.
+      processPendingAttributeRemovals();
       // Re-derive positional edge whitespace for texts mutated this cycle,
       // after removals (so torn-down subtrees are skipped) and before the
       // flush (so the corrected text is painted in the same pass). Runs even

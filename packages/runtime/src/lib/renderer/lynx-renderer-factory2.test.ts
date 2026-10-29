@@ -5,6 +5,7 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LynxElement } from '../lynx-element';
 import { InMemoryDocument } from '../testing/in-memory-document';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
 import { EmulatedLynxRenderer } from './emulated-lynx-renderer';
@@ -215,6 +216,27 @@ describe('LynxRendererFactory2', () => {
       factory.end?.();
 
       expect(globalThis.__FlushElementTree).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends the cycle's attribute removals before the flush", () => {
+      // Lynx applies a removal after a value set in the same flush, so the
+      // elements hold their removals until now (see LynxElement).
+      const order: string[] = [];
+      vi.stubGlobal(
+        '__FlushElementTree',
+        vi.fn(() => order.push('flush')),
+      );
+      const commit = vi
+        .spyOn(LynxElement, 'commitPendingAttributeRemovals')
+        .mockImplementation(() => {
+          order.push('removals');
+        });
+      markFirstRenderComplete();
+
+      createFactory().end?.();
+
+      expect(order).toEqual(['removals', 'flush']);
+      commit.mockRestore();
     });
 
     it('skips the flush while the first render is still pending', async () => {

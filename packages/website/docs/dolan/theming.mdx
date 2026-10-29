@@ -182,6 +182,10 @@ export class App {
 - Charts and icons default to light colors. Add `provideChartTheme({ colorScheme: 'system' })` and `provideIconTheme({ colorScheme: 'system' })` to make them follow too (see [Chart](/dolan/chart) and [Icon](/dolan/icon#dark-mode)).
 - For a manual toggle, bind `[class.dark]` to your own signal instead. See [Dark mode](/guide/dark-mode) and [`LynxTheme`](/api/angular-lynx/theme).
 
+## Wallpaper colors on Android
+
+On Android 12 and later, the theme can take the colors of the user's wallpaper, as Material You apps do. Add [Dynamic Color](/dolan/dynamic-color)'s `uiDynamicColor` to the view with the `dark` class. It sets the tokens above to the wallpaper's colors, so there's no second set of colors to keep.
+
 ## Variable reference
 
 Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb` twin with its channels, such as `--primary-rgb: 24, 24, 27`, left out here.
@@ -226,3 +230,4 @@ Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb`
 - [CSS on Lynx](/guide/styling): color formats and other CSS differences
 - [Tailwind CSS](/guide/tailwindcss): the Tailwind setup the theme builds on
 - [Dark mode](/guide/dark-mode): switching themes at runtime
+- [Dynamic Color](/dolan/dynamic-color): the wallpaper's colors on Android

@@ -18,6 +18,7 @@ import {
 } from '@tanstack/charts/universal';
 import { describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { UI_THEME_COLORS } from '../icon/icon-theme';
 import { UiChart, UiChartTooltip, tooltip } from './chart';
 import {
   CHART_DARK_COLORS,
@@ -336,6 +337,19 @@ describe('UiChart', () => {
         expect(
           await primaryFill([provideChartTheme({ colorScheme: () => 'dark' })]),
         ).toBe(CHART_DARK_COLORS['primary']);
+      });
+
+      it('paints with colors set at runtime above it, such as the wallpaper’s', async () => {
+        const wallpaper = {
+          provide: UI_THEME_COLORS,
+          useValue: signal({ dark: { primary: 'rgba(208, 188, 255, 1)' } }),
+        };
+        expect(await primaryFill([wallpaper], 'dark')).toBe(
+          'rgba(208, 188, 255, 1)',
+        );
+        expect(await primaryFill([wallpaper], 'light')).toBe(
+          CHART_LIGHT_COLORS['primary'],
+        );
       });
     });
 

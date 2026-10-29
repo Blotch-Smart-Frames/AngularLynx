@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window background, which shows before the first Lynx frame and
+      behind the system bars. MainActivity sets it again when dark mode
+      switches while the app is open, from values-night's.
+    -->
+    <color name="window_background">#FFFFFFFF</color>
+</resources>

@@ -3,6 +3,7 @@ package dev.angularlynx.shell
 import android.app.UiModeManager
 import android.content.res.Configuration
 import android.database.ContentObserver
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -138,10 +139,21 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
     // The manifest's configChanges keeps the activity, and the running app,
     // through a dark mode switch, so the new theme is sent from here. A
     // language change still restarts the activity, which sends the new
-    // appLocale: Angular reads LOCALE_ID only once.
+    // appLocale: Angular reads LOCALE_ID only once. A new wallpaper arrives
+    // here too, without a restart, and globalProps() reads its colors again.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        updateWindowAppearance()
         lynxView.updateGlobalProps(globalProps(newConfig))
+    }
+
+    // Kept through a dark mode switch, the window keeps the theme it started
+    // with: its background, which shows behind the system bars, and the
+    // bars' icons, which enableEdgeToEdge() picked for the old mode. Both are
+    // set again for the new one, from the same resources.
+    private fun updateWindowAppearance() {
+        window.setBackgroundDrawable(ColorDrawable(getColor(R.color.window_background)))
+        enableEdgeToEdge()
     }
 
     private fun sendGlobalProps() {
@@ -153,7 +165,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
      * (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
      * (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
      * safe-area insets in dp. The iOS shell sends the same keys, and Lynx
-     * Explorer sends theme and isNotchScreen too.
+     * Explorer sends theme and isNotchScreen too. Android 12 and later also
+     * send the wallpaper's colors, `dynamicColors` (LynxTheme.dynamicColors),
+     * which iOS has no equivalent of.
      */
     private fun globalProps(config: Configuration): Map<String, Any> {
         val density = resources.displayMetrics.density
@@ -175,6 +189,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
         )
         // The user's language as a BCP 47 tag, such as "fr-FR".
         ConfigurationCompat.getLocales(config)[0]?.let { props["appLocale"] = it.toLanguageTag() }
+        DynamicColors.read(this)?.let { props["dynamicColors"] = it }
         return props
     }
 

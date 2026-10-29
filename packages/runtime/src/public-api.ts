@@ -140,7 +140,12 @@ export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';
 export { LynxSystemInfo } from './lib/system-info';
 export { LynxTextMeasure } from './lib/text-measure';
-export { LynxTheme } from './lib/theme';
+export { DYNAMIC_COLOR_ROLES, LynxTheme } from './lib/theme';
+export type {
+  DynamicColorRole,
+  DynamicColors,
+  DynamicColorScheme,
+} from './lib/theme';
 export { LynxTransition, LynxTransitionGroup } from './lib/transition';
 export { provideRenderer } from './lib/renderer/providers';
 export { LynxLocationStrategy } from './lib/router/lynx-location-strategy';

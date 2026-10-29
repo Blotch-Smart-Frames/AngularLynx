@@ -161,7 +161,7 @@ page {
 
 - **Don't store raw channels** (`--primary: 240 5.9% 10%`) to wrap later in `hsl(var(--primary))`. That expands to the space-separated `hsl()` Lynx drops, which is why shadcn-style themes render blank.
 - **For a translucent shade, add a variable of its own**, like `--primary-subtle`, or use channels in `rgba()`, below.
-- **Set variables in a stylesheet or a static `style` attribute.** A `[style.--name]` binding doesn't reach the element yet.
+- **Set variables in a stylesheet, a `style` attribute or a binding.** `[style.--primary]="brand()"` sets one at runtime, and everything inside the element reads it.
 
 ### One color at any opacity
 

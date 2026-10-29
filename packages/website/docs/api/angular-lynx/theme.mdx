@@ -1,6 +1,6 @@
 # LynxTheme
 
-The device's light or dark appearance as a signal. `import { LynxTheme } from '@blotch/angular-lynx';`
+The device's light or dark appearance, and on Android its wallpaper's colors, as signals. `import { LynxTheme } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -49,12 +49,63 @@ readonly isDarkMode: Signal<boolean>;
 
 `true` when `theme()` is `'Dark'`.
 
+### `LynxTheme.dynamicColors`
+
+```typescript
+readonly dynamicColors: Signal<DynamicColors | null>;
+```
+
+The colors Android 12 and later take from the user's wallpaper (Material You's **dynamic color**), as [Material 3's color roles](https://m3.material.io/styles/color/roles), in a light and a dark scheme. `null` where the host app sends none.
+
+```typescript
+const theme = inject(LynxTheme);
+
+// The wallpaper's tertiary color, or your own where there's none.
+const accent = computed(
+  () => theme.dynamicColors()?.light.tertiary ?? '#7d5260',
+);
+```
+
+- **It comes from the host app,** in its `dynamicColors` GlobalData value: `{ light, dark }`, each with a hex color, such as `#6750a4`, for every role in `DYNAMIC_COLOR_ROLES`. A scheme with a role missing counts as none.
+- **The Android app [`ng build --platform android`](/guide/building-for-production) builds sends it**, and sends it again when the user changes their wallpaper or colors. iOS, the web preview and Lynx Explorer have none.
+- **Both schemes come at once,** so an app that keeps its own light or dark theme can use the right one.
+- **To color the UI components with it,** use [Dynamic Color](/dolan/dynamic-color).
+
 ## Types
 
-None of its own.
+### `DynamicColors`
+
+```typescript
+type DynamicColors = {
+  readonly light: DynamicColorScheme;
+  readonly dark: DynamicColorScheme;
+};
+```
+
+### `DynamicColorScheme`
+
+```typescript
+type DynamicColorScheme = { readonly [R in DynamicColorRole]: string };
+```
+
+Each role's color, as a hex color such as `#6750a4`.
+
+### `DynamicColorRole`
+
+One of Material's color roles, as `DYNAMIC_COLOR_ROLES` lists them:
+
+- `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`, `inversePrimary`
+- `secondary`, `onSecondary`, `secondaryContainer`, `onSecondaryContainer`
+- `tertiary`, `onTertiary`, `tertiaryContainer`, `onTertiaryContainer`
+- `background`, `onBackground`, `surface`, `onSurface`, `surfaceVariant`, `onSurfaceVariant`
+- `surfaceDim`, `surfaceBright`, `surfaceContainerLowest`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`
+- `inverseSurface`, `inverseOnSurface`, `outline`, `outlineVariant`
+
+The error roles aren't there: Material keeps errors red whatever the wallpaper.
 
 ## Related
 
 - [Dark mode](/guide/dark-mode): switch your styles with the theme.
+- [Dynamic Color](/dolan/dynamic-color): color the UI components with the wallpaper's colors.
 - [Host data](/api/angular-lynx/host-data): `LynxGlobalData`, where the value comes from.
 - [System info](/api/angular-lynx/system-info)

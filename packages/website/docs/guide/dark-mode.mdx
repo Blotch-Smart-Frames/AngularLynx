@@ -82,6 +82,8 @@ The [UI components](/dolan/) theme keeps its dark values in `dark.css`, under `p
 
 Icons and charts draw with SVG, which can't read CSS, so tell them the theme too: `provideIconTheme({ colorScheme: 'system' })` and `provideChartTheme({ colorScheme: 'system' })`. See [Icon](/dolan/icon#dark-mode).
 
+On Android 12 and later, [Dynamic Color](/dolan/dynamic-color) gives the components the colors of the user's wallpaper, in both themes.
+
 ## Read the theme in TypeScript
 
 ```typescript title="src/app/status-bar.ts"
@@ -111,11 +113,11 @@ Use them for things CSS can't reach, such as picking an image or a chart palette
 
 - **`prefers-color-scheme` doesn't work.** AngularLynx apps don't support `@media`. Use `LynxTheme`.
 - **Your own native app has to send each change.** `LynxTheme` updates whenever the host app sends a new theme. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
-- **A `[style.--name]` binding can't set a CSS variable.** Set variables in a stylesheet, as above.
 
 ## Related
 
 - [`LynxTheme` API](/api/angular-lynx/theme)
 - [CSS on Lynx](/guide/styling)
 - [Theming the UI components](/dolan/theming)
+- [Dynamic Color](/dolan/dynamic-color): the wallpaper's colors on Android
 - [Pass data from your native app](/guide/embedding/host-data): how a host app sets global props

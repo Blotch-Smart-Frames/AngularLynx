@@ -243,9 +243,10 @@ export const startIosSimulator = async ({
  * - Xcode 27.1 and later have no Simulator app. Its replacement, DeviceHub,
  *   opens to a list of devices and doesn't show a simulator because it
  *   booted, but its `devices://device/open?id=<UDID>` URL opens that
- *   simulator in a window of its own. DeviceHub's setting to stop simulators
- *   when it quits applies only to the ones it started, so quitting it leaves
- *   this one running.
+ *   simulator in a window of its own, launching DeviceHub if it isn't
+ *   running. With its "Stop simulators on quit" setting on, quitting
+ *   DeviceHub shuts this simulator down too, though `simctl` booted it; the
+ *   next `--run` boots it again.
  * - Earlier versions show every booted simulator in the Simulator app.
  *   `-CurrentDeviceUDID` picks the one it shows first when it isn't open yet.
  *

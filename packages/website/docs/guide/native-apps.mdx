@@ -83,7 +83,7 @@ ng build --platform android --run --device Pixel_9
 2. **Starts it** while the app builds, and shows its screen in a window: DeviceHub's on Xcode 27.1 and later, the Simulator app's on earlier versions.
 3. **Installs the app and opens it,** closing the copy a previous run left open.
 
-The simulator keeps running after the build. If it's shut down, e.g. by quitting DeviceHub with its **Stop simulators on quit** setting on, the next `--run` starts it again.
+The simulator keeps running after the build, while DeviceHub is open. Quitting DeviceHub shuts it down when DeviceHub's **Stop simulators on quit** setting is on. The next `--run` starts it again.
 
 Without `--run`:
 

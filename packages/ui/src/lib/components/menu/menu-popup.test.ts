@@ -138,6 +138,8 @@ const renderPopup = async ({
     host,
     invoke,
     held,
+    /** How many measurements `held` is keeping back. */
+    pendingCount: () => pending.length,
     /** Answers the measurements `held` kept back. */
     release: () => {
       for (const answer of pending.splice(0)) answer();
@@ -199,6 +201,16 @@ const settle = async () => {
   for (let i = 0; i < 10; i++) await Promise.resolve();
 };
 
+/**
+ * Waits until the menu has asked for the measurements `held` keeps back, so
+ * that `release()` has them to answer. Waiting for the overlay isn't enough:
+ * it shows first, and the menu measures itself only after LAYOUT_DELAY, a
+ * real timer, which a busy CI runner can fire well after that. Released
+ * before then, nothing is answered and the menu waits for good.
+ */
+const waitForHeld = (rendered: Rendered) =>
+  vi.waitFor(() => expect(rendered.pendingCount()).toBeGreaterThan(0));
+
 // The renderer warns that <ui-menu-popup> isn't a Lynx element.
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -226,9 +238,8 @@ describe('UiMenuPopup', () => {
     rendered.held.menu = true;
     host.open.set(true);
     // Measured off screen at its natural size first.
-    await vi.waitFor(() =>
-      expect(overlay().getAttribute('visible')).toBe('true'),
-    );
+    await waitForHeld(rendered);
+    expect(overlay().getAttribute('visible')).toBe('true');
     expect(style(panel(), 'left')).toBe('-10000px');
     expect(style(panel(), 'width')).toBe('');
     expect(style(panel(), 'transition')).toBe('none');
@@ -393,9 +404,8 @@ describe('UiMenuPopup', () => {
 
       rendered.held.menu = true;
       host.open.set(true);
-      await vi.waitFor(() =>
-        expect(overlay().getAttribute('visible')).toBe('true'),
-      );
+      await waitForHeld(rendered);
+      expect(overlay().getAttribute('visible')).toBe('true');
       expect(slot().children).toHaveLength(0);
       rendered.release();
       await settle();
@@ -568,10 +578,7 @@ describe('UiMenuPopup', () => {
       rendered.held.menu = true;
 
       rendered.host.open.set(true);
-      await vi.waitFor(() =>
-        expect(rendered.overlay().getAttribute('visible')).toBe('true'),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForHeld(rendered);
       rendered.host.open.set(false);
       rendered.tick();
       rendered.release();
@@ -587,10 +594,7 @@ describe('UiMenuPopup', () => {
       rendered.held.menu = true;
 
       rendered.host.open.set(true);
-      await vi.waitFor(() =>
-        expect(rendered.overlay().getAttribute('visible')).toBe('true'),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForHeld(rendered);
       rendered.release();
       await settle();
       // At its start frame now; closing doesn't let it finish growing.

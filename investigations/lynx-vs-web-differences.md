@@ -4852,6 +4852,28 @@ On Android, the runtime sets the three variables inline on every blur-view, from
 
 ---
 
+## iOS's `<blur-view>` has only the blur styles from before iOS 13
+
+### What you'd expect (parity with UIKit)
+
+A blur view can draw UIKit's adaptive materials (iOS 13 and later): `systemUltraThinMaterial`, `systemThinMaterial`, `systemMaterial`, `systemThickMaterial` and the bars' `systemChromeMaterial`. Before Liquid Glass, Apple drew bars, menus, alerts and floating buttons on them, a weight for each role, and they follow the view's light or dark appearance.
+
+### What Lynx does
+
+`blur-effect` knows `light`, `dark` and `extra-light`, besides `glass` and `glass-container` (`parseBlurEffectValue` in XElement's `LynxUIBlurView.m`, Lynx 4.1). They're `UIBlurEffect`'s styles from before iOS 13: one weight each, in one appearance, so `ios-user-interface-style` doesn't change them. Anything else logs an error and draws `light`. The frosted design of the glass components, before iOS 26, could only pick `extra-light` or `dark` from the app's color scheme, the same weight for a bar as for a menu or a button.
+
+### The fix
+
+The iOS shell registers its own class for `blur-view`, `MaterialBlurView` (`packages/native/templates/ios/App/MaterialBlurView.swift`), a subclass of XElement's `LynxUIBlurView` with one more attribute: `blur-material="ultra-thin" | "thin" | "regular" | "thick" | "chrome"`. It's a separate attribute rather than new `blur-effect` values so that hosts without the class (Lynx Explorer, apps that embed Lynx) ignore it and draw the `blur-effect` the glass sets beside it. No check for the class is needed.
+
+- **A Swift element declares its attributes with `propSetterLookUp`,** a class method returning `[name, selector]` pairs, as an Objective-C one does with `LYNX_PROP_SETTER` (`LynxPropsProcessor.mm`). Lynx looks for an attribute in the class's own setters first and then in its superclasses', so the subclass adds `blur-material` and keeps every other attribute of `LynxUIBlurView`. Its setters get the value as it is (an `id`, `NSNull` on reset), since the lookup reads the type of argument 0, which is `self`.
+- **The material goes in through the view.** `LynxUIBlurView` keeps its style and mode private and sets the view's `effect` whenever its own attributes change. `createView()` returns a `UIVisualEffectView` subclass instead, whose `effect` setter keeps what Lynx sets aside while a material is set, and puts it back when the material is removed. The order in which Lynx sets the attributes doesn't matter.
+- **`ios-user-interface-style` sets the view's `overrideUserInterfaceStyle`,** so the adaptive materials follow the app's theme rather than the phone's, as the glass does on iOS 26.
+
+`UiGlass` sets `blur-material` only in the frosted design, from its `material` input (`regular` by default). The dock, navigation bar and toolbar use `chrome`, glass buttons and button groups `thin`, and menus, popovers and alert dialogs `regular`. Clear glass sets `ios-user-interface-style="dark"`, the dark form of its material in either theme.
+
+---
+
 ## `__AddInlineStyle` can't set a CSS variable
 
 ### What you'd expect (web)

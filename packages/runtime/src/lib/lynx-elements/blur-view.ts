@@ -21,6 +21,7 @@ import { LynxElementBase } from './base';
     'android-capture-target',
     'experimental-update-blur-radius',
     'blur-effect',
+    'blur-material',
     'spacing',
     'glass-interactive',
     'glass-tint-color',
@@ -63,6 +64,16 @@ export class LynxBlurView extends LynxElementBase {
     | 'dark'
     | 'glass'
     | 'glass-container';
+  /**
+   * One of UIKit's adaptive blur materials, which follow
+   * `ios-user-interface-style` (iOS 13+, in apps built with
+   * `ng build --platform ios`): `systemUltraThinMaterial` to
+   * `systemThickMaterial`, or `systemChromeMaterial`, the bars'. While it's
+   * set it replaces `blur-effect` and `blur-radius`. Lynx's own blur-view
+   * doesn't have it, so Lynx Explorer and other hosts ignore it and draw the
+   * `blur-effect`.
+   */
+  'blur-material'?: 'ultra-thin' | 'thin' | 'regular' | 'thick' | 'chrome';
   /**
    * Distance at which glass elements inside a `glass-container` start to merge (iOS). @default 0
    */

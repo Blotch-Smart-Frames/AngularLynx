@@ -319,13 +319,14 @@ describe('UiNavigationBar on iOS 26 and later', () => {
 });
 
 describe('UiNavigationBar before iOS 26', () => {
-  it('is clear at the top of the content, and on the blur material with a hairline once content scrolls under it', async () => {
+  it("is clear at the top of the content, and on the bars' chrome material with a hairline once content scrolls under it", async () => {
     const { bar, state, update, row } = await renderBar(IOS_18);
     const material = () => bar().querySelector('[shape="rounded"]');
     expect(material()).toBeNull();
     expect(style(row(), 'padding-left')).toBe('8px');
 
     await update(() => state.scrolledUnderTop.set(true));
+    expect(material()?.getAttribute('blur-material')).toBe('chrome');
     expect(material()?.getAttribute('blur-effect')).toBe('extra-light');
     expect(bar().querySelector('.h-\\[0\\.5px\\]')).not.toBeNull();
   });

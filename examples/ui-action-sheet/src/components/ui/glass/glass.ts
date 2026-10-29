@@ -35,6 +35,20 @@ export type GlassVariant = 'regular' | 'clear';
 export type GlassShape = 'capsule' | 'circle' | 'rounded';
 
 /**
+ * The blur material the frosted design draws on iOS 15 to 25: UIKit's
+ * adaptive materials, from the most translucent to the most opaque, and the
+ * bars' own. Apple gave each role its own: `'chrome'` for bars (the dock,
+ * navigation bar and toolbar), `'regular'` for menus, popovers and alerts,
+ * `'thin'` for buttons floating over content.
+ */
+export type GlassMaterial =
+  | 'ultra-thin'
+  | 'thin'
+  | 'regular'
+  | 'thick'
+  | 'chrome';
+
+/**
  * What a glass element draws:
  *
  * - `'glass'`: Liquid Glass.
@@ -55,7 +69,11 @@ const GLASS_BLUR: Readonly<Record<GlassVariant, string>> = {
   clear: '6px',
 };
 
-/** The blur of the frosted materials before iOS 26. */
+/**
+ * The blur of the frosted fallback, the `blur-effect` styles from before
+ * iOS 13, which hosts without the materials draw (see `#attributes`). The
+ * materials have Apple's own.
+ */
 const FROSTED_BLUR = '20px';
 
 /**
@@ -157,6 +175,13 @@ export class UiGlass {
    * a Liquid Glass control does: on iOS 26 and later, and in the web preview.
    */
   readonly interactive = input(false, { transform: booleanAttribute });
+  /**
+   * The blur material of the frosted design, on iOS 15 to 25: the one Apple
+   * used for the glass's role (see GlassMaterial). Clear glass draws its
+   * dark form, in either theme, as Apple's controls over media did. Liquid
+   * Glass has one material, and ignores it.
+   */
+  readonly material = input<GlassMaterial>('regular');
 
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
@@ -264,31 +289,43 @@ export class UiGlass {
   });
 
   /**
-   * The blur-view's attributes for the surface. Glass is forced to the app's
-   * color scheme (`ios-user-interface-style`), which iOS would otherwise take
-   * from the device: an app in its light theme on a phone in dark mode would
-   * get dark glass under dark text. The frosted materials before iOS 26 don't
-   * adapt to dark mode, so the scheme picks one. A solid surface turns the
-   * blur off, and on Android stops the blur-view redrawing the page behind it
-   * on every frame (`enable-auto-blur`), which it does even with no radius.
+   * The blur-view's attributes for the surface. The glass and the materials
+   * are forced to the app's color scheme (`ios-user-interface-style`), which
+   * iOS would otherwise take from the device: an app in its light theme on a
+   * phone in dark mode would get dark glass under dark text. A solid surface
+   * turns the blur off, and on Android stops the blur-view redrawing the page
+   * behind it on every frame (`enable-auto-blur`), which it does even with no
+   * radius.
+   *
+   * The frosted design draws `blur-material`, which the iOS shell's
+   * blur-view adds (packages/native's MaterialBlurView.swift): Lynx's own
+   * has only the `blur-effect` styles from before iOS 13, a single weight in
+   * a single appearance. A host without it, such as Lynx Explorer, ignores
+   * the attribute and draws the `blur-effect` instead, picked for the scheme
+   * since those styles don't adapt.
    */
   readonly #attributes = computed(() => {
     const surface = this.surface();
     const variant = this.variant();
-    const dark = this.#scheme() === 'dark';
+    // Apple's controls over media used the dark materials in either theme.
+    const dark =
+      this.#scheme() === 'dark' ||
+      (surface === 'frosted' && variant === 'clear');
     let effect = 'light';
     let radius = '0px';
+    let material: GlassMaterial | null = null;
     if (surface === 'glass') {
       effect = 'glass';
       radius = GLASS_BLUR[variant];
     } else if (surface === 'frosted') {
-      // Apple's controls over media used the dark material in either theme.
-      effect = dark || variant === 'clear' ? 'dark' : 'extra-light';
+      effect = dark ? 'dark' : 'extra-light';
       radius = FROSTED_BLUR;
+      material = this.material();
     }
     return {
       'blur-effect': effect,
       'blur-radius': radius,
+      'blur-material': material,
       'enable-auto-blur': surface !== 'solid',
       'glass-style': variant,
       'glass-tint-color': this.#tintColor(),
@@ -301,7 +338,7 @@ export class UiGlass {
   // bindings, which turn every value into a string: Lynx reads
   // `glass-interactive` and `enable-auto-blur` as booleans. `null` removes an
   // attribute, which restores Lynx's default.
-  protected readonly material = effect(() => {
+  protected readonly setAttributes = effect(() => {
     const element = this.#host.nativeElement;
     for (const [name, value] of Object.entries(this.#attributes())) {
       element.setAttribute(name, value);

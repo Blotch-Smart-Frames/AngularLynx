@@ -70,13 +70,13 @@ Liquid Glass buttons, for controls that float over your content, like SwiftUI's 
 
 What each platform draws:
 
-| Platform                                       | `glass` and `glass-clear`              | `glass-prominent`          |
-| ---------------------------------------------- | -------------------------------------- | -------------------------- |
-| iOS 26 and later                               | Liquid Glass, drawn by iOS             | Liquid Glass in the tint   |
-| iOS 15 to 25                                   | A frosted blur, dark for `glass-clear` | A filled button            |
-| Android                                        | A Material 3 filled tonal button       | A Material 3 filled button |
-| Android, with [`provideGlass()`](/dolan/glass) | Glass without the refraction           | Glass in the tint          |
-| [Web preview](/guide/glossary#web-preview)     | Liquid Glass, drawn with WebGL         | Liquid Glass in the tint   |
+| Platform                                       | `glass` and `glass-clear`                      | `glass-prominent`          |
+| ---------------------------------------------- | ---------------------------------------------- | -------------------------- |
+| iOS 26 and later                               | Liquid Glass, drawn by iOS                     | Liquid Glass in the tint   |
+| iOS 15 to 25                                   | The thin blur material, dark for `glass-clear` | A filled button            |
+| Android                                        | A Material 3 filled tonal button               | A Material 3 filled button |
+| Android, with [`provideGlass()`](/dolan/glass) | Glass without the refraction                   | Glass in the tint          |
+| [Web preview](/guide/glossary#web-preview)     | Liquid Glass, drawn with WebGL                 | Liquid Glass in the tint   |
 
 On Android the glass variants are Material buttons unless your app [opts into glass](/dolan/glass#what-each-platform-draws): fully rounded, flat, with Material's pressed state layer instead of a shrink.
 

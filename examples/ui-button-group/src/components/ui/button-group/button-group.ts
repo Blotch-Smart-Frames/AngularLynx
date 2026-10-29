@@ -171,13 +171,15 @@ const groupIconColor = () => inject(UiButtonGroup).foreground;
   template: `
     @if (look() === 'glass') {
       <!-- The frame is the group's box and, under clear glass, its dimming
-           layer, in the glass's shape. -->
+           layer, in the glass's shape. Before iOS 26 the glass is the thin
+           material, as the buttons' is. -->
       <view [class]="frameClass()" [style.border-radius.px]="cornerRadius()">
         <blur-view
           ui-glass
           [shape]="capsule() ? 'capsule' : 'rounded'"
           [radius]="radius()"
           [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
+          material="thin"
           [interactive]="interactive()"
           [class]="glassClass()"
         >

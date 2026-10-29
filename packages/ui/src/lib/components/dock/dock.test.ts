@@ -505,13 +505,16 @@ describe('UiDock on iOS 26 and later', () => {
 });
 
 describe('UiDock on iOS 15 to 25', () => {
-  it('runs edge to edge on a blur material, over the home indicator', async () => {
+  it("runs edge to edge on the bars' chrome material, over the home indicator", async () => {
     const { dock, stage, bar, row, action, accessory, capsule } =
       await renderDock(IOS_18);
 
     expect(dock().classList).not.toContain('px-4');
     expect(stage().getAttribute('blur-effect')).toBe('light');
     expect(bar().getAttribute('blur-effect')).toBe('extra-light');
+    for (const shape of [bar(), action()!, accessory()!]) {
+      expect(shape.getAttribute('blur-material')).toBe('chrome');
+    }
     expect(bar().classList).toContain('pb-safe');
     expect(action()?.classList).toContain('pb-safe');
     expect(row().classList).toContain('h-[49px]');

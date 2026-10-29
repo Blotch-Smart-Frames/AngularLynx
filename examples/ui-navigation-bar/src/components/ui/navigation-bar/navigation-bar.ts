@@ -102,8 +102,8 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
  *   is plain text. Content fades out as it scrolls beneath them, iOS's
  *   scroll edge effect.
  * - `'frosted'` (iOS 15 to 25): the navigation bar of that time, clear while
- *   the content is at its top and on the blur material with a hairline once
- *   content scrolls under it. Items and the Back button, a chevron with the
+ *   the content is at its top and on the bars' chrome material with a
+ *   hairline once content scrolls under it. Items and the Back button, a chevron with the
  *   previous screen's title, are in the tint color.
  * - `'material'` (Android): Material 3's small top app bar, or center-aligned
  *   with `titleCentered`, whose container turns from the surface color to the
@@ -123,14 +123,15 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
     '[style.transition]': 'containerTransition()',
     '[style.background-image]': 'edgeFade()',
   },
-  // The frosted material is added and removed rather than faded: a blur
-  // view under a fading opacity draws wrongly on iOS.
+  // The frosted material, the bars' chrome, is added and removed rather
+  // than faded: a blur view under a fading opacity draws wrongly on iOS.
   template: `
     @if (frostedBackground()) {
       <blur-view
         ui-glass
         shape="rounded"
         [radius]="0"
+        material="chrome"
         class="absolute bottom-0 left-0 right-0 top-0"
       ></blur-view>
       <view class="h-[0.5px] bg-border absolute bottom-0 left-0 right-0"></view>

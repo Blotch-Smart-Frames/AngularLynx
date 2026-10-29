@@ -432,10 +432,11 @@ describe('UiButton glass variants', () => {
     expect(getByRole('button', { name: 'Search' })).toBe(button());
   });
 
-  it('draws the frosted material before iOS 26, and shrinks when pressed', async () => {
+  it('draws the thin material before iOS 26, and shrinks when pressed', async () => {
     const { host, button, glass, update } = await renderButton(IOS_18);
     await update(() => host.variant.set('glass'));
 
+    expect(glass().getAttribute('blur-material')).toBe('thin');
     expect(glass().getAttribute('blur-effect')).toBe('extra-light');
     fireEvent.touchstart(button());
     expect(scaleOf(button())).toBe('scale(0.97)');

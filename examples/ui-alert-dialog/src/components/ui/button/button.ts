@@ -182,8 +182,8 @@ const materialButtonVariants = cva(
 
 /**
  * How a glass variant looks on this platform: `'glass'` draws it on a
- * `<blur-view ui-glass>` (Liquid Glass, or the frosted material before iOS
- * 26), `'material'` as a Material button. The solid variants are `'solid'`
+ * `<blur-view ui-glass>` (Liquid Glass, or before iOS 26 the thin material
+ * Apple used for buttons over content), `'material'` as a Material button. The solid variants are `'solid'`
  * everywhere.
  */
 type ButtonLook = 'solid' | 'glass' | 'material';
@@ -271,6 +271,7 @@ const buttonIconColor = () => inject(UiButton).foreground;
         <blur-view
           ui-glass
           [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
+          material="thin"
           [tint]="
             variant() === 'glass-prominent' ? 'var(--glass-tint)' : undefined
           "

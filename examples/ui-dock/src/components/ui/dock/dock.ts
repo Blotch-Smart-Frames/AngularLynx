@@ -178,6 +178,9 @@ const FRAME_TRANSITION = [
  */
 const KEYBOARD_TRANSITION = `padding-bottom ${DURATION.normal}ms ${EASING.sheet}`;
 
+/** The action's icon, fading as the action shrinks into the search field. */
+const ICON_OUT_TRANSITION = `opacity ${DURATION.fast}ms ${EASING.accelerate}`;
+
 /** The search field's content, fading in as its glass grows. */
 const SEARCH_IN_TRANSITION = `opacity ${DURATION.normal}ms ${EASING.decelerate} ${DURATION.fast}ms`;
 
@@ -292,8 +295,9 @@ export class UiDockAccessory {}
  *   group, and the accessory a capsule above. It minimizes as content
  *   scrolls down (see UiDockScroll): the bar shrinks to the selected item's
  *   icon, and the accessory moves down between it and the action.
- * - `'frosted'` (iOS 15 to 25): the tab bar of that time, edge to edge on a
- *   blur material, with the action as its last button. It doesn't minimize.
+ * - `'frosted'` (iOS 15 to 25): the tab bar of that time, edge to edge on
+ *   the bars' chrome material, with the action as its last button. It
+ *   doesn't minimize.
  * - `'material'` (Android): a Material 3 Expressive floating toolbar, with an
  *   active indicator behind the selected item's icon, and the action as a
  *   floating action button. Minimizing slides the toolbar away and leaves
@@ -346,6 +350,7 @@ export class UiDockAccessory {}
   //
   // The dock measures its width with an empty view rather than on the
   // group: Lynx for Web sends no layoutchange for a blur-view.
+
   template: `
     <view class="h-0 w-full" (bindlayoutchange)="measure($event)"></view>
     <blur-view
@@ -358,6 +363,7 @@ export class UiDockAccessory {}
         <blur-view
           ui-glass
           interactive
+          material="chrome"
           class="flex-row flex absolute overflow-hidden"
           [shape]="look().accessoryShape"
           [radius]="accessoryRadius()"
@@ -369,6 +375,7 @@ export class UiDockAccessory {}
       <blur-view
         ui-glass
         interactive
+        material="chrome"
         [class]="barClass()"
         [shape]="look().barShape"
         [radius]="look().radius"
@@ -415,6 +422,7 @@ export class UiDockAccessory {}
         <blur-view
           ui-glass
           interactive
+          material="chrome"
           [class]="actionClass()"
           [shape]="look().actionShape"
           [radius]="look().radius"
@@ -436,6 +444,7 @@ export class UiDockAccessory {}
           <blur-view
             ui-glass
             interactive
+            material="chrome"
             class="flex-row flex absolute overflow-hidden"
             [shape]="searchShape()"
             [radius]="0"
@@ -573,8 +582,11 @@ export class UiDock implements SearchFieldContainer {
       this.barCollapsed() || (this.searching() && this.design() === 'material'),
   );
 
-  /** The glass and Material action is the field's while it searches. */
-  protected readonly actionHidden = computed(
+  /**
+   * The glass and Material action is the field's while it searches: it
+   * shrinks into the field's end, and its icon fades out on the way.
+   */
+  readonly actionHidden = computed(
     () => this.searching() && this.design() !== 'frosted',
   );
 
@@ -1349,6 +1361,10 @@ export class UiDockItem {
     '(bindmouseup)': 'onPressEnd()',
     '(bindmouseleave)': 'onPressEnd()',
     '(bindtap)': 'onTap()',
+    // Its icon fades while the button shrinks into the search field, so it
+    // doesn't show through the field's glass. The content, not the glass.
+    '[style.opacity]': 'fade().opacity',
+    '[style.transition]': 'fade().transition',
   },
   template: `<svg
     [attr.content]="iconSvg()"
@@ -1364,6 +1380,7 @@ export class UiDockAction {
   readonly pressed = output<void>();
 
   readonly #dock = inject(UiDock);
+  readonly #settings = inject(LynxAccessibilitySettings);
   readonly #resolveColor = injectIconColor();
   readonly #host = inject(ElementRef);
   readonly #link = inject(RouterLink);
@@ -1388,6 +1405,15 @@ export class UiDockAction {
           ? 'var(--glass-foreground)'
           : 'var(--primary)';
     return iconSvg(this.icon(), this.#resolveColor(color));
+  });
+
+  protected readonly fade = computed(() => {
+    const hidden = this.#dock.actionHidden();
+    return {
+      opacity: hidden ? '0' : null,
+      transition:
+        hidden && !this.#settings.reduceMotion() ? ICON_OUT_TRANSITION : null,
+    };
   });
 
   /**

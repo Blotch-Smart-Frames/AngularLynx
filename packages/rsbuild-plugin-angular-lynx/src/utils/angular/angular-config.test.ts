@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyAngularConfig } from './angular-config';
 
-const createMockApi = () => {
+const createMockApi = (rootPath = '/project') => {
   let configHandler: ((config: any) => void) | undefined;
 
   const api = {
+    context: { rootPath },
     modifyRsbuildConfig: vi.fn((handler) => {
       configHandler = handler;
     }),
@@ -87,14 +88,81 @@ describe('applyAngularConfig', () => {
       expect(config.output.distPath).toBeUndefined();
     });
 
-    it('sets cleanDistPath to true', () => {
-      const { api, triggerHandler } = createMockApi();
-      const config = {} as any;
+    describe('cleanDistPath', () => {
+      /**
+       * Whether Rsbuild's clean would keep `entry`: it tests each `keep`
+       * pattern against the absolute POSIX path of every entry it visits.
+       */
+      const keeps = (
+        options: { rootPath?: string; outputPath?: string; config?: any },
+        entry: string,
+      ) => {
+        const { api, triggerHandler } = createMockApi(options.rootPath);
+        const config = options.config ?? {};
+        applyAngularConfig(
+          api as never,
+          createBuildOptions({ outputPath: options.outputPath }) as never,
+        );
+        triggerHandler(config);
+        const { keep } = config.output.cleanDistPath;
+        return keep.some((pattern: RegExp) => pattern.test(entry));
+      };
 
-      applyAngularConfig(api as never, createBuildOptions() as never);
-      triggerHandler(config);
+      it('empties the dist folder on every build', () => {
+        const { api, triggerHandler } = createMockApi();
+        const config = {} as any;
 
-      expect(config.output.cleanDistPath).toBe(true);
+        applyAngularConfig(api as never, createBuildOptions() as never);
+        triggerHandler(config);
+
+        expect(config.output.cleanDistPath.enable).toBe(true);
+      });
+
+      it('keeps the native apps in dist/ios and dist/android', () => {
+        expect(keeps({}, '/project/dist/ios')).toBe(true);
+        expect(keeps({}, '/project/dist/android')).toBe(true);
+      });
+
+      it('cleans everything else in dist', () => {
+        expect(keeps({}, '/project/dist/main.lynx.bundle')).toBe(false);
+        expect(keeps({}, '/project/dist/static')).toBe(false);
+        expect(keeps({}, '/project/dist/static/ios')).toBe(false);
+        expect(keeps({}, '/project/dist/ios.txt')).toBe(false);
+      });
+
+      it('cleans a project that is itself in a folder named ios', () => {
+        expect(
+          keeps({ rootPath: '/home/me/ios' }, '/home/me/ios/dist/main.js'),
+        ).toBe(false);
+        expect(
+          keeps({ rootPath: '/home/me/ios' }, '/home/me/ios/dist/ios'),
+        ).toBe(true);
+      });
+
+      it('keeps the native folders of the outputPath', () => {
+        expect(
+          keeps({ outputPath: '/project/out/app' }, '/project/out/app/ios'),
+        ).toBe(true);
+        expect(
+          keeps({ outputPath: '/project/out/app' }, '/project/dist/ios'),
+        ).toBe(false);
+      });
+
+      it('resolves a relative dist root against the project', () => {
+        const config = { output: { distPath: { root: 'build' } } };
+        expect(keeps({ config }, '/project/build/android')).toBe(true);
+      });
+
+      it('reads a dist root given as a string', () => {
+        const config = { output: { distPath: 'build' } };
+        expect(keeps({ config }, '/project/build/android')).toBe(true);
+      });
+
+      it('matches regex characters in the path literally', () => {
+        const rootPath = '/home/me/my.app (2)';
+        expect(keeps({ rootPath }, '/home/me/my.app (2)/dist/ios')).toBe(true);
+        expect(keeps({ rootPath }, '/home/me/my-app (2)/dist/ios')).toBe(false);
+      });
     });
 
     it('initializes config.output when undefined', () => {

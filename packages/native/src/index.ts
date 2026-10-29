@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { androidGenerator } from './android/project.ts';
@@ -48,7 +48,7 @@ export type BuildNativeAppOptions = {
   readonly packageVersion?: string;
   /** The rspeedy output folder holding main.lynx.bundle. */
   readonly bundleDir: string;
-  /** Where the binaries go, e.g. dist/ios. */
+  /** Where the binaries go, e.g. dist/ios. Emptied before they're written. */
   readonly outputDir: string;
   readonly app: NativeAppOptions;
   readonly log: (message: string) => void;
@@ -102,6 +102,12 @@ export const buildNativeApp = async (
         ? `Generated the ${platform} project`
         : `Reusing the generated ${platform} project (no config changes)`,
   );
+
+  // rspeedy's clean leaves dist/ios and dist/android alone, so building one
+  // platform doesn't delete the other's app. Emptying this platform's folder
+  // here keeps what an earlier build wrote from outliving it: an .ipa from a
+  // signed build, or the app under its old name after a rename.
+  rmSync(options.outputDir, { recursive: true, force: true });
 
   const artifacts =
     platform === 'ios'

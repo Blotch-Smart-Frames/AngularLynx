@@ -235,6 +235,59 @@ const PANEL_PADDING = 8;
               </view>
             </view>
           </view>
+
+          <!-- Morph: a button and the panel it opens share a glassId, so
+               when one replaces the other the group morphs it into the
+               other, on iOS 26 in an app built with ng build --platform. -->
+          <view class="flex-col gap-3 flex">
+            <text class="text-sm font-semibold text-foreground">Morph</text>
+            <text class="text-xs text-foreground">
+              Shapes with the same glassId turn into each other.
+            </text>
+            <view
+              class="h-[200px] rounded-[20px] p-3 flex overflow-hidden"
+              [style.background-image]="sunset"
+            >
+              <blur-view ui-glass-group class="flex-1 relative">
+                @if (composing()) {
+                  <blur-view
+                    ui-glass
+                    shape="rounded"
+                    [radius]="panelRadius"
+                    glassId="compose"
+                    class="flex-col gap-2 p-4 flex absolute bottom-0 left-0 right-0 top-0"
+                  >
+                    <text class="text-base font-semibold text-glass-foreground">
+                      New note
+                    </text>
+                    <text class="text-sm text-glass-muted-foreground">
+                      Grown out of the button that opened it.
+                    </text>
+                    <view
+                      class="self-end rounded-full bg-foreground px-4 py-2"
+                      (bindtap)="composing.set(false)"
+                    >
+                      <text class="text-xs text-background">Done</text>
+                    </view>
+                  </blur-view>
+                } @else {
+                  <blur-view
+                    ui-glass
+                    shape="circle"
+                    interactive
+                    glassId="compose"
+                    class="h-[56px] w-[56px] items-center flex absolute bottom-0 right-0 justify-center"
+                    [accessibility-element]="true"
+                    accessibility-traits="button"
+                    accessibility-label="New note"
+                    (bindtap)="composing.set(true)"
+                  >
+                    <ui-icon name="plus" />
+                  </blur-view>
+                }
+              </blur-view>
+            </view>
+          </view>
         </view>
       </scroll-view>
 
@@ -286,6 +339,7 @@ export class App {
 
   readonly taps = signal(0);
   readonly merged = signal(true);
+  readonly composing = signal(false);
 
   /**
    * The group's shapes slide together and apart, and the glass morphs with

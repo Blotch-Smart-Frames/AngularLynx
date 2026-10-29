@@ -127,6 +127,7 @@ It's `undefined` while the sheet is closed, so each open starts at the first det
 - **Below full height it floats.** The glass sheet is inset 8px from the screen's sides and bottom, so the page shows around it. Its corners are concentric with the screen's.
 - **At full height it turns opaque** and meets the edges, as iOS 26 sheets do. Dragging between the two blends from one to the other.
 - **The backdrop dims less**, as iOS dims behind a sheet.
+- **It can grow out of the button that presents it.** Mark the button with `[uiSheetSource]="sheet"` and the glass sheet grows out of it rather than sliding up, and shrinks back into it as it closes (see [Sheet](/dolan/sheet#from-the-button-that-presents-it)).
 
 What each platform draws:
 
@@ -173,6 +174,10 @@ The panel grows with its content and has no maximum height. For a long list, put
 | `openChange`   | `boolean`                  | Emits `false` when a backdrop tap, a drag or Android's back button closes the sheet. Part of `[(open)]`.  |
 | `detentChange` | `SheetDetent \| undefined` | Emits when the sheet comes to rest at a detent, and `undefined` once it has closed. Part of `[(detent)]`. |
 | `closed`       | `void`                     | Emits after the close animation finishes.                                                                 |
+
+### UiSheetSource
+
+Selector: `[uiSheetSource]`. Put it on the button that presents the sheet, with the sheet as its value, and the glass sheet grows out of the button (see [Sheet](/dolan/sheet#from-the-button-that-presents-it)).
 
 ## Accessibility
 

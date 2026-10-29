@@ -4,8 +4,9 @@ import {
   LynxAccessibilitySettings,
   LynxSystemInfo,
 } from '@blotch/angular-lynx';
-import { type SheetDetent } from '../components/ui/bottom-sheet';
-import { injectGlassDesign } from '../components/ui/glass';
+import { type SheetDetent, UiSheetSource } from '../components/ui/bottom-sheet';
+import { UiGlass, injectGlassDesign } from '../components/ui/glass';
+import { UiIcon } from '../components/ui/icon';
 import {
   UiSheet,
   UiSheetHeader,
@@ -24,6 +25,9 @@ import { UiButton } from '../components/ui/button';
     UiSheetTitle,
     UiSheetDescription,
     UiSheetFooter,
+    UiSheetSource,
+    UiGlass,
+    UiIcon,
     UiButton,
   ],
   template: `
@@ -64,6 +68,38 @@ import { UiButton } from '../components/ui/button';
         <ui-button variant="outline" (pressed)="showGlass.set(true)">
           Open Glass Sheet
         </ui-button>
+
+        <!-- From the button that presents it: the glass sheet grows out of
+             the button, and shrinks back into it as it closes, as iOS 26's
+             sheets do. -->
+        <view class="flex-row items-center gap-3 flex">
+          <blur-view
+            ui-glass
+            interactive
+            shape="circle"
+            class="h-12 w-12 items-center flex justify-center"
+            [accessibility-element]="true"
+            accessibility-traits="button"
+            accessibility-label="New trip"
+            [uiSheetSource]="newTrip"
+            (bindtap)="showNewTrip.set(true)"
+          >
+            <ui-icon name="plus" />
+          </blur-view>
+          <text class="text-sm text-foreground">New trip</text>
+        </view>
+        <ui-sheet #newTrip variant="glass" [(open)]="showNewTrip">
+          <ui-sheet-header>
+            <ui-sheet-title>New trip</ui-sheet-title>
+            <ui-sheet-description>
+              Grown out of the button that opened it.
+            </ui-sheet-description>
+          </ui-sheet-header>
+          <ui-sheet-footer>
+            <ui-button (pressed)="showNewTrip.set(false)">Create</ui-button>
+          </ui-sheet-footer>
+        </ui-sheet>
+
         <view
           class="h-[480px] rounded-[28px]"
           [style.background-image]="landscape"
@@ -102,6 +138,7 @@ export class App {
 
   readonly showSheet = signal(false);
   readonly showGlass = signal(false);
+  readonly showNewTrip = signal(false);
   readonly glassDetent = signal<SheetDetent | undefined>(undefined);
 
   /** A colorful "photo" for the glass to show around it. */

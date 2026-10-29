@@ -7,17 +7,35 @@ import {
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { UiGlass } from '../glass/glass';
 import { UiPopover, UiPopoverContent, UiPopoverTrigger } from './popover';
 
 @Component({
-  imports: [LYNX_ELEMENTS, UiPopover, UiPopoverContent, UiPopoverTrigger],
+  imports: [
+    LYNX_ELEMENTS,
+    UiGlass,
+    UiPopover,
+    UiPopoverContent,
+    UiPopoverTrigger,
+  ],
   template: `
     <ui-popover
       [open]="open()"
       (openChange)="open.set($event)"
       (closed)="closed()"
     >
-      @if (withTrigger()) {
+      @if (glassTrigger()) {
+        <blur-view
+          ui-glass
+          uiPopoverTrigger
+          class="trigger"
+          [accessibility-element]="true"
+          accessibility-traits="button"
+          accessibility-label="Tip"
+        >
+          <text>Tip</text>
+        </blur-view>
+      } @else if (withTrigger()) {
         <view
           uiPopoverTrigger
           class="trigger"
@@ -38,6 +56,7 @@ import { UiPopover, UiPopoverContent, UiPopoverTrigger } from './popover';
 class PopoverHost {
   readonly open = signal(false);
   readonly withTrigger = signal(true);
+  readonly glassTrigger = signal(false);
   readonly closed = vi.fn();
   readonly liked = vi.fn();
 }
@@ -105,7 +124,7 @@ const renderPopover = async (
     trigger: () => result.container.querySelector('.trigger') as HTMLElement,
     panel: () =>
       result.container.querySelector(
-        'blur-view[ui-glass]',
+        'blur-view[ui-glass]:not(.trigger)',
       ) as HTMLElement | null,
   };
 };
@@ -188,16 +207,45 @@ describe('UiPopover', () => {
 
   it('hides its trigger while Liquid Glass grows out of it', async () => {
     const rendered = await renderPopover();
-    expect(rendered.trigger().style.opacity).toBe('');
+    expect(rendered.trigger().style.visibility).toBe('');
 
     rendered.host.open.set(true);
     await waitForOpen(rendered);
-    expect(rendered.trigger().style.opacity).toBe('0');
+    expect(rendered.trigger().style.visibility).toBe('hidden');
 
     rendered.host.open.set(false);
     await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
     await waitForUpdate();
-    expect(rendered.trigger().style.opacity).toBe('');
+    expect(rendered.trigger().style.visibility).toBe('');
+    // A trigger that isn't glass has no glass to hand over.
+    expect(rendered.trigger().hasAttribute('glass-effect-id')).toBe(false);
+  });
+
+  it("takes a glass trigger's glass over, shown as the trigger hides", async () => {
+    const rendered = await renderPopover();
+    rendered.host.glassTrigger.set(true);
+    await waitForUpdate();
+    const id = rendered.trigger().getAttribute('glass-effect-id');
+    expect(id).toMatch(/^ui-popover-\d+$/);
+
+    rendered.host.open.set(true);
+    // Shown at the trigger's place in the same update that hides the
+    // trigger, under the same id.
+    await waitForOpen(rendered);
+    expect(rendered.panel()!.style.visibility).toBe('');
+    expect(rendered.panel()!.getAttribute('glass-effect-id')).toBe(id);
+    expect(rendered.trigger().style.visibility).toBe('hidden');
+
+    rendered.host.open.set(false);
+    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+    await waitForUpdate();
+    expect(rendered.panel()).toBeNull();
+    expect(rendered.trigger().style.visibility).toBe('');
+
+    // A trigger that goes takes its glass with it.
+    rendered.host.glassTrigger.set(false);
+    await waitForUpdate();
+    expect(rendered.trigger().tagName.toLowerCase()).toBe('view');
   });
 
   it('leaves its trigger showing beside a Material surface', async () => {
@@ -205,7 +253,7 @@ describe('UiPopover', () => {
     rendered.host.open.set(true);
     await waitForOpen(rendered);
 
-    expect(rendered.trigger().style.opacity).toBe('');
+    expect(rendered.trigger().style.visibility).toBe('');
   });
 
   it('opens from itself when nothing is its trigger', async () => {

@@ -16,6 +16,7 @@ import {
 } from 'vitest';
 import { DURATION } from '../../utils/animate';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { UiGlass } from '../glass/glass';
 import {
   type LynxMainThread,
   lynxMainThread,
@@ -81,10 +82,20 @@ class CancelLabelHost {}
     UiActionSheetTitle,
     UiActionSheetItem,
     UiActionSheetCancel,
+    UiGlass,
     LYNX_ELEMENTS,
   ],
   template: `
-    @if (anchored()) {
+    @if (glassAnchor()) {
+      <blur-view
+        ui-glass
+        class="share"
+        [uiActionSheetAnchor]="sheet"
+        (bindtap)="open.set(true)"
+      >
+        <text>Share</text>
+      </blur-view>
+    } @else if (anchored()) {
       <view
         class="share"
         [uiActionSheetAnchor]="sheet"
@@ -108,6 +119,7 @@ class CancelLabelHost {}
 class AnchoredHost {
   readonly open = signal(false);
   readonly anchored = signal(true);
+  readonly glassAnchor = signal(false);
   readonly closed = vi.fn();
   readonly saved = vi.fn();
   readonly deleted = vi.fn();
@@ -460,7 +472,7 @@ const renderAnchored = async (
     host: result.componentRef.instance as AnchoredHost,
     overlay: () => query('overlay')!,
     anchor: () => query('.share')!,
-    popover: () => query('blur-view[ui-glass]'),
+    popover: () => query('blur-view[ui-glass]:not(.share)'),
     content: () => query('.shrink-0')!,
     // A button's pressable row: the view around its label.
     button: (label: string) => result.getByText(label).parentElement!,
@@ -502,7 +514,7 @@ describe('UiActionSheet opened from its control', () => {
     // The bottom sheet and its backdrop stay hidden.
     expect(rendered.overlay().getAttribute('visible')).toBe('false');
     // The control hides under the glass that grows out of it.
-    expect(rendered.anchor().style.opacity).toBe('0');
+    expect(rendered.anchor().style.visibility).toBe('hidden');
     // Its title and actions, as iOS 26 lays them out, and no Cancel: a
     // touch outside cancels.
     expect(popover.contains(rendered.getByText('Delete this draft?'))).toBe(
@@ -522,6 +534,26 @@ describe('UiActionSheet opened from its control', () => {
     expect(popover.contains(rendered.getByText('Cancel'))).toBe(false);
   });
 
+  it("takes a glass control's glass over, shown as the control hides", async () => {
+    const rendered = await renderAnchored();
+    expect(rendered.anchor().hasAttribute('glass-effect-id')).toBe(false);
+    rendered.host.glassAnchor.set(true);
+    await waitForUpdate();
+    const id = rendered.anchor().getAttribute('glass-effect-id');
+    expect(id).toMatch(/^ui-action-sheet-\d+$/);
+
+    await openAnchored(rendered);
+    expect(rendered.popover()!.getAttribute('glass-effect-id')).toBe(id);
+    expect(rendered.anchor().style.visibility).toBe('hidden');
+
+    // A control that goes takes its glass with it.
+    rendered.host.open.set(false);
+    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+    rendered.host.glassAnchor.set(false);
+    await waitForUpdate();
+    expect(rendered.anchor().tagName.toLowerCase()).toBe('view');
+  });
+
   it('chooses an action, and closes', async () => {
     const rendered = await renderAnchored();
     await openAnchored(rendered);
@@ -532,7 +564,7 @@ describe('UiActionSheet opened from its control', () => {
     await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
     await waitForUpdate();
     expect(rendered.popover()).toBeNull();
-    expect(rendered.anchor().style.opacity).toBe('');
+    expect(rendered.anchor().style.visibility).toBe('');
     expect(rendered.host.closed).toHaveBeenCalledTimes(1);
   });
 
@@ -583,7 +615,7 @@ describe('UiActionSheet opened from its control', () => {
     expect(popover.style.width).toBe('280px');
     expect(popover.classList).toContain('bg-secondary');
     // Beside the control, which stays in view.
-    expect(rendered.anchor().style.opacity).toBe('');
+    expect(rendered.anchor().style.visibility).toBe('');
     expect(rendered.button('Save Draft').classList).toContain('min-h-[48px]');
     expect(rendered.button('Save Draft').classList).not.toContain(
       'justify-center',
@@ -607,7 +639,7 @@ describe('UiActionSheet opened from its control', () => {
     expect(rendered.getByText('Save Draft').classList).toContain(
       'text-primary',
     );
-    expect(rendered.anchor().style.opacity).toBe('');
+    expect(rendered.anchor().style.visibility).toBe('');
   });
 
   it('rises from the bottom again once its control is gone', async () => {

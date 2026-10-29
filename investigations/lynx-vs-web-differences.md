@@ -4864,7 +4864,7 @@ A blur view can draw UIKit's adaptive materials (iOS 13 and later): `systemUltra
 
 ### The fix
 
-The iOS shell registers its own class for `blur-view`, `MaterialBlurView` (`packages/native/templates/ios/App/MaterialBlurView.swift`), a subclass of XElement's `LynxUIBlurView` with one more attribute: `blur-material="ultra-thin" | "thin" | "regular" | "thick" | "chrome"`. It's a separate attribute rather than new `blur-effect` values so that hosts without the class (Lynx Explorer, apps that embed Lynx) ignore it and draw the `blur-effect` the glass sets beside it. No check for the class is needed.
+The iOS shell registers its own class for `blur-view`, `BlurView` (`packages/native/templates/ios/App/BlurView.swift`), a subclass of XElement's `LynxUIBlurView` with, among others, one more attribute: `blur-material="ultra-thin" | "thin" | "regular" | "thick" | "chrome"`. It's a separate attribute rather than new `blur-effect` values so that hosts without the class (Lynx Explorer, apps that embed Lynx) ignore it and draw the `blur-effect` the glass sets beside it. No check for the class is needed.
 
 - **A Swift element declares its attributes with `propSetterLookUp`,** a class method returning `[name, selector]` pairs, as an Objective-C one does with `LYNX_PROP_SETTER` (`LynxPropsProcessor.mm`). Lynx looks for an attribute in the class's own setters first and then in its superclasses', so the subclass adds `blur-material` and keeps every other attribute of `LynxUIBlurView`. Its setters get the value as it is (an `id`, `NSNull` on reset), since the lookup reads the type of argument 0, which is `self`.
 - **The material goes in through the view.** `LynxUIBlurView` keeps its style and mode private and sets the view's `effect` whenever its own attributes change. `createView()` returns a `UIVisualEffectView` subclass instead, whose `effect` setter keeps what Lynx sets aside while a material is set, and puts it back when the material is removed. The order in which Lynx sets the attributes doesn't matter.
@@ -5209,7 +5209,15 @@ Checked in Lynx Explorer 4.1 on the iOS 27 Simulator:
 
 ### What we do about it
 
-Nothing yet. A component can morph glass by animating one shape's size and position rather than swapping elements. A true morph between shapes (a button into its menu) would need Lynx's iOS `blur-view` to animate its effect changes.
+The iOS shell's `blur-view` (`BlurView.swift`, with `GlassTransitions.swift`) animates it, in apps `ng build --platform ios` builds. Lynx Explorer and other hosts still pop.
+
+- **It learns of each change from UIKit:** `willMove(toWindow:)` on the effect view as Lynx inserts or removes a view (or the element around it), and `isHidden` for `visibility`. LynxUI's own `willMoveToWindow:` would do, but its header marks the window non-null, and Swift can't take the nil it passes on removal.
+- **It settles them at the end of the run loop pass,** in a `kCFRunLoopBeforeWaiting` observer ordered before Core Animation's commit (order 1,000,000 against 2,000,000), so the first frame drawn shows the start of the transition. Lynx doesn't flush UI operations from an observer of its own, so its whole update has been applied by then. A view that left and came back in the pass was moved, not removed: Lynx removes an element by detaching it, and Angular's moves (and the runtime's blur-view insert, which re-appends the siblings after it) detach and reattach.
+- **Only glass in a container that was already on screen animates.** UIKit calls `willMove(toWindow:)` on a container before the views in it, so a container that comes or goes in the same pass (a new page, an overlay showing) takes its glass with it, drawn at once. Glass in a scroll view doesn't count, as its cells come and go while it scrolls.
+- **A shape that's removed is gone by the end of the pass,** so it dissolves as a copy: a `UIVisualEffectView` with its effect and a `snapshotView(afterScreenUpdates: false)` of its content, appended to the container's content view, above the children Lynx inserts by index.
+- **`glass-effect-id` pairs a shape that went with one that came.** In the same container the new one's frame and corners spring out of the old one's, and the copy of the old one flows into it as it dissolves, merged. Across containers or windows, such as a glass button in the page and the menu it opens in an `<overlay>`, the old one's frame can't be trusted: an overlay that closes in the same update lays its content out at nothing first, and the presentation layers of its ancestors have moved too. So the new shape takes over where it is, from the old corner radius (read from the presentation layer, which still has it), with the old content fading out over it; the menus, popovers and sheets place their glass at the trigger's frame themselves.
+
+Measured on the iOS 27 Simulator: removal, insertion, `visibility`, a tint change, a same-container `@if`/`@else` morph, and the menu, popover and sheet handing a glass trigger's glass over, each way. Glass outside a container is left alone.
 
 The dock does that. Its bar, action and accessory are absolutely positioned shapes in one group, and minimizing transitions their `left`, `right`, `bottom` and `height`: the accessory moving down between the shrinking bar and action bridges into each as it passes and splits off again, on the iOS 27 Simulator and in the web preview.
 
@@ -5611,3 +5619,21 @@ Checked for the navigation bar's scroll edge effect, in Lynx Explorer 4.1 on the
 ### What we do about it
 
 `ui-bar-scroll` puts the mask on its own scroll view: under glass bars, content fades out over the bar's space, to whatever is behind it. Its stops come from its spacers' `layoutchange` heights, which count the safe area, and on iOS from the scroll view's own height, as percentages; on the web, where there's no height to read, from each end as lengths. On Android, with the glass opt-in, the bars draw the same fade themselves as a gradient in the theme's background color (`edgeFadeOverlay()`), so content fades to that color there. The masked blur isn't used: the blur-view's material would tint the strip, Android ignores its mask, and on Android every blur-view redraws the page each frame.
+
+---
+
+## An attribute removed and then set again before Lynx flushes stays removed
+
+### What you'd expect (web)
+
+`removeAttribute('x')` followed by `setAttribute('x', 'a')` leaves the element with `x="a"`, whatever happens between them.
+
+### What Lynx does
+
+Lynx core queues a removal apart from the values set in the same flush, and applies it after them. `Element::SetAttribute` puts a key whose value is empty (null or undefined) in `reset_attr_vec_`, and one with a value in `updated_attr_map_`, without taking the key out of the other. At the flush, `FiberElement::ConsumeAllAttributes` sets everything in `updated_attr_map_` first, then resets everything in `reset_attr_vec_`. So an attribute set to null and then to a value before the flush reaches native as a reset, and the value is lost (the other order, a value and then null, comes out right).
+
+Found on the iOS 27 Simulator with the shell's `glass-effect-id`: a glass button that a sheet pairs with its own glass (`uiSheetSource`) got the id from an effect that ran after the button's first, in the same first render, which had set the attribute to null. The native prop setter saw only the reset, so the button and the sheet never paired. Sending `''` instead of null for the first run made the id arrive.
+
+### The fix
+
+`LynxElement.setAttribute()` holds a removal back until the flush: it records the name, and `LynxRendererFactory2.end()` (and the settle flush) sends the removals that are left with `processPendingAttributeRemovals()`, after element removals and before `__FlushElementTree()`. A value set for the attribute before then takes the removal back, so it reaches Lynx as a plain update.

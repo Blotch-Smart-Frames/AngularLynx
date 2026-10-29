@@ -220,7 +220,9 @@ export const popoverArrow = (
         [style.top.px]="panelPosition().top"
         [style.width.px]="frame()?.width"
         [style.height.px]="frame()?.height"
+        [glassId]="glassId()"
         [style.opacity]="panelOpacity()"
+        [style.visibility]="panelVisibility()"
         [style.transition]="panelTransition()"
         [style.align-items]="
           placement()?.horizontal === 'right' ? 'flex-end' : 'flex-start'
@@ -261,6 +263,11 @@ export class UiPopoverPanel implements OnDestroy {
    * wide as the screen at most.
    */
   readonly width = input<number | undefined>(undefined);
+  /**
+   * The id the panel's glass shares with its anchor's (see UiGlass's
+   * `glassId`), so that on iOS the panel takes over a glass anchor's glass.
+   */
+  readonly glassId = input<string | undefined>(undefined);
 
   /** A touch landed outside the panel (and outside its anchor). */
   readonly dismissed = output<void>();
@@ -303,6 +310,13 @@ export class UiPopoverPanel implements OnDestroy {
    * Whether the panel covers its anchor now: Liquid Glass grows out of it
    * and shrinks back into it, so the anchor hides meanwhile, as on iOS 26.
    * The other designs open beside it.
+   *
+   * The anchor hides with `visibility`, in the same update that shows the
+   * panel at its place (see panelVisibility), and shows in the one that
+   * takes the panel away. On iOS 26 and later, the shell pairs a glass
+   * anchor with the panel across those changes (see glassId): the panel
+   * takes over the anchor's corners, and the anchor's content fades out in
+   * it, and back in as the panel closes.
    */
   readonly coversAnchor = computed(() => {
     const phase = this.phase();
@@ -371,6 +385,14 @@ export class UiPopoverPanel implements OnDestroy {
   );
   protected readonly panelTransition = computed(() =>
     this.#transition(['left', 'top', 'width', 'height', 'opacity']),
+  );
+
+  /**
+   * The panel is hidden while it's measured, so it shows in the same update
+   * that hides its anchor (see coversAnchor).
+   */
+  protected readonly panelVisibility = computed(() =>
+    this.phase() === 'measuring' ? 'hidden' : null,
   );
   protected readonly contentTransition = computed(() =>
     this.#transition(['opacity']),

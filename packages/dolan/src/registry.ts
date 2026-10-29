@@ -148,7 +148,9 @@ export const registry: RegistryEntry[] = [
   { name: 'segmented-control', dependencies: ['glass', 'icon'] },
   { name: 'select', dependencies: ['bottom-sheet'] },
   { name: 'separator', dependencies: [] },
-  { name: 'sheet', dependencies: ['bottom-sheet'] },
+  // Its specs present a sheet from a glass button (`uiSheetSource`), which
+  // the sheet grows out of.
+  { name: 'sheet', dependencies: ['bottom-sheet', 'glass'] },
   { name: 'skeleton', dependencies: [] },
   // The glass variant's thumb turns into a glass lens while it's dragged,
   // and its iOS colors follow the app's color scheme through icon-theme.ts.

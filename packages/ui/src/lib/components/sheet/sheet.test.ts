@@ -6,7 +6,8 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SheetDetent } from '../bottom-sheet/bottom-sheet';
+import { type SheetDetent, UiSheetSource } from '../bottom-sheet/bottom-sheet';
+import { UiGlass } from '../glass/glass';
 import {
   UiSheet,
   UiSheetDescription,
@@ -37,6 +38,25 @@ import {
 class SheetHost {
   readonly open = signal(false);
   readonly closed = vi.fn();
+}
+
+/**
+ * A glass sheet presented by a glass button, which comes first, as a button
+ * above the sheet does.
+ */
+@Component({
+  imports: [UiSheet, UiSheetSource, UiGlass, LYNX_ELEMENTS],
+  template: `
+    <blur-view ui-glass class="source" [uiSheetSource]="sheet">
+      <text>Add</text>
+    </blur-view>
+    <ui-sheet #sheet variant="glass" [(open)]="open">
+      <text>Body</text>
+    </ui-sheet>
+  `,
+})
+class SourceHost {
+  readonly open = signal(false);
 }
 
 const renderSheet = async () => {
@@ -142,5 +162,23 @@ describe('UiSheet glass variant', () => {
     fireEvent.tap(grabber.parentElement!, { eventType: 'catchEvent' });
     await waitForUpdate();
     expect(host.detent()).toBe('large');
+  });
+});
+
+describe('UiSheet grown out of its control', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('hands the control on to its bottom sheet, which pairs their glass', async () => {
+    vi.stubGlobal('SystemInfo', { platform: 'iOS', osVersion: '26.0' });
+    const { container } = await render(SourceHost);
+    const source = container.querySelector('.source')!;
+    const glass = container.querySelector('overlay blur-view[ui-glass]')!;
+
+    expect(source.getAttribute('glass-effect-id')).toMatch(/^ui-sheet-\d+$/);
+    expect(glass.getAttribute('glass-effect-id')).toBe(
+      source.getAttribute('glass-effect-id'),
+    );
+    // Shown until the sheet covers it.
+    expect((source as HTMLElement).style.visibility).toBe('');
   });
 });

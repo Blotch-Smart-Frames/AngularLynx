@@ -133,8 +133,10 @@ export const measureMenuElement = async (
  * placeMenu), and then grows it from its start frame (see menuStartFrame)
  * with CSS transitions, which Lynx plays on iOS, Android and the web alike.
  * The menu is one glass shape whose frame grows: iOS's Liquid Glass follows
- * a moving or resizing shape frame by frame, where a shape that appears or
- * disappears pops.
+ * a moving or resizing shape frame by frame. It shows at the trigger's place
+ * in the same update that hides the trigger, and hides in the one that shows
+ * the trigger again, so the shell can pair a glass trigger with it (see
+ * glassId).
  *
  * A context menu's element is lifted by moving the element itself into the
  * overlay, above the dimming layer, at the same place on screen, and back
@@ -198,7 +200,9 @@ export const measureMenuElement = async (
             [style.top.px]="frame()?.top ?? 0"
             [style.width.px]="frame()?.width"
             [style.height.px]="frame()?.height"
+            [glassId]="glassId()"
             [style.opacity]="panelOpacity()"
+            [style.visibility]="panelVisibility()"
             [style.transition]="panelTransition()"
             [style.align-items]="
               placement()?.horizontal === 'right' ? 'flex-end' : 'flex-start'
@@ -243,6 +247,11 @@ export class UiMenuPopup implements OnDestroy {
    * in. Without one, the element isn't lifted.
    */
   readonly anchorHome = input<MenuElement | null>(null);
+  /**
+   * The id the menu's glass shares with its trigger's (see UiGlass's
+   * `glassId`), so that on iOS the menu takes over a glass trigger's glass.
+   */
+  readonly glassId = input<string | undefined>(undefined);
 
   /** The user tapped outside the menu, or pressed Android's back button. */
   readonly dismissed = output<void>();
@@ -349,6 +358,17 @@ export class UiMenuPopup implements OnDestroy {
   protected readonly panelTransition = computed(() =>
     this.#transition(['left', 'top', 'width', 'height', 'opacity']),
   );
+
+  /**
+   * The menu's glass is hidden until it's at its start frame, so it shows in
+   * the same update that hides the trigger it grows out of, and hides in the
+   * one that shows the trigger again: on iOS the shell pairs the two across
+   * those changes (see glassId).
+   */
+  protected readonly panelVisibility = computed(() => {
+    const phase = this.phase();
+    return phase === 'closed' || phase === 'measuring' ? 'hidden' : null;
+  });
   protected readonly contentTransition = computed(() =>
     this.#transition(['opacity']),
   );

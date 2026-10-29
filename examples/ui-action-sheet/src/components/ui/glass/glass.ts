@@ -7,6 +7,7 @@ import {
   inject,
   input,
   numberAttribute,
+  signal,
   ViewEncapsulation,
 } from '@angular/core';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
@@ -182,6 +183,18 @@ export class UiGlass {
    * Glass has one material, and ignores it.
    */
   readonly material = input<GlassMaterial>('regular');
+  /**
+   * Pairs this shape with another across a change, as SwiftUI's
+   * `glassEffectID` does: when a shape with an id goes (removed, or hidden
+   * with `visibility`) and one with the same id comes in the same update,
+   * the two are one piece of glass changing shape. The new one grows out of
+   * the old one's frame and corners, and the old one's content fades out in
+   * it. In the same `ui-glass-group`, the group merges the two as they move.
+   *
+   * On iOS 26 and later, in an app `ng build --platform ios` makes (its
+   * blur-view adds this). Elsewhere one shape replaces the other at once.
+   */
+  readonly glassId = input<string | undefined>(undefined);
 
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
@@ -194,6 +207,21 @@ export class UiGlass {
    * for their own form (see GlassDesign).
    */
   readonly design = injectGlassDesign();
+
+  /**
+   * The id a component pairs this shape under, such as a menu that grows out
+   * of it (see pair). It takes the place of `glassId` while it's set.
+   */
+  readonly #pairedId = signal<string | null>(null);
+
+  /**
+   * @internal Pairs the shape under `id` (see glassId), or stops pairing it
+   * (null): for a component that grows its own glass out of this shape, such
+   * as the menu of a glass button that opens one.
+   */
+  pair(id: string | null): void {
+    this.#pairedId.set(id);
+  }
 
   /**
    * What the glass draws (see GlassSurface): the design's material, or an
@@ -298,7 +326,7 @@ export class UiGlass {
    * radius.
    *
    * The frosted design draws `blur-material`, which the iOS shell's
-   * blur-view adds (packages/native's MaterialBlurView.swift): Lynx's own
+   * blur-view adds (packages/native's BlurView.swift): Lynx's own
    * has only the `blur-effect` styles from before iOS 13, a single weight in
    * a single appearance. A host without it, such as Lynx Explorer, ignores
    * the attribute and draws the `blur-effect` instead, picked for the scheme
@@ -330,6 +358,7 @@ export class UiGlass {
       'glass-style': variant,
       'glass-tint-color': this.#tintColor(),
       'glass-interactive': this.interactive() || null,
+      'glass-effect-id': this.#pairedId() ?? this.glassId() ?? null,
       'ios-user-interface-style': dark ? 'dark' : 'light',
     };
   });
@@ -365,8 +394,12 @@ export class UiGlass {
  * Material designs have no glass to merge.
  *
  * Moving or resizing a shape, with a CSS transition for example, morphs the
- * merged glass with it. A shape that's added or removed appears or
- * disappears at once: iOS's glass doesn't animate that in Lynx.
+ * merged glass with it. On iOS 26, in an app `ng build --platform ios`
+ * makes, a shape that's added or removed (or shown and hidden with
+ * `visibility`) materializes or dissolves, as UIKit's glass does, and two
+ * shapes with the same `glassId` morph into each other (see UiGlass's
+ * `glassId`). Elsewhere a shape that's added or removed appears or
+ * disappears at once.
  */
 @Component({
   selector: 'blur-view[ui-glass-group]',

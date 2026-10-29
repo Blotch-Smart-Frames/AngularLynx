@@ -5,15 +5,24 @@ import {
   input,
   model,
   output,
+  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import {
   type BottomSheetVariant,
   type SheetDetent,
+  type SheetSourceTarget,
   UiBottomSheet,
 } from '../bottom-sheet/bottom-sheet';
 import { cn } from '../../utils/cn';
+
+/**
+ * `UiBottomSheet`, for the sheet's view query. A call rather than the class
+ * itself: for a class, Angular's test build keeps an arrow function that
+ * nothing calls, which an app's coverage report would show as uncovered.
+ */
+const bottomSheetType = () => UiBottomSheet;
 
 /**
  * Styled bottom sheet: a thin wrapper over the shared `ui-bottom-sheet`
@@ -25,6 +34,9 @@ import { cn } from '../../utils/cn';
  * The consumer's `class` and the built-in padding are applied to an inner
  * content wrapper (not the panel) — the panel chrome (rounded corners, border,
  * background) comes from the primitive.
+ *
+ * Mark the control that presents it with `[uiSheetSource]="sheet"`, and the
+ * glass sheet grows out of it (see UiSheetSource).
  */
 @Component({
   selector: 'ui-sheet',
@@ -51,7 +63,7 @@ import { cn } from '../../utils/cn';
     </ui-bottom-sheet>
   `,
 })
-export class UiSheet {
+export class UiSheet implements SheetSourceTarget {
   readonly open = model(false);
   readonly userClass = input<string>('', { alias: 'class' });
   /** `'default'` or `'glass'`; see BottomSheetVariant. */
@@ -62,6 +74,25 @@ export class UiSheet {
   readonly detent = model<SheetDetent>();
 
   readonly closed = output<void>();
+
+  // Required: always in the template.
+  readonly bottomSheet = viewChild.required(bottomSheetType());
+
+  /**
+   * Whether the sheet covers the control that presents it; see
+   * UiSheetSource.
+   */
+  coversSource(): boolean {
+    return this.bottomSheet().coversSource();
+  }
+
+  /**
+   * @internal Called by the `uiSheetSource` directive, for the sheet this
+   * one draws on.
+   */
+  setSource(...source: Parameters<SheetSourceTarget['setSource']>): void {
+    this.bottomSheet().setSource(...source);
+  }
 
   /**
    * At a detent with a height of its own, the content fills the sheet as a

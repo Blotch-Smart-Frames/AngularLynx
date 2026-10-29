@@ -110,6 +110,31 @@ The sheet grows with its content. For long content, put a [`<scroll-view>`](/api
 
 On iOS 26, at half height the glass sheet floats inset from the screen's edges, so the page shows around it. Dragged up to full height, it turns opaque and meets the edges. See [Bottom Sheet](/dolan/bottom-sheet#glass) for what each platform draws.
 
+### From the button that presents it
+
+Mark the button that opens the sheet with `uiSheetSource`, and the glass sheet grows out of it instead of sliding up, and shrinks back into it as it closes, as iOS 26's sheets do:
+
+```angular-html
+<blur-view
+  ui-glass
+  interactive
+  shape="circle"
+  class="h-12 w-12 items-center flex justify-center"
+  [uiSheetSource]="newTrip"
+  (bindtap)="open.set(true)"
+>
+  <ui-icon name="plus" />
+</blur-view>
+
+<ui-sheet #newTrip variant="glass" [(open)]="open">…</ui-sheet>
+```
+
+- **It only says where the sheet comes from.** Open it as before, from the button's own tap.
+- **The button hides while the sheet covers it.** A button that's glass itself, as here, hands its glass over to the sheet on iOS 26: its icon fades out as the sheet grows, and back in as it closes into it.
+- **Only the Liquid Glass sheet grows out of it:** `variant="glass"` on iOS 26, in the web preview, and on Android with `provideGlass({ android: 'glass' })`. The other designs, and every design under Reduce Motion, slide up as without one. A sheet dragged closed goes on down.
+
+Import `UiSheetSource` from the bottom sheet (`components/ui/bottom-sheet`).
+
 ### Detents
 
 `detents` sets the heights the sheet rests at: `'fit'` (its content's, the default), `'medium'` (half the screen) and `'large'` (the whole screen below the status bar). The handle drags it between them, and a tap on it moves to the next. `[(detent)]` binds the one it's at. See [Bottom Sheet](/dolan/bottom-sheet#detents) for the details.
@@ -143,6 +168,10 @@ With a `medium` or `large` detent, the sheet's content fills it as a column. Giv
 | `closed`       | `void`                     | Emits after the close animation finishes.                                                                 |
 
 All sub-components (`UiSheetHeader`, `UiSheetTitle`, `UiSheetDescription`, `UiSheetFooter`) accept `class`.
+
+### UiSheetSource
+
+Selector: `[uiSheetSource]`. Put it on the button that presents the sheet, with the sheet (a `ui-sheet` or `ui-bottom-sheet`) as its value. See [From the button that presents it](#from-the-button-that-presents-it).
 
 ## Related
 

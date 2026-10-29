@@ -65,7 +65,7 @@ An app that doesn't link XElement and register its elements renders nothing for 
 Lynx's [integration guide](https://lynxjs.org/guide/start/integrate-with-existing-apps) has the details. The apps `ng build --platform` generates already do this, and so does Lynx Explorer.
 :::
 
-Before iOS 26, the [glass components](/dolan/glass#materials-before-ios-26) draw UIKit's blur materials, which XElement's `<blur-view>` doesn't have. The iOS app `ng build --platform ios` generates adds them with a `<blur-view>` of its own, [`MaterialBlurView.swift`](https://github.com/Blotch-Smart-Frames/AngularLynx/blob/master/packages/native/templates/ios/App/MaterialBlurView.swift). To get them in your app, copy that file and register its class for `blur-view` in place of XElement's `LynxUIBlurView`. Without it, the components draw Lynx's older blur instead.
+Before iOS 26, the [glass components](/dolan/glass#materials-before-ios-26) draw UIKit's blur materials, which XElement's `<blur-view>` doesn't have, and from iOS 26 their glass [materializes, dissolves and morphs](/dolan/glass#morphing), which XElement's sets at once. The iOS app `ng build --platform ios` generates adds both with a `<blur-view>` of its own, [`BlurView.swift`](https://github.com/Blotch-Smart-Frames/AngularLynx/blob/master/packages/native/templates/ios/App/BlurView.swift), and the [`GlassTransitions.swift`](https://github.com/Blotch-Smart-Frames/AngularLynx/blob/master/packages/native/templates/ios/App/GlassTransitions.swift) it uses. To get them in your app, copy both files and register `BlurView` for `blur-view` in place of XElement's `LynxUIBlurView`. Without them, the components draw Lynx's older blur instead, and their glass comes and goes at once.
 
 ## Bundled or downloaded
 

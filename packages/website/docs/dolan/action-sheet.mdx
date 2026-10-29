@@ -106,6 +106,7 @@ Mark the button that presents the sheet with `[uiActionSheetAnchor]`, and the sh
 - **`#draftSheet` names the sheet, and `[uiActionSheetAnchor]` points the button at it.** The directive only says where the sheet opens from. Open it as before, from the button's own handler.
 - **Nothing dims, and the rest of the screen stays usable.** A touch outside the sheet closes it, and still reaches what it touched.
 - **There's no Cancel button.** A touch outside is the cancel, as iOS and Material menus have it. Keep `<ui-action-sheet-cancel>` for the platforms that still show one.
+- **The button hides while the sheet covers it.** One that's glass itself (`<blur-view ui-glass [uiActionSheetAnchor]>`) hands its glass over to the sheet on iOS 26, as a [menu's trigger](/dolan/menu#what-each-platform-draws) does.
 
 | Platform                                           | What you get                                                                                 |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |

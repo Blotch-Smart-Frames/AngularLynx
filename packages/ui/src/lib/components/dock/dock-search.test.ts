@@ -508,6 +508,7 @@ describe('UiDock with a search field, on iOS 15 to 25', () => {
     expect(style(search(), 'transition')).toContain('height');
 
     await rendered.openSearch();
+    expect(search().getAttribute('blur-material')).toBe('chrome');
     expect(search().querySelector('.h-\\[0\\.5px\\]')).toBeTruthy();
     expect(search().classList).not.toContain('rounded-full');
     expect(style(search(), 'height')).toBe('52px');

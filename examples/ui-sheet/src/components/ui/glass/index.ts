@@ -1,6 +1,7 @@
 export {
   UiGlass,
   UiGlassGroup,
+  type GlassMaterial,
   type GlassShape,
   type GlassSurface,
   type GlassVariant,

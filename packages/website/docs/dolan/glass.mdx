@@ -39,7 +39,7 @@ Put `ui-glass` on a `<blur-view>`:
 | Platform                                   | What you get                                                               |
 | ------------------------------------------ | -------------------------------------------------------------------------- |
 | iOS 26 and later                           | Liquid Glass, drawn by iOS                                                 |
-| iOS 15 to 25                               | A frosted blur, Apple's design before Liquid Glass                         |
+| iOS 15 to 25                               | A blur material, Apple's design before Liquid Glass (see below)            |
 | Android                                    | An opaque Material surface with a shadow, in the theme's `secondary` color |
 | Android, with `provideGlass()` (below)     | A blur with a white sheen, a tint and a rim: glass without the refraction  |
 | [Web preview](/guide/glossary#web-preview) | Liquid Glass, drawn with WebGL                                             |
@@ -124,6 +124,27 @@ A capsule inset evenly inside a capsule is already concentric.
 
 The glass swells and brightens under the finger, as iOS 26's glass controls do. It works on iOS 26 and in the web preview.
 
+### Materials before iOS 26
+
+```angular-html
+<blur-view ui-glass material="thin">…</blur-view>
+```
+
+iOS 15 to 25 has no Liquid Glass, so the glass draws one of UIKit's blur materials instead, as Apple's design of that time did. Apple gave each kind of control its own, and `material` picks it:
+
+| `material`          | What it's for                                                 |
+| ------------------- | ------------------------------------------------------------- |
+| `ultra-thin`        | The most translucent: the most of what's behind stays in view |
+| `thin`              | Buttons floating over content                                 |
+| `regular` (default) | Menus, popovers and alerts                                    |
+| `thick`             | The most opaque: the most contrast for text and fine detail   |
+| `chrome`            | Bars: tab bars, navigation bars and toolbars                  |
+
+- **The Dolan components pick theirs:** `chrome` for the dock, navigation bar and toolbar, `thin` for glass buttons and button groups, and `regular` for menus, popovers and alert dialogs.
+- **It follows your app's theme** (see [Dark mode](#dark-mode)). Clear glass draws the material's dark form in either theme, as Apple's controls over photos and video did.
+- **Liquid Glass ignores it.** iOS 26 and later, Android and the web preview draw the same glass for every `material`.
+- **The materials come with the iOS app that [`ng build --platform ios`](/guide/building-for-production) builds.** Lynx's own `<blur-view>` doesn't have them, so in Lynx Explorer the glass draws Lynx's older blur instead: white, or dark in dark mode and for clear glass.
+
 ### Groups
 
 `ui-glass-group` merges the glass inside it, as iOS draws a group of glass controls. Shapes closer than `spacing` px flow into each other:
@@ -149,13 +170,14 @@ Glass follows your app's theme, not the phone's. It takes the color scheme you g
 
 Selector: `blur-view[ui-glass]`.
 
-| Input         | Type                                 | Default     | Description                                         |
-| ------------- | ------------------------------------ | ----------- | --------------------------------------------------- |
-| `variant`     | `'regular' \| 'clear'`               | `'regular'` | Frosted glass, or clear glass for over media.       |
-| `shape`       | `'capsule' \| 'circle' \| 'rounded'` | `'capsule'` | The glass's outline.                                |
-| `radius`      | `number`                             | `20`        | Corner radius of a `rounded` shape, in px.          |
-| `tint`        | `string`                             | —           | A theme token (`var(--glass-tint)`) or a CSS color. |
-| `interactive` | `boolean`                            | `false`     | Reacts to touch. iOS 26 and the web preview.        |
+| Input         | Type                                                         | Default     | Description                                         |
+| ------------- | ------------------------------------------------------------ | ----------- | --------------------------------------------------- |
+| `variant`     | `'regular' \| 'clear'`                                       | `'regular'` | Frosted glass, or clear glass for over media.       |
+| `shape`       | `'capsule' \| 'circle' \| 'rounded'`                         | `'capsule'` | The glass's outline.                                |
+| `radius`      | `number`                                                     | `20`        | Corner radius of a `rounded` shape, in px.          |
+| `tint`        | `string`                                                     | —           | A theme token (`var(--glass-tint)`) or a CSS color. |
+| `interactive` | `boolean`                                                    | `false`     | Reacts to touch. iOS 26 and the web preview.        |
+| `material`    | `'ultra-thin' \| 'thin' \| 'regular' \| 'thick' \| 'chrome'` | `'regular'` | The blur material before iOS 26 (see above).        |
 
 Components built on the glass read these signals:
 

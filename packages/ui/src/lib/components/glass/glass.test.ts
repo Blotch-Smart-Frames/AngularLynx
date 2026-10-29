@@ -11,6 +11,7 @@ import {
 import {
   UiGlass,
   UiGlassGroup,
+  type GlassMaterial,
   type GlassShape,
   type GlassVariant,
 } from './glass';
@@ -29,6 +30,7 @@ import { provideGlass } from './glass-design';
         [radius]="radius()"
         [tint]="tint()"
         [interactive]="interactive()"
+        [material]="material()"
       >
         <text class="text-glass-foreground">Now playing</text>
         <ui-icon name="play" />
@@ -43,6 +45,7 @@ class GlassHost {
   readonly radius = signal(20);
   readonly tint = signal<string | undefined>(undefined);
   readonly interactive = signal(false);
+  readonly material = signal<GlassMaterial>('regular');
 }
 
 /** Accessibility settings a test can change, as the host app would. */
@@ -107,6 +110,8 @@ describe('UiGlass', () => {
     expect(glass.getAttribute('ios-user-interface-style')).toBe('light');
     expect(glass.hasAttribute('glass-tint-color')).toBe(false);
     expect(glass.hasAttribute('glass-interactive')).toBe(false);
+    // Liquid Glass has no materials.
+    expect(glass.hasAttribute('blur-material')).toBe(false);
     // The app's own classes stay on the glass, beside its shape.
     expect(glass.classList).toContain('px-4');
     expect(glass.classList).toContain('rounded-full');
@@ -213,16 +218,27 @@ describe('UiGlass', () => {
       provideIconTheme({ colorScheme: () => scheme() }),
     ]);
 
+    // UIKit's material, which the iOS shell's blur-view draws, in the app's
+    // scheme. The style before iOS 13 is for hosts without it.
+    expect(glass.getAttribute('blur-material')).toBe('regular');
+    expect(glass.getAttribute('ios-user-interface-style')).toBe('light');
     expect(glass.getAttribute('blur-effect')).toBe('extra-light');
     expect(glass.getAttribute('blur-radius')).toBe('20px');
 
+    await update(() => host.material.set('chrome'));
+    expect(glass.getAttribute('blur-material')).toBe('chrome');
+
     await update(() => scheme.set('dark'));
+    expect(glass.getAttribute('ios-user-interface-style')).toBe('dark');
     expect(glass.getAttribute('blur-effect')).toBe('dark');
 
+    // Clear glass draws the dark material in either scheme.
     await update(() => {
       scheme.set('light');
       host.variant.set('clear');
     });
+    expect(glass.getAttribute('blur-material')).toBe('chrome');
+    expect(glass.getAttribute('ios-user-interface-style')).toBe('dark');
     expect(glass.getAttribute('blur-effect')).toBe('dark');
   });
 
@@ -262,6 +278,7 @@ describe('UiGlass', () => {
     // without a radius, unless this is off.
     expect(glass.getAttribute('enable-auto-blur')).toBe('false');
     expect(glass.classList).toContain('bg-secondary');
+    expect(glass.hasAttribute('blur-material')).toBe(false);
     expect(group.getAttribute('blur-effect')).toBe('light');
 
     // Clear glass is opaque here too, so its foreground stays dark.

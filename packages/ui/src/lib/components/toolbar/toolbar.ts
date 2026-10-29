@@ -451,9 +451,9 @@ export class UiToolbarSpacer {}
  *
  * - `'glass'`: no bar at all. The items float in glass above the home
  *   indicator, and content fades out as it passes beneath them.
- * - `'frosted'`: the toolbar of iOS 15 to 25, edge to edge, on the blur
- *   material with a hairline on top while content continues beneath it, and
- *   clear once it's scrolled to the end.
+ * - `'frosted'`: the toolbar of iOS 15 to 25, edge to edge, on the bars'
+ *   chrome material with a hairline on top while content continues beneath
+ *   it, and clear once it's scrolled to the end.
  * - `'material'`: a docked toolbar on the surface container color.
  */
 @Component({
@@ -470,6 +470,7 @@ export class UiToolbarSpacer {}
         ui-glass
         shape="rounded"
         [radius]="0"
+        material="chrome"
         class="absolute bottom-0 left-0 right-0 top-0"
       ></blur-view>
       <view class="h-[0.5px] bg-border absolute left-0 right-0 top-0"></view>

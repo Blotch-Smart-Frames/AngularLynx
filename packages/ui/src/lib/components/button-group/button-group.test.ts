@@ -103,6 +103,7 @@ const renderGroup = async (
 };
 
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
 const WEB = { platform: 'web', osVersion: '' };
 
@@ -326,6 +327,14 @@ describe('UiButtonGroup glass variants', () => {
     // A column of square icons is a capsule again.
     await update(() => host.size.set('icon'));
     expect(glass().classList).toContain('rounded-full');
+  });
+
+  it('draws the thin material before iOS 26, as the buttons do', async () => {
+    const { host, glass, update } = await renderGroup(IOS_18);
+    await update(() => host.variant.set('glass'));
+
+    expect(glass().getAttribute('blur-material')).toBe('thin');
+    expect(glass().getAttribute('blur-effect')).toBe('extra-light');
   });
 
   it('highlights a pressed item in corners concentric with the glass', async () => {

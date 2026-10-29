@@ -267,7 +267,7 @@ describe('UiToolbar on iOS 26 and later', () => {
 });
 
 describe('UiToolbar before iOS 26', () => {
-  it('is the toolbar of that time: edge to edge, on the blur material with a hairline while content continues beneath it', async () => {
+  it("is the toolbar of that time: edge to edge, on the bars' chrome material with a hairline while content continues beneath it", async () => {
     const { toolbar, state, update } = await renderToolbar(IOS_18);
     expect(toolbar().classList).toContain('pb-safe');
     expect(state.bottomBar()?.height()).toBe(44);
@@ -276,6 +276,7 @@ describe('UiToolbar before iOS 26', () => {
     expect(material()).toBeNull();
 
     await update(() => state.scrolledUnderBottom.set(true));
+    expect(material()?.getAttribute('blur-material')).toBe('chrome');
     expect(material()?.getAttribute('blur-effect')).toBe('extra-light');
     expect(toolbar().querySelector('.h-\\[0\\.5px\\]')).not.toBeNull();
   });

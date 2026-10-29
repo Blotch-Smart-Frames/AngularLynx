@@ -295,8 +295,9 @@ export class UiDockAccessory {}
  *   group, and the accessory a capsule above. It minimizes as content
  *   scrolls down (see UiDockScroll): the bar shrinks to the selected item's
  *   icon, and the accessory moves down between it and the action.
- * - `'frosted'` (iOS 15 to 25): the tab bar of that time, edge to edge on a
- *   blur material, with the action as its last button. It doesn't minimize.
+ * - `'frosted'` (iOS 15 to 25): the tab bar of that time, edge to edge on
+ *   the bars' chrome material, with the action as its last button. It
+ *   doesn't minimize.
  * - `'material'` (Android): a Material 3 Expressive floating toolbar, with an
  *   active indicator behind the selected item's icon, and the action as a
  *   floating action button. Minimizing slides the toolbar away and leaves
@@ -349,6 +350,7 @@ export class UiDockAccessory {}
   //
   // The dock measures its width with an empty view rather than on the
   // group: Lynx for Web sends no layoutchange for a blur-view.
+
   template: `
     <view class="h-0 w-full" (bindlayoutchange)="measure($event)"></view>
     <blur-view
@@ -361,6 +363,7 @@ export class UiDockAccessory {}
         <blur-view
           ui-glass
           interactive
+          material="chrome"
           class="flex-row flex absolute overflow-hidden"
           [shape]="look().accessoryShape"
           [radius]="accessoryRadius()"
@@ -372,6 +375,7 @@ export class UiDockAccessory {}
       <blur-view
         ui-glass
         interactive
+        material="chrome"
         [class]="barClass()"
         [shape]="look().barShape"
         [radius]="look().radius"
@@ -418,6 +422,7 @@ export class UiDockAccessory {}
         <blur-view
           ui-glass
           interactive
+          material="chrome"
           [class]="actionClass()"
           [shape]="look().actionShape"
           [radius]="look().radius"
@@ -439,6 +444,7 @@ export class UiDockAccessory {}
           <blur-view
             ui-glass
             interactive
+            material="chrome"
             class="flex-row flex absolute overflow-hidden"
             [shape]="searchShape()"
             [radius]="0"

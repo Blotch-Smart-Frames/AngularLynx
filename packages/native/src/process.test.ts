@@ -22,6 +22,15 @@ describe('run', () => {
     expect(log).toContain('err\n');
   });
 
+  it('resolves with stdout, for a command whose answer is there', async () => {
+    expect(
+      await run('sh', ['-c', 'echo answer; echo noise >&2'], {
+        cwd: dir,
+        logFile,
+      }),
+    ).toBe('answer\n');
+  });
+
   it('quotes compiler errors when there are any', async () => {
     const error = await run(
       'sh',

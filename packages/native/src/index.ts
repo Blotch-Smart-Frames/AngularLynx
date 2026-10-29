@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { androidGenerator } from './android/project.ts';
 import { buildAndroid, resolveAndroidSigning } from './android/build.ts';
+import { startAndroidDevice } from './android/run.ts';
 import {
   type Platform,
   prepareProject,
@@ -11,7 +12,9 @@ import {
 import { buildIos, resolveIosSigning } from './ios/build.ts';
 import { resolveLynxFrameworks } from './ios/frameworks.ts';
 import { iosGenerator } from './ios/project.ts';
+import { startIosSimulator } from './ios/run.ts';
 import { type NativeAppOptions, resolveAppOptions } from './options.ts';
+import type { RunOptions } from './run.ts';
 
 export type { Platform } from './generate.ts';
 export { EJECT_MARKER, copyBundle, prepareProject } from './generate.ts';
@@ -27,6 +30,7 @@ export type {
 } from './options.ts';
 export { NativeConfigError, resolveAppOptions } from './options.ts';
 export { NativeBuildError } from './process.ts';
+export type { RunOptions } from './run.ts';
 
 export const PACKAGE_VERSION: string = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
@@ -51,12 +55,18 @@ export type BuildNativeAppOptions = {
   /** Where the binaries go, e.g. dist/ios. Emptied before they're written. */
   readonly outputDir: string;
   readonly app: NativeAppOptions;
+  /**
+   * Install the app on a simulator, emulator or phone and open it once it's
+   * built: `ng build --platform <platform> --run`.
+   */
+  readonly run?: RunOptions;
   readonly log: (message: string) => void;
 };
 
 /**
  * Turns a built Lynx bundle into native binaries: generates (or reuses) the
- * shell project, copies the bundle in, and runs xcodebuild or Gradle.
+ * shell project, copies the bundle in, and runs xcodebuild or Gradle. With
+ * `run`, then installs the app on a device and opens it.
  * Returns the paths of the binaries it wrote to `outputDir`.
  */
 export const buildNativeApp = async (
@@ -85,6 +95,12 @@ export const buildNativeApp = async (
   const logFile = path.join(workDir, 'logs', `${platform}.log`);
   mkdirSync(path.dirname(logFile), { recursive: true });
   writeFileSync(logFile, '');
+
+  const target = !options.run
+    ? undefined
+    : platform === 'ios'
+      ? await startIosSimulator({ device: options.run.device, logFile, log })
+      : await startAndroidDevice({ device: options.run.device, logFile, log });
 
   const project = prepareProject({
     platform,
@@ -129,5 +145,12 @@ export const buildNativeApp = async (
           log,
           signing: androidSigning,
         });
+  await target?.launch(
+    // The simulator .app or the .apk, not the .ipa or .aab for the stores.
+    artifacts.find((artifact) =>
+      artifact.endsWith(platform === 'ios' ? '.app' : '.apk'),
+    )!,
+    app,
+  );
   return { artifacts, projectDir: project.dir };
 };

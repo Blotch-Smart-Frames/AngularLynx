@@ -137,6 +137,8 @@ ng test
 
 # Native apps
 ng build --platform ios       # or android, or all
+ng build --platform ios --run # then install on a simulator/emulator and open it
+                              # (--device "iPhone 18 Pro", --device <AVD or adb serial>)
 
 # From the monorepo root
 npm run demo              # Runs ng serve for the kitchen-sink-app

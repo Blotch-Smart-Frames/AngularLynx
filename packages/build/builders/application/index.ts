@@ -89,6 +89,11 @@ export const runApplication = async function* (
     };
     return;
   }
+  const runError = checkRunOptions(options, platforms);
+  if (runError) {
+    yield { success: false, error: runError };
+    return;
+  }
 
   let rspeedy: RspeedyInstance;
   let native: NativeModule | undefined;
@@ -148,6 +153,7 @@ export const runApplication = async function* (
         bundleDir,
         outputDir: path.join(bundleDir, platform),
         app: options,
+        run: options.run ? { device: options.device } : undefined,
         log: (message) => context.logger.info(message),
       });
       for (const artifact of artifacts) {
@@ -160,6 +166,26 @@ export const runApplication = async function* (
   } catch (error) {
     yield errorOutput(error);
   }
+};
+
+/**
+ * Checks that `--run` and `--device` come with what they need, so a mistake
+ * fails before a minute of building rather than after it.
+ */
+const checkRunOptions = (
+  options: ApplicationBuilderOptions,
+  platforms: readonly string[],
+): string | undefined => {
+  if (options.device && !options.run) {
+    return '--device picks where --run opens the app. Add --run.';
+  }
+  if (options.run && platforms.length === 0) {
+    return '--run installs and opens the app that --platform builds. Add --platform ios or --platform android.';
+  }
+  if (options.device && platforms.length > 1) {
+    return '--device names one simulator, emulator or phone. Use it with --platform ios or --platform android, not all.';
+  }
+  return undefined;
 };
 
 /**

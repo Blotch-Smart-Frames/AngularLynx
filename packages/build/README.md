@@ -42,6 +42,7 @@ It is the only build dependency an AngularLynx app needs, as `@angular/build` is
 | `application`  | `ng build`                | Builds the Lynx bundle (and the web preview bundle) into `dist/` with [rspeedy](https://lynxjs.org/rspeedy/) |
 |                | `ng build --watch`        | Rebuilds the bundle whenever a file changes                                                                  |
 |                | `ng build --platform ios` | Then builds the iOS app (`--platform android` or `all` for the others) into `dist/<platform>/`               |
+|                | `... --run`               | Then installs the app on a simulator, emulator or phone and opens it (`--device` to choose one)              |
 | `dev-server`   | `ng serve`                | Runs rspeedy's dev server for Lynx Explorer and the web preview, and prints the QR code Lynx Explorer scans  |
 | `unit-test`    | `ng test`                 | Runs the unit tests with Angular's own unit-test builder (Vitest), set up for Lynx                           |
 | `extract-i18n` | `ng extract-i18n`         | Extracts the i18n messages with Angular's own extract-i18n builder, set up for Lynx                          |

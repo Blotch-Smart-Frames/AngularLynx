@@ -314,6 +314,72 @@ describe('application builder', () => {
     expect(raw.logger.info).toHaveBeenCalledWith('  ✓ dist/ios/app');
   });
 
+  it('opens the app on the --device it names with --run', async () => {
+    installAngularBuild('22.2.2');
+    const { rspeedy } = fakeRspeedy();
+    const buildNativeApp = vi.fn(async () => ({
+      artifacts: [],
+      projectDir: '',
+    }));
+    const result = await firstOutput(
+      build(
+        { platform: 'ios', run: true, device: 'iPhone 18 Pro' },
+        rspeedy,
+        fakeContext().context,
+        async () => ({ buildNativeApp }) as never,
+      ),
+    );
+    expect(result).toEqual({ success: true });
+    expect(buildNativeApp).toHaveBeenCalledWith(
+      expect.objectContaining({ run: { device: 'iPhone 18 Pro' } }),
+    );
+  });
+
+  it('builds without opening the app unless --run asks', async () => {
+    installAngularBuild('22.2.2');
+    const { rspeedy } = fakeRspeedy();
+    const buildNativeApp = vi.fn(async () => ({
+      artifacts: [],
+      projectDir: '',
+    }));
+    await firstOutput(
+      build(
+        { platform: 'android' },
+        rspeedy,
+        fakeContext().context,
+        async () => ({ buildNativeApp }) as never,
+      ),
+    );
+    expect(buildNativeApp).toHaveBeenCalledWith(
+      expect.objectContaining({ run: undefined }),
+    );
+  });
+
+  it.each([
+    [
+      { run: true },
+      '--run installs and opens the app that --platform builds. Add --platform ios or --platform android.',
+    ],
+    [
+      { platform: 'ios', device: 'iPhone 18 Pro' },
+      '--device picks where --run opens the app. Add --run.',
+    ],
+    [
+      { platform: 'all', run: true, device: 'iPhone 18 Pro' },
+      '--device names one simulator, emulator or phone. Use it with --platform ios or --platform android, not all.',
+    ],
+  ])('fails before bundling for %o', async (options, error) => {
+    const { rspeedy } = fakeRspeedy();
+    const importNative = vi.fn();
+    expect(
+      await firstOutput(
+        build(options, rspeedy, fakeContext().context, importNative),
+      ),
+    ).toEqual({ success: false, error });
+    expect(importNative).not.toHaveBeenCalled();
+    expect(rspeedy.createRspeedy).not.toHaveBeenCalled();
+  });
+
   it('fails before bundling without @angular/build, which names the cache folder', async () => {
     const { rspeedy } = fakeRspeedy({});
     const result = await firstOutput(
@@ -878,6 +944,8 @@ describe('unit-test builder', () => {
       ),
     ).toEqual([
       'platform',
+      'run',
+      'device',
       'config',
       'environment',
       'appName',

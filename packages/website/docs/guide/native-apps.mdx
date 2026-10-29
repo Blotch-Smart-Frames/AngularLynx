@@ -28,7 +28,7 @@ After that, you can close Xcode. The build calls its command-line tools by itsel
    export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
    ```
 
-4. **Create a virtual phone.** In Android Studio's **Device Manager**, add a virtual device and start it.
+4. **Create a virtual phone.** In Android Studio's **Device Manager**, add a virtual device. You don't have to start it: [`--run`](#run-on-an-emulator-or-android-phone) does.
 
 ## Build the apps
 
@@ -57,34 +57,69 @@ The file names come from your app's [`appName`](#set-the-app-identity): `My App`
 The generated app shows `main.lynx.bundle` full screen, and Angular Router handles all navigation inside it. It doesn't open the other bundles of a [multi-page](/guide/multi-page) app. For those, [eject](#eject-the-native-projects) or [embed them in your own app](/guide/embedding/).
 :::
 
-## Run on the iOS Simulator
+## Run the app
+
+Add `--run`, and the build installs the app on a virtual phone and opens it:
 
 ```bash
-open -a Simulator
-xcrun simctl install booted dist/ios/MyApp-simulator.app
-xcrun simctl launch booted com.example.myapp
+ng build --platform ios --run       # on the iOS Simulator
+ng build --platform android --run   # on an emulator or Android phone
 ```
 
-- `open -a Simulator` starts the Simulator, which starts a virtual iPhone.
-- `xcrun simctl install booted …` installs the app on the running ("booted") virtual iPhone. You can also drag the `.app` onto the Simulator window.
-- `xcrun simctl launch booted …` opens the app. Pass your [`appId`](#set-the-app-identity). Tapping its icon works too.
+After a change, run the same command again: the new build replaces the copy that's open. To choose the virtual phone, name it with `--device`:
+
+```bash
+ng build --platform ios --run --device "iPhone 18 Pro"
+ng build --platform android --run --device Pixel_9
+```
+
+`--device` names one device, so it goes with `--platform ios` or `--platform android`. `ng build --platform all --run` opens the app on both.
+
+## Run on the iOS Simulator
+
+`ng build --platform ios --run`:
+
+1. **Picks a simulator:** the one that's running, or else the newest iPhone. With `--device`, the simulator with that name or UDID. Xcode lists the simulators in **DeviceHub**, and `xcrun simctl list devices` prints them.
+2. **Starts it** while the app builds, and shows its screen in a window: DeviceHub's on Xcode 27.1 and later, the Simulator app's on earlier versions.
+3. **Installs the app and opens it,** closing the copy a previous run left open.
+
+The simulator keeps running after the build. If it's shut down, e.g. by quitting DeviceHub with its **Stop simulators on quit** setting on, the next `--run` starts it again.
+
+Without `--run`:
+
+1. **Start a simulator.** On Xcode 27.1 and later, open DeviceHub (`open -a DeviceHub`), which lists the simulators, and click **Start** next to an iPhone. Earlier versions have the Simulator app instead (`open -a Simulator`), which starts one by itself.
+2. **Install the app and open it:**
+
+   ```bash
+   xcrun simctl install booted dist/ios/MyApp-simulator.app
+   xcrun simctl launch booted com.example.myapp
+   ```
+
+   `booted` means the simulator that's running. Pass your [`appId`](#set-the-app-identity) to `launch`, or tap the app's icon instead.
 
 **On a real iPhone,** the simulator app doesn't run. Upload the signed `.ipa` to App Store Connect, then install it with TestFlight, Apple's app for testing builds before release. That needs an Apple Developer account and signing: see [Publish to the app stores](/guide/publishing).
 
 ## Run on an emulator or Android phone
 
+`ng build --platform android --run`:
+
+1. **Picks a device:** a running emulator or a connected phone, or else the first virtual device in Android Studio's **Device Manager**, which it starts while the app builds. With `--device`, the virtual device with that name, or the device with that serial (`adb devices` lists them).
+2. **Waits for Android to start.** An emulator's first start takes a minute or two.
+3. **Installs the app and opens it,** closing the copy a previous run left open.
+
+It runs the SDK's own `adb` and emulator, so neither has to be on your `PATH`. The emulator keeps running after the build.
+
+**On a real Android phone,** turn on **Developer options** and **USB debugging** in its settings, connect it with a USB cable, and allow the connection on the phone. `--run` then uses it. With an emulator running too, it uses the first that `adb devices` lists: pass the other's serial to `--device` to choose.
+
+Without `--run`, install the app with **`adb`**, Android's tool for talking to emulators and phones. It's in the SDK's `platform-tools` folder, e.g. `~/Library/Android/sdk/platform-tools` on macOS:
+
 ```bash
-adb devices
 adb install -r dist/android/my-app.apk
 ```
 
-- **`adb`** is Android's tool for talking to emulators and phones. It's in the SDK's `platform-tools` folder, e.g. `~/Library/Android/sdk/platform-tools` on macOS. Add that folder to your `PATH`.
-- **`adb devices`** lists the running emulators and connected phones. If more than one is listed, pick one with `adb -s <id> install …`.
-- **`adb install -r`** installs the app, replacing an older copy. Then tap its icon.
+`-r` replaces an older copy. Then tap the app's icon. With more than one device connected, pick one with `adb -s <serial> install …`.
 
-**On a real Android phone,** turn on **Developer options** and **USB debugging** in its settings, connect it with a USB cable, and allow the connection on the phone. Then use the same commands.
-
-If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the installed copy was signed with a different key, e.g. before you [set up signing](/guide/publishing#android-upload-keystore). Remove it first with `adb uninstall com.example.myapp`.
+If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the installed copy was signed with a different key, e.g. before you [set up signing](/guide/publishing#android-upload-keystore). Uninstall it from the device (or with `adb uninstall com.example.myapp`), then build again.
 
 ## Set the app identity
 

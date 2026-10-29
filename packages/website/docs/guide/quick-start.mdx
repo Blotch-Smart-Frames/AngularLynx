@@ -83,8 +83,9 @@ The [**iOS Simulator**](/guide/glossary#simulator) is a virtual iPhone on your M
 
 1. Download `LynxExplorer-arm64.app.tar.gz` (Apple silicon) or `LynxExplorer-x86_64.app.tar.gz` (Intel) from [Lynx's releases](https://github.com/lynx-family/lynx/releases).
 2. Unpack it: `tar -zxf LynxExplorer-arm64.app.tar.gz`.
-3. Open the Simulator (`open -a Simulator`), then drag `LynxExplorer-arm64.app` onto it.
-4. In Lynx Explorer, paste the **Lynx** link into **Enter Card URL** and tap **Go**.
+3. Start a simulator. On Xcode 27.1 and later, open DeviceHub (`open -a DeviceHub`) and click **Start** next to an iPhone. Earlier versions have the Simulator app instead (`open -a Simulator`), which starts one by itself.
+4. Install Lynx Explorer on it: `xcrun simctl install booted LynxExplorer-arm64.app`.
+5. Open Lynx Explorer, paste the **Lynx** link into **Enter Card URL** and tap **Go**.
 
 </Tab>
 <Tab label="Android emulator">

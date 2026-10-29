@@ -5,6 +5,8 @@ import type { NativeAppOptions } from '@blotch/angular-lynx-native' with {
 /** The options in schema.json. Keep the two in sync. */
 export type ApplicationBuilderOptions = NativeAppOptions & {
   readonly platform?: 'ios' | 'android' | 'all';
+  readonly run?: boolean;
+  readonly device?: string;
   readonly watch?: boolean;
   readonly config?: string;
   readonly environment?: string[];

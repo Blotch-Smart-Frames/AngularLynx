@@ -40,6 +40,7 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 - **Dynamic color.** On Android 12 and later, `dynamicColors` carries the wallpaper's colors as Material 3's color roles, light and dark, as hex colors such as `#6750a4` (`DynamicColors.kt`, read by `LynxTheme.dynamicColors`). Android 14 has a color resource for most roles, which follows its contrast setting; on Android 12 and 13 each role takes its tone from the five tonal palettes, as Material Components does (a palette's own shade, or tone 40 moved to the tone with `ColorStateList.withLStar`). On the Android 14 emulator the two agree to within a few levels on the surfaces and exactly elsewhere.
 - **A new wallpaper doesn't restart the activity.** Android applies the new colors as a configuration change, which `onConfigurationChanged` handles like a dark mode switch, so the running app restyles with its state intact.
+- **The window follows dark mode by hand.** `configChanges` keeps the activity through a dark mode switch, so the window keeps the theme it started with. `onConfigurationChanged` sets its background (`@color/window_background`, which shows behind the system bars) and the bars' icons (`enableEdgeToEdge()`) again.
 
 ## Versions
 

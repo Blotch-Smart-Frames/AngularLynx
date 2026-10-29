@@ -3,6 +3,7 @@ package dev.angularlynx.shell
 import android.app.UiModeManager
 import android.content.res.Configuration
 import android.database.ContentObserver
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -142,7 +143,17 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
     // here too, without a restart, and globalProps() reads its colors again.
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        updateWindowAppearance()
         lynxView.updateGlobalProps(globalProps(newConfig))
+    }
+
+    // Kept through a dark mode switch, the window keeps the theme it started
+    // with: its background, which shows behind the system bars, and the
+    // bars' icons, which enableEdgeToEdge() picked for the old mode. Both are
+    // set again for the new one, from the same resources.
+    private fun updateWindowAppearance() {
+        window.setBackgroundDrawable(ColorDrawable(getColor(R.color.window_background)))
+        enableEdgeToEdge()
     }
 
     private fun sendGlobalProps() {

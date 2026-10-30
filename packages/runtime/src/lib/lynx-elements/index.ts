@@ -65,6 +65,7 @@ export { LynxView } from './view';
 export { LynxViewPager, LynxViewPagerItem } from './viewpager';
 export { LynxWebView } from './webview';
 export { LynxRouterLinkActive } from '../router/lynx-router-link-active';
+export { LynxAccessibilityTraits } from '../accessibility/accessibility-traits';
 
 import { LynxInputValueAccessor, LynxTextareaValueAccessor } from '../forms';
 import { LynxBlurView } from './blur-view';
@@ -92,6 +93,7 @@ import { LynxView } from './view';
 import { LynxViewPager, LynxViewPagerItem } from './viewpager';
 import { LynxWebView } from './webview';
 import { LynxRouterLinkActive } from '../router/lynx-router-link-active';
+import { LynxAccessibilityTraits } from '../accessibility/accessibility-traits';
 
 /**
  * All Lynx native element directives as a single importable array.
@@ -139,4 +141,7 @@ export const LYNX_ELEMENTS = [
   // on form attributes above: marks the active link `selected` for screen
   // readers. It doesn't import the router (see the file).
   LynxRouterLinkActive,
+  // Adds accessibility traits, such as `selected`, from a binding, on any
+  // element that binds `lynxAccessibilityTraits`.
+  LynxAccessibilityTraits,
 ] as const;

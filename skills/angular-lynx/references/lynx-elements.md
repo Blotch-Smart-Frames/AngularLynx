@@ -38,6 +38,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
 - **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
 - **`<input>` and `<textarea>` have no border and are one line of text tall.** Size and outline them with classes (`h-10 border border-zinc-200`)
+- **`accessibility-traits` is a single trait on Android.** `button,selected` works on iOS only: Android reads the list as no trait, so the element stops being a button. For state that changes, bind `[lynxAccessibilityTraits]="{ selected: chosen() }"` (part of `LYNX_ELEMENTS`), which adds the trait after the element's own on iOS and leaves Android's alone
 
 ## Usage Examples
 

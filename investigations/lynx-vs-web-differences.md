@@ -832,6 +832,8 @@ iOS splits `accessibility-traits` on `,` and ORs the traits together (`LynxConve
 
 `LynxRouterLinkActive` (part of `LYNX_ELEMENTS`) adds `selected` to an active `routerLinkActive` element through `LynxElement.setAccessibilityTrait()`, which merges it into the app's own traits with no spaces, keeps it when the app sets its traits again, and leaves the app's traits untouched on Android.
 
+Apps add traits from their own state the same way, with `[lynxAccessibilityTraits]="{ selected: chosen() }"` (`LynxAccessibilityTraits`, also part of `LYNX_ELEMENTS`), or by calling `setAccessibilityTrait()` on an `ElementRef<BaseLynxElement>` where a template can't bind it, such as a component's own host.
+
 ---
 
 ## ECMAScript support is limited: ES2019 on main thread, ES2015 on background thread

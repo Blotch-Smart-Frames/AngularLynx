@@ -13,7 +13,11 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  type BaseLynxElement,
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+} from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 import { UiGlass } from '../glass/glass';
@@ -43,11 +47,6 @@ const TOOLBAR_HEIGHT: Readonly<Record<GlassDesign, number>> = {
 const iconSvg = (icon: IconName, color: string): string =>
   // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
   ICONS[icon].split('currentColor').join(color);
-
-/** AngularLynx's element, as far as the item sets its traits. */
-type AccessibleElement = {
-  setAccessibilityTrait(trait: string, on: boolean): void;
-};
 
 /**
  * Items that belong together, sharing one background: on iOS 26 and later,
@@ -222,7 +221,7 @@ export class UiToolbarItem {
   readonly #platform = platformOf(inject(Injector));
   readonly #resolveColor = injectIconColor();
 
-  readonly #host = inject<ElementRef<AccessibleElement>>(ElementRef);
+  readonly #host = inject<ElementRef<BaseLynxElement>>(ElementRef);
 
   /** The design on this platform (see GlassDesign). */
   readonly design = injectGlassDesign();
@@ -395,7 +394,9 @@ export class UiToolbarItem {
   });
 
   // Screen readers say a disabled item is dimmed. A trait of its own, merged
-  // into `button` by the element (see LynxElement.setAccessibilityTrait).
+  // into `button` by the element (see LynxElement.setAccessibilityTrait). Set
+  // here rather than with lynxAccessibilityTraits, which the template can't
+  // put on the item's own host.
   protected readonly disabledTrait = effect(() => {
     this.#host.nativeElement.setAccessibilityTrait('disabled', this.disabled());
   });

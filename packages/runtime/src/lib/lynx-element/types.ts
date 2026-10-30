@@ -36,6 +36,17 @@ import type {
   LynxAnimationOptions,
 } from '../animation/animation';
 
+/**
+ * The `nativeElement` of a Lynx element's `ElementRef`: AngularLynx's
+ * wrapper around the native element, not a DOM element. Type an
+ * `ElementRef` with it to call its methods, such as `animate()`, `invoke()`
+ * or `setAccessibilityTrait()`.
+ *
+ * @usageNotes
+ * ```ts
+ * readonly option = viewChild.required<ElementRef<BaseLynxElement>>('option');
+ * ```
+ */
 export type BaseLynxElement = Pick<LynxJsElement, 'setAttribute'> & {
   tagName: string;
   setProperty(name: string, value: any): void;
@@ -58,8 +69,9 @@ export type BaseLynxElement = Pick<LynxJsElement, 'setAttribute'> & {
   removeClass(name: string): void;
   /**
    * Adds a trait to the element's own `accessibility-traits`, or takes it
-   * away, keeping the traits the app sets. For state the runtime tracks, such
-   * as `selected` on an active router link (see LynxRouterLinkActive).
+   * away, keeping the traits the app sets. For state that changes, such as
+   * `selected` on an active router link (see LynxRouterLinkActive). In a
+   * template, LynxAccessibilityTraits does it from a binding.
    */
   setAccessibilityTrait(trait: string, on: boolean): void;
   remove(): void;

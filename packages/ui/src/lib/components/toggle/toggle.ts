@@ -4,7 +4,6 @@ import {
   ViewEncapsulation,
   computed,
   contentChildren,
-  effect,
   inject,
   input,
   model,
@@ -57,11 +56,6 @@ export type ToggleSize = NonNullable<
  * platform's segmented control (see UiToggleGroup).
  */
 export type ToggleGroupVariant = ToggleVariant | 'segmented';
-
-/** AngularLynx's element, which can add an accessibility trait. */
-type AccessibleElement = {
-  setAccessibilityTrait(trait: string, on: boolean): void;
-};
 
 /**
  * `UiToggleGroupItem`, for the group's content query. A call rather than
@@ -264,6 +258,9 @@ export class UiToggleGroup implements SegmentedHost {
     '(bindlayoutchange)': 'measure($event)',
   },
   template: `
+    <!-- A labeled item is selected to a screen reader while pressed, which
+         iOS reads. lynxAccessibilityTraits adds the trait to button on iOS,
+         and leaves Android, which reads one trait, with button. -->
     <view
       #container
       [class]="containerClass()"
@@ -271,6 +268,7 @@ export class UiToggleGroup implements SegmentedHost {
       [attr.accessibility-element]="accessibilityLabel() ? 'true' : null"
       [attr.accessibility-traits]="accessibilityLabel() ? 'button' : null"
       [attr.accessibility-label]="accessibilityLabel() || null"
+      [lynxAccessibilityTraits]="{ selected: selectedTrait() }"
       (bindtouchstart)="onPressStart($event)"
       (bindtouchmove)="onPressMove($event)"
       (bindtouchend)="onPressEnd()"
@@ -304,12 +302,15 @@ export class UiToggleGroupItem {
   readonly userClass = input<string>('', { alias: 'class' });
 
   // Required: always in the template.
-  readonly containerRef =
-    viewChild.required<ElementRef<AccessibleElement>>('container');
+  readonly containerRef = viewChild.required<ElementRef>('container');
   #pressAnim?: AnimationHandle;
 
   protected readonly isSelected = computed(() =>
     this.#group.isSelected(this.itemValue()),
+  );
+  /** Only a labeled item is an accessibility element to be `selected`. */
+  protected readonly selectedTrait = computed(
+    () => !!this.accessibilityLabel() && this.isSelected(),
   );
 
   /** Whether the item is a segment of a segmented control. */
@@ -361,18 +362,6 @@ export class UiToggleGroupItem {
   protected readonly stateLayerClass = computed(() =>
     this.#segment() ? this.#segmented.stateLayerClass(this.itemValue()) : null,
   );
-
-  /**
-   * A labeled item is `selected` to a screen reader while pressed, which iOS
-   * reads. Through the runtime, which adds the trait to `button` on iOS and
-   * leaves Android, which reads one trait, with `button`.
-   */
-  protected readonly selectedTrait = effect(() => {
-    this.containerRef().nativeElement.setAccessibilityTrait(
-      'selected',
-      !!this.accessibilityLabel() && this.isSelected(),
-    );
-  });
 
   protected measure(event: unknown): void {
     this.#segmented.measure(this.itemValue(), event);

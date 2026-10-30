@@ -5,6 +5,7 @@ import {
   type OnChanges,
   type SimpleChanges,
 } from '@angular/core';
+import type { AccessibilityTrait } from '../accessibility/accessibility-traits';
 import type { BaseLynxElement } from '../lynx-element/types';
 
 /**
@@ -12,27 +13,6 @@ import type { BaseLynxElement } from '../lynx-element/types';
  * Lynx reads the margins as strings, so a bare number has no effect.
  */
 export type ExposureMargin = `${number}px` | `${number}rpx`;
-
-/**
- * One trait of `accessibility-traits`, each of which iOS turns into a
- * UIAccessibilityTraits flag (`LynxConverter+UI.m`).
- */
-type AccessibilityTrait =
-  | 'text'
-  | 'image'
-  | 'button'
-  | 'link'
-  | 'header'
-  | 'search'
-  | 'selected'
-  | 'playable'
-  | 'keyboard'
-  | 'summary'
-  | 'disabled'
-  | 'updating'
-  | 'adjustable'
-  | 'tabbar'
-  | 'none';
 
 /**
  * Lets a true/false input also be written as a static attribute, as Lynx's
@@ -176,8 +156,8 @@ export class LynxElementBase implements OnChanges {
    * The kind of element a screen reader announces. Plural, as Lynx reads it:
    * iOS, Android and Harmony ignore `accessibility-trait`. iOS also reads a
    * comma-separated list with no spaces, such as `button,selected`, which
-   * is what LynxRouterLinkActive writes; Android and Harmony read a single
-   * trait. @default 'none'
+   * is what LynxRouterLinkActive and LynxAccessibilityTraits write; Android
+   * and Harmony read a single trait. @default 'none'
    */
   'accessibility-traits'?:
     | AccessibilityTrait

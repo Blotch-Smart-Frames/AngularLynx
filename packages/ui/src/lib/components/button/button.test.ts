@@ -33,6 +33,9 @@ import {
         <ui-icon name="search" />
       }
       Save
+      @if (withTrailingIcon()) {
+        <ui-icon name="arrow-right" trailing />
+      }
     </ui-button>
   `,
 })
@@ -43,6 +46,7 @@ class ButtonHost {
   readonly loading = signal(false);
   readonly label = signal<string | undefined>(undefined);
   readonly withIcon = signal(false);
+  readonly withTrailingIcon = signal(false);
   readonly presses = signal(0);
 }
 
@@ -80,6 +84,7 @@ const renderButton = async (
     glass: () => result.container.querySelector('blur-view')!,
     spinner: () => result.container.querySelector('svg'),
     icon: () => result.container.querySelector('svg')!,
+    icons: () => [...result.container.querySelectorAll('svg')],
     update: async (change: () => void) => {
       change();
       await waitForUpdate();
@@ -267,6 +272,35 @@ describe('UiButton', () => {
     await update(() => host.variant.set('outline'));
     expect(icon().getAttribute('content')).toContain(
       ICON_LIGHT_COLORS['foreground'],
+    );
+  });
+
+  it('puts an icon marked trailing after the label, in the label color', async () => {
+    const { host, button, getByText, icon, update } = await renderButton();
+    await update(() => host.withTrailingIcon.set(true));
+
+    expect(button().classList).toContain('gap-2');
+    expect(icon().compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+    expect(icon().getAttribute('content')).toContain(
+      ICON_LIGHT_COLORS['primary-foreground'],
+    );
+  });
+
+  it('puts one icon on each side of the label', async () => {
+    const { host, getByText, icons, update } = await renderButton();
+    await update(() => {
+      host.withIcon.set(true);
+      host.withTrailingIcon.set(true);
+    });
+
+    const [leading, trailing] = icons();
+    expect(leading.compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(trailing.compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
     );
   });
 

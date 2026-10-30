@@ -291,12 +291,16 @@ const buttonIconColor = () => inject(UiButton).foreground;
     </view>
 
     <!-- One copy of the content, for whichever form the button takes: Angular
-         projects content once, so it can't be in both branches above. -->
+         projects content once, so it can't be in both branches above.
+
+         The label's text has to be inside a <text>, so the content can't keep
+         its own order: an icon goes before the label, and one marked
+         trailing after it, for an icon that points onward ("Next →"). -->
     <ng-template #content>
       @if (loading()) {
         <ui-spinner [size]="spinnerSize()" [color]="foreground()" />
       } @else {
-        <ng-content select="ui-icon" />
+        <ng-content select="ui-icon:not([trailing])" />
         @if (showLabel()) {
           <text
             [attr.accessibility-traits]="accessibilityLabel() ? null : 'button'"
@@ -304,6 +308,7 @@ const buttonIconColor = () => inject(UiButton).foreground;
             ><ng-content
           /></text>
         }
+        <ng-content select="ui-icon[trailing]" />
       }
     </ng-template>
   `,
@@ -335,7 +340,10 @@ export class UiButton {
   readonly pressed = output<void>();
 
   readonly containerRef = viewChild<ElementRef>('container');
-  /** A `<ui-icon>` projected into the button, which sits before the label. */
+  /**
+   * A `<ui-icon>` projected into the button, which sits before the label, or
+   * after it when it's marked `trailing`.
+   */
   readonly projectedIcon = contentChild(iconType());
 
   readonly #settings = inject(LynxAccessibilitySettings);

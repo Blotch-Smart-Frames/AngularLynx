@@ -180,6 +180,22 @@ import { UiIcon } from '../components/ui/icon';
           </view>
         </view>
 
+        <!-- Icons: before the label, or after it with trailing, for an icon
+             that points onward. -->
+        <view class="flex-col gap-3 flex">
+          <text class="text-lg font-semibold text-foreground">Icons</text>
+          <view class="flex-row flex-wrap items-center gap-3 flex">
+            <ui-button variant="outline" (pressed)="onPress('download')">
+              <ui-icon name="download" size="sm" />
+              Download
+            </ui-button>
+            <ui-button variant="secondary" (pressed)="onPress('next')">
+              Next
+              <ui-icon name="arrow-right" size="sm" trailing />
+            </ui-button>
+          </view>
+        </view>
+
         <!-- Disabled -->
         <view class="flex-col gap-3 flex">
           <text class="text-lg font-semibold text-foreground">Disabled</text>

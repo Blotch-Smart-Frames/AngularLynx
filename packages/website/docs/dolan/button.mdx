@@ -98,7 +98,7 @@ On Android the glass variants are Material buttons unless your app [opts into gl
 
 ### Icons
 
-Put a [`<ui-icon>`](/dolan/icon) in the button, before the label. It takes the label's color:
+Put a [`<ui-icon>`](/dolan/icon) in the button. It takes the label's color:
 
 ```angular-html
 <ui-button variant="glass">
@@ -106,12 +106,19 @@ Put a [`<ui-icon>`](/dolan/icon) in the button, before the label. It takes the l
   Share
 </ui-button>
 
+<ui-button variant="secondary">
+  Next
+  <ui-icon name="arrow-right" size="sm" trailing />
+</ui-button>
+
 <ui-button variant="glass" size="icon-circle" accessibility-label="Add">
   <ui-icon name="plus" />
 </ui-button>
 ```
 
-In an icon size, the button shows the icon alone. Give it an `accessibility-label`, which a screen reader says instead.
+- **An icon goes before the label,** wherever you write it.
+- **Add `trailing` to put it after the label,** for an icon that points onward, such as Next or Open. A button can have one on each side.
+- **In an icon size, the button shows the icon alone.** Give it an `accessibility-label`, which a screen reader says instead.
 
 ### Disabled and loading
 

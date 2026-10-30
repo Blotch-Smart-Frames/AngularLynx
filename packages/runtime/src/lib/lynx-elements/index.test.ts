@@ -11,7 +11,13 @@
 import '@angular/compiler';
 import { describe, expect, it } from 'vitest';
 import { LYNX_FORM_ACCESSORS } from '../forms';
-import { LYNX_ELEMENTS, LynxInput, LynxTextarea, LynxView } from './index';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilityTraits,
+  LynxInput,
+  LynxTextarea,
+  LynxView,
+} from './index';
 
 describe('LYNX_ELEMENTS', () => {
   it('is a non-empty array including the core element directives', () => {
@@ -25,5 +31,11 @@ describe('LYNX_ELEMENTS', () => {
     for (const accessor of LYNX_FORM_ACCESSORS) {
       expect(LYNX_ELEMENTS).toContain(accessor);
     }
+  });
+
+  it('includes the directive that adds accessibility traits', () => {
+    // So a component that imports LYNX_ELEMENTS can bind
+    // [lynxAccessibilityTraits] without importing it too.
+    expect(LYNX_ELEMENTS).toContain(LynxAccessibilityTraits);
   });
 });

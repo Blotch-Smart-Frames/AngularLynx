@@ -1,6 +1,6 @@
 # Accessibility
 
-`LynxAccessibility` speaks to screen readers from code, the `accessibility-*` attributes describe elements to them, and `LynxAccessibilitySettings` reads the user's display settings. `import { LynxAccessibility, LynxAccessibilitySettings } from '@blotch/angular-lynx';`
+`LynxAccessibility` speaks to screen readers from code, the `accessibility-*` attributes describe elements to them, `LynxAccessibilityTraits` adds traits such as `selected` from a binding, and `LynxAccessibilitySettings` reads the user's display settings. `import { LynxAccessibility, LynxAccessibilitySettings, LynxAccessibilityTraits } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -77,6 +77,36 @@ Moves the screen reader's focus to the element that matches `selector`. Give tha
 - **`selector`:** use an ID selector such as `'#confirmation'`, which matches the element's `id`. Other selectors aren't reliable.
 - **Rejects** when no element matches, or with the Lynx error code when the element can't take focus.
 
+### `LynxAccessibilityTraits`
+
+```typescript
+@Directive({ selector: '[lynxAccessibilityTraits]' })
+class LynxAccessibilityTraits {
+  readonly lynxAccessibilityTraits: InputSignal<
+    AccessibilityTraitStates | null | undefined
+  >;
+}
+```
+
+Adds traits to the element's own `accessibility-traits` while a binding says so. Use it for state that changes, such as `selected` on the chosen one of several options, or `disabled`. It's part of `LYNX_ELEMENTS`, so any component that imports `LYNX_ELEMENTS` can bind it.
+
+```angular-html
+<view
+  [accessibility-element]="true"
+  accessibility-traits="button"
+  [accessibility-label]="label()"
+  [lynxAccessibilityTraits]="{ selected: selected() }"
+  (bindtap)="chosen.emit()"
+>
+  <text>{{ label() }}</text>
+</view>
+```
+
+- **A trait that's `true` is added** after the element's own: `button` reads `button,selected` on iOS.
+- **A trait that turns `false`, or that the map leaves out, is taken away.** Only the traits the binding added are: the element's own `accessibility-traits` stay.
+- **Android keeps the element's own trait.** It reads a single trait and has no selected or disabled trait, so a list would read as no trait at all. Writing `accessibility-traits="button,selected"` yourself stops the element being a button there; this doesn't.
+- **On a component's own host,** which its template can't bind, call `setAccessibilityTrait(trait, on)` on the host's [`BaseLynxElement`](/api/angular-lynx/elements#baselynxelement) instead. It merges the trait the same way.
+
 ### `LynxAccessibilitySettings`
 
 ```typescript
@@ -128,7 +158,7 @@ Every Lynx element accepts these attributes. Set them as static attributes, or b
 | `accessibility-exclusive-focus` | `boolean`  | `false`  | Keeps the screen reader's focus inside this element, for example in a modal.                                               |
 | `a11y-id`                       | `string`   |          | An accessibility identifier, separate from `id`. Lynx's `accessibility-elements-a11y` attribute orders children by it.     |
 
-`accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`. iOS also takes several, separated by commas with no spaces, such as `'button,selected'`. Android reads a single `'none'`, `'image'` or `'button'`, and ignores the rest. An active [`routerLinkActive`](/api/angular-lynx/routing#lynxrouterlinkactive) element gets `selected` added to its own traits.
+`accessibility-traits` takes one of `'text'`, `'image'`, `'button'`, `'link'`, `'header'`, `'search'`, `'selected'`, `'playable'`, `'keyboard'`, `'summary'`, `'disabled'`, `'updating'`, `'adjustable'`, `'tabbar'` or `'none'`. iOS also takes several, separated by commas with no spaces, such as `'button,selected'`. Android reads a single `'none'`, `'image'` or `'button'`, and ignores the rest. An active [`routerLinkActive`](/api/angular-lynx/routing#lynxrouterlinkactive) element gets `selected` added to its own traits. To add one from your own state, use [`LynxAccessibilityTraits`](#lynxaccessibilitytraits).
 
 HarmonyOS, like Android, reads a single trait: `'button'`, `'image'` or `'text'`.
 
@@ -136,7 +166,38 @@ Write the plural: Lynx ignores `accessibility-trait`. `ng update` renames it in 
 
 ## Types
 
-None of its own.
+### `AccessibilityTrait`
+
+```typescript
+type AccessibilityTrait =
+  | 'text'
+  | 'image'
+  | 'button'
+  | 'link'
+  | 'header'
+  | 'search'
+  | 'selected'
+  | 'playable'
+  | 'keyboard'
+  | 'summary'
+  | 'disabled'
+  | 'updating'
+  | 'adjustable'
+  | 'tabbar'
+  | 'none';
+```
+
+One trait of `accessibility-traits`.
+
+### `AccessibilityTraitStates`
+
+```typescript
+type AccessibilityTraitStates = Partial<
+  Record<Exclude<AccessibilityTrait, 'none'>, boolean>
+>;
+```
+
+What `[lynxAccessibilityTraits]` takes: each trait to add, by name, with whether to add it now.
 
 ## Related
 

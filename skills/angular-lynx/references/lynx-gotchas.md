@@ -122,7 +122,7 @@ Use DOM ordering (earlier siblings = lower z-order, later = higher).
 
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
-Build custom selection UI with `<view>` and state.
+Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.
 
 ### No `localStorage` / `sessionStorage`
 

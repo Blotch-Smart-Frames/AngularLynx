@@ -33,6 +33,28 @@ Use `id` unless you have a reason not to.
 - **`accessibility-traits` says what kind of thing it is,** such as `button`, `image`, `link` or `header`. Note the plural: Lynx ignores `accessibility-trait`. iOS takes several, separated by commas with no spaces, such as `button,selected`; Android reads only one.
 - **An active `routerLinkActive` link is `selected` for you.** `LYNX_ELEMENTS` adds the trait while its route is active, after the element's own traits. See [Routing](/guide/routing#navigate-between-screens).
 
+## Mark what's selected
+
+When one of several options is chosen, such as Landscape or Portrait, the chosen one needs the `selected` trait. Bind it with `[lynxAccessibilityTraits]`, which `LYNX_ELEMENTS` includes:
+
+```angular-html
+<view
+  [accessibility-element]="true"
+  accessibility-traits="button"
+  accessibility-label="Landscape"
+  [lynxAccessibilityTraits]="{ selected: orientation() === 'landscape' }"
+  (bindtap)="orientation.set('landscape')"
+>
+  <text>Landscape</text>
+</view>
+```
+
+- **Each trait that's `true` is added** to the element's own traits, and taken away again when it turns `false`. VoiceOver reads the view as a selected button.
+- **Don't write the list into `accessibility-traits` yourself.** `accessibility-traits="button,selected"` works only on iOS. Android reads the attribute as one trait, so the list stops being a button there. With the binding, Android keeps `button`: it has no selected trait to add.
+- **`disabled` works the same way,** for an option that can't be chosen now. VoiceOver says it's dimmed.
+
+A test finds the chosen option with `getByRole('button', { name: 'Landscape', selected: true })`.
+
 ## Set the reading order
 
 ```angular-html

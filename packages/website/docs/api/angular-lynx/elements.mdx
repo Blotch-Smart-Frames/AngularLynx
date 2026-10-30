@@ -41,40 +41,41 @@ const LYNX_ELEMENTS: readonly [
 
 Every directive below, as one array for a component's `imports`. Each directive is also exported on its own.
 
-| Directive                       | Selector                         | Reference                                                      |
-| ------------------------------- | -------------------------------- | -------------------------------------------------------------- |
-| `LynxView`                      | `view`                           | [`<view>`](/api/elements/view)                                 |
-| `LynxText`                      | `text`                           | [`<text>`](/api/elements/text)                                 |
-| `LynxInlineTruncation`          | `inline-truncation`              | [`<text>`](/api/elements/text)                                 |
-| `LynxImage`                     | `image`                          | [`<image>`](/api/elements/image)                               |
-| `LynxScrollView`                | `scroll-view`                    | [`<scroll-view>`](/api/elements/scroll-view)                   |
-| `LynxList`                      | `list`                           | [`<list>`](/api/elements/list)                                 |
-| `LynxListItem`                  | `list-item`                      | [`<list>`](/api/elements/list)                                 |
-| `LynxBlock`                     | `block`                          | [`<block>`](/api/elements/block)                               |
-| `LynxIf`                        | `if`                             | [No page](#lynxif-and-lynxfor)                                 |
-| `LynxFor`                       | `for`                            | [No page](#lynxif-and-lynxfor)                                 |
-| `LynxFrame`                     | `frame`                          | [`<frame>`](/api/elements/frame)                               |
-| `LynxInput`                     | `input`                          | [`<input>`](/api/elements/input)                               |
-| `LynxTextarea`                  | `textarea`                       | [`<textarea>`](/api/elements/textarea)                         |
-| `LynxInputValueAccessor`        | `input` with a form directive    | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor) |
-| `LynxTextareaValueAccessor`     | `textarea` with a form directive | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor) |
-| `LynxOverlay`                   | `overlay`                        | [`<overlay>`](/api/elements/overlay)                           |
-| `LynxRefresh`                   | `refresh`                        | [`<refresh>`](/api/elements/refresh)                           |
-| `LynxRefreshHeader`             | `refresh-header`                 | [`<refresh>`](/api/elements/refresh)                           |
-| `LynxScrollCoordinator`         | `scroll-coordinator`             | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
-| `LynxScrollCoordinatorHeader`   | `scroll-coordinator-header`      | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
-| `LynxScrollCoordinatorSlot`     | `scroll-coordinator-slot`        | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
-| `LynxScrollCoordinatorSlotDrag` | `scroll-coordinator-slot-drag`   | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
-| `LynxScrollCoordinatorToolbar`  | `scroll-coordinator-toolbar`     | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)     |
-| `LynxSvg`                       | `svg`                            | [`<svg>`](/api/elements/svg)                                   |
-| `LynxViewPager`                 | `viewpager`                      | [`<viewpager>`](/api/elements/viewpager)                       |
-| `LynxViewPagerItem`             | `viewpager-item`                 | [`<viewpager>`](/api/elements/viewpager)                       |
-| `LynxBlurView`                  | `blur-view`                      | [`<blur-view>`](/api/elements/blur-view)                       |
-| `LynxVideo`                     | `video`                          | [`<video>`](/api/elements/video)                               |
-| `LynxWebView`                   | `webview`                        | [`<webview>`](/api/elements/webview)                           |
-| `LynxCoverView`                 | `cover-view`                     | [`<cover-view>`](/api/elements/cover-view)                     |
-| `LynxTitleBarView`              | `title-bar-view`                 | [`<title-bar-view>`](/api/elements/title-bar-view)             |
-| `LynxRouterLinkActive`          | `[routerLinkActive]`             | [Routing](/api/angular-lynx/routing#lynxrouterlinkactive)      |
+| Directive                       | Selector                         | Reference                                                                |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `LynxView`                      | `view`                           | [`<view>`](/api/elements/view)                                           |
+| `LynxText`                      | `text`                           | [`<text>`](/api/elements/text)                                           |
+| `LynxInlineTruncation`          | `inline-truncation`              | [`<text>`](/api/elements/text)                                           |
+| `LynxImage`                     | `image`                          | [`<image>`](/api/elements/image)                                         |
+| `LynxScrollView`                | `scroll-view`                    | [`<scroll-view>`](/api/elements/scroll-view)                             |
+| `LynxList`                      | `list`                           | [`<list>`](/api/elements/list)                                           |
+| `LynxListItem`                  | `list-item`                      | [`<list>`](/api/elements/list)                                           |
+| `LynxBlock`                     | `block`                          | [`<block>`](/api/elements/block)                                         |
+| `LynxIf`                        | `if`                             | [No page](#lynxif-and-lynxfor)                                           |
+| `LynxFor`                       | `for`                            | [No page](#lynxif-and-lynxfor)                                           |
+| `LynxFrame`                     | `frame`                          | [`<frame>`](/api/elements/frame)                                         |
+| `LynxInput`                     | `input`                          | [`<input>`](/api/elements/input)                                         |
+| `LynxTextarea`                  | `textarea`                       | [`<textarea>`](/api/elements/textarea)                                   |
+| `LynxInputValueAccessor`        | `input` with a form directive    | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor)           |
+| `LynxTextareaValueAccessor`     | `textarea` with a form directive | [Below](#lynxinputvalueaccessor-and-lynxtextareavalueaccessor)           |
+| `LynxOverlay`                   | `overlay`                        | [`<overlay>`](/api/elements/overlay)                                     |
+| `LynxRefresh`                   | `refresh`                        | [`<refresh>`](/api/elements/refresh)                                     |
+| `LynxRefreshHeader`             | `refresh-header`                 | [`<refresh>`](/api/elements/refresh)                                     |
+| `LynxScrollCoordinator`         | `scroll-coordinator`             | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)               |
+| `LynxScrollCoordinatorHeader`   | `scroll-coordinator-header`      | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)               |
+| `LynxScrollCoordinatorSlot`     | `scroll-coordinator-slot`        | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)               |
+| `LynxScrollCoordinatorSlotDrag` | `scroll-coordinator-slot-drag`   | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)               |
+| `LynxScrollCoordinatorToolbar`  | `scroll-coordinator-toolbar`     | [`<scroll-coordinator>`](/api/elements/scroll-coordinator)               |
+| `LynxSvg`                       | `svg`                            | [`<svg>`](/api/elements/svg)                                             |
+| `LynxViewPager`                 | `viewpager`                      | [`<viewpager>`](/api/elements/viewpager)                                 |
+| `LynxViewPagerItem`             | `viewpager-item`                 | [`<viewpager>`](/api/elements/viewpager)                                 |
+| `LynxBlurView`                  | `blur-view`                      | [`<blur-view>`](/api/elements/blur-view)                                 |
+| `LynxVideo`                     | `video`                          | [`<video>`](/api/elements/video)                                         |
+| `LynxWebView`                   | `webview`                        | [`<webview>`](/api/elements/webview)                                     |
+| `LynxCoverView`                 | `cover-view`                     | [`<cover-view>`](/api/elements/cover-view)                               |
+| `LynxTitleBarView`              | `title-bar-view`                 | [`<title-bar-view>`](/api/elements/title-bar-view)                       |
+| `LynxRouterLinkActive`          | `[routerLinkActive]`             | [Routing](/api/angular-lynx/routing#lynxrouterlinkactive)                |
+| `LynxAccessibilityTraits`       | `[lynxAccessibilityTraits]`      | [Accessibility](/api/angular-lynx/accessibility#lynxaccessibilitytraits) |
 
 ### `LynxIf` and `LynxFor`
 
@@ -90,7 +91,7 @@ Declare Lynx's own low-level `<if>` and `<for>` elements, so a template that con
 
 ### Attributes on every element
 
-Every directive above, except the two form accessors and `LynxRouterLinkActive`, also accepts these inputs. Write the true/false ones either way, `flatten="false"` or `[flatten]="false"`; both give Lynx a boolean. The same goes for the numbers of `pan-intercept-direction` and `pan-intercept-scope`.
+Every directive above, except the two form accessors, `LynxRouterLinkActive` and `LynxAccessibilityTraits`, also accepts these inputs. Write the true/false ones either way, `flatten="false"` or `[flatten]="false"`; both give Lynx a boolean. The same goes for the numbers of `pan-intercept-direction` and `pan-intercept-scope`.
 
 | Attribute                         | Type                 | Description                                                                           |
 | --------------------------------- | -------------------- | ------------------------------------------------------------------------------------- |
@@ -183,7 +184,31 @@ Sets or removes the element's `disabled` attribute.
 
 ## Types
 
-None of its own. `ControlValueAccessor` comes from `@angular/forms`.
+`ControlValueAccessor` comes from `@angular/forms`.
+
+### `BaseLynxElement`
+
+```typescript
+type BaseLynxElement = {
+  animate(
+    keyframes: Record<string, string | number>[],
+    options?: number | LynxAnimationOptions,
+  ): BaseLynxAnimation;
+  invoke(methodName: string, params?: Record<string, unknown>): void;
+  setAccessibilityTrait(trait: string, on: boolean): void;
+  // …and the methods the renderer uses
+};
+```
+
+The `nativeElement` of an element's `ElementRef`: AngularLynx's wrapper around the native element, not a DOM element. Type an `ElementRef` with it to call its methods:
+
+```typescript
+readonly option = viewChild.required<ElementRef<BaseLynxElement>>('option');
+```
+
+- **`animate()`** starts an animation. See [Animation](/api/angular-lynx/animation).
+- **`invoke()`** calls one of the element's [UI methods](/guide/glossary#ui-method), such as `scrollTo`.
+- **`setAccessibilityTrait()`** adds a trait to the element's own `accessibility-traits`, or takes it away, as [`LynxAccessibilityTraits`](/api/angular-lynx/accessibility#lynxaccessibilitytraits) does from a template.
 
 ## Related
 

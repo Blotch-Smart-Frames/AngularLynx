@@ -7,7 +7,6 @@ import {
   ViewEncapsulation,
   booleanAttribute,
   computed,
-  effect,
   inject,
   input,
   model,
@@ -23,14 +22,6 @@ import { injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
 import { type IconName } from '../icon/icons';
 import { type MenuElement, UiMenuPopup } from './menu-popup';
-
-/**
- * AngularLynx's element, which can add an accessibility trait to the app's
- * own (see LynxElement.setAccessibilityTrait).
- */
-type AccessibleElement = {
-  setAccessibilityTrait(trait: string, on: boolean): void;
-};
 
 /**
  * What a menu's items need from the menu they're in: `ui-menu` or
@@ -66,12 +57,15 @@ export const UI_MENU = new InjectionToken<UiMenuHost>('UI_MENU');
   imports: [LYNX_ELEMENTS, UiIcon],
   encapsulation: ViewEncapsulation.None,
   template: `
+    <!-- A checked item is selected to a screen reader, which iOS reads.
+         lynxAccessibilityTraits adds the trait to button on iOS, and leaves
+         Android, which reads one trait, with button. -->
     <view
-      #row
       [class]="rowClass()"
       [accessibility-element]="true"
       accessibility-traits="button"
       [accessibility-label]="spokenLabel()"
+      [lynxAccessibilityTraits]="{ selected: checked() === true }"
       (bindtouchstart)="hold(true)"
       (bindtouchend)="hold(false)"
       (bindtouchcancel)="hold(false)"
@@ -136,9 +130,6 @@ export class UiMenuItem {
   /** Whether a finger (or the mouse) is down on the item. */
   protected readonly held = signal(false);
 
-  // Required: always in the template.
-  readonly row = viewChild.required<ElementRef<AccessibleElement>>('row');
-
   readonly #material = computed(() => this.#design() === 'material');
   readonly #destructive = computed(() => this.variant() === 'destructive');
 
@@ -184,17 +175,6 @@ export class UiMenuItem {
     ),
   );
 
-  /**
-   * A checked item is `selected` to a screen reader, which iOS reads.
-   * Through the runtime, which adds the trait to `button` on iOS and leaves
-   * Android, which reads one trait, with `button`.
-   */
-  protected readonly selectedTrait = effect(() => {
-    this.row().nativeElement.setAccessibilityTrait(
-      'selected',
-      this.checked() === true,
-    );
-  });
   protected readonly labelClass = computed(() =>
     cn(
       'flex-1',

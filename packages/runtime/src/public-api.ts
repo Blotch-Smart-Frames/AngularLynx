@@ -6,6 +6,10 @@ export {
   LynxAccessibility,
   LynxAccessibilitySettings,
 } from './lib/accessibility';
+export type {
+  AccessibilityTrait,
+  AccessibilityTraitStates,
+} from './lib/accessibility/accessibility-traits';
 export { LynxAnimation } from './lib/animation/animation';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';
 export type { DevToolsStats, LynxTraceOptions } from './lib/devtools';
@@ -71,6 +75,7 @@ export type {
 export {
   LYNX_ELEMENTS,
   LYNX_FORM_ACCESSORS,
+  LynxAccessibilityTraits,
   LynxBlock,
   LynxBlurView,
   LynxCoverView,
@@ -104,6 +109,7 @@ export {
   LynxViewPagerItem,
   LynxWebView,
 } from './lib/lynx-elements';
+export type { BaseLynxElement } from './lib/lynx-element/types';
 export { LynxLogger } from './lib/lynx-logger';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';

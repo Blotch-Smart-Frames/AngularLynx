@@ -35,11 +35,6 @@ import {
  */
 export type TabsListVariant = 'default' | 'segmented';
 
-/** AngularLynx's element, which can add an accessibility trait. */
-type AccessibleElement = {
-  setAccessibilityTrait(trait: string, on: boolean): void;
-};
-
 /**
  * `UiTabsTrigger`, for the list's content query. A call rather than the
  * class itself: for a class, Angular's test build keeps an arrow function
@@ -218,6 +213,9 @@ export class UiTabsList {
   },
   // The label is the accessibility element, a button (a tab, in the list's
   // tab bar) named by its own text. A view would need a label of its own.
+  // The selected tab is `selected` to a screen reader, which iOS reads:
+  // lynxAccessibilityTraits adds the trait to `button` on iOS, and leaves
+  // Android, which reads one trait, with `button`.
   template: `
     <view
       #trigger
@@ -236,7 +234,10 @@ export class UiTabsList {
       @if (stateLayerClass(); as stateLayer) {
         <view [class]="stateLayer"></view>
       }
-      <text #label accessibility-traits="button" [class]="textClass()"
+      <text
+        accessibility-traits="button"
+        [lynxAccessibilityTraits]="{ selected: isActive() }"
+        [class]="textClass()"
         ><ng-content
       /></text>
     </view>
@@ -252,8 +253,6 @@ export class UiTabsTrigger {
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly triggerRef = viewChild.required<ElementRef>('trigger');
-  readonly labelRef =
-    viewChild.required<ElementRef<AccessibleElement>>('label');
   #anim?: AnimationHandle;
   #previousActive?: boolean;
 
@@ -286,18 +285,6 @@ export class UiTabsTrigger {
   protected readonly stateLayerClass = computed(
     () => this.#segment()?.stateLayerClass(this.triggerValue()) ?? null,
   );
-
-  /**
-   * The selected tab is `selected` to a screen reader, which iOS reads.
-   * Through the runtime, which adds the trait to `button` on iOS and leaves
-   * Android, which reads one trait, with `button`.
-   */
-  protected readonly selectedTrait = effect(() => {
-    this.labelRef().nativeElement.setAccessibilityTrait(
-      'selected',
-      this.isActive(),
-    );
-  });
 
   /** Registers this trigger with the parent for direction detection. */
   protected readonly registering = effect(() => {

@@ -74,6 +74,7 @@ it('counts taps', async () => {
 ```
 
 - **Your handler runs right away.** `fireEvent.tap()` calls `increment()` before it returns.
+- **A tap bubbles, as on a device.** Tap the `<text>` and the view's `(bindtap)` still runs. A `(catchtap)` on the way stops it.
 - **The screen updates afterwards.** As on a device, Angular re-renders after the handler, so `await waitForUpdate()` before you check the tree.
 - **Pass event data as the second argument.** Its properties are copied onto the event your handler receives. Lynx's `<input>` puts its text in `event.detail.value`, for example:
 

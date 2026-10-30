@@ -110,7 +110,7 @@ Call this after any signal mutation that happens outside an event handler (e.g. 
 
 ### `fireEvent`
 
-Dispatches Lynx events on JSDOM elements. Use the named helpers for standard Lynx events:
+Fires Lynx events at JSDOM elements. Use the named helpers for standard Lynx events:
 
 ```ts
 import { fireEvent } from '@blotch/angular-lynx-testing-library';
@@ -120,7 +120,16 @@ fireEvent.input(element, { value: 'hello' });
 fireEvent.scroll(element, { scrollTop: 100 });
 ```
 
-Named helpers dispatch a DOM event with the key `"bindEvent:<name>"` (e.g. `"bindEvent:tap"`), which matches the listener registered by `__AddEvent` when Angular processes a `(bindtap)` template binding.
+A named helper runs the handlers a device would, in the same order:
+
+- **Touch events bubble.** A tap, long press or touch runs the element's own `(bindtap)` or `(catchtap)`, then its ancestors' on the way up to the page. So a tap on a row inside a pressable card reaches the card's `(click)`. `(capture-bind…)` and `(capture-catch…)` handlers run before them, from the page down.
+- **Mouse, wheel and key events bubble too**, as Lynx sends them on desktop and web.
+- **A `catch` handler stops the event** where it runs: a `(catchtap)` panel keeps a tap from reaching the backdrop behind it.
+- **Other events stay on their element.** `scroll`, `input`, `layoutchange` and the rest run only the element's own handler.
+
+`init.bubbles` overrides the event's own: `fireEvent.tap(element, { bubbles: false })` runs only the element's handler.
+
+`init.eventType` fires at one kind of handler on the element and nothing else: `fireEvent.tap(element, { eventType: 'catchEvent' })` dispatches the DOM event `"catchEvent:tap"`, which reaches only the element's `(catchtap)`.
 
 To dispatch a raw DOM event directly:
 
@@ -134,7 +143,7 @@ fireEvent(element, new Event('bindEvent:tap'));
 
 ### `eventMap`
 
-The full Lynx event registry. Each entry has a `defaultInit` object (currently empty for all events, but present for forward-compatibility).
+The full Lynx event registry. Each entry has a `defaultInit` object: `{ bubbles: true }` for the events Lynx sends up the response chain, `{}` for the rest.
 
 ```ts
 import { eventMap } from '@blotch/angular-lynx-testing-library';
@@ -400,7 +409,7 @@ render(Component)
 
 AngularLynx registers event handlers via `__AddEvent(element, eventType, eventName, { type: 'worklet', value: callback })`. The testing environment stores this as a DOM event listener under the key `"${eventType}:${eventName}"` (e.g. `"bindEvent:tap"`).
 
-`fireEvent.tap(el)` dispatches a `"bindEvent:tap"` DOM event, which triggers the listener. The listener calls `runWorklet(callback, [event])` which invokes the Angular handler directly on the main thread.
+`fireEvent.tap(el)` walks Lynx's event response chain, from the page down to `el` and back up, and calls each element's listener for the kind of handler it has, stopping at a `catch` one. The listener calls `runWorklet(callback, [event])` which invokes the Angular handler directly on the main thread. One bubbling `"bindEvent:tap"` DOM event wouldn't do: it would pass a `(catchtap)` ancestor's `"catchEvent:tap"` listener by and run the handlers above it.
 
 Template binding → PAPI registration → DOM listener key:
 

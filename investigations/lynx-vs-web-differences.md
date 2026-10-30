@@ -1927,6 +1927,10 @@ Events like `scroll`, `change`, `input` propagate through the DOM tree (bubble p
 
 In Lynx, **only touch events** (`tap`, `longpress`, `click`, `touchstart`, `touchmove`, `touchend`) travel through the capture/bubble propagation chain. All other events are delivered **only to the target element** — there is no capture or bubble phase. Listener ancestors will not receive them.
 
+Mouse, wheel and key events are the exception, on the platforms that send them. Lynx's desktop engine dispatches them with `TouchEventHandler::HandleBubbleEvent` (`core/renderer/events/touch_event_handler.cc`), which bubbles all but `mouseenter` and `mouseleave`, and Lynx for Web's `common_event_handler` bubbles whatever the DOM event does. iOS and Android don't send them. The bottom sheet's mouse drag relies on this: its backdrop hears `mousemove` from anywhere in the sheet.
+
+The testing library's `fireEvent` follows the same split (`packages/testing-library/src/fire-event.ts`).
+
 ---
 
 ## `GlobalEventEmitter`: cross-component event broadcasting (no web equivalent)

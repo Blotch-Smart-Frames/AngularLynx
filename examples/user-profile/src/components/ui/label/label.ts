@@ -1,4 +1,10 @@
-import { Component, ViewEncapsulation, computed, input } from '@angular/core';
+import {
+  Component,
+  ViewEncapsulation,
+  booleanAttribute,
+  computed,
+  input,
+} from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
@@ -11,7 +17,7 @@ import { cn } from '@blotch/dolan/utils/cn';
   template: `<text [class]="labelClass()"><ng-content /></text>`,
 })
 export class UiLabel {
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly labelClass = computed(() =>

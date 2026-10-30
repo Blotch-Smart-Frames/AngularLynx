@@ -1,6 +1,7 @@
 import {
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChildren,
   inject,
@@ -50,7 +51,7 @@ const selectItem = () => UiSelectItem;
 export class UiSelect {
   readonly value = model<string>('');
   readonly placeholder = input('Select...');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly changed = output<string>();

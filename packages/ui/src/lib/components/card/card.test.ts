@@ -40,6 +40,12 @@ class CardHost {
   readonly pressable = signal(false);
 }
 
+@Component({
+  imports: [UiCard, LYNX_ELEMENTS],
+  template: `<ui-card pressable><text>Order</text></ui-card>`,
+})
+class BarePressableHost {}
+
 /**
  * The card's own view. Each component's host element renders as a view too,
  * so it's found by the card's class rather than by being the first.
@@ -109,6 +115,16 @@ describe('UiCard', () => {
     // A scroll that takes the touch over cancels it: the card scales back.
     fireEvent.touchstart(view);
     fireEvent.touchcancel(view);
+    expect(scaleOf(view)).toBe('scale(1)');
+  });
+
+  it('is pressable with a bare pressable attribute', async () => {
+    const { container } = await render(BarePressableHost);
+    const view = cardView(container);
+
+    fireEvent.touchstart(view);
+    expect(scaleOf(view)).toBe('scale(0.985)');
+    fireEvent.touchend(view);
     expect(scaleOf(view)).toBe('scale(1)');
   });
 

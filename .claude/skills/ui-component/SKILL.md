@@ -62,6 +62,7 @@ Match the existing components exactly:
 - **`imports: [LYNX_ELEMENTS]`** from `@blotch/angular-lynx` — this is what makes `<view>`, `<text>`, etc. resolve. Add other `Ui*` components you use.
 - **Templates use Lynx elements** (`<view>`, `<text>`, `<scroll-view>`, `<image>`), never HTML.
 - **Signals only**: `input()` / `input.required()`, `output()`, `model()`, `computed()`. Signal props must be **public `readonly`**.
+- **Boolean inputs take `booleanAttribute`**, so an app can write a bare attribute (`<ui-card pressable>`) as well as a binding: `readonly pressable = input(false, { transform: booleanAttribute });`. `packages/ui/src/lib/boolean-inputs.test.ts` fails on one without a transform. A `model()` can't take a transform, so a two-way boolean stays bound.
 - **Everything else is ES-private** (`#field`), never TypeScript `private`. Inject with `readonly #group = inject(UiButtonGroup)`.
 - **`userClass` input aliased to `class`** so consumers can pass extra utilities:
   ```typescript
@@ -86,14 +87,14 @@ For a component that configures a set of children (button group, toggle group, r
 export class UiButtonGroup {
   readonly variant = input<ButtonGroupVariant>('default');
   readonly size = input<ButtonGroupSize>('default');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   // …
 }
 
 @Component({ selector: 'ui-button-group-item', /* … */ })
 export class UiButtonGroupItem {
   readonly #group = inject(UiButtonGroup); // ← child reads shared config
-  readonly disabled = input(false);        // ← per-item override
+  readonly disabled = input(false, { transform: booleanAttribute }); // ← per-item override
   readonly pressed = output<void>();
 
   protected readonly isDisabled = computed(

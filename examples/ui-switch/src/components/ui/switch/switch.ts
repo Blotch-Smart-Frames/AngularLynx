@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   inject,
   input,
@@ -339,7 +340,7 @@ type Press = {
 })
 export class UiSwitch implements FormCheckboxControl {
   readonly checked = model(false);
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   /** `'default'` or `'glass'`, each platform's own design; see SwitchVariant. */
   readonly variant = input<SwitchVariant>('default');
   /** What a screen reader calls the switch, such as "Wi-Fi". */

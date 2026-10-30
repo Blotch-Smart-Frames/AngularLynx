@@ -4,6 +4,7 @@ import {
   Directive,
   TemplateRef,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChild,
   effect,
@@ -343,9 +344,9 @@ export class UiChart {
    * light unless the app says otherwise; see `ChartColorSchemeOption`.
    */
   readonly colorScheme = input<Exclude<ChartColorSchemeOption, Function>>();
-  readonly zoomable = input(false);
+  readonly zoomable = input(false, { transform: booleanAttribute });
   readonly zoomAxes = input<ChartZoomAxes>('xy');
-  readonly showZoomControls = input(true);
+  readonly showZoomControls = input(true, { transform: booleanAttribute });
   readonly minZoom = input(1);
   readonly maxZoom = input(8);
   /** Factor each zoom button press zooms by. */

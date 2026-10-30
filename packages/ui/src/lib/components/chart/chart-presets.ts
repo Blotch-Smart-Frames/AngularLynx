@@ -1,4 +1,4 @@
-import { Directive, input, viewChild } from '@angular/core';
+import { Directive, booleanAttribute, input, viewChild } from '@angular/core';
 import { scaleLinear } from '@tanstack/charts/scales/linear';
 import type {
   ChartPoint,
@@ -193,9 +193,9 @@ export abstract class UiCartesianPreset<TDatum> {
   /** Target number of ticks per axis; the axis picks nice values near it. */
   readonly tickCount = input(5);
   /** Horizontal gridlines at the y ticks. */
-  readonly showGrid = input(true);
+  readonly showGrid = input(true, { transform: booleanAttribute });
   /** Vertical gridlines at the x ticks. */
-  readonly showXGrid = input(false);
+  readonly showXGrid = input(false, { transform: booleanAttribute });
   readonly xAxisLabel = input('');
   readonly yAxisLabel = input('');
   readonly padding = input<ChartPadding>({});
@@ -206,14 +206,14 @@ export abstract class UiCartesianPreset<TDatum> {
   readonly xTickFormat = input<(value: number) => string>();
   readonly yTickFormat = input<(value: number) => string>();
   /** Shows a tooltip for the touched point; a tap pins it. */
-  readonly tooltip = input(true);
+  readonly tooltip = input(true, { transform: booleanAttribute });
   /** What a screen reader announces for the chart. */
   readonly label = input('Chart');
   /** Light, dark or `'system'` colors; the chart theme's setting when unset. */
   readonly colorScheme = input<Exclude<ChartColorSchemeOption, Function>>();
-  readonly zoomable = input(false);
+  readonly zoomable = input(false, { transform: booleanAttribute });
   readonly zoomAxes = input<ChartZoomAxes>('xy');
-  readonly showZoomControls = input(true);
+  readonly showZoomControls = input(true, { transform: booleanAttribute });
   readonly minZoom = input(1);
   readonly maxZoom = input(8);
   readonly zoomStep = input(1.4);

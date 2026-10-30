@@ -4,6 +4,7 @@ import {
   Component,
   Injector,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChild,
   inject,
@@ -326,8 +327,8 @@ export class UiButton {
    * either).
    */
   readonly size = input<ButtonSize>('default');
-  readonly disabled = input(false);
-  readonly loading = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
+  readonly loading = input(false, { transform: booleanAttribute });
   /**
    * What a screen reader says for the button. An icon-only button needs one;
    * a button with a label reads its label without it.

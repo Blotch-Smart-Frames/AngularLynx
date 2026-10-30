@@ -3,6 +3,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChild,
   inject,
@@ -209,7 +210,7 @@ export class UiButtonGroup {
   readonly variant = input<ButtonGroupVariant>('default');
   /** The items' height and padding; `'icon'` makes square icon-only items. */
   readonly size = input<ButtonGroupSize>('default');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly #settings = inject(LynxAccessibilitySettings);
@@ -380,7 +381,7 @@ export class UiButtonGroupItem {
   readonly #group = inject(UiButtonGroup);
   readonly #settings = inject(LynxAccessibilitySettings);
 
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   /**
    * What a screen reader says for the item. An icon-only item needs one; an
    * item with a label reads its label without it.

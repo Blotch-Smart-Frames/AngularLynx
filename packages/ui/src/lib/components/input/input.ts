@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   input,
@@ -90,7 +91,7 @@ export class UiInput implements FormValueControl<string> {
   readonly type = input<string>('text');
   readonly helperText = input<string>('');
   readonly error = input<string>('');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly changed = output<string>();

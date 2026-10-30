@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   input,
@@ -68,7 +69,7 @@ export class UiBadge {
   /**
    * When true, badge pops in with a spring animation on first render
    */
-  readonly animated = input(true);
+  readonly animated = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly containerRef = viewChild.required<ElementRef>('container');

@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   input,
@@ -29,7 +30,7 @@ export class UiProgress {
   /**
    * When true, shows an indeterminate (looping) animation
    */
-  readonly indeterminate = input(false);
+  readonly indeterminate = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly fillRef = viewChild.required<ElementRef>('fill');

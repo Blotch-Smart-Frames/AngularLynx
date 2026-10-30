@@ -123,8 +123,9 @@ Put a [`<ui-icon>`](/dolan/icon) in the button. It takes the label's color:
 ### Disabled and loading
 
 ```angular-html
-<ui-button [disabled]="true">Disabled</ui-button>
-<ui-button [loading]="true">Saving</ui-button>
+<ui-button disabled>Disabled</ui-button>
+
+<ui-button loading>Saving</ui-button>
 ```
 
 Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner in the label's color. A glass button dims its label and keeps the glass, as iOS does.

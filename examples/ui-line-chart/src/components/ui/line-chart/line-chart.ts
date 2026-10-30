@@ -1,6 +1,7 @@
 import {
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   input,
   output,
@@ -90,8 +91,8 @@ export class UiLineChart extends UiCartesianPreset<XYDatum> {
   readonly color = input('var(--primary)');
   readonly strokeWidth = input(2);
   readonly dotRadius = input(3);
-  readonly showDots = input(true);
-  readonly smooth = input(false);
+  readonly showDots = input(true, { transform: booleanAttribute });
+  readonly smooth = input(false, { transform: booleanAttribute });
 
   /** The tapped point's datum. */
   readonly pointTap = output<XYDatum>();

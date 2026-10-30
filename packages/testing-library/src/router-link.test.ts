@@ -164,6 +164,20 @@ describe('router links on Lynx elements', () => {
     expect(settingsTaps()).toBe(1);
   });
 
+  it("navigates on a tap on the link's text", async () => {
+    // The tap bubbles from the text to the link's click listener, as on a
+    // device.
+    const { container } = await render(NavApp, {
+      providers: [provideRouter(routes)],
+    });
+    const settings = container.querySelector('.settings')!;
+
+    fireEvent.tap(settings.querySelector('text')!);
+
+    await until(() => settings.classList.contains('active'));
+    expect(texts(container)).toContain('Settings page');
+  });
+
   it('works on a component host through host directives', async () => {
     const { container } = await render(TabApp, {
       providers: [provideRouter(routes)],

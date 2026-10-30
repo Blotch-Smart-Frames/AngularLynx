@@ -3,12 +3,11 @@
 Every event [`fireEvent`](/api/testing-library/#fireeventelement-event) has a method for, and the template binding each one runs.
 
 ```typescript
-fireEvent.tap(element); // runs (bindtap)
-fireEvent.tap(element, { eventType: 'catchEvent' }); // runs (catchtap)
+fireEvent.tap(element); // runs (bindtap) or (catchtap), then the ancestors'
 fireEvent.input(element, { detail: { value: 'hello' } }); // $event.detail.value
 ```
 
-Each method takes the element and an optional `init` object. To reach a `(catch*)` handler instead of a `(bind*)` one, pass `{ eventType: 'catchEvent' }`.
+Each method takes the element and an optional `init` object. It runs the element's `(bind*)` or `(catch*)` handler. Touch, mouse and key events then go up to the page, as on a device, until a `(catch*)` handler stops them. The other events stay on the element.
 
 ## Touch
 

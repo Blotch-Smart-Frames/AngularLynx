@@ -96,20 +96,22 @@ fireEvent.tap(element: Element, init?: Record<string, unknown>): boolean;
 // … one method per event in the Event reference
 ```
 
-Fires a Lynx event at `element`, which runs the matching template handler, such as `(bindtap)`. The methods and their bindings are in the [Event reference](/api/testing-library/event-reference).
+Fires a Lynx event at `element`, which runs the handlers a device would, such as `(bindtap)`. The methods and their bindings are in the [Event reference](/api/testing-library/event-reference).
 
+- **Bubbling**: touch, mouse and key events go from `element` up to the page, as on a device, so a tap on a row reaches its card's `(click)`. A `(catch*)` handler runs and stops the event there, and `(capture-*)` handlers run first, from the page down. Other events, such as `scroll` and `input`, run only `element`'s own handler.
 - **`init`**: properties to set on the event. `{ detail: { value: 'hi' } }` arrives as `$event.detail.value`.
-- **`init.eventType`**: the binding to reach. `'bindEvent'` (the default) reaches `(bind*)` handlers. Use `'catchEvent'` for `(catch*)` handlers.
+- **`init.bubbles`**: overrides whether the event goes up to the page. `{ bubbles: false }` keeps a tap on `element`.
+- **`init.eventType`**: fires at one kind of handler on `element` alone, such as `'catchEvent'` for its `(catch*)` handler.
 
 **`fireEvent` doesn't render.** The handler runs before `fireEvent` returns, so a spy or a signal you read directly already shows the change. Angular renders the result in a change detection it schedules for after the current task. Await `waitForUpdate()` before checking the rendered output.
 
 ### `eventMap`
 
 ```typescript
-const eventMap: Record<string, { defaultInit: {} }>;
+const eventMap: Record<string, { defaultInit: { bubbles?: boolean } }>;
 ```
 
-The events that `fireEvent` has a method for, keyed by event name.
+The events that `fireEvent` has a method for, keyed by event name. `defaultInit.bubbles` is `true` for the events that go up to the page.
 
 ### `*ByAccessibilityLabel`
 

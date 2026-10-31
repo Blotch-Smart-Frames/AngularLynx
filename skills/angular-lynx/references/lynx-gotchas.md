@@ -38,7 +38,7 @@ Only `<scroll-view>` and `<list>` can scroll. `overflow` only supports `visible`
 
 ### `position: fixed` = absolute relative to root
 
-Does NOT stay fixed during scroll. Use for full-screen overlays only.
+Does NOT stay fixed during scroll. Lynx lifts a fixed view to the page root, above the page, and hit-tests it like any other view, so it's also how to float a panel that leaves the rest of the screen usable (see "`<overlay>` takes every touch").
 
 ### `position: sticky` only works in `<scroll-view>`
 
@@ -52,9 +52,13 @@ Two siblings with `margin-bottom: 16px` and `margin-top: 8px` produce 24px of sp
 
 Not `content-box`. Width/height include padding and border.
 
+### `display: none` text still draws on iOS
+
+Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>` inside still draws its glyphs, spilling out from the element's top-left corner. Give the element `overflow: hidden` while it's hidden.
+
 ### No CSS inheritance
 
-Every element must declare its own `font-size`, `color`, etc. Exception: nested `<text>` inherits `color`/`font-family` from parent `<text>`.
+Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from parent `<text>`, and CSS variables (`--x`) inherit.
 
 ### `flex-shrink` can shrink below min-content
 
@@ -136,6 +140,14 @@ Use `lynx.setSessionStorage(key, value)` / `lynx.getSessionStorage(key)`.
 
 The runtime adds them to the main thread. Any other encoding label throws a `RangeError`.
 
+### The keyboard covers a focused field
+
+Lynx doesn't scroll or pan to keep a field above the keyboard. `avoid-keyboard="true"` on an `<input>` (with `avoid-keyboard-spacing="8px"`: Android needs a unit) moves the whole page up until the field clears it, which suits a form but not a bar at the bottom of the screen. To move one element instead, read the input's `(bindkeyboardheightchange)` while it's focused. `detail.height` is in points from the bottom of the window on iOS, and in physical pixels from the bottom of the Lynx view on Android, and 0 as the keyboard hides.
+
+### VoiceOver can't swipe an `adjustable` element
+
+`accessibility-traits="adjustable"` makes VoiceOver announce the element as adjustable, but Lynx's iOS views don't respond to its swipe up and down, and Android ignores the trait. Offer `[accessibility-actions]="['Increase', 'Decrease']"` and handle `(bindaccessibilityaction)`: VoiceOver lists the actions in its Actions rotor, and TalkBack in its actions menu.
+
 ### `URL` and `URLSearchParams` come from the runtime
 
 PrimJS has neither on the main thread. The runtime installs standards-following versions, because Angular's Router, `HttpClient` and `NgOptimizedImage` loaders call `new URL()`. Use them as on the web.
@@ -172,6 +184,10 @@ iOS and Android drop it, so Tailwind's `backdrop-blur-*` blurs nothing there (th
 
 On iOS, a blur view's own opacity below 1 makes its material vanish. Animate the opacity of a plain `<view>` around it instead: iOS then draws the glass as a translucent sheet that fades, as UIKit's alerts do.
 
+### `mask-image` on a `<scroll-view>` doesn't work on Android
+
+A gradient `mask-image` works on a `<view>` everywhere, but on a `<scroll-view>` only on iOS and the web: Android draws the scroll view unmasked. Put the mask on a view around the scroll view. On iOS and Android, gradient stops must be percentages, so a stop a fixed distance from an edge has to come from the element's measured height.
+
 ### `box-shadow: inset` not supported
 
 Only outer shadows.
@@ -200,6 +216,18 @@ On `<image>`: `aspectFit`, `aspectFill`, `scaleToFill`, `center`.
 
 If both are registered, `longpress` takes priority — `tap` won't fire on long press.
 
+### `layoutchange` positions differ by platform
+
+`width` and `height` agree everywhere, but `top` and `left` are measured from the page on iOS and from the parent on Android. Read only the size from `(bindlayoutchange)`, and measure a position with `boundingClientRect` (see `SelectorQuery` below).
+
+### `<overlay>` takes every touch
+
+While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. `npx @blotch/dolan add popover` adds one that does this.
+
+### `capture-bind` listeners didn't run on iOS
+
+In Lynx Explorer 4.1 on iOS, `capture-bindtouchstart` and `capture-bindtap` on a view never ran, while a `bindtouchstart` on the same element did. Don't rely on the capture phase on iOS; a `global-bind` listener hears every touch first.
+
 ### `SelectorQuery` is async
 
 No synchronous `querySelector`. Must use `lynx.createSelectorQuery().select().exec(callback)`.
@@ -215,6 +243,10 @@ Only: `left`, `right`, `top`, `bottom`, `width`, `height`, `opacity`, `backgroun
 ### `animation-iteration-count: 0` fires lifecycle events
 
 Unlike web where it's a no-op.
+
+### On Android, a shadow inside an animated view can draw twice
+
+A `box-shadow` inside a view that `animate()` scales or fades can draw a second time on Android, offset by twice the animated view's position. Give the animated view a native view of its own with `[flatten]="false"`.
 
 ### `rotate3d()` and `scale3d()` not supported
 

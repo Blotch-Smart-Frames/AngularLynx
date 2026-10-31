@@ -33,7 +33,7 @@ Lynx uses a subset of CSS with fundamentally different defaults. Read this befor
 
 ### No CSS Inheritance
 
-CSS properties do **not** inherit from parent to child (except nested `<text>` inherits `color` and `font-family`). Every element must declare its own styles.
+CSS properties do **not** inherit from parent to child (except nested `<text>` inherits `color` and `font-family`). Every element must declare its own styles. CSS variables (`--x`) are the exception: they inherit, so a variable set on a parent reaches everything inside it.
 
 ```css
 /* Web: children inherit font-size. Lynx: they don't. */
@@ -105,8 +105,32 @@ page {
 }
 ```
 
+- **`[style.--x]` bindings set CSS variables.** `<view [style.--accent]="accent()">` gives the element `--accent`, which its descendants read with `var(--accent)`: CSS variables inherit, unlike other properties. A binding wins over the same variable in `style="..."`, as on the web.
 - **Don't wrap raw HSL channels** (`--x: 240 5.9% 10%` in `hsl(var(--x))`, the shadcn/ui pattern): that expands to the space-separated form Lynx drops.
 - **The dolan UI theme** stores each color whole (`--primary`) and as channels (`--primary-rgb`). Its Tailwind plugin maps `bg-primary` to `var(--primary)` and `bg-primary/50` to `rgba(var(--primary-rgb), 0.5)`, so opacity modifiers work on every theme color. Keep each pair the same color when editing a theme; `npx @blotch/dolan doctor` reports a mismatch or a missing `-rgb` variable.
+
+## Dark Mode and Wallpaper Colors
+
+There's no `@media (prefers-color-scheme)`. `LynxTheme` follows the phone's appearance instead, from the host's `theme` global prop:
+
+```typescript
+import { LynxTheme } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS],
+  template: `<view class="app-shell" [class.dark]="theme.isDarkMode()"
+    >…</view
+  >`,
+})
+export class App {
+  readonly theme = inject(LynxTheme);
+}
+```
+
+- **Define the colors as variables twice:** light values on `page`, dark ones under `.dark`. Because variables inherit, everything inside the root view switches with the class.
+- **Put the class on one element near the root.** Lynx matches descendant selectors such as `.dark .card` only when classes are first assigned, so a class that changes later doesn't restyle them. A rule on the element itself, such as `.dark`, does update.
+- **`theme.dynamicColors()`** gives the colors Android 12 and later take from the user's wallpaper (Material You), as Material 3's color roles (`primary`, `onPrimary`, `surface` and the rest, listed in `DYNAMIC_COLOR_ROLES`) for both `light` and `dark`. Each is a hex color, such as `#6750a4`. It's `null` where the host sends none: iOS, the web preview and Lynx Explorer. The Android app `ng build --platform android` makes sends them, and new ones when the wallpaper changes. Apply them with `[style.--x]` bindings on the root view. `npx @blotch/dolan add dynamic-color` does this for the dolan theme.
 
 ## Complete Example
 

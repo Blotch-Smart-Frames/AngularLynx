@@ -46,13 +46,13 @@ Read [lynx-elements.md](references/lynx-elements.md)
 
 ## Events & Interactions
 
-The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`. `(click)` as an alias for tap, several handlers on one element. Angular template syntax: `(bindtap)="handler($event)"`.
+The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, several handlers on one element. Touch coordinates on each platform, and drags. Angular template syntax: `(bindtap)="handler($event)"`.
 
 Read [events-and-interactions.md](references/events-and-interactions.md)
 
 ## Styling & CSS
 
-Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`). No CSS inheritance (except nested `<text>`). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Global style scope by default.
+Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`). No CSS inheritance (except nested `<text>`, and CSS variables). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Component styles are scoped as in Angular (`ViewEncapsulation.Emulated`). CSS variables from `[style.--x]` bindings, and dark mode and Android's wallpaper colors with `LynxTheme`.
 
 Read [styling-and-css.md](references/styling-and-css.md)
 

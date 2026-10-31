@@ -22,6 +22,7 @@ import { cn } from '../../utils/cn';
 import { UI_ICON_COLOR } from '../icon/icon-theme';
 import {
   type SegmentedHost,
+  segmentPlace,
   UI_SEGMENTED_HOST,
   UiSegmentedControl,
   UiSegmentedIndicator,
@@ -340,7 +341,10 @@ export class UiToggleGroupItem {
   protected readonly containerClass = computed(() => {
     if (this.#segment()) {
       return cn(
-        this.#segmented.segmentClass(this.itemValue()),
+        this.#segmented.segmentClass(
+          this.itemValue(),
+          segmentPlace(this.#group.items(), this),
+        ),
         this.userClass(),
       );
     }

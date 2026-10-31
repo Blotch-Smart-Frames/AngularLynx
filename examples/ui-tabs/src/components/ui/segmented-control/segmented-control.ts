@@ -45,6 +45,32 @@ export const UI_SEGMENTED_HOST = new InjectionToken<SegmentedHost>(
   'UI_SEGMENTED_HOST',
 );
 
+/**
+ * Where a segment sits in the row, which a segment tells
+ * UiSegmentedControl.segmentClass(): Material rounds the group's ends on the
+ * first and the last. A segment drawn by `@for` passes
+ * `{ first: $first, last: $last }`, and a host's content child finds it
+ * with {@link segmentPlace}.
+ */
+export type SegmentPlace = { readonly first: boolean; readonly last: boolean };
+
+/**
+ * A segment's place among its host's segments, in order. It's found from
+ * the segments themselves rather than their values: a segment that `@for`
+ * adds has no value yet while the segments before it are redrawn, and
+ * Angular throws NG0950 for a required input read that early.
+ */
+export const segmentPlace = <T>(
+  segments: readonly T[],
+  segment: T,
+): SegmentPlace => {
+  const index = segments.indexOf(segment);
+  return {
+    first: index === 0,
+    last: index !== -1 && index === segments.length - 1,
+  };
+};
+
 /** A segment's place in the row, in px from the track's left edge. */
 type SegmentFrame = { readonly left: number; readonly width: number };
 
@@ -160,6 +186,22 @@ const STATE_LAYER_CLASS =
   'h-full w-full bg-foreground opacity-10 absolute left-0 top-0';
 
 /**
+ * An unselected Material segment's corners: small inside the group, and
+ * round at its ends, as Material's connected buttons are. The end segments
+ * draw the ends themselves, rather than the track clipping them, so that
+ * the outline Increase Contrast gives them follows the curve. Half the
+ * track's 40px height, not `rounded-l-full`: corners too large for a box
+ * are all scaled down together until they fit, so the small inner ones
+ * would come out square.
+ */
+const materialCorners = ({ first, last }: SegmentPlace): string => {
+  if (first && last) return 'rounded-full';
+  if (first) return 'rounded-l-[20px] rounded-r-[8px]';
+  if (last) return 'rounded-l-[8px] rounded-r-[20px]';
+  return 'rounded-[8px]';
+};
+
+/**
  * Stops a timer that may not have been started: the native main thread's
  * `clearTimeout()` throws for `undefined`, which the web ignores.
  */
@@ -211,7 +253,8 @@ const layoutWidth = (event: unknown): number | undefined => {
  * Put a `<ui-segmented-indicator>` first in the track (it draws under the
  * segments), and have each segment report its width from `layoutchange`
  * (see `measure()`) and its touches (`press()`, `move()`, `release()`,
- * `cancel()`, `tap()`).
+ * `cancel()`, `tap()`), and take its classes from `segmentClass()` with
+ * its place in the row.
  *
  * Its look follows the platform (see GlassDesign):
  *
@@ -394,9 +437,9 @@ export class UiSegmentedControl {
     return cn(
       'flex-row flex relative',
       design === 'material'
-        ? // The group's round ends clip the outer corners of the end
-          // segments, so the segments need no positional styling.
-          'h-[40px] gap-[2px] rounded-full overflow-hidden'
+        ? // No clip: the end segments round the group's ends themselves
+          // (see materialCorners), and a clip would cut their outlines.
+          'h-[40px] gap-[2px]'
         : cn(
             'h-[32px] bg-muted',
             design === 'glass' ? 'rounded-full' : 'rounded-[9px]',
@@ -550,15 +593,21 @@ export class UiSegmentedControl {
    * segment points `--foreground` at its content's color: a component can't
    * recolor text projected into it (Lynx doesn't inherit `color`), but text
    * written `text-foreground` reads the variable, which does inherit.
+   *
+   * `place` is where the segment sits in the row (see SegmentPlace), which
+   * Material's ends follow.
    */
-  segmentClass(value: string): string {
+  segmentClass(value: string, place: SegmentPlace): string {
     const on = this.isOn(value);
     if (this.design() === 'material') {
       return cn(
         'flex-1 flex-row items-center gap-2 px-4 flex relative justify-center overflow-hidden',
         on
           ? 'rounded-full bg-primary [--foreground:var(--primary-foreground)] [--muted-foreground:var(--primary-foreground)]'
-          : 'rounded-[8px] bg-secondary [--foreground:var(--secondary-foreground)] [--muted-foreground:var(--secondary-foreground)]',
+          : cn(
+              materialCorners(place),
+              'bg-secondary [--foreground:var(--secondary-foreground)] [--muted-foreground:var(--secondary-foreground)]',
+            ),
         // Increase Contrast outlines the light unselected segments. The
         // selected one's dark fill stands out already, and its outline in
         // the fill's own color keeps every segment the same size. Named

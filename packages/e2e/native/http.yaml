@@ -1,12 +1,14 @@
 # Layer 6: HttpClient and httpResource (fixtures/counter.ts). The counter page
 # loads fixtures/http-data.json through both when it starts, from the static
-# server run-native.ts starts on the Mac. Lynx has fetch on the background
+# server run-native.ts starts on the Mac, and posts JSON to the same server,
+# which echoes the Content-Type it received. Lynx has fetch on the background
 # thread only, and Angular runs on the main thread, where the runtime relays
-# each request to it (issue #85).
+# each request to it (issue #85). "json" means the POST arrived with just the
+# type HttpClient set (issue #176).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
 - extendedWaitUntil:
-    visible: 'HTTP: pong/pong'
+    visible: 'HTTP: pong/pong/json'
     timeout: 15000
 - takeScreenshot: http

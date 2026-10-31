@@ -52,6 +52,12 @@ const countInit = mainThreadFn(() => {
  */
 const HTTP_DATA_URL = 'http://127.0.0.1:3210/e2e-http.json';
 
+/**
+ * Where the same server answers a request with the `Content-Type` headers it
+ * arrived with.
+ */
+const HTTP_ECHO_URL = 'http://127.0.0.1:3210/e2e-echo';
+
 type HttpData = { reply: string };
 
 /**
@@ -91,12 +97,17 @@ type HttpData = { reply: string };
  * would then cover the "Typed:" line that native/xelement.yaml checks.
  *
  * "HTTP" loads fixtures/http-data.json twice, through HttpClient and through
- * httpResource, and shows both replies: "HTTP: pong/pong". Lynx has `fetch`
- * on the background thread only, and Angular runs on the main thread, where
- * the runtime relays requests to it (issue #85). It shares the "Background"
- * row so this page gets no taller: the lazy and gestures pages render below
- * it, and on CI's 320x640 Android emulator their checks are at the bottom of
- * the screen.
+ * httpResource, then posts JSON through HttpClient, and shows the replies:
+ * "HTTP: pong/pong/json". Lynx has `fetch` on the background thread only, and
+ * Angular runs on the main thread, where the runtime relays requests to it
+ * (issue #85). "json" means the POST arrived with the one
+ * `Content-Type: application/json` HttpClient set; otherwise it shows the
+ * types that arrived. The relay used to pass the name lowercase, and Lynx's
+ * own fetch then added a `text/plain` one, which iOS sent instead and
+ * Android sent as well (issue #176). It shares the "Background" row so this
+ * page gets no taller: the lazy and gestures pages render below it, and on
+ * CI's 320x640 Android emulator their checks are at the bottom of the
+ * screen.
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).
@@ -201,7 +212,7 @@ type HttpData = { reply: string };
       <view style="display: flex; flex-direction: row; margin-top: 8px;">
         <text flatten="false">Background: {{ answer() }}</text>
         <text flatten="false" style="margin-left: 12px;"
-          >HTTP: {{ httpReply() }}/{{ resourceReply() }}</text
+          >HTTP: {{ httpReply() }}/{{ resourceReply() }}/{{ postReply() }}</text
         >
       </view>
       <app-tailwind-card />
@@ -216,6 +227,7 @@ export class Hello implements OnInit {
   readonly overlayOpen = signal(false);
   readonly answer = signal('');
   readonly httpReply = signal('');
+  readonly postReply = signal('');
   readonly #resource = httpResource<HttpData>(() => HTTP_DATA_URL);
   readonly resourceReply = computed(() =>
     this.#resource.hasValue()
@@ -229,6 +241,20 @@ export class Hello implements OnInit {
       next: (data) => this.httpReply.set(data.reply),
       error: (error: HttpErrorResponse) => this.httpReply.set(error.message),
     });
+    // With a header of its own, since when the relay sent two types, which
+    // one iOS kept depended on the other names: with this one it kept the
+    // `text/plain` one (issue #176, iOS 27), so the check fails there too.
+    this.#http
+      .post<HttpData>(
+        HTTP_ECHO_URL,
+        { ping: true },
+        { headers: { 'X-Api-Key': 'e2e' } },
+      )
+      .subscribe({
+        next: ({ reply }) =>
+          this.postReply.set(reply === 'application/json' ? 'json' : reply),
+        error: (error: HttpErrorResponse) => this.postReply.set(error.message),
+      });
   }
 
   increment() {

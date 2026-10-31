@@ -63,13 +63,10 @@ export type SegmentPlace = { readonly first: boolean; readonly last: boolean };
 export const segmentPlace = <T>(
   segments: readonly T[],
   segment: T,
-): SegmentPlace => {
-  const index = segments.indexOf(segment);
-  return {
-    first: index === 0,
-    last: index !== -1 && index === segments.length - 1,
-  };
-};
+): SegmentPlace => ({
+  first: segments[0] === segment,
+  last: segments[segments.length - 1] === segment,
+});
 
 /** A segment's place in the row, in px from the track's left edge. */
 type SegmentFrame = { readonly left: number; readonly width: number };

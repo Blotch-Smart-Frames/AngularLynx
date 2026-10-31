@@ -6,6 +6,7 @@ import {
   booleanAttribute,
   computed,
   contentChild,
+  contentChildren,
   inject,
   input,
   output,
@@ -34,10 +35,9 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
  * Per-item styling of the solid variants. Corners are intentionally left
  * square here: the group container clips the whole bar with `overflow-hidden`
  * + `rounded-md`, so only the outer edges round off while every internal seam
- * stays crisp. Rounding individual items by position would require
- * `:first-child`/`:last-child` selectors, which Lynx's CSS engine does not
- * support (no component in the library relies on positional selectors — see
- * CLAUDE.md).
+ * stays crisp, and the items need no positional styling (Lynx's CSS engine
+ * has no `:first-child`/`:last-child`). Their outline is the container's
+ * border, which the clip doesn't cut.
  */
 export const buttonGroupItemVariants = cva('items-center flex justify-center', {
   variants: {
@@ -138,6 +138,11 @@ const ITEM_SIZES: Readonly<Record<ButtonGroupSize, string>> = {
 const iconType = () => UiIcon;
 
 /**
+ * `UiButtonGroupItem`, for the group's `contentChildren()` (see iconType).
+ */
+const itemType = () => UiButtonGroupItem;
+
+/**
  * The color an icon projected into an item draws with when it's given none:
  * the items' label color (see UI_ICON_COLOR). Named, not inline: the
  * component's metadata keeps its own copy of an inline factory, which
@@ -188,10 +193,7 @@ const groupIconColor = () => inject(UiButtonGroup).foreground;
         </blur-view>
       </view>
     } @else {
-      <view
-        [class]="containerClass()"
-        [style.border-radius.px]="materialRadius()"
-      >
+      <view [class]="containerClass()">
         <ng-container [ngTemplateOutlet]="items" />
       </view>
     }
@@ -217,6 +219,9 @@ export class UiButtonGroup {
   readonly #design = injectGlassDesign();
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
 
+  /** The items in the group, in order. */
+  readonly items = contentChildren(itemType(), { descendants: true });
+
   /** The form the group takes on this platform, for its items. */
   readonly look = computed<ButtonGroupLook>(() => {
     const variant = this.variant();
@@ -237,7 +242,8 @@ export class UiButtonGroup {
    * The corner radius of an item's pressed highlight, in px. In glass it's
    * concentric with the group's corners, so the gap between them stays even
    * all the way round; in Material's connected group it's the small inner
-   * corner, and the group's round ends clip the outer ones.
+   * corner, and an item at one of the group's ends clips it to its round
+   * end (see materialEndRadius).
    */
   readonly itemRadius = computed(() =>
     this.look() === 'material'
@@ -260,12 +266,13 @@ export class UiButtonGroup {
     this.capsule() ? null : this.radius(),
   );
 
-  /** A Material column of wider items: its ends are half an item round. */
-  protected readonly materialRadius = computed(() =>
-    this.look() === 'material' && !this.capsule()
-      ? ITEM_HEIGHTS[this.size()] / 2
-      : null,
-  );
+  /**
+   * How round Material's group is at its ends, in px: half an item's
+   * height, which makes a capsule of a row or of a column of square icons,
+   * and round corners on a column of wider items. The items at the ends
+   * draw them (see UiButtonGroupItem's cornerStyle).
+   */
+  readonly materialEndRadius = computed(() => ITEM_HEIGHTS[this.size()] / 2);
 
   /**
    * As UiButton's: the glass reacts to touch, unless Reduce Motion is on
@@ -325,8 +332,9 @@ export class UiButtonGroup {
     cn(
       this.look() === 'material'
         ? // Material's connected group: the items, 2px apart, show the page
-          // between them, and the group's round ends clip the outer corners.
-          cn('gap-0.5 flex overflow-hidden', this.capsule() && 'rounded-full')
+          // between them. No clip: the end items round the group's ends
+          // themselves, and a clip would cut their outlines.
+          'gap-0.5 flex'
         : // The dividers between items are the group's own `bg-border`
           // showing through a 1px `gap-px` seam — no per-item borders needed,
           // which keeps items position-agnostic. `overflow-hidden` +
@@ -352,6 +360,7 @@ export class UiButtonGroup {
     <view
       #container
       [class]="containerClass()"
+      [style]="cornerStyle()"
       [attr.accessibility-element]="accessibilityLabel() ? 'true' : null"
       [attr.accessibility-traits]="accessibilityLabel() ? 'button' : null"
       [attr.accessibility-label]="accessibilityLabel() || null"
@@ -409,6 +418,40 @@ export class UiButtonGroupItem {
   protected readonly radius = computed(() => this.#group.itemRadius());
 
   /**
+   * Whether the item is the group's first and its last, which round the
+   * group's ends in Material. Found from the group's items, as Lynx's CSS
+   * has no `:first-child`/`:last-child`.
+   */
+  readonly #first = computed(() => this.#group.items()[0] === this);
+  readonly #last = computed(() => {
+    const items = this.#group.items();
+    return items[items.length - 1] === this;
+  });
+
+  /**
+   * A Material item's corners: small between items, and round at the
+   * group's ends, as Material's connected buttons are. The end items draw
+   * the ends themselves, rather than the group clipping them, so that the
+   * outline Increase Contrast gives them follows the curve. Inline, as how
+   * round the ends are depends on the size.
+   */
+  protected readonly cornerStyle = computed(() => {
+    if (this.#group.look() !== 'material') return null;
+    const inner = `${MATERIAL_INNER_RADIUS}px`;
+    const end = `${this.#group.materialEndRadius()}px`;
+    // The left or top corners, and the right or bottom ones.
+    const start = this.#first() ? end : inner;
+    const finish = this.#last() ? end : inner;
+    const column = this.#group.orientation() === 'vertical';
+    return {
+      'border-top-left-radius': start,
+      'border-top-right-radius': column ? start : finish,
+      'border-bottom-right-radius': finish,
+      'border-bottom-left-radius': column ? finish : start,
+    };
+  });
+
+  /**
    * Glass and Material items show a highlight while pressed, in place: the
    * glass around them is what reacts on iOS, and Material marks a press with
    * a state layer. Solid items shrink, or dim under Reduce Motion.
@@ -442,7 +485,7 @@ export class UiButtonGroupItem {
       ITEM_SIZES[size],
       look === 'material' &&
         cn(
-          'rounded-[8px] bg-secondary overflow-hidden',
+          'bg-secondary overflow-hidden',
           this.#settings.increaseContrast() && 'border border-foreground',
         ),
       this.#gap(),

@@ -38,6 +38,9 @@ import {
         }
         Copy
       </ui-button-group-item>
+      @if (withCut()) {
+        <ui-button-group-item>Cut</ui-button-group-item>
+      }
       <ui-button-group-item
         [disabled]="pasteDisabled()"
         (pressed)="presses.push('Paste')"
@@ -53,6 +56,7 @@ class ButtonGroupHost {
   readonly groupDisabled = signal(false);
   readonly pasteDisabled = signal(false);
   readonly withIcon = signal(false);
+  readonly withCut = signal(false);
   readonly copyLabel = signal<string | undefined>(undefined);
   readonly presses: string[] = [];
 }
@@ -106,6 +110,15 @@ const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
 const WEB = { platform: 'web', osVersion: '' };
+
+/**
+ * An item's inline corner radii: top left, top right, bottom right and
+ * bottom left.
+ */
+const cornersOf = (view: HTMLElement) =>
+  ['top-left', 'top-right', 'bottom-right', 'bottom-left'].map((corner) =>
+    view.style.getPropertyValue(`border-${corner}-radius`),
+  );
 
 /**
  * The scale an item's inline style holds, if any.
@@ -435,12 +448,9 @@ describe('UiButtonGroup glass variants in Material (Android)', () => {
     });
 
     expect(glass()).toBeNull();
-    for (const name of ['gap-0.5', 'rounded-full', 'overflow-hidden']) {
-      expect(group().classList).toContain(name);
-    }
+    expect(group().classList).toContain('gap-0.5');
     expect(group().classList).not.toContain('bg-border');
     expect(item('Copy').classList).toContain('bg-secondary');
-    expect(item('Copy').classList).toContain('rounded-[8px]');
     expect(getByText('Copy').classList).toContain('text-secondary-foreground');
     expect(icon().getAttribute('content')).toContain(
       ICON_LIGHT_COLORS['secondary-foreground'],
@@ -449,14 +459,39 @@ describe('UiButtonGroup glass variants in Material (Android)', () => {
     // Clear glass is the same tonal group here.
     await update(() => host.variant.set('glass-clear'));
     expect(item('Copy').classList).toContain('bg-secondary');
+  });
 
-    // A column's ends are half an item round, or a capsule of square icons.
-    await update(() => host.orientation.set('vertical'));
+  it("rounds the group's ends on its end items, so Increase Contrast's outline follows them", async () => {
+    const { host, group, item, update } = await renderGroup(ANDROID);
+    await update(() => {
+      host.variant.set('glass');
+      settings.increaseContrast.set(true);
+    });
+    // A row is a capsule: half an item round at its ends, small between.
+    expect(cornersOf(item('Copy'))).toEqual(['20px', '8px', '8px', '20px']);
+    expect(cornersOf(item('Paste'))).toEqual(['8px', '20px', '20px', '8px']);
+    expect(item('Copy').classList).toContain('border-foreground');
+    // The group doesn't clip the ends, which would cut their outlines.
     expect(group().classList).not.toContain('rounded-full');
-    expect(group().style.borderRadius).toBe('20px');
-    await update(() => host.size.set('icon'));
-    expect(group().classList).toContain('rounded-full');
+    expect(group().classList).not.toContain('overflow-hidden');
     expect(group().style.borderRadius).toBe('');
+
+    // An item added between them has small corners all round.
+    await update(() => host.withCut.set(true));
+    expect(cornersOf(item('Cut'))).toEqual(['8px', '8px', '8px', '8px']);
+    expect(cornersOf(item('Paste'))).toEqual(['8px', '20px', '20px', '8px']);
+
+    // A column rounds its top and bottom, as much as its items are tall.
+    await update(() => {
+      host.orientation.set('vertical');
+      host.size.set('sm');
+    });
+    expect(cornersOf(item('Copy'))).toEqual(['18px', '18px', '8px', '8px']);
+    expect(cornersOf(item('Paste'))).toEqual(['8px', '8px', '18px', '18px']);
+
+    // The other looks round nothing per item.
+    await update(() => host.variant.set('default'));
+    expect(cornersOf(item('Copy'))).toEqual(['', '', '', '']);
   });
 
   it('shows the state layer on a pressed item', async () => {

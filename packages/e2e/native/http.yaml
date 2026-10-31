@@ -4,7 +4,9 @@
 # which echoes the Content-Type it received. Lynx has fetch on the background
 # thread only, and Angular runs on the main thread, where the runtime relays
 # each request to it (issue #85). "json" means the POST arrived with just the
-# type HttpClient set (issue #176).
+# type HttpClient set (issue #176). The JSON's URL comes from the environment
+# file the production build swaps in: without it, the page shows a 404 for
+# environment-not-replaced.json (issue #175).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml

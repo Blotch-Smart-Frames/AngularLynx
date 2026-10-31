@@ -20,6 +20,7 @@ import {
   MainThreadRef,
 } from '@blotch/angular-lynx';
 
+import { environment } from '../../environments/environment';
 import { TailwindCard } from './tailwind-card';
 
 const factor = createMainThreadRef(2);
@@ -45,12 +46,12 @@ const countInit = mainThreadFn(() => {
 });
 
 /**
- * fixtures/http-data.json, which the E2E static server serves on this port in
- * every layer that renders the app (playwright/serve.ts, native/run-native.ts).
- * It's absolute because Lynx has no page URL to resolve a relative one
- * against, and the app's own build loads its bundle from inside the app.
+ * fixtures/http-data.json, which the E2E static server serves in every layer
+ * that renders the app (playwright/serve.ts, native/run-native.ts). The URL
+ * comes from the app's environment, as an app's backend URL does, so the page
+ * only loads it when the build swapped in environment.e2e.ts.
  */
-const HTTP_DATA_URL = 'http://127.0.0.1:3210/e2e-http.json';
+const HTTP_DATA_URL = environment.httpDataUrl;
 
 /**
  * Where the same server answers a request with the `Content-Type` headers it
@@ -100,7 +101,8 @@ type HttpData = { reply: string };
  * httpResource, then posts JSON through HttpClient, and shows the replies:
  * "HTTP: pong/pong/json". Lynx has `fetch` on the background thread only, and
  * Angular runs on the main thread, where the runtime relays requests to it
- * (issue #85). "json" means the POST arrived with the one
+ * (issue #85). The JSON's URL comes from the environment file the production
+ * build swaps in (issue #175). "json" means the POST arrived with the one
  * `Content-Type: application/json` HttpClient set; otherwise it shows the
  * types that arrived. The relay used to pass the name lowercase, and Lynx's
  * own fetch then added a `text/plain` one, which iOS sent instead and

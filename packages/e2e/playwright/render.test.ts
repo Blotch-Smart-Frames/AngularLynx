@@ -61,7 +61,9 @@ test("a tap handler gets an async background function's result", async ({
 // httpResource when it starts, and posts JSON that the server echoes the
 // Content-Type of. On the web, the main thread runs in a browser frame, which
 // has fetch; on Lynx it relays to the background thread's (issues #85 and
-// #176, checked by native/http.yaml).
+// #176, checked by native/http.yaml). The JSON's URL comes from the
+// environment file the production build swaps in: without it, the page shows
+// a 404 for environment-not-replaced.json (issue #175).
 test('HttpClient and httpResource load JSON, and HttpClient posts it', async ({
   page,
 }) => {

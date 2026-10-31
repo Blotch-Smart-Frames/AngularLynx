@@ -159,6 +159,7 @@ export const scaffoldApp = async (
   // Step 4: the final build, covering both environments.
   step('Layer 2: production build');
   await buildApp(appDir, pm, registry, context, ['lynx', 'web']);
+  checkFileReplacement(appDir, ['lynx', 'web']);
   if (!options.buildOnly) {
     await typeCheck(appDir, pm, registry, context);
   }
@@ -872,6 +873,7 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
     );
   }
   provideHttpClientInApp(appDir);
+  addEnvironments(appDir);
   // The generated test checks the generated template, which the fixture
   // replaced. It already passed in its own step.
   rmSync(path.join(appDir, 'src/app/hello/hello.spec.ts'), { force: true });
@@ -970,6 +972,86 @@ const provideHttpClientInApp = (appDir: string) => {
     "Couldn't add provideHttpClient() to src/app/app.config.ts; the config ng add generates has changed shape. Update provideHttpClientInApp() in packages/e2e/src/scaffold.ts.",
   );
   writeFileSync(configPath, config);
+};
+
+/**
+ * The environment file the counter fixture reads its HTTP URL from, and the
+ * file the production configuration replaces it with through angular.json's
+ * `fileReplacements`. That one is outside the app, as environments a
+ * monorepo's apps share are (issue #175). Every layer that renders the app
+ * builds the production configuration.
+ */
+const E2E_ENVIRONMENT = {
+  replace: 'src/environments/environment.ts',
+  with: '../environments/environment.e2e.ts',
+} as const;
+
+/**
+ * Adds the app's environment files and has the production configuration
+ * replace one with the other (see {@link E2E_ENVIRONMENT}).
+ */
+const addEnvironments = (appDir: string) => {
+  for (const [fixture, file] of [
+    ['environment.ts', E2E_ENVIRONMENT.replace],
+    ['environment.e2e.ts', E2E_ENVIRONMENT.with],
+  ] as const) {
+    mkdirSync(path.dirname(path.join(appDir, file)), { recursive: true });
+    copyFileSync(path.join(FIXTURES_DIR, fixture), path.join(appDir, file));
+  }
+
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      {
+        architect?: Record<
+          string,
+          { configurations?: Record<string, Record<string, unknown>> }
+        >;
+      }
+    >;
+  }>(workspacePath);
+  const production = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.configurations?.['production'];
+  check(
+    production !== undefined,
+    "angular.json's build target has no production configuration; the project `ng new` generates has changed shape. Update addEnvironments() in packages/e2e/src/scaffold.ts.",
+  );
+  production['fileReplacements'] = [E2E_ENVIRONMENT];
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Checks that the production build swapped in the replacing environment
+ * file: each bundle holds its URL, and not the URL of the file it replaces.
+ * Layers 3 and 6 then see the page load the JSON from that URL.
+ */
+const checkFileReplacement = (
+  appDir: string,
+  environments: readonly ('lynx' | 'web')[],
+) => {
+  /**
+   * The URL an environment fixture holds.
+   */
+  const urlIn = (fixture: string) =>
+    readFileSync(path.join(FIXTURES_DIR, fixture), 'utf8').match(
+      /'(http:[^']+)'/,
+    )![1]!;
+  const replacingUrl = urlIn('environment.e2e.ts');
+  const replacedUrl = urlIn('environment.ts');
+  for (const environment of environments) {
+    const bundle = readFileSync(
+      path.join(appDir, 'dist', `main.${environment}.bundle`),
+      'latin1',
+    );
+    check(
+      bundle.includes(replacingUrl) && !bundle.includes(replacedUrl),
+      `dist/main.${environment}.bundle was built from ${E2E_ENVIRONMENT.replace}, not from ${E2E_ENVIRONMENT.with}, which angular.json's production configuration replaces it with. The build ignored \`fileReplacements\` (issue #175).`,
+    );
+  }
+  console.log(
+    `✓ the production build replaced ${E2E_ENVIRONMENT.replace} with ${E2E_ENVIRONMENT.with}`,
+  );
 };
 
 // Build tools color their output; match against plain text.

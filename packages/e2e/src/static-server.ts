@@ -131,8 +131,9 @@ export const serveStatic = (
 /**
  * The JSON the counter fixture loads through HttpClient and httpResource, and
  * the echo it posts JSON to (fixtures/counter.ts), and where. The fixture's
- * URLs are fixed, since Lynx has no page URL to resolve a relative one
- * against, so every layer that renders the app serves them there.
+ * URLs are fixed (the JSON's in fixtures/environment.e2e.ts), since Lynx has
+ * no page URL to resolve a relative one against, so every layer that renders
+ * the app serves them there.
  */
 export const HTTP_DATA = {
   port: 3210,

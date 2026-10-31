@@ -1,6 +1,6 @@
 # Build your app
 
-`ng build` compiles your app into a [**bundle**](/guide/glossary#bundle), the single file a Lynx app runs from. This page covers what the build produces, production and development builds, size budgets and customizing the build tool.
+`ng build` compiles your app into a [**bundle**](/guide/glossary#bundle), the single file a Lynx app runs from. This page covers what the build produces, production and development builds, environment files, size budgets and customizing the build tool.
 
 To turn the bundle into apps you can install, see [Run on iOS and Android](/guide/native-apps).
 
@@ -45,6 +45,27 @@ As in Angular, the `optimization` option decides which kind of build you get. Th
 - `ng serve -c production` serves a production build.
 
 Some tools only work in development builds, such as [`LynxLogger`](/guide/debugging#stream-logs-to-your-computer) and the [render counters](/guide/profiling#watch-render-counters).
+
+## Environment files
+
+As in a web app, a configuration can swap one file for another with `fileReplacements`. That's how each build picks its environment, such as the backend it talks to:
+
+```json title="angular.json"
+"configurations": {
+  "production": {
+    "fileReplacements": [
+      {
+        "replace": "src/environments/environment.ts",
+        "with": "src/environments/environment.prod.ts"
+      }
+    ]
+  }
+}
+```
+
+- **Everything the build makes gets the replacing file:** the code of both [threads](/guide/concepts/threads), the web preview and the apps `ng build --platform` makes. `ng serve` rebuilds when you edit it.
+- **Paths are relative to the workspace,** like every path in `angular.json`, and can lead out of it, e.g. `../shared/environment.prod.ts`.
+- **`ng generate environments`** creates `src/environments/` and a replacement for the development configuration. It warns that the build target uses a third-party builder; the replacement works.
 
 ## Rebuild on every change
 

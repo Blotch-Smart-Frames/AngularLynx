@@ -26,6 +26,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 | `<input>`       | Text input field                             | `type` (`text`/`number`/`password`/`tel`/`email`/`digit`), `placeholder`, `confirm-type` |
 | `<textarea>`    | Multi-line text input                        | `placeholder`                                                                            |
 | `<overlay>`     | Modal overlay (outside document flow)        | `visible` (boolean attribute)                                                            |
+| `<blur-view>`   | Blurs what's behind it; Liquid Glass on iOS  | `blur-effect`, `blur-radius`, `blur-material`, `glass-style`, `glass-tint-color`         |
 | `<frame>`       | Embedded Lynx page                           | `src` (URL to `.lynx.bundle`)                                                            |
 | `<svg>`         | Inline SVG rendering                         | `content` (SVG string)                                                                   |
 | `<block>`       | Grouping container                           | —                                                                                        |
@@ -104,6 +105,26 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   </view>
 </overlay>
 ```
+
+### Blur and Liquid Glass
+
+`<blur-view>` blurs what's drawn behind it, in place of CSS `backdrop-filter`:
+
+```html
+<blur-view
+  blur-effect="glass"
+  blur-radius="12px"
+  class="rounded-full px-4 py-2"
+>
+  <text>Now playing</text>
+</blur-view>
+```
+
+- **`blur-effect`** picks iOS's look: `light`, `extra-light` or `dark`, the blur styles from before iOS 13, or `glass`, Liquid Glass. A `blur-effect="glass-container"` view around several glass views merges the ones closer than its `spacing`, as iOS 26 draws a group of controls.
+- **Android draws a Gaussian blur of `blur-radius`.** The runtime lays a translucent tint over it to approximate `blur-effect`, `glass-style` and `glass-tint-color`, and a background, background image or shadow the app sets replaces that tint.
+- **`blur-material`** (`ultra-thin`, `thin`, `regular`, `thick` or `chrome`) draws one of UIKit's adaptive materials, which follow light and dark mode, in place of `blur-effect` and `blur-radius`. Only the iOS app that `ng build --platform ios` makes has it: Lynx Explorer and Android ignore it, so set a `blur-effect` too.
+- **Glass comes and goes smoothly in that iOS app.** Inside a `glass-container` that's already on screen, a glass view materializes when it's added or shown and dissolves when it's removed or hidden. Two glass views with the same `glass-effect-id` are one piece of glass changing shape when one goes and the other comes in the same update: inside a container, the first morphs into the second; elsewhere, such as a button and the menu it opens, the second takes over as the first's content fades out. Lynx Explorer pops glass in and out instead.
+- `npx @blotch/dolan add glass` adds `<blur-view ui-glass>`, which picks the effect, material and tint for the platform, its version and the color scheme, so an app rarely sets these attributes itself.
 
 ### Input Handling
 

@@ -67,7 +67,7 @@ AngularLynx apps build, serve and test with the Angular CLI. `ng build` and `ng 
 }
 ```
 
-The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`, `fileReplacements`, ...) configure the compile, as Angular CLI resolves them: `ng build -c development` and command-line overrides apply. `ng build --platform ios|android|all` also builds the native app; its options (`appId`, `appName`, `icon`, ...) live in the same target.
+The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`, `fileReplacements`, ...) configure the compile, as Angular CLI resolves them: `ng build -c development` and command-line overrides apply. `ng build --platform ios|android|all` also builds the native app; its options (`appId`, `appName`, `icon`, ...) live in the same target. Each platform's app goes in its own folder of the output path (`ios`, `android`): a platform's build replaces only its folder, and `ng build` and `ng serve` keep both.
 
 - **`optimization` picks a production or development build.** There is no `mode` option: as in Angular, a build that optimizes scripts is a production build, and one that doesn't is a development build with dev mode on.
 - **`budgets` are enforced** against the Lynx bundle (each entry's bundle is its own `initial` budget) and each component stylesheet, with `ng build`'s messages. A Lynx bundle holds Angular twice (once per thread), so a new app's bundle is about 1 MB; `ng add` raises `ng new`'s `initial` budget to 2 MB / 5 MB.

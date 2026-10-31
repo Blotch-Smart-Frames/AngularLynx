@@ -44,6 +44,7 @@ The `.js`/`.cjs` wiring files are copied into `dist/client/` as they are, becaus
 ## Angular Integration (`angular.ts`)
 
 - Reads workspace config via `getAngularWorkspace()` / `getProjectByCwd()`
+- `fileReplacements` take two steps, as in Angular's own builders: `compilation.initialize()` gets them, so the compiler host resolves imports of each `replace` file to its `with` file, and `file-replacements.ts` adds a `NormalModuleReplacementPlugin` per replacement, so rspack builds the `with` file wherever the compiled code imports the `replace` one
 - Uses `@angular/build` internal APIs: `JavaScriptTransformer` (JS transform), `createAngularCompilation` (TS compilation with AOT). Import them from `utils/angular/build-internals.ts`, never from `@angular/build/src/...` directly: those paths aren't in `@angular/build`'s `exports`, so bare imports fail in users' apps (the old postinstall patch that worked around this no longer runs under npm 11)
 - `onBeforeEnvironmentCompile`: initializes Angular compilation, emits affected files to cache, runs diagnostics. Runs on every watch rebuild too. `angular-rebuild-coordinator.ts` feeds the compiler's `modifiedFiles` to `compilation.update()`, serializes the `web`/`lynx` hooks onto the one shared compilation, and adds files whose Angular output changed back to `modifiedFiles` so rspack rebuilds them
 - `api.transform`: serves compiled TS from cache, transforms JS via `JavaScriptTransformer`, prepends component stylesheet imports, registers external templates/stylesheets as watched dependencies, then runs the worklet transform and the cross-thread transform (lazy imports only in Angular-compiled files)
@@ -62,6 +63,7 @@ src/
   hot-updates.ts                       # Hot update accept code for entries and component modules
   client/                              # Hot update clients the dev bundles run (see Hot Updates)
   budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles
+  file-replacements.ts                 # Swaps angular.json fileReplacements into the bundle (the compiler host swaps them in the program)
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules
   split-chunks.ts                      # Chunk splitting config

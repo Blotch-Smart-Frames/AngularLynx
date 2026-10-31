@@ -36,6 +36,7 @@ export default defineConfig({
 - Runs Tailwind CSS 3 from a `tailwind.config.*`, and rewrites the CSS Tailwind CSS 4 writes (layers, `@property`, nesting, `oklch()` and `color-mix()`, logical properties, `translate`/`rotate`/`scale`) into CSS Lynx reads, for the device and the web preview alike. See [Tailwind CSS](https://angularlynx.js.org/guide/tailwindcss)
 - Registers `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts Lynx elements (`<view>`, `<text>`, etc.)
 - Enforces the build target's `budgets` with `ng build`'s units and messages: a warning is printed, an error fails the build
+- Applies the build target's `fileReplacements`, as Angular's builders do: both threads' bundles are built from each `with` file instead of its `replace` file, and a watch build rebuilds when it changes
 
 ## Budgets
 

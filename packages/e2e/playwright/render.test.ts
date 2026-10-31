@@ -60,7 +60,9 @@ test("a tap handler gets an async background function's result", async ({
 // The counter page loads fixtures/http-data.json through HttpClient and
 // httpResource when it starts. On the web, the main thread runs in a browser
 // frame, which has fetch; on Lynx it relays to the background thread's
-// (issue #85, checked by native/http.yaml).
+// (issue #85, checked by native/http.yaml). The URL comes from the environment
+// file the production build swaps in: without it, the page shows a 404 for
+// environment-not-replaced.json (issue #175).
 test('HttpClient and httpResource load JSON', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');

@@ -8,6 +8,7 @@ import {
 } from './angular-rebuild-coordinator.js';
 import type { BackgroundEntries } from './background-entry.js';
 import { applyBudgets } from './budgets-plugin.js';
+import { applyFileReplacements } from './file-replacements.js';
 import { LAYERS } from './layers.js';
 import { buildLynxSchemaSourceFileCache } from './build-schema-source-file-cache.js';
 import {
@@ -118,6 +119,7 @@ export const applyAngularRules = async (
     cli,
   });
   applyAngularConfig(api, buildOptions);
+  applyFileReplacements(api, buildOptions.fileReplacements);
   // The compiled size of each component stylesheet, which `transformStylesheet`
   // records on every compile, for `anyComponentStyle` budgets.
   const componentStyleSizes = new Map<string, ComponentStyleSize>();
@@ -244,6 +246,11 @@ export const applyAngularRules = async (
             return workerFile;
           },
           transformStylesheet,
+          // angular.json's `fileReplacements`: the host resolves each import
+          // of a `replace` file to its `with` file, so the program compiles
+          // and type-checks that one. The bundler is redirected separately
+          // (applyFileReplacements), as in Angular's own builders.
+          fileReplacements: buildOptions.fileReplacements,
           // Angular reads this to find changed templates and stylesheets. An
           // in-process compilation also evicts these files from its source
           // cache again, so the files just seeded are left out to keep their

@@ -20,6 +20,7 @@ import {
   MainThreadRef,
 } from '@blotch/angular-lynx';
 
+import { environment } from '../../environments/environment';
 import { TailwindCard } from './tailwind-card';
 
 const factor = createMainThreadRef(2);
@@ -45,12 +46,12 @@ const countInit = mainThreadFn(() => {
 });
 
 /**
- * fixtures/http-data.json, which the E2E static server serves on this port in
- * every layer that renders the app (playwright/serve.ts, native/run-native.ts).
- * It's absolute because Lynx has no page URL to resolve a relative one
- * against, and the app's own build loads its bundle from inside the app.
+ * fixtures/http-data.json, which the E2E static server serves in every layer
+ * that renders the app (playwright/serve.ts, native/run-native.ts). The URL
+ * comes from the app's environment, as an app's backend URL does, so the page
+ * only loads it when the build swapped in environment.e2e.ts.
  */
-const HTTP_DATA_URL = 'http://127.0.0.1:3210/e2e-http.json';
+const HTTP_DATA_URL = environment.httpDataUrl;
 
 type HttpData = { reply: string };
 
@@ -93,10 +94,11 @@ type HttpData = { reply: string };
  * "HTTP" loads fixtures/http-data.json twice, through HttpClient and through
  * httpResource, and shows both replies: "HTTP: pong/pong". Lynx has `fetch`
  * on the background thread only, and Angular runs on the main thread, where
- * the runtime relays requests to it (issue #85). It shares the "Background"
- * row so this page gets no taller: the lazy and gestures pages render below
- * it, and on CI's 320x640 Android emulator their checks are at the bottom of
- * the screen.
+ * the runtime relays requests to it (issue #85). Its URL comes from the
+ * environment file the production build swaps in (issue #175). It shares the
+ * "Background" row so this page gets no taller: the lazy and gestures pages
+ * render below it, and on CI's 320x640 Android emulator their checks are at
+ * the bottom of the screen.
  *
  * The last element is a component with an `.html` template styled by Tailwind
  * (tailwind-card.ts).

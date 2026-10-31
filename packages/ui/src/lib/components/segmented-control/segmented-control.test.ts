@@ -10,6 +10,7 @@ import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideIconTheme } from '../icon/icon-theme';
 import {
   type SegmentedHost,
+  segmentPlace,
   UI_SEGMENTED_HOST,
   UiSegmentedControl,
   UiSegmentedIndicator,
@@ -44,7 +45,9 @@ const testHost = (): SegmentedHost => inject(SegmentedControlHost);
           (bindlayoutchange)="control.measure(value, $event)"
         >
           <view
-            [class]="control.segmentClass(value)"
+            [class]="
+              control.segmentClass(value, { first: $first, last: $last })
+            "
             [style]="control.segmentStyle(value)"
             (bindtouchstart)="control.press(value, $event)"
             (bindtouchmove)="control.move($event)"
@@ -729,7 +732,6 @@ describe('UiSegmentedControl', () => {
       );
       expect(getByText('Week').classList).toContain('text-primary-foreground');
       expect(segment('Day').classList).toContain('bg-secondary');
-      expect(segment('Day').classList).toContain('rounded-[8px]');
       expect(getByText('Day').classList).toContain('text-secondary-foreground');
       expect(segment('Day').style.transition).toContain('background-color');
 
@@ -752,6 +754,31 @@ describe('UiSegmentedControl', () => {
       // Nothing slides on Material, so a tap just selects.
       await update(() => host.selected.set(['Month']));
       expect(segment('Month').classList).toContain('bg-primary');
+    });
+
+    it("round the group's ends on Material's end segments, so Increase Contrast's outline follows them", async () => {
+      const { host, segment, track, update } = await renderControl(ANDROID);
+      await update(() => settings.increaseContrast.set(true));
+      expect(segment('Day').classList).toContain('rounded-l-[20px]');
+      expect(segment('Day').classList).toContain('rounded-r-[8px]');
+      expect(segment('Day').classList).toContain('border-secondary-foreground');
+      expect(segment('Month').classList).toContain('rounded-l-[8px]');
+      expect(segment('Month').classList).toContain('rounded-r-[20px]');
+      // The track doesn't clip the ends, which would cut their outlines.
+      expect(track().classList).not.toContain('rounded-full');
+      expect(track().classList).not.toContain('overflow-hidden');
+
+      // An unselected segment between them has small corners all round, and
+      // the selected one is round wherever it is.
+      await update(() => host.selected.set(['Day']));
+      expect(segment('Week').classList).toContain('rounded-[8px]');
+      expect(segment('Day').classList).toContain('rounded-full');
+      expect(segment('Day').classList).not.toContain('rounded-l-[20px]');
+
+      // A lone segment is round at both ends.
+      await update(() => host.values.set(['Week']));
+      expect(segment('Week').classList).toContain('rounded-full');
+      expect(segment('Week').classList).toContain('bg-secondary');
     });
 
     it("give icons Material's content color, and leave them alone elsewhere", async () => {
@@ -813,5 +840,22 @@ describe('UiSegmentedControl', () => {
       expect(host.control.enabled()).toBe(false);
       expect(host.control.slides()).toBe(false);
     });
+  });
+});
+
+describe('segmentPlace', () => {
+  it("finds a segment's place among its host's segments, and no end for one that isn't there", () => {
+    const segments = ['Day', 'Week', 'Month'];
+    expect(segmentPlace(segments, 'Day')).toEqual({ first: true, last: false });
+    expect(segmentPlace(segments, 'Week')).toEqual({
+      first: false,
+      last: false,
+    });
+    expect(segmentPlace(segments, 'Month')).toEqual({
+      first: false,
+      last: true,
+    });
+    expect(segmentPlace(['Day'], 'Day')).toEqual({ first: true, last: true });
+    expect(segmentPlace([], 'Day')).toEqual({ first: false, last: false });
   });
 });

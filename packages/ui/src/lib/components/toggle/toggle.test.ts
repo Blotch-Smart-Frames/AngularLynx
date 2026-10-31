@@ -550,6 +550,24 @@ describe('UiToggleGroup, segmented', () => {
     expect(getByText('Day')).toBeTruthy();
   });
 
+  it("rounds the group's ends on Android, as items come and go", async () => {
+    const { host, item } = await renderSegmented(ANDROID);
+    expect(item('Day').classList).toContain('rounded-l-[20px]');
+    expect(item('Month').classList).toContain('rounded-[8px]');
+    expect(item('Star').classList).toContain('rounded-r-[20px]');
+
+    // The items before a new one are redrawn before it has a value, so each
+    // finds its place from the items rather than their values.
+    host.options.set(['Day', 'Week', 'Month', 'Year']);
+    await waitForUpdate();
+    expect(item('Year').classList).toContain('rounded-[8px]');
+    expect(item('Star').classList).toContain('rounded-r-[20px]');
+
+    host.options.set(['Month']);
+    await waitForUpdate();
+    expect(item('Month').classList).toContain('rounded-l-[20px]');
+  });
+
   it('leaves an icon the color around the group in the other variants', async () => {
     vi.stubGlobal('SystemInfo', IOS_26);
     const tinted = await render(TintedGroupHost);

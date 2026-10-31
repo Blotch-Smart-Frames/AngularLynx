@@ -497,6 +497,10 @@ describe('UiTabsList, segmented', () => {
     expect(trigger('Photos').classList).toContain('bg-primary');
     expect(trigger('Photos').style.transition).toContain('background-color');
     expect(getByText('Photos').classList).toContain('text-primary-foreground');
+    // The last tab rounds the group's end, and the one between has small
+    // corners.
+    expect(trigger('Albums').classList).toContain('rounded-[8px]');
+    expect(trigger('People').classList).toContain('rounded-r-[20px]');
     // A press shows Material's state layer.
     fireEvent.touchstart(trigger('Albums'), { touches: [{ pageX: 150 }] });
     await waitForUpdate();

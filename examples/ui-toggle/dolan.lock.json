@@ -6,7 +6,7 @@
         "hash": "6bcd715ba5359b93"
       },
       "toggle.ts": {
-        "hash": "05b35260f4dc0405"
+        "hash": "8d1ab84714bbed0d"
       }
     },
     "label": {
@@ -47,10 +47,10 @@
     },
     "segmented-control": {
       "index.ts": {
-        "hash": "0f4d03de0ff36409"
+        "hash": "112ffe8715737c91"
       },
       "segmented-control.ts": {
-        "hash": "4faa44a58e3d4c61"
+        "hash": "d022aa117e6de7eb"
       }
     }
   },

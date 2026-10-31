@@ -24,6 +24,7 @@ import {
 import { cn } from '@blotch/dolan/utils/cn';
 import {
   type SegmentedHost,
+  segmentPlace,
   UI_SEGMENTED_HOST,
   UiSegmentedControl,
   UiSegmentedIndicator,
@@ -246,7 +247,8 @@ export class UiTabsList {
 export class UiTabsTrigger {
   readonly #tabs = inject(UiTabs);
   readonly #settings = inject(LynxAccessibilitySettings);
-  // Absent for a trigger outside a <ui-tabs-list>.
+  // Both absent for a trigger outside a <ui-tabs-list>.
+  readonly #list = inject(UiTabsList, { optional: true });
   readonly #segmented = inject(UiSegmentedControl, { optional: true });
 
   readonly triggerValue = input.required<string>({ alias: 'value' });
@@ -345,7 +347,12 @@ export class UiTabsTrigger {
   protected readonly triggerClass = computed(() => {
     const segment = this.#segment();
     if (segment) {
-      return cn(segment.segmentClass(this.triggerValue()), this.userClass());
+      // The list provides the segmented control, so a segment is in one.
+      const place = segmentPlace(this.#list!.triggers(), this);
+      return cn(
+        segment.segmentClass(this.triggerValue(), place),
+        this.userClass(),
+      );
     }
     return cn(
       // No `flex-1` here: now that the list shrinks to fit its content (see

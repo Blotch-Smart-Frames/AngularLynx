@@ -82,6 +82,8 @@ import {
           disabled
           (pressed)="archived()"
         />
+        <ui-menu-item label="Bold" checked />
+        <ui-menu-item label="Pin" [checked]="pinned()" />
       </ui-menu-section>
     </ui-menu>
   `,
@@ -91,6 +93,7 @@ class MenuHost {
   readonly withTrigger = signal(true);
   readonly glassTrigger = signal(false);
   readonly sort = signal<'name' | 'date'>('date');
+  readonly pinned = signal<boolean | undefined>(undefined);
   readonly closed = vi.fn();
   readonly shared = vi.fn();
   readonly deleted = vi.fn();
@@ -364,6 +367,22 @@ describe('UiMenuItem', () => {
     expect(name.getAttribute('accessibility-traits')).toBe('button,selected');
     expect(date.getAttribute('accessibility-traits')).toBe('button');
     await waitForClose(rendered);
+  });
+
+  it('is checked by a bare checked attribute, and unset when bound to undefined', async () => {
+    const rendered = await renderOpenMenu();
+    const bold = row(rendered, 'Bold');
+    const pin = row(rendered, 'Pin');
+
+    expect(bold.getAttribute('accessibility-traits')).toBe('button,selected');
+    expect(bold.querySelector('.h-5.w-5 svg')).not.toBeNull();
+    // Unset, it's an item that's never checked: no checkmark column.
+    expect(pin.querySelector('.h-5.w-5')).toBeNull();
+
+    rendered.host.pinned.set(false);
+    await waitForUpdate();
+    expect(pin.querySelector('.h-5.w-5')).not.toBeNull();
+    expect(pin.querySelector('.h-5.w-5 svg')).toBeNull();
   });
 
   it('highlights while pressed, by touch or mouse', async () => {

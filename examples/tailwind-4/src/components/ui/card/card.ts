@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   input,
   viewChild,
@@ -40,7 +41,7 @@ export class UiCard {
   /**
    * When true, the card responds to touch with a subtle scale animation
    */
-  readonly pressable = input(false);
+  readonly pressable = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly containerRef = viewChild<ElementRef>('container');

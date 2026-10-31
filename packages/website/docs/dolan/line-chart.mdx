@@ -56,12 +56,7 @@ export class Revenue {
 `smooth` draws a curve through the points instead of straight segments. The curve is monotone (d3's `curveMonotoneX`), so it never overshoots the data.
 
 ```angular-html
-<ui-line-chart
-  [data]="revenue"
-  [smooth]="true"
-  [strokeWidth]="3"
-  [dotRadius]="4"
-/>
+<ui-line-chart [data]="revenue" smooth [strokeWidth]="3" [dotRadius]="4" />
 ```
 
 `strokeWidth` and `dotRadius` are in px. Set `showDots` to `false` for a line without dots.
@@ -116,7 +111,7 @@ The chart fills its container's width and is 200px tall. Set `height` for anothe
 Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons. `zoomAxes` limits it to one axis.
 
 ```angular-html
-<ui-line-chart [data]="revenue" [zoomable]="true" zoomAxes="x" />
+<ui-line-chart [data]="revenue" zoomable zoomAxes="x" />
 ```
 
 To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.

@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChildren,
   inject,
@@ -106,7 +107,7 @@ export class UiToggle {
   readonly pressed = model(false);
   readonly variant = input<ToggleVariant>('default');
   readonly size = input<ToggleSize>('default');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly containerRef = viewChild<ElementRef>('container');
@@ -190,7 +191,7 @@ export class UiToggleGroup implements SegmentedHost {
    */
   readonly variant = input<ToggleGroupVariant>('default');
   readonly size = input<ToggleSize>('default');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly segmentedControl = inject(UiSegmentedControl);

@@ -124,7 +124,7 @@ The chart fills its container's width and is 200px tall. Set `height` for anothe
 Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons. `zoomAxes` limits it to one axis.
 
 ```angular-html
-<ui-scatter-chart [data]="measurements" [zoomable]="true" />
+<ui-scatter-chart [data]="measurements" zoomable />
 ```
 
 To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.

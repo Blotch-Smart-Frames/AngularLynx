@@ -39,6 +39,14 @@ export type UiMenuHost = {
 export const UI_MENU = new InjectionToken<UiMenuHost>('UI_MENU');
 
 /**
+ * `booleanAttribute` for an input that can also be unset: a bare attribute
+ * is true, as it is for the other boolean inputs, and `undefined` stays
+ * `undefined` rather than becoming false.
+ */
+const optionalBooleanAttribute = (value: unknown): boolean | undefined =>
+  value === undefined ? undefined : booleanAttribute(value);
+
+/**
  * A menu item: a label, with an optional icon, that does something and
  * closes the menu.
  *
@@ -115,7 +123,9 @@ export class UiMenuItem {
    * set it, true or false, on each item of a group of options, so their
    * labels line up.
    */
-  readonly checked = input<boolean | undefined>(undefined);
+  readonly checked = input<boolean | undefined, unknown>(undefined, {
+    transform: optionalBooleanAttribute,
+  });
   /** Shows the item without letting it be chosen. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /**

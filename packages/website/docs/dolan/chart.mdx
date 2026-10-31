@@ -175,7 +175,7 @@ By default a touch focuses the nearest point within 48px (`maxFocusDistance`). S
 Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** (reset) buttons in the top-right corner.
 
 ```angular-html
-<ui-chart [definition]="definition" [zoomable]="true" zoomAxes="x" />
+<ui-chart [definition]="definition" zoomable zoomAxes="x" />
 ```
 
 - Zoom works on continuous axes in `scales.x` and `scales.y`, such as `scaleLinear`. Band and point scales don't zoom, and an axis missing from `scales` stays fixed.

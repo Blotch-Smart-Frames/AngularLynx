@@ -3,6 +3,7 @@ import {
   Component,
   Injector,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   inject,
   input,
@@ -383,7 +384,7 @@ export class UiSlider implements FormValueControl<number> {
   readonly max = input<number | undefined>(100);
   /** The values the slider stops at: `min`, `min + step` and so on. */
   readonly step = input(1);
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   /** `'default'` or `'glass'`, each platform's own design; see SliderVariant. */
   readonly variant = input<SliderVariant>('default');
   /** What a screen reader calls the slider, such as "Volume". */

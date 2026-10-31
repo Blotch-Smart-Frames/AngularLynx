@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   inject,
@@ -255,7 +256,7 @@ export const popoverArrow = (
 })
 export class UiPopoverPanel implements OnDestroy {
   /** Whether the panel is open. */
-  readonly open = input(false);
+  readonly open = input(false, { transform: booleanAttribute });
   /** The element it opens from. */
   readonly anchor = input.required<PopoverAnchor>();
   /**

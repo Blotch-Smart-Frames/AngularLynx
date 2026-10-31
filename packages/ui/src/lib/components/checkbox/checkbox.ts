@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   input,
@@ -38,7 +39,7 @@ import { cn } from '../../utils/cn';
 })
 export class UiCheckbox {
   readonly checked = model(false);
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly changed = output<boolean>();

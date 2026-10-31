@@ -276,7 +276,7 @@ export class UiSearchField implements FormValueControl<string> {
   readonly value = model<string>('');
   /** What the field searches, shown while it's empty. */
   readonly placeholder = input('Search');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   /**
    * Shows a Cancel button while the field is in use (focused, or holding
    * text): the glass circle with an x of iOS 26, UISearchBar's Cancel before

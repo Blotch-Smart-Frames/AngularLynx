@@ -3,6 +3,7 @@ import {
   type OnDestroy,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChildren,
   effect,
@@ -407,8 +408,8 @@ export class UiNavDrawerItem {
   readonly #drawer = inject(UiNavDrawer);
 
   readonly variant = input<'default' | 'destructive'>('default');
-  readonly active = input(false);
-  readonly autoClose = input(true);
+  readonly active = input(false, { transform: booleanAttribute });
+  readonly autoClose = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly pressed = output<void>();

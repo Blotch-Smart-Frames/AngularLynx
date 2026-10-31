@@ -1,6 +1,7 @@
 import {
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   input,
   output,
@@ -40,9 +41,9 @@ import { cn } from '../../utils/cn';
 export class UiScrollArea {
   readonly orientation = input<'vertical' | 'horizontal'>('vertical');
   readonly height = input<string>('');
-  readonly bounces = input(true);
-  readonly scrollBar = input(true);
-  readonly nestedScroll = input(false);
+  readonly bounces = input(true, { transform: booleanAttribute });
+  readonly scrollBar = input(true, { transform: booleanAttribute });
+  readonly nestedScroll = input(false, { transform: booleanAttribute });
   readonly upperThreshold = input(0);
   readonly lowerThreshold = input(0);
   readonly userClass = input<string>('', { alias: 'class' });

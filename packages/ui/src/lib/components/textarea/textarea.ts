@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   input,
@@ -95,7 +96,7 @@ export class UiTextarea implements FormValueControl<string> {
   readonly placeholder = input<string>('');
   readonly helperText = input<string>('');
   readonly error = input<string>('');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   // SwiftUI-style lineLimit(min...max). The field opens at minLines, grows with

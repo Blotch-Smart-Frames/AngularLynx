@@ -4,6 +4,7 @@ import {
   ElementRef,
   Renderer2,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   inject,
@@ -237,7 +238,7 @@ export const measureMenuElement = async (
 })
 export class UiMenuPopup implements OnDestroy {
   /** Whether the menu is open. */
-  readonly open = input(false);
+  readonly open = input(false, { transform: booleanAttribute });
   /** The element the menu opens from: a button, or the pressed element. */
   readonly anchor = input.required<MenuElement>();
   /** A `'pull-down'` or a `'context'` menu; see MenuKind. */

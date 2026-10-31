@@ -114,7 +114,7 @@ The chart fills its container's width and is 200px tall. Set `height` for anothe
 Set `zoomable` to let users drag to pan, with **+**, **−** and **1:1** buttons. Zooming in on the x axis spreads the candles apart, which suits a long price history.
 
 ```angular-html
-<ui-candlestick-chart [data]="prices" [zoomable]="true" zoomAxes="x" />
+<ui-candlestick-chart [data]="prices" zoomable zoomAxes="x" />
 ```
 
 To zoom from your own controls, set `showZoomControls` to `false` and call `zoomIn()`, `zoomOut()` or `resetZoom()` on the component. See [Pan and zoom](/dolan/chart#pan-and-zoom) for how it behaves.

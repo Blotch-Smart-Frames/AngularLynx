@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   inject,
@@ -27,7 +28,7 @@ import { cn } from '../../utils/cn';
 })
 export class UiCollapsible {
   readonly open = model(false);
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>

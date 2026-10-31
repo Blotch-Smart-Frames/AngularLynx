@@ -1,6 +1,7 @@
 import {
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   input,
   output,
@@ -45,10 +46,10 @@ export class UiList {
   readonly spanCount = input(1);
   readonly orientation = input<'vertical' | 'horizontal'>('vertical');
   readonly height = input<string>('');
-  readonly bounces = input(true);
-  readonly scrollBar = input(true);
-  readonly nestedScroll = input(false);
-  readonly sticky = input(false);
+  readonly bounces = input(true, { transform: booleanAttribute });
+  readonly scrollBar = input(true, { transform: booleanAttribute });
+  readonly nestedScroll = input(false, { transform: booleanAttribute });
+  readonly sticky = input(false, { transform: booleanAttribute });
   readonly stickyOffset = input(0);
   readonly preloadBufferCount = input(0);
   readonly mainAxisGap = input('');

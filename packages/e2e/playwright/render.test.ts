@@ -58,13 +58,16 @@ test("a tap handler gets an async background function's result", async ({
 });
 
 // The counter page loads fixtures/http-data.json through HttpClient and
-// httpResource when it starts. On the web, the main thread runs in a browser
-// frame, which has fetch; on Lynx it relays to the background thread's
-// (issue #85, checked by native/http.yaml).
-test('HttpClient and httpResource load JSON', async ({ page }) => {
+// httpResource when it starts, and posts JSON that the server echoes the
+// Content-Type of. On the web, the main thread runs in a browser frame, which
+// has fetch; on Lynx it relays to the background thread's (issues #85 and
+// #176, checked by native/http.yaml).
+test('HttpClient and httpResource load JSON, and HttpClient posts it', async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto('/');
-  await expect(page.getByText('HTTP: pong/pong')).toBeVisible();
+  await expect(page.getByText('HTTP: pong/pong/json')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

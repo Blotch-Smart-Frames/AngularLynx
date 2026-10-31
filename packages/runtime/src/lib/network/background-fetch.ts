@@ -77,6 +77,25 @@ const isUtf8Text = (contentType: string | null): boolean => {
   );
 };
 
+/**
+ * A header name in the case HTTP/1.1 clients send it: `content-type` →
+ * `Content-Type`, `x-api-key` → `X-Api-Key`.
+ *
+ * The main thread's Headers lowercases names, as the standard's does, but
+ * Lynx's background `Headers` (through 4.2) matches them by exact spelling.
+ * Its `Request` looks for `Content-Type`, and when that misses it adds
+ * `Content-Type: text/plain;charset=UTF-8` beside the request's own. iOS
+ * then sends whichever of the two it sets last (dictionary order), and
+ * Android sends both. HTTP names are case-insensitive, so every name goes
+ * in this case, not only that one, for a host's own HTTP service that looks
+ * others up by their usual spelling.
+ */
+const canonicalName = (name: string): string =>
+  name
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join('-');
+
 const decodeBody = (body: RelayedBody): string | ArrayBuffer | undefined => {
   if (body === null) return undefined;
   if ('text' in body) return body.text;
@@ -121,7 +140,9 @@ export const fetchForMainThread = async (
     const response = await fetchImpl(request.url, {
       ...(request.options as RequestInit),
       method: request.method,
-      headers: Object.fromEntries(request.headers),
+      headers: Object.fromEntries(
+        request.headers.map(([name, value]) => [canonicalName(name), value]),
+      ),
       body: decodeBody(request.body),
       signal: controller.signal,
     });
@@ -130,9 +151,15 @@ export const fetchForMainThread = async (
     if (response.status === LYNX_FAILURE_STATUS && headers.length === 0) {
       throw new TypeError(response.statusText || 'Network request failed');
     }
+    // Looked up by hand, since Lynx's `get()` matches names by exact spelling,
+    // and a response's names come lowercase on Android but capitalized on
+    // iOS (`Content-Type`).
+    const contentType =
+      headers.find(([name]) => name.toLowerCase() === 'content-type')?.[1] ??
+      null;
     let body: RelayedBody = null;
     if (!NULL_BODY_STATUSES.has(response.status)) {
-      body = isUtf8Text(response.headers.get('content-type'))
+      body = isUtf8Text(contentType)
         ? { text: await response.text() }
         : {
             base64: bytesToBase64(new Uint8Array(await response.arrayBuffer())),

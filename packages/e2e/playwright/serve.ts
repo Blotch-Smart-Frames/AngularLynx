@@ -39,10 +39,10 @@ await serveStatic(
   ],
   { port, host: '127.0.0.1' },
 );
-// The counter fixture's HttpClient and httpResource requests go to a fixed
-// URL on another port (HTTP_DATA), so on the web they're cross-origin
+// The counter fixture's HttpClient and httpResource requests go to fixed
+// URLs on another port (HTTP_DATA), so on the web they're cross-origin
 // requests, which the server allows.
-await serveStatic([HTTP_DATA.route], {
+await serveStatic(HTTP_DATA.routes, {
   port: HTTP_DATA.port,
   host: '127.0.0.1',
 });

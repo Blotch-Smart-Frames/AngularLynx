@@ -147,7 +147,7 @@ const startServers = async (
   const servers = [
     await serveStatic(
       [
-        HTTP_DATA.route,
+        ...HTTP_DATA.routes,
         ...(bundleDir ? [{ prefix: '/', dir: path.resolve(bundleDir) }] : []),
       ],
       { ...options, port },
@@ -156,7 +156,7 @@ const startServers = async (
   // The fixture's URL has a fixed port.
   if (port !== HTTP_DATA.port) {
     servers.push(
-      await serveStatic([HTTP_DATA.route], {
+      await serveStatic(HTTP_DATA.routes, {
         ...options,
         port: HTTP_DATA.port,
       }),

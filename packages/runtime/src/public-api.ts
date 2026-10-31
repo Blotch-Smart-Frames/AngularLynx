@@ -153,6 +153,14 @@ export type {
   DynamicColorScheme,
 } from './lib/theme';
 export { LynxTransition, LynxTransitionGroup } from './lib/transition';
+export {
+  LynxWebAuthSession,
+  WebAuthSessionError,
+} from './lib/web-auth-session';
+export type {
+  WebAuthSessionErrorCode,
+  WebAuthSessionOptions,
+} from './lib/web-auth-session';
 export { provideRenderer } from './lib/renderer/providers';
 export { LynxLocationStrategy } from './lib/router/lynx-location-strategy';
 export { LynxPlatformLocation } from './lib/router/lynx-platform-location';

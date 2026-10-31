@@ -1,9 +1,12 @@
 package dev.angularlynx.shell
 
 import android.app.UiModeManager
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +18,7 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.graphics.Insets
 import androidx.core.os.ConfigurationCompat
 import androidx.core.view.ViewCompat
@@ -31,7 +35,7 @@ import com.lynx.xelement.XElementBehaviors
  * The whole app: one full-screen LynxView running the Angular app. Angular
  * Router navigates inside it, so there is no native navigation stack.
  */
-class MainActivity : ComponentActivity(), ShellModule.Host {
+class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     private lateinit var lynxView: LynxView
 
     // The system bar and cutout insets, and whether the screen has a cutout,
@@ -57,6 +61,13 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
         }
     }
 
+    // The open sign-in (see WebAuthModule): the scheme its page returns to,
+    // who to tell, and whether the app has gone behind the Custom Tab yet.
+    private class WebAuthSession(val scheme: String, val done: (WebAuthModule.Result) -> Unit) {
+        var opened = false
+    }
+    private var webAuthSession: WebAuthSession? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Android 15+ always draws apps edge to edge; opting in on older
         // versions too keeps the layout the same everywhere.
@@ -70,6 +81,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
             setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
             setGenericResourceFetcher(AssetGenericResourceFetcher(this@MainActivity))
             registerModule(ShellModule.NAME, ShellModule::class.java, this@MainActivity)
+            registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             // Lynx's core has no <input>, <overlay>, <svg>, <blur-view> etc.;
             // these come from XElement (see app/build.gradle.kts). Lynx
             // Explorer registers them the same way.
@@ -134,6 +146,33 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
 
     override fun setBackHandlerEnabled(enabled: Boolean) {
         backHandler.isEnabled = enabled
+    }
+
+    override fun startWebAuthSession(url: Uri, callbackScheme: String, done: (WebAuthModule.Result) -> Unit) {
+        if (webAuthSession != null) {
+            done(WebAuthModule.Result.Failed("A sign-in is already open."))
+            return
+        }
+        val session = WebAuthSession(callbackScheme.lowercase(), done)
+        webAuthSession = session
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(this, url)
+        } catch (_: ActivityNotFoundException) {
+            webAuthSession = null
+            done(WebAuthModule.Result.Failed("No browser can open the sign-in page."))
+        }
+    }
+
+    // The page's redirect to the callback scheme. The activity is singleTask,
+    // so the deep link comes back to this one, which closes the Custom Tab
+    // above it. It arrives before onResume, which then finds no session open.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val url = intent.data ?: return
+        val session = webAuthSession ?: return
+        if (url.scheme?.lowercase() != session.scheme) return
+        webAuthSession = null
+        session.done(WebAuthModule.Result.Returned(url.toString()))
     }
 
     // The manifest's configChanges keeps the activity, and the running app,
@@ -212,10 +251,17 @@ class MainActivity : ComponentActivity(), ShellModule.Host {
     override fun onResume() {
         super.onResume()
         lynxView.onEnterForeground()
+        // Back from a Custom Tab without its redirect: the person closed it.
+        // Android says nothing else when a Custom Tab closes.
+        webAuthSession?.takeIf { it.opened }?.let {
+            webAuthSession = null
+            it.done(WebAuthModule.Result.Canceled)
+        }
     }
 
     override fun onPause() {
         lynxView.onEnterBackground()
+        webAuthSession?.opened = true
         super.onPause()
     }
 

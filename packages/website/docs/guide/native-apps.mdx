@@ -154,7 +154,7 @@ The app's name, ID and version are options of the `build` target in `angular.jso
 | `icon`            | A 1024×1024 PNG without transparency. iOS only for now: Android apps get a placeholder icon                                                                     |
 | `orientation`     | `portrait` (default), `landscape` or `all`                                                                                                                      |
 | `permissions`     | Any of `camera`, `microphone`, `location`, `photos`, `contacts` and `notifications`, each with the reason iOS shows when it asks. Android shows its own message |
-| `deepLinkSchemes` | URL schemes that open the app, e.g. `myapp` for `myapp://` links                                                                                                |
+| `deepLinkSchemes` | URL schemes that open the app, e.g. `myapp` for `myapp://` links. On Android, include the callback scheme of a [web sign-in](/guide/web-sign-in)                |
 
 ### Per-environment values
 

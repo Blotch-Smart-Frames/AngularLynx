@@ -1,0 +1,68 @@
+# LynxWebAuthSession
+
+Opens a sign-in page in the phone's sign-in sheet and returns the URL it redirects to. `import { LynxWebAuthSession, WebAuthSessionError, type WebAuthSessionOptions, type WebAuthSessionErrorCode } from '@blotch/angular-lynx';`
+
+[Sign in with a web page](/guide/web-sign-in) shows it in use.
+
+## Usage
+
+```typescript
+const webAuth = inject(LynxWebAuthSession);
+
+const callback = await webAuth.start({
+  url: 'https://example.com/oauth/authorize?client_id=my-app&redirect_uri=com.example.myapp:/oauth',
+  callbackScheme: 'com.example.myapp',
+});
+const code = new URL(callback).searchParams.get('code');
+```
+
+## API
+
+### `LynxWebAuthSession`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxWebAuthSession {}
+```
+
+Uses `ASWebAuthenticationSession` on iOS and a Custom Tab on Android. Only the apps `ng build --platform` makes have it; elsewhere, such as Lynx Explorer, the web preview and unit tests, `start()` rejects with `unavailable`.
+
+### `LynxWebAuthSession.start()`
+
+```typescript
+start(options: WebAuthSessionOptions): Promise<string>;
+```
+
+Opens `options.url` and resolves with the whole URL the page redirects to on `options.callbackScheme`, query and fragment included. Rejects with a [`WebAuthSessionError`](#webauthsessionerror). One session can be open at a time: starting another while one is open rejects with `failed`.
+
+### `WebAuthSessionOptions`
+
+```typescript
+type WebAuthSessionOptions = {
+  readonly url: string;
+  readonly callbackScheme: string;
+  readonly ephemeral?: boolean;
+};
+```
+
+| Option           | Description                                                                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`            | The page that starts the sign-in, such as a provider's authorize URL                                                                                 |
+| `callbackScheme` | Your app's URL scheme, such as `com.example.myapp`. On Android it must also be in `deepLinkSchemes` in angular.json                                  |
+| `ephemeral`      | `true` signs in without the browser's sign-ins and keeps none afterwards. iOS only: Android's Custom Tabs always share Chrome's. Defaults to `false` |
+
+### `WebAuthSessionError`
+
+```typescript
+class WebAuthSessionError extends Error {
+  readonly code: WebAuthSessionErrorCode;
+}
+
+type WebAuthSessionErrorCode = 'canceled' | 'unavailable' | 'failed';
+```
+
+| `code`        | When                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `canceled`    | The person closed the sheet or the tab, or, on iOS, said no when asked whether the app may use the site |
+| `unavailable` | The host has no sign-in sheet                                                                           |
+| `failed`      | The page couldn't be opened, or a sign-in was already open                                              |

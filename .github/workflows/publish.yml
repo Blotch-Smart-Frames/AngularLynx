@@ -108,7 +108,8 @@ jobs:
         if: failure()
         run: grep -h " oidc " ~/.npm/_logs/*.log || echo "No OIDC log lines found"
 
-  # npm holds new versions briefly for processing before they install.
+  # npm holds new versions briefly for processing before they install, and can
+  # list one before its CDN serves the tarball, which an install then 404s on.
   wait-for-npm:
     needs: [version, publish]
     runs-on: ubuntu-latest

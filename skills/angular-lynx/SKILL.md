@@ -46,7 +46,7 @@ Read [lynx-elements.md](references/lynx-elements.md)
 
 ## Events & Interactions
 
-The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, several handlers on one element. Touch coordinates on each platform, and drags. Angular template syntax: `(bindtap)="handler($event)"`.
+The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, several handlers on one element. Touch coordinates on each platform, drags, and gestures (`[lynxGesture]` with pan, tap, long press and fling) and how they compete. Angular template syntax: `(bindtap)="handler($event)"`.
 
 Read [events-and-interactions.md](references/events-and-interactions.md)
 
@@ -94,7 +94,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## HTTP Requests
 
-`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute; no `Blob`/`FormData` bodies.
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute; no `Blob`/`FormData` bodies. OAuth sign-in through a web page with `LynxWebAuthSession`.
 
 Read [http-requests.md](references/http-requests.md)
 

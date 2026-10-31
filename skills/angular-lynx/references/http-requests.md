@@ -37,3 +37,32 @@ Lynx has `fetch` only on the background thread, and Angular runs on the main thr
 - **`withCredentials` does nothing**: the host app's HTTP stack owns cookies.
 - **Tests:** `provideHttpClient()` + `provideHttpClientTesting()` in `render()`'s providers, as in any Angular app.
 - **Host app** needs Lynx's HTTP service (Lynx Explorer and `ng build --platform` apps have it).
+
+## Sign in through a web page
+
+OAuth and OpenID Connect sign-in runs on a provider's page that redirects back with a code or token. Lynx has no popups or redirects, so `LynxWebAuthSession` opens the page in the platform's sign-in sheet (`ASWebAuthenticationSession` on iOS, a Custom Tab on Android) and resolves with the URL it redirects to on your app's scheme:
+
+```typescript
+import { inject } from '@angular/core';
+import { LynxWebAuthSession, WebAuthSessionError } from '@blotch/angular-lynx';
+
+readonly #webAuth = inject(LynxWebAuthSession);
+
+async signIn(): Promise<string | null> {
+  try {
+    const callback = await this.#webAuth.start({
+      url: 'https://auth.example.com/authorize?client_id=…&redirect_uri=com.example.notes:/oauth',
+      callbackScheme: 'com.example.notes',
+    });
+    return new URL(callback).searchParams.get('code');
+  } catch (error) {
+    if (error instanceof WebAuthSessionError && error.code === 'canceled') return null;
+    throw error;
+  }
+}
+```
+
+- **Android** opens the app from the redirect like any link: add the scheme to `deepLinkSchemes` in the `build` target's options in `angular.json`. iOS needs nothing.
+- **`ephemeral: true`** signs in without the browser's cookies and keeps none (iOS only; Custom Tabs share Chrome's).
+- **Rejects with `WebAuthSessionError`**, whose `code` is `canceled` (closed, or declined on iOS), `unavailable` or `failed` (couldn't open the page, or a sign-in is already open).
+- **`unavailable` everywhere but `ng build --platform` apps:** Lynx Explorer, the web preview and tests have no native module for it. Your own native app (or an ejected project from before it) registers an `AngularLynxWebAuth` module itself: see the website's "Embed in a Native App" guide.

@@ -36,13 +36,61 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 
 ## Handlers can change the element tree
 
-Event handlers run on the main thread, inside the native event. They can do anything they would on the web: set signals, navigate, open overlays, start `animate()`, add and remove elements. Measured on Lynx 4.1 (iOS, Android, web): a handler that creates and removes 50 elements and flushes them with `ApplicationRef.tick()` doesn't crash, and neither do gesture callbacks doing the same. Don't wrap these calls in `setTimeout`.
+Event handlers run on the main thread, inside the native event. They can do anything they would on the web: set signals, navigate, open overlays, start `animate()`, add and remove elements. Measured on Lynx 4.1 (iOS, Android, web): a handler that creates and removes 50 elements and flushes them with `ApplicationRef.tick()` doesn't crash, and on iOS and Android neither do gesture callbacks doing the same. Don't wrap these calls in `setTimeout`.
 
 ## Drags
 
 Handle a drag in template listeners (`(bindtouchstart)`, `(bindtouchmove)`, `(bindtouchend)`) that set signals. Angular runs on the main thread, beside Lynx's touch handling, so a main-thread script would save nothing. Measured on Lynx 4.1 (iOS Simulator, Android emulator): a `touchmove` every 17–20ms, about 1ms from the event to the handler, and 3–5ms from the handler to the render.
 
 A `touchmove` goes to the element the touch started on, even as the finger crosses others. On iOS, a `<scroll-view>` around a sideways drag scrolls along with it. Give the dragged element `consume-slide-event` with the swipe angles it keeps, in degrees from the right: `[consume-slide-event]="[[-45, 45], [135, 180], [-180, -135]]"` keeps drags within 45° of sideways, and a swipe up that starts on it still scrolls the page.
+
+## Gestures
+
+When a drag needs recognition rules (a minimum distance, a tap and a drag on one element, momentum), bind a gesture with `[lynxGesture]` instead of touch listeners:
+
+```typescript
+import { Component, computed, signal } from '@angular/core';
+import {
+  Gesture,
+  LYNX_ELEMENTS,
+  LynxGestureDetector,
+  PanGesture,
+  TapGesture,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-card',
+  imports: [LYNX_ELEMENTS, LynxGestureDetector],
+  template: `
+    <view [lynxGesture]="gesture" [style.transform]="transform()">
+      <text>Taps: {{ taps() }}</text>
+    </view>
+  `,
+})
+export class Card {
+  readonly taps = signal(0);
+  readonly #x = signal(0);
+  readonly transform = computed(() => `translateX(${this.#x()}px)`);
+  #restX = 0;
+
+  readonly #pan = new PanGesture()
+    .minDistance(10)
+    .onUpdate((event) => this.#x.set(this.#restX + event.translationX))
+    .onEnd(() => (this.#restX = this.#x()));
+  readonly #tap = new TapGesture().onEnd(() => this.taps.update((n) => n + 1));
+
+  readonly gesture = Gesture.Exclusive(this.#pan, this.#tap);
+}
+```
+
+- **Create each gesture once, as a field.** Callbacks run on the main thread, like event handlers, and get the event and a state manager.
+- **Gestures:** `TapGesture`, `LongPressGesture`, `PanGesture` and `FlingGesture`. A fling is the momentum after a release: put it on the element with a pan (`Gesture.Simultaneous(pan, fling)`), read `deltaX`/`deltaY` in its `onUpdate`, and expect no `onStart`. `PinchGesture` and `RotationGesture` never fire: no Lynx platform recognizes them.
+- **`translationX`/`translationY`** run from where the touch began. Events carry no velocity.
+- **`onEnd` of a tap or long press means it happened**: the runtime drops the `onEnd` Lynx also sends when one fails. A pan's `onEnd` runs after every touch, a tap included, so don't take it as a completed drag.
+- **Gestures on one element race.** The first to activate fails the others, unless they're `simultaneousWith` it. `waitFor`, and so `Gesture.Exclusive`'s order, only takes effect between elements (a child's gesture waiting for its parent's). In the example, a drag past 10px wins and a tap is recognized when the finger lifts before that.
+- **State from code:** `fail()` and `end()` on the state manager work. `activate()` does nothing on any platform.
+- **Lynx reads few options:** a tap's `maxDuration` and `maxDistance`, a long press's `minDuration` and `maxDistance`, and a pan's `minDistance`. `enabled(false)`, `activeOffsetX`, a fling's `direction` and `numberOfTaps` do nothing; to turn a gesture off, bind `[lynxGesture]` to `[]`.
+- **The web preview recognizes gestures too**, by the same rules, from a mouse or a finger.
 
 ## Event Payload
 

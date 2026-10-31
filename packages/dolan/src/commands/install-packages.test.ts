@@ -37,7 +37,11 @@ describe('installComponentPackages', () => {
     writeFileSync(
       join(root, 'package.json'),
       JSON.stringify({
-        dependencies: { '@tanstack/charts': '^1.1.0', 'd3-shape': '^3.2.0' },
+        dependencies: {
+          '@tanstack/charts': '^1.1.0',
+          'd3-shape': '^3.2.0',
+          '@types/d3-shape': '^3.1.8',
+        },
       }),
     );
     const { installComponentPackages } = await import('./install-packages');
@@ -52,6 +56,7 @@ describe('installComponentPackages', () => {
     expect(installPackages).toHaveBeenCalledWith(root, [
       '@tanstack/charts@^1.1.0',
       'd3-shape@^3.2.0',
+      '@types/d3-shape@^3.1.8',
     ]);
     const p = await import('@clack/prompts');
     expect(p.log.warn).not.toHaveBeenCalled();
@@ -64,7 +69,7 @@ describe('installComponentPackages', () => {
     const p = await import('@clack/prompts');
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        'npm install @tanstack/charts@^1.1.0 d3-shape@^3.2.0',
+        'npm install @tanstack/charts@^1.1.0 d3-shape@^3.2.0 @types/d3-shape@^3.1.8',
       ),
     );
   });

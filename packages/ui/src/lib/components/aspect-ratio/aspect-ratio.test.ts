@@ -20,11 +20,18 @@ class AspectRatioHost {}
 })
 class DefaultHost {}
 
+/**
+ * The ratio the box's inline style holds. jsdom writes `aspect-ratio: 1` back
+ * as `1` or, in newer versions (an app's), as `1 / 1`.
+ */
+const ratioOf = (box: HTMLElement) =>
+  parseFloat(box.style.getPropertyValue('aspect-ratio'));
+
 describe('UiAspectRatio', () => {
   it('renders with the default 1:1 ratio', async () => {
     const { container } = await render(DefaultHost);
     const box = container.querySelector('.overflow-hidden') as HTMLElement;
-    expect(box.style.getPropertyValue('aspect-ratio')).toBe('1');
+    expect(ratioOf(box)).toBe(1);
   });
 
   // A class on a component lands on its host too (issue #181): the host is
@@ -34,6 +41,6 @@ describe('UiAspectRatio', () => {
     const box = getByText('Media').parentElement as HTMLElement;
     expect([...container.querySelectorAll('.rounded-md')]).toEqual([box]);
     expect(box.classList).toContain('overflow-hidden');
-    expect(box.style.getPropertyValue('aspect-ratio')).toBe(String(16 / 9));
+    expect(ratioOf(box)).toBe(16 / 9);
   });
 });

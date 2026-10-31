@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut an AngularLynx release. Pick the version, open the PR that sets every published package to it, and once that's merged, tag it, watch publish.yml through the E2E release gate and the npm publish, and create the GitHub release. Use when the user asks to cut, ship or publish a release, bump the published version, or release what's on master.
+description: Cut an AngularLynx release. Pick the version, bring the public angular-lynx skill up to date, open the PR that sets every published package to the version, and once that's merged, tag it, watch publish.yml through the E2E release gate and the npm publish, create the GitHub release, and refresh the installed copies of the angular-lynx skill. Use when the user asks to cut, ship or publish a release, bump the published version, or release what's on master.
 invocationControl: user
 metadata:
   internal: true
@@ -67,7 +67,19 @@ Also note changes an app's own code may notice that no migration covers. For exa
 library helper may now behave differently, or a component that dolan copies into apps may have
 changed a method's signature. They go in the PR body.
 
-## 4. Open the release PR
+## 4. Bring the public angular-lynx skill up to date
+
+Run the `update-angular-lynx-skill` skill with the argument `content`. If the Skill tool isn't
+available, follow `.claude/skills/update-angular-lynx-skill/SKILL.md` yourself. It checks the
+commits since the last tag against `skills/angular-lynx`, the skill apps install to write Angular
+for Lynx, and updates the skill where they changed something an app developer needs to know.
+
+- **Nothing to change:** carry on, and mention the commits it checked in the report.
+- **It opened a PR:** wait for its checks, and ask the user to merge it before you open the release
+  PR. That way the release PR still changes nothing but versions, and the skill on master describes
+  the code being released.
+
+## 5. Open the release PR
 
 ```bash
 git -C <main> worktree add -b chore/release-<version> <scratchpad>/wt-release origin/master
@@ -127,7 +139,7 @@ Since <previous>: <n> features, <n> fixes and <n> <other kind>.
 Count the published packages in `packages.ts`. Sort the commits by their prefix (`feat`, `fix`,
 `test`, `ci` and so on). Group features under a tracking issue when their PRs name one.
 
-## 5. Wait for the checks, then have the PR merged
+## 6. Wait for the checks, then have the PR merged
 
 Wait in the background until no check is pending:
 
@@ -140,7 +152,7 @@ Every check must pass. Merging is the user's call: ask them to squash-merge the 
 told you to merge it yourself. The harness may refuse `gh pr merge` as a merge without review
 anyway.
 
-## 6. After the merge: clean up and tag
+## 7. After the merge: clean up and tag
 
 Clean up `chore/release-<version>` the way the `post-merge-cleanup` skill does: prove it merged,
 remove its worktree, delete the branch, and fast-forward master in the main checkout. Then check
@@ -159,7 +171,7 @@ git -C <main> push origin v<version>
 message (so far, just the version). If it prints `commit`, the last tag was lightweight, so tag
 without `-a` and `-m`. Tag the merge commit by its hash, not HEAD, in case master has moved on.
 
-## 7. Watch publish.yml
+## 8. Watch publish.yml
 
 Read the workflow's jobs first, so you know which run before the publish and which after:
 
@@ -194,7 +206,7 @@ A red run isn't always a failed release. Read each failed job's log
   then move the tag to the fixed commit. Moving a pushed tag means deleting it on origin, so ask
   the user before running `git push origin :refs/tags/v<version>`.
 - **The publish failed partway:** some packages may be on npm already. Run the status script from
-  step 8 to see which, and report it. Don't republish packages one at a time.
+  step 9 to see which, and report it. Don't republish packages one at a time.
 - **The post-publish install failed:** the packages are on npm, and the workflow has filed an
   issue about it, which suggests `npm deprecate` commands. First rule out registry lag. A 404 for
   a `.tgz` in the log means npm listed the version before its CDN served the tarball. Once the
@@ -204,7 +216,7 @@ A red run isn't always a failed release. Read each failed job's log
   release may be broken. Don't deprecate anything yourself; report it to the user, along with the
   issue.
 
-## 8. Check npm
+## 9. Check npm
 
 ```bash
 node <main>/.claude/skills/release/scripts/npm-status.mts <version>
@@ -213,7 +225,7 @@ node <main>/.claude/skills/release/scripts/npm-status.mts <version>
 It passes when npm lists every package in `packages.ts` at the version, tags it `latest`, and
 serves its tarball.
 
-## 9. Create the GitHub release
+## 10. Create the GitHub release
 
 Check whether `publish.yml` creates the release itself (`grep -n "gh release" <main>/.github/workflows/publish.yml`).
 So far it hasn't. In that case, once the packages are on npm, create it the way the last one was
@@ -224,7 +236,14 @@ Changed" and the full changelog):
 gh release create v<version> --verify-tag --title v<version> --generate-notes --latest
 ```
 
-## 10. Report
+## 11. Refresh the installed copies of the angular-lynx skill
+
+Run the `update-angular-lynx-skill` skill with the argument `installed`, or follow its `SKILL.md`.
+It finds the repositories on this machine that install the skill and refreshes each copy from
+master. That includes step 4's update, if it made one. It commits in each repository, and asks
+before pushing one.
+
+## 12. Report
 
 Give a short summary:
 
@@ -233,6 +252,8 @@ Give a short summary:
   fixed by a re-run)
 - what the status script showed for npm
 - the link to the GitHub release
+- the angular-lynx skill: what step 4 changed (or the commits it checked and found nothing in), and
+  which installed copies step 11 refreshed
 - anything left for the user, such as an auto-filed issue, an experimental leg that's still
-  failing, or a remote branch that's still there
+  failing, an unpushed copy, or a remote branch that's still there
 - anything in the repository that no longer matches this skill, so it can be updated

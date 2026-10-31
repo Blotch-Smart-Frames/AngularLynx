@@ -93,6 +93,7 @@ Lynx can make network requests only from the [background thread](/guide/concepts
 - **Use HTTPS.** The apps `ng build --platform` makes block plain `http://` URLs, except to the device itself (`localhost` and `127.0.0.1`). [Lynx Explorer](/guide/glossary#lynx-explorer) allows them for development.
 - **There's no CORS.** A device isn't a browser, so a server doesn't need `Access-Control-Allow-Origin` headers. The web preview is a browser, so it still applies there.
 - **Send strings, JSON, `URLSearchParams`, `ArrayBuffer`s or typed arrays.** Lynx has no `Blob` or `FormData`, so multipart uploads aren't possible, and `responseType: 'blob'` fails. Use `responseType: 'arraybuffer'` for binary data.
+- **Calling Lynx's own `fetch` in a [`backgroundFn`](/api/main-thread/background-fn)? Spell `Content-Type` exactly.** Up to Lynx 4.2, header names there are case-sensitive: a request that sets `content-type` gets a second, `text/plain` one, and the server may read either. `response.headers.get()` is case-sensitive too, and a response's header names come lowercase on Android but capitalized on iOS. The `fetch` and `HttpClient` your components use take care of this.
 - **Progress arrives once.** With `reportProgress`, the download (and, with `withXhr()`, the upload) reports its progress once, when it's complete.
 - **A request that never reaches the server fails with status 0**, as on the web. The error says why, for example "Could not connect to the server."
 - **Don't rely on `statusText`.** On iOS, Lynx reports `OK` for every status. Check `status` instead.

@@ -2082,6 +2082,30 @@ The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`
 
 ---
 
+## The background thread's `Headers` matches names by exact spelling, so a lowercase `content-type` gets a second, `text/plain` one
+
+Found while fixing issue #176 (a Firebase Auth sign-in posted JSON from the main thread and the emulator rejected it as `text/plain;charset=utf-8`), in Lynx Explorer 4.1 on the iOS 27 Simulator and an API 34 Android emulator, and in Lynx's sources.
+
+### What you'd expect (web)
+
+Header names are case-insensitive. `new Headers({ 'content-type': 'application/json' }).get('Content-Type')` returns `application/json`, iterating a `Headers` lists the names in lowercase, and a request carries one `Content-Type`, the one the app set.
+
+### What Lynx does
+
+- **Through Lynx 4.2, the background thread's `Headers` is a `Map` keyed by the name as given** (`js_libraries/lynx-core/src/modules/fetch/Headers.ts`). `get`, `has`, `set` and `delete` match by exact spelling, and iteration keeps the given case. Lynx's `develop` branch lowercases names since 2026-08-25 (5914e2a871), but 4.2.0 doesn't have it yet.
+- **`Request` looks for `Content-Type` by that spelling.** When it misses, it adds `Content-Type: text/plain;charset=UTF-8` (for a string body, or no body) beside the request's own `content-type`, and native receives both.
+- **iOS sends one of the two, depending on the other headers.** `LynxHttpService.m` copies the headers into an `NSURLRequest` with `setValue:forHTTPHeaderField:`, which matches names case-insensitively, so whichever comes last in the `NSDictionary`'s order wins. On the Simulator, a JSON POST relayed with `content-type` and `x-api-key` arrived as `application/json`; the same POST from `HttpClient`, which adds `accept`, arrived as `text/plain;charset=UTF-8`.
+- **Android sends both.** `LynxHttpService.kt` builds OkHttp `Headers` from the map, which keeps every entry, so the server gets two `Content-Type` headers in `HashMap` order. Node keeps the first; other servers and proxies may take the other or reject the request.
+- **Response header names differ by platform, and `get()` is case-sensitive.** iOS gives them capitalized (`Content-Type`), so `response.headers.get('content-type')` is `null` there. Android lowercases them (OkHttp's `toMultimap()`), so `get('Content-Type')` is `null` there.
+- **Other names go through as spelled.** Lynx's own code looks up only `Content-Type`; a host app's custom `LynxHttpService` could look up others by their usual spelling.
+- **Lynx for Web is unaffected.** Its background thread runs in a Web Worker, so the bundle gets the worker's own `fetch`, whose `Headers` is the standard one.
+
+### AngularLynx
+
+The main thread's `Headers` lowercases names, as the standard's does, so the relay (`packages/runtime/src/lib/network/background-fetch.ts`) sends every name in canonical case (`content-type` → `Content-Type`, `x-api-key` → `X-Api-Key`), and reads the response's type by comparing names case-insensitively rather than with `get()`. A request from `fetch`, `XMLHttpRequest` or `HttpClient` in a component now arrives with the one `Content-Type` it set, on both platforms. Code that calls Lynx's `fetch` itself on the background thread (in a `backgroundFn`) has to spell `Content-Type` exactly and look response headers up in both cases.
+
+---
+
 ## `text-maxline` attribute limits visible lines (no CSS equivalent)
 
 ### What you'd expect (web)

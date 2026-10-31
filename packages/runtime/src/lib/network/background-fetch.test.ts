@@ -60,11 +60,37 @@ describe('fetchForMainThread', () => {
     expect(url).toBe('https://example.com/data');
     expect(init).toMatchObject({
       method: 'PUT',
-      headers: { 'x-a': '1' },
+      headers: { 'X-A': '1' },
       body: '{"a":1}',
       credentials: 'include',
     });
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("sends header names in canonical case, since Lynx's Request looks for `Content-Type` by its exact spelling", async () => {
+    const fetch = stubFetch({});
+    await fetchForMainThread(
+      1,
+      request({
+        method: 'POST',
+        // As the main thread's Headers lists them: lowercase.
+        headers: [
+          ['authorization', 'Bearer t'],
+          ['content-type', 'application/json'],
+          ['x-api-key', 'k'],
+          ['x-ms-client-request-id', 'id'],
+        ],
+        body: { text: '{}' },
+      }),
+    );
+
+    // Each name once, so Lynx adds no text/plain type of its own beside it.
+    expect(fetch.mock.calls[0]![1].headers).toEqual({
+      Authorization: 'Bearer t',
+      'Content-Type': 'application/json',
+      'X-Api-Key': 'k',
+      'X-Ms-Client-Request-Id': 'id',
+    });
   });
 
   it('sends a base64 body as an ArrayBuffer holding only the body', async () => {
@@ -87,6 +113,22 @@ describe('fetchForMainThread', () => {
       'application/xml',
     ]) {
       stubFetch({ headers: new Headers({ 'content-type': type }) });
+      const response = await fetchForMainThread(1, request());
+      expect(response.body).toEqual({ text: 'text body' });
+    }
+  });
+
+  it("reads the response's type whatever case its name is in, since Lynx's get() matches names by exact spelling", async () => {
+    for (const name of ['Content-Type', 'content-type']) {
+      // Lynx's Headers through 4.2: a Map keyed by the name as given.
+      const entries = new Map([[name, 'application/json']]);
+      stubFetch({
+        headers: {
+          forEach: (callback: (value: string, name: string) => void) =>
+            entries.forEach(callback),
+          get: (key: string) => entries.get(key) ?? null,
+        } as unknown as Headers,
+      });
       const response = await fetchForMainThread(1, request());
       expect(response.body).toEqual({ text: 'text body' });
     }

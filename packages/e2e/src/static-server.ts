@@ -1,5 +1,10 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import path from 'node:path';
 
 const MIME_TYPES: Record<string, string> = {
@@ -12,14 +17,57 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
+ * Answers a request with every `Content-Type` header it arrived with, joined
+ * with " + ", as `{ reply }`. It reads the raw headers, since Node's
+ * `headers` keeps only the first of two, and Lynx's own fetch used to send
+ * a second, `text/plain` one (issue #176).
+ */
+const echoContentTypes = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => {
+  const cors = { 'Access-Control-Allow-Origin': '*' };
+  if (request.method === 'OPTIONS') {
+    // The web's preflight for the counter fixture's cross-origin JSON POST.
+    response
+      .writeHead(204, {
+        ...cors,
+        'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
+        'Access-Control-Allow-Methods': 'POST',
+      })
+      .end();
+    return;
+  }
+  const types: string[] = [];
+  for (let i = 0; i < request.rawHeaders.length; i += 2) {
+    if (request.rawHeaders[i]!.toLowerCase() === 'content-type') {
+      types.push(request.rawHeaders[i + 1]!);
+    }
+  }
+  // Answered once the body is in, so the client sees a complete exchange.
+  request.resume().on('end', () => {
+    response
+      .writeHead(200, {
+        ...cors,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      })
+      .end(JSON.stringify({ reply: types.join(' + ') || '(no type)' }));
+  });
+};
+
+/**
  * A minimal static file server for the render tests (Layer 3) and the native
  * tests (Layer 6). Routes are checked in order: `{ path, file }` serves one
- * file at exactly that URL path, `{ prefix, dir }` serves a directory.
+ * file at exactly that URL path, `{ prefix, dir }` serves a directory, and
+ * `{ echo }` answers requests to that path with their `Content-Type`
+ * headers.
  */
 export const serveStatic = (
   routes: readonly (
     | { path: string; file: string }
     | { prefix: string; dir: string }
+    | { echo: string }
   )[],
   {
     port,
@@ -38,7 +86,7 @@ export const serveStatic = (
         if (urlPath === route.path) {
           return route.file;
         }
-      } else if (urlPath.startsWith(route.prefix)) {
+      } else if ('prefix' in route && urlPath.startsWith(route.prefix)) {
         const file = path.resolve(
           route.dir,
           decodeURIComponent(urlPath.slice(route.prefix.length)),
@@ -51,9 +99,13 @@ export const serveStatic = (
   };
 
   const server = createServer((request, response) => {
-    const file = resolveFile(
-      new URL(request.url ?? '/', 'http://localhost').pathname,
-    );
+    const urlPath = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (routes.some((route) => 'echo' in route && route.echo === urlPath)) {
+      onRequest?.(`echo ${request.method} ${request.url}`);
+      echoContentTypes(request, response);
+      return;
+    }
+    const file = resolveFile(urlPath);
     if (!file || !existsSync(file) || !statSync(file).isFile()) {
       onRequest?.(`404 ${request.method} ${request.url}`);
       response.writeHead(404).end();
@@ -77,15 +129,19 @@ export const serveStatic = (
 };
 
 /**
- * The JSON the counter fixture loads through HttpClient and httpResource
- * (fixtures/counter.ts), and where. The fixture's URL is fixed (in
- * fixtures/environment.e2e.ts), since Lynx has no page URL to resolve a
- * relative one against, so every layer that renders the app serves it there.
+ * The JSON the counter fixture loads through HttpClient and httpResource, and
+ * the echo it posts JSON to (fixtures/counter.ts), and where. The fixture's
+ * URLs are fixed (the JSON's in fixtures/environment.e2e.ts), since Lynx has
+ * no page URL to resolve a relative one against, so every layer that renders
+ * the app serves them there.
  */
 export const HTTP_DATA = {
   port: 3210,
-  route: {
-    path: '/e2e-http.json',
-    file: path.join(import.meta.dirname, '../fixtures/http-data.json'),
-  },
+  routes: [
+    {
+      path: '/e2e-http.json',
+      file: path.join(import.meta.dirname, '../fixtures/http-data.json'),
+    },
+    { echo: '/e2e-echo' },
+  ],
 } as const;

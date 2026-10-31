@@ -139,12 +139,28 @@ describe('UiAlertDialog', () => {
     expect(getByText('Sure?').classList).toContain('text-xl');
     expect(getByText('Cannot undo').classList).toContain('text-sm');
     expect(getByText('Cannot undo').classList).toContain('italic');
-    // Each part's own view, not its host element, which keeps the bare class.
     const header = container.querySelector('.flex-col.gap-2');
     expect(header?.classList).not.toContain('gap-1.5');
     const footer = container.querySelector('.pt-4');
     expect(footer?.classList).toContain('justify-start');
     expect(footer?.classList).not.toContain('justify-end');
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181), so each class also styled a host: the dialog's in the page,
+  // where it is written, and each part's around its own view or text.
+  it('puts each class on one element: the panel, or the part', async () => {
+    const { container, getByText, panel } = await renderAlertDialog();
+    expect([...container.querySelectorAll('.max-w-sm')]).toEqual([panel()]);
+    // The header's: the footer has a gap-2 of its own.
+    expect(container.querySelectorAll('.flex-col.gap-2')).toHaveLength(1);
+    expect(container.querySelectorAll('.justify-start')).toHaveLength(1);
+    expect([...container.querySelectorAll('.text-xl')]).toEqual([
+      getByText('Sure?'),
+    ]);
+    expect([...container.querySelectorAll('.italic')]).toEqual([
+      getByText('Cannot undo'),
+    ]);
   });
 
   it('stays hidden until it is opened', async () => {
@@ -793,7 +809,6 @@ it("draws an alert dialog's parts in the default look outside one", async () => 
   expect(getByText('Alone').classList).toContain('text-lg');
   expect(getByText('Outside a dialog').classList).toContain('text-sm');
   expect(getByText('Footer').parentElement!.classList).toContain('pt-4');
-  expect(getByText('Alone').parentElement!.parentElement!.classList).toContain(
-    'gap-1.5',
-  );
+  // The title is the header's own child: the header is its host.
+  expect(getByText('Alone').parentElement!.classList).toContain('gap-1.5');
 });

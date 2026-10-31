@@ -3952,6 +3952,12 @@ export class UiSeparator {
 
 Use **`align-self: stretch`** (Tailwind `self-stretch`) for the vertical fill rather than `h-full`: a percentage height is less reliable on a flex item, whereas `align-self` stretches to the parent's cross axis directly and re-enables stretch even under `align-items: center`. (`align-self` is the same cross-axis lever as the "children stretch to fill" note above — `self-start` to hug, `self-stretch` to fill.)
 
+### A static `class` (or any attribute) on a component lands on its host, so an inner view styled with it applies it twice
+
+Angular renders every static attribute written on a component element onto its host, whether or not the component also takes it as an input (`setupStaticAttributes` runs before the component exists). On the web the host is an inline custom element, so `<my-card-content class="pt-6">` putting `pt-6` on the host as well as on the component's inner `<div>` mostly goes unnoticed: vertical padding on an inline element doesn't move anything. On Lynx the host is a real `<view>`, so the padding applied twice (issue #181: double top padding in a card, two matches for `getAllByPlaceholderText` on `<ui-input placeholder="…">`).
+
+A component can't stop it: a template's static classes outrank a host `[class]` binding in Angular's styling. So the `@blotch/ui` components bind their merged classes on the host itself (`host: { '[class]': 'cls()' }`, as Spartan's helm components do on the web) and drop the wrapper view. A text component makes its host a `<text>` with `registerHostElement(Component, 'text')`. An attribute meant for an inner element, such as an `<input>`'s `placeholder`, is removed from the host with `host: { '[attr.placeholder]': 'null' }`, and an overlay component, whose `class` styles a panel inside the `<overlay>`, removes the host's copy with `'[attr.class]': 'null'`, since its host sits in the page's layout. A bound `[class]="x"` doesn't have the problem: when the component has a `class` input, Angular hands the binding to the input only.
+
 ---
 
 ## `<textarea>` placeholder does not hide under a programmatically-set value (iOS)

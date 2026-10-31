@@ -68,10 +68,10 @@ describe('IconShowcase', () => {
 
     // svg #0 is the preview panel's icon; #22 is the 22nd "Common" tile
     // ("heart") — deep enough into the list to prove the wiring isn't just
-    // working for tile #1. Tap its wrapping <view (bindtap)> two levels up:
-    // svg -> ui-icon host -> tile.
+    // working for tile #1. Tap its wrapping <view (bindtap)>, the parent of
+    // the svg, which is the ui-icon's host.
     const svgs = container.querySelectorAll('svg');
-    const tile = svgs[22]!.parentElement!.parentElement!;
+    const tile = svgs[22]!.parentElement!;
     fireEvent.tap(tile);
 
     expect(instance.selected()).toBe('heart');

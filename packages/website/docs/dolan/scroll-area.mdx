@@ -90,17 +90,17 @@ Lynx documents both attributes of `<scroll-view>` for iOS only.
 
 ### UiScrollArea
 
-| Input            | Type                         | Default      | Description                                                                                      |
-| ---------------- | ---------------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
-| `orientation`    | `'vertical' \| 'horizontal'` | `'vertical'` | Scroll direction. Also lays the children out in a column or a row.                               |
-| `height`         | `string`                     | `''`         | A CSS height such as `'300px'`. Leave it empty to size it with `class`.                          |
-| `bounces`        | `boolean`                    | `true`       | Rubber-band bounce at the edges, on iOS. See [Bounce and scroll bar](#bounce-and-scroll-bar).    |
-| `scrollBar`      | `boolean`                    | `true`       | Shows the scroll bar. See [Bounce and scroll bar](#bounce-and-scroll-bar).                       |
-| `nestedScroll`   | `boolean`                    | `false`      | Sets `enable-nested-scroll` on the scroll view. Lynx documents that attribute for `<list>` only. |
-| `upperThreshold` | `number`                     | `0`          | Distance in pixels from the start at which `scrolledToStart` fires.                              |
-| `lowerThreshold` | `number`                     | `0`          | Distance in pixels from the end at which `scrolledToEnd` fires.                                  |
-| `class`          | `string`                     | `''`         | Extra Tailwind classes for the scroll view. It's `w-full` by default.                            |
-| `contentClass`   | `string`                     | `''`         | Extra Tailwind classes for the inner column or row.                                              |
+| Input            | Type                         | Default      | Description                                                                                                                                                                         |
+| ---------------- | ---------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orientation`    | `'vertical' \| 'horizontal'` | `'vertical'` | Scroll direction. Also lays the children out in a column or a row.                                                                                                                  |
+| `height`         | `string`                     | `''`         | A CSS height such as `'300px'`. Leave it empty to size it with `class`.                                                                                                             |
+| `bounces`        | `boolean`                    | `true`       | Rubber-band bounce at the edges, on iOS. See [Bounce and scroll bar](#bounce-and-scroll-bar).                                                                                       |
+| `scrollBar`      | `boolean`                    | `true`       | Shows the scroll bar. See [Bounce and scroll bar](#bounce-and-scroll-bar).                                                                                                          |
+| `nestedScroll`   | `boolean`                    | `false`      | Sets `enable-nested-scroll` on the scroll view. Lynx documents that attribute for `<list>` only.                                                                                    |
+| `upperThreshold` | `number`                     | `0`          | Distance in pixels from the start at which `scrolledToStart` fires.                                                                                                                 |
+| `lowerThreshold` | `number`                     | `0`          | Distance in pixels from the end at which `scrolledToEnd` fires.                                                                                                                     |
+| `class`          | `string`                     | `''`         | Extra Tailwind classes for the scroll area's box, which the scroll view fills. It's `w-full` by default. Padding here insets the scroll view; pad what scrolls with `contentClass`. |
+| `contentClass`   | `string`                     | `''`         | Extra Tailwind classes for the inner column or row.                                                                                                                                 |
 
 | Output            | Type   | Description                                                          |
 | ----------------- | ------ | -------------------------------------------------------------------- |

@@ -19,6 +19,18 @@ import { cn } from '../../utils/cn';
   // removed the attribute when false, and a missing attribute means Lynx's
   // default: on, for `bounces` and `scroll-bar-enable`. So neither could be
   // turned off. (`[attr.x]` would send the string "false" instead.)
+  //
+  // The host is the scroll area's box, and the <scroll-view> fills it.
+  // Angular gives a component's host every static attribute the app writes
+  // on it, so a class on <ui-scroll-area> lands on the host whatever the
+  // component does with its `class` input: on the <scroll-view> as well, a
+  // margin or padding applied twice. Padding the box insets the scroll view;
+  // `contentClass` pads what scrolls. `grow` fills a box with a height of its
+  // own (`h-64`, `flex-1`), and a box without one takes the scroll view's,
+  // which `height` sets: the scroll view keeps its own height as its flex
+  // basis. Not `h-full`: a percentage height doesn't reliably resolve on a
+  // flex item in Lynx.
+  host: { '[class]': 'hostClass()' },
   template: `
     <scroll-view
       [attr.scroll-orientation]="orientation()"
@@ -27,7 +39,7 @@ import { cn } from '../../utils/cn';
       [enable-nested-scroll]="nestedScroll()"
       [attr.upper-threshold]="upperThreshold()"
       [attr.lower-threshold]="lowerThreshold()"
-      [class]="scrollClass()"
+      class="grow"
       [style]="scrollStyle()"
       (bindscrolltoupper)="scrolledToStart.emit()"
       (bindscrolltolower)="scrolledToEnd.emit()"
@@ -55,8 +67,8 @@ export class UiScrollArea {
   readonly scrolledToStart = output<void>();
   readonly scrolledToEnd = output<void>();
 
-  protected readonly scrollClass = computed(() =>
-    cn('w-full', this.userClass()),
+  protected readonly hostClass = computed(() =>
+    cn('w-full flex-col flex', this.userClass()),
   );
 
   // Explicit height is required for scroll-view to scroll in Lynx

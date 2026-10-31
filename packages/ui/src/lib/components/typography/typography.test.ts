@@ -22,6 +22,12 @@ class TypographyHost {
     | 'muted' = 'p';
 }
 
+@Component({
+  imports: [UiText],
+  template: `<ui-text variant="muted" class="mb-4 text-center">Note</ui-text>`,
+})
+class StaticClassHost {}
+
 describe('typographyVariants', () => {
   it('returns default variant classes', () => {
     expect(typographyVariants()).toContain('text-base');
@@ -51,5 +57,15 @@ describe('UiText', () => {
   it('renders with no host wrapper (uses default input value)', async () => {
     const { getByText } = await render(UiText);
     expect(getByText).toBeTruthy();
+  });
+
+  // A class on a component lands on its host too (issue #181): the text is
+  // one <text>, so the class styles one element.
+  it('is one text, with the class written on it', async () => {
+    const { container, getByText } = await render(StaticClassHost);
+    const text = getByText('Note');
+    expect(text.tagName.toLowerCase()).toBe('text');
+    expect(text.classList).toContain('text-muted-foreground');
+    expect([...container.querySelectorAll('.mb-4')]).toEqual([text]);
   });
 });

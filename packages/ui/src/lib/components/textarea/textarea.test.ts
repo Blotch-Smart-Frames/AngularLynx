@@ -56,7 +56,7 @@ const renderTextarea = async () => {
     ...result,
     host: result.componentRef.instance as TextareaHost,
     field: () => result.container.querySelector('textarea')!,
-    // The field's own column; the host element renders as a view too.
+    // The field's column: its host.
     column: () => result.container.querySelector('.flex-col')!,
     wrapper: () => result.container.querySelector('.bg-muted') as HTMLElement,
     // The layer that draws the focus ring around the field.
@@ -82,6 +82,16 @@ describe('UiTextarea', () => {
     expect(field().getAttribute('placeholder')).toBe('Add a note');
     expect(column().classList).toContain('w-full');
     expect(queryByText('Add a note')).toBeNull();
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the class styled the column twice, and the placeholder made
+  // a second match for getByPlaceholderText.
+  it('puts its class and placeholder on one element each', async () => {
+    const { container, field, getAllByPlaceholderText } =
+      await renderTextarea();
+    expect(container.querySelectorAll('.w-full')).toHaveLength(1);
+    expect(getAllByPlaceholderText('Add a note')).toEqual([field()]);
   });
 
   it('shows its label', async () => {

@@ -1,3 +1,7 @@
+// JIT-compiles the test components, which registerHostElement reads the
+// selectors of.
+import '@angular/compiler';
+import { Component } from '@angular/core';
 import {
   type MockInstance,
   afterEach,
@@ -11,6 +15,7 @@ import type { ElementRef } from '../types/lynx';
 import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
 import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
+import { registerHostElement } from './host-elements';
 import { LynxDocument } from './lynx-document';
 import {
   __pageElementRef,
@@ -232,6 +237,20 @@ describe('LynxDocument', () => {
     it('creates a text element', () => {
       doc.createElement('text');
       expect(asMock(globalThis.__CreateText)).toHaveBeenCalled();
+    });
+
+    // registerHostElement: a component's host can be an element other than
+    // a view.
+    it("creates the element a component's tag is registered as", () => {
+      @Component({ selector: 'doc-test-title', template: '' })
+      class DocTestTitle {}
+      registerHostElement(DocTestTitle, 'text');
+
+      const el = doc.createElement('doc-test-title') as LynxElement;
+
+      expect(asMock(globalThis.__CreateText)).toHaveBeenCalled();
+      expect(asMock(globalThis.__CreateView)).not.toHaveBeenCalled();
+      expect(el.tagName).toBe('text');
     });
 
     it('creates a raw-text element using the value parameter', () => {

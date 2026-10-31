@@ -231,6 +231,10 @@ export class UiMenuItem {
   selector: 'ui-menu-section',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The title is the section's text. Angular also gives the host every static
+  // attribute the app writes on it, and a `title` on the host is a tooltip in
+  // the web preview and a second match for getByTitle, so the host drops it.
+  host: { '[attr.title]': 'null' },
   template: `
     <view class="flex-col flex">
       @if (title()) {

@@ -103,6 +103,14 @@ class ChartHost {
   readonly chart = viewChild.required(UiChart);
 }
 
+@Component({
+  imports: [UiChart],
+  template: `<ui-chart [definition]="definition" class="mt-2" />`,
+})
+class StaticClassHost {
+  readonly definition = barChart();
+}
+
 /**
  * Renders the host 300px wide, after `configure` sets its inputs. Without a
  * width the chart waits for its layout (see "measures its layout").
@@ -124,6 +132,12 @@ const renderChart = async (
  */
 const chartRoot = (container: Element) =>
   container.querySelector('[accessibility-label]')!;
+
+/**
+ * The chart's box, its host, which its classes and size style and the root
+ * view fills.
+ */
+const chartBox = (container: Element) => chartRoot(container).parentElement!;
 
 /**
  * The SVG each layer draws: under the marks, the marks, over the marks.
@@ -206,6 +220,17 @@ const tap = async (root: Element, at: { x: number; y: number }) => {
 };
 
 describe('UiChart', () => {
+  // Angular gives a component's host every static attribute written on it,
+  // so the root view taking the class as well applied it twice (issue
+  // #181).
+  it('puts its class on one element, its box', async () => {
+    const { container } = await render(StaticClassHost);
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([
+      chartBox(container),
+    ]);
+    expect(chartBox(container).classList).toContain('h-[200px]');
+  });
+
   describe('rendering', () => {
     it('draws nothing until it has a size, and ignores input until then', async () => {
       const { container, componentRef } = await render(ChartHost);
@@ -234,9 +259,7 @@ describe('UiChart', () => {
     });
 
     it('draws marks, empty focus layers and native labels', async () => {
-      const { container, root } = await renderChart((host) =>
-        host.height.set(200),
-      );
+      const { container } = await renderChart((host) => host.height.set(200));
       const [under, marks, over] = layers(container);
       expect(layers(container)).toHaveLength(3);
       expect(marks).toContain('<rect');
@@ -246,8 +269,12 @@ describe('UiChart', () => {
       expect(labelTexts(container)).toEqual(
         expect.arrayContaining(['Jan', 'Feb', 'Mar', 'Revenue']),
       );
-      expect(root.getAttribute('style')).toContain('width: 300px');
-      expect(root.getAttribute('style')).toContain('height: 200px');
+      expect(chartBox(container).getAttribute('style')).toContain(
+        'width: 300px',
+      );
+      expect(chartBox(container).getAttribute('style')).toContain(
+        'height: 200px',
+      );
       const layerStyle = container.querySelector('svg')!.getAttribute('style');
       expect(layerStyle).toContain('width: 300px');
       expect(layerStyle).toContain('height: 200px');
@@ -375,7 +402,9 @@ describe('UiChart', () => {
       const root = chartRoot(container);
       const layerStyle = () =>
         container.querySelector('svg')?.getAttribute('style');
-      expect(root.getAttribute('style') ?? '').not.toContain('width');
+      expect(chartBox(container).getAttribute('style') ?? '').not.toContain(
+        'width',
+      );
 
       fireEvent.layoutchange(root, { detail: { width: 250, height: 120 } });
       await waitForUpdate();

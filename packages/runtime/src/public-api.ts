@@ -162,6 +162,8 @@ export type {
   WebAuthSessionOptions,
 } from './lib/web-auth-session';
 export { provideRenderer } from './lib/renderer/providers';
+export { registerHostElement } from './lib/lynx-document/host-elements';
+export type { HostElementTag } from './lib/lynx-document/host-elements';
 export { LynxLocationStrategy } from './lib/router/lynx-location-strategy';
 export { LynxPlatformLocation } from './lib/router/lynx-platform-location';
 export { LynxRouteReuseStrategy } from './lib/router/lynx-route-reuse-strategy';

@@ -16,16 +16,18 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { type AnimationHandle, popIn, popOut } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * The group and each item are their host elements, styled through `host`.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-radio-group> or <ui-radio-group-item> lands on the
+ * host whatever the component does: with a styled view inside as well, a gap
+ * or padding applied twice.
+ */
 @Component({
   selector: 'ui-radio-group',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiRadioGroup {
   readonly value = model<string>('');
@@ -47,22 +49,23 @@ export class UiRadioGroup {
 
 @Component({
   selector: 'ui-radio-group-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'itemClass()',
+    '(bindtap)': 'select()',
+  },
   template: `
-    <view [class]="itemClass()" (bindtap)="select()">
-      <view [class]="circleClass()">
-        <view
-          #dot
-          [class]="dotClass()"
-          [style]="
-            isSelected() ? 'opacity: 1;' : 'opacity: 0; transform: scale(0.6);'
-          "
-        />
-      </view>
-      <text [class]="labelClass()"><ng-content /></text>
+    <view [class]="circleClass()">
+      <view
+        #dot
+        [class]="dotClass()"
+        [style]="
+          isSelected() ? 'opacity: 1;' : 'opacity: 0; transform: scale(0.6);'
+        "
+      />
     </view>
+    <text [class]="labelClass()"><ng-content /></text>
   `,
 })
 export class UiRadioGroupItem {

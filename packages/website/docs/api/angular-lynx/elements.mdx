@@ -112,6 +112,28 @@ Every directive above, except the two form accessors, `LynxRouterLinkActive` and
 | `accessibility-*`, `a11y-id`      |                      | See [Accessibility](/api/angular-lynx/accessibility#attributes).                      |
 | `exposure-*`                      |                      | See [Exposure](/api/angular-lynx/exposure#attributes).                                |
 
+### `registerHostElement()`
+
+```typescript
+function registerHostElement(
+  component: Type<unknown>,
+  element: HostElementTag,
+): void;
+```
+
+Makes a component's [host element](/guide/content-projection#make-the-host-the-element) the Lynx element you name, in place of the `<view>` every host is otherwise. Call it once, after the class. It applies to each element name in the component's `selector`, wherever a template uses the component. It throws for a component without an element selector.
+
+```typescript title="src/app/card-title.ts"
+@Component({
+  selector: 'app-card-title',
+  host: { class: 'text-lg font-semibold text-foreground' },
+  template: '<ng-content />',
+})
+export class CardTitle {}
+
+registerHostElement(CardTitle, 'text');
+```
+
 ### `LYNX_FORM_ACCESSORS`
 
 ```typescript
@@ -185,6 +207,20 @@ Sets or removes the element's `disabled` attribute.
 ## Types
 
 `ControlValueAccessor` comes from `@angular/forms`.
+
+### `HostElementTag`
+
+```typescript
+type HostElementTag =
+  | 'view'
+  | 'text'
+  | 'image'
+  | 'scroll-view'
+  | 'svg'
+  | 'blur-view';
+```
+
+The elements `registerHostElement()` can make a host.
 
 ### `BaseLynxElement`
 

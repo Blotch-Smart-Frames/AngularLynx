@@ -118,8 +118,13 @@ const historyOf = (injector: Injector): LynxLocationStrategy | null => {
   selector: 'ui-navigation-bar',
   imports: [LYNX_ELEMENTS, UiGlass, UiToolbarItem],
   encapsulation: ViewEncapsulation.None,
+  // Angular gives a component's host every static attribute the app writes
+  // on it, so a `title="Inbox"` lands on the host as well as in the title's
+  // text, where a browser shows it as a tooltip over the bar in the web
+  // preview, and getByTitle finds it. The host drops it.
   host: {
     '[class]': 'hostClass()',
+    '[attr.title]': 'null',
     '[style.transition]': 'containerTransition()',
     '[style.background-image]': 'edgeFade()',
   },

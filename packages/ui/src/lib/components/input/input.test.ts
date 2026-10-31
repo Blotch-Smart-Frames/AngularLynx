@@ -53,7 +53,7 @@ const renderInput = async () => {
     ...result,
     host: result.componentRef.instance as InputHost,
     field: () => result.container.querySelector('input')!,
-    // The field's own column; the host element renders as a view too.
+    // The field's column: its host.
     column: () => result.container.querySelector('.flex-col')!,
     wrapper: () => result.container.querySelector('.bg-muted')!,
     // The layer that draws the focus ring around the field.
@@ -80,6 +80,15 @@ describe('UiInput', () => {
     expect(field().getAttribute('type')).toBe('email');
     expect(column().classList).toContain('w-full');
     expect(queryByText('you@example.com')).toBeNull();
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the class styled the column twice, and the placeholder made
+  // a second match for getByPlaceholderText.
+  it('puts its class and placeholder on one element each', async () => {
+    const { container, field, getAllByPlaceholderText } = await renderInput();
+    expect(container.querySelectorAll('.w-full')).toHaveLength(1);
+    expect(getAllByPlaceholderText('you@example.com')).toEqual([field()]);
   });
 
   it('shows its label', async () => {

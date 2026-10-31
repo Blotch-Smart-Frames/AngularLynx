@@ -5,16 +5,22 @@ import {
   computed,
   input,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { registerHostElement } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 
+/**
+ * The label is its host, a `<text>` (registerHostElement, below), styled
+ * through `host`. Angular gives a component's host every static attribute the
+ * app writes on it, so `<ui-label class="mb-2">` puts `mb-2` on the host
+ * whatever the component does: with a styled `<text>` inside a view host as
+ * well, the margin applied twice.
+ */
 @Component({
   selector: 'ui-label',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="labelClass()"><ng-content /></text>`,
+  host: { '[class]': 'labelClass()' },
+  template: '<ng-content />',
 })
 export class UiLabel {
   readonly disabled = input(false, { transform: booleanAttribute });
@@ -28,3 +34,5 @@ export class UiLabel {
     ),
   );
 }
+
+registerHostElement(UiLabel, 'text');

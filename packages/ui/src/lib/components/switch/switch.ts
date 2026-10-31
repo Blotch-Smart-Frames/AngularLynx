@@ -264,6 +264,19 @@ type Press = {
   selector: 'ui-switch',
   imports: [LYNX_ELEMENTS, UiGlass],
   encapsulation: ViewEncapsulation.None,
+  // The host holds the switch, with the app's class. Angular gives a
+  // component's host every static attribute the app writes on it, so a class
+  // on <ui-switch> lands on the host whatever the component does: passed on
+  // to the root as well, a margin applied twice. The root stays a view of its
+  // own: Lynx reads `consume-slide-event` as an array and
+  // `accessibility-element` as a boolean, which only a property binding on a
+  // Lynx element passes (a host binding would make them strings). Its
+  // accessibility-label is the root's, so the host drops its copy: two
+  // elements named the same would each be read.
+  host: {
+    '[class]': 'hostClass()',
+    '[attr.accessibility-label]': 'null',
+  },
   // Only the root takes touches: what's inside ignores them, so every touch
   // and its `x` belong to the switch.
   //
@@ -406,12 +419,13 @@ export class UiSwitch implements FormCheckboxControl {
     () => this.#systemDrawsGlass || !this.#settings.reduceTransparency(),
   );
 
+  protected readonly hostClass = computed(() => cn(this.userClass()));
+
   protected readonly rootClass = computed(() =>
     cn(
       'relative',
       this.disabled() &&
         (this.look() === 'material' ? 'opacity-[0.38]' : 'opacity-50'),
-      this.userClass(),
     ),
   );
 

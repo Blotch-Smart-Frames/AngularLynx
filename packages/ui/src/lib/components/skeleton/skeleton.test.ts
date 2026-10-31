@@ -18,6 +18,14 @@ describe('UiSkeleton', () => {
     expect(skeleton?.classList).toContain('w-32');
   });
 
+  // A class on a component lands on its host too (issue #181): the host is
+  // the placeholder, so its size is set once.
+  it('is one element, with the class written on it', async () => {
+    const { container } = await render(SkeletonHost);
+    expect(container.querySelectorAll('.h-4')).toHaveLength(1);
+    expect(container.querySelector('.h-4')?.classList).toContain('bg-muted');
+  });
+
   it('pulses', async () => {
     const animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
     const { container } = await render(SkeletonHost);

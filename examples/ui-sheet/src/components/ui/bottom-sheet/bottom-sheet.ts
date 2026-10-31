@@ -263,6 +263,11 @@ const layoutWidth = (event: unknown): number =>
   selector: 'ui-bottom-sheet',
   imports: [LYNX_ELEMENTS, UiGlass],
   encapsulation: ViewEncapsulation.None,
+  // The sheet's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-bottom-sheet>, and
+  // the host sits in the page's layout where the sheet is written, so a
+  // `class="px-8"` padded the page there too. The host drops it.
+  host: { '[attr.class]': 'null' },
   template: `
     <!-- Android's back button closes the sheet: while an overlay shows, it
          takes the press and fires requestclose. -->

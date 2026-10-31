@@ -1,18 +1,21 @@
 import { Component, ViewEncapsulation, computed, input } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
 
+/**
+ * The box is the host, styled through `host`. Angular gives a component's
+ * host every static attribute the app writes on it, so a class on
+ * <ui-aspect-ratio> lands on the host whatever the component does: with a
+ * styled view inside as well, a margin or padding applied twice.
+ */
 @Component({
   selector: 'ui-aspect-ratio',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()" [style]="containerStyle()">
-      <ng-content />
-    </view>
-  `,
+  host: {
+    '[class]': 'containerClass()',
+    '[style]': 'containerStyle()',
+  },
+  template: '<ng-content />',
 })
 export class UiAspectRatio {
   readonly ratio = input(1);

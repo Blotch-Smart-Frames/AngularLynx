@@ -27,8 +27,14 @@ import { type IconName, ICONS } from '../icon/icons';
  */
 @Component({
   selector: 'ui-tab-bar',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The bar and each item are their host elements, styled through `host`,
+  // rather than a view inside the host. Angular gives a component's host
+  // every static attribute the app writes on it, so `<ui-tab-bar
+  // class="pt-2">` puts `pt-2` on the host whatever the component does with
+  // its `class` input: with a styled view inside as well, the padding applied
+  // twice.
+  //
   // `pb-safe` pads the bar by the bottom safe-area inset, so the items sit
   // above the iPhone's home indicator while the bar's background still runs
   // to the bottom edge, as a native tab bar's does. Lynx reports no insets on
@@ -38,11 +44,11 @@ import { type IconName, ICONS } from '../icon/icons';
   // native tab bar's container has: it tells VoiceOver that the buttons in it
   // are tabs. Android reads a single trait and has no tab bar trait, so there
   // the row stays a plain container.
-  template: `
-    <view accessibility-traits="tabbar" [class]="barClass()">
-      <ng-content />
-    </view>
-  `,
+  host: {
+    'accessibility-traits': 'tabbar',
+    '[class]': 'barClass()',
+  },
+  template: '<ng-content />',
 })
 export class UiTabBar {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -97,7 +103,7 @@ export class UiTabBar {
     // `flex-1` has to be on the host, the row's real child: on an inner view
     // it would share out the host's width instead (same lesson as
     // ui-nav-drawer-content).
-    class: 'flex-1 flex-col flex',
+    '[class]': 'contentClass()',
     // One accessibility element per tab, named by its label, so a screen
     // reader reads "Inbox, 3, button" instead of an unlabeled SVG and a word.
     // LynxRouterLinkActive adds `selected` to `button` while the route is
@@ -122,25 +128,23 @@ export class UiTabBar {
     '(bindtap)': 'pressed.emit()',
   },
   template: `
-    <view [class]="contentClass()">
-      <view class="relative">
-        <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
-        @if (badgeText()) {
-          <!-- Hangs off the icon's top-right corner, as on a native tab bar.
-               min-w-4 keeps a one-digit badge round; longer ones grow into
-               a pill. -->
-          <view
-            class="h-4 min-w-4 items-center rounded-full bg-destructive px-1 flex absolute -right-2.5 -top-1 justify-center"
+    <view class="relative">
+      <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
+      @if (badgeText()) {
+        <!-- Hangs off the icon's top-right corner, as on a native tab bar.
+             min-w-4 keeps a one-digit badge round; longer ones grow into
+             a pill. -->
+        <view
+          class="h-4 min-w-4 items-center rounded-full bg-destructive px-1 flex absolute -right-2.5 -top-1 justify-center"
+        >
+          <text
+            class="text-[10px] font-semibold leading-4 text-destructive-foreground"
+            >{{ badgeText() }}</text
           >
-            <text
-              class="text-[10px] font-semibold leading-4 text-destructive-foreground"
-              >{{ badgeText() }}</text
-            >
-          </view>
-        }
-      </view>
-      <text [class]="labelClass()">{{ label() }}</text>
+        </view>
+      }
     </view>
+    <text [class]="labelClass()">{{ label() }}</text>
   `,
 })
 export class UiTabBarItem {

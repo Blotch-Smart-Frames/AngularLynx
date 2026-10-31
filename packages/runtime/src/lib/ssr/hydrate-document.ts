@@ -1,5 +1,6 @@
 import { LynxElement } from '../lynx-element';
 import { LynxDocument, type LynxDocumentBase } from '../lynx-document';
+import { hostElementOf } from '../lynx-document/host-elements';
 import type { ElementRef } from '../types/lynx';
 
 /**
@@ -77,7 +78,9 @@ export class LynxHydrateDocument implements LynxDocumentBase {
       return this.#page!;
     }
     const el = this.#nextElement();
-    el.tagName = tag;
+    // The snapshot holds the element the host registered (registerHostElement),
+    // so the wrapper takes its tag too.
+    el.tagName = hostElementOf(tag);
     return el;
   }
 

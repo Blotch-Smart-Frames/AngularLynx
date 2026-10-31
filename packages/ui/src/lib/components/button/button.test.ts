@@ -77,10 +77,10 @@ const renderButton = async (
     ...result,
     host,
     /**
-     * The button's own box, the first child of its host: it takes the
-     * presses, and holds the glass on a glass variant.
+     * The button's box, its host: it takes the presses, and holds the glass
+     * on a glass variant.
      */
-    button: () => result.container.firstElementChild!.firstElementChild!,
+    button: () => result.container.firstElementChild!,
     glass: () => result.container.querySelector('blur-view')!,
     spinner: () => result.container.querySelector('svg'),
     icon: () => result.container.querySelector('svg')!,
@@ -91,6 +91,16 @@ const renderButton = async (
     },
   };
 };
+
+@Component({
+  imports: [UiButton, UiIcon],
+  template: `
+    <ui-button size="icon" accessibility-label="Search" class="mt-2">
+      <ui-icon name="search" />
+    </ui-button>
+  `,
+})
+class StaticAttributesHost {}
 
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
@@ -118,6 +128,22 @@ afterEach(() => {
 });
 
 describe('UiButton', () => {
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the class styled a box inside the host as well, and the
+  // label named two elements.
+  it('puts its class and accessibility label on one element, the button', async () => {
+    vi.stubGlobal('SystemInfo', undefined);
+    const { container, getAllByAccessibilityLabel } = await render(
+      StaticAttributesHost,
+      {
+        providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+      },
+    );
+    const button = container.firstElementChild!;
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([button]);
+    expect(getAllByAccessibilityLabel('Search')).toEqual([button]);
+  });
+
   it('renders its label with the classes for its variant and size', async () => {
     const { button, getByText } = await renderButton();
     expect(button().classList).toContain('bg-primary');

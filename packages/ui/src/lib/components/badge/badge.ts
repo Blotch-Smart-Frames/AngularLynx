@@ -1,12 +1,12 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
   effect,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -53,16 +53,18 @@ export type BadgeVariant = NonNullable<
   VariantProps<typeof badgeVariants>['variant']
 >;
 
+/**
+ * The badge's pill is its host, styled through `host`, with its label inside.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-badge> lands on the host whatever the component does:
+ * with a styled pill inside as well, a margin applied twice.
+ */
 @Component({
   selector: 'ui-badge',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view #container [class]="containerClass()">
-      <text [class]="labelClass()"><ng-content /></text>
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: `<text [class]="labelClass()"><ng-content /></text>`,
 })
 export class UiBadge {
   readonly variant = input<BadgeVariant>('default');
@@ -72,7 +74,7 @@ export class UiBadge {
   readonly animated = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild.required<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
 
   /**
    * Pops the badge in on first render, unless `animated` is off. A field
@@ -82,7 +84,7 @@ export class UiBadge {
    */
   protected readonly entrance = effect(() => {
     if (this.animated()) {
-      popIn(this.containerRef().nativeElement, { duration: 200 });
+      popIn(this.#host, { duration: 200 });
     }
   });
 

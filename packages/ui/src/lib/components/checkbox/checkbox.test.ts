@@ -41,8 +41,8 @@ const renderCheckbox = async () => {
   return {
     ...result,
     host: result.componentRef.instance as CheckboxHost,
-    /** The 44pt tap target around the box. */
-    target: () => result.container.querySelector('.h-11')!,
+    /** The 44pt tap target around the box: the checkbox's host. */
+    target: () => result.container.firstElementChild!,
     box: () => result.container.querySelector('.rounded-sm')!,
     checkmark: () => result.getByText('✓'),
   };
@@ -61,11 +61,18 @@ describe('UiCheckbox', () => {
   });
   afterEach(() => animate.mockRestore());
 
-  it('renders an empty box with the given class', async () => {
+  it('renders an empty box', async () => {
     const { box, checkmark } = await renderCheckbox();
     expect(box().classList).toContain('bg-transparent');
-    expect(box().classList).toContain('mr-2');
     expect(checkmark().getAttribute('style')).toContain('opacity: 0');
+  });
+
+  // A class on a component lands on its host too (issue #181): the class is
+  // the box's, so the host, the tap target, drops its copy.
+  it('puts its class on one element, the box', async () => {
+    const { container, box, target } = await renderCheckbox();
+    expect([...container.querySelectorAll('.mr-2')]).toEqual([box()]);
+    expect((target() as HTMLElement).style.width).toBe('2.75rem');
   });
 
   it('checks and unchecks on tap, emitting `changed`', async () => {

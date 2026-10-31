@@ -41,6 +41,13 @@ describe('UiAvatar', () => {
     expect(avatar().classList).toContain('border');
   });
 
+  // A class on a component lands on its host too (issue #181): the host is
+  // the circle, so the border is drawn once.
+  it('puts its class on one element, the circle', async () => {
+    const { container, avatar } = await renderAvatar();
+    expect([...container.querySelectorAll('.border')]).toEqual([avatar()]);
+  });
+
   it('covers the image with a placeholder while it loads', async () => {
     const { image, skeleton, initials } = await renderAvatar(
       'https://example.com/avatar.png',

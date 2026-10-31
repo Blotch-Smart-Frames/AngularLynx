@@ -46,9 +46,19 @@ class CardHost {
 })
 class BarePressableHost {}
 
+@Component({
+  imports: [UiCardContent, UiCardTitle, LYNX_ELEMENTS],
+  template: `
+    <ui-card-content class="pt-6"><text>Body</text></ui-card-content>
+    <ui-card-content class="p-2"><text>Tight</text></ui-card-content>
+    <ui-card-title class="mb-2">Title</ui-card-title>
+  `,
+})
+class StaticClassHost {}
+
 /**
- * The card's own view. Each component's host element renders as a view too,
- * so it's found by the card's class rather than by being the first.
+ * The card: its host, found by the card's class rather than by being the
+ * first view (the test host renders as a view too).
  */
 const cardView = (container: Element) => container.querySelector('.bg-card')!;
 
@@ -86,6 +96,29 @@ describe('UiCard', () => {
     expect(cardView(container).getAttribute('class')).toContain('w-full');
     expect(getByText('Title').getAttribute('class')).toContain('text-lg');
     expect(getByText('Desc').getAttribute('class')).toContain('italic');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a part that also styled a view inside its host applied the class
+  // twice: double the padding (issue #181).
+  it('puts a class written on a part on that one element', async () => {
+    const { container, getByText } = await render(StaticClassHost);
+    expect(container.querySelectorAll('.pt-6')).toHaveLength(1);
+    expect(container.querySelectorAll('.mb-2')).toHaveLength(1);
+    // The title is a single <text>, with the class.
+    expect(getByText('Title').tagName.toLowerCase()).toBe('text');
+    expect(getByText('Title').getAttribute('class')).toContain('mb-2');
+  });
+
+  it("lets a part's class override its own", async () => {
+    const { getByText } = await render(StaticClassHost);
+    const tight = getByText('Tight').parentElement!;
+    expect(tight.getAttribute('class')).toContain('p-2');
+    expect(tight.getAttribute('class')).not.toContain('p-6');
+    const body = getByText('Body').parentElement!;
+    expect(body.getAttribute('class')).toContain('p-6');
+    expect(body.getAttribute('class')).toContain('pt-6');
+    expect(body.getAttribute('class')).not.toContain('pt-0');
   });
 
   it("doesn't respond to presses unless it's pressable", async () => {

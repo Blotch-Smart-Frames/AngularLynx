@@ -123,12 +123,28 @@ describe('UiDialog', () => {
     expect(getByText('Title').classList).toContain('text-xl');
     expect(getByText('Description').classList).toContain('text-sm');
     expect(getByText('Description').classList).toContain('italic');
-    // Each part's own view, not its host element, which keeps the bare class.
     const header = container.querySelector('.flex-col.gap-2');
     expect(header?.classList).not.toContain('gap-1.5');
     const footer = container.querySelector('.pt-4');
     expect(footer?.classList).toContain('justify-start');
     expect(footer?.classList).not.toContain('justify-end');
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181), so each class also styled a host: the dialog's in the page,
+  // where it is written, and each part's around its own view or text.
+  it('puts each class on one element: the panel, or the part', async () => {
+    const { container, getByText, panel } = await renderDialog();
+    expect([...container.querySelectorAll('.max-w-sm')]).toEqual([panel()]);
+    // The header's: the footer has a gap-2 of its own.
+    expect(container.querySelectorAll('.flex-col.gap-2')).toHaveLength(1);
+    expect(container.querySelectorAll('.justify-start')).toHaveLength(1);
+    expect([...container.querySelectorAll('.text-xl')]).toEqual([
+      getByText('Title'),
+    ]);
+    expect([...container.querySelectorAll('.italic')]).toEqual([
+      getByText('Description'),
+    ]);
   });
 
   it('stays hidden until it is opened', async () => {

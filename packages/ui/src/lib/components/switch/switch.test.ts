@@ -119,10 +119,21 @@ describe('UiSwitch', () => {
     settings.reduceTransparency.set(false);
   });
 
-  it('renders off, with the thumb at the left and the given class', async () => {
+  // Static attributes land on a component's host too (issue #181): the
+  // margin applies once, and only the switch itself is named Wi-Fi.
+  it('puts its class and accessibility label on one element each', async () => {
+    const { container, track, getAllByAccessibilityLabel } =
+      await renderSwitch();
+    expect([...container.querySelectorAll('.ml-2')]).toEqual([
+      track().parentElement,
+    ]);
+    expect(getAllByAccessibilityLabel('Wi-Fi')).toEqual([track()]);
+  });
+
+  it('renders off, with the thumb at the left, in a host with the given class', async () => {
     const { track, fill, thumb } = await renderSwitch();
     expect(fill().classList).toContain('bg-input');
-    expect(track().classList).toContain('ml-2');
+    expect(track().parentElement!.classList).toContain('ml-2');
     expect(style(track(), 'width')).toBe('44px');
     expect(thumb().classList).toContain('bg-background');
     // Centered 12px in: 2px from the edge for a 20px thumb.

@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   Injector,
   ViewEncapsulation,
   booleanAttribute,
@@ -11,7 +11,6 @@ import {
   input,
   output,
   signal,
-  viewChild,
 } from '@angular/core';
 import {
   LYNX_ELEMENTS,
@@ -233,63 +232,69 @@ const buttonIconColor = () => inject(UiButton).foreground;
   // inside the template provides one too, but only for the template's own
   // nodes.
   providers: [{ provide: UI_ICON_COLOR, useFactory: buttonIconColor }],
+  // The host is the button's box. Angular gives a component's host every
+  // static attribute the app writes on it, so a class on <ui-button> lands
+  // there whatever the component does: on a box inside the host as well, a
+  // margin or padding applied twice. An accessibility-label lands there too,
+  // which is where it belongs: the box is the button a screen reader reads.
+  //
+  // Press feedback binds BOTH touch and mouse events on purpose. Native
+  // (iOS/Android) only ever fires touch; Lynx web runs in the browser, where a
+  // cursor press fires mousedown/up and NEVER touchstart — so touch-only
+  // bindings gave zero visual feedback on web while (bindtap) still fired the
+  // action (a "the button works but doesn't react" split). Binding both makes
+  // the press-and-hold identical on every platform; mouse events are inert on
+  // touch devices, so there's no double-fire. The scale animation itself lives
+  // in pressDown/pressRelease — see their JSDoc for why it's a CSS transition
+  // (which serializes to the DOM on Lynx web) and not el.animate() (whose Web
+  // Animation runs on web-core's offscreen node and never reaches the screen).
+  //
+  // An icon-only button has no text for a screen reader to read, so with an
+  // accessibility-label the whole button becomes one element that says it.
+  // Without one, the label's own text is read, as a button. The attributes
+  // are attribute bindings: a property binding on a component's host is
+  // checked against the DOM schema, which has no `accessibility-label`.
+  host: {
+    '[class]': 'containerClass()',
+    '[attr.accessibility-element]': "accessibilityLabel() ? 'true' : null",
+    '[attr.accessibility-traits]': "accessibilityLabel() ? 'button' : null",
+    '[attr.accessibility-label]': 'accessibilityLabel() || null',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <!-- Press feedback binds BOTH touch and mouse events on purpose. Native
-         (iOS/Android) only ever fires touch; Lynx web runs in the browser, where
-         a cursor press fires mousedown/up and NEVER touchstart — so touch-only
-         bindings gave zero visual feedback on web while (bindtap) still fired the
-         action (a "the button works but doesn't react" split). Binding both makes
-         the press-and-hold identical on every platform; mouse events are inert on
-         touch devices, so there's no double-fire. The scale animation itself lives
-         in pressDown/pressRelease — see their JSDoc for why it's a CSS transition
-         (which serializes to the DOM on Lynx web) and not el.animate() (whose Web
-         Animation runs on web-core's offscreen node and never reaches the screen).
-
-         An icon-only button has no text for a screen reader to read, so with
-         an accessibility-label the whole button becomes one element that says
-         it. Without one, the label's own text is read, as a button. -->
-    <view
-      #container
-      [class]="containerClass()"
-      [attr.accessibility-element]="accessibilityLabel() ? 'true' : null"
-      [attr.accessibility-traits]="accessibilityLabel() ? 'button' : null"
-      [attr.accessibility-label]="accessibilityLabel() || null"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      @if (look() === 'glass') {
-        <!-- The container is the button's box, and the glass fills it. Under
-             clear glass the container is the dimming layer (see dimmed).
-             The content sits in the glass, where iOS's interactive glass
-             reacts to touches on it, and is what dims when disabled, as a
-             disabled SwiftUI glass button dims its label: glass under a
-             faded parent turns into a washed-out patch on iOS. -->
-        <blur-view
-          ui-glass
-          [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
-          material="thin"
-          [tint]="
-            variant() === 'glass-prominent' ? 'var(--glass-tint)' : undefined
-          "
-          [interactive]="interactive()"
-          [class]="glassClass()"
-        >
-          <view [class]="glassContentClass()">
-            <ng-container [ngTemplateOutlet]="content" />
-          </view>
-        </blur-view>
-      } @else {
-        @if (stateLayerClass(); as layer) {
-          <view [class]="layer"></view>
-        }
-        <ng-container [ngTemplateOutlet]="content" />
+    @if (look() === 'glass') {
+      <!-- The host is the button's box, and the glass fills it. Under
+           clear glass the host is the dimming layer (see dimmed).
+           The content sits in the glass, where iOS's interactive glass
+           reacts to touches on it, and is what dims when disabled, as a
+           disabled SwiftUI glass button dims its label: glass under a
+           faded parent turns into a washed-out patch on iOS. -->
+      <blur-view
+        ui-glass
+        [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
+        material="thin"
+        [tint]="
+          variant() === 'glass-prominent' ? 'var(--glass-tint)' : undefined
+        "
+        [interactive]="interactive()"
+        [class]="glassClass()"
+      >
+        <view [class]="glassContentClass()">
+          <ng-container [ngTemplateOutlet]="content" />
+        </view>
+      </blur-view>
+    } @else {
+      @if (stateLayerClass(); as layer) {
+        <view [class]="layer"></view>
       }
-    </view>
+      <ng-container [ngTemplateOutlet]="content" />
+    }
 
     <!-- One copy of the content, for whichever form the button takes: Angular
          projects content once, so it can't be in both branches above.
@@ -340,13 +345,13 @@ export class UiButton {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
   /**
    * A `<ui-icon>` projected into the button, which sits before the label, or
    * after it when it's marked `trailing`.
    */
   readonly projectedIcon = contentChild(iconType());
 
+  readonly #host = inject(ElementRef).nativeElement;
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #design = injectGlassDesign();
   readonly #systemDrawsGlass = injectSystemDrawsGlass();
@@ -417,7 +422,7 @@ export class UiButton {
   /**
    * Clear glass sits on a dark layer at about a third, so its white label
    * stays legible over bright photos and video: Apple's rule for clear
-   * glass. The layer is the container, under the glass.
+   * glass. The layer is the host, under the glass.
    */
   readonly #dimmed = computed(
     () => this.variant() === 'glass-clear' && this.#seeThrough(),
@@ -534,9 +539,9 @@ export class UiButton {
     this.pressing.set(true);
     if (this.#feedback() !== 'scale') return;
     // pressDown/pressRelease drive el.setStyle() based CSS transitions on the
-    // container ref (see pressDown for why it isn't el.animate()).
+    // host (see pressDown for why it isn't el.animate()).
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressEnd(): void {
@@ -560,6 +565,6 @@ export class UiButton {
     this.pressing.set(false);
     if (this.#feedback() !== 'scale') return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 }

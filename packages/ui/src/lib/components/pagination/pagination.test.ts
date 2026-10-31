@@ -91,6 +91,15 @@ describe('UiPagination', () => {
     expect(container.querySelector('.gap-1')?.classList).toContain('mt-4');
   });
 
+  // Angular gives a component's host every static attribute written on it,
+  // so a row inside the host as well applied the class twice (issue #181).
+  it('puts its class on one element, the row', async () => {
+    const { container } = await renderPagination(7, 3);
+    expect([...container.querySelectorAll('.mt-4')]).toEqual([
+      container.querySelector('.gap-1'),
+    ]);
+  });
+
   it('leaves a gap before the last page near the start', async () => {
     const { container } = await renderPagination(10, 2);
     expect(shown(container)).toEqual(['1', '2', '3', '...', '10']);

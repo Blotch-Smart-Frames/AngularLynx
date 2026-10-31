@@ -57,11 +57,11 @@ class TabsHost {
 const renderTabs = async () => {
   const result = await render(TabsHost);
   /**
-   * A trigger's own view, which holds the tap listener, around its label.
+   * A trigger: its host, which holds the tap listener, around its label.
    */
   const trigger = (label: string) => result.getByText(label).parentElement!;
   /**
-   * A panel's own view, which wraps its projected text.
+   * A panel: its host, around its projected text.
    */
   const panel = (text: string) => result.getByText(text).parentElement!;
   return {
@@ -69,9 +69,8 @@ const renderTabs = async () => {
     host: result.componentRef.instance as TabsHost,
     trigger,
     panel,
-    /** The display of a panel's host element, which shows or hides it. */
-    displayOf: (text: string) =>
-      (panel(text).parentElement as HTMLElement).style.display,
+    /** The display of a panel, which shows or hides it. */
+    displayOf: (text: string) => panel(text).style.display,
     tap: async (label: string) => {
       fireEvent.tap(trigger(label));
       await waitForUpdate();
@@ -87,8 +86,6 @@ const CANCEL = 3;
 describe('UiTabs', () => {
   it("merges each part's class with its own", async () => {
     const { container, trigger, panel } = await renderTabs();
-    // Each host element carries the given class too, so look for the view
-    // that has both its own and the given class.
     expect(container.querySelector('.flex-col.w-80')).not.toBeNull();
     expect(container.querySelector('.rounded-lg.mb-2')).not.toBeNull();
     expect(
@@ -98,6 +95,21 @@ describe('UiTabs', () => {
     expect(trigger('Account').classList).toContain('px-4');
     expect(panel('Account panel').classList).toContain('mt-2');
     expect(panel('Account panel').classList).toContain('gap-2');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a part that also styled a view inside its host applied the class
+  // twice (issue #181).
+  it('puts a class written on a part on that one element', async () => {
+    const { container, trigger, panel } = await renderTabs();
+    expect(container.querySelectorAll('.w-80')).toHaveLength(1);
+    expect(container.querySelectorAll('.mb-2')).toHaveLength(1);
+    expect([...container.querySelectorAll('.px-4')]).toEqual([
+      trigger('Account'),
+    ]);
+    expect([...container.querySelectorAll('.gap-2')]).toEqual([
+      panel('Account panel'),
+    ]);
   });
 
   it("shows only the selected tab's panel, and highlights its trigger", async () => {
@@ -140,9 +152,8 @@ describe('UiTabs', () => {
 
   it('clips a hidden panel, whose text iOS would draw from its corner', async () => {
     const { panel } = await renderTabs();
-    const hostOf = (text: string) => panel(text).parentElement as HTMLElement;
-    expect(hostOf('Billing panel').style.overflow).toBe('hidden');
-    expect(hostOf('Account panel').style.overflow).toBe('');
+    expect(panel('Billing panel').style.overflow).toBe('hidden');
+    expect(panel('Account panel').style.overflow).toBe('');
   });
 
   it('shows the tab its value is set to, without reporting a change', async () => {
@@ -287,10 +298,7 @@ describe('UiTabs', () => {
       await waitForUpdate();
       expect(animate).not.toHaveBeenCalled();
       expect(
-        (
-          result.getByText('Billing panel').parentElement!
-            .parentElement as HTMLElement
-        ).style.display,
+        result.getByText('Billing panel').parentElement!.style.display,
       ).toBe('flex');
     });
 
@@ -385,14 +393,10 @@ describe('UiTabsList, segmented', () => {
       providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
     });
     /**
-     * A trigger's own view, around its label.
+     * A trigger: its host, the track's flex item, around its label.
      */
     const trigger = (label: string) => result.getByText(label).parentElement!;
-    /**
-     * A trigger's host, the track's flex item.
-     */
-    const slot = (label: string) => trigger(label).parentElement!;
-    const track = () => slot('Photos').parentElement!;
+    const track = () => trigger('Photos').parentElement!;
     /**
      * The indicator's frame, which moves between the tabs.
      */
@@ -402,7 +406,6 @@ describe('UiTabsList, segmented', () => {
       ...result,
       host: result.componentRef.instance as SegmentedTabsHost,
       trigger,
-      slot,
       track,
       frame,
       measure: async () => {
@@ -411,23 +414,22 @@ describe('UiTabsList, segmented', () => {
           ['Albums', 90],
           ['People', 180],
         ] as const) {
-          fireEvent.layoutchange(slot(label), { detail: { width } });
+          fireEvent.layoutchange(trigger(label), { detail: { width } });
         }
         await waitForUpdate();
       },
-      /** The display of a panel's host element, which shows or hides it. */
+      /** The display of a panel, which shows or hides it. */
       displayOf: (text: string) =>
-        (result.getByText(text).parentElement!.parentElement as HTMLElement)
-          .style.display,
+        result.getByText(text).parentElement!.style.display,
     };
   };
 
   it("draws the platform's segmented control, filling its width, its tabs sharing it", async () => {
-    const { track, slot, trigger, frame, getByText } = await renderSegmented();
+    const { track, trigger, frame, getByText } = await renderSegmented();
     expect(track().classList).toContain('rounded-full');
     expect(track().classList).not.toContain('self-start');
-    expect(slot('Albums').classList).toContain('flex-1');
-    expect(slot('People').classList).toContain('flex-[2]');
+    expect(trigger('Albums').classList).toContain('flex-1');
+    expect(trigger('People').classList).toContain('flex-[2]');
     expect(trigger('Photos').classList).toContain('justify-center');
     expect(getByText('Photos').classList).toContain('font-medium');
     expect(getByText('Albums').classList).not.toContain('font-medium');
@@ -508,18 +510,18 @@ describe('UiTabsList, segmented', () => {
   });
 
   it('goes back to the default tabs when the variant changes', async () => {
-    const { host, track, slot, frame } = await renderSegmented();
+    const { host, track, trigger, frame } = await renderSegmented();
     host.variant.set('default');
     await waitForUpdate();
     expect(track().classList).toContain('self-start');
-    expect(slot('Photos').classList).not.toContain('flex-1');
+    expect(trigger('Photos').classList).not.toContain('flex-1');
     expect(frame()).toBeNull();
   });
 
   it('lets a trigger outside a list take touches as the default tabs do', async () => {
     const result = await render(LoneTriggerHost);
     const trigger = result.getByText('Alone').parentElement!;
-    fireEvent.layoutchange(trigger.parentElement!, { detail: { width: 80 } });
+    fireEvent.layoutchange(trigger, { detail: { width: 80 } });
     fireEvent.touchstart(trigger, { touches: [{ pageX: 10 }] });
     fireEvent.touchmove(trigger, { touches: [{ pageX: 60 }] });
     fireEvent.touchend(trigger);
@@ -528,6 +530,6 @@ describe('UiTabsList, segmented', () => {
     fireEvent.tap(trigger);
     await waitForUpdate();
     expect(trigger.classList).toContain('bg-background');
-    expect(trigger.parentElement!.classList).not.toContain('flex-1');
+    expect(trigger.classList).not.toContain('flex-1');
   });
 });

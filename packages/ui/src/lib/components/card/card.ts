@@ -1,13 +1,13 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { registerHostElement } from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -17,25 +17,29 @@ import {
 } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * Each part is its host element, styled through `host`, rather than a view
+ * (or text) inside the host. Angular gives a component's host every static
+ * attribute the app writes on it, so `<ui-card-content class="pt-6">` puts
+ * `pt-6` on the host whatever the component does with its `class` input: with
+ * a styled view inside as well, the padding applied twice. On the host alone,
+ * a class also acts where the part sits in its parent's layout (`flex-1`,
+ * margins). The title and description are text, so their hosts are `<text>`
+ * elements (registerHostElement, below).
+ */
 @Component({
   selector: 'ui-card',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view
-      #container
-      [class]="containerClass()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-    >
-      <ng-content />
-    </view>
-  `,
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+  },
+  template: '<ng-content />',
 })
 export class UiCard {
   /**
@@ -44,7 +48,7 @@ export class UiCard {
   readonly pressable = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -54,16 +58,13 @@ export class UiCard {
   protected onPressStart(): void {
     if (!this.pressable()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(
-      this.containerRef()?.nativeElement,
-      SCALE.pressDownLight,
-    );
+    this.#pressAnim = pressDown(this.#host, SCALE.pressDownLight);
   }
 
   protected onPressEnd(): void {
     if (!this.pressable()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
@@ -71,20 +72,15 @@ export class UiCard {
     // mid-press would leave the card stuck in its pressed-down state.
     if (!this.pressable()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 }
 
 @Component({
   selector: 'ui-card-header',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiCardHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -96,10 +92,9 @@ export class UiCardHeader {
 
 @Component({
   selector: 'ui-card-title',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiCardTitle {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -109,12 +104,13 @@ export class UiCardTitle {
   );
 }
 
+registerHostElement(UiCardTitle, 'text');
+
 @Component({
   selector: 'ui-card-description',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiCardDescription {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -124,16 +120,13 @@ export class UiCardDescription {
   );
 }
 
+registerHostElement(UiCardDescription, 'text');
+
 @Component({
   selector: 'ui-card-content',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiCardContent {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -145,14 +138,9 @@ export class UiCardContent {
 
 @Component({
   selector: 'ui-card-footer',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiCardFooter {
   readonly userClass = input<string>('', { alias: 'class' });

@@ -11,7 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, registerHostElement } from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -29,6 +29,11 @@ import { cn } from '../../utils/cn';
   selector: 'ui-dialog',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The dialog's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-dialog>, and the
+  // host sits in the page's layout where the dialog is written, so a
+  // `class="p-8"` padded the page there too. The host drops it.
+  host: { '[attr.class]': 'null' },
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <view #backdrop [class]="backdropClass()" (bindtap)="onBackdropTap()">
@@ -220,15 +225,17 @@ export class UiDialog implements OnDestroy {
   }
 }
 
+/**
+ * The parts are their host elements, styled through `host`: a class the app
+ * writes on a part lands on its host anyway (see UiDialog), so a view or text
+ * inside it styled with the same class applied it twice. The title and
+ * description are text, so their hosts are `<text>` elements.
+ */
 @Component({
   selector: 'ui-dialog-header',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -240,9 +247,9 @@ export class UiDialogHeader {
 
 @Component({
   selector: 'ui-dialog-title',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogTitle {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -252,11 +259,13 @@ export class UiDialogTitle {
   );
 }
 
+registerHostElement(UiDialogTitle, 'text');
+
 @Component({
   selector: 'ui-dialog-description',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogDescription {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -266,15 +275,13 @@ export class UiDialogDescription {
   );
 }
 
+registerHostElement(UiDialogDescription, 'text');
+
 @Component({
   selector: 'ui-dialog-footer',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogFooter {
   readonly userClass = input<string>('', { alias: 'class' });

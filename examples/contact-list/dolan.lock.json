@@ -3,7 +3,7 @@
   "components": {
     "avatar": {
       "avatar.ts": {
-        "hash": "3a1ca1cfcdf870bd"
+        "hash": "336b588a2894bdc1"
       },
       "index.ts": {
         "hash": "66b1c0ebbbfaa25b"
@@ -73,7 +73,7 @@
     },
     "empty-state": {
       "empty-state.ts": {
-        "hash": "c6af7133b3bbc156"
+        "hash": "233e51a068eadf54"
       },
       "index.ts": {
         "hash": "a30d82497191f4e9"
@@ -84,7 +84,7 @@
         "hash": "85cf48114b14edc8"
       },
       "label.ts": {
-        "hash": "eb47494a29b26c25"
+        "hash": "5dfcc303f68b5862"
       }
     },
     "skeleton": {

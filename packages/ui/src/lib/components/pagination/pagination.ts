@@ -31,58 +31,61 @@ const defaultPageLabel = (page: number, current: boolean): string =>
   // The chevrons are drawn in the theme's foreground, like the page numbers
   // next to them. An SVG can't read the text color classes, so the color is
   // resolved and written into the markup (see icon-theme.ts).
+  //
+  // The host is the row, styled through `host` rather than as a view inside
+  // it: Angular gives a component's host every static attribute the app
+  // writes on it, so a class on <ui-pagination> lands on the host whatever
+  // the component does with its `class` input, and a row inside the host
+  // applied it twice.
+  host: { '[class]': 'containerClass()' },
   template: `
-    <view [class]="containerClass()">
-      <view
-        [class]="navButtonClass(page() <= 1)"
-        [accessibility-element]="true"
-        accessibility-traits="button"
-        [accessibility-label]="previousLabel()"
-        (bindtap)="prev()"
-      >
-        <svg
-          [attr.content]="chevronLeftSvg()"
-          style="width: 16px; height: 16px;"
-        />
-      </view>
+    <view
+      [class]="navButtonClass(page() <= 1)"
+      [accessibility-element]="true"
+      accessibility-traits="button"
+      [accessibility-label]="previousLabel()"
+      (bindtap)="prev()"
+    >
+      <svg
+        [attr.content]="chevronLeftSvg()"
+        style="width: 16px; height: 16px;"
+      />
+    </view>
 
-      @for (item of visiblePages(); track item.key) {
-        @if (item.type === 'page') {
-          <view
-            [class]="pageButtonClass(item.value === page())"
-            [accessibility-element]="true"
-            accessibility-traits="button"
-            [accessibility-label]="
-              pageLabel()(item.value, item.value === page())
-            "
-            (bindtap)="goTo(item.value)"
-          >
-            <text [class]="pageTextClass(item.value === page())">{{
-              item.value
-            }}</text>
-          </view>
-        } @else {
-          <view
-            class="h-8 w-8 items-center flex justify-center"
-            [accessibility-elements-hidden]="true"
-          >
-            <text class="text-xs text-muted-foreground">...</text>
-          </view>
-        }
+    @for (item of visiblePages(); track item.key) {
+      @if (item.type === 'page') {
+        <view
+          [class]="pageButtonClass(item.value === page())"
+          [accessibility-element]="true"
+          accessibility-traits="button"
+          [accessibility-label]="pageLabel()(item.value, item.value === page())"
+          (bindtap)="goTo(item.value)"
+        >
+          <text [class]="pageTextClass(item.value === page())">{{
+            item.value
+          }}</text>
+        </view>
+      } @else {
+        <view
+          class="h-8 w-8 items-center flex justify-center"
+          [accessibility-elements-hidden]="true"
+        >
+          <text class="text-xs text-muted-foreground">...</text>
+        </view>
       }
+    }
 
-      <view
-        [class]="navButtonClass(page() >= totalPages())"
-        [accessibility-element]="true"
-        accessibility-traits="button"
-        [accessibility-label]="nextLabel()"
-        (bindtap)="next()"
-      >
-        <svg
-          [attr.content]="chevronRightSvg()"
-          style="width: 16px; height: 16px;"
-        />
-      </view>
+    <view
+      [class]="navButtonClass(page() >= totalPages())"
+      [accessibility-element]="true"
+      accessibility-traits="button"
+      [accessibility-label]="nextLabel()"
+      (bindtap)="next()"
+    >
+      <svg
+        [attr.content]="chevronRightSvg()"
+        style="width: 16px; height: 16px;"
+      />
     </view>
   `,
 })

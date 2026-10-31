@@ -15,25 +15,32 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { type AnimationHandle, popIn, popOut } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * The host is the checkbox's 44pt tap target, with the box inside, and the
+ * app's class is the box's. Angular also gives the host every static
+ * attribute the app writes on <ui-checkbox>, so the class styled the target
+ * too: a margin applied twice. The host drops it, and takes its own size
+ * from an inline style, which dropping the class leaves alone.
+ */
 @Component({
   selector: 'ui-checkbox',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[attr.class]': 'null',
+    style:
+      'width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center;',
+    '(bindtap)': 'toggle()',
+  },
   template: `
-    <view
-      class="h-11 w-11 items-center flex justify-center"
-      (bindtap)="toggle()"
-    >
-      <view [class]="boxClass()">
-        <text
-          #checkmark
-          [class]="checkClass()"
-          [style]="checked() ? 'opacity: 1;' : 'opacity: 0;'"
-        >
-          ✓
-        </text>
-      </view>
+    <view [class]="boxClass()">
+      <text
+        #checkmark
+        [class]="checkClass()"
+        [style]="checked() ? 'opacity: 1;' : 'opacity: 0;'"
+      >
+        ✓
+      </text>
     </view>
   `,
 })

@@ -6,7 +6,7 @@
 import { Component, signal } from '@angular/core';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitForUpdate } from './index.js';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, registerHostElement } from '@blotch/angular-lynx';
 
 /**
  * Custom component selectors (card-wrapper, panel, etc.) are unknown to the
@@ -365,5 +365,42 @@ describe('content projection — with Lynx element directives', () => {
     const image = wrapper!.querySelector('image');
     expect(image).not.toBeNull();
     expect(image!.getAttribute('src')).toBe('test.png');
+  });
+});
+
+describe('content projection — a host registered as another element', () => {
+  // registerHostElement makes a component's host a <text>, so the text it's
+  // given renders in its host, and a class written on the component styles
+  // that one element.
+  it('projects text into a <text> host that carries the classes', async () => {
+    @Component({
+      selector: 'text-host-title',
+      host: { class: 'title' },
+      template: `<ng-content />`,
+    })
+    class TextHostTitleComponent {}
+    registerHostElement(TextHostTitleComponent, 'text');
+
+    @Component({
+      selector: 'test-text-host',
+      template: `
+        <view class="column">
+          <text-host-title class="mb-2">
+            Hello <text class="bold">world</text>
+          </text-host-title>
+        </view>
+      `,
+      imports: [TextHostTitleComponent, LYNX_ELEMENTS],
+    })
+    class TextHostHost {}
+
+    const { container } = await render(TextHostHost);
+
+    const title = container.querySelector('.column > text')!;
+    expect(title.classList).toContain('title');
+    expect(title.classList).toContain('mb-2');
+    expect(container.querySelectorAll('.mb-2')).toHaveLength(1);
+    expect(title.textContent).toBe('Hello world');
+    expect(title.querySelector('text.bold')?.textContent).toBe('world');
   });
 });

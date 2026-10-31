@@ -13,16 +13,18 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { type AnimationHandle, DURATION, EASING } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * The track is the host, styled through `host`, with the fill inside.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-progress> lands on the host whatever the component
+ * does: with a styled track inside as well, a margin applied twice.
+ */
 @Component({
   selector: 'ui-progress',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="trackClass()">
-      <view #fill [class]="fillClass()" [style]="fillStyle()" />
-    </view>
-  `,
+  host: { '[class]': 'trackClass()' },
+  template: `<view #fill [class]="fillClass()" [style]="fillStyle()" />`,
 })
 export class UiProgress {
   readonly value = input(0);

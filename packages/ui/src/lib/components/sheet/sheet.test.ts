@@ -100,6 +100,24 @@ describe('UiSheet', () => {
     expect(container.querySelector('.pt-4')?.classList).toContain('flex-row');
   });
 
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181), so each class also styled a host: the sheet's in the page,
+  // where it is written, and each part's around its own view or text.
+  it('puts each class on one element: the content, or the part', async () => {
+    const { container, getByText } = await renderSheet();
+    const content = container.querySelector('.px-6')!;
+    expect([...container.querySelectorAll('.gap-4')]).toEqual([content]);
+    // In the content: the bottom sheet draws views of its own with these.
+    expect(content.querySelectorAll('.items-center')).toHaveLength(1);
+    expect(content.querySelectorAll('.flex-row')).toHaveLength(1);
+    expect([...container.querySelectorAll('.text-xl')]).toEqual([
+      getByText('Title'),
+    ]);
+    expect([...container.querySelectorAll('.italic')]).toEqual([
+      getByText('Body'),
+    ]);
+  });
+
   it('opens with `open`, and reports a dismissal through it and `closed`', async () => {
     const { host, overlay, backdrop } = await renderSheet();
     expect(overlay.getAttribute('visible')).toBe('false');

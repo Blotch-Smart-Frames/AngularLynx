@@ -18,6 +18,9 @@ describe('UiSeparator', () => {
     const line = container.querySelector('.bg-border')!;
     expect(line.classList).toContain('h-px');
     expect(line.classList).toContain('my-2');
+    // One element: a static class lands on the host, so a view inside it
+    // would take it twice (issue #181).
+    expect(container.querySelectorAll('.my-2')).toHaveLength(1);
 
     (componentRef.instance as SeparatorHost).orientation.set('vertical');
     await waitForUpdate();

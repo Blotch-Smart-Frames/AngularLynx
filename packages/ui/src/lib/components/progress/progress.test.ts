@@ -53,6 +53,13 @@ describe('UiProgress', () => {
   });
   afterEach(() => animate.mockRestore());
 
+  // A class on a component lands on its host too (issue #181): the host is
+  // the track, so its height is set once.
+  it('puts its class on one element, the track', async () => {
+    const { container, track } = await renderProgress();
+    expect([...container.querySelectorAll('.h-3')]).toEqual([track()]);
+  });
+
   it('fills the track by the value out of max', async () => {
     const { fill, track } = await renderProgress();
     expect(fill().getAttribute('style')).toContain('width: 40%');

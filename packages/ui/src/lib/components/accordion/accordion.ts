@@ -1,29 +1,30 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { type AnimationHandle, revealIn } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * Each part is its host element, styled through `host`, rather than a view
+ * inside the host. Angular gives a component's host every static attribute the
+ * app writes on it, so a class on <ui-accordion-item> or any other part lands
+ * on the host whatever the component does: with a styled view inside as well,
+ * a border or padding applied twice.
+ */
 @Component({
   selector: 'ui-accordion',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiAccordion {
   readonly type = input<'single' | 'multiple'>('single');
@@ -59,14 +60,9 @@ export class UiAccordion {
 
 @Component({
   selector: 'ui-accordion-item',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="itemClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'itemClass()' },
+  template: '<ng-content />',
 })
 export class UiAccordionItem {
   readonly #accordion = inject(UiAccordion);
@@ -89,14 +85,15 @@ export class UiAccordionItem {
 
 @Component({
   selector: 'ui-accordion-trigger',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'triggerClass()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <view [class]="triggerClass()" (bindtap)="onTap()">
-      <text [class]="textClass()"><ng-content /></text>
-      <text [class]="chevronClass()">{{ item.isExpanded() ? '▼' : '▶' }}</text>
-    </view>
+    <text [class]="textClass()"><ng-content /></text>
+    <text [class]="chevronClass()">{{ item.isExpanded() ? '▼' : '▶' }}</text>
   `,
 })
 export class UiAccordionTrigger {
@@ -122,26 +119,19 @@ export class UiAccordionTrigger {
 
 @Component({
   selector: 'ui-accordion-content',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Mount the content only while expanded, via `@if`. On Lynx this works because
   // the renderer recreates a destroyed element's native painting node when it is
   // re-inserted (see LynxElement.#recreateSubtree in @blotch/angular-lynx): when
-  // the panel re-expands, the projected `<ng-content>` — recycled with the
-  // re-created wrapper — is rebuilt from cache and renders again, cycle after
-  // cycle. The inline opacity/transform is the resting state; revealIn animates
-  // from opacity:0 / translateY(-8px) with fill:'none' so the inline style takes
-  // over once the animation ends.
+  // the panel re-expands, the projected `<ng-content>` is rebuilt from cache and
+  // renders again, cycle after cycle. While collapsed the host is hidden, so
+  // the classes the app wrote on it (which Angular puts on the host either way)
+  // take no room. revealIn animates from opacity:0 / translateY(-8px) with
+  // fill:'none', so the host's own style takes over once the animation ends.
+  host: { '[class]': 'contentClass()' },
   template: `
     @if (item.isExpanded()) {
-      <view
-        #content
-        [class]="contentClass()"
-        style="opacity: 1; transform: translateY(0);"
-      >
-        <ng-content />
-      </view>
+      <ng-content />
     }
   `,
 })
@@ -149,7 +139,7 @@ export class UiAccordionContent {
   protected readonly item = inject(UiAccordionItem);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly contentRef = viewChild<ElementRef>('content');
+  readonly #host = inject(ElementRef).nativeElement;
   #anim?: AnimationHandle;
 
   /**
@@ -157,22 +147,22 @@ export class UiAccordionContent {
    * constructor: Angular's test build keeps a function for a constructor that
    * nothing calls, which an app's coverage report would show as uncovered.
    *
-   * contentRef only resolves while the `@if` content is mounted; defer one
-   * macrotask so the freshly (re)created element is committed to the native
-   * tree before we animate it. By then the panel may have collapsed again,
-   * which leaves nothing to animate.
+   * Deferred one macrotask so the re-inserted content is committed to the
+   * native tree before we animate it. By then the panel may have collapsed
+   * again, which leaves nothing to animate.
    */
   protected readonly revealing = effect(() => {
     if (!this.item.isExpanded()) return;
     setTimeout(() => {
-      const el = this.contentRef()?.nativeElement;
-      if (!el) return;
+      if (!this.item.isExpanded()) return;
       this.#anim?.cancel();
-      this.#anim = revealIn(el, { fromY: -8, fill: 'none' });
+      this.#anim = revealIn(this.#host, { fromY: -8, fill: 'none' });
     }, 0);
   });
 
   protected readonly contentClass = computed(() =>
-    cn('flex-col pb-4 flex', this.userClass()),
+    this.item.isExpanded()
+      ? cn('flex-col pb-4 flex', this.userClass())
+      : 'hidden',
   );
 }

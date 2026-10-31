@@ -71,8 +71,8 @@ class ToggleGroupHost {
 }
 
 /**
- * The view (the one that takes presses) a toggle or toggle group item
- * projects its label into.
+ * The toggle or toggle group item a label is projected into: its host, which
+ * takes the presses.
  */
 const viewOf = (label: Element) => label.parentElement!;
 
@@ -128,6 +128,14 @@ describe('UiToggle', () => {
       toggle: () => viewOf(result.getByText('Bold')),
     };
   };
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a toggle that also styled a view inside its host applied the class
+  // twice (issue #181).
+  it('puts its class on one element, the toggle', async () => {
+    const { container, toggle } = await renderToggle();
+    expect([...container.querySelectorAll('.w-20')]).toEqual([toggle()]);
+  });
 
   it('renders its content unpressed, with the given class', async () => {
     const { toggle } = await renderToggle();
@@ -215,6 +223,15 @@ describe('UiToggleGroup', () => {
     const { group } = await renderGroup();
     expect(group().classList).toContain('flex-row');
     expect(group().classList).toContain('w-full');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a group or item that also styled a view inside its host applied the
+  // class twice (issue #181).
+  it('puts a class written on the group or an item on that one element', async () => {
+    const { container, group, item } = await renderGroup();
+    expect([...container.querySelectorAll('.w-full')]).toEqual([group()]);
+    expect([...container.querySelectorAll('.flex-1')]).toEqual([item('Left')]);
   });
 
   it('selects one item at a time, and deselects it on a second tap', async () => {
@@ -338,6 +355,18 @@ class SegmentedGroupHost {
   readonly disabled = signal(false);
 }
 
+@Component({
+  imports: [UiToggleGroup, UiToggleGroupItem, LYNX_ELEMENTS],
+  template: `
+    <ui-toggle-group variant="segmented">
+      <ui-toggle-group-item value="bold" accessibility-label="Bold"
+        ><text>B</text></ui-toggle-group-item
+      >
+    </ui-toggle-group>
+  `,
+})
+class StaticLabelHost {}
+
 /**
  * A group inside something that colors its icons, such as glass.
  */
@@ -388,18 +417,15 @@ describe('UiToggleGroup, segmented', () => {
     const result = await render(SegmentedGroupHost, {
       providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
     });
+    const track = () => viewOf(result.getByText('Day')).parentElement!;
     /**
-     * An item's own view: around its label, or around the star icon.
+     * An item, the track's flex item: around its label, or the last, around
+     * the star icon.
      */
     const item = (label: string) =>
       label === 'Star'
-        ? result.container.querySelector('svg')!.parentElement!.parentElement!
+        ? (track().lastElementChild as HTMLElement)
         : viewOf(result.getByText(label));
-    /**
-     * An item's host, the track's flex item.
-     */
-    const slot = (label: string) => item(label).parentElement!;
-    const track = () => slot('Day').parentElement!;
     /**
      * The indicator's frame, which moves between the items.
      */
@@ -407,7 +433,7 @@ describe('UiToggleGroup, segmented', () => {
       track().querySelector<HTMLElement>('.h-full .bottom-0.top-0');
     const measure = async () => {
       for (const label of ['Day', 'Week', 'Month', 'Star']) {
-        fireEvent.layoutchange(slot(label), {
+        fireEvent.layoutchange(item(label), {
           detail: { width: label === 'Month' ? 160 : 80 },
         });
       }
@@ -417,7 +443,6 @@ describe('UiToggleGroup, segmented', () => {
       ...result,
       host: result.componentRef.instance as SegmentedGroupHost,
       item,
-      slot,
       track,
       frame,
       measure,
@@ -429,13 +454,13 @@ describe('UiToggleGroup, segmented', () => {
   };
 
   it("draws the platform's segmented control, its items sharing the track", async () => {
-    const { track, slot, item, frame } = await renderSegmented();
+    const { track, item, frame } = await renderSegmented();
     expect(track().classList).toContain('rounded-full');
     expect(track().classList).toContain('bg-muted');
-    expect(slot('Day').classList).toContain('flex-1');
-    // An item's own class sizes its slot too.
-    expect(slot('Month').classList).toContain('flex-[2]');
-    expect(slot('Month').classList).not.toContain('flex-1');
+    expect(item('Day').classList).toContain('flex-1');
+    // An item's own class sizes it in the track.
+    expect(item('Month').classList).toContain('flex-[2]');
+    expect(item('Month').classList).not.toContain('flex-1');
     expect(item('Day').classList).toContain('justify-center');
     expect(frame()).not.toBeNull();
   });
@@ -446,6 +471,12 @@ describe('UiToggleGroup, segmented', () => {
     expect(host.range()).toEqual(['Day']);
     await tap('Day');
     expect(host.range()).toEqual(['Day']);
+  });
+
+  // The accessibility label names one element, the item (issue #181).
+  it('names one element with an accessibility label written on an item', async () => {
+    const { getAllByAccessibilityLabel } = await render(StaticLabelHost);
+    expect(getAllByAccessibilityLabel('Bold')).toHaveLength(1);
   });
 
   it('marks the selected item selected for screen readers', async () => {

@@ -5,22 +5,31 @@ import { cn } from '@blotch/dolan/utils/cn';
 import { type IconName } from '../icon/icons';
 import { UiIcon } from '../icon/icon';
 
+/**
+ * The empty state is its host, styled through `host`. Angular gives a
+ * component's host every static attribute the app writes on it, so a class on
+ * <ui-empty-state> lands on the host whatever the component does: with a
+ * styled view inside as well, the padding applied twice. Its title lands
+ * there too, and goes: it's shown in a <text>, and on the web preview a
+ * `title` attribute is a tooltip (and a second match for getByTitle).
+ */
 @Component({
   selector: 'ui-empty-state',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiIcon],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'containerClass()',
+    '[attr.title]': 'null',
+  },
   template: `
-    <view [class]="containerClass()">
-      @if (icon()) {
-        <ui-icon [name]="icon()!" size="lg" class="mb-3" />
-      }
-      <text [class]="titleClass()">{{ title() }}</text>
-      @if (description()) {
-        <text [class]="descriptionClass()">{{ description() }}</text>
-      }
-      <ng-content />
-    </view>
+    @if (icon()) {
+      <ui-icon [name]="icon()!" size="lg" class="mb-3" />
+    }
+    <text [class]="titleClass()">{{ title() }}</text>
+    @if (description()) {
+      <text [class]="descriptionClass()">{{ description() }}</text>
+    }
+    <ng-content />
   `,
 })
 export class UiEmptyState {

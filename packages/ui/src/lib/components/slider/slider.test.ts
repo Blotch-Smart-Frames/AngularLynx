@@ -141,10 +141,22 @@ describe('UiSlider', () => {
     settings.reduceTransparency.set(false);
   });
 
+  // Static attributes land on a component's host too (issue #181): the
+  // margin applies once, and only the slider itself is named Volume.
+  it('puts its class and accessibility label on one element each', async () => {
+    const { container, slider, getAllByAccessibilityLabel } =
+      await renderSlider();
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([
+      slider.parentElement,
+    ]);
+    expect(getAllByAccessibilityLabel('Volume')).toEqual([slider]);
+  });
+
   it('shows its value on a track in the theme colors', async () => {
     const { slider, track, fill, thumb } = await renderSlider();
 
-    expect(slider.classList).toContain('mt-2');
+    expect(slider.parentElement!.classList).toContain('mt-2');
+    expect(slider.classList).toContain('w-full');
     expect(style(slider, 'height')).toBe('20px');
     expect(track.classList).toContain('bg-secondary');
     expect(fill.classList).toContain('bg-primary');

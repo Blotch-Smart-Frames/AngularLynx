@@ -1,4 +1,9 @@
+// JIT-compiles the test components, which registerHostElement reads the
+// selectors of.
+import '@angular/compiler';
+import { Component } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerHostElement } from '../lynx-document/host-elements';
 import type { LynxElement } from '../lynx-element';
 import type { ElementRef } from '../types/lynx';
 import { LynxHydrateDocument } from './hydrate-document';
@@ -64,6 +69,18 @@ describe('LynxHydrateDocument', () => {
 
       expect(el0.element).toBe(ref0);
       expect(el1.element).toBe(ref1);
+    });
+
+    it("tags a component host with the element it's registered as", () => {
+      @Component({ selector: 'hydrate-test-title', template: '' })
+      class HydrateTestTitle {}
+      registerHostElement(HydrateTestTitle, 'text');
+      const doc = new LynxHydrateDocument(pageRef, [{ _id: 0 } as any]);
+      doc.createRootElement();
+
+      const title = doc.createElement('hydrate-test-title');
+
+      expect(title.tagName).toBe('text');
     });
 
     it('returns the page element when tag is "page"', () => {

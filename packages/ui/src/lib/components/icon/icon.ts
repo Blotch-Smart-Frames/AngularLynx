@@ -1,5 +1,5 @@
-import { Component, ViewEncapsulation, input } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { Component, ViewEncapsulation, computed, input } from '@angular/core';
+import { registerHostElement } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
 import { injectIconColor } from './icon-theme';
@@ -8,6 +8,12 @@ import { type IconName, ICONS } from './icons';
 const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
 
 /**
+ * The icon is its host, an `<svg>` (registerHostElement, below). Angular gives
+ * a component's host every static attribute the app writes on it, so
+ * `<ui-icon class="mb-3">` puts `mb-3` on the host whatever the component
+ * does: with a styled `<svg>` inside a view host as well, the margin applied
+ * twice.
+ *
  * SVG markup is passed via [attr.content] rather than as child elements.
  * Lynx's native <svg> element can't contain child nodes in the flat element
  * model. Passing the full SVG string as the `content` attribute is how Lynx
@@ -15,15 +21,14 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
  */
 @Component({
   selector: 'ui-icon',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <svg
-      [attr.content]="svgContent()"
-      [attr.style]="sizeStyle()"
-      [class]="svgClass()"
-    />
-  `,
+  host: {
+    '[attr.content]': 'svgContent()',
+    '[style.width.px]': 'sizePx()',
+    '[style.height.px]': 'sizePx()',
+    '[class]': 'svgClass()',
+  },
+  template: '',
 })
 export class UiIcon {
   readonly name = input.required<IconName>();
@@ -60,12 +65,9 @@ export class UiIcon {
       .join(this.#resolveColor(this.color()));
   }
 
-  protected sizeStyle(): string {
-    const px = SIZE_MAP[this.size()];
-    return `width: ${px}px; height: ${px}px;`;
-  }
+  protected readonly sizePx = computed(() => SIZE_MAP[this.size()]);
 
-  protected svgClass(): string {
-    return cn(this.userClass());
-  }
+  protected readonly svgClass = computed(() => cn(this.userClass()));
 }
+
+registerHostElement(UiIcon, 'svg');

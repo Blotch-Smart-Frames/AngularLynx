@@ -1,11 +1,11 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -53,21 +53,30 @@ export type AlertVariant = NonNullable<
   VariantProps<typeof alertVariants>['variant']
 >;
 
+/**
+ * The alert is its host, styled through `host`. Angular gives a component's
+ * host every static attribute the app writes on it, so a class on <ui-alert>
+ * lands on the host whatever the component does: with a styled view inside as
+ * well, the padding and border applied twice. Its title lands there too, and
+ * goes: it's shown in a <text>, and on the web preview a `title` attribute is
+ * a tooltip (and a second match for getByTitle).
+ */
 @Component({
   selector: 'ui-alert',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'containerClass()',
+    '[attr.title]': 'null',
+  },
   template: `
-    <view #container [class]="containerClass()">
-      @if (title()) {
-        <text [class]="titleClass()">{{ title() }}</text>
-      }
-      @if (description()) {
-        <text [class]="descriptionClass()">{{ description() }}</text>
-      }
-      <ng-content />
-    </view>
+    @if (title()) {
+      <text [class]="titleClass()">{{ title() }}</text>
+    }
+    @if (description()) {
+      <text [class]="descriptionClass()">{{ description() }}</text>
+    }
+    <ng-content />
   `,
 })
 export class UiAlert {
@@ -76,7 +85,7 @@ export class UiAlert {
   readonly description = input<string>('');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild.required<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
 
   /**
    * Reveals the alert with a subtle entrance on first render. A field rather
@@ -85,7 +94,7 @@ export class UiAlert {
    * as uncovered.
    */
   protected readonly entrance = effect(() => {
-    revealIn(this.containerRef().nativeElement, { fromY: 4 });
+    revealIn(this.#host, { fromY: 4 });
   });
 
   protected readonly containerClass = computed(() =>

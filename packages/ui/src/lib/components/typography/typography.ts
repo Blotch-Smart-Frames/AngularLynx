@@ -1,5 +1,5 @@
 import { Component, ViewEncapsulation, computed, input } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { registerHostElement } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import { cn } from '../../utils/cn';
@@ -27,12 +27,18 @@ export type TypographyVariant = NonNullable<
   VariantProps<typeof typographyVariants>['variant']
 >;
 
+/**
+ * The text is its host, a `<text>` (registerHostElement, below), styled
+ * through `host`. Angular gives a component's host every static attribute the
+ * app writes on it, so `<ui-text class="mb-4">` puts `mb-4` on the host
+ * whatever the component does: with a styled `<text>` inside a view host as
+ * well, the margin applied twice.
+ */
 @Component({
   selector: 'ui-text',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiText {
   readonly variant = input<TypographyVariant>('p');
@@ -42,3 +48,5 @@ export class UiText {
     cn(typographyVariants({ variant: this.variant() }), this.userClass()),
   );
 }
+
+registerHostElement(UiText, 'text');

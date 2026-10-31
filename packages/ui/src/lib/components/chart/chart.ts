@@ -211,10 +211,21 @@ type TouchPoint = {
   selector: 'ui-chart',
   imports: [LYNX_ELEMENTS, LynxGestureDetector, NgTemplateOutlet],
   encapsulation: ViewEncapsulation.None,
+  // The host is the chart's box, sized by its classes and `width`/`height`,
+  // and the root view fills it. Angular gives a component's host every
+  // static attribute the app writes on it, so a class on <ui-chart> lands on
+  // the host whatever the component does with its `class` input: on the root
+  // view as well, a margin or padding applied twice. The root stays a view of
+  // its own for the pan gesture and the accessibility element, which bind to
+  // it. `flex-1`, not `h-full`: a percentage height doesn't reliably resolve
+  // on a flex item in Lynx.
+  host: {
+    '[class]': 'rootClass()',
+    '[style]': 'rootStyle()',
+  },
   template: `
     <view
-      [class]="rootClass()"
-      [style]="rootStyle()"
+      class="flex-1 relative"
       [lynxGesture]="zoomable() ? panGesture : noGesture"
       [accessibility-element]="true"
       [accessibility-label]="label()"
@@ -385,7 +396,7 @@ export class UiChart {
   #touchStart: TouchPoint | null = null;
 
   protected readonly rootClass = computed(() =>
-    cn('h-[200px] w-full flex-shrink-0 relative', this.userClass()),
+    cn('h-[200px] w-full flex-shrink-0 flex-col flex', this.userClass()),
   );
 
   protected readonly rootStyle = computed(() => {

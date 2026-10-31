@@ -71,6 +71,16 @@ class TabBarHost {
   readonly items = viewChildren(UiTabBarItem);
 }
 
+@Component({
+  imports: [UiTabBar, UiTabBarItem],
+  template: `
+    <ui-tab-bar class="mt-1">
+      <ui-tab-bar-item route="/" icon="home" label="Home" class="pt-4" />
+    </ui-tab-bar>
+  `,
+})
+class StaticClassHost {}
+
 /** The theme's light colors, as icon-theme.ts resolves them for an SVG. */
 const PRIMARY = 'rgba(24, 24, 27, 1)';
 const MUTED_FOREGROUND = 'rgba(113, 113, 122, 1)';
@@ -132,7 +142,9 @@ describe('UiTabBar', () => {
 
   it('lays the bar out as a row above the bottom safe area', async () => {
     const { container, componentRef } = await render(UiTabBar);
-    const bar = container.querySelector('[accessibility-traits="tabbar"]')!;
+    // Rendered on its own, the bar's host is the root the test renders into.
+    const bar = container;
+    expect(bar.getAttribute('accessibility-traits')).toBe('tabbar');
     expect(bar.classList).toContain('flex-row');
     expect(bar.classList).toContain('pb-safe');
     expect(bar.classList).toContain('border-t');
@@ -267,14 +279,28 @@ describe('UiTabBar', () => {
     expect(scale()).toBe('scale(1)');
   });
 
-  it("merges an item's class into its content, the given class winning", async () => {
+  it("merges an item's class with its own, the given class winning", async () => {
     const { host, tab } = await renderTabBar();
-    const content = () => tab('Inbox').querySelector('view')!;
-    expect(content().classList).toContain('pt-2');
+    expect(tab('Inbox').classList).toContain('pt-2');
 
     host.inboxClass.set('pt-3');
     await waitForUpdate();
-    expect(content().classList).toContain('pt-3');
-    expect(content().classList).not.toContain('pt-2');
+    expect(tab('Inbox').classList).toContain('pt-3');
+    expect(tab('Inbox').classList).not.toContain('pt-2');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a bar or item that also styled a view inside its host applied the
+  // class twice (issue #181).
+  it('puts a class written on the bar or an item on that one element', async () => {
+    const { container } = await render(StaticClassHost, {
+      providers: [provideRouter(routes)],
+    });
+    expect([...container.querySelectorAll('.mt-1')]).toEqual([
+      container.querySelector('[accessibility-traits="tabbar"]'),
+    ]);
+    expect([...container.querySelectorAll('.pt-4')]).toEqual([
+      container.querySelector('[accessibility-label="Home"]'),
+    ]);
   });
 });

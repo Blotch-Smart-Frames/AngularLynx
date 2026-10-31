@@ -11,6 +11,12 @@ class LabelHost {
   readonly disabled = signal(false);
 }
 
+@Component({
+  imports: [UiLabel],
+  template: `<ui-label class="mb-2">Email</ui-label>`,
+})
+class StaticClassHost {}
+
 describe('UiLabel', () => {
   it('renders its text, dimmed while disabled', async () => {
     const { componentRef, getByText } = await render(LabelHost);
@@ -21,5 +27,14 @@ describe('UiLabel', () => {
     (componentRef.instance as LabelHost).disabled.set(true);
     await waitForUpdate();
     expect(label.classList).toContain('opacity-50');
+  });
+
+  // A class on a component lands on its host too (issue #181): the label is
+  // one <text>, so the class styles one element.
+  it('is one text, with the class written on it', async () => {
+    const { container, getByText } = await render(StaticClassHost);
+    const label = getByText('Email');
+    expect(label.tagName.toLowerCase()).toBe('text');
+    expect([...container.querySelectorAll('.mb-2')]).toEqual([label]);
   });
 });

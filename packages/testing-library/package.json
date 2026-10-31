@@ -1,6 +1,6 @@
 {
   "name": "@blotch/angular-lynx-testing-library",
-  "version": "22.2.5",
+  "version": "22.2.6",
   "description": "Testing utilities for AngularLynx apps",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {

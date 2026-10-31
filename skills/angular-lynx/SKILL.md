@@ -40,7 +40,7 @@ Read [bootstrap-and-setup.md](references/bootstrap-and-setup.md)
 
 ## Lynx Elements
 
-All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `frame`, `svg`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, and the `page` root element.
+All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `blur-view`, `frame`, `svg`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, and the `page` root element.
 
 Read [lynx-elements.md](references/lynx-elements.md)
 

@@ -184,6 +184,14 @@ iOS and Android drop it, so Tailwind's `backdrop-blur-*` blurs nothing there (th
 
 On iOS, a blur view's own opacity below 1 makes its material vanish. Animate the opacity of a plain `<view>` around it instead: iOS then draws the glass as a translucent sheet that fades, as UIKit's alerts do.
 
+### Don't reveal glass with `visibility` during a fade
+
+On iOS, a glass `<blur-view>` whose ancestor turns from `visibility: hidden` to `visible` while `animate()` fades that ancestor in draws nothing, even after the fade ends: its children show, the glass doesn't. To keep glass out of sight while it waits, such as for a measurement, move it off screen with a `transform` instead, and show it with the fade alone.
+
+### Glass takes one corner radius on iOS
+
+A glass `<blur-view>` with per-corner radii (`rounded-t-3xl rounded-b-[54px]`) draws square on iOS: only a single `border-radius` shapes the glass. Lynx can't animate `border-radius` either, so a glass shape keeps its corners while it moves or resizes. Give glass one radius, and change its shape through its size and position, which iOS's glass follows frame by frame. Per-corner radii work on a plain `<view>` laid over it.
+
 ### `mask-image` on a `<scroll-view>` doesn't work on Android
 
 A gradient `mask-image` works on a `<view>` everywhere, but on a `<scroll-view>` only on iOS and the web: Android draws the scroll view unmasked. Put the mask on a view around the scroll view. On iOS and Android, gradient stops must be percentages, so a stop a fixed distance from an edge has to come from the element's measured height.
@@ -210,7 +218,7 @@ On `<image>`: `aspectFit`, `aspectFill`, `scaleToFill`, `center`.
 
 ### Only touch events propagate
 
-`scroll`, `input`, `load`, `animationend` etc. only reach the target element. No bubble/capture.
+`scroll`, `input`, `load`, `animationend` etc. only reach the target element. No bubble/capture. Mouse, wheel and key events bubble too, on the platforms that send them: Lynx's desktop engine and Lynx for Web. iOS and Android don't send them.
 
 ### `tap` and `longpress` are mutually exclusive
 

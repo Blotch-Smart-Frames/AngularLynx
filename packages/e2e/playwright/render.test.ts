@@ -166,6 +166,41 @@ test('Angular runs once, and the background thread still answers', async ({
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// Lynx for Web's web-core recognizes no gestures, so `[lynxGesture]` did
+// nothing in the web preview. The runtime now runs its port of Lynx's gesture
+// arena there on pointer events. The same swipe as native/gestures.yaml: the
+// pan reports the distance moved before it activated, and the fling that
+// follows the release runs its onEnd.
+test('a swipe runs a pan and the fling after it', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open gestures', { exact: true }).click();
+  await expect(page.getByText('Pan from touch: no')).toBeVisible();
+
+  // getByText finds the words' own <raw-text>, which has no box; the <text>
+  // around them does.
+  const words = page.getByText('Swipe here', { exact: true });
+  const box = await page.locator('x-text', { has: words }).boundingBox();
+  const x = box!.x + box!.width / 2;
+  const y = box!.y + box!.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  // Quick enough to fling: 120px in about 100ms.
+  for (let step = 1; step <= 6; step++) {
+    await page.mouse.move(x + step * 20, y);
+    await page.waitForTimeout(16);
+  }
+  await page.mouse.up();
+
+  await expect(page.getByText('Pan from touch: yes')).toBeVisible();
+  // The fling ends when its momentum runs out, a few seconds after the swipe.
+  await expect(page.getByText('Fling ended: yes')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

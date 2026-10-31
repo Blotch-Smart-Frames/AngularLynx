@@ -9,6 +9,7 @@ import {
 import type { BaseLynxElement } from '../lynx-element/types';
 import { type BaseGesture, ContinuousGesture } from './base-gesture';
 import { ComposedGesture } from './composition';
+import { removeGestureDetector, setGestureDetector } from './gesture-papi';
 import {
   type GestureOrigin,
   createGestureOrigin,
@@ -23,7 +24,8 @@ type GestureInput = AnyGesture | AnyGesture[] | ComposedGesture;
 
 /**
  * Directive that bridges Angular's gesture binding to Lynx's native gesture
- * system (__SetGestureDetector / __RemoveGestureDetector). Accepts a single
+ * system (__SetGestureDetector / __RemoveGestureDetector, or on Lynx for Web,
+ * which has none, the runtime's port of it: see gesture-papi.ts). Accepts a single
  * gesture, an array of gestures, or a ComposedGesture (simultaneous/exclusive).
  * Each gesture is registered with the native engine via its unique numeric ID.
  *
@@ -101,7 +103,7 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
         continueWith: g._continueWith.map((dep) => dep.id),
       };
 
-      __SetGestureDetector(elementRef, g.id, g.type, config, relationMap);
+      setGestureDetector(elementRef, g.id, g.type, config, relationMap);
       this.#attachedIds.push(g.id);
     }
   }
@@ -115,7 +117,7 @@ export class LynxGestureDetector implements OnChanges, OnDestroy {
     if (!elementRef) return;
     for (const id of this.#attachedIds) {
       try {
-        __RemoveGestureDetector(elementRef, id);
+        removeGestureDetector(elementRef, id);
       } catch {
         // Element may already be destroyed by the native engine.
       }

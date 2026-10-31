@@ -1,4 +1,5 @@
-# Layer 6: gestures, which only the native renderers fire (fixtures/gestures.ts).
+# Layer 6: gestures on the native renderers (fixtures/gestures.ts; the web's
+# are checked by playwright/render.test.ts).
 # One quick swipe runs a pan and a fling together. The pan must report the
 # distance moved before it activated, and the fling's onEnd must run although
 # neither gesture registers onBegin (issue #56).

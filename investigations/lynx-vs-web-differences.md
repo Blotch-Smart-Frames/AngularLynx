@@ -146,6 +146,42 @@ The gesture docs describe a fling this way, tell you to pair it with a pan, and 
 
 ---
 
+## Lynx for Web recognizes no gestures: web-core's gesture PAPIs do nothing, or don't exist
+
+### What you'd expect (web)
+
+A gesture works wherever pointer events do, so the web preview, and the docs' live previews built on it, run the same `[lynxGesture]` gestures as a phone.
+
+### What Lynx does
+
+`@lynx-js/web-core` (0.26.2, and still 0.26.6) defines `__SetGestureDetector` and `__RemoveGestureDetector` as no-ops, "so ReactLynx bundles using `main-thread:gesture` can still render" (`createElementAPI.js`), and has no `__SetGestureState` or `__ConsumeGesture` at all. So every gesture silently did nothing on the web, and a callback calling the state manager's `fail()` would have thrown a ReferenceError there, had one ever run.
+
+### The fix
+
+The runtime recognizes gestures itself on the web. `gesture/web/` is a port of Lynx's own gesture arena, from its iOS sources in lynx-family/lynx (`LynxGestureArenaManager.m`, `LynxGestureHandlerTrigger.m`, `LynxGestureDetectorManager.m`, `LynxGestureFlingTrigger.m` and the pan, tap, long-press and fling handlers), fed with pointer events instead of UITouches. On the web, a main-thread element is the DOM element itself (the main thread runs in an iframe, the elements live in the page), so the arena listens on it. `gesture/gesture-papi.ts` sends `LynxGestureDetector`'s and `GestureStateManager`'s calls to the arena when `__WEB__`, and to Lynx's PAPIs otherwise. Android's trigger (`GestureHandlerTrigger.java`) has the same logic as iOS's, including the quirks below.
+
+What it keeps from Lynx, which surprises on first read:
+
+- **Same-element gestures race.** `waitFor` only reorders _elements_: a member waiting for an ancestor's gesture goes after that ancestor in the compete chain (`convertResponseChainToCompeteChain`). Gestures on one element all see the touch, and the first to activate fails the others it isn't simultaneous with. So in `Gesture.Exclusive(pan, tap)` on one element, the tap doesn't wait for the pan to fail; the two race, which gives the same result because each fails once the finger moves 10px.
+- **`activate()` from the state manager does nothing.** Both triggers' `handleGestureDetectorState` ignore the ACTIVE state; only `fail()` and `end()` change a gesture.
+- **A failed winner takes the touch back.** When the winner fails and no other member of the chain can take the touch, the next move finds no winner, and the move after hands it back to the failed member with its gestures reset (`reCompeteByGestures`'s `needReCompeteLastWinner`). A pan that calls `fail()` from `onUpdate` with no scroll view or other gesture around it therefore begins again two moves later.
+- **Handlers run in a fixed order:** pan, fling, tap, long press. So on a tap in `Gesture.Exclusive(pan, tap)`, the pan's `onEnd` (it fails when the finger lifts) runs before the tap's.
+
+What differs from a straight port, and why:
+
+- **Positions are in the page's CSS pixels**: the pointer minus the `<lynx-view>`'s box, divided by the scale it's drawn at. The docs' previews are drawn scaled down, so screen pixels would make `minDistance` too short and a pan's translation outrun the pointer.
+- **The browser is kept out of a pan.** While a pan of the touch is still in play, the arena cancels `touchmove` (else the browser scrolls the page or a scroll view under the finger), `selectstart` and `dragstart`. `<image>` is a plain `<img>` inside `x-image`, which a mouse drags out, and the browser then cancels the pointer.
+- **`pointercancel` fails a tap and starts no fling.** Lynx treats a canceled touch like a lifted one, so a tap would succeed; but a browser cancels the pointer when it takes the touch to scroll or zoom.
+- **A long press another gesture failed doesn't activate later.** iOS's timer activates unless the state is Fail or Active, but every failure sets Cancel.
+- **One pointer at a time**, followed on the document so a drag continues off its element. A second finger is ignored, as Lynx follows `touches.anyObject`. A new touch stops a running fling (Lynx stops it only when the new touch is on the flinging element).
+- **The fling decelerates by the clock**, not a fixed step per display frame, since a browser's frame rate varies.
+- **`consumeGesture()` and `interceptGesture()` do nothing:** they share the touch with native scroll views, and web-core's scroll views aren't arena members.
+- **`enableNewGesture` doesn't matter on the web:** the arena runs whatever the build flag says.
+
+The arena is imported dynamically inside `if (__WEB__ && __MAIN_THREAD__)`, as the web glass is (`create-blur-view-element.ts`): imported statically, the minifier couldn't prove its classes side-effect free once compiled for the main thread, and kept them in native bundles. `packages/e2e/playwright/render.test.ts` swipes the gestures fixture in Chromium and checks the pan's translation and the fling's `onEnd`, as `native/gestures.yaml` does on devices.
+
+---
+
 ## `position: fixed` is absolute-relative-to-root, not viewport-fixed
 
 ### What you'd expect (web)

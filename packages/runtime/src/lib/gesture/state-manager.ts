@@ -1,8 +1,10 @@
 import type { ElementRef } from '../types/lynx';
+import { consumeGesture, setGestureState } from './gesture-papi';
 
 /**
  * Controls gesture state from within a callback.
- * Wraps __SetGestureState and __ConsumeGesture PAPI calls.
+ * Wraps the __SetGestureState and __ConsumeGesture PAPI calls (see
+ * gesture-papi.ts for Lynx for Web, which has neither).
  * Passed as the second argument to gesture callbacks so handlers can
  * programmatically drive the gesture state machine (e.g. activate a gesture
  * only when a condition is met, or fail it early to let a competing gesture win).
@@ -21,15 +23,15 @@ export class GestureStateManager {
    * 1 = ACTIVE, 2 = FAILED, 3 = END
    */
   fail(): void {
-    __SetGestureState(this.#element, this.#gestureId, 2);
+    setGestureState(this.#element, this.#gestureId, 2);
   }
 
   activate(): void {
-    __SetGestureState(this.#element, this.#gestureId, 1);
+    setGestureState(this.#element, this.#gestureId, 1);
   }
 
   end(): void {
-    __SetGestureState(this.#element, this.#gestureId, 3);
+    setGestureState(this.#element, this.#gestureId, 3);
   }
 
   /**
@@ -38,7 +40,7 @@ export class GestureStateManager {
    * parent scroll containers or gesture detectors should not also receive it.
    */
   consumeGesture(consume = true): void {
-    __ConsumeGesture(this.#element, this.#gestureId, { consume });
+    consumeGesture(this.#element, this.#gestureId, { consume });
   }
 
   /**
@@ -48,6 +50,6 @@ export class GestureStateManager {
    * intercepting scrolls inside its list child).
    */
   interceptGesture(intercept = true): void {
-    __ConsumeGesture(this.#element, this.#gestureId, { inner: intercept });
+    consumeGesture(this.#element, this.#gestureId, { inner: intercept });
   }
 }

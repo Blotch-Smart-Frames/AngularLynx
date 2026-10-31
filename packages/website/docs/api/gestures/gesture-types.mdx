@@ -49,7 +49,7 @@ readonly tap = new TapGesture().maxDistance(20).onEnd((event) => this.select(eve
 | ----------------- | -------- | ------- | ---------------------------------------------------------- |
 | `maxDuration(ms)` | `number` | `500`   | The longest the finger can stay down. A longer touch fails |
 | `maxDistance(px)` | `number` | `10`    | How far the finger can move. Moving further fails the tap  |
-| `numberOfTaps(n)` | `number` | —       | Does nothing on a device yet (see below)                   |
+| `numberOfTaps(n)` | `number` | —       | Does nothing yet (see below)                               |
 
 **Callbacks:** `onBegin`, `onStart`, `onEnd`, `onTouchesDown`, `onTouchesUp`. `onEnd` fires only when the tap succeeded.
 
@@ -171,7 +171,7 @@ interface LongPressGestureEvent extends GestureEvent {
 Two-finger zoom and rotate. Neither class has options.
 
 :::warning These don't fire yet
-No Lynx platform has a native pinch or rotation handler, so these gestures never fire on a device. You can still compose them, for example `Gesture.Simultaneous(pan, pinch)`, but drive zoom from a pan or on-screen buttons for now.
+No Lynx platform has a native pinch or rotation handler, so these gestures never fire, on a device or in the web preview. You can still compose them, for example `Gesture.Simultaneous(pan, pinch)`, but drive zoom from a pan or on-screen buttons for now.
 :::
 
 **Callbacks:** all six.
@@ -200,7 +200,7 @@ Lynx 4.1's native handlers read only these options:
 - `LongPressGesture`: `minDuration`, `maxDistance`
 - `PanGesture`: `minDistance`
 
-AngularLynx sends the others, but they don't change anything on a device yet:
+AngularLynx sends the others, but they don't change anything yet, on a device or in the web preview:
 
 - **`enabled(false)`** doesn't turn a gesture off. To turn one off, bind `[lynxGesture]` to a list without it, such as `[lynxGesture]="draggable() ? pan : []"`.
 - **A pan's `activeOffsetX`, `activeOffsetY`, `failOffsetX`, `failOffsetY`, `minPointers` and `maxPointers`.** To let a scroll view take a mostly vertical drag, call `fail()` from `onUpdate` instead (see [Lifecycle](/api/gestures/lifecycle)).

@@ -11,9 +11,9 @@ import {
 const MIN_DISTANCE = 20;
 
 /**
- * E2E fixture loaded through `loadComponent`, for native/gestures.yaml. Lynx's
- * web preview never fires gestures (web-core's `__SetGestureDetector` does
- * nothing), so only the native renderers can check them.
+ * E2E fixture loaded through `loadComponent`, for native/gestures.yaml and,
+ * on Lynx for Web (whose gestures the runtime recognizes itself, since
+ * web-core's `__SetGestureDetector` does nothing), playwright/render.test.ts.
  *
  * One swipe across "Swipe here" runs a pan and a fling together (issue #56):
  * - "Pan from touch" says whether the pan's `translationX` at `onStart`

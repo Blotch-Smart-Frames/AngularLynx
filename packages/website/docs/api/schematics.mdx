@@ -35,6 +35,7 @@ ng add @blotch/angular-lynx
   - `cli.schematicCollections` lists `@blotch/angular-lynx` first, so `ng generate component` makes Lynx components.
 - **`package.json`**: `start` runs `ng serve` and `build` runs `ng build`. Adds `@blotch/angular-lynx-build` and `@lynx-js/types` as dev dependencies.
 - **`.gitignore`**: adds `.dev-logs`, where `ng serve` writes [`LynxLogger`](/guide/debugging#stream-logs-to-your-computer)'s output.
+- **`pnpm-workspace.yaml`**, in a pnpm app: `allowBuilds` denies the install scripts of Angular's build tools (`esbuild`, `@parcel/watcher`, `lmdb` and `msgpackr-extract`). pnpm 11 and later fail `pnpm add` until every dependency's install script is allowed or denied, and these have nothing to do: their binaries come prebuilt. Decisions already there stay. Apps on npm, Yarn or bun, or on pnpm before 10.26, get no file.
 - **Tailwind CSS**, unless `--tailwind=false`: the same changes as [`add-tailwind`](#add-tailwind).
 
 It doesn't write a `lynx.config.ts`. The builders read everything from `angular.json` (see [`@blotch/angular-lynx-build`](/api/build/)).

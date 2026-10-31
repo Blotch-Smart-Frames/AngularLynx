@@ -94,7 +94,7 @@ export const scaffoldApp = async (
 
   // Step 2: check what the scaffold produced.
   step('Layer 2: check the generated project');
-  checkGeneratedProject(appDir, options.version);
+  checkGeneratedProject(appDir, options.version, options.packageManager);
   if (options.tailwind) {
     checkTailwindSetup(appDir, options.tailwindVersion ?? '4');
   }
@@ -588,7 +588,11 @@ const checkTailwindSetup = (appDir: string, version: '3' | '4') => {
   }
 };
 
-const checkGeneratedProject = (appDir: string, version: string) => {
+const checkGeneratedProject = (
+  appDir: string,
+  version: string,
+  packageManager: PackageManager,
+) => {
   check(
     existsSync(path.join(appDir, 'src/rspeedy-env.d.ts')),
     '`ng add` didn\'t create src/rspeedy-env.d.ts. If it printed "does not provide any `ng add` actions", the schematics failed to load.',
@@ -651,6 +655,24 @@ const checkGeneratedProject = (appDir: string, version: string) => {
     /^\.dev-logs$/m.test(readFileSync(path.join(appDir, '.gitignore'), 'utf8')),
     "`ng add` didn't add .dev-logs to .gitignore.",
   );
+  // pnpm 11 and later fail `pnpm add`, and an install without node_modules,
+  // until every dependency's install script is allowed or denied, and
+  // Angular's build tools have some. Other package managers get no pnpm file.
+  const pnpmSettings = path.join(appDir, 'pnpm-workspace.yaml');
+  if (packageManager === 'pnpm') {
+    const text = existsSync(pnpmSettings)
+      ? readFileSync(pnpmSettings, 'utf8')
+      : '';
+    check(
+      /^allowBuilds:$/m.test(text) && /^ +esbuild: false$/m.test(text),
+      "`ng add` didn't deny the install scripts of Angular's build tools in pnpm-workspace.yaml's allowBuilds, so the app's first `pnpm add` fails with ERR_PNPM_IGNORED_BUILDS.",
+    );
+  } else {
+    check(
+      !existsSync(pnpmSettings),
+      `\`ng add\` wrote pnpm-workspace.yaml into an app that uses ${packageManager}.`,
+    );
+  }
   check(
     workspace.cli?.schematicCollections?.[0] === '@blotch/angular-lynx',
     `angular.json's cli.schematicCollections is ${JSON.stringify(workspace.cli?.schematicCollections)}, so \`ng generate component\` wouldn't make Lynx components.`,

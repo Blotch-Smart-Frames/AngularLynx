@@ -16,10 +16,16 @@ export type RegistryEntry = {
 };
 
 /**
- * TanStack Charts and the d3 curves the presets draw with. Kept in step with
+ * TanStack Charts and the d3 curves the presets draw with, and the curves'
+ * types. TanStack Charts depends on the types too, so npm hoists them where
+ * the app finds them, but pnpm keeps them out of its reach. Kept in step with
  * packages/ui/package.json by a test.
  */
-const CHART_PACKAGES = ['@tanstack/charts@^1.1.0', 'd3-shape@^3.2.0'];
+const CHART_PACKAGES = [
+  '@tanstack/charts@^1.1.0',
+  'd3-shape@^3.2.0',
+  '@types/d3-shape@^3.1.8',
+];
 
 /**
  * Builds the variant classes of the components that have `variant`/`size`

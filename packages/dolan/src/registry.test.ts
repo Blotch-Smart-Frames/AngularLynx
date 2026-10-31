@@ -135,6 +135,7 @@ describe('resolvePackages', () => {
     expect(packages.map((spec) => spec.replace(/@[^@]*$/, ''))).toEqual([
       '@tanstack/charts',
       'd3-shape',
+      '@types/d3-shape',
     ]);
     expect(resolvePackages(['card', 'nonexistent'])).toEqual([]);
   });

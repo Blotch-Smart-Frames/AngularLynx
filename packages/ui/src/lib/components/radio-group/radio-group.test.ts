@@ -78,6 +78,14 @@ describe('UiRadioGroup', () => {
     expect(item('Banana').classList).toContain('h-11');
   });
 
+  // A class on a component lands on its host too (issue #181): the group and
+  // each item are their hosts, so each class applies once.
+  it('puts each class on one element', async () => {
+    const { container, item } = await renderGroup();
+    expect(container.querySelectorAll('.mt-2')).toHaveLength(1);
+    expect([...container.querySelectorAll('.pl-1')]).toEqual([item('Apple')]);
+  });
+
   it('shows the dot of the selected item only', async () => {
     const { dot } = await renderGroup();
     expect(dot('Apple').getAttribute('style')).toContain('opacity: 1');

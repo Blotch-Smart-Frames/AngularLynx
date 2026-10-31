@@ -12,6 +12,7 @@ import {
 } from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
+import { hostElementOf } from './host-elements';
 import {
   createCommentElement,
   createListElement,
@@ -67,7 +68,10 @@ export class LynxDocument implements LynxDocumentBase {
     setPageElementRef(pageElement);
     return this.page;
   }
-  createElement(tag: string, value?: string): LynxElement | LynxListElement {
+  createElement(name: string, value?: string): LynxElement | LynxListElement {
+    // A component's host is a view, unless the component registered another
+    // element for it (registerHostElement).
+    const tag = hostElementOf(name);
     // `__PROFILE__` is a build-time `define`. In the test config it's `false`
     // (dead-code-eliminated), so the increment is unreachable from Vitest.
     /* v8 ignore next */

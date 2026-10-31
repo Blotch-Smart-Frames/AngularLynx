@@ -100,23 +100,23 @@ For a short list, a [`<scroll-view>`](/api/elements/scroll-view) is simpler and 
 
 Each input sets one [`<list>`](/api/elements/list) attribute, named in brackets.
 
-| Input                     | Type                                | Default      | Description                                                                             |
-| ------------------------- | ----------------------------------- | ------------ | --------------------------------------------------------------------------------------- |
-| `listType`                | `'single' \| 'flow' \| 'waterfall'` | `'single'`   | One column, a grid, or a grid with uneven heights (`list-type`).                        |
-| `spanCount`               | `number`                            | `1`          | Number of columns for `flow` and `waterfall` (`span-count`).                            |
-| `orientation`             | `'vertical' \| 'horizontal'`        | `'vertical'` | Scroll direction (`scroll-orientation`).                                                |
-| `height`                  | `string`                            | `''`         | CSS height, such as `'400px'`, set as an inline style. Needed unless a class sets one.  |
-| `mainAxisGap`             | `string`                            | `''`         | Gap between items along the scroll direction, such as `'8px'` (`list-main-axis-gap`).   |
-| `crossAxisGap`            | `string`                            | `''`         | Gap between columns (`list-cross-axis-gap`).                                            |
-| `bounces`                 | `boolean`                           | `true`       | Bounce past the ends on iOS (`bounces`).                                                |
-| `scrollBar`               | `boolean`                           | `true`       | Show the scroll bar (`scroll-bar-enable`).                                              |
-| `nestedScroll`            | `boolean`                           | `false`      | Coordinate scrolling with a scrolling parent (`enable-nested-scroll`).                  |
-| `sticky`                  | `boolean`                           | `false`      | Let items with `sticky-top` or `sticky-bottom` stick to the edge (`sticky`).            |
-| `stickyOffset`            | `number`                            | `0`          | Distance in px from the edge where sticky items stop (`sticky-offset`).                 |
-| `preloadBufferCount`      | `number`                            | `0`          | Extra items to prepare beyond the visible ones (`preload-buffer-count`).                |
-| `lowerThresholdItemCount` | `number`                            | `0`          | How many items before the end `scrolledToEnd` emits (`lower-threshold-item-count`).     |
-| `upperThresholdItemCount` | `number`                            | `0`          | How many items before the start `scrolledToStart` emits (`upper-threshold-item-count`). |
-| `class`                   | `string`                            | `''`         | Extra Tailwind classes for the `<list>`.                                                |
+| Input                     | Type                                | Default      | Description                                                                                    |
+| ------------------------- | ----------------------------------- | ------------ | ---------------------------------------------------------------------------------------------- |
+| `listType`                | `'single' \| 'flow' \| 'waterfall'` | `'single'`   | One column, a grid, or a grid with uneven heights (`list-type`).                               |
+| `spanCount`               | `number`                            | `1`          | Number of columns for `flow` and `waterfall` (`span-count`).                                   |
+| `orientation`             | `'vertical' \| 'horizontal'`        | `'vertical'` | Scroll direction (`scroll-orientation`).                                                       |
+| `height`                  | `string`                            | `''`         | CSS height, such as `'400px'`, set as an inline style. Needed unless a class sets one.         |
+| `mainAxisGap`             | `string`                            | `''`         | Gap between items along the scroll direction, such as `'8px'` (`list-main-axis-gap`).          |
+| `crossAxisGap`            | `string`                            | `''`         | Gap between columns (`list-cross-axis-gap`).                                                   |
+| `bounces`                 | `boolean`                           | `true`       | Bounce past the ends on iOS (`bounces`).                                                       |
+| `scrollBar`               | `boolean`                           | `true`       | Show the scroll bar (`scroll-bar-enable`).                                                     |
+| `nestedScroll`            | `boolean`                           | `false`      | Coordinate scrolling with a scrolling parent (`enable-nested-scroll`).                         |
+| `sticky`                  | `boolean`                           | `false`      | Let items with `sticky-top` or `sticky-bottom` stick to the edge (`sticky`).                   |
+| `stickyOffset`            | `number`                            | `0`          | Distance in px from the edge where sticky items stop (`sticky-offset`).                        |
+| `preloadBufferCount`      | `number`                            | `0`          | Extra items to prepare beyond the visible ones (`preload-buffer-count`).                       |
+| `lowerThresholdItemCount` | `number`                            | `0`          | How many items before the end `scrolledToEnd` emits (`lower-threshold-item-count`).            |
+| `upperThresholdItemCount` | `number`                            | `0`          | How many items before the start `scrolledToStart` emits (`upper-threshold-item-count`).        |
+| `class`                   | `string`                            | `''`         | Extra Tailwind classes for the list's box, which the `<list>` fills. It's `w-full` by default. |
 
 | Output            | Type   | Description                                                       |
 | ----------------- | ------ | ----------------------------------------------------------------- |

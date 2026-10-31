@@ -3,7 +3,7 @@
   "components": {
     "icon": {
       "icon.ts": {
-        "hash": "e7fa61d7a0337601"
+        "hash": "35276d2e7e458494"
       },
       "icons.ts": {
         "hash": "2d54632a5080d6fc"
@@ -20,7 +20,7 @@
         "hash": "ec53b8058dbb2ddb"
       },
       "tab-bar.ts": {
-        "hash": "ebda5df4da0b1cc5"
+        "hash": "1a44ff6548aac49d"
       }
     }
   },

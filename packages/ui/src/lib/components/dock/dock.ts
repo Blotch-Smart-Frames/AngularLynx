@@ -1115,8 +1115,12 @@ export class UiDock implements SearchFieldContainer {
   ],
   host: {
     // The host is the tap target and takes an equal share of the bar's row,
-    // which the selection capsule's width counts on.
-    class: 'flex-1 flex-col flex',
+    // which the selection capsule's width counts on. It's also the item's
+    // column, styled here rather than on a view inside it: Angular gives a
+    // component's host every static attribute the app writes on it, so a
+    // class on <ui-dock-item> lands on the host whatever the component does
+    // with its `class` input, and a styled view inside applied it twice.
+    '[class]': 'contentClass()',
     // One accessibility element per item, named by its label, so a screen
     // reader reads "Inbox, 3, button" instead of an unlabeled SVG and a word.
     // LynxRouterLinkActive adds `selected` to `button` while the route is
@@ -1140,35 +1144,33 @@ export class UiDock implements SearchFieldContainer {
     '(bindtap)': 'pressed.emit()',
   },
   template: `
-    <view [class]="contentClass()">
-      <view [class]="iconFrameClass()">
-        @if (design() === 'material') {
-          <!-- Material's active indicator: a pill behind the icon that
-               widens from its center as the item is selected. -->
+    <view [class]="iconFrameClass()">
+      @if (design() === 'material') {
+        <!-- Material's active indicator: a pill behind the icon that
+             widens from its center as the item is selected. -->
+        <view
+          class="h-8 w-14 rounded-full bg-primary absolute left-0 top-0"
+          [style]="indicatorStyle()"
+        ></view>
+      }
+      <view class="relative">
+        <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
+        @if (badgeText()) {
+          <!-- Hangs off the icon's top-right corner, as on a native tab
+               bar. min-w-4 keeps a one-digit badge round; longer ones
+               grow into a pill. -->
           <view
-            class="h-8 w-14 rounded-full bg-primary absolute left-0 top-0"
-            [style]="indicatorStyle()"
-          ></view>
-        }
-        <view class="relative">
-          <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
-          @if (badgeText()) {
-            <!-- Hangs off the icon's top-right corner, as on a native tab
-                 bar. min-w-4 keeps a one-digit badge round; longer ones
-                 grow into a pill. -->
-            <view
-              class="h-4 min-w-4 items-center rounded-full bg-destructive px-1 flex absolute -right-2.5 -top-1 justify-center"
+            class="h-4 min-w-4 items-center rounded-full bg-destructive px-1 flex absolute -right-2.5 -top-1 justify-center"
+          >
+            <text
+              class="text-[10px] font-semibold leading-4 text-destructive-foreground"
+              >{{ badgeText() }}</text
             >
-              <text
-                class="text-[10px] font-semibold leading-4 text-destructive-foreground"
-                >{{ badgeText() }}</text
-              >
-            </view>
-          }
-        </view>
+          </view>
+        }
       </view>
-      <text [class]="labelClass()">{{ label() }}</text>
     </view>
+    <text [class]="labelClass()">{{ label() }}</text>
   `,
 })
 export class UiDockItem {

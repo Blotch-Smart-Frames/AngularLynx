@@ -45,6 +45,8 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 Unknown tags fall back to `view` with a console warning. Unlike React Lynx (which passes any tag to `__CreateElement`), this fallback is required because Angular component host elements (`<app-card>`) are created through the same path. So every native Lynx tag needs an explicit case in `create-native-ref.ts`, or it silently renders as a plain view.
 
+A component can make its host another element with `registerHostElement(Component, 'text')` (`lynx-document/host-elements.ts`). Both documents look the tag up there first (`hostElementOf`), and the wrapper's `tagName` is the registered element, so text normalization and recreation treat a `<text>` host like any `<text>`. The registry is keyed by tag because `createElement()` gets nothing else: Angular creates a child component's host from the parent's template.
+
 ## Angular Constraints
 
 - Signal-based APIs (`input`, `output`, `viewChild`, `viewChildren`, `contentChild`, `contentChildren`, `model`) **must be `public readonly`** — Angular does not support ES private (`#`) or TypeScript `private`/`protected` on these fields.

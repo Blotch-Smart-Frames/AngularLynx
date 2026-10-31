@@ -1,4 +1,4 @@
-import { Component, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import {
   fireEvent,
   render,
@@ -100,7 +100,8 @@ class NavDrawerHost {
   readonly closes = signal(0);
   readonly presses = signal(0);
   readonly drawer = viewChild.required(UiNavDrawer);
-  readonly settings = viewChild.required<UiNavDrawerItem>('settings');
+  // The settings item's element: its host.
+  readonly settings = viewChild.required('settings', { read: ElementRef });
 }
 
 const renderDrawer = async () => {
@@ -116,7 +117,7 @@ const renderDrawer = async () => {
     backdrop: () => panel().parentElement!,
     scrollView: () => container.querySelector('scroll-view')!,
     trigger: () => container.querySelector('[accessibility-element]')!,
-    // An item's own view, which holds its projected label.
+    // An item, its host: the view that holds its projected label.
     item: (label: string) => getByText(label).parentElement!,
     svg: (selector: string) => container.querySelector(`svg${selector}`)!,
   };
@@ -174,17 +175,41 @@ describe('UiNavDrawer', () => {
     expect(panel().classList).toContain('bg-background');
     expect(panel().classList).toContain('shadow-lg');
     expect(scrollView().classList).toContain('h-full');
-    expect(scrollView().classList).toContain('pt-2');
+    // The content's class is on its host, around the scroll view.
+    expect(scrollView().parentElement!.classList).toContain('flex-1');
+    expect(scrollView().parentElement!.classList).toContain('pt-2');
     expect(item('Delete account').classList).toContain('mt-4');
     expect(trigger().classList).toContain('h-10');
     expect(trigger().classList).toContain('ml-2');
-    // Each part's own view, not its host element, which keeps the bare class.
     const header = container.querySelector('.border-b');
     expect(header?.classList).toContain('gap-3');
     expect(header?.classList).not.toContain('gap-1.5');
     const footer = container.querySelector('.border-t');
     expect(footer?.classList).toContain('gap-4');
     expect(footer?.classList).not.toContain('gap-2');
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181), so each class also styled a host: the drawer's in the
+  // page, where it is written, and each part's around its own view.
+  it('puts each class on one element: the panel, or the part', async () => {
+    const { container, getByText, panel, scrollView, item, trigger } =
+      await renderDrawer();
+    expect([...container.querySelectorAll('.shadow-lg')]).toEqual([panel()]);
+    expect([...container.querySelectorAll('.pt-2')]).toEqual([
+      scrollView().parentElement,
+    ]);
+    expect([...container.querySelectorAll('.mt-4')]).toEqual([
+      item('Delete account'),
+    ]);
+    expect([...container.querySelectorAll('.ml-2')]).toEqual([trigger()]);
+    // The header's label sits right in it: no view between them. (Items
+    // have a gap-3 of their own.)
+    expect(getByText('Menu').parentElement!.classList).toContain('gap-3');
+    expect(getByText('Menu').parentElement!.classList).toContain('border-b');
+    expect([...container.querySelectorAll('.gap-4')]).toEqual([
+      getByText('Version 1').parentElement,
+    ]);
   });
 
   it('stays hidden until it is opened', async () => {
@@ -354,10 +379,7 @@ describe('UiNavDrawer', () => {
 describe('UiNavDrawerContent', () => {
   it('scrolls the active item into view when the drawer opens', async () => {
     const { host } = await renderDrawer();
-    const scroll = vi.spyOn(
-      host.settings().containerRef()!.nativeElement,
-      'invoke',
-    );
+    const scroll = vi.spyOn(host.settings().nativeElement, 'invoke');
     host.open.set(true);
     await after(OPENED);
     // Instantly and centered, so the drawer slides in already scrolled.
@@ -371,20 +393,14 @@ describe('UiNavDrawerContent', () => {
     const { host, scrollView } = await renderDrawer();
     host.open.set(true);
     await after(OPENED);
-    const scroll = vi.spyOn(
-      host.settings().containerRef()!.nativeElement,
-      'invoke',
-    );
+    const scroll = vi.spyOn(host.settings().nativeElement, 'invoke');
     fireEvent.contentsizechanged(scrollView());
     expect(scroll).toHaveBeenCalledWith('scrollIntoView', expect.any(Object));
   });
 
   it("doesn't scroll while the drawer is closed", async () => {
     const { host, scrollView } = await renderDrawer();
-    const scroll = vi.spyOn(
-      host.settings().containerRef()!.nativeElement,
-      'invoke',
-    );
+    const scroll = vi.spyOn(host.settings().nativeElement, 'invoke');
     // Content collapsing as the overlay hides relays out too.
     fireEvent.contentsizechanged(scrollView());
     await after(OPENED);
@@ -394,10 +410,7 @@ describe('UiNavDrawerContent', () => {
   it("doesn't scroll when no item is active", async () => {
     const { host } = await renderDrawer();
     host.active.set('');
-    const scroll = vi.spyOn(
-      host.settings().containerRef()!.nativeElement,
-      'invoke',
-    );
+    const scroll = vi.spyOn(host.settings().nativeElement, 'invoke');
     host.open.set(true);
     await after(OPENED);
     expect(scroll).not.toHaveBeenCalled();

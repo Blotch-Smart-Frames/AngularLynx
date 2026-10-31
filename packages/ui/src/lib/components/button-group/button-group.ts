@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
@@ -11,7 +11,6 @@ import {
   input,
   output,
   signal,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -174,28 +173,37 @@ const groupIconColor = () => inject(UiButtonGroup).foreground;
   // Icons projected into the items inject this: they're declared inside the
   // group, so the group's element injector is one of theirs.
   providers: [{ provide: UI_ICON_COLOR, useFactory: groupIconColor }],
+  // The group and each item are their host elements, styled through `host`,
+  // rather than a view inside the host. Angular gives a component's host
+  // every static attribute the app writes on it, so `<ui-button-group
+  // class="mt-4">` puts `mt-4` on the host whatever the component does with
+  // its `class` input: with a styled view inside as well, the margin applied
+  // twice. On the host alone, a class also acts where the group sits in its
+  // parent's layout (`w-full`), and an item's accessibility-label names one
+  // element.
+  //
+  // Under glass the host is the frame: the group's box and, under clear
+  // glass, its dimming layer, in the glass's shape. Before iOS 26 the glass
+  // is the thin material, as the buttons' is.
+  host: {
+    '[class]': "look() === 'glass' ? frameClass() : containerClass()",
+    '[style.border-radius.px]': "look() === 'glass' ? cornerRadius() : null",
+  },
   template: `
     @if (look() === 'glass') {
-      <!-- The frame is the group's box and, under clear glass, its dimming
-           layer, in the glass's shape. Before iOS 26 the glass is the thin
-           material, as the buttons' is. -->
-      <view [class]="frameClass()" [style.border-radius.px]="cornerRadius()">
-        <blur-view
-          ui-glass
-          [shape]="capsule() ? 'capsule' : 'rounded'"
-          [radius]="radius()"
-          [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
-          material="thin"
-          [interactive]="interactive()"
-          [class]="glassClass()"
-        >
-          <ng-container [ngTemplateOutlet]="items" />
-        </blur-view>
-      </view>
-    } @else {
-      <view [class]="containerClass()">
+      <blur-view
+        ui-glass
+        [shape]="capsule() ? 'capsule' : 'rounded'"
+        [radius]="radius()"
+        [variant]="variant() === 'glass-clear' ? 'clear' : 'regular'"
+        material="thin"
+        [interactive]="interactive()"
+        [class]="glassClass()"
+      >
         <ng-container [ngTemplateOutlet]="items" />
-      </view>
+      </blur-view>
+    } @else {
+      <ng-container [ngTemplateOutlet]="items" />
     }
 
     <!-- One copy of the items, for whichever form the group takes: Angular
@@ -356,34 +364,35 @@ export class UiButtonGroup {
   selector: 'ui-button-group-item',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The accessibility attributes are attribute bindings: a property binding
+  // on a component's host is checked against the DOM schema, which has no
+  // `accessibility-label`.
+  host: {
+    '[class]': 'containerClass()',
+    '[style]': 'cornerStyle()',
+    '[attr.accessibility-element]': "accessibilityLabel() ? 'true' : null",
+    '[attr.accessibility-traits]': "accessibilityLabel() ? 'button' : null",
+    '[attr.accessibility-label]': 'accessibilityLabel() || null',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <view
-      #container
-      [class]="containerClass()"
-      [style]="cornerStyle()"
-      [attr.accessibility-element]="accessibilityLabel() ? 'true' : null"
-      [attr.accessibility-traits]="accessibilityLabel() ? 'button' : null"
-      [attr.accessibility-label]="accessibilityLabel() || null"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      @if (highlightClass(); as highlight) {
-        <view [class]="highlight" [style.border-radius.px]="radius()"></view>
-      }
-      <ng-content select="ui-icon" />
-      @if (showLabel()) {
-        <text
-          [attr.accessibility-traits]="accessibilityLabel() ? null : 'button'"
-          [class]="labelClass()"
-          ><ng-content
-        /></text>
-      }
-    </view>
+    @if (highlightClass(); as highlight) {
+      <view [class]="highlight" [style.border-radius.px]="radius()"></view>
+    }
+    <ng-content select="ui-icon" />
+    @if (showLabel()) {
+      <text
+        [attr.accessibility-traits]="accessibilityLabel() ? null : 'button'"
+        [class]="labelClass()"
+        ><ng-content
+      /></text>
+    }
   `,
 })
 export class UiButtonGroupItem {
@@ -402,7 +411,7 @@ export class UiButtonGroupItem {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   /** A `<ui-icon>` projected into the item, which sits before the label. */
   readonly projectedIcon = contentChild(iconType());
   #pressAnim?: AnimationHandle;
@@ -531,7 +540,7 @@ export class UiButtonGroupItem {
     if (!this.#scales()) return;
     // See UiButton: press feedback is an el.setStyle()-driven CSS transition.
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressEnd(): void {
@@ -562,6 +571,6 @@ export class UiButtonGroupItem {
     this.pressing.set(false);
     if (!this.#scales()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 }

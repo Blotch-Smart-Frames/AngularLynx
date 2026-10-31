@@ -304,6 +304,19 @@ type Press = {
   selector: 'ui-slider',
   imports: [LYNX_ELEMENTS, UiGlass],
   encapsulation: ViewEncapsulation.None,
+  // The host holds the slider, with the app's class. Angular gives a
+  // component's host every static attribute the app writes on it, so a class
+  // on <ui-slider> lands on the host whatever the component does: passed on
+  // to the root as well, a margin or padding applied twice. The root fills
+  // the host, and stays a view of its own: Lynx reads `consume-slide-event` as
+  // an array and `accessibility-element` as a boolean, which only a property
+  // binding on a Lynx element passes (a host binding would make them
+  // strings). Its accessibility-label is the root's, so the host drops its
+  // copy: two elements named the same would each be read.
+  host: {
+    '[class]': 'hostClass()',
+    '[attr.accessibility-label]': 'null',
+  },
   // Only the root takes touches: everything inside it ignores them, so a
   // touch's `x` on iOS and Android is relative to the slider, wherever the
   // finger lands (Lynx gives `x` relative to the element touched).
@@ -497,9 +510,9 @@ export class UiSlider implements FormValueControl<number> {
       : `${Math.round(this.#fraction() * 100)}%`;
   });
 
-  protected readonly rootClass = computed(() =>
-    cn('w-full relative', this.userClass()),
-  );
+  protected readonly hostClass = computed(() => cn(this.userClass()));
+
+  protected readonly rootClass = computed(() => cn('w-full relative'));
 
   protected readonly rootStyle = computed(() => ({
     height: px(this.#geometry().height),

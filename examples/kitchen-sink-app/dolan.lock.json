@@ -3,7 +3,7 @@
   "components": {
     "icon": {
       "icon.ts": {
-        "hash": "e7fa61d7a0337601"
+        "hash": "35276d2e7e458494"
       },
       "icons.ts": {
         "hash": "2d54632a5080d6fc"
@@ -52,7 +52,7 @@
     },
     "card": {
       "card.ts": {
-        "hash": "9531944021bfcdb6"
+        "hash": "87235dd854943348"
       },
       "index.ts": {
         "hash": "2df977d39d77f524"
@@ -111,7 +111,7 @@
         "hash": "85cf48114b14edc8"
       },
       "label.ts": {
-        "hash": "eb47494a29b26c25"
+        "hash": "5dfcc303f68b5862"
       }
     },
     "typography": {
@@ -119,7 +119,7 @@
         "hash": "060283f48f64ac0e"
       },
       "typography.ts": {
-        "hash": "59ba74625e7712f7"
+        "hash": "f6b1e24c77c03c73"
       }
     },
     "badge": {
@@ -228,10 +228,10 @@
         "hash": "ec53b8058dbb2ddb"
       },
       "tab-bar.test.ts": {
-        "hash": "5205c2bf5878ee03"
+        "hash": "9e9c2c9acbaa31b3"
       },
       "tab-bar.ts": {
-        "hash": "ebda5df4da0b1cc5"
+        "hash": "1a44ff6548aac49d"
       }
     }
   },

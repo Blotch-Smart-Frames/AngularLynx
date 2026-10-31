@@ -1,7 +1,7 @@
 import {
-  type ElementRef,
   type OnDestroy,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
@@ -36,6 +36,14 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
   selector: 'ui-nav-drawer',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The drawer's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-nav-drawer>, and
+  // the host sits in the page's layout where the drawer is written, so a
+  // `class="p-8"` padded the page there too. The host drops it. The parts
+  // below are their host elements for the same reason: a class on a part
+  // lands on its host anyway, so a view inside it styled with the same class
+  // applied it twice.
+  host: { '[attr.class]': 'null' },
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <!-- bg-black/50 dims the content behind the drawer. The fadeIn/fadeOut in
@@ -238,13 +246,9 @@ export class UiNavDrawer implements OnDestroy {
 
 @Component({
   selector: 'ui-nav-drawer-header',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiNavDrawerHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -299,9 +303,11 @@ const navDrawerItem = () => UiNavDrawerItem;
   // makes the host lay the scroll-view out vertically to fill that height. The
   // panel's flex-col stretches the host to full width by default (Lynx
   // align-items: stretch), so no width class is needed on the host.
-  host: {
-    class: 'flex-1 flex-col flex',
-  },
+  //
+  // The app's class goes on the host too, rather than on the scroll-view:
+  // Angular gives the host every static attribute written on it anyway, so
+  // with the scroll-view styled as well, a padding applied twice.
+  host: { '[class]': 'hostClass()' },
   // With the host now a definite height, the scroll-view fills it with `h-full`
   // (the explicit height Lynx requires to actually scroll) and `w-full` to span
   // the host width. This is the bound the scroll-view was missing above.
@@ -313,7 +319,7 @@ const navDrawerItem = () => UiNavDrawerItem;
   template: `
     <scroll-view
       scroll-orientation="vertical"
-      [class]="contentClass()"
+      class="h-full w-full"
       (bindcontentsizechanged)="onContentLayout()"
     >
       <ng-content />
@@ -330,8 +336,8 @@ export class UiNavDrawerContent {
   // nested inside the @for group wrappers, not just the direct content children.
   readonly items = contentChildren(navDrawerItem(), { descendants: true });
 
-  protected readonly contentClass = computed(() =>
-    cn('h-full w-full', this.userClass()),
+  protected readonly hostClass = computed(() =>
+    cn('flex-1 flex-col flex', this.userClass()),
   );
 
   /**
@@ -383,26 +389,21 @@ const itemIconColor = () => {
 
 @Component({
   selector: 'ui-nav-drawer-item',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Icons projected into the item (see the variant below) inject this through
   // the item's element injector, which content projection keeps them under.
   providers: [{ provide: UI_ICON_COLOR, useFactory: itemIconColor }],
-  template: `
-    <view
-      #container
-      [class]="containerClass()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <ng-content />
-    </view>
-  `,
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ng-content />',
 })
 export class UiNavDrawerItem {
   readonly #drawer = inject(UiNavDrawer);
@@ -414,7 +415,7 @@ export class UiNavDrawerItem {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   // `destructive` recolors the item's content, which the item doesn't render
@@ -435,20 +436,17 @@ export class UiNavDrawerItem {
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(
-      this.containerRef()?.nativeElement,
-      SCALE.pressDownLight,
-    );
+    this.#pressAnim = pressDown(this.#host, SCALE.pressDownLight);
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {
@@ -478,7 +476,7 @@ export class UiNavDrawerItem {
     //  - Native Lynx (iOS/Android) reads params.scrollIntoViewOptions.
     //  - Web maps invoke() onto the DOM element.scrollIntoView(params), which
     //    reads top-level ScrollIntoViewOptions (block/behavior).
-    this.containerRef()?.nativeElement.invoke('scrollIntoView', {
+    this.#host.invoke('scrollIntoView', {
       scrollIntoViewOptions: { block: 'center', behavior: 'auto' },
       block: 'center',
       behavior: 'auto',
@@ -488,13 +486,9 @@ export class UiNavDrawerItem {
 
 @Component({
   selector: 'ui-nav-drawer-footer',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiNavDrawerFooter {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -515,28 +509,26 @@ export class UiNavDrawerFooter {
 
 @Component({
   selector: 'ui-nav-drawer-trigger',
-  imports: [LYNX_ELEMENTS, UiIcon],
+  imports: [UiIcon],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <!-- The trigger is only an icon, so it carries the words a screen reader
-         says for it. -->
-    <view
-      #container
-      [class]="containerClass()"
-      [accessibility-element]="true"
-      accessibility-traits="button"
-      [accessibility-label]="label()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <ui-icon name="menu" size="md" />
-    </view>
-  `,
+  // The trigger is only an icon, so it carries the words a screen reader
+  // says for it. The label is an attribute binding: a property binding on a
+  // component's host is checked against the DOM schema, which has no
+  // `accessibility-label`.
+  host: {
+    '[class]': 'containerClass()',
+    'accessibility-element': 'true',
+    'accessibility-traits': 'button',
+    '[attr.accessibility-label]': 'label()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ui-icon name="menu" size="md" />',
 })
 export class UiNavDrawerTrigger {
   /** What a screen reader says for the trigger. */
@@ -545,7 +537,7 @@ export class UiNavDrawerTrigger {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -557,17 +549,17 @@ export class UiNavDrawerTrigger {
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {

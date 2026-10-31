@@ -282,5 +282,8 @@ describe('UiPopoverContent', () => {
     expect(content.classList).toContain('w-60');
     expect(content.classList).toContain('p-3');
     expect(content.classList).not.toContain('p-4');
+    // Angular gives a component's host every static attribute written on it
+    // (issue #181): the content is its host, so the class is on one element.
+    expect([...rendered.container.querySelectorAll('.p-3')]).toEqual([content]);
   });
 });

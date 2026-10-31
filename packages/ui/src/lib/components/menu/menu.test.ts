@@ -490,6 +490,14 @@ describe('UiMenuSection and UiMenuSeparator', () => {
     expect(rendered.menu.getAllByRole('heading')).toHaveLength(1);
   });
 
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the title was also the host's tooltip in the web preview.
+  it("doesn't give its title to its host as well", async () => {
+    const rendered = await renderOpenMenu();
+
+    expect(rendered.container.querySelectorAll('[title]')).toHaveLength(0);
+  });
+
   it('indents a Material section title as Material does', async () => {
     const rendered = await renderOpenMenu(null);
 

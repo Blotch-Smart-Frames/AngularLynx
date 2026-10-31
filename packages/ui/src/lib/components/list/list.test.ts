@@ -45,6 +45,8 @@ const renderList = async () => {
     ...result,
     host: result.componentRef.instance as ListHost,
     list: () => result.container.querySelector('list')!,
+    /** The list's box, its host, which the <list> fills. */
+    box: () => result.container.querySelector('list')!.parentElement!,
   };
 };
 
@@ -65,12 +67,20 @@ describe('UiList', () => {
     // Lynx `<list>` is virtualized: items join the native tree only through
     // its componentAtIndex callback, which a unit test doesn't drive. So this
     // checks the list itself rather than the projected item.
-    const { list } = await renderList();
+    const { list, box } = await renderList();
     expect(list().getAttribute('list-type')).toBe('single');
     expect(list().getAttribute('span-count')).toBe('1');
     expect(list().getAttribute('scroll-orientation')).toBe('vertical');
-    expect(list().classList).toContain('w-full');
-    expect(list().classList).toContain('bg-card');
+    expect(list().classList).toContain('grow');
+    expect(box().classList).toContain('w-full');
+    expect(box().classList).toContain('bg-card');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so the <list> taking the class as well applied it twice (issue #181).
+  it('puts its class on one element, its box', async () => {
+    const { container, box } = await renderList();
+    expect([...container.querySelectorAll('.bg-card')]).toEqual([box()]);
   });
 
   it('gives the list an explicit height, which it needs to scroll', async () => {

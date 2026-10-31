@@ -68,8 +68,6 @@ const CANCEL = 3;
 describe('UiCollapsible', () => {
   it("merges each part's class with its own", async () => {
     const { container, host, trigger, content } = await renderCollapsible();
-    // The host element carries the class too, so look for the view that has
-    // both its own and the given class.
     expect(container.querySelector('.flex-col.gap-2')).not.toBeNull();
     expect(trigger().classList).toContain('flex-row');
     expect(trigger().classList).toContain('px-2');
@@ -78,6 +76,22 @@ describe('UiCollapsible', () => {
     await waitForUpdate();
     expect(content()!.classList).toContain('flex-col');
     expect(content()!.classList).toContain('pt-1');
+  });
+
+  // A class on a component lands on its host too (issue #181): each part is
+  // its host, so each class applies once, and closed content, which is
+  // hidden, takes no room for its padding.
+  it('puts each class on one element', async () => {
+    const { container, host, trigger, content } = await renderCollapsible();
+    expect(container.querySelectorAll('.gap-2')).toHaveLength(1);
+    expect([...container.querySelectorAll('.px-2')]).toEqual([trigger()]);
+    const [closed] = container.querySelectorAll('.pt-1');
+    expect(closed!.classList).toContain('hidden');
+
+    host.open.set(true);
+    await waitForUpdate();
+    expect([...container.querySelectorAll('.pt-1')]).toEqual([content()]);
+    expect(content()!.classList).not.toContain('hidden');
   });
 
   it('opens and closes when the trigger is tapped', async () => {
@@ -150,7 +164,7 @@ describe('UiCollapsible', () => {
           { transform: 'translateY(-8px)', opacity: 0 },
           { transform: 'translateY(0)', opacity: 1 },
         ],
-        // No fill: once it ends, the content's inline resting style applies.
+        // No fill: once it ends, the content's own style applies.
         expect.objectContaining({ fill: 'none' }),
       ]);
       const [firstKey] = startedOn(content());
@@ -160,13 +174,9 @@ describe('UiCollapsible', () => {
       fireEvent.tap(trigger());
       await waitForUpdate();
       await waitForUpdate();
-      // Reopening stops the previous reveal before it plays a new one on the
-      // content's new view.
-      expect(animate).toHaveBeenCalledWith(expect.anything(), [
-        CANCEL,
-        firstKey,
-      ]);
-      expect(startedOn(content())).toHaveLength(1);
+      // Reopening stops the previous reveal before it plays a new one.
+      expect(animate).toHaveBeenCalledWith(content(), [CANCEL, firstKey]);
+      expect(startedOn(content())).toHaveLength(2);
     });
 
     it("doesn't animate content that closed before its reveal began", async () => {

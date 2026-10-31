@@ -41,6 +41,12 @@ class FieldHost {
   readonly field = viewChild.required(UiSearchField);
 }
 
+@Component({
+  imports: [UiSearchField],
+  template: `<ui-search-field placeholder="Songs and artists" class="mx-4" />`,
+})
+class StaticAttributesHost {}
+
 /** A bar that holds the field in a shape of its own, as the dock does. */
 const container = {
   searching: signal(false),
@@ -201,6 +207,25 @@ afterEach(() => {
   container.searching.set(false);
   container.searchCanceled.mockClear();
   Object.assign(screen, { fieldBottom: 820, pageBottom: 874, fails: false });
+});
+
+describe('UiSearchField’s static attributes', () => {
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the placeholder made a second match for
+  // getByPlaceholderText.
+  it('puts its class on one element, and its placeholder only on its input', async () => {
+    vi.stubGlobal('SystemInfo', IOS_26);
+    const { container, getAllByPlaceholderText } = await render(
+      StaticAttributesHost,
+      {
+        providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+      },
+    );
+    expect(container.querySelectorAll('.mx-4')).toHaveLength(1);
+    expect(getAllByPlaceholderText('Songs and artists')).toEqual([
+      container.querySelector('input'),
+    ]);
+  });
 });
 
 describe('UiSearchField on iOS 26 and later', () => {

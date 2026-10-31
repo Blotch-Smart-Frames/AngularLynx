@@ -53,6 +53,15 @@ describe('UiBadge', () => {
     expect(label.parentElement?.classList).toContain('border-border');
   });
 
+  // A class on a component lands on its host too (issue #181): the host is
+  // the pill, so the margin applies once.
+  it('puts its class on one element, the pill', async () => {
+    const { container, getByText } = await render(BadgeHost);
+    expect([...container.querySelectorAll('.ml-1')]).toEqual([
+      getByText('Status').parentElement,
+    ]);
+  });
+
   it('pops in on first render', async () => {
     const animate = vi.spyOn(lynxMainThread(), '__ElementAnimate');
     const { getByText } = await render(BadgeHost);

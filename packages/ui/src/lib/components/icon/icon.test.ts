@@ -105,6 +105,23 @@ describe('UiIcon', () => {
   });
 });
 
+@Component({
+  imports: [UiIcon],
+  template: `<ui-icon name="search" class="mb-3" />`,
+})
+class StaticClassHost {}
+
+describe('UiIcon on its own', () => {
+  // A class on a component lands on its host too (issue #181): the host is
+  // the <svg>, so the margin applies once.
+  it('is one svg, with the class written on it', async () => {
+    const { container } = await render(StaticClassHost);
+    const svgs = [...container.querySelectorAll('svg')];
+    expect(svgs).toHaveLength(1);
+    expect([...container.querySelectorAll('.mb-3')]).toEqual(svgs);
+  });
+});
+
 describe('ICONS registry', () => {
   it('exports at least one icon', () => {
     expect(Object.keys(ICONS).length).toBeGreaterThan(0);

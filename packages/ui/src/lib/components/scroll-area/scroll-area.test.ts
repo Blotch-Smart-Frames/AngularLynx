@@ -42,6 +42,8 @@ const renderScrollArea = async () => {
     ...result,
     host: result.componentRef.instance as ScrollAreaHost,
     scrollView: () => result.container.querySelector('scroll-view')!,
+    /** The scroll area's box, its host, which the scroll view fills. */
+    box: () => result.container.querySelector('scroll-view')!.parentElement!,
     /** The view inside the scroll view that lays out the content. */
     content: () => result.getByText('Body').parentElement!,
   };
@@ -61,11 +63,21 @@ const watchAttributes = () => {
 
 describe('UiScrollArea', () => {
   it('renders projected content in a vertical scroll view', async () => {
-    const { scrollView, content } = await renderScrollArea();
+    const { scrollView, box, content } = await renderScrollArea();
     expect(scrollView().getAttribute('scroll-orientation')).toBe('vertical');
-    expect(scrollView().classList).toContain('bg-card');
+    expect(scrollView().classList).toContain('grow');
+    expect(box().classList).toContain('w-full');
+    expect(box().classList).toContain('bg-card');
     expect(content().classList).toContain('flex-col');
     expect(content().classList).toContain('gap-2');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so the scroll view taking the class as well applied it twice (issue
+  // #181).
+  it('puts its class on one element, its box', async () => {
+    const { container, box } = await renderScrollArea();
+    expect([...container.querySelectorAll('.bg-card')]).toEqual([box()]);
   });
 
   it('gives the scroll view an explicit height, which it needs to scroll', async () => {

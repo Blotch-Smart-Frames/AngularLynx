@@ -295,14 +295,28 @@ describe('UiCartesianPreset', () => {
     const { container, componentRef, getByText } = await render(PresetHost);
     const root = chartRoot(container);
     expect(root.getAttribute('accessibility-label')).toBe('Sales');
-    expect(root.getAttribute('class')).toContain('mt-2');
-    expect(root.getAttribute('style')).toContain('height: 160px');
+    // The chart's box, which the root view fills.
+    expect(root.parentElement!.getAttribute('style')).toContain(
+      'height: 160px',
+    );
     expect(getByText('Units')).toBeTruthy();
     expect(getByText('Day')).toBeTruthy();
 
     (componentRef.instance as PresetHost).xAxisLabel.set('Week');
     await waitForUpdate();
     expect(getByText('Week')).toBeTruthy();
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so a preset that passed its class on to its chart as well applied it
+  // twice (issue #181).
+  it("puts its class on one element, the preset's own box", async () => {
+    const { container } = await render(PresetHost);
+    const box = chartRoot(container).parentElement!;
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([
+      box.parentElement,
+    ]);
+    expect(box.parentElement!.classList).toContain('w-full');
   });
 
   it('hands a tap over as the datum, or null off the points', async () => {

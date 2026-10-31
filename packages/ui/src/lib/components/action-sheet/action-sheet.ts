@@ -71,6 +71,14 @@ const ANCHORED_WIDTH = { glass: 270, material: 280 } as const;
   selector: 'ui-action-sheet',
   imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiPopoverPanel],
   encapsulation: ViewEncapsulation.None,
+  // The sheet's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-action-sheet>, and
+  // the host sits in the page's layout where the sheet is written, so a
+  // `class="px-8"` padded the page there too. The host drops it. The title,
+  // items and cancel below are their host elements for the same reason: a
+  // class on one lands on its host anyway, so a view inside it styled with
+  // the same class applied it twice.
+  host: { '[attr.class]': 'null' },
   template: `
     <!-- Android's back button asks the overlay to close (requestclose),
          which closes the sheet as Cancel does. -->
@@ -410,12 +418,11 @@ const ITEM_TEXT: Readonly<Record<ActionSheetLook, string>> = {
   selector: 'ui-action-sheet-title',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: { '[class]': 'containerClass()' },
   template: `
-    <view [class]="containerClass()">
-      <text [class]="textClass()" accessibility-traits="header"
-        ><ng-content
-      /></text>
-    </view>
+    <text [class]="textClass()" accessibility-traits="header"
+      ><ng-content
+    /></text>
   `,
 })
 export class UiActionSheetTitle {
@@ -438,30 +445,28 @@ export class UiActionSheetTitle {
   selector: 'ui-action-sheet-item',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <view
-      #container
-      [class]="containerClass()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      @if (look() !== 'sheet') {
-        <!-- A menu row's pressed highlight (see UiMenuItem's highlightClass):
-             rows in a popover light up rather than shrink. -->
-        <view
-          [class]="highlightClass()"
-          [style.opacity]="held() ? highlightOpacity() : 0"
-        ></view>
-      }
-      <text [class]="textClass()" accessibility-traits="button"
-        ><ng-content
-      /></text>
-    </view>
+    @if (look() !== 'sheet') {
+      <!-- A menu row's pressed highlight (see UiMenuItem's highlightClass):
+           rows in a popover light up rather than shrink. -->
+      <view
+        [class]="highlightClass()"
+        [style.opacity]="held() ? highlightOpacity() : 0"
+      ></view>
+    }
+    <text [class]="textClass()" accessibility-traits="button"
+      ><ng-content
+    /></text>
   `,
 })
 export class UiActionSheetItem {
@@ -473,8 +478,7 @@ export class UiActionSheetItem {
 
   readonly pressed = output<void>();
 
-  // Required: the container is always in the template.
-  readonly containerRef = viewChild.required<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   /** Whether a finger (or the mouse) is down on a row in a popover. */
@@ -514,22 +518,19 @@ export class UiActionSheetItem {
       return;
     }
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(
-      this.containerRef().nativeElement,
-      SCALE.pressDownLight,
-    );
+    this.#pressAnim = pressDown(this.#host, SCALE.pressDownLight);
   }
 
   protected onPressEnd(): void {
     this.held.set(false);
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.held.set(false);
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {
@@ -547,23 +548,21 @@ export class UiActionSheetItem {
   selector: 'ui-action-sheet-cancel',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'containerClass()',
+    style: 'box-shadow: 0 2px 16px rgba(0, 0, 0, 0.15);',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <view
-      #container
-      [class]="containerClass()"
-      style="box-shadow: 0 2px 16px rgba(0, 0, 0, 0.15);"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <text [class]="textClass()" accessibility-traits="button">{{
-        label()
-      }}</text>
-    </view>
+    <text [class]="textClass()" accessibility-traits="button">{{
+      label()
+    }}</text>
   `,
 })
 export class UiActionSheetCancel {
@@ -572,8 +571,7 @@ export class UiActionSheetCancel {
   readonly label = input('Cancel');
   readonly userClass = input<string>('', { alias: 'class' });
 
-  // Required: the container is always in the template.
-  readonly containerRef = viewChild.required<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -589,20 +587,17 @@ export class UiActionSheetCancel {
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(
-      this.containerRef().nativeElement,
-      SCALE.pressDownLight,
-    );
+    this.#pressAnim = pressDown(this.#host, SCALE.pressDownLight);
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {

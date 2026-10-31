@@ -1,6 +1,6 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
@@ -8,23 +8,23 @@ import {
   inject,
   input,
   model,
-  viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { type AnimationHandle, revealIn } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 
+/**
+ * Each part is its host element, styled through `host`, rather than a view
+ * inside the host. Angular gives a component's host every static attribute the
+ * app writes on it, so `<ui-collapsible class="rounded-lg border">` puts those
+ * classes on the host whatever the component does: with a styled view inside
+ * as well, the border was drawn twice.
+ */
 @Component({
   selector: 'ui-collapsible',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiCollapsible {
   readonly open = model(false);
@@ -44,14 +44,12 @@ export class UiCollapsible {
 
 @Component({
   selector: 'ui-collapsible-trigger',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="triggerClass()" (bindtap)="onTap()">
-      <ng-content />
-    </view>
-  `,
+  host: {
+    '[class]': 'triggerClass()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ng-content />',
 })
 export class UiCollapsibleTrigger {
   readonly #collapsible = inject(UiCollapsible);
@@ -72,26 +70,19 @@ export class UiCollapsibleTrigger {
 
 @Component({
   selector: 'ui-collapsible-content',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Mount the content only while open, via `@if`. On Lynx this works because the
   // renderer recreates a destroyed element's native painting node when it is
   // re-inserted (see LynxElement.#recreateSubtree in @blotch/angular-lynx): when
-  // the panel reopens, the projected `<ng-content>` — recycled with the re-created
-  // wrapper — is rebuilt from cache and renders again on every open. The inline
-  // opacity/transform is the resting state; revealIn animates from opacity:0 /
-  // translateY(-8px) with fill:'none' so the inline style takes over once the
-  // animation ends.
+  // the panel reopens, the projected `<ng-content>` is rebuilt from cache and
+  // renders again on every open. While closed the host is hidden, so the
+  // classes the app wrote on it (which Angular puts on the host either way)
+  // take no room. revealIn animates from opacity:0 / translateY(-8px) with
+  // fill:'none', so the host's own style takes over once the animation ends.
+  host: { '[class]': 'contentClass()' },
   template: `
     @if (collapsible.open()) {
-      <view
-        #content
-        [class]="contentClass()"
-        style="opacity: 1; transform: translateY(0);"
-      >
-        <ng-content />
-      </view>
+      <ng-content />
     }
   `,
 })
@@ -99,7 +90,7 @@ export class UiCollapsibleContent {
   protected readonly collapsible = inject(UiCollapsible);
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly contentRef = viewChild<ElementRef>('content');
+  readonly #host = inject(ElementRef).nativeElement;
   #anim?: AnimationHandle;
 
   /**
@@ -107,22 +98,20 @@ export class UiCollapsibleContent {
    * constructor: Angular's test build keeps a function for a constructor that
    * nothing calls, which an app's coverage report would show as uncovered.
    *
-   * contentRef only resolves while the `@if` content is mounted; defer one
-   * macrotask so the freshly (re)created element is committed to the native
-   * tree before we animate it. By then the panel may have closed again, which
-   * leaves nothing to animate.
+   * Deferred one macrotask so the re-inserted content is committed to the
+   * native tree before we animate it. By then the panel may have closed
+   * again, which leaves nothing to animate.
    */
   protected readonly revealing = effect(() => {
     if (!this.collapsible.open()) return;
     setTimeout(() => {
-      const el = this.contentRef()?.nativeElement;
-      if (!el) return;
+      if (!this.collapsible.open()) return;
       this.#anim?.cancel();
-      this.#anim = revealIn(el, { fromY: -8, fill: 'none' });
+      this.#anim = revealIn(this.#host, { fromY: -8, fill: 'none' });
     }, 0);
   });
 
   protected readonly contentClass = computed(() =>
-    cn('flex-col flex', this.userClass()),
+    this.collapsible.open() ? cn('flex-col flex', this.userClass()) : 'hidden',
   );
 }

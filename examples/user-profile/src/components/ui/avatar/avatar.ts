@@ -10,42 +10,47 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiSkeleton } from '../skeleton/skeleton';
 import { cn } from '@blotch/dolan/utils/cn';
 
+/**
+ * The avatar's circle is its host, styled through `host`, with the image or
+ * initials inside. Angular gives a component's host every static attribute the
+ * app writes on it, so a class on <ui-avatar> lands on the host whatever the
+ * component does: with a styled circle inside as well, a margin or border
+ * applied twice.
+ */
 @Component({
   selector: 'ui-avatar',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiSkeleton],
   encapsulation: ViewEncapsulation.None,
+  host: { '[class]': 'containerClass()' },
   template: `
-    <view [class]="containerClass()">
-      @if (src() && !errored()) {
-        <!-- The <image> stays mounted whenever src is set so its bindload /
-             binderror events can fire — an @if-swapped-out image would never
-             start loading, so the load event that reveals it would never come.
-             Native Lynx <image> renders nothing until loaded (there is no
-             broken-image glyph like the web), so while loading the box is
-             simply empty; the skeleton below sits on top of it as a placeholder.
-             onImageLoad() flips the loaded state, removing the skeleton to
-             reveal the image underneath. -->
-        <image
-          [attr.src]="src()"
-          [class]="imageClass()"
-          (bindload)="onImageLoad()"
-          (binderror)="onImageError()"
-        />
-        <!-- Overlay placeholder shown only while the image is loading. It paints
-             above the <image> because it comes later in source order (Lynx paint
-             order follows the DOM, so no z-index is needed). -->
-        @if (!loaded()) {
-          <ui-skeleton [class]="skeletonClass()" />
-        }
-      } @else {
-        <!-- Shared by the no-src case and the load-error case: initials if a
-             fallback was provided, otherwise a plain muted circle. -->
-        <view [class]="fallbackClass()">
-          <text [class]="initialsClass()">{{ fallback() }}</text>
-        </view>
+    @if (src() && !errored()) {
+      <!-- The <image> stays mounted whenever src is set so its bindload /
+           binderror events can fire — an @if-swapped-out image would never
+           start loading, so the load event that reveals it would never come.
+           Native Lynx <image> renders nothing until loaded (there is no
+           broken-image glyph like the web), so while loading the box is
+           simply empty; the skeleton below sits on top of it as a placeholder.
+           onImageLoad() flips the loaded state, removing the skeleton to
+           reveal the image underneath. -->
+      <image
+        [attr.src]="src()"
+        [class]="imageClass()"
+        (bindload)="onImageLoad()"
+        (binderror)="onImageError()"
+      />
+      <!-- Overlay placeholder shown only while the image is loading. It paints
+           above the <image> because it comes later in source order (Lynx paint
+           order follows the DOM, so no z-index is needed). -->
+      @if (!loaded()) {
+        <ui-skeleton [class]="skeletonClass()" />
       }
-    </view>
+    } @else {
+      <!-- Shared by the no-src case and the load-error case: initials if a
+           fallback was provided, otherwise a plain muted circle. -->
+      <view [class]="fallbackClass()">
+        <text [class]="initialsClass()">{{ fallback() }}</text>
+      </view>
+    }
   `,
 })
 export class UiAvatar {

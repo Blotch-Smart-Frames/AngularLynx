@@ -1,15 +1,15 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
   effect,
+  inject,
   input,
   model,
   output,
   signal,
-  viewChild,
 } from '@angular/core';
 import { type FormValueControl } from '@angular/forms/signals';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
@@ -19,69 +19,76 @@ import { cn } from '../../utils/cn';
 
 @Component({
   selector: 'ui-input',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The host is the field's column. Angular gives a component's host every
+  // static attribute the app writes on it, so a class on <ui-input> lands
+  // there whatever the component does: a column inside the host applied it
+  // twice. A placeholder lands there too, and goes: it belongs to the
+  // <input>, and a second element with it is a second match for
+  // getByPlaceholderText.
+  host: {
+    '[class]': 'containerClass()',
+    '[attr.placeholder]': 'null',
+  },
   template: `
-    <view #container [class]="containerClass()">
-      @if (label()) {
-        <text [class]="labelClass()">{{ label() }}</text>
-      }
-      <!-- Focus ring is an inline box-shadow on a dedicated overlay layer, not a
-           Tailwind ring-* class (the Lynx preset doesn't wire up --tw-ring-*, so
-           ring-* renders nothing on device). It rides its OWN layer so it can
-           fade: box-shadow is animatable:no on Lynx (the core rejects a
-           transition: box-shadow), but opacity is animatable, so we transition
-           the layer's opacity instead. The overlay is the FIRST child so Lynx,
-           which paints in strict source order, keeps the <input> on top and
-           tappable. Source order alone is NOT enough on web: CSS paints a
-           positioned (absolute) sibling above a static one regardless of source
-           order, so this transparent overlay would swallow every tap — no focus,
-           no typing. The <input> below therefore carries position:relative +
-           z-index:1 so it sits above the overlay on BOTH platforms (required on
-           web). On Lynx, though, a z-indexed element is stacked against its
-           nearest stacking context, and a scroll-view isn't one unless it sets
-           z-index itself — so the native input would stay fixed on screen while
-           the page scrolled (only its placeholder visibly floats). The wrapper's
-           z-0 makes it that stacking context, keeping the input's z-index local
-           so it scrolls with the field. pointer-events is avoided — it errors
-           the Lynx build. The shadow is OUTSET only: Lynx doesn't render inset box-shadows,
-           so the crisp 1px "border" is an outset ring hugging the edge, not a
-           real inset border. -->
-      <view [class]="inputWrapperClass()">
-        <view
-          class="rounded-xl opacity-0 absolute bottom-0 left-0 right-0 top-0"
-          [style.transition]="'opacity 150ms ease'"
-          [style.box-shadow]="ringShadow()"
-          [style.opacity]="ringVisible() ? 1 : 0"
-        ></view>
-        <!-- [attr.disabled]="disabled() || undefined": passing 'undefined'
-             removes the attribute entirely; passing 'false' would set
-             disabled="false" which Lynx still treats as disabled. -->
-        <!-- [value] not [attr.value]: [attr.value] calls renderer.setAttribute()
-             which routes to __SetAttribute — a no-op for live text on Lynx native
-             inputs. [value] is an Angular input binding that triggers
-             LynxInput.ngOnChanges, where the setValue UIMethod override lives.
-             Without this, form model resets would update the signal but the
-             native input would keep showing the user's old typed text. -->
-        <input
-          [attr.placeholder]="placeholder()"
-          [attr.type]="type()"
-          [value]="value()"
-          [attr.disabled]="disabled() || undefined"
-          class="text-sm text-foreground"
-          style="border: none; background: transparent; height: 100%; width: 100%; position: relative; z-index: 1;"
-          (bindinput)="onInput($any($event))"
-          (bindfocus)="onFocus()"
-          (bindblur)="onBlur()"
-        />
-      </view>
-      @if (error()) {
-        <text [class]="errorClass()">{{ error() }}</text>
-      } @else if (helperText()) {
-        <text [class]="helperClass()">{{ helperText() }}</text>
-      }
+    @if (label()) {
+      <text [class]="labelClass()">{{ label() }}</text>
+    }
+    <!-- Focus ring is an inline box-shadow on a dedicated overlay layer, not a
+         Tailwind ring-* class (the Lynx preset doesn't wire up --tw-ring-*, so
+         ring-* renders nothing on device). It rides its OWN layer so it can
+         fade: box-shadow is animatable:no on Lynx (the core rejects a
+         transition: box-shadow), but opacity is animatable, so we transition
+         the layer's opacity instead. The overlay is the FIRST child so Lynx,
+         which paints in strict source order, keeps the <input> on top and
+         tappable. Source order alone is NOT enough on web: CSS paints a
+         positioned (absolute) sibling above a static one regardless of source
+         order, so this transparent overlay would swallow every tap — no focus,
+         no typing. The <input> below therefore carries position:relative +
+         z-index:1 so it sits above the overlay on BOTH platforms (required on
+         web). On Lynx, though, a z-indexed element is stacked against its
+         nearest stacking context, and a scroll-view isn't one unless it sets
+         z-index itself — so the native input would stay fixed on screen while
+         the page scrolled (only its placeholder visibly floats). The wrapper's
+         z-0 makes it that stacking context, keeping the input's z-index local
+         so it scrolls with the field. pointer-events is avoided — it errors
+         the Lynx build. The shadow is OUTSET only: Lynx doesn't render inset box-shadows,
+         so the crisp 1px "border" is an outset ring hugging the edge, not a
+         real inset border. -->
+    <view [class]="inputWrapperClass()">
+      <view
+        class="rounded-xl opacity-0 absolute bottom-0 left-0 right-0 top-0"
+        [style.transition]="'opacity 150ms ease'"
+        [style.box-shadow]="ringShadow()"
+        [style.opacity]="ringVisible() ? 1 : 0"
+      ></view>
+      <!-- [attr.disabled]="disabled() || undefined": passing 'undefined'
+           removes the attribute entirely; passing 'false' would set
+           disabled="false" which Lynx still treats as disabled. -->
+      <!-- [value] not [attr.value]: [attr.value] calls renderer.setAttribute()
+           which routes to __SetAttribute — a no-op for live text on Lynx native
+           inputs. [value] is an Angular input binding that triggers
+           LynxInput.ngOnChanges, where the setValue UIMethod override lives.
+           Without this, form model resets would update the signal but the
+           native input would keep showing the user's old typed text. -->
+      <input
+        [attr.placeholder]="placeholder()"
+        [attr.type]="type()"
+        [value]="value()"
+        [attr.disabled]="disabled() || undefined"
+        class="text-sm text-foreground"
+        style="border: none; background: transparent; height: 100%; width: 100%; position: relative; z-index: 1;"
+        (bindinput)="onInput($any($event))"
+        (bindfocus)="onFocus()"
+        (bindblur)="onBlur()"
+      />
     </view>
+    @if (error()) {
+      <text [class]="errorClass()">{{ error() }}</text>
+    } @else if (helperText()) {
+      <text [class]="helperClass()">{{ helperText() }}</text>
+    }
   `,
 })
 export class UiInput implements FormValueControl<string> {
@@ -98,7 +105,7 @@ export class UiInput implements FormValueControl<string> {
   readonly focused = output<void>();
   readonly blurred = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   readonly #isFocused = signal(false);
   #shakeAnim?: AnimationHandle;
   #previousError = '';
@@ -111,10 +118,9 @@ export class UiInput implements FormValueControl<string> {
    */
   protected readonly shakeOnError = effect(() => {
     const err = this.error();
-    const el = this.containerRef()?.nativeElement;
-    if (err && !this.#previousError && el) {
+    if (err && !this.#previousError) {
       this.#shakeAnim?.cancel();
-      this.#shakeAnim = shake(el);
+      this.#shakeAnim = shake(this.#host);
     }
     this.#previousError = err;
   });

@@ -85,8 +85,6 @@ const CANCEL = 3;
 describe('UiAccordion', () => {
   it("merges each part's class with its own", async () => {
     const { container, trigger, tap, content } = await renderAccordion();
-    // Each host element carries the given class too, so look for the view
-    // that has both its own and the given class.
     expect(container.querySelector('.flex-col.w-80')).not.toBeNull();
     expect(container.querySelector('.border-b.px-1')).not.toBeNull();
     expect(trigger('Alpha').classList).toContain('justify-between');
@@ -95,6 +93,26 @@ describe('UiAccordion', () => {
     await tap('Alpha');
     expect(content('Alpha body')!.classList).toContain('pb-4');
     expect(content('Alpha body')!.classList).toContain('pt-1');
+  });
+
+  // A class on a component lands on its host too (issue #181): each part is
+  // its host, so each class applies once, and collapsed content, which is
+  // hidden, takes no room for its padding.
+  it('puts each class on one element', async () => {
+    const { container, trigger, tap, getByText } = await renderAccordion();
+    expect(container.querySelectorAll('.w-80')).toHaveLength(1);
+    expect(container.querySelectorAll('.px-1')).toHaveLength(1);
+    expect([...container.querySelectorAll('.gap-2')]).toEqual([
+      trigger('Alpha'),
+    ]);
+    const [collapsed] = container.querySelectorAll('.pt-1');
+    expect(collapsed!.classList).toContain('hidden');
+
+    await tap('Alpha');
+    expect([...container.querySelectorAll('.pt-1')]).toEqual([
+      getByText('Alpha body').parentElement,
+    ]);
+    expect(collapsed!.classList).not.toContain('hidden');
   });
 
   it('expands an item when its trigger is tapped, and collapses it on a second tap', async () => {
@@ -172,7 +190,7 @@ describe('UiAccordion', () => {
           { transform: 'translateY(-8px)', opacity: 0 },
           { transform: 'translateY(0)', opacity: 1 },
         ],
-        // No fill: once it ends, the content's inline resting style applies.
+        // No fill: once it ends, the content's own style applies.
         expect.objectContaining({ fill: 'none' }),
       ]);
       const [firstKey] = startedOn(content('Alpha body'));
@@ -180,13 +198,12 @@ describe('UiAccordion', () => {
       await tap('Alpha');
       await tap('Alpha');
       await waitForUpdate();
-      // Expanding again stops the previous reveal before it plays a new one
-      // on the content's new view.
-      expect(animate).toHaveBeenCalledWith(expect.anything(), [
+      // Expanding again stops the previous reveal before it plays a new one.
+      expect(animate).toHaveBeenCalledWith(content('Alpha body'), [
         CANCEL,
         firstKey,
       ]);
-      expect(startedOn(content('Alpha body'))).toHaveLength(1);
+      expect(startedOn(content('Alpha body'))).toHaveLength(2);
     });
 
     it("doesn't animate content that collapsed before its reveal began", async () => {

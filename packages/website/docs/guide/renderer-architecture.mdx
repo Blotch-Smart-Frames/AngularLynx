@@ -78,7 +78,7 @@ The plugin finds those files in Angular's compiled output, and in installed pack
 A few choices behind the table:
 
 - **Comment anchors are hidden views.** Angular inserts `@if`, `@for` and `createComponent()` content next to comment nodes. Lynx's non-element node crashes the tree functions Angular calls on anchors, so a `display: none` view stands in.
-- **Unknown tags become views.** Component host elements such as `<app-card>` go through `createElement()`, and they need to be real layout boxes.
+- **Unknown tags become views.** Component host elements such as `<app-card>` go through `createElement()`, and they need to be real layout boxes. A component that called `registerHostElement()` gets the element it registered instead, such as a `<text>`: `createElement()` only sees the tag, so the registration is keyed by the component's selector.
 - **`<list>` is special.** It returns a `LynxListElement`, whose children the engine requests through a `componentAtIndex` callback instead of `__AppendElement`.
 - **Native references can't be hashed.** Using one as a `Map`, `Set` or `WeakSet` key crashes the main-thread engine. Wrappers are keyed by `__GetElementUniqueID()` instead.
 - **`listen()` adds no-op `stopPropagation()` and `preventDefault()`** to event objects that lack them, so Angular's own listener wrapper doesn't throw.

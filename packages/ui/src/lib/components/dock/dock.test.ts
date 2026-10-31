@@ -101,6 +101,16 @@ class DockHost {
   readonly items = viewChildren(UiDockItem);
 }
 
+@Component({
+  imports: [UiDock, UiDockItem],
+  template: `
+    <ui-dock>
+      <ui-dock-item route="/" icon="home" label="Home" class="pt-4" />
+    </ui-dock>
+  `,
+})
+class StaticClassHost {}
+
 /**
  * A dock with only an action of the app's own, and no items.
  */
@@ -685,15 +695,30 @@ describe('UiDockItem', () => {
     expect(scale()).toBe('scale(1)');
   });
 
-  it("merges an item's class into its content, the given class winning", async () => {
+  it("merges an item's class with its own, the given class winning", async () => {
     const { host, item } = await renderDock(IOS_26);
-    const content = () => item('Inbox').querySelector('view')!;
-    expect(content().classList).toContain('gap-0.5');
+    expect(item('Inbox').classList).toContain('gap-0.5');
 
     host.inboxClass.set('gap-2');
     await waitForUpdate();
-    expect(content().classList).toContain('gap-2');
-    expect(content().classList).not.toContain('gap-0.5');
+    expect(item('Inbox').classList).toContain('gap-2');
+    expect(item('Inbox').classList).not.toContain('gap-0.5');
+  });
+
+  // Angular gives a component's host every static attribute written on it,
+  // so an item that also styled a view inside its host applied the class
+  // twice (issue #181).
+  it('puts a class written on an item on that one element', async () => {
+    const { container } = await render(StaticClassHost, {
+      providers: [
+        provideRouter(routes),
+        onPlatform(IOS_26),
+        { provide: LynxAccessibilitySettings, useValue: settings },
+      ],
+    });
+    expect([...container.querySelectorAll('.pt-4')]).toEqual([
+      container.querySelector('[accessibility-label="Home"]'),
+    ]);
   });
 });
 

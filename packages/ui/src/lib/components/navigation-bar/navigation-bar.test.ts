@@ -415,6 +415,19 @@ describe('UiNavigationBar without the Lynx router', () => {
     expect(result.getByRole('button', { name: 'Back' })).toBeTruthy();
   });
 
+  // Angular gives a component's host every static attribute written on it:
+  // the title was a tooltip over the bar in the web preview (issue #181).
+  it('shows a title written as an attribute only in the bar', async () => {
+    const result = await render(PlainBarHost, {
+      providers: [
+        { provide: LynxSystemInfo, useValue: IOS_26 },
+        { provide: LynxAccessibilitySettings, useValue: settings },
+      ],
+    });
+    expect(result.container.querySelectorAll('[title]')).toHaveLength(0);
+    expect(result.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+  });
+
   it('has no Back button with a LocationStrategy of the app’s own', async () => {
     const { back, host } = await renderBar(IOS_26, [
       { provide: LocationStrategy, useClass: MockLocationStrategy },

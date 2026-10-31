@@ -132,6 +132,13 @@ describe('UiBottomSheet', () => {
     expect(panel.classList).toContain('bg-background');
   });
 
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181): the class also styled the sheet's host, in the page.
+  it('puts its class on the panel alone', async () => {
+    const { container, panel } = await renderSheet();
+    expect([...container.querySelectorAll('.max-h-96')]).toEqual([panel]);
+  });
+
   it('fades the backdrop in and slides the panel up when opened', async () => {
     const { host, backdrop, panel } = await renderSheet();
     await openSheet(host);

@@ -1,11 +1,11 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
@@ -20,15 +20,23 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
   selector: 'ui-spinner',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The host is the box that turns, sized and styled through `host`, with the
+  // drawing inside. Angular gives a component's host every static attribute
+  // the app writes on it, so a class on <ui-spinner> lands on the host
+  // whatever the component does: with a styled box inside as well, a margin
+  // applied twice.
+  //
   // SVG markup is passed via [attr.content] rather than as child elements.
   // Lynx's native <svg> element can't contain child nodes in the flat element
   // model — the renderer doesn't support nested SVG elements. Passing the full
   // SVG markup string as the `content` attribute is the Lynx-native way to
   // embed vector graphics.
+  host: {
+    '[class]': 'containerClass()',
+    '[style]': 'sizeStyle()',
+  },
   template: `
-    <view #spinner [class]="containerClass()" [style]="sizeStyle()">
-      <svg [attr.content]="svgContent()" style="width: 100%; height: 100%;" />
-    </view>
+    <svg [attr.content]="svgContent()" style="width: 100%; height: 100%;" />
   `,
 })
 export class UiSpinner {
@@ -43,7 +51,7 @@ export class UiSpinner {
 
   readonly #resolveColor = injectIconColor();
 
-  readonly spinnerRef = viewChild.required<ElementRef>('spinner');
+  readonly #host = inject(ElementRef).nativeElement;
 
   /**
    * Turns the spinner for as long as it's shown. A field rather than a
@@ -51,7 +59,7 @@ export class UiSpinner {
    * nothing calls, which an app's coverage report would show as uncovered.
    */
   protected readonly rotation = effect(() => {
-    this.spinnerRef().nativeElement.animate(
+    this.#host.animate(
       [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
       {
         duration: 1600,

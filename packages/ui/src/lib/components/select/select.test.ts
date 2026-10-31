@@ -41,7 +41,9 @@ const renderSelect = async () => {
     ...result,
     host: result.componentRef.instance as SelectHost,
     overlay,
-    trigger: container.querySelector('.border-input')!,
+    // The field is the host; the row inside it takes the taps.
+    field: container.querySelector('.border-input')!,
+    trigger: container.querySelector('.border-input')!.firstElementChild!,
     triggerText: () => container.querySelector('.border-input text')!,
     // An item's tappable row, found by its label in the sheet.
     item: (label: string) => within(overlay).getByText(label).parentElement!,
@@ -66,10 +68,35 @@ const waitForClose = (overlay: Element) =>
 
 describe('UiSelect', () => {
   it('shows the placeholder, muted, until a value is chosen', async () => {
-    const { triggerText, trigger } = await renderSelect();
+    const { triggerText, field } = await renderSelect();
     expect(triggerText().textContent).toBe('Pick a fruit');
     expect(triggerText().classList).toContain('text-muted-foreground');
-    expect(trigger.classList).toContain('w-48');
+    expect(field.classList).toContain('w-48');
+  });
+
+  // Static attributes land on a component's host too (issue #181): the
+  // width applies once, to the field, and the placeholder is only shown.
+  it('puts its class on one element, and its placeholder only in its text', async () => {
+    @Component({
+      imports: [UiSelect, UiSelectItem],
+      template: `
+        <ui-select placeholder="Pick a fruit" class="w-48">
+          <ui-select-item value="apple" label="Apple" class="font-bold" />
+        </ui-select>
+      `,
+    })
+    class StaticAttributesHost {}
+
+    const { container, getByText, queryAllByPlaceholderText } =
+      await render(StaticAttributesHost);
+    expect([...container.querySelectorAll('.w-48')]).toEqual([
+      container.querySelector('.border-input'),
+    ]);
+    expect(queryAllByPlaceholderText('Pick a fruit')).toEqual([]);
+    expect(getByText('Pick a fruit')).toBeTruthy();
+    expect([...container.querySelectorAll('.font-bold')]).toEqual([
+      getByText('Apple').parentElement,
+    ]);
   });
 
   it("shows the chosen item's label", async () => {
@@ -122,10 +149,10 @@ describe('UiSelect', () => {
   });
 
   it("dims and doesn't open while disabled", async () => {
-    const { host, overlay, trigger, getByText } = await renderSelect();
+    const { host, overlay, field, trigger, getByText } = await renderSelect();
     host.disabled.set(true);
     await waitForUpdate();
-    expect(trigger.classList).toContain('opacity-50');
+    expect(field.classList).toContain('opacity-50');
 
     fireEvent.tap(trigger);
     fireEvent.tap(getByText('Choose'));

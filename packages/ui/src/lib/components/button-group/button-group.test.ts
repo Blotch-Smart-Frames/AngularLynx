@@ -61,6 +61,18 @@ class ButtonGroupHost {
   readonly presses: string[] = [];
 }
 
+@Component({
+  imports: [UiButtonGroup, UiButtonGroupItem, UiIcon],
+  template: `
+    <ui-button-group size="icon">
+      <ui-button-group-item accessibility-label="Copy">
+        <ui-icon name="copy" />
+      </ui-button-group-item>
+    </ui-button-group>
+  `,
+})
+class StaticLabelHost {}
+
 /** Accessibility settings a test can change, as the host app would. */
 const settings = {
   reduceMotion: signal(false),
@@ -87,16 +99,15 @@ const renderGroup = async (
     ...result,
     host: result.componentRef.instance as ButtonGroupHost,
     /**
-     * The group's own box, around the items' hosts: the bar of the solid
+     * The group's box, its host, around the items: the bar of the solid
      * variants, Material's connected group, or the glass's frame.
      */
     group: (): HTMLElement => {
-      const parent =
-        result.getByText('Paste').parentElement!.parentElement!.parentElement!;
+      const parent = result.getByText('Paste').parentElement!.parentElement!;
       return parent.localName === 'blur-view' ? parent.parentElement! : parent;
     },
     glass: () => result.container.querySelector<HTMLElement>('blur-view')!,
-    // An item's view (the one that takes presses) holds its label.
+    // An item (its host, which takes presses) holds its label.
     item: (label: string) => result.getByText(label).parentElement!,
     icon: () => result.container.querySelector('svg')!,
     update: async (change: () => void) => {
@@ -141,6 +152,28 @@ afterEach(() => {
 });
 
 describe('UiButtonGroup', () => {
+  // Angular gives a component's host every static attribute written on it,
+  // so a group or item that also styled a view inside its host applied the
+  // class twice, and the label named two elements (issue #181).
+  it('puts a class written on the group or an item on that one element', async () => {
+    const { container, group, item } = await renderGroup();
+    expect([...container.querySelectorAll('.w-full')]).toEqual([group()]);
+    expect([...container.querySelectorAll('.flex-1')]).toEqual([item('Copy')]);
+  });
+
+  it('names one element with an accessibility label written on an item', async () => {
+    vi.stubGlobal('SystemInfo', undefined);
+    const { container, getAllByAccessibilityLabel } = await render(
+      StaticLabelHost,
+      {
+        providers: [{ provide: LynxAccessibilitySettings, useValue: settings }],
+      },
+    );
+    expect(getAllByAccessibilityLabel('Copy')).toEqual([
+      container.querySelector('.h-10'),
+    ]);
+  });
+
   it('lays its items out in a row, or in a column when vertical', async () => {
     const { host, group } = await renderGroup();
     expect(group().classList).toContain('flex-row');

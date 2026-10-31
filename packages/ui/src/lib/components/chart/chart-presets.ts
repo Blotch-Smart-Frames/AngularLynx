@@ -1,10 +1,17 @@
-import { Directive, booleanAttribute, input, viewChild } from '@angular/core';
+import {
+  Directive,
+  booleanAttribute,
+  computed,
+  input,
+  viewChild,
+} from '@angular/core';
 import { scaleLinear } from '@tanstack/charts/scales/linear';
 import type {
   ChartPoint,
   ChartPositionScaleOptions,
 } from '@tanstack/charts/types';
 
+import { cn } from '../../utils/cn';
 import { UiChart } from './chart';
 import type { ChartColorSchemeOption } from './chart-theme';
 import type { ChartZoomAxes } from './chart-zoom';
@@ -184,8 +191,16 @@ const chartType = () => UiChart;
  * The inputs and zoom API every cartesian preset shares. A preset extends this
  * and adds its own data and mark inputs, and renders `<ui-chart #chart>`
  * with the shared bindings.
+ *
+ * A preset's host is the chart's box in the page, and takes the app's
+ * classes; the chart inside fills its width, at the preset's `height`.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on `<ui-line-chart>` lands on the preset's host whatever the
+ * preset does with its `class` input: passed on to the chart as well, a
+ * margin applied twice, and a width class sized the chart a second time
+ * inside the first.
  */
-@Directive()
+@Directive({ host: { '[class]': 'hostClass()' } })
 export abstract class UiCartesianPreset<TDatum> {
   /** Fixed width in px. Omit to fill the container. */
   readonly width = input<number>();
@@ -220,6 +235,11 @@ export abstract class UiCartesianPreset<TDatum> {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly chart = viewChild.required(chartType());
+
+  // Like the chart's box: as wide as its parent, and not squeezed by a column.
+  protected readonly hostClass = computed(() =>
+    cn('w-full flex-shrink-0', this.userClass()),
+  );
 
   /**
    * The shared inputs, as the options every preset's definition takes.
@@ -268,7 +288,6 @@ export const PRESET_CHART_BINDINGS = `
   [height]="height()"
   [label]="label()"
   [colorScheme]="colorScheme()"
-  [class]="userClass()"
   [zoomable]="zoomable()"
   [zoomAxes]="zoomAxes()"
   [showZoomControls]="showZoomControls()"

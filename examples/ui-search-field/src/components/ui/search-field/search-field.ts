@@ -141,7 +141,13 @@ const iconSvg = (icon: IconName, color: string): string =>
   selector: 'ui-search-field',
   imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiGlass, UiGlassGroup],
   encapsulation: ViewEncapsulation.None,
-  host: { '[class]': 'hostClass()' },
+  // Angular gives a component's host every static attribute the app writes on
+  // it. The placeholder belongs to the <input>, so the host drops its copy: a
+  // second element with it is a second match for getByPlaceholderText.
+  host: {
+    '[class]': 'hostClass()',
+    '[attr.placeholder]': 'null',
+  },
   template: `
     <ng-template #field>
       @if (showsBack()) {

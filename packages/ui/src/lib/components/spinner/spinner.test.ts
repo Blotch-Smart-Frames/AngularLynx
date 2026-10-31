@@ -17,12 +17,18 @@ class SpinnerHost {
   readonly className = signal('');
 }
 
+@Component({
+  imports: [UiSpinner],
+  template: `<ui-spinner class="mx-2" />`,
+})
+class StaticClassHost {}
+
 const renderSpinner = async () => {
   const result = await render(SpinnerHost);
   return {
     ...result,
     host: result.componentRef.instance as SpinnerHost,
-    // The spinner's own view: the one that holds the svg.
+    // The spinner: its host, which holds the svg.
     spinner: () => result.container.querySelector('svg')!.parentElement!,
     svgContent: () =>
       result.container.querySelector('svg')!.getAttribute('content'),
@@ -73,6 +79,15 @@ describe('UiSpinner', () => {
     host.className.set('ml-2');
     await waitForUpdate();
     expect(spinner().getAttribute('class')).toBe('ml-2');
+  });
+
+  // A class on a component lands on its host too (issue #181): the host is
+  // the spinner, so the margin applies once.
+  it('puts a static class on one element, the spinner', async () => {
+    const { container } = await render(StaticClassHost);
+    expect([...container.querySelectorAll('.mx-2')]).toEqual([
+      container.querySelector('svg')!.parentElement,
+    ]);
   });
 
   it('turns continuously', async () => {

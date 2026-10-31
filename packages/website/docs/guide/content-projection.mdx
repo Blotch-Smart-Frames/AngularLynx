@@ -6,7 +6,7 @@
 
 1. **Projected text must land inside a `<text>`.** Lynx renders text only inside `<text>`. If your component takes text, put the `<ng-content>` inside a `<text>`. Text projected into a `<view>` doesn't appear.
 2. **A nested `<text>` is inline.** When the parent passes `<text>` elements into your `<text>`, they flow as styled runs, like `<span>`s.
-3. **The host element is a real box.** `<app-card>` becomes a plain, unstyled `<view>` in the layout, between the parent and your template. When the component must fill or stretch, put the classes on the host with `host: { class: '…' }`.
+3. **The host element is a real box.** `<app-card>` becomes a plain, unstyled `<view>` in the layout, between the parent and your template. Every static attribute the parent writes on it, such as `class="mb-2"`, lands on that host. When the component must fill or stretch, or takes a `class`, style the host rather than a view inside it: see [Make the host the element](#make-the-host-the-element).
 
 ## Project into a view
 
@@ -86,6 +86,37 @@ export class Panel {}
 
 - **Put sizing on the host.** A `flex-1` on an inner view does nothing if the unstyled host around it sizes to its content.
 - **A component with no content needs host sizing most.** With nothing inside, its host can collapse to zero size, hiding everything in it.
+
+## Make the host the element
+
+```typescript title="src/app/card-title.ts"
+import { Component, computed, input } from '@angular/core';
+import { registerHostElement } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-card-title',
+  host: { '[class]': 'classes()' },
+  template: '<ng-content />',
+})
+export class CardTitle {
+  readonly userClass = input('', { alias: 'class' });
+  protected readonly classes = computed(
+    () => `text-lg font-semibold text-foreground ${this.userClass()}`,
+  );
+}
+
+// The host is a <text>, not a view around one.
+registerHostElement(CardTitle, 'text');
+```
+
+```angular-html
+<app-card-title class="mb-2">My card title</app-card-title>
+```
+
+- **One element, styled once.** Angular puts `class="mb-2"` on the host whatever the component does with it. With the classes bound on the host, and no `<text>` inside, the margin applies once.
+- **`registerHostElement()` picks the element.** A host is a `<view>` otherwise; text has to be in a `<text>`. See [`registerHostElement()`](/api/angular-lynx/elements#registerhostelement).
+- **A view-shaped component needs only the `host` binding.** Its host is already a view: bind the classes there and drop the wrapper `<view>`.
+- **Other attributes land on the host too.** If a `placeholder` input is meant for an inner `<input>`, remove the host's copy with `host: { '[attr.placeholder]': 'null' }`.
 
 ## Named slots
 

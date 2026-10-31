@@ -15,7 +15,11 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxAccessibilitySettings,
+  registerHostElement,
+} from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -173,6 +177,14 @@ const METRICS: Readonly<Record<GlassDesign, AlertMetrics>> = {
   selector: 'ui-alert-dialog',
   imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiGlass],
   encapsulation: ViewEncapsulation.None,
+  // The dialog's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-alert-dialog>, and
+  // the host sits in the page's layout where the dialog is written, so a
+  // `class="p-8"` padded the page there too. The host drops it. The parts
+  // below are their host elements for the same reason: a class on a part
+  // lands on its host anyway, so a view or text inside it styled with the
+  // same class applied it twice.
+  host: { '[attr.class]': 'null' },
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <!-- The overlay sizes only its first child, to the screen. With the
@@ -473,13 +485,9 @@ const injectAlertLook = () => {
 
 @Component({
   selector: 'ui-alert-dialog-header',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiAlertDialogHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -507,9 +515,9 @@ export class UiAlertDialogHeader {
 
 @Component({
   selector: 'ui-alert-dialog-title',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiAlertDialogTitle {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -534,11 +542,13 @@ export class UiAlertDialogTitle {
   );
 }
 
+registerHostElement(UiAlertDialogTitle, 'text');
+
 @Component({
   selector: 'ui-alert-dialog-description',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiAlertDialogDescription {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -562,6 +572,8 @@ export class UiAlertDialogDescription {
   );
 }
 
+registerHostElement(UiAlertDialogDescription, 'text');
+
 /**
  * `UiAlertDialogAction`, for `contentChildren()`. A call rather than the
  * class itself: the query's metadata keeps an arrow function of its own for
@@ -574,16 +586,15 @@ const actionType = () => UiAlertDialogAction;
   selector: 'ui-alert-dialog-footer',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: { '[class]': 'containerClass()' },
   template: `
-    <view [class]="containerClass()">
-      @if (separated()) {
-        <!-- The hairline over the buttons of Apple's alerts before iOS 26. -->
-        <view
-          class="h-[0.5px] w-full bg-glass-foreground opacity-20 absolute left-0 top-0"
-        ></view>
-      }
-      <ng-content />
-    </view>
+    @if (separated()) {
+      <!-- The hairline over the buttons of Apple's alerts before iOS 26. -->
+      <view
+        class="h-[0.5px] w-full bg-glass-foreground opacity-20 absolute left-0 top-0"
+      ></view>
+    }
+    <ng-content />
   `,
 })
 export class UiAlertDialogFooter {

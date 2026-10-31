@@ -33,6 +33,15 @@ describe('UiEmptyState', () => {
     expect(container.querySelector('.py-6')).toBeTruthy();
   });
 
+  // Static attributes land on a component's host too (issue #181): the
+  // padding once, on the empty state itself, and the title only as its text.
+  it('puts its class on one element, and its title only in its text', async () => {
+    const { container, queryAllByTitle } = await render(EmptyStateHost);
+    expect(container.querySelectorAll('.py-6')).toHaveLength(1);
+    expect(container.querySelector('.py-6')?.classList).toContain('flex-col');
+    expect(queryAllByTitle('No results')).toEqual([]);
+  });
+
   it('adds the icon and description when they are set', async () => {
     const { componentRef, container, getByText } = await render(EmptyStateHost);
     const host = componentRef.instance as EmptyStateHost;

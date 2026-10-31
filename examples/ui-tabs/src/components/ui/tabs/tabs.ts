@@ -1,6 +1,6 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   computed,
   contentChildren,
@@ -10,7 +10,6 @@ import {
   model,
   output,
   signal,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 
@@ -53,13 +52,16 @@ const tabsListHost = (): SegmentedHost => inject(UiTabsList).segmentedHost;
 
 @Component({
   selector: 'ui-tabs',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  // Each part is its host element, styled through `host`, rather than a view
+  // inside the host. Angular gives a component's host every static attribute
+  // the app writes on it, so `<ui-tabs-content class="p-4">` puts `p-4` on
+  // the host whatever the component does with its `class` input: with a
+  // styled view inside as well, the padding applied twice. On the host alone,
+  // a class also acts where the part sits in its parent's layout (`flex-1`,
+  // margins).
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiTabs {
   readonly value = model<string>('');
@@ -139,7 +141,7 @@ export class UiTabs {
  */
 @Component({
   selector: 'ui-tabs-list',
-  imports: [LYNX_ELEMENTS, UiSegmentedIndicator],
+  imports: [UiSegmentedIndicator],
   encapsulation: ViewEncapsulation.None,
   providers: [
     UiSegmentedControl,
@@ -147,17 +149,16 @@ export class UiTabs {
   ],
   // The mouse leaving the row lets go of an indicator dragged in the web
   // preview, where a drag gets no touchcancel.
+  host: {
+    'accessibility-traits': 'tabbar',
+    '[class]': 'listClass()',
+    '(bindmouseleave)': 'segmentedControl.cancel()',
+  },
   template: `
-    <view
-      accessibility-traits="tabbar"
-      [class]="listClass()"
-      (bindmouseleave)="segmentedControl.cancel()"
-    >
-      @if (segmentedControl.underlay()) {
-        <ui-segmented-indicator />
-      }
-      <ng-content />
-    </view>
+    @if (segmentedControl.underlay()) {
+      <ui-segmented-indicator />
+    }
+    <ng-content />
   `,
 })
 export class UiTabsList {
@@ -208,9 +209,19 @@ export class UiTabsList {
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   host: {
-    '[class]': 'hostClass()',
+    '[class]': 'triggerClass()',
+    '[style]': 'triggerStyle()',
     // The segmented control places its indicator from each tab's width.
     '(bindlayoutchange)': 'measure($event)',
+    '(bindtap)': 'onTap()',
+    '(bindtouchstart)': 'press($event)',
+    '(bindtouchmove)': 'move($event)',
+    '(bindtouchend)': 'release()',
+    '(bindtouchcancel)': 'cancel()',
+    '(bindmousedown)': 'press($event)',
+    '(bindmousemove)': 'move($event)',
+    '(bindmouseup)': 'release()',
+    '(bindmouseleave)': 'leave()',
   },
   // The label is the accessibility element, a button (a tab, in the list's
   // tab bar) named by its own text. A view would need a label of its own.
@@ -218,30 +229,15 @@ export class UiTabsList {
   // lynxAccessibilityTraits adds the trait to `button` on iOS, and leaves
   // Android, which reads one trait, with `button`.
   template: `
-    <view
-      #trigger
-      [class]="triggerClass()"
-      [style]="triggerStyle()"
-      (bindtap)="onTap()"
-      (bindtouchstart)="press($event)"
-      (bindtouchmove)="move($event)"
-      (bindtouchend)="release()"
-      (bindtouchcancel)="cancel()"
-      (bindmousedown)="press($event)"
-      (bindmousemove)="move($event)"
-      (bindmouseup)="release()"
-      (bindmouseleave)="leave()"
-    >
-      @if (stateLayerClass(); as stateLayer) {
-        <view [class]="stateLayer"></view>
-      }
-      <text
-        accessibility-traits="button"
-        [lynxAccessibilityTraits]="{ selected: isActive() }"
-        [class]="textClass()"
-        ><ng-content
-      /></text>
-    </view>
+    @if (stateLayerClass(); as stateLayer) {
+      <view [class]="stateLayer"></view>
+    }
+    <text
+      accessibility-traits="button"
+      [lynxAccessibilityTraits]="{ selected: isActive() }"
+      [class]="textClass()"
+      ><ng-content
+    /></text>
   `,
 })
 export class UiTabsTrigger {
@@ -254,7 +250,7 @@ export class UiTabsTrigger {
   readonly triggerValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly triggerRef = viewChild.required<ElementRef>('trigger');
+  readonly #host = inject(ElementRef).nativeElement;
   #anim?: AnimationHandle;
   #previousActive?: boolean;
 
@@ -269,16 +265,6 @@ export class UiTabsTrigger {
   readonly #segment = computed(() =>
     this.#segmented?.enabled() ? this.#segmented : null,
   );
-
-  /**
-   * A segment's host is the track's flex item, an equal share of it. Angular
-   * puts the app's static `class` on the host as well as on the trigger, so
-   * the two are merged here: `class="flex-[2]"` makes a wider tab.
-   */
-  protected readonly hostClass = computed(() => {
-    const segment = this.#segment();
-    return segment ? cn(segment.segmentHostClass, this.userClass()) : '';
-  });
 
   protected readonly triggerStyle = computed(
     () => this.#segment()?.segmentStyle(this.triggerValue()) ?? null,
@@ -296,7 +282,7 @@ export class UiTabsTrigger {
   /** Animates the trigger's background when it's selected or deselected. */
   protected readonly animatingSelection = effect(() => {
     const active = this.isActive();
-    const el = this.triggerRef().nativeElement;
+    const el = this.#host;
     const wasActive = this.#previousActive;
     this.#previousActive = active;
     // The first run only records the starting state, and only a change has
@@ -348,8 +334,12 @@ export class UiTabsTrigger {
     const segment = this.#segment();
     if (segment) {
       // The list provides the segmented control, so a segment is in one.
+      // The host is both the segment's slot in the track (an equal share of
+      // it) and its own view, so an app's `class="flex-[2]"` makes a wider
+      // tab.
       const place = segmentPlace(this.#list!.triggers(), this);
       return cn(
+        segment.segmentHostClass,
         segment.segmentClass(this.triggerValue(), place),
         this.userClass(),
       );
@@ -420,34 +410,28 @@ export class UiTabsTrigger {
 
 @Component({
   selector: 'ui-tabs-content',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   host: {
+    '[class]': 'contentClass()',
     // Hide the WHOLE host when inactive so it reserves no layout space.
     //
     // The caller writes `class="flex-1"` on <ui-tabs-content>, and Angular
     // applies that to the host element. All three content hosts live as siblings
     // inside the flex-col <ui-tabs>, so three flex-1 hosts each grow to fill a
     // third of the available height — pushing each panel lower than the last
-    // (the "Done tab starts at the very bottom" stacking). Hiding only the inner
-    // view doesn't help: the flex-1 host still claims its third.
+    // (the "Done tab starts at the very bottom" stacking).
     //
     // Toggling the host's own `display` collapses inactive hosts to 0×0 (Lynx
     // `display: none`) so they claim no space at all, while the single active
-    // host keeps its flex-1 and fills the tabs area. `flex-direction: column`
-    // makes the host lay its content out vertically when shown.
+    // host keeps its flex-1 and fills the tabs area. The inline display wins
+    // over the `flex` in the host's classes.
     '[style.display]': "isActive() ? 'flex' : 'none'",
-    '[style.flexDirection]': "'column'",
     // A hidden panel's 0×0 doesn't stop iOS drawing its text: each line is
     // laid out at 0×0 too, and its glyphs spill out from the panel's corner,
     // over the tab list. Clipping the hidden host to its 0×0 hides them.
     '[style.overflow]': "isActive() ? null : 'hidden'",
   },
-  template: `
-    <view #content [class]="contentClass()">
-      <ng-content />
-    </view>
-  `,
+  template: '<ng-content />',
 })
 export class UiTabsContent {
   readonly #tabs = inject(UiTabs);
@@ -456,7 +440,7 @@ export class UiTabsContent {
   readonly contentValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly contentRef = viewChild.required<ElementRef>('content');
+  readonly #host = inject(ElementRef).nativeElement;
   #anim?: AnimationHandle;
   #isFirstRender = true;
 
@@ -476,8 +460,7 @@ export class UiTabsContent {
    * that vanished and never came back. Keeping every panel mounted and only
    * toggling `display` never destroys or re-parents anything: inactive panels
    * collapse to 0×0 (Lynx `display: none`) so they take no space, and the
-   * active one simply reappears in place. That also means the content view
-   * always exists, so `contentRef` is required.
+   * active one simply reappears in place.
    */
   protected readonly revealing = effect(() => {
     if (!this.isActive()) return;
@@ -485,7 +468,7 @@ export class UiTabsContent {
     setTimeout(() => {
       // Under Reduce Motion the panel just appears.
       if (this.#settings.reduceMotion()) return;
-      const el = this.contentRef().nativeElement;
+      const el = this.#host;
 
       this.#anim?.cancel();
 
@@ -504,8 +487,8 @@ export class UiTabsContent {
     }, 0);
   });
 
-  // Visibility is controlled at the host (see `host` block); the inner view is
-  // always a normal flex column that fills the shown host.
+  // Visibility is controlled by the host's inline display (see `host`); its
+  // classes make it a flex column when shown.
   protected readonly contentClass = computed(() =>
     cn('mt-2 flex-col flex', this.userClass()),
   );

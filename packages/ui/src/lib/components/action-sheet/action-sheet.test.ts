@@ -160,7 +160,7 @@ const renderSheet = async () => {
     overlay: container.querySelector('overlay')!,
     backdrop: container.querySelector('overlay > view')!,
     panel: container.querySelector('[accessibility-exclusive-focus]')!,
-    // A button's pressable tile: the view around its label.
+    // A button's pressable tile, its host: the view around its label.
     button: (label: string) => result.getByText(label).parentElement!,
   };
 };
@@ -243,6 +243,23 @@ describe('UiActionSheet', () => {
     expect(panel.classList).toContain('pb-8');
     expect(panel.classList).not.toContain('pb-6');
     expect(panel.classList).toContain('px-4');
+  });
+
+  // Angular gives a component's host every static attribute written on it
+  // (issue #181), so each class also styled a host: the sheet's in the page,
+  // where it is written, and each part's around its own view.
+  it('puts each class on one element: the panel, or the part', async () => {
+    const { container, panel, button, getByText } = await renderSheet();
+    expect([...container.querySelectorAll('.pb-8')]).toEqual([panel]);
+    expect([...container.querySelectorAll('.py-4')]).toEqual([
+      getByText('Pick').parentElement,
+    ]);
+    expect([...container.querySelectorAll('.bg-muted')]).toEqual([
+      button('Delete'),
+    ]);
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([
+      button('Cancel'),
+    ]);
   });
 
   it('fades the backdrop in and slides the panel up when opened', async () => {

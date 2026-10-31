@@ -19,6 +19,16 @@ import { cn } from '../../utils/cn';
   // the attribute when false, and a missing attribute means Lynx's default: on,
   // for `bounces` and `scroll-bar-enable`. So neither could be turned off.
   // (`[attr.x]` would send the string "false" instead.)
+  //
+  // The host is the list's box, and the <list> fills it. Angular gives a
+  // component's host every static attribute the app writes on it, so a class
+  // on <ui-list> lands on the host whatever the component does with its
+  // `class` input: on the <list> as well, a margin or padding applied twice.
+  // `grow` fills a box with a height of its own (`h-64`, `flex-1`), and a
+  // box without one takes the list's, which `height` sets: the list keeps
+  // its own height as its flex basis. Not `h-full`: a percentage height
+  // doesn't reliably resolve on a flex item in Lynx.
+  host: { '[class]': 'hostClass()' },
   template: `
     <list
       [attr.list-type]="listType()"
@@ -32,7 +42,7 @@ import { cn } from '../../utils/cn';
       [attr.preload-buffer-count]="preloadBufferCount()"
       [attr.lower-threshold-item-count]="lowerThresholdItemCount()"
       [attr.upper-threshold-item-count]="upperThresholdItemCount()"
-      [class]="listClass()"
+      class="grow"
       [style]="listStyle()"
       (bindscrolltoupper)="scrolledToStart.emit()"
       (bindscrolltolower)="scrolledToEnd.emit()"
@@ -61,7 +71,9 @@ export class UiList {
   readonly scrolledToStart = output<void>();
   readonly scrolledToEnd = output<void>();
 
-  protected readonly listClass = computed(() => cn('w-full', this.userClass()));
+  protected readonly hostClass = computed(() =>
+    cn('w-full flex-col flex', this.userClass()),
+  );
 
   // Explicit height is required for list to scroll in Lynx. The gaps go here
   // too: they're CSS properties that Lynx's list reads from its style, and as

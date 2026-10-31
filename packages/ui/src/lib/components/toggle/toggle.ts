@@ -1,16 +1,16 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   booleanAttribute,
   computed,
   contentChildren,
+  effect,
   inject,
   input,
   model,
-  viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { type BaseLynxElement, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 import {
@@ -86,23 +86,25 @@ const itemIconColor = () => {
 
 @Component({
   selector: 'ui-toggle',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view
-      #container
-      [class]="containerClass()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <ng-content />
-    </view>
-  `,
+  // Each toggle, group and item is its host element, styled through `host`,
+  // rather than a view inside the host. Angular gives a component's host
+  // every static attribute the app writes on it, so `<ui-toggle
+  // class="px-6">` puts `px-6` on the host whatever the component does with
+  // its `class` input: with a styled view inside as well, the padding applied
+  // twice. On the host alone, a class also acts where the toggle sits in its
+  // parent's layout, and an item's accessibility-label names one element.
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ng-content />',
 })
 export class UiToggle {
   readonly pressed = model(false);
@@ -111,7 +113,7 @@ export class UiToggle {
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -126,18 +128,18 @@ export class UiToggle {
   protected onPressStart(): void {
     if (this.disabled()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressEnd(): void {
     if (this.disabled()) return;
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {
@@ -163,7 +165,7 @@ export class UiToggle {
  */
 @Component({
   selector: 'ui-toggle-group',
-  imports: [LYNX_ELEMENTS, UiSegmentedIndicator],
+  imports: [UiSegmentedIndicator],
   encapsulation: ViewEncapsulation.None,
   providers: [
     UiSegmentedControl,
@@ -171,16 +173,15 @@ export class UiToggle {
   ],
   // The mouse leaving the row lets go of an indicator dragged in the web
   // preview, where a drag gets no touchcancel.
+  host: {
+    '[class]': 'containerClass()',
+    '(bindmouseleave)': 'segmentedControl.cancel()',
+  },
   template: `
-    <view
-      [class]="containerClass()"
-      (bindmouseleave)="segmentedControl.cancel()"
-    >
-      @if (segmentedControl.underlay()) {
-        <ui-segmented-indicator />
-      }
-      <ng-content />
-    </view>
+    @if (segmentedControl.underlay()) {
+      <ui-segmented-indicator />
+    }
+    <ng-content />
   `,
 })
 export class UiToggleGroup implements SegmentedHost {
@@ -254,38 +255,32 @@ export class UiToggleGroup implements SegmentedHost {
   encapsulation: ViewEncapsulation.None,
   // Icons projected into the item inject this: they're declared inside it.
   providers: [{ provide: UI_ICON_COLOR, useFactory: itemIconColor }],
+  // The accessibility attributes are attribute bindings: a property binding
+  // on a component's host is checked against the DOM schema, which has no
+  // `accessibility-label`.
   host: {
-    '[class]': 'hostClass()',
+    '[class]': 'containerClass()',
+    '[style]': 'containerStyle()',
+    '[attr.accessibility-element]': "accessibilityLabel() ? 'true' : null",
+    '[attr.accessibility-traits]': "accessibilityLabel() ? 'button' : null",
+    '[attr.accessibility-label]': 'accessibilityLabel() || null',
     // The segmented control places its indicator from each item's width.
     '(bindlayoutchange)': 'measure($event)',
+    '(bindtouchstart)': 'onPressStart($event)',
+    '(bindtouchmove)': 'onPressMove($event)',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart($event)',
+    '(bindmousemove)': 'onPressMove($event)',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPointerLeave()',
+    '(bindtap)': 'onTap()',
   },
   template: `
-    <!-- A labeled item is selected to a screen reader while pressed, which
-         iOS reads. lynxAccessibilityTraits adds the trait to button on iOS,
-         and leaves Android, which reads one trait, with button. -->
-    <view
-      #container
-      [class]="containerClass()"
-      [style]="containerStyle()"
-      [attr.accessibility-element]="accessibilityLabel() ? 'true' : null"
-      [attr.accessibility-traits]="accessibilityLabel() ? 'button' : null"
-      [attr.accessibility-label]="accessibilityLabel() || null"
-      [lynxAccessibilityTraits]="{ selected: selectedTrait() }"
-      (bindtouchstart)="onPressStart($event)"
-      (bindtouchmove)="onPressMove($event)"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart($event)"
-      (bindmousemove)="onPressMove($event)"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPointerLeave()"
-      (bindtap)="onTap()"
-    >
-      @if (stateLayerClass(); as stateLayer) {
-        <view [class]="stateLayer"></view>
-      }
-      <ng-content />
-    </view>
+    @if (stateLayerClass(); as stateLayer) {
+      <view [class]="stateLayer"></view>
+    }
+    <ng-content />
   `,
 })
 export class UiToggleGroupItem {
@@ -303,17 +298,27 @@ export class UiToggleGroupItem {
   });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  // Required: always in the template.
-  readonly containerRef = viewChild.required<ElementRef>('container');
+  readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly isSelected = computed(() =>
     this.#group.isSelected(this.itemValue()),
   );
-  /** Only a labeled item is an accessibility element to be `selected`. */
-  protected readonly selectedTrait = computed(
-    () => !!this.accessibilityLabel() && this.isSelected(),
-  );
+
+  /**
+   * A labeled item is `selected` to a screen reader while pressed, which iOS
+   * reads. The trait is added to the host's own `button`, as
+   * lynxAccessibilityTraits does on an element in a template: on iOS it
+   * reads `button,selected`, and Android, which reads one trait, keeps
+   * `button`. Only a labeled item is an accessibility element to be
+   * `selected`.
+   */
+  protected readonly markingSelected = effect(() => {
+    this.#host.setAccessibilityTrait(
+      'selected',
+      !!this.accessibilityLabel() && this.isSelected(),
+    );
+  });
 
   /** Whether the item is a segment of a segmented control. */
   readonly #segment = computed(() => this.#segmented.enabled());
@@ -327,20 +332,13 @@ export class UiToggleGroupItem {
     this.#segment() ? this.#segmented.iconColor(this.itemValue()) : undefined,
   );
 
-  /**
-   * A segment's host is the track's flex item, an equal share of it. Angular
-   * puts the app's static `class` on the host as well as on the item, so the
-   * two are merged here: `class="flex-[2]"` makes a wider segment.
-   */
-  protected readonly hostClass = computed(() =>
-    this.#segment()
-      ? cn(this.#segmented.segmentHostClass, this.userClass())
-      : '',
-  );
-
   protected readonly containerClass = computed(() => {
     if (this.#segment()) {
+      // The host is both the segment's slot in the track (an equal share of
+      // it) and its own view, so an app's `class="flex-[2]"` makes a wider
+      // segment.
       return cn(
+        this.#segmented.segmentHostClass,
         this.#segmented.segmentClass(
           this.itemValue(),
           segmentPlace(this.#group.items(), this),
@@ -384,7 +382,7 @@ export class UiToggleGroupItem {
       return;
     }
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef().nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressMove(event: unknown): void {
@@ -398,7 +396,7 @@ export class UiToggleGroupItem {
       return;
     }
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
@@ -428,6 +426,6 @@ export class UiToggleGroupItem {
 
   #release(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef().nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 }

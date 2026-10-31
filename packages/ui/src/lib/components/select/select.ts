@@ -25,17 +25,34 @@ const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" f
  */
 const selectItem = () => UiSelectItem;
 
+/**
+ * The host is the field: its border, fill and height, and the app's class.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-select> lands on the host whatever the component
+ * does: passed on to a field inside it as well, a margin applied twice. The
+ * trigger that takes the tap fills the field, beside the sheet rather than
+ * around it, so a tap in the sheet doesn't bubble to the trigger. The
+ * placeholder is shown in a text, so the host drops its copy: an element with
+ * the attribute is a match for getByPlaceholderText.
+ */
 @Component({
   selector: 'ui-select',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiBottomSheet],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'hostClass()',
+    '[attr.placeholder]': 'null',
+  },
   // `sheetOpen` is bound both ways by hand rather than with `[(open)]`: for a
   // two-way binding Angular also compiles a fallback that assigns the field,
   // which never runs for a signal and so shows as an uncovered branch in an
   // app's coverage report.
   template: `
-    <view [class]="triggerClass()" (bindtap)="toggle()">
+    <!-- The trigger fills the field: the row stretches it to its height. -->
+    <view
+      class="flex-1 flex-row items-center px-3 py-2 flex justify-between"
+      (bindtap)="toggle()"
+    >
       <text [class]="valueTextClass()">{{ displayText() }}</text>
       <svg [attr.content]="chevronSvg" style="width: 16px; height: 16px;" />
     </view>
@@ -73,9 +90,9 @@ export class UiSelect {
     return item?.label() ?? val;
   });
 
-  protected readonly triggerClass = computed(() =>
+  protected readonly hostClass = computed(() =>
     cn(
-      'h-10 flex-row items-center rounded-md border border-input bg-background px-3 py-2 flex justify-between',
+      'h-10 flex-row rounded-md border border-input bg-background flex',
       this.disabled() && 'opacity-50',
       this.userClass(),
     ),
@@ -110,18 +127,22 @@ export class UiSelect {
   }
 }
 
+/**
+ * Each item is its host, styled through `host` (see UiSelect).
+ */
 @Component({
   selector: 'ui-select-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtap)': 'onTap()',
+  },
   template: `
-    <view [class]="containerClass()" (bindtap)="onTap()">
-      <text [class]="labelClass()">{{ label() }}</text>
-      @if (isSelected()) {
-        <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
-      }
-    </view>
+    <text [class]="labelClass()">{{ label() }}</text>
+    @if (isSelected()) {
+      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+    }
   `,
 })
 export class UiSelectItem {

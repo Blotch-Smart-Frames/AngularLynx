@@ -24,6 +24,12 @@ class AlertHost {
   readonly description = signal('');
 }
 
+@Component({
+  imports: [UiAlert],
+  template: `<ui-alert title="Heads up" class="mt-2" />`,
+})
+class StaticAttributesHost {}
+
 const renderAlert = async () => {
   const result = await render(AlertHost);
   return {
@@ -51,6 +57,17 @@ describe('UiAlert', () => {
     expect(getByText('Message')).toBeTruthy();
     expect(alert().querySelectorAll('text')).toHaveLength(1);
     expect(alert().classList).toContain('mt-2');
+  });
+
+  // Static attributes land on a component's host too (issue #181): the
+  // margin once, on the alert itself, and the title only as its text.
+  it('puts its class on one element, and its title only in its text', async () => {
+    const { container, getByText, queryAllByTitle } =
+      await render(StaticAttributesHost);
+    expect([...container.querySelectorAll('.mt-2')]).toEqual([
+      getByText('Heads up').parentElement,
+    ]);
+    expect(queryAllByTitle('Heads up')).toEqual([]);
   });
 
   it('renders the title and description when set', async () => {

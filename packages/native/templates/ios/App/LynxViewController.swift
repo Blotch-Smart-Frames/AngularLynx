@@ -13,8 +13,11 @@ final class LynxViewController: UIViewController {
 
     let fetcher = BundleResourceFetcher.shared
     let screenSize = UIScreen.main.bounds.size
+    // The shell's native modules, which the runtime's services call.
+    let config = LynxConfig(provider: LynxEnv.sharedInstance().config.templateProvider)
+    config.register(WebAuthModule.self)
     let lynxView = LynxView { builder in
-      builder.config = LynxConfig(provider: LynxEnv.sharedInstance().config.templateProvider)
+      builder.config = config
       builder.screenSize = screenSize
       builder.fontScale = 1.0
       builder.enableGenericResourceFetcher = .true

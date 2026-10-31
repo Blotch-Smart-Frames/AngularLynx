@@ -205,6 +205,7 @@ export default defineConfig({
         { sectionHeaderText: 'App Features' },
         { text: 'Routing', link: '/guide/routing' },
         { text: 'HTTP Requests', link: '/guide/http' },
+        { text: 'Sign In with a Web Page', link: '/guide/web-sign-in' },
         { text: '@defer', link: '/guide/defer' },
         { text: 'Visibility Detection', link: '/guide/exposure' },
         { text: 'Internationalization', link: '/guide/i18n' },
@@ -275,6 +276,10 @@ export default defineConfig({
             {
               text: 'LynxNativeModule',
               link: '/api/angular-lynx/native-module',
+            },
+            {
+              text: 'LynxWebAuthSession',
+              link: '/api/angular-lynx/web-auth-session',
             },
           ],
         },

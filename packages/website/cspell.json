@@ -5,6 +5,7 @@
     "globaldata",
     "initdata",
     "lynxsdk",
+    "PKCE",
     "simctl",
     "xcrun",
     "xelement",

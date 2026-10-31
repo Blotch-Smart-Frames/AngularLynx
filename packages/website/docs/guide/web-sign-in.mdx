@@ -1,0 +1,99 @@
+# Sign in with a web page
+
+Google, GitHub, Apple and most other sign-in providers use OAuth or OpenID Connect: the person signs in on the provider's web page, which then redirects back with a code or a token. Lynx has no popups or redirects, so that page can't run inside your app. `LynxWebAuthSession` opens it in the phone's own sign-in sheet instead, and gives you the URL the page redirects back to.
+
+## Open the sign-in page
+
+```typescript title="src/app/sign-in.ts"
+import { Component, inject, signal } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  LynxWebAuthSession,
+  WebAuthSessionError,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-sign-in',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="signIn()">
+      <text>Continue with Example</text>
+    </view>
+    @if (error()) {
+      <text>{{ error() }}</text>
+    }
+  `,
+})
+export class SignIn {
+  readonly #webAuth = inject(LynxWebAuthSession);
+  readonly error = signal('');
+
+  async signIn(): Promise<void> {
+    const state = Math.random().toString(36).slice(2);
+    try {
+      const callback = await this.#webAuth.start({
+        url: `https://example.com/oauth/authorize?client_id=my-app&redirect_uri=com.example.myapp:/oauth&state=${state}`,
+        callbackScheme: 'com.example.myapp',
+      });
+      const params = new URL(callback).searchParams;
+      if (params.get('state') !== state) throw new Error('Unexpected sign-in');
+      // Exchange params.get('code') for a token, as your provider documents.
+    } catch (error) {
+      if (error instanceof WebAuthSessionError && error.code === 'canceled') {
+        return;
+      }
+      this.error.set("Couldn't sign in. Please try again.");
+    }
+  }
+}
+```
+
+- **`url`** is the page that starts the sign-in, usually the provider's authorize URL.
+- **`callbackScheme`** is your app's own URL scheme. The session ends when the page redirects to any URL on it, such as `com.example.myapp:/oauth?code=…`, and `start()` resolves with that whole URL, query and fragment included.
+- **Check a `state` you made up yourself.** Send a random one with the request and make sure the same one comes back, as above. It's how you know the redirect answers your own request, not one someone else started. For a code your app exchanges itself, also use PKCE where your provider supports it.
+
+## Set up the callback scheme
+
+Pick a scheme only your app uses. Reversing your app ID, such as `com.example.myapp`, keeps it unique. Register the redirect URL with your provider exactly as you send it in `redirect_uri`.
+
+On Android, the redirect opens your app like any other link, so add the scheme to `deepLinkSchemes` in angular.json:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "appId": "com.example.myapp",
+    "deepLinkSchemes": ["com.example.myapp"]
+  }
+}
+```
+
+iOS needs nothing: the sign-in sheet catches the redirect itself.
+
+## What people see
+
+- **On iOS,** the system first asks whether your app may use the site to sign in. The sheet is Safari's, and shares its sign-ins, so someone already signed in to the provider in Safari only has to confirm.
+- **On Android,** the page opens in a Custom Tab, Chrome's in-app browser, which shares Chrome's sign-ins. The redirect brings your app back and closes the tab.
+
+To sign in without the browser's sign-ins, and leave nothing signed in afterwards, pass `ephemeral: true`. It only applies on iOS: Custom Tabs always share Chrome's.
+
+## When it doesn't return a URL
+
+`start()` rejects with a `WebAuthSessionError`, whose `code` says why:
+
+| `code`        | When                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `canceled`    | The person closed the sheet or the tab, or, on iOS, said no when asked                                        |
+| `unavailable` | The host can't open a sign-in sheet: only the apps `ng build --platform` makes can                            |
+| `failed`      | The page couldn't be opened, for example because a sign-in is already open or the phone has no browser at all |
+
+Treat `canceled` as the person changing their mind, not as an error.
+
+:::info Lynx Explorer and the web preview
+Lynx Explorer and the [web preview](/guide/glossary#web-preview) don't have the sign-in sheet, so there `start()` rejects with `unavailable`. Try sign-in on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#sign-in-with-a-web-page).
+:::
+
+## Related
+
+- [`LynxWebAuthSession` reference](/api/angular-lynx/web-auth-session)
+- [Run on iOS and Android](/guide/native-apps)

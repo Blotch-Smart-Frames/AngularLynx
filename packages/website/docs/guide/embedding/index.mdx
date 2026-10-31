@@ -137,6 +137,15 @@ class AngularLynxShell(context: Context, param: Any?) : LynxModule(context, para
 
 Without the module, the back button does whatever your app already does. iOS has no back button, so there's nothing to connect there.
 
+## Sign in with a web page
+
+[`LynxWebAuthSession`](/guide/web-sign-in) calls a native module named `AngularLynxWebAuth`. To use it in your own app, register one with a `start(request, callback)` method:
+
+- **`request`** holds `url`, `callbackScheme` and `ephemeral`.
+- **`callback`** takes one map: `{ url }`, the whole URL the page redirected to on `callbackScheme`, or `{ error, message }`, where `error` is `canceled` or `failed`. Call it once per `start()`.
+
+The apps `ng build --platform` makes have one you can copy: `WebAuthModule.swift`, which uses `ASWebAuthenticationSession`, and `WebAuthModule.kt`, which opens a Custom Tab and has the activity catch the redirect as a deep link. Both are in AngularLynx's `packages/native/templates`. Without the module, `start()` rejects with `unavailable`.
+
 ## Pass data from your app
 
 Your native app can send values into Angular, such as a signed-in user's ID or the app's theme. See [Pass data from your native app](/guide/embedding/host-data).

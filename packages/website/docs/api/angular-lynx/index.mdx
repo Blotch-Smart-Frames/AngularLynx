@@ -82,30 +82,31 @@ import {
 
 ## Services
 
-| Export                                                                                                                                 | Kind               | Reference                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------- |
-| `LynxAccessibility`                                                                                                                    | Service            | [Accessibility](/api/angular-lynx/accessibility)           |
-| `LynxAccessibilitySettings`                                                                                                            | Service            | [Accessibility](/api/angular-lynx/accessibility)           |
-| `LynxTheme`                                                                                                                            | Service            | [Theme](/api/angular-lynx/theme)                           |
-| `LynxSafeArea`                                                                                                                         | Service            | [Safe area](/api/angular-lynx/safe-area)                   |
-| `SAFE_AREA_INSET_TOP`, `SAFE_AREA_INSET_BOTTOM`, `SAFE_AREA_INSET_LEFT`, `SAFE_AREA_INSET_RIGHT`                                       | Constants          | [Safe area](/api/angular-lynx/safe-area)                   |
-| `LynxLocale`                                                                                                                           | Service            | [Locale](/api/angular-lynx/locale)                         |
-| `LynxFont`                                                                                                                             | Service            | [Fonts](/api/angular-lynx/fonts)                           |
-| `LynxFontFaceConfig`, `LynxFontStatus`, `LynxFontEntry`                                                                                | Types              | [Fonts](/api/angular-lynx/fonts)                           |
-| `LynxPortal`, `PortalRef`                                                                                                              | Service, class     | [Portal](/api/angular-lynx/portal)                         |
-| `PortalConfig`                                                                                                                         | Type               | [Portal](/api/angular-lynx/portal)                         |
-| `LynxExposure`, `LynxGlobalExposure`                                                                                                   | Directive, service | [Exposure](/api/angular-lynx/exposure)                     |
-| `ExposureEventDetail`, `GlobalExposureEvent`, `ObserverFrameRateOptions`                                                               | Types              | [Exposure](/api/angular-lynx/exposure)                     |
-| `LynxInitData`, `LynxGlobalData`                                                                                                       | Services           | [Host data](/api/angular-lynx/host-data)                   |
-| `InitData`, `InitDataRaw`, `GlobalData`, `DataProcessorDefinition`                                                                     | Types              | [Host data](/api/angular-lynx/host-data)                   |
-| `LynxSessionStorage`, `SessionStorageSubscription`                                                                                     | Service, type      | [Session storage](/api/angular-lynx/session-storage)       |
-| `LynxTextMeasure`                                                                                                                      | Service            | [Text measure](/api/angular-lynx/text-measure)             |
-| `LynxSystemInfo`                                                                                                                       | Service            | [System info](/api/angular-lynx/system-info)               |
-| `LynxResourcePrefetch`                                                                                                                 | Service            | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
-| `PrefetchRequest`, `PrefetchPriority`, `PrefetchCacheTarget`, `PrefetchResultDetail`, `ResourcePrefetchResult`, `ResourcePrefetchData` | Types              | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
-| `LynxNativeModule`, `NativeModuleMap`, `NativeModuleProxy`                                                                             | Service, types     | [Native module](/api/angular-lynx/native-module)           |
-| `LynxErrorHandler`, `LynxLogger`                                                                                                       | Services           | [Errors and logging](/api/angular-lynx/errors-and-logging) |
-| `LynxDevTools`, `LynxPerformance`, `DevToolsStats`, `LynxTraceOptions`                                                                 | Services, types    | [DevTools](/api/angular-lynx/devtools)                     |
+| Export                                                                                                                                 | Kind                  | Reference                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------- |
+| `LynxAccessibility`                                                                                                                    | Service               | [Accessibility](/api/angular-lynx/accessibility)           |
+| `LynxAccessibilitySettings`                                                                                                            | Service               | [Accessibility](/api/angular-lynx/accessibility)           |
+| `LynxTheme`                                                                                                                            | Service               | [Theme](/api/angular-lynx/theme)                           |
+| `LynxSafeArea`                                                                                                                         | Service               | [Safe area](/api/angular-lynx/safe-area)                   |
+| `SAFE_AREA_INSET_TOP`, `SAFE_AREA_INSET_BOTTOM`, `SAFE_AREA_INSET_LEFT`, `SAFE_AREA_INSET_RIGHT`                                       | Constants             | [Safe area](/api/angular-lynx/safe-area)                   |
+| `LynxLocale`                                                                                                                           | Service               | [Locale](/api/angular-lynx/locale)                         |
+| `LynxFont`                                                                                                                             | Service               | [Fonts](/api/angular-lynx/fonts)                           |
+| `LynxFontFaceConfig`, `LynxFontStatus`, `LynxFontEntry`                                                                                | Types                 | [Fonts](/api/angular-lynx/fonts)                           |
+| `LynxPortal`, `PortalRef`                                                                                                              | Service, class        | [Portal](/api/angular-lynx/portal)                         |
+| `PortalConfig`                                                                                                                         | Type                  | [Portal](/api/angular-lynx/portal)                         |
+| `LynxExposure`, `LynxGlobalExposure`                                                                                                   | Directive, service    | [Exposure](/api/angular-lynx/exposure)                     |
+| `ExposureEventDetail`, `GlobalExposureEvent`, `ObserverFrameRateOptions`                                                               | Types                 | [Exposure](/api/angular-lynx/exposure)                     |
+| `LynxInitData`, `LynxGlobalData`                                                                                                       | Services              | [Host data](/api/angular-lynx/host-data)                   |
+| `InitData`, `InitDataRaw`, `GlobalData`, `DataProcessorDefinition`                                                                     | Types                 | [Host data](/api/angular-lynx/host-data)                   |
+| `LynxSessionStorage`, `SessionStorageSubscription`                                                                                     | Service, type         | [Session storage](/api/angular-lynx/session-storage)       |
+| `LynxTextMeasure`                                                                                                                      | Service               | [Text measure](/api/angular-lynx/text-measure)             |
+| `LynxSystemInfo`                                                                                                                       | Service               | [System info](/api/angular-lynx/system-info)               |
+| `LynxResourcePrefetch`                                                                                                                 | Service               | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
+| `PrefetchRequest`, `PrefetchPriority`, `PrefetchCacheTarget`, `PrefetchResultDetail`, `ResourcePrefetchResult`, `ResourcePrefetchData` | Types                 | [Resource prefetch](/api/angular-lynx/resource-prefetch)   |
+| `LynxNativeModule`, `NativeModuleMap`, `NativeModuleProxy`                                                                             | Service, types        | [Native module](/api/angular-lynx/native-module)           |
+| `LynxWebAuthSession`, `WebAuthSessionError`, `WebAuthSessionOptions`, `WebAuthSessionErrorCode`                                        | Service, class, types | [Web auth session](/api/angular-lynx/web-auth-session)     |
+| `LynxErrorHandler`, `LynxLogger`                                                                                                       | Services              | [Errors and logging](/api/angular-lynx/errors-and-logging) |
+| `LynxDevTools`, `LynxPerformance`, `DevToolsStats`, `LynxTraceOptions`                                                                 | Services, types       | [DevTools](/api/angular-lynx/devtools)                     |
 
 ## Schematics
 

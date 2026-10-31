@@ -4847,6 +4847,22 @@ Style rules in the `<lynx-view>`'s shadow root (its `injectStyleRules`): `x-text
 
 ---
 
+## A `<textarea>` on Lynx for Web ignores `z-index`, so a positioned sibling covers it and it can't be typed in
+
+### What you'd expect (parity with `<input>` and iOS)
+
+`<textarea style="position: relative; z-index: 1">` stacks above an absolutely positioned sibling drawn before it, as an `<input>` with the same style does, and takes the clicks.
+
+### What Lynx does
+
+web-elements draws `<textarea>` as `<x-textarea>`, a `display: contents` host around a `<form>` (also `display: contents`) and the browser's `<textarea>`. A host without a box ignores `position` and `z-index`. For `<x-input>`, web-elements forwards `z-index` to both parts (`x-input::part(input), x-input::part(form) { z-index: inherit }`), and the inner field, a flex item of the element's parent, stacks by it. `<x-textarea>`'s rules leave `z-index` out (as of web-elements 0.12.16), so the inner `<textarea>` stayed at `auto` under any positioned sibling. ui-textarea's focus ring is a transparent `position: absolute` view before the textarea, so it took every click: no textarea on the Dolan docs could be focused or typed in, while ui-input, built the same way, worked.
+
+### The fix
+
+The runtime gives each `<textarea>` it creates on the web a `<style>` in its own shadow root, `form, textarea { z-index: inherit }` (`lynx-document/web-textarea.ts`, called from `createInputElement`), as web-glass does for `<blur-view>`'s layout. Both parts need it, because `inherit` passes through the `<form>`. It's in the runtime rather than the docs site's `native-parity.ts` because it breaks typing in any app's web preview, not just the docs' look. It only inherits, so a textarea without a `z-index` is unchanged.
+
+---
+
 ## `<input>`, `<overlay>`, `<svg>` and `<blur-view>` render nothing unless the host app registers XElement
 
 ### What you'd expect (web)

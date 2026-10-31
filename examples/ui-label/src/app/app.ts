@@ -13,34 +13,36 @@ import { UiLabel } from '../components/ui/label';
           A text label for form fields with support for disabled state styling.
         </text>
 
-        <!-- Normal label -->
+        <!-- Normal label, over a plain <input>: the field has no label of
+             its own (ui-input would draw one from its label input). -->
         <view class="flex-col gap-2 flex">
           <ui-label>Email Address</ui-label>
-          <view
-            class="h-10 rounded-md border border-input bg-background px-3 py-2"
-          >
-            <text class="text-sm text-muted-foreground">you@example.com</text>
-          </view>
+          <input
+            type="text"
+            placeholder="you@example.com"
+            class="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+          />
         </view>
 
         <!-- Label with custom styling -->
         <view class="flex-col gap-2 flex">
           <ui-label class="text-base">Full Name</ui-label>
-          <view
-            class="h-10 rounded-md border border-input bg-background px-3 py-2"
-          >
-            <text class="text-sm text-muted-foreground">John Doe</text>
-          </view>
+          <input
+            type="text"
+            placeholder="John Doe"
+            class="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+          />
         </view>
 
         <!-- Disabled label -->
         <view class="flex-col gap-2 flex">
           <ui-label [disabled]="true">Account ID (read-only)</ui-label>
-          <view
-            class="h-10 rounded-md border border-input bg-background px-3 py-2 opacity-50"
-          >
-            <text class="text-sm text-muted-foreground">ACC-12345</text>
-          </view>
+          <input
+            type="text"
+            value="ACC-12345"
+            [disabled]="true"
+            class="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground opacity-50"
+          />
         </view>
 
         <!-- Multiple labels in a row -->

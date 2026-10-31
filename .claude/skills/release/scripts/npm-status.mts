@@ -2,12 +2,12 @@
 // whether it's the `latest` dist-tag, and whether npm serves its tarball.
 // Exits 0 only when all three hold for every package:
 //
-//   node .claude/skills/release/scripts/npm-status.mts 22.2.5
+//   node .claude/skills/release/scripts/npm-status.mts <version>
 //
-// The tarball is checked as well as the version because npm lists a new
-// version before its CDN serves the tarball. `wait-for-npm.ts` only waits for
-// the listing, so the post-publish check can still get a 404 for a `.tgz`, as
-// it did for 22.2.5.
+// The tarball is checked as well as the version because npm can list a new
+// version before its CDN serves the tarball, and an install in that gap gets a
+// 404 for the `.tgz`. The package list comes from `packages.ts`, so the script
+// follows it as packages are added.
 import { PUBLISHABLE_PACKAGES } from '../../../../packages/release/src/packages.ts';
 
 type Packument = {

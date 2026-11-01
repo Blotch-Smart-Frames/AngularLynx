@@ -1,6 +1,6 @@
 {
   "name": "@blotch/angular-lynx-native",
-  "version": "22.2.6",
+  "version": "22.2.7",
   "description": "Builds AngularLynx apps into iOS and Android binaries",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {

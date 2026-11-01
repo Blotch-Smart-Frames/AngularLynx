@@ -37,6 +37,7 @@ Lynx has `fetch` only on the background thread, and Angular runs on the main thr
 - **`withCredentials` does nothing**: the host app's HTTP stack owns cookies.
 - **Tests:** `provideHttpClient()` + `provideHttpClientTesting()` in `render()`'s providers, as in any Angular app.
 - **Host app** needs Lynx's HTTP service (Lynx Explorer and `ng build --platform` apps have it).
+- **Lynx's own `fetch` in a `backgroundFn()`:** up to Lynx 4.2, its `Headers` matches names by exact spelling. Write `Content-Type` that way: Lynx misses `content-type` and adds a second, `text/plain;charset=UTF-8` one, which iOS may send instead of yours and Android sends as well. Read response headers in both cases, since iOS capitalizes their names and Android lowercases them. The main thread's `fetch`, XHR and `HttpClient` do both for you.
 
 ## Sign in through a web page
 

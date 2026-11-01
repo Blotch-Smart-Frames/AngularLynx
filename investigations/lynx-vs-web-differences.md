@@ -883,7 +883,7 @@ Modern browsers support ES2023+ (optional chaining `?.`, nullish coalescing `??`
 - **Main thread (PrimJS):** ES2019 (ES10) — supports `Array.flat()`, `Object.fromEntries()`, optional catch binding; no optional chaining or nullish coalescing.
 - **Background thread:** ES2015 (ES6) — `let`/`const`, arrow functions, classes, template literals, `Promise`, destructuring; nothing newer.
 
-Transpilation via the Rsbuild/RSpeedy build pipeline handles most of this automatically, but be aware that polyfills for newer built-ins (e.g., `Array.prototype.at`, `structuredClone`) may still be needed and are not guaranteed by the runtime.
+Transpilation via the Rsbuild/RSpeedy build pipeline handles the syntax, and the build's preEntry adds the newer built-in methods up to ES2026 (see "The main thread lacks newer built-ins" below). What only the engine can provide, such as the RegExp `d` and `v` flags, is still missing, and so is `structuredClone`.
 
 ---
 
@@ -905,7 +905,7 @@ This is especially nasty because the throw happens **inside Angular change detec
 
 ### The fix
 
-Use an ES2019-safe equivalent:
+The build's preEntry now adds `replaceAll`, with the other ES2021–ES2026 methods (see "The main thread lacks newer built-ins" below), so the call works. Before it did, the fix was an ES2019-safe equivalent:
 
 ```ts
 // WRONG — ES2021, throws "not a function" on the Lynx main thread
@@ -5065,19 +5065,28 @@ Found when TanStack Charts' SVG output (`stroke-dasharray="none"` on every bar) 
 
 ---
 
-## The main thread lacks newer built-ins: `.at()`, `findLast`, `replaceAll`, and `Intl`
+## The main thread lacks newer built-ins: `.at()`, `toSorted()`, `Object.groupBy()`, the Set methods, `Intl`
 
 ### What you'd expect (web)
 
-Every current browser has the ES2021–2023 methods `Array.prototype.at`, `String.prototype.at`, `%TypedArray%.prototype.at`, `Array.prototype.findLast`/`findLastIndex` and `String.prototype.replaceAll`, and `Intl`, so `(1234.5).toLocaleString()` is `"1,234.5"`.
+Every current browser has the ES2021–ES2026 built-ins: `.at()` on arrays, strings and typed arrays, `findLast`, `replaceAll`, `toSorted`/`toReversed`/`toSpliced`/`with`, `Object.groupBy`/`Map.groupBy`, `Promise.withResolvers`/`Promise.try`, the Set methods (`union`, `intersection` and the rest), iterator helpers, `RegExp.escape`, Uint8Array base64 and hex, and more. And `Intl`, so `(1234.5).toLocaleString()` is `"1,234.5"`.
 
 ### What Lynx does
 
-PrimJS on the main thread (iOS and Android, Lynx 4.1) has none of them; a probe there also found no `performance.now` or `structuredClone`. Libraries that call them throw "not a function" on the main thread, which renders the first screen: TanStack Charts' scene compiler uses `.at(-1)` and `replaceAll`. Without `Intl`, `toLocaleString()` is plain `String(n)`, so a value shown with it reads `21.232271760105846`.
+A probe ran in Lynx Explorer 4.1, on the iOS Simulator and an Android emulator, from a preEntry module ahead of the build's polyfills, and checked 76 built-ins on each thread. Both platforms gave the same results.
+
+- **The main thread** has ES2019 and some later additions: `matchAll`, `Promise.allSettled`/`Promise.any`, `AggregateError`, `WeakRef`, `FinalizationRegistry`, `BigInt`, `globalThis`, and `findLast` on typed arrays. It lacks `replaceAll`, `.at()`, `Object.hasOwn`, `findLast`/`findLastIndex` on arrays, change array by copy (arrays and typed arrays), `Object.groupBy`/`Map.groupBy`, `Promise.withResolvers`, `isWellFormed`/`toWellFormed`, `Array.fromAsync`, the Set methods, `Iterator` and its helpers, `Promise.try`, `RegExp.escape`, `Math.f16round`, `Math.sumPrecise`, `Error.isError`, Uint8Array base64 and hex, and `Map#getOrInsert`. It also lacks what only the engine can provide: Error's `cause` option, the RegExp `d` and `v` flags, resizable ArrayBuffers and `transfer()`, `Atomics.waitAsync` and `Float16Array`. Of the web APIs, there's no `structuredClone`, `atob`/`btoa`, `crypto`, `performance`, `Intl`, `EventTarget`, `Event` or `Blob`.
+- **The background thread** lacks the same, plus `Promise.allSettled` and `Promise.any`.
+
+Libraries that call them throw "not a function", often at module load, where it blanks the app before it renders, while every spec passes in Node. TanStack Charts' scene compiler uses `.at(-1)` and `replaceAll`; an app's shared constants package ran `table.at(-1)` and `Object.keys(…).toSorted(…)` at module level (issue #177). Without `Intl`, `toLocaleString()` is plain `String(n)`, so a value shown with it reads `21.232271760105846`.
 
 ### The fix
 
-The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`, which already filled `Object.hasOwn` and `Promise.allSettled`) defines the missing methods, non-enumerable like the built-ins, and, only when `Intl` is missing, a `Number.prototype.toLocaleString` that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`). Apps that need real localization still load an Intl polyfill.
+The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization still load an Intl polyfill.
+
+It's written out rather than taken from core-js: `core-js/es` adds about 400 kB, and also replaces `Promise`, `Set` or `RegExp#exec` wherever core-js judges the engine's own lacking. These add about 22 kB minified (7 kB gzipped) to each thread's bundle. The engine-level features above stay missing.
+
+To check them on the devices, an app ran one case per method on both threads and compared each result with Node's own built-ins: all 51 matched on iOS and Android, once `Array.fromAsync` stopped using `for await` for sync iterables (see the next section).
 
 ---
 
@@ -5740,3 +5749,21 @@ Found on the iOS 27 Simulator with the shell's `glass-effect-id`: a glass button
 ### The fix
 
 `LynxElement.setAttribute()` holds a removal back until the flush: it records the name, and `LynxRendererFactory2.end()` (and the settle flush) sends the removals that are left with `processPendingAttributeRemovals()`, after element removals and before `__FlushElementTree()`. A value set for the attribute before then takes the removal back, so it reaches Lynx as a plain update.
+
+---
+
+## `for await` over a sync iterable doesn't await its values on the main thread
+
+### What you'd expect (web)
+
+`for await (const value of [Promise.resolve(2)]) { … }` awaits each value of a sync iterable, as the spec's async-from-sync iterator does, so `value` is `2`.
+
+### What Lynx does
+
+On the main thread (iOS and Android, Lynx 4.1), `value` is the promise itself. The build leaves `for await` as it is there, since it's part of the main thread's ES2019 target, so this is PrimJS's own behavior. On the background thread, whose ES2015 target compiles `for await` into helpers that await each value, the same loop gives `2`. Async iterables, such as async generators, work on both threads.
+
+Found when the device check of the polyfills above showed `Array.fromAsync([1, Promise.resolve(2)])` resolving to `[1, <promise>]` on the main thread only.
+
+### The fix
+
+Await each value yourself: `for (const promise of promises) { const value = await promise; … }`, or `await Promise.all(promises)`. The polyfilled `Array.fromAsync` (`es-builtins.js`) does the former for sync iterables, and `for...of` still closes the iterator when a value rejects, as the spec does.

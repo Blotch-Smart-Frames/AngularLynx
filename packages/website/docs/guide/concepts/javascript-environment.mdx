@@ -12,6 +12,7 @@ Lynx doesn't provide some APIs that Angular relies on. AngularLynx adds them bef
 - `URL`, `URLSearchParams`
 - `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`
 - `TextEncoder`, `TextDecoder` (UTF-8 only), `DOMException`
+- Newer built-in methods, up to ES2026, such as `array.at()`, `toSorted()` and `Object.groupBy()`: see [JavaScript language level](#javascript-language-level)
 
 It also adds small `document`, `window` and `navigator` objects, with only what Angular reads internally. They are not a DOM: `document.querySelector()` always returns `null`.
 
@@ -62,17 +63,37 @@ Angular's own pipes, such as `DatePipe` and `CurrencyPipe`, use Angular's locale
 
 Write modern TypeScript as usual. The build compiles new syntax, such as `?.` and `??`, down to what Lynx supports.
 
-The build doesn't add missing built-in methods. The main thread supports ES2019, so these newer methods are missing there:
+Lynx's engine has fewer built-in methods than a browser: the main thread supports ES2019 and some later additions. AngularLynx adds the rest, up to ES2026, before your app starts. So your code and libraries written for current browsers can call them:
 
-| Missing method               | Use instead                                           |
-| ---------------------------- | ----------------------------------------------------- |
-| `'a-b'.replaceAll('-', ' ')` | `'a-b'.split('-').join(' ')`, or `replace(/-/g, ' ')` |
-| `array.at(-1)`               | `array[array.length - 1]`                             |
-| `structuredClone(value)`     | `JSON.parse(JSON.stringify(value))` for plain data    |
-| `Object.hasOwn(obj, key)`    | `Object.prototype.hasOwnProperty.call(obj, key)`      |
+```ts
+const last = items.at(-1);
+const cheapest = items.toSorted((a, b) => a.price - b.price);
+const byStatus = Object.groupBy(orders, (order) => order.status);
+const shared = new Set(mine).intersection(new Set(theirs));
+const firstTen = users
+  .values()
+  .filter((user) => user.active)
+  .take(10)
+  .toArray();
+```
+
+These are still missing, because they need the engine itself, or they're browser APIs rather than JavaScript:
+
+| Missing                                                          | Use instead                                        |
+| ---------------------------------------------------------------- | -------------------------------------------------- |
+| The `d` and `v` regular expression flags                         | Patterns without them                              |
+| `new Error(message, { cause })`                                  | Set `error.cause` after creating the error         |
+| `JSON.rawJSON()`, and `context.source` in a `JSON.parse` reviver | Not available                                      |
+| Resizable `ArrayBuffer`s, `transfer()`, `Float16Array`           | Not available                                      |
+| `structuredClone(value)`                                         | `JSON.parse(JSON.stringify(value))` for plain data |
+| `atob()`, `btoa()`                                               | `Uint8Array.fromBase64()`, `bytes.toBase64()`      |
 
 :::warning A missing method can blank the whole screen
-If a template or a `computed()` calls a missing method, the render fails, and nothing on screen updates. The error is "not a function". It's not about signals.
+If a template or a `computed()` calls something that's missing, the render fails, and nothing on screen updates. The error is "not a function" or "is not defined". It's not about signals.
+:::
+
+:::warning `for await` over an array of promises
+On the main thread, `for await (const value of promises)` gives you each promise, not its value. Await each one yourself, or use `await Promise.all(promises)`. Async generators work as usual.
 :::
 
 ## Related

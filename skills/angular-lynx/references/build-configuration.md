@@ -72,6 +72,7 @@ The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`
 - **`optimization` picks a production or development build.** There is no `mode` option: as in Angular, a build that optimizes scripts is a production build, and one that doesn't is a development build with dev mode on.
 - **`budgets` are enforced** against the Lynx bundle (each entry's bundle is its own `initial` budget) and each component stylesheet, with `ng build`'s messages. A Lynx bundle holds Angular twice (once per thread), so a new app's bundle is about 1 MB; `ng add` raises `ng new`'s `initial` budget to 2 MB / 5 MB.
 - **`ng build --watch`** rebuilds the bundle on every change. It can't be combined with `--platform`.
+- **`fileReplacements`** swap files as on the web, in everything the build makes: both threads' code, the web preview and the `--platform` apps. Paths are relative to the workspace and can lead out of it (`../shared/environment.prod.ts`). `ng generate environments` warns that the build target uses a third-party builder; the replacement it adds works.
 
 Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default the build target's `development` configuration), so `ng serve -c production` serves a production build. It also takes `--port` and `--host`, and prints the QR code Lynx Explorer scans.
 
@@ -168,6 +169,18 @@ npm run demo              # Runs ng serve for the kitchen-sink-app
 ```
 
 `@blotch/angular-lynx-build` is the only build dependency, as `@angular/build` is for a web app. It brings RSpeedy, the QR code plugin, `@blotch/rsbuild-plugin-angular-lynx` and `@blotch/angular-lynx-native` (the iOS and Android app builder) with it.
+
+On pnpm 11 and later, `pnpm install` and `pnpm add` fail with `ERR_PNPM_IGNORED_BUILDS` while any dependency's install script is neither allowed nor denied. The four scripts in an Angular app belong to Angular's build tools, which come with prebuilt binaries, so `ng add` denies them in a pnpm app's `pnpm-workspace.yaml` (pnpm 10.26 and later). An app set up before `ng add` did this needs the same entries, or `pnpm approve-builds`:
+
+```yaml
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  lmdb: false
+  msgpackr-extract: false
+```
+
+In a pnpm monorepo, they go in the workspace root's `pnpm-workspace.yaml`: `ng add` prints them rather than giving the app a file of its own, which would split it into a separate workspace.
 
 ## Tailwind CSS
 

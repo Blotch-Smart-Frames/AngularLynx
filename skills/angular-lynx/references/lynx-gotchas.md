@@ -68,6 +68,23 @@ Lynx treats min-content as 0px. Set explicit `min-width`/`min-height` to prevent
 
 Once a parent is hidden, all descendants stay hidden regardless of their `visibility` value.
 
+### A component's host is a real `<view>`
+
+Every component's host element is a `<view>` in the layout, between the parent and the component's template. Angular writes each static attribute written on a component onto its host, whether or not it's an input, so a component that also passes its `class` input to an inner view applies it twice: `<app-card-content class="pt-6">` gets double padding. A component can't stop that, since a template's static classes outrank a host `[class]` binding. Make the host the element instead: bind the classes on it and drop the wrapper view. A component that shows text can make its host a `<text>` with `registerHostElement()`, from `@blotch/angular-lynx`:
+
+```typescript
+@Component({
+  selector: 'app-title',
+  host: { class: 'text-2xl font-semibold' },
+  template: '<ng-content />',
+})
+export class AppTitle {}
+
+registerHostElement(AppTitle, 'text'); // or 'image', 'scroll-view', 'svg', 'blur-view'
+```
+
+Content projected into a `<text>` host follows `<text>`'s rules: raw text, and nested `<text>`. An attribute meant for an inner element, such as an `<input>`'s `placeholder`, also lands on the host; remove it there with `host: { '[attr.placeholder]': 'null' }`. A bound `[class]="x"` doesn't have the problem: when the component has a `class` input, Angular gives the binding to the input only.
+
 ---
 
 ## Text

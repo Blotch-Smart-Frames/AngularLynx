@@ -1,6 +1,6 @@
 {
   "name": "@blotch/dolan",
-  "version": "22.2.6",
+  "version": "22.2.7",
   "description": "CLI for adding @blotch/ui components to your project",
   "homepage": "https://github.com/Blotch-Smart-Frames/AngularLynx#readme",
   "bugs": {

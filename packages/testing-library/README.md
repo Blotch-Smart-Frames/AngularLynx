@@ -384,7 +384,7 @@ AngularLynx runs **entirely on the Lynx main thread** (`__MAIN_THREAD__ = true`)
 | Vue Lynx        | Dual: background thread runs Vue, main thread applies PAPI ops   |
 | **AngularLynx** | **Single: Angular renderer calls PAPI directly on main thread**  |
 
-In tests, this means there is no thread switching — `__MAIN_THREAD__` stays `true` throughout, and PAPI functions (`__CreatePage`, `__CreateView`, etc.) are always available.
+In tests, this means Angular stays on the main thread, where PAPI functions (`__CreatePage`, `__CreateView`, etc.) are always available. The environment switches to the background thread only to answer a call AngularLynx sends there, such as `LynxLocalStorage`'s, and switches straight back.
 
 ### The render pipeline
 

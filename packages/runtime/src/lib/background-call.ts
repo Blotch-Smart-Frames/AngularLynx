@@ -389,6 +389,7 @@ export const callOnBackground = <N extends HandlerName>(
       return Promise.reject(error);
     }
   }
+  listenInTestingEnvironment();
   return new Promise((resolve, reject) => {
     const id = nextCallId++;
     pending.set(id, { resolve, reject });
@@ -482,65 +483,121 @@ export const unsubscribeSessionStorageFromMainThread = (
   callOnBackground('unsubscribeSessionStorage', relayId).catch(() => {});
 };
 
+/** The contexts the relay listens on, so none gets its listeners twice. */
+const relayContexts = new WeakSet<object>();
+
+/**
+ * Main thread: listens on getJSContext() for the background thread's replies,
+ * its session storage changes and its calls to this thread's functions.
+ */
+const listenOnMainThread = (context: any): void => {
+  if (relayContexts.has(context)) return;
+  relayContexts.add(context);
+  context.addEventListener(RESULT_EVENT, (event: { data: string }) => {
+    const { id, value, error } = JSON.parse(event.data);
+    const call = pending.get(id);
+    if (!call) return;
+    pending.delete(id);
+    if (error !== undefined) {
+      call.reject(new Error(error));
+    } else {
+      call.resolve(value);
+    }
+  });
+  context.addEventListener(SESSION_STORAGE_EVENT, (event: { data: string }) => {
+    const { relayId, value } = JSON.parse(event.data);
+    sessionStorageListeners.get(relayId)?.(value);
+  });
+  context.addEventListener(CALLBACK_EVENT, (event: { data: string }) => {
+    const { id, args } = JSON.parse(event.data);
+    relayedFunctions.get(id)?.(...args);
+  });
+};
+
+/**
+ * Background thread: listens on getCoreContext() for the main thread's calls,
+ * runs them and replies.
+ */
+const listenOnBackgroundThread = (context: any): void => {
+  if (relayContexts.has(context)) return;
+  relayContexts.add(context);
+  context.addEventListener(CALL_EVENT, async (event: { data: string }) => {
+    const { id, name, args } = JSON.parse(event.data);
+    let reply: { id: number; value?: unknown; error?: string };
+    try {
+      const handler = handlers[name as HandlerName] as
+        | ((...a: unknown[]) => unknown)
+        | undefined;
+      if (!handler) throw new Error(`Unknown background call: ${name}`);
+      reply = { id, value: await handler(...args) };
+    } catch (error) {
+      reply = {
+        id,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    let data: string;
+    try {
+      data = JSON.stringify(reply);
+    } catch (error) {
+      // A result JSON can't copy, such as a circular object from a native
+      // module, would otherwise leave the caller waiting forever.
+      // JSON.stringify only throws TypeErrors.
+      data = JSON.stringify({
+        id,
+        error: `The result of ${name} can't be sent to the main thread: ${(error as Error).message}`,
+      });
+    }
+    context.dispatchEvent({ type: RESULT_EVENT, data });
+  });
+};
+
+/**
+ * Installs both halves of the relay in the testing library's environment,
+ * when this runs in it.
+ *
+ * On a device, each thread loads its own copy of the runtime, which installs
+ * that thread's half (installRelay() below). The testing library's
+ * environment (`@lynx-js/testing-environment`, which it keeps in the
+ * `lynxTestingEnv` global) emulates both threads in one realm instead,
+ * switching the globals between them, and the runtime loads there once, on
+ * the main thread. Nothing on the background thread answered, so the calls
+ * never settled, and a spec reading LynxSecureStorage timed out (issue #198).
+ * The environment's reset() after each test gives both threads new contexts,
+ * so this runs before each call rather than once.
+ *
+ * The copy making the call installs it, rather than the testing library's
+ * setup, because only that copy can settle the call, and the setup can load
+ * a different copy from the one the specs import. The environment's
+ * background thread has no `NativeModules` and few of Lynx's APIs, so it
+ * answers as a host without them does: storage keeps its values in memory,
+ * and a call to a missing module or API rejects.
+ */
+const listenInTestingEnvironment = (): void => {
+  const env = (globalThis as any).lynxTestingEnv;
+  if (!env) return;
+  try {
+    listenOnMainThread((lynx as any).getJSContext());
+    listenOnBackgroundThread(
+      env.backgroundThread.globalThis.lynx.getCoreContext(),
+    );
+  } catch {
+    // Not the environment's shape after all. The call goes out as it would
+    // anywhere else.
+  }
+};
+
+/**
+ * Installs this thread's half of the relay, as the runtime loads.
+ */
 const installRelay = (): void => {
   if (typeof lynx === 'undefined') return;
   try {
     if (isMainThread()) {
-      const context = (lynx as any).getJSContext();
-      context.addEventListener(RESULT_EVENT, (event: { data: string }) => {
-        const { id, value, error } = JSON.parse(event.data);
-        const call = pending.get(id);
-        if (!call) return;
-        pending.delete(id);
-        if (error !== undefined) {
-          call.reject(new Error(error));
-        } else {
-          call.resolve(value);
-        }
-      });
-      context.addEventListener(
-        SESSION_STORAGE_EVENT,
-        (event: { data: string }) => {
-          const { relayId, value } = JSON.parse(event.data);
-          sessionStorageListeners.get(relayId)?.(value);
-        },
-      );
-      context.addEventListener(CALLBACK_EVENT, (event: { data: string }) => {
-        const { id, args } = JSON.parse(event.data);
-        relayedFunctions.get(id)?.(...args);
-      });
-      return;
+      listenOnMainThread((lynx as any).getJSContext());
+    } else {
+      listenOnBackgroundThread((lynx as any).getCoreContext());
     }
-    const context = (lynx as any).getCoreContext();
-    context.addEventListener(CALL_EVENT, async (event: { data: string }) => {
-      const { id, name, args } = JSON.parse(event.data);
-      let reply: { id: number; value?: unknown; error?: string };
-      try {
-        const handler = handlers[name as HandlerName] as
-          | ((...a: unknown[]) => unknown)
-          | undefined;
-        if (!handler) throw new Error(`Unknown background call: ${name}`);
-        reply = { id, value: await handler(...args) };
-      } catch (error) {
-        reply = {
-          id,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-      let data: string;
-      try {
-        data = JSON.stringify(reply);
-      } catch (error) {
-        // A result JSON can't copy, such as a circular object from a native
-        // module, would otherwise leave the caller waiting forever.
-        // JSON.stringify only throws TypeErrors.
-        data = JSON.stringify({
-          id,
-          error: `The result of ${name} can't be sent to the main thread: ${(error as Error).message}`,
-        });
-      }
-      context.dispatchEvent({ type: RESULT_EVENT, data });
-    });
   } catch {
     // The thread contexts may be missing outside a real Lynx host. Calls from
     // the main thread then reject in callOnBackground().

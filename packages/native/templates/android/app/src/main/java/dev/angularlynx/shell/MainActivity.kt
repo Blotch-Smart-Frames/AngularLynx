@@ -82,6 +82,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             setGenericResourceFetcher(AssetGenericResourceFetcher(this@MainActivity))
             registerModule(ShellModule.NAME, ShellModule::class.java, this@MainActivity)
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
+            registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
+            registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
             // Lynx's core has no <input>, <overlay>, <svg>, <blur-view> etc.;
             // these come from XElement (see app/build.gradle.kts). Lynx
             // Explorer registers them the same way.

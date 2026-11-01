@@ -1,0 +1,79 @@
+# LynxLocalStorage and LynxSecureStorage
+
+Key-value stores that keep their values after the app closes: `LynxLocalStorage` in place of `localStorage`, and `LynxSecureStorage` for tokens and other secrets. `import { LynxLocalStorage, LynxSecureStorage } from '@blotch/angular-lynx';`
+
+[Keep data after the app closes](/guide/persistent-storage) shows them in use.
+
+## Usage
+
+```typescript
+const storage = inject(LynxSecureStorage);
+
+await storage.setItem('session', { userId: 'u1', refreshToken: 'r' });
+const session = await storage.getItem<Session>('session');
+await storage.removeItem('session');
+```
+
+## API
+
+### `LynxLocalStorage`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxLocalStorage {}
+```
+
+Keeps values in `UserDefaults` on iOS, `SharedPreferences` on Android and the page's `localStorage` on the web, where each key starts with `angular-lynx:`.
+
+### `LynxSecureStorage`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxSecureStorage {}
+```
+
+Has the same methods as `LynxLocalStorage`, and keeps values encrypted: in the Keychain on iOS, and on Android in `SharedPreferences`, each value encrypted with AES-GCM by a key the Android Keystore holds.
+
+- **On the phone only.** Values are readable once the phone has been unlocked after it starts. iOS restores them from a backup only to the same phone, and Android leaves them out of its backups.
+- **iOS keeps them when the app is deleted,** so a reinstalled app finds them again.
+- **On the web,** they're in the page's `localStorage`, where each key starts with `angular-lynx-secure:`. Browsers have no store for secrets, so they aren't encrypted there.
+
+Only the apps `ng build --platform` makes have the native modules behind these, `AngularLynxLocalStorage` and `AngularLynxSecureStorage`. Elsewhere, such as Lynx Explorer and unit tests, both services keep values in memory, so they last until the app closes.
+
+### `getItem()`
+
+```typescript
+getItem<T = unknown>(key: string): Promise<T | null>;
+```
+
+Resolves with the value stored under `key`, or `null` if there's none. A value that isn't JSON, such as a string your host app stored itself, comes back as that string.
+
+### `setItem()`
+
+```typescript
+setItem<T = unknown>(key: string, value: T): Promise<void>;
+```
+
+Stores `value` under `key` as JSON, and resolves once it's stored. Rejects with a `TypeError` for a value JSON has no text for, such as `undefined` or a function, and with the platform's error if it can't store it.
+
+### `removeItem()`
+
+```typescript
+removeItem(key: string): Promise<void>;
+```
+
+Removes the value stored under `key`. Resolves even if there was none.
+
+### `clear()`
+
+```typescript
+clear(): Promise<void>;
+```
+
+Removes every value in this store. The other store keeps its values, and on the web, so do the page's own `localStorage` keys.
+
+## Related
+
+- [Keep data after the app closes](/guide/persistent-storage)
+- [`LynxSessionStorage`](/api/angular-lynx/session-storage), for values shared between pages while the app runs
+- [Storage in the JavaScript environment](/guide/concepts/javascript-environment#storage)

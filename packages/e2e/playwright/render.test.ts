@@ -206,6 +206,28 @@ test('a swipe runs a pan and the fling after it', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// LynxLocalStorage and LynxSecureStorage keep their values in the page's
+// localStorage on the web, so a reload finds them (issue #178;
+// native/storage.yaml checks the app's own iOS and Android builds). The
+// storage page shows what both held when it opened, then stores "kept".
+test('local and secure storage keep their values after a reload', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await expect(page.getByText('Stored: none/none')).toBeVisible();
+
+  await page.reload();
+  await page.getByText('Open storage', { exact: true }).click();
+  await expect(page.getByText('Stored: kept/kept')).toBeVisible();
+
+  await page.getByText('Clear storage', { exact: true }).click();
+  await expect(page.getByText('Stored: none/none')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

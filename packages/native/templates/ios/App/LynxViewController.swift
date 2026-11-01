@@ -16,6 +16,8 @@ final class LynxViewController: UIViewController {
     // The shell's native modules, which the runtime's services call.
     let config = LynxConfig(provider: LynxEnv.sharedInstance().config.templateProvider)
     config.register(WebAuthModule.self)
+    config.register(LocalStorageModule.self)
+    config.register(SecureStorageModule.self)
     let lynxView = LynxView { builder in
       builder.config = config
       builder.screenSize = screenSize

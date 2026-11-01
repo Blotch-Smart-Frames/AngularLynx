@@ -38,6 +38,15 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 `NativeModules.AngularLynxWebAuth.start(request, callback)` (`WebAuthModule.kt`, behind the runtime's `LynxWebAuthSession`) opens `request.url` in a Custom Tab (`androidx.browser`). The page's redirect to `request.callbackScheme` comes back as a deep link: the activity is `singleTask`, so the intent reaches the open one in `onNewIntent`, which hands the URL to the callback, and starting it closes the Custom Tab above it. That's why the scheme has to be in the app's `deepLinkSchemes`. Android says nothing when a Custom Tab is closed, so the activity resuming with a session still open, after having gone behind the tab, means the person canceled. iOS's `WebAuthModule.swift` reports the same results through `ASWebAuthenticationSession`.
 
+## Storage
+
+`NativeModules.AngularLynxLocalStorage` and `NativeModules.AngularLynxSecureStorage` (`LocalStorageModule.kt` and `SecureStorageModule.kt`, behind the runtime's `LynxLocalStorage` and `LynxSecureStorage`) keep string values, which the runtime stores as JSON, each in a `SharedPreferences` file of its own. Each method calls back once with `{ value }`, `{}` or `{ error }`.
+
+- **Secure values are encrypted with AES-GCM** by a key the Android Keystore makes the first time and never lets out, with the value's key as the associated data. Android's `EncryptedSharedPreferences` did the same, but `androidx.security:security-crypto` is deprecated. The secure module works on one background thread shared by every LynxView, since the Keystore can be slow, so calls run in order.
+- **Auto Backup leaves out the secure file** (`res/xml/backup_rules.xml` up to Android 11, `data_extraction_rules.xml` from 12): the key can't leave the device, so a restored copy couldn't be decrypted. A value that won't decrypt anyway is removed and read as none.
+
+iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageModule.swift` the Keychain, readable after the first unlock and never moved to another device.
+
 ## Global props
 
 `MainActivity.globalProps()` sends what the runtime reads and Lynx has no API for (see the package README), again on every configuration change and accessibility setting change.

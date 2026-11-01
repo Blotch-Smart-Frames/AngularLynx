@@ -206,6 +206,10 @@ export default defineConfig({
         { text: 'Routing', link: '/guide/routing' },
         { text: 'HTTP Requests', link: '/guide/http' },
         { text: 'Sign In with a Web Page', link: '/guide/web-sign-in' },
+        {
+          text: 'Keep Data After the App Closes',
+          link: '/guide/persistent-storage',
+        },
         { text: '@defer', link: '/guide/defer' },
         { text: 'Visibility Detection', link: '/guide/exposure' },
         { text: 'Internationalization', link: '/guide/i18n' },
@@ -298,6 +302,10 @@ export default defineConfig({
             {
               text: 'LynxSessionStorage',
               link: '/api/angular-lynx/session-storage',
+            },
+            {
+              text: 'LynxLocalStorage, LynxSecureStorage',
+              link: '/api/angular-lynx/persistent-storage',
             },
             {
               text: 'LynxResourcePrefetch',
@@ -425,6 +433,7 @@ export default defineConfig({
         { sectionHeaderText: 'Data & State' },
         { text: 'Host Data', link: '/examples/data-flow' },
         { text: 'Session Storage', link: '/examples/session-storage' },
+        { text: 'Persistent Storage', link: '/examples/persistent-storage' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Platform' },
         { text: 'Defer Blocks', link: '/examples/defer' },

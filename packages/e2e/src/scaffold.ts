@@ -850,7 +850,7 @@ const useHelloInApp = (appDir: string) => {
 
 /**
  * Replaces the generated hello component with the counter fixture and adds
- * two lazy-loaded routes, for the checks in Layers 3 and 6.
+ * three lazy-loaded routes, for the checks in Layers 3 and 6.
  */
 const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
   if (tailwind) {
@@ -866,7 +866,7 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
       path.join(appDir, 'src/app/hello', file),
     );
   }
-  for (const file of ['lazy-route.ts', 'gestures.ts']) {
+  for (const file of ['lazy-route.ts', 'gestures.ts', 'storage.ts']) {
     copyFileSync(
       path.join(FIXTURES_DIR, file),
       path.join(appDir, 'src/app', file),
@@ -893,6 +893,10 @@ export const routes: Routes = [
   {
     path: 'gestures',
     loadComponent: () => import('./gestures').then((m) => m.GesturesRoute),
+  },
+  {
+    path: 'storage',
+    loadComponent: () => import('./storage').then((m) => m.StorageRoute),
   },
 ];
 `,

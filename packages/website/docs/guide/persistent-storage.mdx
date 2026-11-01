@@ -1,0 +1,154 @@
+# Keep data after the app closes
+
+Lynx has no `localStorage`. `LynxLocalStorage` takes its place: a key-value store whose values are still there the next time the app starts. For tokens and other secrets, `LynxSecureStorage` has the same methods and keeps its values encrypted by the phone.
+
+<Go example="persistent-storage" defaultFile="src/app/app.ts" />
+
+## Store and read a value
+
+```typescript title="src/app/settings.ts"
+import { Component, inject, signal } from '@angular/core';
+import { LYNX_ELEMENTS, LynxLocalStorage } from '@blotch/angular-lynx';
+
+type Units = 'metric' | 'imperial';
+
+@Component({
+  selector: 'app-settings',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="toggle()">
+      <text>Units: {{ units() }}</text>
+    </view>
+  `,
+})
+export class Settings {
+  readonly #storage = inject(LynxLocalStorage);
+  readonly units = signal<Units>('metric');
+
+  constructor() {
+    this.#storage.getItem<Units>('units').then((units) => {
+      if (units) this.units.set(units);
+    });
+  }
+
+  toggle(): void {
+    this.units.update((units) => (units === 'metric' ? 'imperial' : 'metric'));
+    void this.#storage.setItem('units', this.units());
+  }
+}
+```
+
+- **Every method returns a Promise.** `setItem()` resolves once the value is stored.
+- **Values are JSON:** objects, arrays, strings, numbers, booleans and `null`. They're stored as JSON text, so a `Date` comes back as a string, and a value JSON can't hold, such as `undefined` or a function, makes `setItem()` reject.
+- **`getItem()` resolves `null`** for a key that was never set, or was removed.
+- **`removeItem(key)`** removes one value and **`clear()`** removes them all. `clear()` on one store leaves the other alone.
+
+## Keep secrets in secure storage
+
+Use `LynxSecureStorage` for anything that would let someone act as the user, such as a session token or a refresh token:
+
+```typescript
+import { inject, Injectable } from '@angular/core';
+import { LynxSecureStorage } from '@blotch/angular-lynx';
+
+type Session = { userId: string; refreshToken: string };
+
+@Injectable({ providedIn: 'root' })
+export class SessionStore {
+  readonly #storage = inject(LynxSecureStorage);
+
+  save(session: Session): Promise<void> {
+    return this.#storage.setItem('session', session);
+  }
+
+  load(): Promise<Session | null> {
+    return this.#storage.getItem<Session>('session');
+  }
+
+  signOut(): Promise<void> {
+    return this.#storage.removeItem('session');
+  }
+}
+```
+
+## Where the values are kept
+
+|             | `LynxLocalStorage`        | `LynxSecureStorage`                                                             |
+| ----------- | ------------------------- | ------------------------------------------------------------------------------- |
+| **iOS**     | `UserDefaults`            | The Keychain                                                                    |
+| **Android** | `SharedPreferences`       | `SharedPreferences`, each value encrypted with a key the Android Keystore holds |
+| **Web**     | The page's `localStorage` | The page's `localStorage`: browsers have no store for secrets                   |
+
+- **iOS keeps Keychain items when the app is deleted.** Someone who deletes the app and installs it again is still signed in. To start them signed out, keep a flag in `LynxLocalStorage`, which deleting the app empties, and call `LynxSecureStorage.clear()` when it's missing.
+- **Secure values stay on the phone.** They're readable once the phone has been unlocked after it starts, and don't move to a new one: iOS restores them from a backup only to the same phone, and Android leaves them out of its backups.
+- **On the web,** keys start with `angular-lynx:` or `angular-lynx-secure:`, so `clear()` leaves the page's own keys alone. Secure values aren't encrypted there: like web sign-in libraries, which keep their tokens in `localStorage` or IndexedDB too, it relies on the browser keeping each site's storage to itself.
+
+:::info Lynx Explorer and tests
+Lynx Explorer has no storage for your app, so there both services keep values in memory: every method works, but the values are gone when the app closes. Unit tests do the same. Try storage that lasts on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#keep-data-after-the-app-closes).
+:::
+
+## Keep a Firebase sign-in
+
+Firebase Auth keeps who's signed in through a persistence. A browser's are `localStorage` and IndexedDB, which Lynx doesn't have, so without one of your own Firebase can only keep the session in memory, and people sign in again every time they open the app.
+
+Firebase's React Native persistence, `getReactNativePersistence()`, is only exported to React Native builds, so a Lynx build can't import it. This class does what it does, over `LynxSecureStorage`:
+
+```typescript title="src/app/firebase-persistence.ts"
+import type { Persistence } from 'firebase/auth';
+import type { LynxSecureStorage } from '@blotch/angular-lynx';
+
+/**
+ * Keeps Firebase Auth's session in LynxSecureStorage. Firebase creates the
+ * class itself, with no arguments, so it closes over the storage instead.
+ */
+export const securePersistence = (storage: LynxSecureStorage): Persistence =>
+  class {
+    static readonly type = 'LOCAL';
+    readonly type = 'LOCAL';
+
+    async _isAvailable(): Promise<boolean> {
+      try {
+        await storage.setItem('__sak', '1');
+        await storage.removeItem('__sak');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    _set(key: string, value: unknown): Promise<void> {
+      return storage.setItem(key, value);
+    }
+
+    _get<T>(key: string): Promise<T | null> {
+      return storage.getItem<T>(key);
+    }
+
+    _remove(key: string): Promise<void> {
+      return storage.removeItem(key);
+    }
+
+    // Firebase uses these to hear about other tabs, which an app doesn't have.
+    _addListener(): void {}
+    _removeListener(): void {}
+  };
+```
+
+Pass it to `initializeAuth()` in place of `inMemoryPersistence`, from an injection context:
+
+```typescript
+import { inject } from '@angular/core';
+import { initializeAuth } from 'firebase/auth';
+import { LynxSecureStorage } from '@blotch/angular-lynx';
+import { securePersistence } from './firebase-persistence';
+
+const auth = initializeAuth(app, {
+  persistence: securePersistence(inject(LynxSecureStorage)),
+});
+```
+
+## Related
+
+- [`LynxLocalStorage` and `LynxSecureStorage` reference](/api/angular-lynx/persistent-storage)
+- [Share state between pages](/guide/session-storage), for values that only need to last while the app runs
+- [Persistent Storage example](/examples/persistent-storage)

@@ -2,7 +2,7 @@
 
 One native app can show several [bundles](/guide/glossary#bundle), or several [pages](/guide/multi-page) of one project, and each is its own Angular app. `LynxSessionStorage` gives them a shared key-value store that lasts as long as the app is running.
 
-It isn't the browser's `sessionStorage`, which belongs to one tab. Every Lynx view in the [host app](/guide/glossary#host-app) (the native app that runs your bundles) sees the same keys. The store empties when the app quits.
+It isn't the browser's `sessionStorage`, which belongs to one tab. Every Lynx view in the [host app](/guide/glossary#host-app) (the native app that runs your bundles) sees the same keys. The store empties when the app quits: to keep values after that, use [`LynxLocalStorage`](/guide/persistent-storage).
 
 :::info In the web preview and in tests
 The [web preview](/guide/glossary#web-preview) and unit tests have no native store, so `LynxSessionStorage` keeps values in memory instead. Every method works, but each page gets its own store, so nothing is shared.

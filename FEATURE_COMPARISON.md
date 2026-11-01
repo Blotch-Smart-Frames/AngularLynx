@@ -72,14 +72,15 @@
 
 ## Data Flow / Platform Integration
 
-| Feature                 |           AngularLynx            |       React Lynx        | Vue Lynx |
-| ----------------------- | :------------------------------: | :---------------------: | :------: |
-| InitData pattern        |    ✅ (`LynxInitDataService`)    |  ✅ (provider + hook)   |    ❌    |
-| GlobalData pattern      |   ✅ (`LynxGlobalDataService`)   |  ✅ (provider + hook)   |    ❌    |
-| Data processors         |  ✅ (`registerDataProcessors`)   |           ✅            |    ❌    |
-| Native module bridge    |  ✅ (`LynxNativeModuleService`)  | ✅ (`lynx.getJSModule`) |    ❌    |
-| Session storage service | ✅ (`LynxSessionStorageService`) |      ❌ (raw API)       |    ❌    |
-| System info service     |   ✅ (`LynxSystemInfoService`)   |      ❌ (raw API)       |    ❌    |
+| Feature                       |                 AngularLynx                  |       React Lynx        | Vue Lynx |
+| ----------------------------- | :------------------------------------------: | :---------------------: | :------: |
+| InitData pattern              |          ✅ (`LynxInitDataService`)          |  ✅ (provider + hook)   |    ❌    |
+| GlobalData pattern            |         ✅ (`LynxGlobalDataService`)         |  ✅ (provider + hook)   |    ❌    |
+| Data processors               |        ✅ (`registerDataProcessors`)         |           ✅            |    ❌    |
+| Native module bridge          |        ✅ (`LynxNativeModuleService`)        | ✅ (`lynx.getJSModule`) |    ❌    |
+| Session storage service       |       ✅ (`LynxSessionStorageService`)       |      ❌ (raw API)       |    ❌    |
+| Persistent and secure storage | ✅ (`LynxLocalStorage`, `LynxSecureStorage`) |           ❌            |    ❌    |
+| System info service           |         ✅ (`LynxSystemInfoService`)         |      ❌ (raw API)       |    ❌    |
 
 ## Lazy Loading / Code Splitting
 
@@ -117,15 +118,15 @@
 
 ## Developer Experience
 
-| Feature                                  |                     AngularLynx                      |         React Lynx          |         Vue Lynx         |
-| ---------------------------------------- | :--------------------------------------------------: | :-------------------------: | :----------------------: |
-| Project scaffolding CLI                  |              ✅ (`create-angular-lynx`)              |             ❌              |  ✅ (`create-vue-lynx`)  |
-| IDE type support for Lynx elements       |                 ✅ (directive stubs)                 |             ✅              |    ✅ (Volar plugin)     |
-| HMR                                      |          ⚠️ (module HMR, re-bootstraps app)          |        ❌ (unclear)         |            ✅            |
-| Build diagnostics (invalid elements/CSS) |                          ✅                          |             ❌              |            ❌            |
+| Feature                                  |              AngularLynx               |         React Lynx          |         Vue Lynx         |
+| ---------------------------------------- | :------------------------------------: | :-------------------------: | :----------------------: |
+| Project scaffolding CLI                  |       ✅ (`create-angular-lynx`)       |             ❌              |  ✅ (`create-vue-lynx`)  |
+| IDE type support for Lynx elements       |          ✅ (directive stubs)          |             ✅              |    ✅ (Volar plugin)     |
+| HMR                                      |   ⚠️ (module HMR, re-bootstraps app)   |        ❌ (unclear)         |            ✅            |
+| Build diagnostics (invalid elements/CSS) |                   ✅                   |             ❌              |            ❌            |
 | DevTools integration                     | ✅ (`LynxPerformance`, `LynxDevTools`) | ⚠️ (profile hooks, logging) | ⚠️ (Vue devtools option) |
-| Documentation site                       |                     ✅ (Rspress)                     |             ❌              |   ✅ (vue.lynxjs.org)    |
-| Example gallery                          |                   ✅ (12 examples)                   |             ❌              |     ✅ (26 examples)     |
+| Documentation site                       |              ✅ (Rspress)              |             ❌              |   ✅ (vue.lynxjs.org)    |
+| Example gallery                          |            ✅ (12 examples)            |             ❌              |     ✅ (26 examples)     |
 
 ## Build Plugin
 

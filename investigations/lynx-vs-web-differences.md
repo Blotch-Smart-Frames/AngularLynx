@@ -1644,13 +1644,9 @@ How Lynx's `fetch` differs from the web's is in "`fetch` is available but withou
 
 ### What Lynx does
 
-The standard `localStorage` / `sessionStorage` globals **do not exist**. Use the native Lynx storage API instead:
+The standard `localStorage` / `sessionStorage` globals **do not exist**, and Lynx has nothing that outlives the app. Its own store, `lynx.setSessionStorageItem` / `getSessionStorageItem` / `subscribeSessionStorage` (`LynxSessionStorage`), is shared by every LynxView in the host app but empties when the app quits.
 
-- `lynx.setSessionStorage(key, value)` — persistent key-value store
-- `lynx.getSessionStorage(key)` — retrieve a value
-- `lynx.subscribeSessionStorage(key, callback)` — reactively listen to changes
-
-The naming is "session" but the storage is actually persistent (analogous to `localStorage`).
+For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178) call native modules that the shells `ng build --platform` makes register: `UserDefaults` and the Keychain on iOS, `SharedPreferences` (the secure one encrypted by an Android Keystore key) on Android. Lynx Explorer has neither, so the services keep values in memory there. Lynx for Web runs the main thread in an iframe that web-core sandboxes with `allow-same-origin` (`createIFrameRealm.js`), so the page's `localStorage` is reachable from Angular there, and the services use it.
 
 ---
 

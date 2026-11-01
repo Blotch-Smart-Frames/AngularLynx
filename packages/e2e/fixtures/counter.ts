@@ -96,6 +96,7 @@ type HttpData = { reply: string };
  * It comes after the XElement elements so it doesn't push the input down:
  * in Lynx Explorer, whose navigation bar sits above the app, the keyboard
  * would then cover the "Typed:" line that native/xelement.yaml checks.
+ * "Open storage", beside it so this page gets no taller, opens storage.ts.
  *
  * "HTTP" loads fixtures/http-data.json twice, through HttpClient and through
  * httpResource, then posts JSON through HttpClient, and shows the replies:
@@ -202,14 +203,27 @@ type HttpData = { reply: string };
           </view>
         </view>
       </overlay>
-      <view
-        [flatten]="false"
-        [accessibility-element]="true"
-        accessibility-label="Ask background"
-        style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
-        (bindtap)="askBackground()"
-      >
-        <text>Ask background</text>
+      <view style="display: flex; flex-direction: row; margin-top: 8px;">
+        <view
+          [flatten]="false"
+          [accessibility-element]="true"
+          accessibility-label="Ask background"
+          style="padding: 12px; background-color: #e0e0e0;"
+          (bindtap)="askBackground()"
+        >
+          <text>Ask background</text>
+        </view>
+        <view
+          [flatten]="false"
+          [accessibility-element]="true"
+          accessibility-label="Open storage"
+          accessibility-traits="button"
+          style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+          routerLink="/storage"
+          routerLinkActive="active"
+        >
+          <text>Open storage</text>
+        </view>
       </view>
       <view style="display: flex; flex-direction: row; margin-top: 8px;">
         <text flatten="false">Background: {{ answer() }}</text>

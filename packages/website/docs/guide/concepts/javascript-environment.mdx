@@ -47,7 +47,7 @@ Lynx has no `WebSocket`.
 
 ## Storage
 
-There's no `localStorage`. To share values between the pages of your app while it runs, use [`LynxSessionStorage`](/guide/session-storage). To keep data after the app closes, store it in the host app and reach it through a [native module](/api/angular-lynx/native-module).
+There's no `localStorage`. To keep data after the app closes, use [`LynxLocalStorage`, or `LynxSecureStorage` for tokens and other secrets](/guide/persistent-storage). To share values between the pages of your app while it runs, use [`LynxSessionStorage`](/guide/session-storage).
 
 ## Intl
 

@@ -1,0 +1,28 @@
+# Layer 6, the app's own builds only: LynxLocalStorage and LynxSecureStorage
+# keep their values after the app restarts (issue #178). The storage page
+# (fixtures/storage.ts) shows what both stores held when it opened, then
+# stores "kept" in each, and the second open-app.yaml restarts the app. The
+# shells' native modules keep them in UserDefaults and the Keychain on iOS,
+# and in SharedPreferences, the secure one encrypted by a Keystore key, on
+# Android. Lynx Explorer has neither module, so the runtime keeps values in
+# memory there, and a restart loses them.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+# A full-string regex: what the stores held depends on earlier runs.
+- extendedWaitUntil:
+    visible: 'Stored: (none|kept)/(none|kept)'
+    timeout: 15000
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- extendedWaitUntil:
+    visible: 'Stored: kept/kept'
+    timeout: 15000
+- takeScreenshot: storage
+# Empties both, for the next run too: iOS keeps Keychain items after the app
+# is deleted.
+- tapOn: Clear storage
+- extendedWaitUntil:
+    visible: 'Stored: none/none'
+    timeout: 10000

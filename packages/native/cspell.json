@@ -60,6 +60,7 @@
     "SANDBOXING",
     "SDKROOT",
     "SDWEBIMAGE",
+    "sharedpref",
     "sideloading",
     "simctl",
     "srgb",

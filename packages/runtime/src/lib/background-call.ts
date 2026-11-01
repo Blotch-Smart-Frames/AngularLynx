@@ -323,6 +323,27 @@ const handlers = {
     return fn.apply(module, restoreFunctions(args) as unknown[]);
   },
 
+  /**
+   * Calls a native module method that answers through a callback, passed
+   * after `args`, and resolves with the first value it passes back. Unlike a
+   * function sent through callModule, the callback stays on this thread, so
+   * the call leaves nothing registered on either thread: the storage
+   * services make one of these per read and write.
+   */
+  callNativeModuleAsync: (
+    name: string,
+    method: string,
+    args: unknown[],
+  ): Promise<unknown> =>
+    new Promise((resolve) => {
+      const module = findModule('native', name);
+      const fn = module?.[method];
+      if (typeof fn !== 'function') {
+        throw new Error(`NativeModules: ${name}.${method} is not available`);
+      }
+      fn.call(module, ...args, (result: unknown) => resolve(result));
+    }),
+
   registerJSModule: (name: string, module: unknown): void => {
     lynxApi('registerModule')(name, restoreFunctions(module));
   },

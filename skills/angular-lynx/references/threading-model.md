@@ -101,4 +101,4 @@ These do not exist in Lynx and are shimmed by the runtime:
 | `AbortController`                          | Minimal polyfill                                                |
 | `queueMicrotask`                           | `Promise.resolve().then(fn)`                                    |
 | `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`) |
-| `localStorage`                             | Use `lynx.setSessionStorage` / `lynx.getSessionStorage`         |
+| `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets          |

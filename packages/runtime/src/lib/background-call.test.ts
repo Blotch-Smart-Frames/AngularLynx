@@ -730,6 +730,39 @@ describe('callOnBackground()', () => {
           "The result of callModule can't be sent to the main thread",
         );
       });
+
+      it('replies with what a native method passes its callback, sending no callback', async () => {
+        const getItem = vi.fn((key: string, done: (result: unknown) => void) =>
+          setTimeout(() => done({ value: `${key}!` }), 0),
+        );
+        vi.stubGlobal('NativeModules', { Store: { getItem } });
+        const { send, callbacks } = await loadBackground();
+
+        const reply = await send('callNativeModuleAsync', [
+          'Store',
+          'getItem',
+          ['token'],
+        ]);
+
+        expect(reply).toEqual({ id: 1, value: { value: 'token!' } });
+        expect(getItem.mock.contexts[0]).toEqual({ getItem });
+        expect(callbacks()).toEqual([]);
+      });
+
+      it('replies with an error for a callback method the host lacks', async () => {
+        vi.stubGlobal('NativeModules', { Store: {} });
+        const { send } = await loadBackground();
+
+        const reply = await send('callNativeModuleAsync', [
+          'Store',
+          'getItem',
+          ['token'],
+        ]);
+
+        expect(reply.error).toBe(
+          'NativeModules: Store.getItem is not available',
+        );
+      });
     });
 
     describe('on the main thread', () => {

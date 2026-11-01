@@ -146,6 +146,16 @@ Without the module, the back button does whatever your app already does. iOS has
 
 The apps `ng build --platform` makes have one you can copy: `WebAuthModule.swift`, which uses `ASWebAuthenticationSession`, and `WebAuthModule.kt`, which opens a Custom Tab and has the activity catch the redirect as a deep link. Both are in AngularLynx's `packages/native/templates`. Without the module, `start()` rejects with `unavailable`.
 
+## Keep data after the app closes
+
+[`LynxLocalStorage` and `LynxSecureStorage`](/guide/persistent-storage) call native modules named `AngularLynxLocalStorage` and `AngularLynxSecureStorage`. To use them in your own app, register each with these methods. Keys and values are strings: the runtime stores values as JSON.
+
+- **`getItem(key, callback)`** calls back with `{ value }`, or `{}` if there's nothing stored under `key`.
+- **`setItem(key, value, callback)`**, **`removeItem(key, callback)`** and **`clear(callback)`** call back with `{}` once they're done.
+- **On failure,** any of them calls back with `{ error }`, a message, which the runtime rejects with. Call the callback once per call.
+
+The apps `ng build --platform` makes have them to copy, in AngularLynx's `packages/native/templates`: `LocalStorageModule.swift` and `LocalStorageModule.kt` use `UserDefaults` and `SharedPreferences`, `SecureStorageModule.swift` uses the Keychain, and `SecureStorageModule.kt` encrypts each value with a key the Android Keystore holds. Without the modules, both services keep values in memory, which lasts until the app closes.
+
 ## Pass data from your app
 
 Your native app can send values into Angular, such as a signed-in user's ID or the app's theme. See [Pass data from your native app](/guide/embedding/host-data).

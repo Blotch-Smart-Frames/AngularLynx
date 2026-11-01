@@ -130,7 +130,8 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 
 ### No `localStorage` / `sessionStorage`
 
-Use `lynx.setSessionStorage(key, value)` / `lynx.getSessionStorage(key)`.
+- **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only `ng build --platform` apps have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.
+- **State shared between pages while the app runs:** `LynxSessionStorage`, which empties when the app quits.
 
 ### HTTP needs absolute URLs
 

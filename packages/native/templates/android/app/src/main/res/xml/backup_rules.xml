@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup up to Android 11 (data_extraction_rules.xml is Android 12's).
+  Everything is backed up but LynxSecureStorage's values: the Keystore key
+  that encrypts them never leaves the device, so a restored copy couldn't be
+  read (SecureStorageModule.kt).
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="angular_lynx_secure_storage.xml" />
+</full-backup-content>

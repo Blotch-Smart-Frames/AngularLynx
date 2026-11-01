@@ -39,10 +39,13 @@ export type Flow = {
    * together with the fix (the same contract as Playwright's test.fail()).
    */
   readonly knownFailure?: Partial<Record<Platform, string>>;
-  /** The one platform and host it runs on, for a flow that can't run on all. */
+  /**
+   * The platform or host it runs on, or both, for a flow that can't run on
+   * all of them.
+   */
   readonly only?: {
-    readonly platform: Platform;
-    readonly host: NativeHost['kind'];
+    readonly platform?: Platform;
+    readonly host?: NativeHost['kind'];
   };
 };
 
@@ -85,14 +88,21 @@ export const FLOWS: readonly Flow[] = [
     // and Lynx Explorer's leaves the page.
     only: { platform: 'android', host: 'shell' },
   },
+  {
+    file: 'storage.yaml',
+    description: 'keeps local and secure storage after a restart',
+    // Only the app's own builds have the storage modules. Lynx Explorer keeps
+    // the values in memory, which a restart empties.
+    only: { host: 'shell' },
+  },
 ];
 
 /** The flows to run on a platform's host. */
 export const flowsFor = (platform: Platform, host: NativeHost): Flow[] =>
   FLOWS.filter(
-    (flow) =>
-      !flow.only ||
-      (flow.only.platform === platform && flow.only.host === host.kind),
+    ({ only }) =>
+      (only?.platform === undefined || only.platform === platform) &&
+      (only?.host === undefined || only.host === host.kind),
   );
 
 /**

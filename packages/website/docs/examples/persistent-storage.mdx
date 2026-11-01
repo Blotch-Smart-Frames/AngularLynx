@@ -1,0 +1,19 @@
+# Persistent Storage
+
+A launch counter kept in local storage and a session kept in secure storage, both still there after the app restarts. In the preview, reload the page to see the count go up.
+
+<Go example="persistent-storage" defaultFile="src/app/app.ts" />
+
+## What it shows
+
+- **`LynxLocalStorage`** — a key-value store that keeps its values after the app closes, in place of `localStorage`. See [Keep data after the app closes](/guide/persistent-storage).
+- **`LynxSecureStorage`** — the same methods, for tokens and other secrets, kept in the Keychain on iOS and encrypted by the Android Keystore on Android.
+- **`getItem()` and `setItem()`** — each returns a promise. Values are JSON, so the session is stored as an object.
+- **`removeItem()`** — Reset and Sign out remove their key.
+
+In Lynx Explorer, which has no storage for your app, both keep values in memory, so a restart starts the count again. Run it with `ng build --platform ios --run` or `--platform android --run` to see it keep them.
+
+## Related
+
+- [Session Storage](/examples/session-storage)
+- [`LynxLocalStorage` and `LynxSecureStorage` API](/api/angular-lynx/persistent-storage)

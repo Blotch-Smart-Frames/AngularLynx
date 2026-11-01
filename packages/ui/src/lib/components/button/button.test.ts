@@ -102,6 +102,23 @@ const renderButton = async (
 })
 class StaticAttributesHost {}
 
+/**
+ * A sign-in button with the provider's mark, an app's own SVG.
+ */
+@Component({
+  imports: [UiButton, UiIcon],
+  template: `
+    <ui-button variant="outline">
+      <ui-icon [svg]="mark" />
+      Continue with GitHub
+    </ui-button>
+  `,
+})
+class OwnSvgHost {
+  readonly mark =
+    '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
+}
+
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
@@ -311,6 +328,19 @@ describe('UiButton', () => {
     );
     expect(icon().getAttribute('content')).toContain(
       ICON_LIGHT_COLORS['primary-foreground'],
+    );
+  });
+
+  it("puts an icon of the app's own SVG before the label, in the label color", async () => {
+    const { container, getByText } = await render(OwnSvgHost);
+    const icon = container.querySelector('svg')!;
+
+    expect(container.firstElementChild!.classList).toContain('gap-2');
+    expect(
+      icon.compareDocumentPosition(getByText('Continue with GitHub')),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(icon.getAttribute('content')).toContain(
+      `fill="${ICON_LIGHT_COLORS['foreground']}"`,
     );
   });
 

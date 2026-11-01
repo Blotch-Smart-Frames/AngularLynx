@@ -8,6 +8,19 @@ import { type IconName, ICONS } from './icons';
 const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
 
 /**
+ * Gives the markup's root `<svg>` the SVG namespace when it has none. The web
+ * preview draws `content` as an image of the markup, and a browser draws
+ * nothing for an SVG image without the namespace. An app's own SVG often
+ * leaves it out, since an `<svg>` written in an HTML page doesn't need it.
+ */
+const withSvgNamespace = (markup: string): string =>
+  markup.replace(/<svg\b([^>]*)>/, (tag, attributes: string) =>
+    /\sxmlns\s*=/.test(attributes)
+      ? tag
+      : `<svg xmlns="http://www.w3.org/2000/svg"${attributes}>`,
+  );
+
+/**
  * The icon is its host, an `<svg>` (registerHostElement, below). Angular gives
  * a component's host every static attribute the app writes on it, so
  * `<ui-icon class="mb-3">` puts `mb-3` on the host whatever the component
@@ -18,6 +31,9 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
  * Lynx's native <svg> element can't contain child nodes in the flat element
  * model. Passing the full SVG string as the `content` attribute is how Lynx
  * renders vector graphics without a DOM tree.
+ *
+ * It draws an icon from the set (`name`) or the app's own markup (`svg`),
+ * such as a sign-in provider's mark, which the set can't hold.
  */
 @Component({
   selector: 'ui-icon',
@@ -31,7 +47,15 @@ const SIZE_MAP = { xs: 16, sm: 20, md: 24, lg: 32 } as const;
   template: '',
 })
 export class UiIcon {
-  readonly name = input.required<IconName>();
+  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  readonly name = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set. `currentColor` in it
+   * takes the icon's color, as in the set's icons, so a one-color mark
+   * follows the theme; colors written out stay, so a multi-color one keeps
+   * them. Give this or `name`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   readonly size = input<'xs' | 'sm' | 'md' | 'lg'>('md');
   /**
    * A literal color or a theme token (`var(--primary)`). Without one, the icon
@@ -60,9 +84,22 @@ export class UiIcon {
     // climbs on every render/interaction as each tick re-runs and re-throws.
     // split/join is ES2019-safe and is preferred over `replace(/.../g)` here
     // because the search term is a plain literal and needs no regex escaping.
-    return ICONS[this.name()]
+    return this.#markup()
       .split('currentColor')
       .join(this.#resolveColor(this.color()));
+  }
+
+  /**
+   * The markup to draw. Neither input, or both, is a mistake in the template
+   * that the compiler can't catch, since neither input can be required, so
+   * it fails loudly rather than drawing an empty box or picking one.
+   */
+  #markup(): string {
+    const name = this.name();
+    const svg = this.svg();
+    if (svg !== undefined && name === undefined) return withSvgNamespace(svg);
+    if (name !== undefined && svg === undefined) return ICONS[name];
+    throw new Error('<ui-icon> needs a name or an svg, not both.');
   }
 
   protected readonly sizePx = computed(() => SIZE_MAP[this.size()]);

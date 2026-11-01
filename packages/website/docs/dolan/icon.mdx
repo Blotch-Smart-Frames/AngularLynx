@@ -1,6 +1,6 @@
 # Icon
 
-195 vector icons from the [Lucide](https://lucide.dev) set, drawn with Lynx's `<svg>` element.
+195 vector icons from the [Lucide](https://lucide.dev) set, drawn with Lynx's `<svg>` element. It draws your own SVG too, such as a sign-in provider's mark.
 
 <Go example="ui-icon" defaultFile="src/app/app.ts" />
 
@@ -60,6 +60,39 @@ export const appConfig: ApplicationConfig = {
 - **`light` and `dark`** take token values to override, if you changed your theme's colors.
 
 The same setting colors [Spinner](/dolan/spinner), [Pagination](/dolan/pagination)'s arrows and a loading [Button](/dolan/button)'s spinner, and picks [Glass](/dolan/glass)'s light or dark material. Charts have their own, [`provideChartTheme()`](/dolan/chart).
+
+### Your own SVG
+
+For a mark the set doesn't have, such as a sign-in provider's, pass its markup to `svg` instead of `name`:
+
+```typescript title="src/app/sign-in.ts"
+import { Component } from '@angular/core';
+import { UiButton } from '../components/ui/button';
+import { UiIcon } from '../components/ui/icon';
+
+@Component({
+  selector: 'app-sign-in',
+  imports: [UiButton, UiIcon],
+  template: `
+    <ui-button variant="outline">
+      <ui-icon [svg]="githubMark" />
+      Continue with GitHub
+    </ui-button>
+  `,
+})
+export class SignIn {
+  // GitHub's mark (its path shortened here), filled with currentColor.
+  readonly githubMark = `<svg viewBox="0 0 16 16"><path fill="currentColor" d="…"/></svg>`;
+}
+```
+
+- **`currentColor` takes the icon's color,** as the set's icons do: `color`, a button's label color, or the theme's foreground. A one-color mark written in `currentColor` follows your theme, and dark mode as set above.
+- **Colors written out stay,** so a multi-color mark, such as Google's, keeps them.
+- **`xmlns` is optional.** The icon adds it to the root `<svg>`: without it, the web preview draws nothing.
+- **Draw lines with `<path>`.** The [`<svg>` element](/api/elements/svg) has the same limits here: no `<line>` on iOS and Android, and no CSS.
+- **Give an icon `name` or `svg`, not both.** With neither or both, it throws an error.
+
+The example at the top of this page draws Google's and GitHub's marks, and [Button](/dolan/button)'s example puts them in sign-in buttons.
 
 ### Sizes
 
@@ -121,12 +154,13 @@ const current = signal<IconName>('check');
 
 ### UiIcon
 
-| Input   | Type                           | Default     | Description                                                                                                |
-| ------- | ------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------- |
-| `name`  | `IconName`                     | Required    | The icon to draw.                                                                                          |
-| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | 16, 20, 24 or 32 pixels square.                                                                            |
-| `color` | `string \| undefined`          | `undefined` | Stroke color: a theme token such as `var(--primary)`, or a literal color. The theme's foreground if unset. |
-| `class` | `string`                       | `''`        | Extra Tailwind classes for the icon.                                                                       |
+| Input   | Type                           | Default     | Description                                                                                                                                                 |
+| ------- | ------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`  | `IconName \| undefined`        | `undefined` | An icon from the set. Give this or `svg`.                                                                                                                   |
+| `svg`   | `string \| undefined`          | `undefined` | SVG markup to draw instead, such as a sign-in provider's mark. Give this or `name`.                                                                         |
+| `size`  | `'xs' \| 'sm' \| 'md' \| 'lg'` | `'md'`      | 16, 20, 24 or 32 pixels square.                                                                                                                             |
+| `color` | `string \| undefined`          | `undefined` | The color of the set's strokes and of `currentColor` in `svg`: a theme token such as `var(--primary)`, or a literal color. The theme's foreground if unset. |
+| `class` | `string`                       | `''`        | Extra Tailwind classes for the icon.                                                                                                                        |
 
 No outputs.
 

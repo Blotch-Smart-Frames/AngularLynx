@@ -73,23 +73,30 @@ A disabled field dims and ignores typing.
 
 ### Signal Forms
 
-`UiInput` implements Angular's `FormValueControl`, so it works with the `[formField]` directive of Signal Forms (see [Forms](/guide/forms)).
+`UiInput` implements Angular's `FormValueControl`, so it works with the `[formField]` directive of Signal Forms (see [Forms](/guide/forms)). It emits `touch` when the field loses focus, so the field counts as touched, as a native `<input>` does, and an error can show as soon as the user leaves the field.
 
 ```typescript title="src/app/app.ts"
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { form, FormField, required } from '@angular/forms/signals';
 import { UiInput } from '../components/ui/input';
 
 @Component({
   selector: 'app-root',
   imports: [FormField, UiInput],
-  template: `<ui-input label="Name" [formField]="profile.name" />`,
+  template: `
+    <ui-input label="Name" [formField]="profile.name" [error]="nameError()" />
+  `,
 })
 export class App {
   readonly #model = signal({ name: '' });
 
   protected readonly profile = form(this.#model, (s) => {
-    required(s.name);
+    required(s.name, { message: 'Enter your name' });
+  });
+
+  protected readonly nameError = computed(() => {
+    const name = this.profile.name();
+    return name.touched() ? (name.errors()[0]?.message ?? '') : '';
   });
 }
 ```
@@ -115,6 +122,12 @@ export class App {
 | `changed`     | `string` | Emits the text on every keystroke.                  |
 | `focused`     | `void`   | Emits when the field gains focus.                   |
 | `blurred`     | `void`   | Emits when the field loses focus.                   |
+| `touch`       | `void`   | Emits when the field loses focus, for forms.        |
+
+## Accessibility
+
+- **A screen reader reads the field with its `label`,** which becomes the native `<input>`'s `accessibility-label`, and then the text in it. The label above the field isn't a stop of its own, so it isn't read twice.
+- **Tests find it by its label too:** `getByRole('textbox', { name: 'Email' })` returns the `<input>`. A password field has no ARIA role, so find it with `getByAccessibilityLabel('Password')`.
 
 ## Related
 

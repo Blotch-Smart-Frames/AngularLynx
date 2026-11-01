@@ -1,4 +1,5 @@
 import { Component, signal } from '@angular/core';
+import { FormField, form } from '@angular/forms/signals';
 import {
   fireEvent,
   render,
@@ -34,6 +35,7 @@ import { UiInput } from './input';
       (changed)="changes.push($event)"
       (focused)="events.push('focused')"
       (blurred)="events.push('blurred')"
+      (touch)="events.push('touch')"
     />
   `,
 })
@@ -98,6 +100,23 @@ describe('UiInput', () => {
     expect(getByText('Email').classList).toContain('font-medium');
   });
 
+  // Issue #180: the label sat beside the field, so screen readers read the
+  // placeholder, or nothing once the field held text.
+  it('names the native field after its label, for screen readers', async () => {
+    const { host, field, getByRole, getByText } = await renderInput();
+    // A screen reader reaches the field with or without a label.
+    expect(field().getAttribute('accessibility-element')).toBe('true');
+    expect(field().hasAttribute('accessibility-label')).toBe(false);
+
+    host.label.set('Email');
+    await waitForUpdate();
+    expect(getByRole('textbox', { name: 'Email' })).toBe(field());
+    // The label the field reads isn't a second stop of its own.
+    expect(
+      getByText('Email').getAttribute('accessibility-elements-hidden'),
+    ).toBe('true');
+  });
+
   it('updates `value` and emits `changed` as the user types', async () => {
     const { host, field } = await renderInput();
     // Lynx puts the typed text in the event's detail, not on its target.
@@ -135,7 +154,7 @@ describe('UiInput', () => {
     setAttribute.mockRestore();
   });
 
-  it('shows a focus ring while focused, and emits `focused` and `blurred`', async () => {
+  it('shows a focus ring while focused, and emits `focused`, `blurred` and `touch`', async () => {
     const { host, field, ring } = await renderInput();
     expect(ring().style.getPropertyValue('opacity')).toBe('0');
 
@@ -149,7 +168,7 @@ describe('UiInput', () => {
     fireEvent.blur(field());
     await waitForUpdate();
     expect(ring().style.getPropertyValue('opacity')).toBe('0');
-    expect(host.events).toEqual(['focused', 'blurred']);
+    expect(host.events).toEqual(['focused', 'blurred', 'touch']);
   });
 
   it('shows its helper text', async () => {
@@ -207,6 +226,30 @@ describe('UiInput', () => {
       CANCEL,
       expect.any(String),
     ]);
+  });
+
+  // Issue #180: without `touch`, a field's error could only show once
+  // submit() marked every field touched.
+  it('marks a Signal Forms field touched when it loses focus', async () => {
+    @Component({
+      imports: [FormField, UiInput],
+      template: `<ui-input label="Email" [formField]="signIn.email" />`,
+    })
+    class SignalHost {
+      readonly model = signal({ email: '' });
+      readonly signIn = form(this.model);
+    }
+    const { componentRef, getByRole } = await render(SignalHost);
+    const host = componentRef.instance as SignalHost;
+    const email = getByRole('textbox', { name: 'Email' });
+
+    fireEvent.focus(email);
+    fireEvent.input(email, { detail: { value: 'jane@example.com' } });
+    expect(host.model().email).toBe('jane@example.com');
+    expect(host.signIn.email().touched()).toBe(false);
+
+    fireEvent.blur(email);
+    expect(host.signIn.email().touched()).toBe(true);
   });
 
   it('makes the wrapper a stacking context so the field scrolls with it', async () => {

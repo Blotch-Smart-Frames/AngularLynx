@@ -84,7 +84,8 @@ The `LynxLogger` uses this pattern to relay logs from the main thread, where you
 
 The build pipeline transpiles your code to the appropriate target for each bundle, but be aware that:
 
-- `Array.prototype.at()`, `structuredClone()` need polyfills
+- The build adds the newer built-in methods up to ES2026 (`.at()`, `toSorted()`, `Object.groupBy()`, `Promise.withResolvers()`, the Set methods, iterator helpers and the rest) before the app starts, on both threads. Still missing: `structuredClone()`, `atob()`/`btoa()`, `Intl`, the RegExp `d`/`v` flags and `Error`'s `cause` option
+- On the main thread, `for await` over a sync iterable of promises yields the promises themselves, not their values: await each one yourself, or use `Promise.all()`
 - `AbortController`/`AbortSignal` are polyfilled by the runtime
 - `queueMicrotask` is polyfilled as `Promise.resolve().then(fn)`
 

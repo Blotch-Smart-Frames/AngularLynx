@@ -36,6 +36,7 @@ sequenceDiagram
 
 - **The main thread** waits for the engine to call the global `renderPage()`, then bootstraps with a `LynxDocument`.
 - **The background thread** doesn't load the app. Its half of the bundle starts from an entry the build plugin generates, which loads the runtime, whose bridges start listening, and each file that calls `backgroundFn()`, `createMainThreadRef()` or `new MainThreadRef()` at module level, so each function registers. Angular and your components aren't in it.
+- **Before any module runs**, on both threads, the build's first entry module adds the built-in methods the engine lacks, up to ES2026, such as `.at()` and `toSorted()` ([JavaScript language level](/guide/concepts/javascript-environment#javascript-language-level)).
 - **Before either**, the runtime installs its globals: `onerror` handlers that forward to `_ReportError`, polyfills (timers from `lynx.setTimeout`, `URL`, `queueMicrotask`), and the registry for [main-thread scripts](/guide/glossary#main-thread-script).
 
 **`LynxDocument`** creates real native elements through Lynx's element functions (`__CreateView`, `__SetAttribute`, …).

@@ -5763,3 +5763,19 @@ Found when the device check of the polyfills above showed `Array.fromAsync([1, P
 ### The fix
 
 Await each value yourself: `for (const promise of promises) { const value = await promise; … }`, or `await Promise.all(promises)`. The polyfilled `Array.fromAsync` (`es-builtins.js`) does the former for sync iterables, and `for...of` still closes the iterator when a value rejects, as the spec does.
+
+---
+
+## `<svg content>` without `xmlns` draws nothing in the web preview
+
+### What you'd expect (web)
+
+An `<svg>` written in an HTML page needs no `xmlns`: the HTML parser puts it in the SVG namespace. So SVG copied for a page often leaves it out, like the GitHub mark in issue #199 (`<svg viewBox="0 0 16 16"><path …/></svg>`).
+
+### What Lynx does
+
+Lynx for Web's `<x-svg>` turns `content` into an `image/svg+xml` blob and shows it in an `<img>`, and a browser parses an SVG image as XML: without `xmlns="http://www.w3.org/2000/svg"`, the root isn't an SVG element, the image fails to load, and the element is blank. Checked in Chromium and WebKit (Playwright): the same blob loads with `xmlns` and fires `error` without it.
+
+### The fix
+
+Write `xmlns` on the root `<svg>`. `<ui-icon [svg]>` adds it when the markup has none, so an app's own marks show in the web preview as they do on the phone.

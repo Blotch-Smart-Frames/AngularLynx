@@ -32,8 +32,13 @@ import { cn } from '../../utils/cn';
     '[attr.placeholder]': 'null',
   },
   template: `
+    <!-- The <input> below carries the label as its accessibility-label, so
+         screen readers read it with the field. Hidden here, or VoiceOver and
+         TalkBack would stop on it a second time. -->
     @if (label()) {
-      <text [class]="labelClass()">{{ label() }}</text>
+      <text [class]="labelClass()" accessibility-elements-hidden="true">{{
+        label()
+      }}</text>
     }
     <!-- Focus ring is an inline box-shadow on a dedicated overlay layer, not a
          Tailwind ring-* class (the Lynx preset doesn't wire up --tw-ring-*, so
@@ -72,7 +77,14 @@ import { cn } from '../../utils/cn';
            LynxInput.ngOnChanges, where the setValue UIMethod override lives.
            Without this, form model resets would update the signal but the
            native input would keep showing the user's old typed text. -->
+      <!-- accessibility-element: on iOS, Lynx makes only <text> and <image>
+           accessibility elements by default, so the UITextField under an
+           <input> isn't one. VoiceOver then read the placeholder inside it,
+           or nothing once it held text. As one, it reads its
+           accessibility-label, the label, then its text. -->
       <input
+        accessibility-element="true"
+        [attr.accessibility-label]="label() || null"
         [attr.placeholder]="placeholder()"
         [attr.type]="type()"
         [value]="value()"
@@ -104,6 +116,13 @@ export class UiInput implements FormValueControl<string> {
   readonly changed = output<string>();
   readonly focused = output<void>();
   readonly blurred = output<void>();
+  /**
+   * The field lost focus, for forms, which mark it as touched as they do a
+   * native input (FormUiControl's `touch`). Signal Forms, reactive forms and
+   * template-driven forms all listen for it; a `touched` model's change
+   * isn't read by any of them.
+   */
+  readonly touch = output<void>();
 
   readonly #host = inject(ElementRef).nativeElement;
   readonly #isFocused = signal(false);
@@ -185,6 +204,7 @@ export class UiInput implements FormValueControl<string> {
   protected onBlur(): void {
     this.#isFocused.set(false);
     this.blurred.emit();
+    this.touch.emit();
   }
 
   /**

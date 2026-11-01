@@ -466,6 +466,110 @@ describe('callOnBackground()', () => {
     await expect(load({ mainThread: true })).resolves.toBeDefined();
   });
 
+  // The testing library's environment emulates both threads in one realm,
+  // where the runtime loads once, on the main thread, and gives them new
+  // contexts after each test (issue #198).
+  describe("in the testing library's environment", () => {
+    /**
+     * A main thread and a background thread whose contexts deliver to each
+     * other, as Lynx's do: the main thread dispatches on its JS context to the
+     * background thread, which dispatches on its core context back.
+     */
+    const threadPair = () => {
+      const on = {
+        main: {} as Record<string, Listener[]>,
+        background: {} as Record<string, Listener[]>,
+      };
+      const context = (
+        thread: 'main' | 'background',
+        other: 'main' | 'background',
+      ) => ({
+        addEventListener: (type: string, fn: Listener) => {
+          (on[thread][type] ??= []).push(fn);
+        },
+        dispatchEvent: ({ type, data }: { type: string; data: string }) => {
+          on[other][type]?.forEach((fn) => fn({ data }));
+        },
+      });
+      return {
+        on,
+        js: context('main', 'background'),
+        core: context('background', 'main'),
+      };
+    };
+
+    /**
+     * Loads the module on the main thread of an environment whose threads
+     * `pair()` connects, as the testing library's `lynxTestingEnv` does.
+     */
+    const loadInEnvironment = async (
+      pair: () => ReturnType<typeof threadPair>,
+      lynx: Record<string, unknown> = {},
+    ) => {
+      vi.stubGlobal('lynxTestingEnv', {
+        backgroundThread: {
+          globalThis: { lynx: { getCoreContext: () => pair().core } },
+        },
+      });
+      return load({
+        mainThread: true,
+        lynx: { getJSContext: () => pair().js, ...lynx },
+      });
+    };
+
+    it('answers a call on the background thread of the same copy', async () => {
+      const pair = threadPair();
+      const resumeExposure = vi.fn();
+      const mod = await loadInEnvironment(() => pair, { resumeExposure });
+
+      await mod.callOnBackground('resumeExposure');
+
+      expect(resumeExposure).toHaveBeenCalledOnce();
+    });
+
+    it('installs each half on a context once, however many calls it makes', async () => {
+      const pair = threadPair();
+      const mod = await loadInEnvironment(() => pair);
+      vi.stubGlobal('SystemInfo', { osVersion: '26.1' });
+
+      await mod.callOnBackground('osVersion');
+      await expect(mod.callOnBackground('osVersion')).resolves.toBe('26.1');
+
+      expect(pair.on.background['AngularLynx.BackgroundCall']).toHaveLength(1);
+      expect(pair.on.main['AngularLynx.BackgroundCallResult']).toHaveLength(1);
+      expect(pair.on.main['AngularLynx.SessionStorageChange']).toHaveLength(1);
+      expect(pair.on.main['AngularLynx.Callback']).toHaveLength(1);
+    });
+
+    it('installs both halves on the new contexts a reset gives the threads', async () => {
+      let pair = threadPair();
+      const mod = await loadInEnvironment(() => pair);
+      vi.stubGlobal('SystemInfo', { osVersion: '26.1' });
+      await mod.callOnBackground('osVersion');
+
+      pair = threadPair();
+
+      await expect(mod.callOnBackground('osVersion')).resolves.toBe('26.1');
+    });
+
+    it('sends the call as anywhere else when the environment has another shape', async () => {
+      const js = fakeContext();
+      vi.stubGlobal('lynxTestingEnv', {});
+      const mod = await load({
+        mainThread: true,
+        lynx: { getJSContext: () => js.context },
+      });
+
+      const call = mod.callOnBackground('resumeExposure');
+      const [message] = js.dispatched.map((e) => JSON.parse(e.data));
+      js.listeners['AngularLynx.BackgroundCallResult']!({
+        data: JSON.stringify({ id: message.id }),
+      });
+
+      await expect(call).resolves.toBeUndefined();
+    });
+  });
+
   // NativeModules, JS modules and prefetching exist only on the background
   // thread, and Angular runs on the main thread, so LynxNativeModule and
   // LynxResourcePrefetch relay their calls (issue #81).

@@ -141,6 +141,8 @@ Use DOM ordering (earlier siblings = lower z-order, later = higher).
 
 `<image>` doesn't support SVG. Supported: png, jpg, jpeg, bmp, gif, webp. Inline `<svg>` element partially works (17 SVG tags).
 
+Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` string. The phone draws it either way, but the web preview shows `content` as an SVG image, which a browser leaves blank without the namespace. SVG copied from an HTML page often leaves it out. `<ui-icon [svg]>` adds it for you.
+
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
 Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.

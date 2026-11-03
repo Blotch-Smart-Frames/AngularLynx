@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  installBase64Globals,
   installNetworkGlobals,
   lynxAtob,
   lynxBtoa,
@@ -14,6 +15,31 @@ import {
   relayFetch,
 } from './index';
 
+describe('installBase64Globals', () => {
+  it("installs atob, btoa and DOMException where the runtime has none (either of Lynx's threads)", () => {
+    const target: Record<string, unknown> = {};
+    installBase64Globals(target);
+
+    expect(target).toEqual({
+      DOMException: LynxDOMException,
+      atob: lynxAtob,
+      btoa: lynxBtoa,
+    });
+  });
+
+  it("keeps the runtime's own (the web preview's frame and Web Worker)", () => {
+    const own = () => {};
+    const target: Record<string, unknown> = {
+      DOMException: own,
+      atob: own,
+      btoa: own,
+    };
+    installBase64Globals(target);
+
+    expect(target).toEqual({ DOMException: own, atob: own, btoa: own });
+  });
+});
+
 describe('installNetworkGlobals', () => {
   it("installs the network APIs where the runtime has none (Lynx's main thread)", () => {
     const target: Record<string, unknown> = {};
@@ -22,9 +48,6 @@ describe('installNetworkGlobals', () => {
     expect(target).toEqual({
       TextEncoder: LynxTextEncoder,
       TextDecoder: LynxTextDecoder,
-      atob: lynxAtob,
-      btoa: lynxBtoa,
-      DOMException: LynxDOMException,
       ReadableStream: LynxReadableStream,
       fetch: relayFetch,
       Headers: LynxHeaders,
@@ -39,9 +62,6 @@ describe('installNetworkGlobals', () => {
     const target: Record<string, unknown> = {
       TextEncoder: own,
       TextDecoder: own,
-      atob: own,
-      btoa: own,
-      DOMException: own,
       ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,
@@ -51,9 +71,6 @@ describe('installNetworkGlobals', () => {
     expect(target).toEqual({
       TextEncoder: own,
       TextDecoder: own,
-      atob: own,
-      btoa: own,
-      DOMException: own,
       ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,

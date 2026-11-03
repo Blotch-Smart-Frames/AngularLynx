@@ -3,7 +3,9 @@
 # (fixtures/lazy-route.ts): its ngOnInit counts once, a background function
 # defined in the lazy chunk answers, and a GlobalEventEmitter listener and
 # emit, which only the background thread can reach, go through
-# LynxNativeModule's relay and come back.
+# LynxNativeModule's relay and come back. The background function
+# round-trips its answer through btoa and atob, which the background thread
+# lacked (issue #206).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml

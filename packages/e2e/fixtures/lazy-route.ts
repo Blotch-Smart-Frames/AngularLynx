@@ -24,8 +24,12 @@ const countMainTap = mainThreadFn(() => {
  * A background function defined in a lazy chunk. Only the main thread's
  * router loads the chunk, so the background thread has the function only if
  * it ran the chunk's lazy import too (issue #81).
+ *
+ * It round-trips the text through `btoa` and `atob`, which Lynx's background
+ * thread lacks: the runtime installs them there, as on the main thread
+ * (issue #206). Without them, the echo shows a ReferenceError.
  */
-const lazyEcho = backgroundFn((text: string) => `${text} back`);
+const lazyEcho = backgroundFn((text: string) => `${atob(btoa(text))} back`);
 
 type Emitter = {
   addListener(event: string, listener: (...args: unknown[]) => void): void;
@@ -54,7 +58,8 @@ type Emitter = {
  *   counter.ts). The background thread used to start a second copy of the app,
  *   which made it 2. That copy never navigated, so the count is kept on the
  *   first screen.
- * - "Echo" calls `lazyEcho` above.
+ * - "Echo" calls `lazyEcho` above, which also checks the background
+ *   thread's `atob` and `btoa`.
  * - "Emitter" listens to GlobalEventEmitter and emits on it. Lynx has JS
  *   modules on the background thread only, so both calls and the event go
  *   through LynxNativeModule's relay.

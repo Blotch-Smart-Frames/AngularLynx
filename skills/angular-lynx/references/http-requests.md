@@ -23,7 +23,7 @@ readonly posts = httpResource<Post[]>(() => `${API}/posts`);
 
 ## How it works
 
-Lynx has `fetch` only on the background thread, and Angular runs on the main thread. The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `TextEncoder`, `TextDecoder` and `DOMException` on the main thread (`packages/runtime/src/lib/network/`). The `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, and XHR is built on it. Angular's `FetchBackend` (the default) and `HttpXhrBackend` (`withXhr()`) both use them unchanged. The web preview's main thread is a browser frame and keeps the browser's own.
+Lynx has `fetch` only on the background thread, and Angular runs on the main thread. The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`, `TextEncoder` and `TextDecoder` on the main thread, and `atob`, `btoa` and `DOMException` on both threads (`packages/runtime/src/lib/network/`). The `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, and XHR is built on it. Angular's `FetchBackend` (the default) and `HttpXhrBackend` (`withXhr()`) both use them unchanged. The web preview's main thread is a browser frame and keeps the browser's own.
 
 ## Rules
 
@@ -32,6 +32,7 @@ Lynx has `fetch` only on the background thread, and Angular runs on the main thr
 - **No CORS on device**; it still applies in the web preview.
 - **Bodies:** strings, JSON, `URLSearchParams`, `ArrayBuffer`, typed arrays. `Blob`/`FormData`/stream bodies throw (Lynx has neither class). Use `responseType: 'arraybuffer'`, not `'blob'`.
 - **Progress** (`reportProgress`) arrives once, when the body is complete.
+- **Responses arrive whole.** `response.body` is a `ReadableStream`, but it yields the whole body as one chunk once the response has ended. A response that stays open, such as server-sent events, never arrives. Firebase Firestore detects this and switches to long polling by itself.
 - **Failures:** a request that never reaches the server is an `HttpErrorResponse` with status 0. (Lynx's HTTP service reports it as status 499 with no headers; the runtime turns that into a network error.)
 - **`statusText` is `OK` for every status on iOS.** Check `status`.
 - **`withCredentials` does nothing**: the host app's HTTP stack owns cookies.

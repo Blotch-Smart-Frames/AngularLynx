@@ -35,6 +35,8 @@ case 'x-new-element': {
 
 4. **Update ELEMENTS.md** — Add documentation for the element in `packages/runtime/docs/ELEMENTS.md` including what it does, example usage, supported attributes/properties, and common use cases.
 
+   Add it to the public skill as well, in the same PR: the element table and its attributes and events in `skills/angular-lynx/references/lynx-elements.md`, and any gotcha in `lynx-gotchas.md`. Apps' agents read the skill to write templates, and releases don't catch it up (see CLAUDE.md).
+
 5. **Create an example component** — Add a demo component in `packages/kitchen-sink-app/` showing how to use the element. Use `CUSTOM_ELEMENTS_SCHEMA` and standalone components:
 
 ```typescript

@@ -49,7 +49,7 @@ import { getAngularWorkspace } from './utils/angular/read-workspace.js';
 import { resolvePrimaryBuild } from './utils/angular/resolve-primary-build.js';
 import { resolvePages } from './utils/angular/resolve-pages.js';
 import {
-  reportLynxDiagnostics,
+  createLynxDiagnosticsReporter,
   scanCompiledOutputForHtmlElements,
   scanCompiledOutputForStructuralIssues,
   scanSourcesForUnsupportedCss,
@@ -194,6 +194,9 @@ export const applyAngularRules = async (
   // stay until the next compile, because a rebuild that doesn't recompile
   // (e.g. a global CSS edit) still contains the code they point at.
   let angularDiagnostics: AngularDiagnostics = { errors: [], warnings: [] };
+  // Lynx diagnostics (HTML elements, unsupported CSS, ...) wait here for
+  // rspack's module graph, so only files that end up in the bundle report.
+  const lynxDiagnostics = createLynxDiagnosticsReporter();
 
   const transformStylesheet = createTransformStylesheet({
     basePath,
@@ -381,7 +384,10 @@ export const applyAngularRules = async (
       }
     }
 
-    reportLynxDiagnostics([
+    // Every file Angular compiled is scanned, including those reached only
+    // through type imports; the compiler hook below drops the ones rspack
+    // doesn't bundle.
+    lynxDiagnostics.collect([
       ...scanCompiledOutputForHtmlElements(typeScriptFileCache),
       ...scanCompiledOutputForStructuralIssues(typeScriptFileCache),
       ...scanSourcesForUnsupportedPatterns(fileNames),
@@ -459,6 +465,14 @@ export const applyAngularRules = async (
           ...angularDiagnostics.warnings.map((message) =>
             toAngularDiagnosticError(message, 'warning'),
           ),
+        );
+        // `finishModules` runs once rspack has resolved every import, so its
+        // modules are the files in the bundle. They come before module
+        // concatenation, so each is still its own file. A watch rebuild passes
+        // the whole graph too, not just the rebuilt modules.
+        rspackCompilation.hooks.finishModules.tap(
+          'lynx:angular:lynx-diagnostics',
+          (modules) => lynxDiagnostics.report(modules),
         );
       },
     );

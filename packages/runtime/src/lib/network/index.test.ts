@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   installNetworkGlobals,
+  lynxAtob,
+  lynxBtoa,
   LynxDOMException,
   LynxHeaders,
+  LynxReadableStream,
   LynxRequest,
   LynxResponse,
   LynxTextDecoder,
@@ -19,7 +22,10 @@ describe('installNetworkGlobals', () => {
     expect(target).toEqual({
       TextEncoder: LynxTextEncoder,
       TextDecoder: LynxTextDecoder,
+      atob: lynxAtob,
+      btoa: lynxBtoa,
       DOMException: LynxDOMException,
+      ReadableStream: LynxReadableStream,
       fetch: relayFetch,
       Headers: LynxHeaders,
       Request: LynxRequest,
@@ -33,7 +39,10 @@ describe('installNetworkGlobals', () => {
     const target: Record<string, unknown> = {
       TextEncoder: own,
       TextDecoder: own,
+      atob: own,
+      btoa: own,
       DOMException: own,
+      ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,
     };
@@ -42,7 +51,10 @@ describe('installNetworkGlobals', () => {
     expect(target).toEqual({
       TextEncoder: own,
       TextDecoder: own,
+      atob: own,
+      btoa: own,
       DOMException: own,
+      ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,
     });

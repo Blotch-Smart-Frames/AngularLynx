@@ -6,11 +6,13 @@
 # each request to it (issue #85). "json" means the POST arrived with just the
 # type HttpClient set (issue #176). The JSON's URL comes from the environment
 # file the production build swaps in: without it, the page shows a 404 for
-# environment-not-replaced.json (issue #175).
+# environment-not-replaced.json (issue #175). The last "pong" is the JSON read
+# through fetch()'s response.body stream and round-tripped through btoa and
+# atob, which the main thread lacked (issue #205).
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
 - extendedWaitUntil:
-    visible: 'HTTP: pong/pong/json'
+    visible: 'HTTP: pong/pong/json/pong'
     timeout: 15000
 - takeScreenshot: http

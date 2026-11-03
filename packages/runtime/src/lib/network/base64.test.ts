@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { base64ToBytes, bytesToBase64 } from './base64';
+import { base64ToBytes, bytesToBase64, lynxAtob, lynxBtoa } from './base64';
+import { LynxDOMException } from './dom-exception';
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 
@@ -41,5 +42,40 @@ describe('base64ToBytes', () => {
 
   it('returns bytes backed by a buffer of exactly their length', () => {
     expect(base64ToBytes('aGk=').buffer.byteLength).toBe(2);
+  });
+});
+
+describe('lynxBtoa and lynxAtob', () => {
+  it('match the platform for binary strings, including a long one', () => {
+    const long = String.fromCharCode(
+      ...Array.from({ length: 20_000 }, (_, i) => i % 256),
+    );
+    for (const input of ['', 'h', 'hi', 'hi!', '\u0000\u00ff\u0080', long]) {
+      expect(lynxBtoa(input)).toBe(btoa(input));
+      expect(lynxAtob(btoa(input))).toBe(input);
+    }
+    expect(lynxBtoa(12)).toBe(btoa('12'));
+  });
+
+  it('decodes without padding and skips ASCII whitespace, as the platform does', () => {
+    for (const input of ['aGk', 'aGk=', ' aG\tk\n= ', 'aGkh', 'YQ==']) {
+      expect(lynxAtob(input)).toBe(atob(input));
+    }
+  });
+
+  it('throws an InvalidCharacterError for text the platform rejects', () => {
+    for (const input of ['a', 'aGk==', 'a===', 'aG-k', 'aGk*']) {
+      expect(() => atob(input)).toThrow();
+      expect(() => lynxAtob(input)).toThrow(LynxDOMException);
+    }
+    expect(() => lynxAtob('a')).toThrow(
+      expect.objectContaining({ name: 'InvalidCharacterError' }),
+    );
+    expect(() => lynxBtoa('✓')).toThrow(
+      expect.objectContaining({
+        name: 'InvalidCharacterError',
+        message: expect.stringContaining('Latin1'),
+      }),
+    );
   });
 });

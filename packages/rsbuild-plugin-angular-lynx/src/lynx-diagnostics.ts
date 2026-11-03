@@ -1,4 +1,4 @@
-// cspell:words ɵɵelement ɵɵrepeater ɵɵelementStart
+// cspell:words ɵɵelement ɵɵrepeater ɵɵelementStart ɵɵdomElement ɵɵdomElementStart
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -110,12 +110,15 @@ const UNSUPPORTED_CSS: Record<string, string> = {
  * Extracts all element tag names from Angular AOT-compiled JS.
  *
  * Handles three patterns:
- * - ɵɵelementStart(idx, "tag") / ɵɵelement(idx, "tag")
+ * - ɵɵelementStart(idx, "tag") / ɵɵelement(idx, "tag"), and their
+ *   ɵɵdomElementStart / ɵɵdomElement forms, which Angular emits instead for a
+ *   component that uses no directives (no `imports`)
  * - Chained calls: ɵɵelementStart(0, "view", 1)(2, "list", 3)
  * - ɵɵrepeaterCreate insertion-point optimization (@for with single root element)
  */
 const collectElementTags = (code: string): Set<string> => {
-  const chainPattern = /ɵɵelement(?:Start)?\([^)]*\)(?:\([^)]*\))*/g;
+  const chainPattern =
+    /ɵɵ(?:element|domElement)(?:Start)?\([^)]*\)(?:\([^)]*\))*/g;
   const tagExtractor = /\(\d+,\s*["']([a-z][a-z0-9-]*)["']/g;
   const repeaterPattern =
     /ɵɵrepeaterCreate\(\d+,\s*\w+,\s*\d+,\s*\d+,\s*["']([a-z][a-z0-9-]*)["']/g;
@@ -334,6 +337,53 @@ export const scanSourcesForUnsupportedCss = (
   }
 
   return diagnostics;
+};
+
+/**
+ * A module of the bundle, as rspack's `finishModules` hook passes it. Only its
+ * file is needed: `nameForCondition()` is the resource path without the query.
+ */
+export type BundledModule = { nameForCondition(): string | undefined };
+
+/**
+ * Holds each Angular compile's Lynx diagnostics until rspack has built the
+ * module graph, then reports the ones for files the bundle contains.
+ *
+ * Angular's program also takes in files reached only for their types, e.g.
+ * through `import type { Widget } from '@shared/widgets'`: Angular compiles
+ * them (so they're in its output) but the bundle never imports them. A shared
+ * library holding web components next to its types would otherwise report
+ * those components' `<div>`s, which the app never renders. rspack follows only
+ * the imports left after types are removed, so its module graph is the set of
+ * files that actually ship.
+ *
+ * The diagnostics are reported once per Angular compile, as they were before
+ * this filter: a rebuild that doesn't recompile (e.g. a global CSS edit)
+ * doesn't print them again.
+ */
+export const createLynxDiagnosticsReporter = () => {
+  let pending: LynxDiagnostic[] | undefined;
+  return {
+    /** Keeps the diagnostics of the Angular compile that just ran. */
+    collect(diagnostics: LynxDiagnostic[]): void {
+      pending = diagnostics;
+    },
+    /** Reports the kept diagnostics for the files among `modules`. */
+    report(modules: Iterable<BundledModule>): void {
+      if (!pending) return;
+      const bundledFiles = new Set<string>();
+      for (const module of modules) {
+        const file = module.nameForCondition();
+        if (file) bundledFiles.add(path.normalize(file));
+      }
+      reportLynxDiagnostics(
+        pending.filter((diagnostic) =>
+          bundledFiles.has(path.normalize(diagnostic.file)),
+        ),
+      );
+      pending = undefined;
+    },
+  };
 };
 
 /**

@@ -1,7 +1,9 @@
-// cspell:words ɵɵelement ɵɵrepeater ɵɵelementStart ɵɵtext
+// cspell:words ɵɵelement ɵɵrepeater ɵɵelementStart ɵɵtext ɵɵdomElement ɵɵdomElementStart ɵɵdomElementEnd
 import fs from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createLynxDiagnosticsReporter,
+  type LynxDiagnostic,
   reportLynxDiagnostics,
   scanCompiledOutputForHtmlElements,
   scanCompiledOutputForStructuralIssues,
@@ -34,6 +36,29 @@ describe('scanCompiledOutputForHtmlElements', () => {
     expect(result[0]!.category).toBe('html-element');
     expect(result[1]!.message).toContain('<span>');
     expect(result[1]!.message).toContain('Use <text> instead');
+  });
+
+  it('detects HTML elements in the DOM-only instructions of a component without imports', () => {
+    const fileCache = new Map<string, string>();
+    fileCache.set(
+      '/src/app/plain.ts',
+      `
+      function Plain_Template(rf, ctx) {
+        if (rf & 1) {
+          i0.ɵɵdomElementStart(0, "div")(1, "view");
+          i0.ɵɵdomElement(2, "img");
+          i0.ɵɵdomElementEnd();
+        }
+      }
+    `,
+    );
+
+    const result = scanCompiledOutputForHtmlElements(fileCache);
+
+    expect(result.map((d) => d.message)).toEqual([
+      expect.stringContaining('<div> is not a Lynx element'),
+      expect.stringContaining('<img> is not a Lynx element. Use <image>'),
+    ]);
   });
 
   it('does not warn for valid Lynx elements', () => {
@@ -514,5 +539,68 @@ describe('reportLynxDiagnostics', () => {
     ]);
 
     expect(warnSpy).toHaveBeenCalledWith('[Lynx] Unsupported CSS properties:');
+  });
+});
+
+describe('createLynxDiagnosticsReporter', () => {
+  const diagnostic = (file: string): LynxDiagnostic => ({
+    file,
+    message: `${file}: <div> is not a Lynx element. Use <view> instead.`,
+    category: 'html-element',
+  });
+  const modules = (...files: (string | undefined)[]) =>
+    files.map((file) => ({ nameForCondition: () => file }));
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reports only the diagnostics of files in the bundle', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reporter = createLynxDiagnosticsReporter();
+
+    // A shared library's web component, reached only through a type import,
+    // is compiled by Angular but never bundled by rspack.
+    reporter.collect([
+      diagnostic('/repo/src/app/rendered.ts'),
+      diagnostic('/repo/libs/common/page-frame.ts'),
+    ]);
+    reporter.report(
+      modules('/repo/src/app/rendered.ts', '/repo/src/main.ts', undefined),
+    );
+
+    expect(warnSpy.mock.calls).toEqual([
+      ['[Lynx] HTML elements detected in templates:'],
+      [
+        '  /repo/src/app/rendered.ts: <div> is not a Lynx element. Use <view> instead.',
+      ],
+    ]);
+  });
+
+  it('matches files whatever form their paths take', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reporter = createLynxDiagnosticsReporter();
+
+    reporter.collect([diagnostic('/repo/src/./app.ts')]);
+    reporter.report(modules('/repo/src/lib/../app.ts'));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[Lynx] HTML elements detected in templates:',
+    );
+  });
+
+  it('reports each compile once, and nothing before the first compile', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reporter = createLynxDiagnosticsReporter();
+
+    reporter.report(modules('/repo/src/app.ts'));
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    reporter.collect([diagnostic('/repo/src/app.ts')]);
+    reporter.report(modules('/repo/src/app.ts'));
+    // A rebuild without an Angular compile, e.g. a global CSS edit.
+    reporter.report(modules('/repo/src/app.ts'));
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
   });
 });

@@ -45,6 +45,7 @@ Near-1:1 Angular parity — partial support isn't acceptable. Every Angular API 
 ## Commits, PRs and Comments
 
 - Never add AI attribution to commit messages, PR descriptions or code comments: no `Co-Authored-By` trailer, no "Generated with Claude Code" line, no mention of the AI tool or the company behind it. This overrides any default attribution instructions.
+- **Update the public skill (`skills/angular-lynx`) in the same PR as the change it describes.** That means any PR that adds something an app uses (an API, directive, builder option, schematic or CLI flag), changes behavior an app's code or tests can notice, records a new Lynx difference, or makes something the skill says untrue. Before opening the PR, run the `update-angular-lynx-skill` skill with `content`: it checks the branch against the skill and edits the skill on that branch. Releases don't catch the skill up: a release can hold dozens of PRs, and reviewing them all at once is how things got missed.
 
 ## CSS Colors in Lynx
 

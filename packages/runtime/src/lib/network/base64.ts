@@ -1,7 +1,10 @@
+import { LynxDOMException } from './dom-exception';
+
 /**
  * Base64 for the bytes of request and response bodies, which cross between
  * Lynx's threads as JSON. Hand-written because neither thread has `btoa` or
  * `atob`, and the main thread has no other way to turn bytes into a string.
+ * The main thread gets `atob` and `btoa` from here too (lynxAtob() below).
  */
 
 const ALPHABET =
@@ -70,4 +73,62 @@ export const base64ToBytes = (base64: string): Uint8Array<ArrayBuffer> => {
     if (d !== undefined) bytes[byteIndex++] = ((c! & 0x3) << 6) | d;
   }
   return bytes;
+};
+
+const invalidCharacter = (method: string, message: string) =>
+  new LynxDOMException(
+    `Failed to execute '${method}' on 'Window': ${message}`,
+    'InvalidCharacterError',
+  );
+
+/**
+ * `btoa` for Lynx's main thread: encodes a binary string, one byte per
+ * character, as base64.
+ *
+ * @param data - The binary string.
+ * @returns The base64 text.
+ */
+export const lynxBtoa = (data: unknown): string => {
+  const text = String(data);
+  const bytes = new Uint8Array(text.length);
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code > 0xff) {
+      throw invalidCharacter(
+        'btoa',
+        'The string to be encoded contains characters outside of the Latin1 range.',
+      );
+    }
+    bytes[index] = code;
+  }
+  return bytesToBase64(bytes);
+};
+
+/**
+ * `atob` for Lynx's main thread, which has none. Firebase decodes the
+ * tokens Firestore sends with it, so a query threw a ReferenceError once
+ * its first response arrived (issue #205).
+ *
+ * Strict where base64ToBytes() is lenient, as the HTML Standard's `atob`
+ * is: it skips only ASCII whitespace, and throws on other characters
+ * outside the alphabet and on a length no base64 text can have.
+ *
+ * @param data - The base64 text.
+ * @returns The binary string, one byte per character.
+ */
+export const lynxAtob = (data: unknown): string => {
+  let text = String(data).replace(/[\t\n\f\r ]/g, '');
+  if (text.length % 4 === 0) text = text.replace(/==?$/, '');
+  if (text.length % 4 === 1 || /[^A-Za-z0-9+/]/.test(text)) {
+    throw invalidCharacter(
+      'atob',
+      'The string to be decoded is not correctly encoded.',
+    );
+  }
+  const bytes = base64ToBytes(text);
+  let output = '';
+  for (let index = 0; index < bytes.length; index += SLICE) {
+    output += String.fromCharCode(...bytes.subarray(index, index + SLICE));
+  }
+  return output;
 };

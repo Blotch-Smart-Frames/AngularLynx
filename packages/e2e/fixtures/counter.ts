@@ -62,6 +62,26 @@ const HTTP_ECHO_URL = 'http://127.0.0.1:3210/e2e-echo';
 type HttpData = { reply: string };
 
 /**
+ * Reads a JSON reply the way Firestore's WebChannel reads its responses:
+ * through `response.body`, once `ReadableStream` exists, chunk by chunk.
+ * Then it round-trips the reply through `btoa` and `atob`, as Firestore does
+ * its resume tokens.
+ */
+const readByStream = async (url: string): Promise<string> => {
+  if (typeof ReadableStream !== 'function') return 'no ReadableStream';
+  const reader = (await fetch(url)).body!.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  const { reply } = JSON.parse(text + decoder.decode()) as HttpData;
+  return atob(btoa(reply));
+};
+
+/**
  * E2E fixture that replaces the `hello` component the component schematic
  * generates. Tapping "Increment" proves the round trip from a native event,
  * through change detection, to the renderer; "Open lazy page" proves that
@@ -99,15 +119,19 @@ type HttpData = { reply: string };
  * "Open storage", beside it so this page gets no taller, opens storage.ts.
  *
  * "HTTP" loads fixtures/http-data.json twice, through HttpClient and through
- * httpResource, then posts JSON through HttpClient, and shows the replies:
- * "HTTP: pong/pong/json". Lynx has `fetch` on the background thread only, and
+ * httpResource, then posts JSON through HttpClient, then reads the JSON a
+ * third time through `fetch()`'s `response.body` stream, and shows the
+ * replies: "HTTP: pong/pong/json/pong". Lynx has `fetch` on the background thread only, and
  * Angular runs on the main thread, where the runtime relays requests to it
  * (issue #85). The JSON's URL comes from the environment file the production
  * build swaps in (issue #175). "json" means the POST arrived with the one
  * `Content-Type: application/json` HttpClient set; otherwise it shows the
  * types that arrived. The relay used to pass the name lowercase, and Lynx's
  * own fetch then added a `text/plain` one, which iOS sent instead and
- * Android sent as well (issue #176). It shares the "Background" row so this
+ * Android sent as well (issue #176). The last reply checks the main thread's
+ * `ReadableStream` and `atob`, which Lynx lacks: Firebase Firestore reads
+ * its responses through the one and decodes tokens with the other, and its
+ * queries never returned without them (issue #205). It shares the "Background" row so this
  * page gets no taller: the lazy and gestures pages render below it, and on
  * CI's 320x640 Android emulator their checks are at the bottom of the
  * screen.
@@ -228,7 +252,9 @@ type HttpData = { reply: string };
       <view style="display: flex; flex-direction: row; margin-top: 8px;">
         <text flatten="false">Background: {{ answer() }}</text>
         <text flatten="false" style="margin-left: 12px;"
-          >HTTP: {{ httpReply() }}/{{ resourceReply() }}/{{ postReply() }}</text
+          >HTTP: {{ httpReply() }}/{{ resourceReply() }}/{{ postReply() }}/{{
+            streamReply()
+          }}</text
         >
       </view>
       <app-tailwind-card />
@@ -244,6 +270,7 @@ export class Hello implements OnInit {
   readonly answer = signal('');
   readonly httpReply = signal('');
   readonly postReply = signal('');
+  readonly streamReply = signal('');
   readonly #resource = httpResource<HttpData>(() => HTTP_DATA_URL);
   readonly resourceReply = computed(() =>
     this.#resource.hasValue()
@@ -271,6 +298,10 @@ export class Hello implements OnInit {
           this.postReply.set(reply === 'application/json' ? 'json' : reply),
         error: (error: HttpErrorResponse) => this.postReply.set(error.message),
       });
+    readByStream(HTTP_DATA_URL).then(
+      (reply) => this.streamReply.set(reply),
+      (error: Error) => this.streamReply.set(error.message),
+    );
   }
 
   increment() {

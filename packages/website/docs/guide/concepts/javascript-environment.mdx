@@ -10,8 +10,8 @@ Lynx doesn't provide some APIs that Angular relies on. AngularLynx adds them bef
 - `requestAnimationFrame`, `requestIdleCallback`
 - `queueMicrotask`, `AbortController`
 - `URL`, `URLSearchParams`
-- `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`
-- `TextEncoder`, `TextDecoder` (UTF-8 only), `DOMException`
+- `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`
+- `TextEncoder`, `TextDecoder` (UTF-8 only), `atob()`, `btoa()`, `DOMException`
 - Newer built-in methods, up to ES2026, such as `array.at()`, `toSorted()` and `Object.groupBy()`: see [JavaScript language level](#javascript-language-level)
 
 It also adds small `document`, `window` and `navigator` objects, with only what Angular reads internally. They are not a DOM: `document.querySelector()` always returns `null`.
@@ -86,7 +86,6 @@ These are still missing, because they need the engine itself, or they're browser
 | `JSON.rawJSON()`, and `context.source` in a `JSON.parse` reviver | Not available                                      |
 | Resizable `ArrayBuffer`s, `transfer()`, `Float16Array`           | Not available                                      |
 | `structuredClone(value)`                                         | `JSON.parse(JSON.stringify(value))` for plain data |
-| `atob()`, `btoa()`                                               | `Uint8Array.fromBase64()`, `bytes.toBase64()`      |
 
 :::warning A missing method can blank the whole screen
 If a template or a `computed()` calls something that's missing, the render fails, and nothing on screen updates. The error is "not a function" or "is not defined". It's not about signals.

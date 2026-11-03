@@ -3,6 +3,7 @@ import { callOnBackground } from '../background-call';
 import type { RelayedResponse } from './background-fetch';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
+import { LynxReadableStream } from './readable-stream';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
@@ -257,17 +258,19 @@ describe('LynxResponse', () => {
   });
 
   describe('body', () => {
-    it('yields the body as one chunk, then ends, and marks the body used', async () => {
+    it('is a ReadableStream that yields the body as one chunk, then ends', async () => {
       const response = new LynxResponse('hi');
       const stream = response.body!;
+      expect(stream).toBeInstanceOf(LynxReadableStream);
       expect(response.body).toBe(stream);
       const reader = stream.getReader();
-      expect(response.bodyUsed).toBe(true);
       expect(stream.locked).toBe(true);
+      expect(response.bodyUsed).toBe(false);
       expect(await reader.read()).toEqual({
         done: false,
         value: new Uint8Array(bytesOf('hi')),
       });
+      expect(response.bodyUsed).toBe(true);
       expect(await reader.read()).toEqual({ done: true, value: undefined });
       await expect(reader.closed).resolves.toBeUndefined();
     });
@@ -277,26 +280,23 @@ describe('LynxResponse', () => {
       expect(await reader.read()).toEqual({ done: true, value: undefined });
     });
 
-    it('allows one reader at a time', async () => {
-      const stream = new LynxResponse('hi').body!;
-      const reader = stream.getReader();
-      expect(() => stream.getReader()).toThrow(TypeError);
-      reader.releaseLock();
-      expect(stream.locked).toBe(false);
-      await expect(reader.read()).rejects.toThrow('released');
-      expect((await stream.getReader().read()).done).toBe(false);
-    });
-
-    it('drops the body when the reader or the stream is canceled', async () => {
+    it('refuses text() and clone() while a reader holds it, or once it is read', async () => {
       const response = new LynxResponse('hi');
       const reader = response.body!.getReader();
-      await reader.cancel();
-      expect((await reader.read()).done).toBe(true);
+      await expect(response.text()).rejects.toThrow(TypeError);
+      expect(() => response.clone()).toThrow(TypeError);
+      reader.releaseLock();
+      expect(response.clone()).toBeInstanceOf(LynxResponse);
 
-      const other = new LynxResponse('hi');
-      await other.body!.cancel();
-      expect(other.bodyUsed).toBe(true);
-      expect((await other.body!.getReader().read()).done).toBe(true);
+      await response.body!.getReader().read();
+      await expect(response.text()).rejects.toThrow('already read');
+    });
+
+    it('marks the body used when the stream is canceled', async () => {
+      const response = new LynxResponse('hi');
+      await response.body!.cancel();
+      expect(response.bodyUsed).toBe(true);
+      expect((await response.body!.getReader().read()).done).toBe(true);
     });
 
     it('can be read with for await', async () => {

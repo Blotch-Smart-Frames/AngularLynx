@@ -2074,7 +2074,25 @@ Found while relaying the main thread's requests (issue #85), in Lynx Explorer 4.
 
 ### AngularLynx
 
-The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `TextEncoder`, `TextDecoder` and `DOMException` on the main thread where they're missing (`packages/runtime/src/lib/network/`, issue #85). Its `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, so `HttpClient` (both backends), `httpResource` and fetch-based libraries work in components. The web preview's main thread is a browser frame and keeps the browser's own.
+The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`, `TextEncoder`, `TextDecoder`, `atob`, `btoa` and `DOMException` on the main thread where they're missing (`packages/runtime/src/lib/network/`, issues #85 and #205). Its `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, so `HttpClient` (both backends), `httpResource` and fetch-based libraries work in components. The web preview's main thread is a browser frame and keeps the browser's own.
+
+---
+
+## Without a `ReadableStream` global, Firebase Firestore's queries never return
+
+Found while fixing issue #205 (Firestore 12 against the Firestore emulator, in Lynx Explorer 4.1 on the iOS 27 Simulator, and in Node with the main thread's globals).
+
+### What you'd expect (web)
+
+Every browser has `ReadableStream` and `atob`, and a `Response`'s `body` is a `ReadableStream`. Libraries check for the global before they read `body` as a stream, and fall back to `text()` where it's missing.
+
+### What Lynx does
+
+Neither thread has `ReadableStream`, `atob` or `btoa`. Firestore's browser build sets `useFetchStreams: true` by default, so its WebChannel transport (Closure's `FetchXmlHttp`) makes its requests with `fetch`, not `XMLHttpRequest`: patching `XMLHttpRequest.prototype` logs nothing. With no `ReadableStream`, `FetchXmlHttp` reads each response with `text()` and sets the string as `response`. For the long poll's GET, WebChannel asked for binary chunks and decodes `response` as an array of `Uint8Array`s, which throws inside a `try`/`catch` that drops the response. No error shows: the handshake and one GET go out, the GET answers 200, and nothing follows. Firestore's next step, decoding the resume token, calls `atob`, which threw a `ReferenceError` once the first problem was fixed.
+
+### AngularLynx
+
+The runtime installs `ReadableStream` (`network/readable-stream.ts`), `atob` and `btoa` on the main thread, and a relayed response's `body` is that `ReadableStream`. It yields the whole body as one chunk once the response has ended, since the relay carries one message per call. That's enough for Firestore: with `experimentalForceLongPolling: true`, or with its default settings, whose detection sees no bytes arrive while the streaming GET is open and switches to long polling, `getDocs()` and `onSnapshot()` return and live updates arrive. A response that never ends, such as server-sent events, never arrives.
 
 ---
 

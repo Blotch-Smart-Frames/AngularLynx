@@ -92,7 +92,10 @@ describe('HttpClient on the main thread', () => {
     const target: Record<string, unknown> = {};
     installNetworkGlobals(target);
     for (const [name, value] of Object.entries(target)) {
-      vi.stubGlobal(name, value);
+      // Node's Response, which the fake server answers with, needs Node's
+      // ReadableStream. The main thread's responses are LynxResponses, whose
+      // body is a LynxReadableStream whatever the global is.
+      if (name !== 'ReadableStream') vi.stubGlobal(name, value);
     }
     vi.mocked(callOnBackground).mockImplementation(((
       name: string,

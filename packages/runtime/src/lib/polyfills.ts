@@ -107,10 +107,10 @@ if (typeof AbortController === 'undefined') {
 // loaders use `URL` as well.
 installUrl(globalThis);
 
-// Lynx's main thread has no fetch, XMLHttpRequest, Headers, TextDecoder or
-// DOMException, and the background thread, which has fetch, runs no Angular.
-// So HttpClient, httpResource and fetch-based libraries failed wherever they
-// ran. These versions send each request to the background thread's fetch.
+// Lynx's main thread has no fetch, XMLHttpRequest, Headers, ReadableStream,
+// TextDecoder, atob or DOMException, and the background thread, which has
+// fetch, runs no Angular. So HttpClient, httpResource and fetch-based
+// libraries failed wherever they ran. These versions send each request to the background thread's fetch.
 // The background thread keeps its own globals: its fetch is passed into the
 // bundle's wrapper function, so it isn't on globalThis and would look missing.
 if (isMainThread()) {

@@ -6,6 +6,7 @@ import type {
 } from './background-fetch';
 import { base64ToBytes, bytesToBase64 } from './base64';
 import { LynxHeaders, type HeadersInit } from './headers';
+import { isDisturbed, LynxReadableStream } from './readable-stream';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 
 /**
@@ -109,67 +110,16 @@ const extractBody = (
 };
 
 /**
- * The single-chunk `ReadableStream` a body exposes as `body`: enough for
- * `getReader()` and `for await`, which is how Angular's `FetchBackend` and
- * most libraries read a stream.
+ * The `ReadableStream` a body exposes as `body`, holding the body as one
+ * chunk, since it arrives in one piece.
  */
-class LynxBodyStream {
-  #chunk: Uint8Array | null;
-  #onRead: () => void;
-  locked = false;
-
-  constructor(chunk: Uint8Array, onRead: () => void) {
-    this.#chunk = chunk.length > 0 ? chunk : null;
-    this.#onRead = onRead;
-  }
-
-  getReader() {
-    if (this.locked) {
-      throw new TypeError(
-        "Failed to execute 'getReader' on 'ReadableStream': ReadableStreamDefaultReader constructor can only accept readable streams that are not yet locked to a reader",
-      );
-    }
-    this.locked = true;
-    this.#onRead();
-    let released = false;
-    return {
-      read: async (): Promise<
-        { done: false; value: Uint8Array } | { done: true; value: undefined }
-      > => {
-        if (released) {
-          throw new TypeError('This reader has been released');
-        }
-        const chunk = this.#chunk;
-        this.#chunk = null;
-        return chunk
-          ? { done: false, value: chunk }
-          : { done: true, value: undefined };
-      },
-      cancel: async (): Promise<void> => {
-        this.#chunk = null;
-      },
-      releaseLock: (): void => {
-        released = true;
-        this.locked = false;
-      },
-      closed: Promise.resolve(undefined),
-    };
-  }
-
-  async cancel(): Promise<void> {
-    this.#onRead();
-    this.#chunk = null;
-  }
-
-  async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-    const reader = this.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  }
-}
+const bodyStream = (bytes: Uint8Array): LynxReadableStream<Uint8Array> =>
+  new LynxReadableStream<Uint8Array>({
+    start: (controller) => {
+      if (bytes.length > 0) controller.enqueue(bytes);
+      controller.close();
+    },
+  });
 
 /**
  * What `Request` and `Response` share: the body and the ways to read it.
@@ -177,7 +127,7 @@ class LynxBodyStream {
 abstract class LynxBody {
   #source: BodySource;
   #used = false;
-  #stream: LynxBodyStream | undefined;
+  #stream: LynxReadableStream<Uint8Array> | undefined;
 
   abstract readonly headers: LynxHeaders;
 
@@ -185,16 +135,32 @@ abstract class LynxBody {
     this.#source = source;
   }
 
-  get body(): LynxBodyStream | null {
+  get body(): LynxReadableStream<Uint8Array> | null {
     if (this.#source === null) return null;
-    this.#stream ??= new LynxBodyStream(toBytes(this.#source), () => {
-      this.#used = true;
-    });
+    this.#stream ??= bodyStream(toBytes(this.#source));
     return this.#stream;
   }
 
+  /**
+   * Whether the body has been read, through a method such as `text()` or
+   * through `body`.
+   */
   get bodyUsed(): boolean {
-    return this.#used;
+    return (
+      this.#used || (this.#stream !== undefined && isDisturbed(this.#stream))
+    );
+  }
+
+  /**
+   * Throws if the body can't be read again: it's been read, or a reader
+   * holds `body`.
+   */
+  #assertUnused(action: string): void {
+    if (this.bodyUsed || this.#stream?.locked) {
+      throw new TypeError(
+        `Failed to execute '${action}': body stream already read`,
+      );
+    }
   }
 
   /**
@@ -212,20 +178,12 @@ abstract class LynxBody {
    * The body for a clone, which must not share the original's stream.
    */
   protected cloneSource(): BodySource {
-    if (this.#used) {
-      throw new TypeError(
-        "Failed to execute 'clone': the body is already used",
-      );
-    }
+    this.#assertUnused('clone');
     return this.#source;
   }
 
   async #consume(): Promise<BodySource> {
-    if (this.#used) {
-      throw new TypeError(
-        "Failed to execute 'text' on 'Body': body stream already read",
-      );
-    }
+    this.#assertUnused('text');
     this.#used = true;
     return this.#source;
   }

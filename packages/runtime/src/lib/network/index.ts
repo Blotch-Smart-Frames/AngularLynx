@@ -1,12 +1,17 @@
+import { lynxAtob, lynxBtoa } from './base64';
 import { LynxDOMException } from './dom-exception';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
+import { LynxReadableStream } from './readable-stream';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxXMLHttpRequest } from './xhr';
 
 export {
+  lynxAtob,
+  lynxBtoa,
   LynxDOMException,
   LynxHeaders,
+  LynxReadableStream,
   LynxRequest,
   LynxResponse,
   LynxTextDecoder,
@@ -18,8 +23,8 @@ export {
 /**
  * Installs the web's network APIs on `target`, Lynx's main thread, where
  * they're missing: `fetch` (relayed to the background thread's), `Headers`,
- * `Request`, `Response`, `XMLHttpRequest`, `TextEncoder`, `TextDecoder` and
- * `DOMException`. With them, `provideHttpClient()` works as it does in a
+ * `Request`, `Response`, `ReadableStream`, `XMLHttpRequest`, `TextEncoder`,
+ * `TextDecoder`, `atob`, `btoa` and `DOMException`. With them, `provideHttpClient()` works as it does in a
  * browser, whichever backend it uses (`FetchBackend` by default, or
  * `HttpXhrBackend` with `withXhr()`), and so do `httpResource` and libraries
  * that call `fetch` or XHR.
@@ -38,7 +43,13 @@ export const installNetworkGlobals = (
   };
   install('TextEncoder', LynxTextEncoder);
   install('TextDecoder', LynxTextDecoder);
+  install('atob', lynxAtob);
+  install('btoa', lynxBtoa);
   install('DOMException', LynxDOMException);
+  // On its own, not with fetch: code checks for the global before it reads
+  // a response's `body` as a stream, and Firestore's WebChannel drops a
+  // response it reads any other way (readable-stream.ts).
+  install('ReadableStream', LynxReadableStream);
   // The classes go together: the relayed fetch builds a LynxResponse, and
   // Angular checks `headers instanceof Headers`.
   if (typeof target['fetch'] === 'undefined') {

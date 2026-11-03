@@ -63,13 +63,14 @@ test("a tap handler gets an async background function's result", async ({
 // has fetch; on Lynx it relays to the background thread's (issues #85 and
 // #176, checked by native/http.yaml). The JSON's URL comes from the
 // environment file the production build swaps in: without it, the page shows
-// a 404 for environment-not-replaced.json (issue #175).
+// a 404 for environment-not-replaced.json (issue #175). The last "pong" is
+// read through fetch()'s response.body stream (issue #205).
 test('HttpClient and httpResource load JSON, and HttpClient posts it', async ({
   page,
 }) => {
   const errors = collectErrors(page);
   await page.goto('/');
-  await expect(page.getByText('HTTP: pong/pong/json')).toBeVisible();
+  await expect(page.getByText('HTTP: pong/pong/json/pong')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

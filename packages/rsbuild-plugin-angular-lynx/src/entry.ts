@@ -19,6 +19,7 @@ import { AngularWebpackPlugin } from './angular-webpack-plugin.js';
 import type { BackgroundEntries } from './background-entry.js';
 import { LAYERS } from './layers.js';
 import type { NormalizedPluginAngularLynxOptions } from './utils/options.js';
+import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals.js';
 
 /**
  * The key `pluginLynx` (the Lynx build engine, which Rspeedy registers) exposes
@@ -30,6 +31,7 @@ const PLUGIN_NAME_RUNTIME_WRAPPER = 'lynx:runtime-wrapper';
 const PLUGIN_NAME_ANGULAR = 'lynx:angular';
 const RULE_BACKGROUND_MODULES = 'lynx:background-modules';
 const PLUGIN_NAME_CSS_HOT_UPDATE = 'lynx:css-hot-update';
+const PLUGIN_NAME_ZERO_BIGINT_LITERALS = 'lynx:zero-bigint-literals';
 
 /**
  * The `blur-view` rule that approximates iOS's blur materials on Android,
@@ -320,6 +322,13 @@ export const applyEntry = (
       chain
         .plugin(`${LynxEncodePlugin.name}`)
         .use(LynxEncodePlugin, [{}])
+        .end();
+      // The engine can't load a main-thread script with a `0n` in it (see
+      // zero-bigint-literals.ts). The web runs that script as plain
+      // JavaScript, so only the native bundle needs the rewrite.
+      chain
+        .plugin(PLUGIN_NAME_ZERO_BIGINT_LITERALS)
+        .use(ZeroBigIntLiteralsPlugin)
         .end();
     }
     if (isWeb) {

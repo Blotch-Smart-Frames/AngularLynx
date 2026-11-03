@@ -59,6 +59,14 @@ const HTTP_DATA_URL = environment.httpDataUrl;
  */
 const HTTP_ECHO_URL = 'http://127.0.0.1:3210/e2e-echo';
 
+/**
+ * Where the count starts, written as a zero BigInt literal, as Firebase
+ * Firestore has one. Lynx couldn't load a main-thread bundle with one in it,
+ * on iOS and Android alike, until the build rewrote it (issue #204): every
+ * native check fails if the build lets one through again.
+ */
+const START_COUNT = 0n;
+
 type HttpData = { reply: string };
 
 /**
@@ -264,7 +272,7 @@ const readByStream = async (url: string): Promise<string> => {
 export class Hello implements OnInit {
   readonly #mainThread = inject(LynxMainThread);
   readonly #http = inject(HttpClient);
-  readonly count = signal(0);
+  readonly count = signal(Number(START_COUNT));
   readonly typed = signal('');
   readonly overlayOpen = signal(false);
   readonly answer = signal('');

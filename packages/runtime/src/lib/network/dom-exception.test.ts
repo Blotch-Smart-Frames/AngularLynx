@@ -10,6 +10,13 @@ describe('LynxDOMException', () => {
     expect(error.code).toBe(23);
   });
 
+  it("carries the code of atob's InvalidCharacterError, as the DOM one does", () => {
+    const name = 'InvalidCharacterError';
+    expect(new LynxDOMException('', name).code).toBe(
+      new DOMException('', name).code,
+    );
+  });
+
   it('defaults to an unnamed error with code 0', () => {
     const error = new LynxDOMException();
     expect(error.message).toBe('');

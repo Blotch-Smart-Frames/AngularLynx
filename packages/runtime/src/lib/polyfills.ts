@@ -14,7 +14,7 @@
  */
 
 import { isMainThread } from './background-call';
-import { installNetworkGlobals } from './network';
+import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
 
 // Web-only: fail loud and clear when the page is not a secure context.
@@ -107,9 +107,16 @@ if (typeof AbortController === 'undefined') {
 // loaders use `URL` as well.
 installUrl(globalThis);
 
-// Lynx's main thread has no fetch, XMLHttpRequest, Headers, ReadableStream,
-// TextDecoder, atob or DOMException, and the background thread, which has
-// fetch, runs no Angular. So HttpClient, httpResource and fetch-based
+// Neither of Lynx's threads has atob, btoa or DOMException, which libraries
+// written for browsers call directly: Firebase Firestore encodes and decodes
+// its stream tokens with them. Both threads get them, since an app's
+// background functions can run such code too (issue #206). Nothing here hides
+// a runtime's own: the background bundle's wrapper function takes no
+// parameter by these names (unlike `fetch`), so globalThis tells the truth.
+installBase64Globals(globalThis as unknown as Record<string, unknown>);
+
+// Lynx's main thread has no fetch, XMLHttpRequest, Headers, ReadableStream or
+// TextDecoder, and the background thread, which has fetch, runs no Angular. So HttpClient, httpResource and fetch-based
 // libraries failed wherever they ran. These versions send each request to the background thread's fetch.
 // The background thread keeps its own globals: its fetch is passed into the
 // bundle's wrapper function, so it isn't on globalThis and would look missing.

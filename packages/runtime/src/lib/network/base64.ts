@@ -4,7 +4,7 @@ import { LynxDOMException } from './dom-exception';
  * Base64 for the bytes of request and response bodies, which cross between
  * Lynx's threads as JSON. Hand-written because neither thread has `btoa` or
  * `atob`, and the main thread has no other way to turn bytes into a string.
- * The main thread gets `atob` and `btoa` from here too (lynxAtob() below).
+ * Both threads get `atob` and `btoa` from here too (lynxAtob() below).
  */
 
 const ALPHABET =
@@ -82,8 +82,9 @@ const invalidCharacter = (method: string, message: string) =>
   );
 
 /**
- * `btoa` for Lynx's main thread: encodes a binary string, one byte per
- * character, as base64.
+ * `btoa` for Lynx's threads, which have none: encodes a binary string, one
+ * byte per character, as base64. Firebase encodes the tokens it sends back
+ * to Firestore with it (issue #206).
  *
  * @param data - The binary string.
  * @returns The base64 text.
@@ -105,9 +106,9 @@ export const lynxBtoa = (data: unknown): string => {
 };
 
 /**
- * `atob` for Lynx's main thread, which has none. Firebase decodes the
- * tokens Firestore sends with it, so a query threw a ReferenceError once
- * its first response arrived (issue #205).
+ * `atob` for Lynx's threads, which have none. Firebase decodes the tokens
+ * Firestore sends with it, so a query threw a ReferenceError once its first
+ * response arrived (issues #205 and #206).
  *
  * Strict where base64ToBytes() is lenient, as the HTML Standard's `atob`
  * is: it skips only ASCII whitespace, and throws on other characters

@@ -2074,7 +2074,7 @@ Found while relaying the main thread's requests (issue #85), in Lynx Explorer 4.
 
 ### AngularLynx
 
-The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`, `TextEncoder`, `TextDecoder`, `atob`, `btoa` and `DOMException` on the main thread where they're missing (`packages/runtime/src/lib/network/`, issues #85 and #205). Its `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, so `HttpClient` (both backends), `httpResource` and fetch-based libraries work in components. The web preview's main thread is a browser frame and keeps the browser's own.
+The runtime installs `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`, `TextEncoder` and `TextDecoder` on the main thread where they're missing (`packages/runtime/src/lib/network/`, issues #85 and #205), and `atob`, `btoa` and `DOMException` on both threads (issue #206). The background bundle's wrapper takes no parameter by those three names, so unlike `fetch`, a missing one really is missing from `globalThis` there. Its `fetch` relays each request to the background thread's `fetch` through `callOnBackground()`, so `HttpClient` (both backends), `httpResource` and fetch-based libraries work in components. The web preview's main thread is a browser frame and keeps the browser's own.
 
 ---
 
@@ -2092,7 +2092,7 @@ Neither thread has `ReadableStream`, `atob` or `btoa`. Firestore's browser build
 
 ### AngularLynx
 
-The runtime installs `ReadableStream` (`network/readable-stream.ts`), `atob` and `btoa` on the main thread, and a relayed response's `body` is that `ReadableStream`. It yields the whole body as one chunk once the response has ended, since the relay carries one message per call. That's enough for Firestore: with `experimentalForceLongPolling: true`, or with its default settings, whose detection sees no bytes arrive while the streaming GET is open and switches to long polling, `getDocs()` and `onSnapshot()` return and live updates arrive. A response that never ends, such as server-sent events, never arrives.
+The runtime installs `ReadableStream` (`network/readable-stream.ts`) on the main thread and `atob` and `btoa` on both threads, and a relayed response's `body` is that `ReadableStream`. It yields the whole body as one chunk once the response has ended, since the relay carries one message per call. That's enough for Firestore: with `experimentalForceLongPolling: true`, or with its default settings, whose detection sees no bytes arrive while the streaming GET is open and switches to long polling, `getDocs()` and `onSnapshot()` return and live updates arrive. A response that never ends, such as server-sent events, never arrives.
 
 ---
 

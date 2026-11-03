@@ -156,7 +156,9 @@ test('Angular runs once, and the background thread still answers', async ({
   await page.getByText('Open lazy page', { exact: true }).click();
   await expect(page.getByText('Lazy page loaded')).toBeVisible();
 
-  // A background function defined in the lazy chunk.
+  // A background function defined in the lazy chunk. It round-trips its
+  // answer through btoa and atob, which the runtime installs on Lynx's
+  // background thread (issue #206); the web's Web Worker has its own.
   await page.getByText('Echo:').click();
   await expect(page.getByText('Echo: hi back')).toBeVisible();
 

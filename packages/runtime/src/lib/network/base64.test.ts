@@ -68,8 +68,9 @@ describe('lynxBtoa and lynxAtob', () => {
       expect(() => atob(input)).toThrow();
       expect(() => lynxAtob(input)).toThrow(LynxDOMException);
     }
+    // Code 5 is the legacy INVALID_CHARACTER_ERR, which Node's gives too.
     expect(() => lynxAtob('a')).toThrow(
-      expect.objectContaining({ name: 'InvalidCharacterError' }),
+      expect.objectContaining({ name: 'InvalidCharacterError', code: 5 }),
     );
     expect(() => lynxBtoa('✓')).toThrow(
       expect.objectContaining({

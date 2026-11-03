@@ -112,6 +112,32 @@ describe('polyfills', () => {
     });
   });
 
+  describe('atob, btoa and DOMException', () => {
+    // The install guards themselves are tested in network/index.test.ts with
+    // a stand-in global. Node has all three, so each test removes them.
+    it.each([
+      ['main', true],
+      ['background', false],
+    ])('installs them on the %s thread', async (_thread, mainThread) => {
+      vi.stubGlobal('__MAIN_THREAD__', mainThread);
+      vi.stubGlobal('atob', undefined);
+      vi.stubGlobal('btoa', undefined);
+      vi.stubGlobal('DOMException', undefined);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect(atob(btoa('Hello'))).toBe('Hello');
+      expect(() => atob('a')).toThrow(DOMException);
+    });
+
+    it("keeps the platform's own", async () => {
+      const nativeAtob = globalThis.atob;
+      vi.stubGlobal('__MAIN_THREAD__', false);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      expect(globalThis.atob).toBe(nativeAtob);
+    });
+  });
+
   describe('network APIs', () => {
     // The install guards themselves are tested in network/index.test.ts with
     // a stand-in global. Node has fetch but no XMLHttpRequest, so XHR shows

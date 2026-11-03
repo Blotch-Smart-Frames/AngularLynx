@@ -3,6 +3,7 @@
  * older code still checks (`error.code === 20` for an abort).
  */
 const CODES: Record<string, number> = {
+  InvalidCharacterError: 5,
   NotSupportedError: 9,
   InvalidStateError: 11,
   SyntaxError: 12,
@@ -13,11 +14,11 @@ const CODES: Record<string, number> = {
 };
 
 /**
- * `DOMException` for Lynx's main thread, which has none. Angular's HTTP
+ * `DOMException` for Lynx's threads, which have none. Angular's HTTP
  * backends create one when a request times out
  * (`new DOMException('signal timed out', 'TimeoutError')`); without the
  * global, that line threw a ReferenceError in a timer instead of failing the
- * request.
+ * request. `atob` throws one on bad input, on either thread.
  */
 export class LynxDOMException extends Error {
   readonly code: number;

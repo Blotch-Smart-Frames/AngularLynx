@@ -922,6 +922,38 @@ This bit the `ui-icon` component (`packages/ui/src/lib/components/icon/icon.ts` 
 
 ---
 
+## A `0n` in the main thread's script stops the bundle loading
+
+### What you'd expect (web)
+
+BigInt literals (`0n`, `1000000000n`) are ES2020 and work in every modern browser. A library that only uses BigInt on a path the app never takes costs nothing.
+
+### What Lynx does
+
+The build compiles the main thread's script to PrimJS bytecode, and PrimJS can't read a zero BigInt constant back. `JS_WriteBigInt` (`quickjs.cc` in [lynx-family/primjs](https://github.com/lynx-family/primjs)) writes zero as a length of 0 bytes, and `JS_ReadBigInt` computes its limb count as `(len - 1) / 8 + 1` in unsigned arithmetic, so it asks for half a billion limbs. Loading the bundle fails before any of it runs, and the screen stays blank:
+
+```
+QuickContext deserialize error main-thread.js exception: RangeError: BigInt is too large to allocate backtrace:
+LynxError occurs error_code:10204 error_message:Decode error: Context construct failed
+```
+
+Measured on 2026-11-03 with Lynx Explorer 4.1.0, on the iOS 27 simulator and an Android 14 emulator, which fail alike, each probe a production build of an app whose main thread evaluates the literal:
+
+| Literal in the main thread's script              | Result                         |
+| ------------------------------------------------ | ------------------------------ |
+| `0n` (and `0x0n`, which the minifier makes `0n`) | Decode error, blank screen     |
+| `1n`, `1000000000n`, `-5n * 0xFFn`, `10n ** 20n` | Loads, right values            |
+| `1n - 1n`, `BigInt(0)`                           | Loads: zero made at run time   |
+| `0n` in the background thread only               | Loads: it isn't compiled ahead |
+
+Firebase Firestore 12 has one (`e >= 0n` in `Timestamp._fromEpochNanoseconds`), so importing Firestore anywhere in the app left it blank (issue #204). Lynx for Web runs the main thread's script as plain JavaScript and isn't affected.
+
+### The fix
+
+The build rewrites every zero BigInt literal in the native bundle's main-thread scripts into `BigInt(0)`, packages included, since it works on the emitted files (`ZeroBigIntLiteralsPlugin` in `packages/rsbuild-plugin-angular-lynx/src/zero-bigint-literals.ts`). It leaves the other BigInt literals alone, since they load, and a `0n` used as a property name, which stores no BigInt. The E2E fixture starts its count from a `0n`, so every native check fails if one gets through again.
+
+---
+
 ## Event attribute naming uses `bind`/`catch` prefixes, not `on*`
 
 ### What you'd expect (web)

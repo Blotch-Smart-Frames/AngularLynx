@@ -33,6 +33,7 @@ import {
   HMR_MAIN_THREAD_CLIENT,
 } from './entry';
 import { LAYERS } from './layers';
+import { ZeroBigIntLiteralsPlugin } from './zero-bigint-literals';
 
 const entryOptions = {
   customCSSInheritanceList: [],
@@ -259,6 +260,10 @@ describe('applyEntry', () => {
     // LynxEncodePlugin applied on lynx, WebEncodePlugin not.
     expect(pluginUses.some((u) => u.Plugin === LynxEncodePlugin)).toBe(true);
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(false);
+    // The native main thread can't load a `0n`, so its scripts are rewritten.
+    expect(pluginUses.some((u) => u.Plugin === ZeroBigIntLiteralsPlugin)).toBe(
+      true,
+    );
   });
 
   it('adds the hot update clients to both threads in a dev build', () => {
@@ -383,6 +388,10 @@ describe('applyEntry', () => {
     triggerChain(chain, { name: 'web', config: {} }, false);
 
     expect(pluginUses.some((u) => u.Plugin === WebEncodePlugin)).toBe(true);
+    // The web runs the main thread's script as plain JavaScript.
+    expect(pluginUses.some((u) => u.Plugin === ZeroBigIntLiteralsPlugin)).toBe(
+      false,
+    );
     expect(
       pluginUses.some((u) => u.Plugin === RuntimeWrapperWebpackPlugin),
     ).toBe(false);

@@ -30,9 +30,9 @@
  *   LynxElementBase.ngOnChanges forwards every input change to the native Lynx
  *   element via BaseLynxElement.setAttribute() → __SetAttribute().
  * - Events (bindtap, catchtap, bindinput, bindscroll, …) are NOT declared as
- *   @Output() because Angular would intercept them and skip the renderer's
- *   listen() call, breaking native Lynx event delivery. They continue to work
- *   via renderer.listen() which handles all unrecognized event names.
+ *   outputs, which would make DebugElement.triggerEventHandler() run each
+ *   handler twice (see base.ts). They reach handlers through renderer.listen(),
+ *   and their `$event` types come from types/element-events.ts.
  */
 export { LynxElementBase } from './base';
 export { LynxBlurView } from './blur-view';

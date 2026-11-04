@@ -1,15 +1,15 @@
 import { Component, ElementRef, signal, viewChild } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  type LynxEvent,
+  type WebViewErrorDetail,
+} from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiButton } from '../../components/ui/button';
 import { UiText } from '../../components/ui/typography';
 import { ScreenHost } from '../screen-host';
 
 type Source = 'url' | 'html';
-
-// Angular types $event on native element events as DOM Event; Lynx delivers
-// the payload on `detail`, so handlers cast to CustomEvent<…Detail>.
-type WebViewErrorDetail = { errorCode: number; errorMsg: string };
 
 const SAMPLE_HTML = `
 <html>
@@ -118,9 +118,7 @@ export class WebViewDemo {
     this.browser()?.nativeElement.invoke?.('reload', {});
   }
 
-  onError(event: Event): void {
-    const { errorCode, errorMsg } = (event as CustomEvent<WebViewErrorDetail>)
-      .detail;
-    this.status.set(`Error ${errorCode}: ${errorMsg}`);
+  onError({ detail }: LynxEvent<WebViewErrorDetail>): void {
+    this.status.set(`Error ${detail.errorCode}: ${detail.errorMsg}`);
   }
 }

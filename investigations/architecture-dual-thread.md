@@ -8,15 +8,15 @@ Lynx uses a **dual-thread model**: every app has two JavaScript runtimes executi
 
 ## The Two Threads
 
-|                         | Main Thread (historically "Lepus")                        | Background Thread                                              |
-| ----------------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
-| **Lynx's purpose**      | Rendering, pixel pipeline, gesture handling               | App logic, state, effects, network                             |
-| **What AngularLynx runs** | The Angular app                                         | The runtime's bridges and the modules that define `backgroundFn()`s |
-| **JS Engine**           | PrimJS (QuickJS-based, runs bytecode)                     | PrimJS (Android) / JavaScriptCore (iOS)                        |
-| **ES Target**           | ES2019                                                    | ES2015                                                         |
-| **DOM API**             | `__Create*`, `__SetAttribute`, etc. (direct native calls) | None                                                           |
-| **Lynx API**            | Subset — non-rendering APIs only                          | Full (`fetch`, `NativeModules`, `lynx.getJSModule()`, etc.)    |
-| **Bundle format**       | Bytecode (~4× faster load than text)                      | AMD-wrapped JavaScript                                         |
+|                           | Main Thread (historically "Lepus")                        | Background Thread                                                   |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Lynx's purpose**        | Rendering, pixel pipeline, gesture handling               | App logic, state, effects, network                                  |
+| **What AngularLynx runs** | The Angular app                                           | The runtime's bridges and the modules that define `backgroundFn()`s |
+| **JS Engine**             | PrimJS (QuickJS-based, runs bytecode)                     | PrimJS (Android) / JavaScriptCore (iOS)                             |
+| **ES Target**             | ES2019                                                    | ES2015                                                              |
+| **DOM API**               | `__Create*`, `__SetAttribute`, etc. (direct native calls) | None                                                                |
+| **Lynx API**              | Subset — non-rendering APIs only                          | Full (`fetch`, `NativeModules`, `lynx.getJSModule()`, etc.)         |
+| **Bundle format**         | Bytecode (~4× faster load than text)                      | AMD-wrapped JavaScript                                              |
 
 "Lepus" is legacy naming for the main thread JS runtime. PrimJS is the current engine.
 

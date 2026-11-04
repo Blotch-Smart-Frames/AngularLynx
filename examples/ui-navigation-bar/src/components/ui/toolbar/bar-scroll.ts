@@ -12,7 +12,13 @@ import {
   type Signal,
   type WritableSignal,
 } from '@angular/core';
-import { LYNX_ELEMENTS, LynxSystemInfo } from '@blotch/angular-lynx';
+import {
+  type LayoutChangeDetail,
+  LYNX_ELEMENTS,
+  type LynxEvent,
+  LynxSystemInfo,
+  type ScrollDetail,
+} from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
@@ -131,10 +137,6 @@ export const edgeFadeOverlay = (toward: 'bottom' | 'top'): string => {
   return `linear-gradient(to ${toward}, ${stops.join(', ')})`;
 };
 
-/** What Lynx sends with `scroll` and `layoutchange`, as far as this reads. */
-type ScrollDetail = { scrollTop: number; scrollHeight: number };
-type LayoutDetail = { height: number };
-
 /**
  * The platform, as SystemInfo names it, or undefined where there's no
  * SystemInfo to read, such as in unit tests, where LynxSystemInfo throws.
@@ -234,19 +236,19 @@ export class UiBarScroll {
     this.#renderer.listen(
       this.#element,
       'bindscroll',
-      (event: { detail: ScrollDetail }) => this.#scrolled(event.detail),
+      (event: LynxEvent<ScrollDetail>) => this.#scrolled(event.detail),
     ),
     // iOS and Android report the content's height when it changes, which a
     // frosted toolbar needs before anything scrolls.
     this.#renderer.listen(
       this.#element,
       'bindcontentsizechanged',
-      (event: { detail: ScrollDetail }) => this.#scrolled(event.detail),
+      (event: LynxEvent<ScrollDetail>) => this.#scrolled(event.detail),
     ),
     this.#renderer.listen(
       this.#element,
       'bindlayoutchange',
-      (event: { detail: LayoutDetail }) => {
+      (event: LynxEvent<LayoutChangeDetail>) => {
         this.viewport.set(event.detail.height);
         this.#update();
       },
@@ -334,16 +336,12 @@ export class UiBarScroll {
     return `linear-gradient(to bottom, ${stops.join(', ')})`;
   });
 
-  protected measureTop(event: Event): void {
-    this.topSpace.set(
-      (event as Event & { detail: LayoutDetail }).detail.height,
-    );
+  protected measureTop({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.topSpace.set(detail.height);
   }
 
-  protected measureBottom(event: Event): void {
-    this.bottomSpace.set(
-      (event as Event & { detail: LayoutDetail }).detail.height,
-    );
+  protected measureBottom({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.bottomSpace.set(detail.height);
   }
 
   #scrolled({ scrollTop, scrollHeight }: ScrollDetail): void {

@@ -95,7 +95,7 @@ export class TouchPad {
 }
 ```
 
-Every event has the same outer shape. `ng add` installs `@lynx-js/types`, which has a type for each one.
+Every event has the same outer shape, which AngularLynx calls `LynxEvent`:
 
 | Field            | Type                   | What it holds                                                                                         |
 | ---------------- | ---------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -113,8 +113,22 @@ Each `Touch` has `x` and `y` relative to the element, `pageX` and `pageY` relati
 
 ### Type the parameter
 
-- **Tap, long-press and touch events:** `$event` is Lynx's `TouchEvent`. Import it with `import type { TouchEvent } from '@lynx-js/types'`, as above.
-- **Every other event:** Angular types `$event` as the DOM `Event`. Accept `Event`, then cast it to read `detail`: `(event as CustomEvent<{ value: string }>).detail.value`.
+In a template, `$event` already has its type. Angular knows each element's events, so `(bindinput)="name.set($event.detail.value)"` type-checks, and a misspelt `detail` field fails the build.
+
+A handler declared in the class needs its parameter typed:
+
+```typescript
+import { type LynxEvent, type ScrollDetail } from '@blotch/angular-lynx';
+
+// <scroll-view (bindscroll)="onScroll($event)">
+onScroll({ detail }: LynxEvent<ScrollDetail>): void {
+  this.offset.set(detail.scrollTop);
+}
+```
+
+- **Tap, long-press and touch events** are Lynx's `TouchEvent`. Import it with `import type { TouchEvent } from '@lynx-js/types'`, as above: without the import, TypeScript uses the DOM's.
+- **Every other event** is a `LynxEvent` with the event's detail type, such as `LynxEvent<InputDetail>` for `<input>`'s `bindinput`. [Element events](/api/angular-lynx/element-events) lists each event's type.
+- **Don't take a DOM `Event`.** `$event` isn't one, so `onInput(event: Event)` fails the build. Code that took `Event` and cast it to `CustomEvent` needs the event's type instead, with no cast.
 
 ## Common events
 
@@ -150,5 +164,6 @@ Each element's page under [API → Elements](/api/elements/view) lists all its e
 - [Gestures](/guide/gestures/)
 - [Threads: where your code runs](/guide/concepts/threads)
 - [Forms](/guide/forms): `bindinput` behind Angular's form APIs
+- [Element events](/api/angular-lynx/element-events): the type of each event's `$event`
 - [Call element methods](/guide/selector-query)
 - [Testing event reference](/api/testing-library/event-reference): firing these events in tests

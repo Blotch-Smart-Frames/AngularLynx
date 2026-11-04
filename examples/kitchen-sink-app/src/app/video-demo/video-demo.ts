@@ -5,7 +5,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  type LynxEvent,
+  type VideoErrorDetail,
+  type VideoFirstFrameDetail,
+  type VideoTimeUpdateDetail,
+} from '@blotch/angular-lynx';
 import { UiButton } from '../../components/ui/button';
 import {
   UiCard,
@@ -19,11 +25,6 @@ import { DemoScreen } from '../demo-screen/demo-screen';
 import { ScreenHost } from '../screen-host';
 
 type VideoMethod = 'play' | 'pause' | 'stop' | 'seek';
-
-// Angular types $event on native element events as DOM Event; Lynx delivers
-// the payload on `detail`, so handlers cast to CustomEvent<…Detail>.
-type TimeUpdateDetail = { current: number; duration: number };
-type VideoErrorDetail = { errorCode: number; errorMsg: string };
 
 /**
  * Showcase for the native `<video>` element (experimental, Lynx 4.1+).
@@ -168,17 +169,14 @@ export class VideoDemo {
     this.current.set(position);
   }
 
-  onFirstFrame(event: Event): void {
-    const { duration } = (event as CustomEvent<{ duration: number }>).detail;
-    this.duration.set(duration);
+  onFirstFrame({ detail }: LynxEvent<VideoFirstFrameDetail>): void {
+    this.duration.set(detail.duration);
     this.status.set('Ready');
   }
 
-  onTimeUpdate(event: Event): void {
-    const { current, duration } = (event as CustomEvent<TimeUpdateDetail>)
-      .detail;
-    this.current.set(current);
-    this.duration.set(duration);
+  onTimeUpdate({ detail }: LynxEvent<VideoTimeUpdateDetail>): void {
+    this.current.set(detail.current);
+    this.duration.set(detail.duration);
   }
 
   onStopped(): void {
@@ -191,10 +189,9 @@ export class VideoDemo {
     this.playing.set(false);
   }
 
-  onError(event: Event): void {
+  onError({ detail }: LynxEvent<VideoErrorDetail | undefined>): void {
     // `detail` is missing when the error comes from a platform without a Lynx
     // video implementation (Lynx for Web falls back to a plain HTML <video>).
-    const detail = (event as CustomEvent<VideoErrorDetail | undefined>).detail;
     this.status.set(
       detail
         ? `Error ${detail.errorCode}: ${detail.errorMsg}`

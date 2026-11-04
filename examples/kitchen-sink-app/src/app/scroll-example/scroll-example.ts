@@ -1,6 +1,9 @@
 import { Component, signal } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import type { ScrollEvent } from '@lynx-js/types';
+import {
+  LYNX_ELEMENTS,
+  type LynxEvent,
+  type ScrollDetail,
+} from '@blotch/angular-lynx';
 import { UiBadge } from '../../components/ui/badge';
 import { UiCard } from '../../components/ui/card';
 import { type IconName, UiIcon } from '../../components/ui/icon';
@@ -212,7 +215,7 @@ const ACTIVITIES: readonly Activity[] = [
           <scroll-view
             class="h-full w-full"
             scroll-orientation="vertical"
-            (bindscroll)="onScroll($any($event))"
+            (bindscroll)="onScroll($event)"
             (bindscrolltoupper)="onReachTop()"
             (bindscrolltolower)="onReachBottom()"
           >
@@ -258,7 +261,7 @@ export class ScrollExample {
    * bindscroll fires continuously as the feed moves, so this only writes the
    * signals the header reads.
    */
-  onScroll(event: ScrollEvent): void {
+  onScroll(event: LynxEvent<ScrollDetail>): void {
     const top = event.detail.scrollTop;
     this.scrollY.set(Math.round(top));
     // The bottom edge is reported by bindscrolltolower; any offset above 0

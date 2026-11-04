@@ -5829,3 +5829,19 @@ Lynx for Web's `<x-svg>` turns `content` into an `image/svg+xml` blob and shows 
 ### The fix
 
 Write `xmlns` on the root `<svg>`. `<ui-icon [svg]>` adds it when the markup has none, so an app's own marks show in the web preview as they do on the phone.
+
+---
+
+## `<list>`'s `bindlayoutcomplete` doesn't send what Lynx's docs say
+
+### What you'd expect
+
+Lynx's `<list>` page (lynxjs.org, API → Elements → list) declares the event's detail as `{ 'layout-id'; scrollInfo; diffResult?; visibleCellsAfterUpdate?; visibleCellsBeforeUpdate? }`, with `scrollInfo` always there.
+
+### What Lynx does
+
+The engine (`core/list/decoupled_list_event_manager.cc`, `SendLayoutCompleteEvent`) adds `scrollInfo` only when the list has `need-layout-complete-info`, like the rest of the optional fields, so without it a handler reading `detail.scrollInfo.scrollTop` throws. The item arrays are `visibleItemBeforeUpdate` and `visibleItemAfterUpdate`: `@lynx-js/types` renamed them from `visibleCells…` (its CHANGELOG), and the engine sends the new names, but the docs page still shows the old ones.
+
+### The fix
+
+`ListLayoutCompleteDetail` (`packages/runtime/src/lib/types/element-events.ts`) types `scrollInfo` as optional and uses the `visibleItem…` names, so a handler has to check for `scrollInfo`.

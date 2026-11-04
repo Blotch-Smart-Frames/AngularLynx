@@ -1,5 +1,9 @@
 import { Component, signal } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import {
+  type InputDetail,
+  LYNX_ELEMENTS,
+  type LynxEvent,
+} from '@blotch/angular-lynx';
 
 @Component({
   selector: 'app-root',
@@ -42,7 +46,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class App {
   readonly name = signal('');
 
-  onInput(event: Event): void {
-    this.name.set((event as CustomEvent<{ value: string }>).detail.value);
+  onInput({ detail }: LynxEvent<InputDetail>): void {
+    this.name.set(detail.value);
   }
 }

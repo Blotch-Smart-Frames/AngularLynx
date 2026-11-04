@@ -6,6 +6,8 @@ import {
   inject,
 } from '@angular/core';
 import { type ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import type { InputDetail } from '../types/element-events';
+import type { LynxEvent } from '../types/lynx-event';
 
 /**
  * ControlValueAccessor for <input> elements. Bridges Angular's form model
@@ -27,8 +29,7 @@ import { type ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
     },
   ],
   host: {
-    // host bindings call renderer.listen() — the correct Lynx event path.
-    // @Output() would break delivery (template compiler intercepts it).
+    // Host listeners go through renderer.listen(), Lynx's event path.
     '(bindinput)': 'onInput($event)',
     '(bindblur)': 'onBlur()',
   },
@@ -39,11 +40,11 @@ export class LynxInputValueAccessor implements ControlValueAccessor {
   #onChange: (value: string) => void = () => {};
   #onTouched: () => void = () => {};
 
-  onInput(event: Event): void {
-    // Lynx bindinput carries the typed value in event.detail.value, not event.target.value.
-    this.#onChange(
-      (event as CustomEvent<{ value: string }>).detail?.value ?? '',
-    );
+  onInput(event: LynxEvent<InputDetail>): void {
+    // Lynx bindinput carries the typed value in event.detail.value, not
+    // event.target.value. A test can fire the event with no detail, which
+    // shouldn't throw, hence the `?.`.
+    this.#onChange(event.detail?.value ?? '');
   }
 
   onBlur(): void {

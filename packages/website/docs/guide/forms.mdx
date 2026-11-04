@@ -204,7 +204,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
       [class]="focused() ? 'border-2 border-ring' : 'border border-border'"
       (bindfocus)="focused.set(true)"
       (bindblur)="focused.set(false)"
-      (bindconfirm)="search($event)"
+      (bindconfirm)="query.set($event.detail.value)"
     />
     <text>Searching for: {{ query() }}</text>
   `,
@@ -212,10 +212,6 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class SearchBox {
   readonly focused = signal(false);
   readonly query = signal('');
-
-  search(event: Event): void {
-    this.query.set((event as CustomEvent<{ value: string }>).detail.value);
-  }
 }
 ```
 

@@ -12,8 +12,10 @@ import {
 } from '@angular/core';
 import { ROUTES, Router } from '@angular/router';
 import {
+  type LayoutChangeDetail,
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  type LynxEvent,
   LynxLocationStrategy,
 } from '@blotch/angular-lynx';
 
@@ -47,9 +49,6 @@ const ROW_PADDING: Readonly<Record<GlassDesign, number>> = {
 
 /** The space between a centered title and the controls beside it, in px. */
 const TITLE_GAP = 8;
-
-/** What Lynx's `layoutchange` event carries, as far as the bar reads it. */
-type LayoutChangeEvent = Event & { detail: { width: number } };
 
 /**
  * How the inline title comes in as the large title scrolls under the bar,
@@ -379,20 +378,20 @@ export class UiNavigationBar {
     ),
   );
 
-  protected measureRow(event: Event): void {
-    this.rowWidth.set((event as LayoutChangeEvent).detail.width);
+  protected measureRow({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.rowWidth.set(detail.width);
   }
 
-  protected measureTitle(event: Event): void {
-    this.titleWidth.set((event as LayoutChangeEvent).detail.width);
+  protected measureTitle({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.titleWidth.set(detail.width);
   }
 
-  protected measureLeading(event: Event): void {
-    this.leadingWidth.set((event as LayoutChangeEvent).detail.width);
+  protected measureLeading({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.leadingWidth.set(detail.width);
   }
 
-  protected measureTrailing(event: Event): void {
-    this.trailingWidth.set((event as LayoutChangeEvent).detail.width);
+  protected measureTrailing({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.trailingWidth.set(detail.width);
   }
 
   /**

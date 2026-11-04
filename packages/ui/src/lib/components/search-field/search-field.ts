@@ -184,11 +184,11 @@ const iconSvg = (icon: IconName, color: string): string =>
         [value]="value()"
         [class]="inputClass()"
         [style.font-size.px]="look().fontSize"
-        (bindinput)="onInput($any($event))"
-        (bindconfirm)="onConfirm($any($event))"
+        (bindinput)="onInput($event)"
+        (bindconfirm)="onConfirm($event)"
         (bindfocus)="onFocus()"
         (bindblur)="onBlur()"
-        (bindkeyboardheightchange)="onKeyboard($any($event))"
+        (bindkeyboardheightchange)="onKeyboard($event)"
       />
       @if (value() && !disabled()) {
         <view

@@ -14,7 +14,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   template: `
     <viewpager
       style="width: 100%; height: 300px;"
-      (bindchange)="onChange($event)"
+      (bindchange)="current.set($event.detail.index)"
     >
       @for (page of pages; track page) {
         <viewpager-item>
@@ -28,10 +28,6 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 export class Onboarding {
   readonly pages = ['Welcome', 'Sync', 'Done'];
   readonly current = signal(0);
-
-  onChange(event: Event): void {
-    this.current.set((event as CustomEvent<{ index: number }>).detail.index);
-  }
 }
 ```
 
@@ -60,7 +56,7 @@ Plus the [common attributes](/api/elements/view#attributes), such as `id`, `clas
 
 ## Events
 
-Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+Read the payload from `$event.detail`. Angular types `$event` for each event: see [Element events](/api/angular-lynx/element-events#other-elements).
 
 | Event              | `detail`                                | Description                                                                                      |
 | ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------ |

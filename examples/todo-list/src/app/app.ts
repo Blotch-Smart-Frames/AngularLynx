@@ -19,7 +19,7 @@ type Todo = { id: number; text: string; done: boolean };
             class="flex-1 rounded-[10px] border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
             placeholder="What needs to be done?"
             [value]="draft()"
-            (bindinput)="onInput($event)"
+            (bindinput)="draft.set($event.detail.value)"
           />
           <view
             class="items-center rounded-[10px] bg-indigo-500 px-5 py-3 justify-center"
@@ -81,10 +81,6 @@ export class App {
   readonly remaining = computed(
     () => this.todos().filter((t) => !t.done).length,
   );
-
-  onInput(event: Event): void {
-    this.draft.set((event as CustomEvent<{ value: string }>).detail.value);
-  }
 
   addTodo(): void {
     const text = this.draft().trim();

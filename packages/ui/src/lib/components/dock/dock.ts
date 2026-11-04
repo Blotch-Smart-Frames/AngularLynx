@@ -20,8 +20,10 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
+  type LayoutChangeDetail,
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  type LynxEvent,
   LynxRouterLinkActive,
 } from '@blotch/angular-lynx';
 
@@ -204,9 +206,6 @@ const CAPSULE_OPACITY = 0.1;
  * written, inside `<ui-dock>`, not from where it's projected.
  */
 const ACCESSORY_ICON_COLOR = signal('var(--glass-foreground)').asReadonly();
-
-/** What Lynx's `layoutchange` event carries, as far as the dock reads it. */
-type LayoutChangeEvent = Event & { detail: { width: number } };
 
 /**
  * A CSS length in px.
@@ -1014,8 +1013,8 @@ export class UiDock implements SearchFieldContainer {
     );
   });
 
-  protected measure(event: Event): void {
-    this.width.set((event as LayoutChangeEvent).detail.width);
+  protected measure({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.width.set(detail.width);
   }
 
   /**

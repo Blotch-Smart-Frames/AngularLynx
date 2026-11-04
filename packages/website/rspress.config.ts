@@ -265,6 +265,10 @@ export default defineConfig({
             { text: 'Bootstrap', link: '/api/angular-lynx/bootstrap' },
             { text: 'Routing', link: '/api/angular-lynx/routing' },
             { text: 'Elements', link: '/api/angular-lynx/elements' },
+            {
+              text: 'Element Events',
+              link: '/api/angular-lynx/element-events',
+            },
             { text: 'Animation', link: '/api/angular-lynx/animation' },
           ],
         },

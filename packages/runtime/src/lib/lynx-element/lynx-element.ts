@@ -16,6 +16,7 @@ import {
   usesAndroidBlurMaterials,
 } from '../lynx-document/android-blur-material';
 import { getPageId } from '../lynx-document/page-ref';
+import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
   isFirstRenderPending,
   isInsideChangeDetection,
@@ -43,6 +44,8 @@ type Listener = {
   eventType: LynxEventType;
   eventName: string;
   listener: (event: any) => any;
+  /** Runs after the others (see addTrailingEventListener). */
+  trailing?: boolean;
 };
 
 /**
@@ -489,6 +492,15 @@ export class LynxElement implements BaseLynxElement {
     return existing ?? new LynxElement(ref);
   }
 
+  /**
+   * @internal The canonical wrapper of the element with this unique id, if
+   * it has one: the target of a touch the document heard (see
+   * global-events/native-source.ts), which names the element by its id.
+   */
+  static byUniqueId(uniqueId: number): LynxElement | undefined {
+    return LynxElement.#byNativeId.get(uniqueId);
+  }
+
   constructor(element: ElementRef) {
     this.#nativeRef = element;
     // Register as the canonical wrapper for this native ref. #canonicalFor()
@@ -510,6 +522,15 @@ export class LynxElement implements BaseLynxElement {
     if (LynxElement.#byNativeId.get(id) === this) {
       LynxElement.#byNativeId.delete(id);
     }
+  }
+
+  /**
+   * The document stand-in (see global-events), as a DOM element's is its
+   * document. Angular resolves a `document:` or `body:` host listener's
+   * target from it, and a `window:` one from its `defaultView`.
+   */
+  get ownerDocument(): LynxGlobalDocument {
+    return globalEvents().document;
   }
 
   setProperty(name: string, value: any): void {
@@ -1385,14 +1406,32 @@ export class LynxElement implements BaseLynxElement {
       this.#listenForWebLongPress();
     }
 
+    return this.#add({ ...parsed, listener: cb });
+  }
+
+  /**
+   * @internal Adds a listener for a Lynx event name (`bindtap`, …) that runs
+   * after the element's other listeners for the event, whenever they were
+   * added. The document's listeners hear the end of a touch from the page
+   * element this way (see global-events/native-source.ts), so they run after
+   * the page's own, the root component's host listeners and `body:` ones,
+   * as a browser runs a document's listeners after its body's.
+   */
+  addTrailingEventListener(name: string, cb: (event: any) => any): () => void {
+    return this.#add({
+      ...parseEventName(name)!,
+      listener: cb,
+      trailing: true,
+    });
+  }
+
+  #add(entry: Listener): () => void {
     // Kept so #recreateSubtree() can register the handlers again on a rebuilt
     // native ref: native events don't survive a painting-node teardown and
     // can't be read back from the native side, so template `(bind…)` handlers
     // on projected content would go dead after a remount without this.
-    const entry: Listener = { ...parsed, listener: cb };
     this.#listeners.push(entry);
     this.#syncNativeHandler(entry);
-
     return () => this.#removeListener(entry);
   }
 
@@ -1578,13 +1617,18 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * The listeners that share `entry`'s native handler, in the order added.
+   * The listeners that share `entry`'s native handler, in the order added,
+   * the trailing ones last.
    */
   #listenersLike(entry: Listener): Listener[] {
     const key = nativeEventKey(entry.eventType, entry.eventName);
-    return this.#listeners.filter(
+    const like = this.#listeners.filter(
       (other) => nativeEventKey(other.eventType, other.eventName) === key,
     );
+    return [
+      ...like.filter((other) => !other.trailing),
+      ...like.filter((other) => other.trailing),
+    ];
   }
 
   /**

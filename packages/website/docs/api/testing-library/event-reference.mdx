@@ -9,6 +9,15 @@ fireEvent.input(element, { detail: { value: 'hello' } }); // $event.detail.value
 
 Each method takes the element and an optional `init` object. It runs the element's `(bind*)` or `(catch*)` handler. Touch, mouse and key events then go up to the page, as on a device, until a `(catch*)` handler stops them. The other events stay on the element.
 
+As on a device, every `(global-bind*)` handler for the event runs first, wherever it is in the page. They're how [`document:` and `window:` listeners](/api/angular-lynx/element-events#document-window-and-body-listeners) hear touches, so those run too, after the elements' handlers. One that a `(catch*)` handler stopped reaches them on the next timer:
+
+```typescript
+fireEvent.tap(menuItem); // a (catchtap)
+await waitForUpdate(); // the component's (document:click) has run
+```
+
+`$event.target` is the element, as a device names it: `{ uid }`, its unique id.
+
 ## Touch
 
 | Method                  | Binding             |

@@ -93,14 +93,16 @@ The build pipeline transpiles your code to the appropriate target for each bundl
 
 These do not exist in Lynx and are shimmed by the runtime:
 
-| Global                                     | Shim                                                            |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| `window`                                   | `globalThis`                                                    |
-| `document`                                 | `{ defaultView: globalThis, querySelector: () => null }`        |
-| `addEventListener` / `removeEventListener` | No-ops on globalThis                                            |
-| `AbortController`                          | Minimal polyfill                                                |
-| `queueMicrotask`                           | `Promise.resolve().then(fn)`                                    |
-| `atob` / `btoa`                            | Both threads; bad input throws an `InvalidCharacterError`       |
-| `DOMException`                             | Both threads, with `name`, `message` and the legacy `code`      |
-| `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`) |
-| `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets          |
+| Global                                     | Shim                                                                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `window`                                   | `globalThis`                                                                                                     |
+| `document`                                 | Every element's `ownerDocument` and `DOCUMENT`: listenable, with `defaultView` and `body`; queries return `null` |
+| `addEventListener` / `removeEventListener` | The window's listeners on the main thread (touches, `resize`); no-ops on the background thread                   |
+| `innerWidth` / `innerHeight`               | The LynxView's size                                                                                              |
+| `Event` / `CustomEvent`                    | Minimal classes, for `dispatchEvent()`                                                                           |
+| `AbortController`                          | Minimal polyfill                                                                                                 |
+| `queueMicrotask`                           | `Promise.resolve().then(fn)`                                                                                     |
+| `atob` / `btoa`                            | Both threads; bad input throws an `InvalidCharacterError`                                                        |
+| `DOMException`                             | Both threads, with `name`, `message` and the legacy `code`                                                       |
+| `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`)                                                  |
+| `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |

@@ -1,5 +1,6 @@
 import { RendererStyleFlags2 } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { globalEvents } from '../global-events';
 import { InMemoryDocument } from '../testing/in-memory-document';
 import { InMemoryElement } from '../testing/in-memory-element';
 import { LynxRenderer } from './renderer';
@@ -430,7 +431,7 @@ describe('LynxRenderer', () => {
 
       const unlisten = renderer.listen(el, 'bindtap', cb);
 
-      expect(spy).toHaveBeenCalledWith('bindtap', cb);
+      expect(spy).toHaveBeenCalledWith('bindtap', cb, undefined);
       expect(typeof unlisten).toBe('function');
     });
 
@@ -445,6 +446,84 @@ describe('LynxRenderer', () => {
       unlisten();
 
       expect(innerCleanup).toHaveBeenCalled();
+    });
+
+    // The document and window stand-ins, and the web preview's DOM objects,
+    // are EventTargets, whose addEventListener returns nothing.
+    it('removes a listener from a target that returns no cleanup', () => {
+      const { renderer } = createRenderer();
+      const target = {
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+      const cb = vi.fn();
+      const options = { capture: true };
+
+      const unlisten = renderer.listen(target, 'pointermove', cb, options);
+      expect(target.addEventListener).toHaveBeenCalledWith(
+        'pointermove',
+        cb,
+        options,
+      );
+      unlisten();
+
+      expect(target.removeEventListener).toHaveBeenCalledWith(
+        'pointermove',
+        cb,
+        options,
+      );
+    });
+
+    // `renderer.listen('document', …)`, as Angular's DOM renderer takes it.
+    it('listens on the document a global target names', () => {
+      const { renderer } = createRenderer();
+      const document = globalEvents().document;
+      const cb = vi.fn();
+
+      const unlisten = renderer.listen('document', 'click', cb);
+      expect(document.hasListeners('click')).toBe(true);
+      unlisten();
+
+      expect(document.hasListeners('click')).toBe(false);
+    });
+
+    it("listens on the window, the document's defaultView", () => {
+      const { renderer } = createRenderer();
+      const add = vi.fn();
+      vi.stubGlobal('addEventListener', add);
+      const cb = vi.fn();
+
+      renderer.listen('window', 'resize', cb);
+
+      expect(add).toHaveBeenCalledWith('resize', cb, undefined);
+      vi.unstubAllGlobals();
+    });
+
+    it("listens on the body, the document's page element", () => {
+      const { renderer } = createRenderer();
+      const page = {
+        element: {},
+        addEventListener: vi.fn(() => () => {}),
+        addTrailingEventListener: vi.fn(() => () => {}),
+      };
+      globalEvents().attach(page, () => undefined);
+      const cb = vi.fn();
+
+      renderer.listen('body', 'click', cb);
+
+      expect(page.addEventListener).toHaveBeenCalledWith(
+        'click',
+        cb,
+        undefined,
+      );
+    });
+
+    it('throws for a global target Angular has no name for', () => {
+      const { renderer } = createRenderer();
+
+      expect(() =>
+        renderer.listen('screen' as 'window', 'click', vi.fn()),
+      ).toThrow('Unsupported event target screen for event click');
     });
   });
 });

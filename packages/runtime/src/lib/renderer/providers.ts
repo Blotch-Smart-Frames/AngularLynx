@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
+import { globalEvents } from '../global-events';
 import { LynxDocument } from '../lynx-document';
 import { LynxHydrateDocument } from '../ssr/hydrate-document';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
@@ -17,7 +18,7 @@ import { LYNX_DOCUMENT } from './token';
  * Central DI configuration for the Lynx renderer. Must be included in every
  * Lynx Angular app's providers (typically via app.config.ts). Sets up:
  * 1. The document (LynxDocument, or LynxHydrateDocument for SSR)
- * 2. DOCUMENT stub (Angular requires this token but Lynx has no DOM Document)
+ * 2. DOCUMENT: the document stand-in elements' ownerDocument is (global-events)
  * 3. APP_BASE_HREF (prevents BrowserPlatformLocation from crashing)
  * 4. Renderer factory (creates LynxRenderer / EmulatedLynxRenderer)
  * 5. Error handler (routes to _ReportError + __lynxLastError)
@@ -45,26 +46,17 @@ export const provideRenderer = (): EnvironmentProviders => {
       },
     },
     {
-      // Angular's internal code occasionally accesses @Inject(DOCUMENT). In Lynx
-      // there is no DOM document, so we provide a minimal stub. Specific access
-      // points (defaultView, querySelector) on the global `document` are
-      // polyfilled in polyfills.ts.
+      // The document every element's `ownerDocument` is, as in a browser
+      // `inject(DOCUMENT)` is: code that listens on it, as
+      // `fromEvent(inject(DOCUMENT), 'click')` does, hears the screen's
+      // events (see global-events). Its `defaultView` is the window:
+      // code that measures elements, such as ngxtension's resize directive
+      // (which angular-three sizes its canvas with), looks ResizeObserver,
+      // getComputedStyle and devicePixelRatio up on it (see
+      // canvas/dom-globals.ts). And its getElementById() finds nothing, which
+      // TransferState relies on (see LynxGlobalDocument).
       provide: DOCUMENT,
-      useValue: {
-        // TransferState's root factory calls
-        // `inject(DOCUMENT).getElementById(APP_ID + '-state')` to restore the
-        // `<script>` that Angular SSR inlines. `resource()` and `httpResource()`
-        // inject TransferState on construction, so without this every resource
-        // threw "getElementById is not a function". Lynx never has that script
-        // (AngularLynx SSR hydrates from its own element snapshot), so `null` —
-        // "no transferred state" — is the correct answer, not just a stub.
-        getElementById: () => null,
-        // The window, as a document's is: code that measures elements, such
-        // as ngxtension's resize directive (which angular-three sizes its
-        // canvas with), looks ResizeObserver, getComputedStyle and
-        // devicePixelRatio up on it (see canvas/dom-globals.ts).
-        defaultView: globalThis,
-      },
+      useFactory: () => globalEvents().document,
     },
     // Provide a base href so Angular's PathLocationStrategy uses it directly
     // instead of calling getBaseHrefFromDOM(), which crashes in Lynx because

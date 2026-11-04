@@ -38,7 +38,34 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 
 ## Pointer events
 
-`(pointerdown)`, `(pointermove)`, `(pointerup)`, `(pointercancel)`, `(pointerover)`, `(pointerout)`, `(pointerenter)`, `(pointerleave)`, `(gotpointercapture)` and `(lostpointercapture)` work on every element, with no `bind` prefix, as on the web: the renderer makes each touch into the pointer events a browser fires for one, in its order. `$event` is a DOM `PointerEvent`: `pointerId` is the finger, `pointerType` is `'touch'`, `offsetX`/`offsetY` are relative to the element. A touch's events stay with the element it started on, as if captured. In the web preview they're the browser's own, mouse included. Libraries written for the web, such as angular-three, use them; a `(click)` on an element with pointer listeners has `offsetX`/`offsetY` where the pointer lifted.
+`(pointerdown)`, `(pointermove)`, `(pointerup)`, `(pointercancel)`, `(pointerover)`, `(pointerout)`, `(pointerenter)`, `(pointerleave)`, `(gotpointercapture)` and `(lostpointercapture)` work on every element, with no `bind` prefix, as on the web: the renderer makes each touch into the pointer events a browser fires for one, in its order. `$event` is a DOM `PointerEvent`: `pointerId` is the finger, `pointerType` is `'touch'`, `offsetX`/`offsetY` are relative to the element. A finger keeps its `pointerId` until it lifts, the same at the element and the document; with multi-touch off (a LynxView's default) there's one touch at a time, `pointerId` `0`. A touch's events stay with the element it started on, as if captured. In the web preview they're the browser's own, mouse included. Libraries written for the web, such as angular-three, use them; a `(click)` on an element with pointer listeners has `offsetX`/`offsetY` where the pointer lifted.
+
+## `document:`, `window:` and `body:` listeners
+
+Host listeners on the document, the window and the body work as on the web, and so do `document.addEventListener()`, `window.addEventListener()`, `fromEvent(document, …)` and `inject(DOCUMENT)` (the same object as every element's `ownerDocument`, whose `defaultView` is `window`):
+
+```typescript
+@Component({
+  selector: 'app-tilt',
+  host: { '(document:pointermove)': 'tilt($event)' },
+  template: `…`,
+})
+export class Tilt {
+  readonly angle = signal(0);
+
+  tilt(event: PointerEvent): void {
+    this.angle.set((event.clientX / window.innerWidth - 0.5) * 30);
+  }
+}
+```
+
+- **`document:` and `window:`** hear a touch anywhere on screen: `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover`, `pointerout`, `touchstart`, `touchmove`, `touchend`, `touchcancel` and `click`. **`window:resize`** fires when the LynxView changes size, as when the device rotates. **`body:`** is the page element: the events that bubble up to it.
+- **They run after the touched element's listeners and the body's**, as in a browser; `{ capture: true }` runs before them.
+- **They hear a touch a `catch` handler stopped**, unlike the web's `stopPropagation()`, on the next timer, after every listener of that touch.
+- **A pointer event's `target`** is the element touched (its `ElementRef`'s `nativeElement`), with `offsetX`/`offsetY` relative to it. Touch events and `click` are Lynx's own event objects.
+- **`window.innerWidth` / `innerHeight`** are the LynxView's size in CSS pixels; until its first layout, the screen's.
+- **iOS and Android send no mouse events:** `document:mousemove` never runs there, so listen for `pointermove`.
+- **In the web preview** they're the browser's own events inside the `<lynx-view>`, mouse included, and the size is the `<lynx-view>`'s.
 
 ## Handlers can change the element tree
 
@@ -174,4 +201,4 @@ loaded({ detail }: LynxEvent<ImageLoadDetail>) {
 - **Only touch events propagate** (`tap`, `longpress`, `touchstart`, `touchmove`, `touchend`)
 - **Non-touch events** (`scroll`, `input`, `load`, `animationend`) are delivered **only to the target element** — no capture or bubble phase
 - Use `catch` prefix to stop propagation (e.g., `catchtap` on a button inside a tappable card prevents the card's `bindtap` from firing)
-- **`global-bind`** (`(global-bindtouchstart)`) runs for a touch on any element, before that element's own listeners and whether or not it bubbles that far: the way to hear a touch outside a panel, since there's no `document` to listen on
+- **`global-bind`** (`(global-bindtouchstart)`) runs for a touch on any element, before that element's own listeners and whether or not it bubbles that far: the way to hear a touch outside a panel. `document:` and `window:` listeners hear touches through it, after the elements' listeners

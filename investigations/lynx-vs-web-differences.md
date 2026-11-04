@@ -778,7 +778,7 @@ None of these exist in Lynx. `window` itself is not a global (though we shim it 
 
 ### The fix
 
-- Shim `window = globalThis`, `document = { defaultView: globalThis, querySelector: () => null }`, and no-op `addEventListener` / `removeEventListener` at startup (see `runtime.ts`).
+- Shim `window = globalThis` and a `document` at startup (see `polyfills.ts`). On the main thread, `document` and `window`'s `addEventListener` / `removeEventListener` are real ones that hear the screen's events (see "Lynx elements have no `ownerDocument`" below); the background thread keeps no-ops.
 - Implement a custom `LynxPlatformLocation` that stores the current path in a signal and provides manual URL string parsing, bypassing the `URL` constructor entirely (see `packages/runtime/src/lib/lynx-platform-location.ts`).
 - Polyfill `URL` and `URLSearchParams` (see `packages/runtime/src/lib/url/`), because Angular itself calls them. Since 22.2, `DefaultUrlSerializer.serialize()` runs every URL through `new URL(url, 'http://fake')` to reject protocol-relative URLs, and treats the `ReferenceError` as such a URL. Every URL then serialized to `/`, so every navigation on the main thread looked like a navigation to the current URL and was skipped (`NavigationSkipped`, no error). No route could be opened on device, lazy or not, while the web build (which has a real `URL`) worked. HttpClient and `NgOptimizedImage`'s loaders call `URL` too. The polyfill follows the WHATWG URL Standard and is checked against Node's `URL` in its tests.
 
@@ -2031,7 +2031,7 @@ Keyboard visibility is tracked with `visualViewport.addEventListener('resize', .
 Global events are dispatched through the `GlobalEventEmitter`:
 
 - **`keyboardstatuschanged`** — fires when the software keyboard appears or disappears. Payload: `{ status: 'show' | 'hide', height, compatHeight }`. There is no web `resize` equivalent that is reliable for keyboard detection on mobile.
-- **`onWindowResize`** — fires when the Lynx view container is resized. Payload: `{ width, height }`.
+- **`onWindowResize`** — fires when the Lynx view container is resized. Payload: `{ width, height }`. On the main thread, the page element gets a `resize` event at the same time, whose `detail` is the emitter's arguments, `['onWindowResize', [width, height]]` (see "Lynx elements have no `ownerDocument`" below).
 
 Subscribe via:
 
@@ -5662,7 +5662,7 @@ A non-modal popover is an element above the page, and a `click` listener on `doc
 ### What Lynx does
 
 - **An `<overlay>` takes every touch** while it's shown (see the toast's entry above), so a popover in one blocks the screen, as the menus and the bottom action sheet do on purpose.
-- **There's no `document` to listen on.** A listener on the page root hears only the touches that bubble up to it, and a `catch` listener on the way stops them.
+- **A listener on the page root hears only the touches that bubble up to it**, and a `catch` listener on the way stops them. (The runtime's `document` now hears every touch, through the `global-bind` listeners below: see "Lynx elements have no `ownerDocument`".)
 - **`global-bind` listeners run for a touch on any element** (`global-bindtouchstart`), however it bubbles: Lynx queues them before the touched element's own capture and bubble listeners (`TouchEventHandler::HandleEventInternal` in `core/renderer/events/touch_event_handler.cc`), and web-core runs them in the same dispatch. On the iOS 27 Simulator in Lynx Explorer 4.1, the global listener ran first, then the touched element's.
 - **`capture-bind` listeners didn't run on iOS.** A `capture-bindtouchstart` or `capture-bindtap` on a view or a blur view never ran there in Lynx Explorer 4.1, while a `bindtouchstart` on the same element did. Not traced further.
 
@@ -5947,3 +5947,46 @@ What's still different on a device:
 Checked on the iOS Simulator and the Android emulator (Lynx Explorer 4.1), and in the web preview, with a scroll-view of 300px cards. The first entries were right: the card cut off by the scroll-view's bottom reported 0.92 on all three, and the cards below it reported out of view. Cards scrolling in and out were reported as they crossed the edge, and so was a card that observed from `afterNextRender()`.
 
 Angular runs `afterNextRender()` callbacks after the renderer's `end()` has flushed, and an event handler reaches native only with a flush. So an observer started there, with nothing else changing afterwards, would never hear its element's events. `LynxElement` now schedules the settle flush whenever it adds or removes a native handler outside change detection. The device check doesn't show this case on its own: native flushes after the first render anyway, and the other cards' updates flushed too.
+
+---
+
+## Lynx elements have no `ownerDocument`, so `document:` and `window:` listeners threw
+
+### What you'd expect (web)
+
+A component's `host: { '(document:pointermove)': … }`, `'(window:resize)'` or `'(body:click)'` (or the same `@HostListener`) listens on the element's document, window or body. Angular finds them from the host element: `ɵɵresolveDocument` returns `element.ownerDocument`, `ɵɵresolveWindow` its `defaultView` and `ɵɵresolveBody` its `body`. The document and the window hear every event that bubbles up to them, after the elements it went through; `window.innerWidth` is the viewport's width.
+
+### What Lynx does
+
+- **There's no document.** A Lynx element has no `ownerDocument`, so the resolvers returned `undefined` and the renderer's `listen()` threw `TypeError: not a function` as the component was created. angular-three draws nothing of a scene with such a listener in it.
+- **The way to hear every touch is a `global-bind` listener** (`TouchEventHandler::HandleEventInternal` runs every element's for an event, before the touched element's own listeners), which hears even a touch a `catch` listener stopped. A browser runs a document's bubbling listeners last, and not at all for an event an element stopped.
+- **The page element gets a `resize` event** when the LynxView changes size, as when the device rotates, and after the first layout: `LayoutContext::OnLayoutAfter` compares the root's size with the last, which starts at zero, and `LayoutMediator::OnCalculatedViewportChanged` sends the new one. Its `detail` is `['onWindowResize', [width, height]]` in CSS pixels, on the iOS 27 Simulator and the Android API 34 emulator alike. In Lynx Explorer on Android, rotating recreates the page, so a page there never sees a rotation's resize.
+- **`innerWidth` didn't exist.** `window` was `globalThis`, which has no size.
+- **In the web preview, `window` was `undefined` in app code.** The main thread's code runs inside web-core's wrapper, `(function(){ "use strict"; const navigator=void 0,postMessage=void 0; let window=void 0; <bundle> })` (`MTS_CODE_WRAPPER_PREFIX`, `decodeWorker/decode.worker.js`), in a hidden iframe web-core puts in the `<lynx-view>`'s shadow root (`createIFrameRealm`). `globalThis.window` is that iframe's read-only getter, so the polyfill's `globalThis.window = globalThis` threw and the `let` stayed `undefined`; and the iframe's own size is zero.
+
+### The fix
+
+`packages/runtime/src/lib/global-events/`:
+
+- **A `document` stand-in** (`LynxGlobalDocument`) is every LynxElement's `ownerDocument`, `DOCUMENT`'s value, and on iOS and Android the `document` global. Its `defaultView` is `globalThis`, whose `addEventListener`, `removeEventListener` and `dispatchEvent` become a real listener registry on the main thread (in a browser realm, the web preview's iframe or jsdom, only for the screen's events). Its `body` is the page element. `renderer.listen()` also takes `'window'`, `'document'` and `'body'`, as Angular's DOM renderer does, and any EventTarget. `Event` and `CustomEvent` are installed where they're missing.
+- **Touches come from `global-bind` listeners on the page** (`native-source.ts`), turned into the pointer events a browser fires (`pointerover`, `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerout`), then the touch event itself; a `tap` reaches `click` listeners. The pointer events' target is the touched element's wrapper, found by its unique id.
+- **A dispatch runs in two halves**, so the order is a browser's: the capturing listeners when the `global-bind` listener hears the event, and the others when the event reaches a `bind` listener on the page, which runs after the page's own listeners (`LynxElement.addTrailingEventListener`). A touch a `catch` listener stopped never reaches the page, so its second half runs on the next timer, or before the next touch begins, whichever comes first.
+- **`window.innerWidth` and `innerHeight`** are the last `resize` size, and `SystemInfo`'s screen size until then. The first layout's `resize` fires `resize` only if it changed what they said: on Android, where the LynxView is shorter than the screen, it does.
+- **On the web** (`web-source.ts`), the `<lynx-view>` is the screen: `frameElement` leads from the main thread's iframe to its shadow root, where a capturing and a bubbling listener hear the browser's own events, and to the `<lynx-view>`, whose size is `innerWidth` and `innerHeight` and whose ResizeObserver fires `resize`. Key events are heard on the page's document, as web-core hears them. `polyfills.ts` assigns `window = globalThis` when the first assignment throws, which sets the wrapper's `let`.
+- **In tests**, the testing library's `fireEvent` runs every `global-bind` handler first, as Lynx does, and gives the event Lynx's `target` (`{ uid }`), so `document:` listeners run under `render()` too.
+
+---
+
+## A touch's `identifier` changes between its events when multi-touch is off
+
+### What you'd expect (web)
+
+`Touch.identifier` (and a pointer event's `pointerId`) stays the same from a finger's `touchstart` to its `touchend`, so code follows a drag by it.
+
+### What Lynx does
+
+With multi-touch on, Lynx numbers each finger from 0 and keeps its number until it lifts (`touches_map_` and `reuse_id_pool_` in iOS's `LynxTouchHandler.mm`, `MotionEvent.getPointerId()` on Android). With it off, which is a LynxView's default, there's one touch at a time, and its `identifier` is the address of the dictionary the touch is built in: `reinterpret_cast<int64_t>(&touch)` in `TouchEventHandler::GetTouchEventParam` (`core/renderer/events/touch_event_handler.cc`). On the iOS 27 Simulator, a drag's `touchmove`s had one identifier and its `touchend` another. The element pointer events made from touches (`pointer-events.ts`) followed a finger by its identifier, so on iOS a drag's `pointermove`s and `pointerup` never fired, and each new touch was a second, non-primary pointer.
+
+### The fix
+
+`pointerIdOf()` (`packages/runtime/src/lib/lynx-element/pointer-events.ts`) gives a touch whose identifier is above `0xffff` (an address, never a finger's number) the pointerId `0`, the number multi-touch gives the first finger. Elements and the document use it alike, so a finger has the same `pointerId` at both.

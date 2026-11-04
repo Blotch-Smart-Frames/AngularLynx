@@ -17,7 +17,7 @@ Lynx doesn't provide some APIs that Angular relies on. AngularLynx adds them bef
 - For 3D in a [`<canvas>`](/api/elements/canvas): `createImageBitmap()`, `ImageBitmap`, `Image` (for loading textures, not for showing images: use `<image>`), `ResizeObserver`, `performance.now()`, `devicePixelRatio`, `self` and `crypto.randomUUID()` (not cryptographically secure, so not for secrets)
 - Newer built-in methods, up to ES2026, such as `array.at()`, `toSorted()` and `Object.groupBy()`: see [JavaScript language level](#javascript-language-level)
 
-It also adds small `document`, `window` and `navigator` objects, with only what Angular reads internally. They are not a DOM: `document.querySelector()` always returns `null`.
+It also adds small `document`, `window` and `navigator` objects. They are not a DOM: `document.querySelector()` always returns `null`. But `document` and `window` can be listened on: they hear touches anywhere on screen, `window` hears `resize`, and `window.innerWidth` and `window.innerHeight` are the screen's size (see [`document:`, `window:` and `body:` listeners](/api/angular-lynx/element-events#document-window-and-body-listeners)). `Event` and `CustomEvent` are there, for code that dispatches events of its own.
 
 ## What's missing, and what to use instead
 
@@ -25,7 +25,7 @@ It also adds small `document`, `window` and `navigator` objects, with only what 
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | The DOM: `querySelector`, `createElement`, `innerHTML`            | Use templates, `viewChild()` and signals                                                      |
 | `getComputedStyle()`                                              | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
-| `window.addEventListener('resize')`, `matchMedia`                 | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
+| `matchMedia`                                                      | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
 | `navigator.userAgent`, `navigator.language`                       | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
 | `localStorage`, `sessionStorage`                                  | See [Storage](#storage)                                                                       |
 | `WebSocket`                                                       | See [Network requests](#network-requests)                                                     |

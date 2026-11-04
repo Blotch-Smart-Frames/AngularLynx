@@ -3,6 +3,7 @@ import {
   LynxPointerEvent,
   POINTER_EVENT_NAMES,
   PointerEventSource,
+  pointerIdOf,
 } from './pointer-events';
 
 const setup = (origin: { left: number; top: number } | null = null) => {
@@ -46,7 +47,40 @@ const finger = (identifier: number, x: number, y: number) => ({
   clientY: y + 250,
 });
 
+describe('pointerIdOf', () => {
+  it('is the number Lynx gives a finger with multi-touch on', () => {
+    expect(pointerIdOf({ identifier: 0 })).toBe(0);
+    expect(pointerIdOf({ identifier: 3 })).toBe(3);
+  });
+
+  // With multi-touch off, an identifier is an address that changes from one
+  // event to the next.
+  it('is the one touch’s number for an identifier that is an address', () => {
+    expect(pointerIdOf({ identifier: 6122062000 })).toBe(0);
+    expect(pointerIdOf({ identifier: 6122062064 })).toBe(0);
+    expect(pointerIdOf({ identifier: -1 })).toBe(0);
+  });
+});
+
 describe('PointerEventSource', () => {
+  // The iOS 27 Simulator gave a drag's touchmove events one identifier and its
+  // touchend another.
+  it('follows the one touch whose identifier changes between its events', () => {
+    const { source, events, record, touch } = setup();
+    for (const name of ['pointerdown', 'pointermove', 'pointerup']) {
+      source.add(name, record);
+    }
+    touch('touchstart', [finger(6122061936, 10, 20)]);
+    touch('touchmove', [finger(6122062000, 12, 22)]);
+    touch('touchend', [finger(6122062064, 14, 24)]);
+
+    expect(events.map((e) => [e.type, e.pointerId, e.isPrimary])).toEqual([
+      ['pointerdown', 0, true],
+      ['pointermove', 0, true],
+      ['pointerup', 0, true],
+    ]);
+  });
+
   it('names the pointer events', () => {
     expect(POINTER_EVENT_NAMES.has('pointerdown')).toBe(true);
     expect(POINTER_EVENT_NAMES.has('click')).toBe(false);

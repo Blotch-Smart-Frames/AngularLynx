@@ -4,7 +4,8 @@ import '@angular/compiler';
 import { Component } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerHostElement } from '../lynx-document/host-elements';
-import type { LynxElement } from '../lynx-element';
+import { globalEvents } from '../global-events';
+import { LynxElement } from '../lynx-element';
 import type { ElementRef } from '../types/lynx';
 import { LynxHydrateDocument } from './hydrate-document';
 
@@ -20,10 +21,13 @@ vi.mock('../lynx-document', () => {
 
 vi.mock('../lynx-element', () => {
   class MockLynxElement {
+    static byUniqueId = vi.fn();
     element: ElementRef;
     isRootPageElement = false;
     appendChild = vi.fn();
     setInitialText = vi.fn();
+    addEventListener = vi.fn(() => () => {});
+    addTrailingEventListener = vi.fn(() => () => {});
     constructor(ref: ElementRef) {
       this.element = ref;
     }
@@ -54,6 +58,20 @@ describe('LynxHydrateDocument', () => {
       const root = doc.createRootElement();
 
       expect(root.isRootPageElement).toBe(true);
+    });
+
+    // As LynxDocument's does: the snapshot's page is the screen.
+    it('is the page the document and window hear the screen from', () => {
+      const root = new LynxHydrateDocument(pageRef, []).createRootElement();
+
+      expect(globalEvents().page).toBe(root);
+      expect(root.addEventListener).toHaveBeenCalledWith(
+        'bindresize',
+        expect.any(Function),
+      );
+      // A touch's target is found by the element's unique id.
+      globalEvents().targetFor(7);
+      expect(LynxElement.byUniqueId).toHaveBeenCalledWith(7);
     });
   });
 

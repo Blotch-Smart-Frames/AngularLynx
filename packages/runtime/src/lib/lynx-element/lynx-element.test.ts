@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { globalEvents } from '../global-events';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 
@@ -580,6 +581,39 @@ describe('LynxElement', () => {
       'tap',
       { type: 'worklet', value: expect.any(Function) },
     );
+  });
+
+  // The document's listener on the page (see global-events/native-source.ts).
+  it('runs a trailing listener after the others, whenever they were added', () => {
+    element = new LynxElement(fakeRef);
+    const order: string[] = [];
+    const removeTrailing = element.addTrailingEventListener('bindtap', () =>
+      order.push('trailing'),
+    );
+    element.addEventListener('bindtap', () => order.push('first'));
+    element.addEventListener('click', () => order.push('second'));
+
+    const [, , , handler] = vi.mocked(globalThis.__AddEvent).mock.calls.at(-1)!;
+    (handler as { value: (event: object) => void }).value({});
+    expect(order).toEqual(['first', 'second', 'trailing']);
+
+    removeTrailing();
+    order.length = 0;
+    (handler as { value: (event: object) => void }).value({});
+    expect(order).toEqual(['first', 'second']);
+  });
+
+  // Angular resolves document:, window: and body: listeners from it.
+  it('is in the document stand-in, whose window is the global', () => {
+    element = new LynxElement(fakeRef);
+    expect(element.ownerDocument).toBe(globalEvents().document);
+    expect(element.ownerDocument.defaultView).toBe(globalThis);
+  });
+
+  it('is found by its unique id, the way a touch names it', () => {
+    element = new LynxElement(fakeRef);
+    expect(LynxElement.byUniqueId(__GetElementUniqueID(fakeRef))).toBe(element);
+    expect(LynxElement.byUniqueId(-1)).toBeUndefined();
   });
 
   it('addEventListener with unrecognized event does not call __AddEvent', () => {

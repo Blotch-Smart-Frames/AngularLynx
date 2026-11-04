@@ -93,6 +93,42 @@ Plain data, not the element: it has no methods. `id` is the element's `id` attri
 
 A touch's events go to the element it started on, wherever the finger moves, as if every pointer were captured; `setPointerCapture()` changes only `hasPointerCapture()` and the capture events. In the web preview, they're the browser's own pointer events, including a mouse's. A `(click)`, which is Lynx's `bindtap`, has the `offsetX` and `offsetY` of where the pointer lifted, on an element with pointer listeners.
 
+A finger keeps its `pointerId` until it lifts, at the element and at the [document](#document-window-and-body-listeners). With multi-touch off, the LynxView's default, there's one touch at a time, and its `pointerId` is `0`.
+
+### `document:`, `window:` and `body:` listeners
+
+Host listeners on the document, the window and the body work as in a browser, and so do the libraries written for the browser that use them:
+
+```typescript
+@Component({
+  selector: 'app-tilt',
+  host: { '(document:pointermove)': 'tilt($event)' },
+  template: `…`,
+})
+export class Tilt {
+  readonly angle = signal(0);
+
+  tilt(event: PointerEvent): void {
+    this.angle.set((event.clientX / window.innerWidth - 0.5) * 30);
+  }
+}
+```
+
+An element's `ownerDocument` is a `document` that hears the screen's events, and `inject(DOCUMENT)` is the same object. Its `defaultView` is `window`. So `document.addEventListener()`, `window.addEventListener()` and RxJS's `fromEvent(document, 'click')` hear them too.
+
+| Target                 | Events                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `document:`, `window:` | `pointerdown`, `pointermove`, `pointerup`, `pointercancel`, `pointerover` and `pointerout`, `touchstart`, `touchmove`, `touchend` and `touchcancel`, and `click`, for a touch anywhere on screen |
+| `window:`              | `resize`, when the LynxView changes size, as when the device rotates                                                                                                                             |
+| `body:`                | Those of the page element, which every element is in: the events that bubble up to it                                                                                                            |
+
+- **They run after the touched element's listeners and the body's**, as in a browser. A capturing listener, `{ capture: true }`, runs before them.
+- **They hear a touch that a `(catchtap)` or another `catch` handler stopped.** In a browser, `stopPropagation()` hides an event from the document. On Lynx they still hear it, on the next timer, after every listener of that touch.
+- **A pointer event's `target` is the element touched**, the `nativeElement` of its `ElementRef`, and its `offsetX`/`offsetY` are relative to that element. A touch event and a `click` are Lynx's own event objects, as an element's listeners get them.
+- **`window.innerWidth` and `window.innerHeight` are the LynxView's size** in CSS pixels. Until its first layout, they're the screen's, from `SystemInfo`.
+- **iOS and Android send no mouse events**, so `document:mousemove` never runs there: listen for `pointermove`.
+- **In the web preview**, they're the browser's own events inside the `<lynx-view>`, a mouse's included, and the size is the `<lynx-view>`'s. Key events are the page's.
+
 ## Each element's own events
 
 The fields of each detail type are in its element's Events table.

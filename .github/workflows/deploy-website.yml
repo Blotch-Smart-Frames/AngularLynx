@@ -3,6 +3,25 @@ name: Deploy Website
 on:
   push:
     branches: [master]
+    # Only deploy when something the site is built from changed. Every deploy
+    # uploads ~160 MB (mostly the examples' bundles) and Vercel keeps each one
+    # for its retention period, so deploying on CI-only or test-only commits
+    # filled the free tier's 10 GB of deployment storage. The packages listed
+    # are the ones the examples build with (runtime, builders and what they
+    # depend on, and dolan's UI components and Tailwind plugin).
+    paths:
+      - packages/website/**
+      - examples/**
+      - packages/runtime/**
+      - packages/build/**
+      - packages/rsbuild-plugin-angular-lynx/**
+      - packages/native/**
+      - packages/dolan/**
+      - packages/ui/**
+      - package-lock.json
+      - .github/workflows/deploy-website.yml
+  # For deploying by hand, e.g. after a change the paths above miss.
+  workflow_dispatch:
 
 concurrency:
   # Each run deploys to production, so whichever run finishes last wins.

@@ -19,7 +19,17 @@ import {
   getConfig,
 } from '@testing-library/dom';
 
-const EVENT_INIT_KEYS = new Set(['bubbles', 'cancelable', 'composed']);
+/**
+ * Init keys that aren't copied onto the event: the standard EventInit ones,
+ * which are read-only on a constructed event, and `target`, which Testing
+ * Library's createEvent sets on the element (`{ target: { value } }`).
+ */
+const EVENT_INIT_KEYS = new Set([
+  'bubbles',
+  'cancelable',
+  'composed',
+  'target',
+]);
 
 /**
  * The events the named helpers fire. Those with `bubbles: true` travel Lynx's
@@ -140,12 +150,37 @@ const createLynxEvent = (
       Object.entries(eventInit).filter(([k]) => !EVENT_INIT_KEYS.has(k)),
     ),
   );
+  // The element the event happened on, by its unique id, as a device names
+  // it: the runtime finds a touch's element by it, for the target of the
+  // pointer events `document:` listeners get. A DOM event's own `target` is
+  // a getter, which the testing environment doesn't copy to the handler, so
+  // it's shadowed.
+  Object.defineProperty(event, 'target', {
+    value: { uid: (globalThis as any).__GetElementUniqueID(elem) },
+    enumerable: true,
+    configurable: true,
+  });
   return event;
 };
 
 /**
+ * Every element in `target`'s tree with a `global-bind` handler for `name`:
+ * Lynx runs one for an event on any element of the page.
+ */
+const globalHandlersOf = (target: Element, name: string): Element[] => {
+  let root = target;
+  while (root.parentElement) root = root.parentElement;
+  return [root, ...root.querySelectorAll('*')].filter((element) =>
+    handlerOf(element, 'global-bindEvent', name),
+  );
+};
+
+/**
  * Runs the handlers for the event `name` fired at `target`, as Lynx's
- * TouchEventHandler::HandleEventInternal does on a device. An event that
+ * TouchEventHandler::HandleEventInternal does on a device. First every
+ * `global-bind` handler for it, on any element: they're what the runtime's
+ * `document` and `window` hear the screen's events with, so a `document:` or
+ * `window:` listener runs. An event that
  * bubbles goes down from the page to the target, running `capture-bind` and
  * `capture-catch` handlers, then back up, running `bind` and `catch` ones. A
  * `catch` handler of either phase runs and stops the event there. Any other
@@ -196,6 +231,11 @@ const deliver = (
     }
     return false;
   };
+  for (const element of globalHandlersOf(target, name)) {
+    const event = createLynxEvent(target, 'global-bindEvent', name, init);
+    handlerOf(element, 'global-bindEvent', name)!(event);
+    notCanceled &&= !event.defaultPrevented;
+  }
   // Lynx has no capture phase for the events that stay on their target.
   const captured =
     !!init['bubbles'] && runPhase([...chain].reverse(), CAPTURE_PHASE);

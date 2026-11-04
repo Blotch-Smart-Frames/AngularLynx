@@ -13,6 +13,7 @@ import {
 } from 'vitest';
 import type { ElementRef } from '../types/lynx';
 import { LynxCanvasElement } from '../canvas/canvas-element';
+import { globalEvents } from '../global-events';
 import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
 import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
@@ -84,6 +85,7 @@ const setupGlobals = () => {
   globalThis.__FlushElementTree = mock(() => {});
   globalThis.__UpdateListCallbacks = mock(() => {});
   globalThis.__GetChildren = mock(() => []);
+  globalThis.__AddEvent = mock(() => {});
   // Each test is a first boot: no previous app left a page to take over.
   setPageElementRef(null);
 };
@@ -101,6 +103,23 @@ describe('LynxDocument', () => {
       const doc = new LynxDocument();
       doc.createRootElement();
       expect(asMock(globalThis.__CreatePage)).toHaveBeenCalledWith('0', 0);
+    });
+
+    // document: and window: listeners hear touches from the page, and the
+    // window follows its size.
+    it('is the page the document and window hear the screen from', () => {
+      const root = new LynxDocument().createRootElement();
+
+      expect(globalEvents().page).toBe(root);
+      expect(asMock(globalThis.__AddEvent)).toHaveBeenCalledWith(
+        root.element,
+        'bindEvent',
+        'resize',
+        expect.anything(),
+      );
+      expect(globalEvents().targetFor(__GetElementUniqueID(root.element))).toBe(
+        root,
+      );
     });
 
     // A hot update bootstraps the app again, in a new document. A second

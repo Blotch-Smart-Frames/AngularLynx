@@ -1,4 +1,5 @@
 import { devStats } from '../devtools/stats';
+import { globalEvents } from '../global-events';
 import {
   LynxElement,
   type LynxListElement,
@@ -67,6 +68,8 @@ export class LynxDocument implements LynxDocumentBase {
     }
     this.#pageId = __GetElementUniqueID(pageElement);
     setPageElementRef(pageElement);
+    // The document and window hear the screen's events from the page.
+    globalEvents().attach(this.page, (id) => LynxElement.byUniqueId(id));
     return this.page;
   }
   createElement(name: string, value?: string): LynxElement | LynxListElement {

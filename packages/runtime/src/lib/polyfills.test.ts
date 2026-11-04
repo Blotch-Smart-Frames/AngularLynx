@@ -219,12 +219,23 @@ describe('polyfills', () => {
   });
 
   describe('document', () => {
-    it('installs a minimal document stub', async () => {
+    it('installs a minimal document stub on the background thread', async () => {
       delete (globalThis as any).document;
       vi.stubGlobal('lynx', undefined);
       await importFresh();
       expect((globalThis as any).document.defaultView).toBe(globalThis);
       expect((globalThis as any).document.querySelector('base')).toBe(null);
+    });
+
+    // The one elements' ownerDocument and DOCUMENT are (see global-events).
+    it('is the document stand-in on the main thread', async () => {
+      delete (globalThis as any).document;
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      const { globalEvents } = await import('./global-events');
+      expect((globalThis as any).document).toBe(globalEvents().document);
+      delete (globalThis as any).document;
     });
   });
 
@@ -234,6 +245,44 @@ describe('polyfills', () => {
       vi.stubGlobal('lynx', undefined);
       await importFresh();
       expect((globalThis as any).window).toBe(globalThis);
+    });
+
+    /**
+     * A `window` whose first assignment throws, as globalThis.window does in
+     * the web preview's iframe. In the preview the second assignment sets
+     * web-core's wrapper's `let window`; here, the global's setter.
+     */
+    const readOnlyWindow = () => {
+      const set = vi.fn().mockImplementationOnce(() => {
+        throw new TypeError(
+          'Cannot set property window, which has only a getter',
+        );
+      });
+      Object.defineProperty(globalThis, 'window', {
+        get: () => undefined,
+        set,
+        configurable: true,
+      });
+      return set;
+    };
+
+    it("points the web wrapper's window at globalThis", async () => {
+      vi.stubGlobal('__WEB__', true);
+      vi.stubGlobal('lynx', undefined);
+      const set = readOnlyWindow();
+      await importFresh();
+      expect(set).toHaveBeenCalledTimes(2);
+      expect(set).toHaveBeenLastCalledWith(globalThis);
+      delete (globalThis as any).window;
+    });
+
+    it('leaves a read-only window alone elsewhere', async () => {
+      vi.stubGlobal('__WEB__', false);
+      vi.stubGlobal('lynx', undefined);
+      const set = readOnlyWindow();
+      await importFresh();
+      expect(set).toHaveBeenCalledTimes(1);
+      delete (globalThis as any).window;
     });
   });
 
@@ -247,6 +296,19 @@ describe('polyfills', () => {
   });
 
   describe('addEventListener/removeEventListener', () => {
+    // window: listeners, and the screen's events (see global-events).
+    it("are the window stand-in's on the main thread", async () => {
+      vi.stubGlobal('__MAIN_THREAD__', true);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+      const { globalEvents } = await import('./global-events');
+      const listener = (): void => {};
+      globalThis.addEventListener('resize', listener);
+      expect(globalEvents().window.hasListeners('resize')).toBe(true);
+      globalThis.removeEventListener('resize', listener);
+      expect(globalEvents().window.hasListeners('resize')).toBe(false);
+    });
+
     it('installs no-op listener stubs', async () => {
       delete (globalThis as any).addEventListener;
       delete (globalThis as any).removeEventListener;

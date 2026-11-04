@@ -10,7 +10,7 @@ import type {
   LynxEvent,
 } from '@blotch/angular-lynx';
 import { configure, getConfig } from '@testing-library/dom';
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import { render, fireEvent, eventMap, screen, waitForUpdate } from './index.js';
 
 /**
@@ -612,9 +612,88 @@ describe('fireEvent — the path an event takes', () => {
     }
   });
 
+  // As a device sends it: the element, by its unique id. An init's
+  // `target` is still Testing Library's, properties to set on the element.
+  it("gives the handler the event's target", () => {
+    const el = document.createElement('view');
+    const targets: unknown[] = [];
+    addHandler(el, 'bindEvent', 'input', (event) => targets.push(event.target));
+
+    fireEvent.input(el, { target: { title: 'typed' } });
+
+    expect(targets).toEqual([
+      { uid: (globalThis as any).__GetElementUniqueID(el) },
+    ]);
+    expect((el as HTMLElement).title).toBe('typed');
+  });
+
   it('says so when there is no element to fire at', () => {
     expect(() => fireEvent.tap(null as unknown as Element)).toThrow(
       'Unable to fire a "tap" event - please provide a DOM element.',
     );
+  });
+});
+
+// Angular's global listeners, which the runtime's document and window hear
+// through global-bind handlers on the page (issue #228).
+describe('fireEvent and document: and window: listeners', () => {
+  /** What the component's listeners heard, for the test to read. */
+  const heard = { log: [] as string[], moves: [] as any[] };
+
+  @Component({
+    selector: 'test-global-listeners',
+    template: `
+      <view id="card" (bindtap)="heard.log.push('card')">
+        <view id="caught" (catchtap)="heard.log.push('caught')"></view>
+      </view>
+    `,
+    host: {
+      '(document:click)': 'heard.log.push("document")',
+      '(window:click)': 'heard.log.push("window")',
+      '(document:pointermove)': 'heard.moves.push($event)',
+    },
+  })
+  class GlobalListeners {
+    readonly heard = heard;
+  }
+
+  beforeEach(() => {
+    heard.log = [];
+    heard.moves = [];
+  });
+
+  it('runs them after the elements, for an event on any element', async () => {
+    const { container } = await render(GlobalListeners);
+
+    fireEvent.tap(container.querySelector('#card')!);
+
+    expect(heard.log).toEqual(['card', 'document', 'window']);
+  });
+
+  it('runs them for an event a catch handler stopped, on the next timer', async () => {
+    const { container } = await render(GlobalListeners);
+
+    fireEvent.tap(container.querySelector('#caught')!);
+    expect(heard.log).toEqual(['caught']);
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(heard.log).toEqual(['caught', 'document', 'window']);
+  });
+
+  it('turns touches into pointer events at the element touched', async () => {
+    const { container } = await render(GlobalListeners);
+    const card = container.querySelector('#card')!;
+    const touch = { identifier: 0, x: 5, y: 6, pageX: 15, pageY: 16 };
+
+    fireEvent.touchstart(card, { changedTouches: [touch] });
+    fireEvent.touchmove(card, { changedTouches: [{ ...touch, pageX: 25 }] });
+
+    const [move] = heard.moves;
+    expect(move).toMatchObject({
+      type: 'pointermove',
+      clientX: 25,
+      offsetX: 5,
+    });
+    expect(move.target.element).toBe(card);
   });
 });

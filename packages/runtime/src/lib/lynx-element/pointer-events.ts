@@ -15,8 +15,8 @@
  *   then pointerout and pointerleave (a touch leaves when it lifts)
  * - touchcancel: pointercancel, lostpointercapture, pointerout, pointerleave
  *
- * Each finger is a pointer: `pointerId` is its touch's identifier, and
- * `isPrimary` marks the first one down. `offsetX`/`offsetY` are relative to
+ * Each finger is a pointer, whose `pointerId` stays the same until it lifts
+ * (see pointerIdOf), and `isPrimary` marks the first one down. `offsetX`/`offsetY` are relative to
  * the element, from the touch's `x`/`y` when the element itself was touched
  * and from its last layout otherwise; `clientX`/`clientY` and
  * `pageX`/`pageY` are in the LynxView's coordinates.
@@ -45,7 +45,7 @@ export const POINTER_EVENT_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /** A Lynx touch, as its touch events carry it. */
-type LynxTouch = {
+export type LynxTouch = {
   identifier: number;
   x?: number;
   y?: number;
@@ -55,13 +55,37 @@ type LynxTouch = {
   clientY?: number;
 };
 
-type LynxTouchEvent = {
+export type LynxTouchEvent = {
   type?: string;
   timestamp?: number;
   target?: { uid?: number };
   touches?: LynxTouch[];
   changedTouches?: LynxTouch[];
 };
+
+/**
+ * Above this, a touch's `identifier` isn't a number Lynx gave the finger.
+ */
+const MAX_TOUCH_NUMBER = 0xffff;
+
+/**
+ * A touch's pointerId, the same in each of its events, at an element and at
+ * the document.
+ *
+ * With multi-touch on, Lynx numbers each finger from 0 and keeps its number
+ * until it lifts (`touches_map_` in iOS's LynxTouchHandler.mm, and Android's
+ * `MotionEvent.getPointerId()`). With it off, which is the LynxView's
+ * default, there's one touch at a time, and its `identifier` is the address
+ * of the dictionary Lynx builds the touch in (`reinterpret_cast<int64_t>(&touch)`
+ * in TouchEventHandler::GetTouchEventParam), which changes from one event to
+ * the next: on the iOS 27 Simulator, a drag's touchmove events had one and its
+ * touchend another. So a touch with such an identifier is the one touch, and
+ * gets the number multi-touch gives the first finger.
+ */
+export const pointerIdOf = (touch: LynxTouch): number =>
+  touch.identifier >= 0 && touch.identifier <= MAX_TOUCH_NUMBER
+    ? touch.identifier
+    : 0;
 
 /** What the source needs from its element. */
 export type PointerEventHost = {
@@ -179,7 +203,7 @@ export class PointerEventSource {
   readonly #host: PointerEventHost;
   readonly #listeners = new Map<string, PointerListener[]>();
   readonly #captured = new Set<number>();
-  /** Fingers down on the element, by touch identifier: the primary first. */
+  /** Fingers down on the element, by pointerId: the primary first. */
   readonly #down = new Map<number, { offsetX: number; offsetY: number }>();
   #primary: number | null = null;
   #unlisten: (() => void)[] = [];
@@ -262,54 +286,51 @@ export class PointerEventSource {
 
   #onStart(event: LynxTouchEvent): void {
     for (const touch of event.changedTouches ?? []) {
+      const id = pointerIdOf(touch);
       const offset = this.#offset(event, touch);
-      this.#down.set(touch.identifier, offset);
-      this.#primary ??= touch.identifier;
+      this.#down.set(id, offset);
+      this.#primary ??= id;
       this.lastOffset = offset;
-      this.#fire('pointerover', touch.identifier, touch, event, offset);
-      this.#fire('pointerenter', touch.identifier, touch, event, offset);
-      this.#fire('pointerdown', touch.identifier, touch, event, offset);
+      this.#fire('pointerover', id, touch, event, offset);
+      this.#fire('pointerenter', id, touch, event, offset);
+      this.#fire('pointerdown', id, touch, event, offset);
     }
   }
 
   #onMove(event: LynxTouchEvent): void {
     for (const touch of event.changedTouches ?? []) {
-      if (!this.#down.has(touch.identifier)) continue;
+      const id = pointerIdOf(touch);
+      if (!this.#down.has(id)) continue;
       const offset = this.#offset(event, touch);
-      this.#down.set(touch.identifier, offset);
+      this.#down.set(id, offset);
       this.lastOffset = offset;
-      this.#fire('pointermove', touch.identifier, touch, event, offset);
+      this.#fire('pointermove', id, touch, event, offset);
     }
   }
 
   #onEnd(event: LynxTouchEvent, canceled: boolean): void {
     for (const touch of event.changedTouches ?? []) {
-      if (!this.#down.has(touch.identifier)) continue;
+      const id = pointerIdOf(touch);
+      if (!this.#down.has(id)) continue;
       const offset = canceled
-        ? this.#down.get(touch.identifier)!
+        ? this.#down.get(id)!
         : this.#offset(event, touch);
       this.lastOffset = offset;
       this.#fire(
         canceled ? 'pointercancel' : 'pointerup',
-        touch.identifier,
+        id,
         touch,
         event,
         offset,
       );
       // A browser releases a touch's capture when it lifts.
-      if (this.#captured.delete(touch.identifier)) {
-        this.#fire(
-          'lostpointercapture',
-          touch.identifier,
-          touch,
-          event,
-          offset,
-        );
+      if (this.#captured.delete(id)) {
+        this.#fire('lostpointercapture', id, touch, event, offset);
       }
-      this.#fire('pointerout', touch.identifier, touch, event, offset);
-      this.#fire('pointerleave', touch.identifier, touch, event, offset);
-      this.#down.delete(touch.identifier);
-      if (this.#primary === touch.identifier) this.#primary = null;
+      this.#fire('pointerout', id, touch, event, offset);
+      this.#fire('pointerleave', id, touch, event, offset);
+      this.#down.delete(id);
+      if (this.#primary === id) this.#primary = null;
     }
   }
 
@@ -326,25 +347,15 @@ export class PointerEventSource {
     // Only a finger that's down can be captured or released, so a capture
     // event, which has no touch, is where that finger is.
     const position = offset ?? this.#down.get(pointerId)!;
-    const pressed =
-      type === 'pointerdown' || type === 'pointermove' || type === 'pointerover'
-        ? 1
-        : 0;
-    const pointerEvent = new LynxPointerEvent(
+    const pointerEvent = pointerEventFor(
       type,
-      pointerId,
-      this.#primary === null || this.#primary === pointerId,
-      touch?.clientX ?? touch?.pageX ?? 0,
-      touch?.clientY ?? touch?.pageY ?? 0,
-      touch?.pageX ?? 0,
-      touch?.pageY ?? 0,
-      position.offsetX,
-      position.offsetY,
-      // `button` is the one that changed: none for a move.
-      type === 'pointermove' ? -1 : 0,
-      pressed,
-      pressed ? 0.5 : 0,
-      event?.timestamp ?? Date.now(),
+      {
+        pointerId,
+        isPrimary: this.#primary === null || this.#primary === pointerId,
+        ...position,
+      },
+      touch,
+      event?.timestamp,
       this.#host.eventTarget,
     );
     // A copy: a listener may remove itself as it runs.
@@ -354,3 +365,45 @@ export class PointerEventSource {
     }
   }
 }
+
+/**
+ * The pointer event a browser fires for `touch`: the one an element makes
+ * (see PointerEventSource), and the one the document gets for a touch
+ * anywhere (see global-events/native-source.ts). `pointer` says which finger
+ * it is and where it is on the target; a capture event, which no touch
+ * causes, has no `touch`.
+ */
+export const pointerEventFor = (
+  type: string,
+  pointer: {
+    pointerId: number;
+    isPrimary: boolean;
+    offsetX: number;
+    offsetY: number;
+  },
+  touch: LynxTouch | null,
+  timeStamp: number | undefined,
+  target: object,
+): LynxPointerEvent => {
+  const pressed =
+    type === 'pointerdown' || type === 'pointermove' || type === 'pointerover'
+      ? 1
+      : 0;
+  return new LynxPointerEvent(
+    type,
+    pointer.pointerId,
+    pointer.isPrimary,
+    touch?.clientX ?? touch?.pageX ?? 0,
+    touch?.clientY ?? touch?.pageY ?? 0,
+    touch?.pageX ?? 0,
+    touch?.pageY ?? 0,
+    pointer.offsetX,
+    pointer.offsetY,
+    // `button` is the one that changed: none for a move.
+    type === 'pointermove' ? -1 : 0,
+    pressed,
+    pressed ? 0.5 : 0,
+    timeStamp ?? Date.now(),
+    target,
+  );
+};

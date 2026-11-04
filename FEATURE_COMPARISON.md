@@ -17,12 +17,12 @@
 
 ## Events
 
-| Feature                                                |           AngularLynx            |            React Lynx             |         Vue Lynx         |
-| ------------------------------------------------------ | :------------------------------: | :-------------------------------: | :----------------------: |
-| Basic event binding (`bindtap`, etc.)                  |                ✅                |                ✅                 |            ✅            |
-| Event prefixes (bind/catch/capture-bind/capture-catch) |                ✅                |                ✅                 |   ✅ (.stop modifier)    |
-| Global events                                          |    ✅ (`global-bind` prefix)     | ✅ (`useLynxGlobalEventListener`) |  ✅ (`bindGlobalEvent`)  |
-| Event modifiers                                        | N/A (Angular doesn't have these) |                N/A                | ✅ (.once, .stop, .self) |
+| Feature                                                |                               AngularLynx                               |            React Lynx             |         Vue Lynx         |
+| ------------------------------------------------------ | :---------------------------------------------------------------------: | :-------------------------------: | :----------------------: |
+| Basic event binding (`bindtap`, etc.)                  |                                   ✅                                    |                ✅                 |            ✅            |
+| Event prefixes (bind/catch/capture-bind/capture-catch) |                                   ✅                                    |                ✅                 |   ✅ (.stop modifier)    |
+| Global events                                          | ✅ (`global-bind` prefix; `document:`, `window:` and `body:` listeners) | ✅ (`useLynxGlobalEventListener`) |  ✅ (`bindGlobalEvent`)  |
+| Event modifiers                                        |                    N/A (Angular doesn't have these)                     |                N/A                | ✅ (.once, .stop, .self) |
 
 ## List Virtualization
 

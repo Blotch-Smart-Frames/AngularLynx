@@ -15,6 +15,11 @@
 
 import { isMainThread } from './background-call';
 import { installCanvasGlobals } from './canvas/dom-globals';
+import {
+  globalEvents,
+  installGlobalDocument,
+  installGlobalWindow,
+} from './global-events';
 import { installIntersectionObserver } from './lynx-element/intersection-observer';
 import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
@@ -187,10 +192,14 @@ if (typeof Node === 'undefined') {
   }
 }
 
-if (typeof document === 'undefined') {
+// The main thread's `document` is the one LynxElements' `ownerDocument` and
+// Angular's DOCUMENT are, which `document:` and `window:` listeners listen on
+// (see global-events). It replaces the plugin's placeholder (polyfills.js).
+// The web preview and jsdom keep their own: there `document` is a DOM one.
+if (isMainThread()) {
+  installGlobalDocument(globalThis, globalEvents());
+} else if (typeof document === 'undefined') {
   (globalThis as any).document = {
-    // BrowserPlatformLocation uses document.defaultView to get the window
-    // for addEventListener('popstate'/'hashchange'). Point to our window mock.
     defaultView: globalThis,
     // getBaseHrefFromDOM() calls document.querySelector('base').
     // Return null so Angular falls back to APP_BASE_HREF (provided in provideRenderer).
@@ -203,8 +212,14 @@ try {
     (globalThis as any).window = globalThis;
   }
 } catch {
-  // Read-only in web environment (lynx-view shadows window=void 0 but
-  // globalThis.window is a non-configurable getter on the Window object)
+  // On Lynx for Web, globalThis is the main thread's iframe window, whose
+  // `window` is a getter, so the assignment above throws. And the bundle
+  // runs inside web-core's wrapper, `(function(){ … let window=void 0;
+  // <bundle> })` (MTS_CODE_WRAPPER_PREFIX in its decode.worker.js), so
+  // `window` meant that `let`, and code that reads `window.innerWidth`
+  // threw. Assigning it makes `window` globalThis there too, as it is on iOS
+  // and Android.
+  if (__WEB__) window = globalThis as typeof window;
 }
 
 // Angular's DefaultValueAccessor (from @angular/forms) is instantiated on every
@@ -226,13 +241,20 @@ try {
   // navigator exists as a read-only property (Web Worker) — no polyfill needed
 }
 
-// BrowserPlatformLocation.onPopState/onHashChange call window.addEventListener.
-// Lynx runtime doesn't have this API, so stub it out as a no-op.
-if (typeof globalThis.addEventListener !== 'function') {
-  (globalThis as any).addEventListener = () => {};
-}
-if (typeof globalThis.removeEventListener !== 'function') {
-  (globalThis as any).removeEventListener = () => {};
+// The window's listeners, `innerWidth` and `innerHeight` (see
+// global-events/window.ts): `window:` listeners, and the screen's events.
+// The background thread runs no Angular, and keeps no-op listener methods
+// for code that calls them: BrowserPlatformLocation's onPopState and
+// onHashChange call window.addEventListener.
+if (isMainThread()) {
+  installGlobalWindow(globalThis, globalEvents());
+} else {
+  if (typeof globalThis.addEventListener !== 'function') {
+    (globalThis as any).addEventListener = () => {};
+  }
+  if (typeof globalThis.removeEventListener !== 'function') {
+    (globalThis as any).removeEventListener = () => {};
+  }
 }
 
 // Lynx provides timer/scheduling APIs on the `lynx` global, not on `globalThis`.

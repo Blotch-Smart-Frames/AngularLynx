@@ -1,5 +1,6 @@
 import { LynxElement } from '../lynx-element';
 import { LynxDocument, type LynxDocumentBase } from '../lynx-document';
+import { globalEvents } from '../global-events';
 import { hostElementOf } from '../lynx-document/host-elements';
 import type { ElementRef } from '../types/lynx';
 
@@ -63,6 +64,8 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     page.tagName = 'page';
     page.isRootPageElement = true;
     this.#page = page;
+    // The document and window hear the screen's events from the page.
+    globalEvents().attach(page, (id) => LynxElement.byUniqueId(id));
     return page;
   }
 

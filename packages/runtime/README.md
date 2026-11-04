@@ -22,6 +22,7 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 - Zoneless change detection — signals as the primary reactivity model
 - Full Angular Router with in-memory navigation for Lynx, including `routerLink` and `routerLinkActive` on any element
 - Gestures — tap, pan, long-press, fling, pinch, rotation with composition
+- `document:`, `window:` and `body:` listeners, which hear touches anywhere on screen (as pointer, touch and `click` events) and the window's `resize`, with `window.innerWidth` and `innerHeight` the screen's size
 - Animations — CSS transitions, keyframes, and programmatic `animate()` API
 - Content projection, portals, `@defer`, and lazy-loaded routes
 - `IntersectionObserver` on Lynx elements, from Lynx's exposure events, for code written for the browser

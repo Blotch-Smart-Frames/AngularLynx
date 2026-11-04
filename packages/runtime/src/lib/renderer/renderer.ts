@@ -3,6 +3,7 @@ import {
   type Renderer2,
   RendererStyleFlags2,
 } from '@angular/core';
+import { globalEvents } from '../global-events';
 import type { LynxDocumentBase } from '../lynx-document';
 import { tagClassFor } from '../lynx-document/element-tags';
 import type { BaseLynxElement } from '../lynx-element';
@@ -189,12 +190,65 @@ export class LynxRenderer implements Renderer2 {
   setValue(node: BaseLynxElement, value: string): void {
     node.setAttribute('text', collapseWhitespace(value));
   }
+  /**
+   * Adds a listener to an element, or to a global target: Angular passes the
+   * document stand-in for a `document:` host listener, its `body` for
+   * `body:`, and its `defaultView` for `window:` (see global-events), and a
+   * library can name one, as `renderer.listen('document', …)`, which
+   * Angular's DOM renderer resolves the same way. In the web preview, code
+   * can also pass a DOM object of its own.
+   */
   listen(
-    target: BaseLynxElement,
+    target: BaseLynxElement | GlobalTargetName | ListenTarget,
     eventName: string,
-    callback: (event: boolean) => boolean | void,
-    _options?: ListenerOptions,
+    callback: (event: any) => boolean | void,
+    options?: ListenerOptions,
   ): () => void {
-    return target.addEventListener(eventName, callback);
+    const resolved =
+      typeof target === 'string'
+        ? globalTarget(target, eventName)
+        : (target as ListenTarget);
+    const remove = resolved.addEventListener(eventName, callback, options);
+    // A Lynx element returns the function that removes its listener; the
+    // document, the window and DOM objects return nothing.
+    return typeof remove === 'function'
+      ? (remove as () => void)
+      : () => resolved.removeEventListener!(eventName, callback, options);
   }
 }
+
+type GlobalTargetName = 'window' | 'document' | 'body';
+
+/** What `listen()` needs of a target: an EventTarget's two methods. */
+type ListenTarget = {
+  addEventListener(
+    name: string,
+    callback: (event: any) => unknown,
+    options?: ListenerOptions,
+  ): unknown;
+  removeEventListener?(
+    name: string,
+    callback: (event: any) => unknown,
+    options?: ListenerOptions,
+  ): void;
+};
+
+/**
+ * The object a global target's name stands for, as Angular's DOM renderer
+ * finds it (`getGlobalEventTarget`), with the same error for any other.
+ */
+const globalTarget = (name: string, eventName: string): ListenTarget => {
+  const document = globalEvents().document;
+  const target =
+    name === 'window'
+      ? document.defaultView
+      : name === 'document'
+        ? document
+        : name === 'body'
+          ? document.body
+          : null;
+  if (!target) {
+    throw new Error(`Unsupported event target ${name} for event ${eventName}`);
+  }
+  return target as ListenTarget;
+};

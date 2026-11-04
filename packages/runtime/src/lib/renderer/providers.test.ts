@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
+import { globalEvents } from '../global-events';
 import { LynxDocument } from '../lynx-document';
 import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
@@ -35,15 +36,17 @@ describe('provideRenderer', () => {
   });
 
   describe('DOCUMENT', () => {
-    it('provides a stub DOCUMENT that has no elements to look up', () => {
+    it('provides the document every element is in', () => {
       vi.stubGlobal('__MAIN_THREAD__', false);
       const injector = createInjector();
 
       const doc = injector.get(DOCUMENT);
 
+      // As in a browser, it's what an element's ownerDocument is, so code
+      // that listens on it hears what document: listeners do.
+      expect(doc).toBe(globalEvents().document);
       // TransferState's factory looks up Angular SSR's `<script id="ng-state">`
       // via getElementById; Lynx never has one, so it must exist and say so.
-      expect(Object.keys(doc)).toEqual(['getElementById', 'defaultView']);
       expect(doc.getElementById('ng-state')).toBeNull();
       // The window, where code that measures elements (ngxtension's resize
       // directive, which angular-three sizes its canvas with) looks for

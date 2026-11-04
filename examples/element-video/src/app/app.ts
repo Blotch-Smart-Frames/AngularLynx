@@ -192,14 +192,8 @@ export class App {
     this.playing.set(false);
   }
 
-  onError({ detail }: LynxEvent<VideoErrorDetail | undefined>): void {
-    // `detail` is missing when the error comes from a platform without a Lynx
-    // video implementation (Lynx for Web falls back to a plain HTML <video>).
-    this.status.set(
-      detail
-        ? `Error ${detail.errorCode}: ${detail.errorMsg}`
-        : 'Playback failed',
-    );
+  onError({ detail }: LynxEvent<VideoErrorDetail>): void {
+    this.status.set(`Error ${detail.errorCode}: ${detail.errorMsg}`);
     this.playing.set(false);
   }
 

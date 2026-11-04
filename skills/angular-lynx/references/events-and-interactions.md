@@ -139,7 +139,6 @@ loaded({ detail }: LynxEvent<ImageLoadDetail>) {
 - **Every prefix gives the same type:** `(catchtap)`, `(capture-bindtap)` and `(global-bindtap)` get what `(bindtap)` gets, and so on for every other event.
 - **An event the element doesn't fire stays a DOM `Event`**, such as `(bindload)` on a `<view>`: that's the sign of a typo in the event name or the wrong element.
 - **`target.dataset` values are `unknown`:** a `[data-item]="item"` binding keeps the item's type, so narrow before using one.
-- **`<video>`'s `binderror` is `LynxEvent<VideoErrorDetail | undefined>`:** the web preview's plain HTML `<video>` sends no detail.
 
 ## Tap vs Long Press
 

@@ -163,7 +163,7 @@ const cases: readonly Case[] = [
   ),
   probe(
     '<video (binderror)="$p($event)"></video>',
-    'LynxEvent<VideoErrorDetail | undefined>',
+    'LynxEvent<VideoErrorDetail>',
   ),
   probe(
     '<frame (bindload)="$p($event)"></frame>',

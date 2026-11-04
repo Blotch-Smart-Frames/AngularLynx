@@ -1,3 +1,4 @@
+import { fireEvent } from '@blotch/angular-lynx-testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderOnce } from '../../test-utils/render-once';
 import { VideoDemo } from './video-demo';
@@ -39,16 +40,13 @@ describe('VideoDemo', () => {
     ]);
   });
 
-  it('reports errors with and without a Lynx error payload', async () => {
-    const { instance, destroy } = await renderOnce(VideoDemo);
+  it('reports errors with their code and message', async () => {
+    const { container, instance, destroy } = await renderOnce(VideoDemo);
     destroyDemo = destroy;
 
-    instance.onError(
-      new CustomEvent('error', { detail: { errorCode: 3, errorMsg: 'bad' } }),
-    );
+    fireEvent.error(container.querySelector('video')!, {
+      detail: { errorCode: 3, errorMsg: 'bad' },
+    });
     expect(instance.status()).toBe('Error 3: bad');
-
-    instance.onError(new Event('error'));
-    expect(instance.status()).toBe('Playback failed');
   });
 });

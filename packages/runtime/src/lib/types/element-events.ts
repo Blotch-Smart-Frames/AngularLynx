@@ -376,8 +376,7 @@ export type LynxVideoEventMap = WithPrefixes<{
   bindfirstframe: LynxEvent<VideoFirstFrameDetail>;
   bindtimeupdate: LynxEvent<VideoTimeUpdateDetail>;
   bindbuffering: LynxEvent<VideoBufferingDetail>;
-  // The web preview has no Lynx video: its plain HTML <video> sends no detail.
-  binderror: LynxEvent<VideoErrorDetail | undefined>;
+  binderror: LynxEvent<VideoErrorDetail>;
   // These have no detail.
   bindplaying: LynxEvent;
   bindpaused: LynxEvent;

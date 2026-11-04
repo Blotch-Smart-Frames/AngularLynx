@@ -22,7 +22,7 @@ Build Angular apps that render natively on mobile via the Lynx runtime. Uses Ang
 
 These prevent crashes and silent failures. Violating any will break your app on-device.
 
-1. **Bind Lynx event names.** A tap is `(bindtap)` (or `(catchtap)` to stop it bubbling). `(click)` also runs on a tap, which is what makes Angular's `routerLink` work; any other DOM event name, such as `(mouseover)`, is silently ignored. Handlers can do anything they would on the web, navigation included: no `setTimeout` needed.
+1. **Bind Lynx event names.** A tap is `(bindtap)` (or `(catchtap)` to stop it bubbling). `(click)` also runs on a tap, which is what makes Angular's `routerLink` work, and pointer events (`(pointerdown)`, `(pointermove)`…) come from touches; any other DOM event name, such as `(mouseover)`, is silently ignored. Handlers can do anything they would on the web, navigation included: no `setTimeout` needed.
 
 2. **All visible text must be inside `<text>`.** Raw text inside `<view>` does not render. Lynx has no text nodes — only `<text>` elements display characters.
 
@@ -40,13 +40,13 @@ Read [bootstrap-and-setup.md](references/bootstrap-and-setup.md)
 
 ## Lynx Elements
 
-All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `blur-view`, `frame`, `svg`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, and the `page` root element.
+All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `blur-view`, `frame`, `svg`, `canvas`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, the `page` root element, and 3D in a `<canvas>` with WebGL2, three.js and angular-three.
 
 Read [lynx-elements.md](references/lynx-elements.md)
 
 ## Events & Interactions
 
-The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, several handlers on one element. Touch coordinates on each platform, drags, and gestures (`[lynxGesture]` with pan, tap, long press and fling) and how they compete. Angular template syntax: `(bindtap)="handler($event)"`, and the typed `$event` (`LynxEvent<Detail>` and each event's detail type) that replaces casting to `Event` or `CustomEvent`.
+The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, pointer events made from touches, several handlers on one element. Touch coordinates on each platform, drags, and gestures (`[lynxGesture]` with pan, tap, long press and fling) and how they compete. Angular template syntax: `(bindtap)="handler($event)"`, and the typed `$event` (`LynxEvent<Detail>` and each event's detail type) that replaces casting to `Event` or `CustomEvent`.
 
 Read [events-and-interactions.md](references/events-and-interactions.md)
 
@@ -94,7 +94,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## HTTP Requests
 
-`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute; no `Blob`/`FormData` bodies. OAuth sign-in through a web page with `LynxWebAuthSession`.
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies. OAuth sign-in through a web page with `LynxWebAuthSession`.
 
 Read [http-requests.md](references/http-requests.md)
 

@@ -6,6 +6,7 @@ import {
   makeEnvironmentProviders,
   RendererFactory2,
 } from '@angular/core';
+import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
 import { LynxDocument } from '../lynx-document';
 import { LynxHydrateDocument } from '../ssr/hydrate-document';
@@ -58,6 +59,11 @@ export const provideRenderer = (): EnvironmentProviders => {
         // (AngularLynx SSR hydrates from its own element snapshot), so `null` —
         // "no transferred state" — is the correct answer, not just a stub.
         getElementById: () => null,
+        // The window, as a document's is: code that measures elements, such
+        // as ngxtension's resize directive (which angular-three sizes its
+        // canvas with), looks ResizeObserver, getComputedStyle and
+        // devicePixelRatio up on it (see canvas/dom-globals.ts).
+        defaultView: globalThis,
       },
     },
     // Provide a base href so Angular's PathLocationStrategy uses it directly
@@ -92,6 +98,14 @@ export const provideRenderer = (): EnvironmentProviders => {
     LynxRendererFactory2,
     {
       provide: RendererFactory2,
+      useExisting: LynxRendererFactory2,
+    },
+    // Angular's DOM renderer, which a library that wraps the renderer
+    // injects to delegate to: angular-three's provideNgtRenderer() does. On
+    // Lynx the renderer to wrap is this one, so the library's three.js
+    // elements sit among Lynx's.
+    {
+      provide: ɵDomRendererFactory2,
       useExisting: LynxRendererFactory2,
     },
     {

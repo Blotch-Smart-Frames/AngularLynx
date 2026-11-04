@@ -56,10 +56,9 @@ const HTML_ELEMENT_SUGGESTIONS: Record<string, string | null> = {
   tr: 'view',
   td: 'view',
   th: 'view',
-  // No Lynx equivalent
+  // No Lynx equivalent. (<canvas> has one: the runtime's, with WebGL2.)
   select: null,
   option: null,
-  canvas: null,
   video: null,
   audio: null,
   iframe: null,

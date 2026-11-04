@@ -95,6 +95,13 @@ export const FLOWS: readonly Flow[] = [
     // the values in memory, which a restart empties.
     only: { host: 'shell' },
   },
+  {
+    file: 'canvas.yaml',
+    description: 'draws a texture with WebGL2 and reads it back',
+    // Only the app's own builds have <canvas> and its WebGL module. Lynx
+    // Explorer has neither, and its canvas is an empty view.
+    only: { host: 'shell' },
+  },
 ];
 
 /** The flows to run on a platform's host. */

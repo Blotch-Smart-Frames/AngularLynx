@@ -18,8 +18,19 @@ final class LynxViewController: UIViewController {
     config.register(WebAuthModule.self)
     config.register(LocalStorageModule.self)
     config.register(SecureStorageModule.self)
+    // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
+    // the main thread. It's Objective-C, which Swift reaches without a
+    // bridging header by name.
+    if let webGL = NSClassFromString("AngularLynxWebGLModule") as? LynxModule.Type {
+      config.register(webGL)
+    }
+    // Bundled files for the main thread's fetch and Image (AssetsModule).
+    config.register(AssetsModule.self)
     let lynxView = LynxView { builder in
       builder.config = config
+      // Lets main-thread code, where Angular runs, call the config's modules
+      // with lynx.module(name): WebGL needs answers synchronously.
+      builder.enableMTSModule = true
       builder.screenSize = screenSize
       builder.fontScale = 1.0
       builder.enableGenericResourceFetcher = .true

@@ -87,6 +87,12 @@ Plain data, not the element: it has no methods. `id` is the element's `id` attri
 
 `TouchEvent` has the same fields as `LynxEvent<{ x: number; y: number }>`, plus `touches` and `changedTouches`. Import it, and the other `@lynx-js/types` events, by name: without the import, TypeScript uses the DOM's `TouchEvent`. The detail types are on [`<view>`](/api/elements/view#events).
 
+### Pointer events
+
+`(pointerdown)`, `(pointermove)`, `(pointerup)`, `(pointercancel)`, `(pointerover)`, `(pointerout)`, `(pointerenter)`, `(pointerleave)`, `(gotpointercapture)` and `(lostpointercapture)` work on every element, without a `bind` prefix, as in a browser. Lynx sends only touches, so AngularLynx makes each touch into the pointer events a browser fires for one, in the same order, and `$event` is a DOM `PointerEvent`: each finger is a pointer (`pointerId`), `pointerType` is `'touch'`, and `offsetX`/`offsetY` are relative to the element. Libraries written for the web listen for these, such as angular-three for taps on a 3D scene.
+
+A touch's events go to the element it started on, wherever the finger moves, as if every pointer were captured; `setPointerCapture()` changes only `hasPointerCapture()` and the capture events. In the web preview, they're the browser's own pointer events, including a mouse's. A `(click)`, which is Lynx's `bindtap`, has the `offsetX` and `offsetY` of where the pointer lifted, on an element with pointer listeners.
+
 ## Each element's own events
 
 The fields of each detail type are in its element's Events table.

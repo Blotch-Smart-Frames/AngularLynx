@@ -86,7 +86,7 @@ Lynx has its own CSS engine. It supports most layout CSS, but its defaults diffe
 
 Your code doesn't run in a browser. There's no DOM, so `document.querySelector`, `window.addEventListener` and `localStorage` don't exist. AngularLynx fills in what Angular itself needs, such as `setTimeout` and `URL`.
 
-Libraries that touch the DOM, or depend on browser APIs, won't work. That includes Angular Material, most of the CDK, and chart libraries that draw on a `<canvas>`. [The JavaScript environment](/guide/concepts/javascript-environment) lists what's available.
+Libraries that touch the DOM, or depend on browser APIs, won't work. That includes Angular Material, most of the CDK, and chart libraries that draw on a 2D `<canvas>`. 3D libraries that draw with WebGL2, such as three.js and angular-three, work in a [`<canvas>`](/api/elements/canvas). [The JavaScript environment](/guide/concepts/javascript-environment) lists what's available.
 
 ## Angular feature compatibility
 

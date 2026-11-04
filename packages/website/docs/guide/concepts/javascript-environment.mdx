@@ -12,24 +12,27 @@ Lynx doesn't provide some APIs that Angular relies on. AngularLynx adds them bef
 - `URL`, `URLSearchParams`
 - `fetch`, `XMLHttpRequest`, `Headers`, `Request`, `Response`, `ReadableStream`
 - `TextEncoder`, `TextDecoder` (UTF-8 only), `atob()`, `btoa()`, `DOMException`
+- `Blob`, `URL.createObjectURL()`, `ProgressEvent`
+- For 3D in a [`<canvas>`](/api/elements/canvas): `createImageBitmap()`, `ImageBitmap`, `Image` (for loading textures, not for showing images: use `<image>`), `ResizeObserver`, `performance.now()`, `devicePixelRatio`, `self` and `crypto.randomUUID()` (not cryptographically secure, so not for secrets)
 - Newer built-in methods, up to ES2026, such as `array.at()`, `toSorted()` and `Object.groupBy()`: see [JavaScript language level](#javascript-language-level)
 
 It also adds small `document`, `window` and `navigator` objects, with only what Angular reads internally. They are not a DOM: `document.querySelector()` always returns `null`.
 
 ## What's missing, and what to use instead
 
-| Browser API                                                  | On Lynx                                                                                       |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| The DOM: `querySelector`, `createElement`, `innerHTML`       | Use templates, `viewChild()` and signals                                                      |
-| `getBoundingClientRect()`, `getComputedStyle()`              | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
-| `IntersectionObserver`                                       | [Detect when elements are visible](/guide/exposure)                                           |
-| `window.addEventListener('resize')`, `matchMedia`            | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
-| `navigator.userAgent`, `navigator.language`                  | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
-| `localStorage`, `sessionStorage`                             | See [Storage](#storage)                                                                       |
-| `WebSocket`                                                  | See [Network requests](#network-requests)                                                     |
-| `Intl`                                                       | See [Intl](#intl)                                                                             |
-| `performance.now()`                                          | `Date.now()`. To trace performance, see [Profiling](/guide/profiling)                         |
-| `<canvas>`, Web Audio, Web Workers, clipboard, drag and drop | Not available                                                                                 |
+| Browser API                                                       | On Lynx                                                                                       |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| The DOM: `querySelector`, `createElement`, `innerHTML`            | Use templates, `viewChild()` and signals                                                      |
+| `getComputedStyle()`                                              | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
+| `IntersectionObserver`                                            | [Detect when elements are visible](/guide/exposure)                                           |
+| `window.addEventListener('resize')`, `matchMedia`                 | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
+| `navigator.userAgent`, `navigator.language`                       | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
+| `localStorage`, `sessionStorage`                                  | See [Storage](#storage)                                                                       |
+| `WebSocket`                                                       | See [Network requests](#network-requests)                                                     |
+| `Intl`                                                            | See [Intl](#intl)                                                                             |
+| A 2D `<canvas>`, Web Audio, Web Workers, clipboard, drag and drop | Not available                                                                                 |
+
+An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer from its last layout, so they're empty until the element has been laid out. Use `ResizeObserver` to hear when it has, or [element methods](/guide/selector-query) to ask native for the box.
 
 Code that calls a missing API throws when it runs. That includes code inside libraries. Before adding an npm package, check that it doesn't use the DOM.
 

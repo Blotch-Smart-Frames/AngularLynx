@@ -1,0 +1,15 @@
+# Layer 6, the app's own builds only: <canvas> with WebGL2 (issue #211). The
+# canvas page (fixtures/canvas.ts) draws a cyan PNG, decoded by
+# createImageBitmap(), through a shader that tints it magenta, then reads a
+# pixel back: blue only if the shell's AngularLynxWebGL module compiled and
+# linked the shader, took the vertex buffer and uniforms, decoded and
+# uploaded the image, and read the pixels back. Lynx Explorer has no canvas.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- extendedWaitUntil:
+    visible: 'WebGL: 0,0,255,255'
+    timeout: 15000
+- takeScreenshot: canvas

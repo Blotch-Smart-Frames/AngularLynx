@@ -126,12 +126,12 @@ describe('scanCompiledOutputForHtmlElements', () => {
 
   it('reports elements with no Lynx equivalent differently', () => {
     const fileCache = new Map<string, string>();
-    fileCache.set('/src/app/app.ts', `i0.ɵɵelement(0, "canvas");`);
+    fileCache.set('/src/app/app.ts', `i0.ɵɵelement(0, "iframe");`);
 
     const result = scanCompiledOutputForHtmlElements(fileCache);
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.message).toContain('<canvas>');
+    expect(result[0]!.message).toContain('<iframe>');
     expect(result[0]!.message).toContain('no Lynx equivalent');
   });
 
@@ -502,7 +502,7 @@ describe('reportLynxDiagnostics', () => {
       {
         file: '/src/app.ts',
         message:
-          'src/app.ts: <canvas> has no Lynx equivalent and will not render correctly.',
+          'src/app.ts: <iframe> has no Lynx equivalent and will not render correctly.',
         category: 'html-element',
       },
     ]);

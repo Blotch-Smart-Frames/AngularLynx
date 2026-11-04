@@ -388,6 +388,7 @@ export default defineConfig({
         { text: '<frame>', link: '/api/elements/frame' },
         { text: '<block>', link: '/api/elements/block' },
         { text: '<svg>', link: '/api/elements/svg' },
+        { text: '<canvas>', link: '/api/elements/canvas' },
         { text: '<blur-view>', link: '/api/elements/blur-view' },
         { text: '<video>', link: '/api/elements/video' },
         { text: '<webview>', link: '/api/elements/webview' },

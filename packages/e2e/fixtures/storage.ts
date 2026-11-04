@@ -1,4 +1,5 @@
 import { Component, inject, signal, type OnInit } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import {
   LYNX_ELEMENTS,
   LynxLocalStorage,
@@ -20,11 +21,12 @@ const KEY = 'e2e';
  * app is deleted.
  *
  * One row, like the other lazy pages, so the page fits on CI's 320x640
- * Android emulator (see counter.ts).
+ * Android emulator (see counter.ts). "Open canvas", below it, opens
+ * canvas.ts: the counter page has no room left for another link.
  */
 @Component({
   selector: 'app-storage',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, RouterLink],
   template: `
     <view
       style="display: flex; flex-direction: row; align-items: center; margin-top: 16px;"
@@ -39,6 +41,16 @@ const KEY = 'e2e';
       >
         <text>Clear storage</text>
       </view>
+    </view>
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Open canvas"
+      accessibility-traits="button"
+      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
+      routerLink="/canvas"
+    >
+      <text>Open canvas</text>
     </view>
   `,
 })

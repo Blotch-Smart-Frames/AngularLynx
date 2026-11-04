@@ -84,10 +84,19 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
+            // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
+            // the main thread, where Angular runs: main-thread modules let
+            // it get its answers synchronously, with lynx.module(name).
+            registerModule(WebGLModule.NAME, WebGLModule::class.java, null)
+            // Bundled files for the main thread's fetch and Image (AssetsModule.kt).
+            registerModule(AssetsModule.NAME, AssetsModule::class.java, null)
+            setEnableMTSModule(true)
             // Lynx's core has no <input>, <overlay>, <svg>, <blur-view> etc.;
             // these come from XElement (see app/build.gradle.kts). Lynx
             // Explorer registers them the same way.
             addBehaviors(XElementBehaviors().create())
+            // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
+            addBehavior(CanvasUI.behavior())
         }.build(this)
         lynxView.addLynxViewClient(object : LynxViewClient() {
             override fun onReceivedError(error: LynxError?) {

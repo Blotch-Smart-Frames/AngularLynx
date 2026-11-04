@@ -12,6 +12,7 @@ import {
 } from './page-ref';
 
 import { createNativeRefByTag } from './create-native-ref';
+import { LynxCanvasElement } from '../canvas/canvas-element';
 import { hostElementOf } from './host-elements';
 import {
   createCommentElement,
@@ -93,7 +94,11 @@ export class LynxDocument implements LynxDocumentBase {
       return result.element;
     }
     const element = createNativeRefByTag(tag, this.#pageId, value);
-    const el = new LynxElement(element);
+    // A canvas has HTMLCanvasElement's API: width, height and getContext().
+    const el =
+      tag === 'canvas'
+        ? new LynxCanvasElement(element)
+        : new LynxElement(element);
     el.tagName = tag;
     // raw-text bakes its text into the native element at creation, bypassing the
     // cached setter path — seed the recreation cache so a remounted raw-text can

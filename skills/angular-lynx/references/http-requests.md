@@ -27,10 +27,10 @@ Lynx has `fetch` only on the background thread, and Angular runs on the main thr
 
 ## Rules
 
-- **Absolute URLs only.** A Lynx app has no page URL, so `http.get('/api/x')` fails with a `TypeError` ("Failed to parse URL"). Prefix the base URL in a constant or an interceptor.
+- **Absolute URLs only.** A Lynx app has no page URL, so `http.get('/api/x')` fails with a `TypeError` ("Failed to parse URL"). Prefix the base URL in a constant or an interceptor. The exceptions: a file the app bundles (`import model from './model.glb'`, which is `/static/...`) loads in an `ng build --platform` app, which reads it from the app, and `ng serve` makes those URLs absolute anyway. `data:` and object URLs (`URL.createObjectURL()`) need no request.
 - **HTTPS.** `ng build --platform` apps block plain `http://` except to the device itself (`localhost`/`127.0.0.1`). Lynx Explorer allows it.
 - **No CORS on device**; it still applies in the web preview.
-- **Bodies:** strings, JSON, `URLSearchParams`, `ArrayBuffer`, typed arrays. `Blob`/`FormData`/stream bodies throw (Lynx has neither class). Use `responseType: 'arraybuffer'`, not `'blob'`.
+- **Bodies:** strings, JSON, `URLSearchParams`, `ArrayBuffer`, typed arrays and `Blob` (the runtime adds `Blob` to the main thread). `FormData` and stream request bodies throw. `responseType: 'blob'` works; `new Response(stream)` reads the stream when its body is read.
 - **Progress** (`reportProgress`) arrives once, when the body is complete.
 - **Responses arrive whole.** `response.body` is a `ReadableStream`, but it yields the whole body as one chunk once the response has ended. A response that stays open, such as server-sent events, never arrives. Firebase Firestore detects this and switches to long polling by itself.
 - **Failures:** a request that never reaches the server is an `HttpErrorResponse` with status 0. (Lynx's HTTP service reports it as status 499 with no headers; the runtime turns that into a network error.)

@@ -71,6 +71,8 @@ export class LynxRenderer implements Renderer2 {
   // for nodes without the method (background-thread / SSR elements).
   destroyNode: ((node: unknown) => void) | null = (node: unknown): void => {
     (node as { deregisterNative?: () => void }).deregisterNative?.();
+    // A canvas's GL context goes with it (see LynxCanvasElement).
+    (node as { releaseContext?: () => void }).releaseContext?.();
   };
 
   appendChild(parent: BaseLynxElement, newChild: BaseLynxElement): void {

@@ -1,4 +1,5 @@
 import { lynxAtob, lynxBtoa } from './base64';
+import { createObjectURL, LynxBlob, revokeObjectURL } from './blob';
 import { LynxDOMException } from './dom-exception';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
@@ -7,6 +8,9 @@ import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxXMLHttpRequest } from './xhr';
 
 export {
+  createObjectURL,
+  LynxBlob,
+  revokeObjectURL,
   lynxAtob,
   lynxBtoa,
   LynxDOMException,
@@ -88,4 +92,14 @@ export const installNetworkGlobals = (
     install('Response', LynxResponse);
   }
   install('XMLHttpRequest', LynxXMLHttpRequest);
+  // three.js's glTF loader makes a Blob and an object URL of each image a
+  // .glb holds, then loads the URL (see blob.ts).
+  install('Blob', LynxBlob);
+  const url = target['URL'] as
+    | { createObjectURL?: unknown; revokeObjectURL?: unknown }
+    | undefined;
+  if (url && typeof url.createObjectURL !== 'function') {
+    url.createObjectURL = createObjectURL;
+    url.revokeObjectURL = revokeObjectURL;
+  }
 };

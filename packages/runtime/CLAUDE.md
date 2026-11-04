@@ -39,7 +39,9 @@ Provides everything needed to run Angular on the Lynx runtime. Maps Angular's `R
 
 ## Supported Lynx Elements
 
-`page`, `view`, `text`, `inline-truncation`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`, `scroll-coordinator-slot-drag`, `blur-view`, `webview`, `video`, `cover-view`
+`page`, `view`, `text`, `inline-truncation`, `image`, `scroll-view`, `list`, `block`, `if`, `for`, `raw-text`, `frame`, `input`, `textarea`, `overlay`, `svg`, `viewpager`, `viewpager-item`, `refresh`, `refresh-header`, `title-bar-view`, `scroll-coordinator`, `scroll-coordinator-header`, `scroll-coordinator-toolbar`, `scroll-coordinator-slot`, `scroll-coordinator-slot-drag`, `blur-view`, `webview`, `video`, `cover-view`, `canvas`
+
+`canvas` is AngularLynx's, not Lynx's: `LynxCanvasElement` (`canvas/canvas-element.ts`) has HTMLCanvasElement's API, and its WebGL2 context (`canvas/webgl2-context.ts`) batches its calls to the shells' `AngularLynxWebGL` main-thread module (`canvas/webgl-bridge.ts`), whose opcodes (`canvas/webgl-ops.ts`) packages/native generates into the shells (`npm run generate:webgl-ops -w packages/native`). The DOM globals three.js and angular-three need are in `canvas/dom-globals.ts`, pointer events from touches in `lynx-element/pointer-events.ts`, and synchronous layout reads (`getBoundingClientRect()`, `ResizeObserver`) in `lynx-element/layout.ts`. See `investigations/lynx-vs-web-differences.md`.
 
 `page` is special — it returns the existing root page element (created by `createRootElement()`), not a new element. Only one `<page>` is allowed per app. The element has `_isRootPageElement = true` which prevents Angular from reparenting or removing it.
 

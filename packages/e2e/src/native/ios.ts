@@ -8,6 +8,16 @@ import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
 
+/**
+ * Set to 1 to boot the simulator the image already has for the chosen
+ * device type and runtime (GitHub's images ship an "iPhone 18 Pro"), rather
+ * than creating DEVICE_NAME. CI only: locally, that's the developer's own.
+ * An experiment: the first boot of a new simulator starves GitHub's macOS
+ * runner for about 10 minutes, and this measures whether the image's boots
+ * any faster.
+ */
+const USE_IMAGE_SIMULATOR = process.env['E2E_IOS_IMAGE_SIMULATOR'] === '1';
+
 type SimctlList = {
   devices: Record<string, { name: string; udid: string; state: string }[]>;
   runtimes: {
@@ -86,9 +96,12 @@ const bootSimulator = async (
       );
       continue;
     }
-    const device = list.devices[runtime.identifier]?.find(
-      (candidate) => candidate.name === DEVICE_NAME,
-    );
+    const devices = list.devices[runtime.identifier] ?? [];
+    const device =
+      (USE_IMAGE_SIMULATOR
+        ? devices.find((candidate) => candidate.name === deviceType.name)
+        : undefined) ??
+      devices.find((candidate) => candidate.name === DEVICE_NAME);
     const udid =
       device?.udid ??
       (
@@ -109,6 +122,7 @@ const bootSimulator = async (
     if (!wait) {
       return udid;
     }
+    const waitStarted = Date.now();
     const status = await runAllowFailure(
       'xcrun',
       ['simctl', 'bootstatus', udid, '-b'],
@@ -119,7 +133,12 @@ const bootSimulator = async (
       },
     );
     if (status.code === 0) {
-      console.log(`Booted ${DEVICE_NAME} (${runtime.name}, ${udid})`);
+      // How long this waited on a boot that prepareIos() may have started
+      // well before: with the boot's start in the job's log, it gives how
+      // long the boot took.
+      console.log(
+        `Booted ${device?.name ?? DEVICE_NAME} (${runtime.name}, ${udid}) after waiting ${Math.round((Date.now() - waitStarted) / 1000)}s`,
+      );
       return udid;
     }
     console.warn(

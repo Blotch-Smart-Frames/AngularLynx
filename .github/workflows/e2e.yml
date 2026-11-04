@@ -382,8 +382,18 @@ jobs:
   # so the boot is the job's floor, and starting it 4 minutes sooner takes 4
   # minutes off the run.
   ios:
+    name: ios (${{ matrix.simulator }} simulator)
     needs: setup
     if: needs.setup.outputs.native == 'true'
+    # EXPERIMENT: the same job twice, side by side, on a simulator the
+    # harness creates and on the one the image ships (E2E_IOS_IMAGE_SIMULATOR
+    # in src/native/ios.ts), to see whether the image's boots faster.
+    strategy:
+      fail-fast: false
+      matrix:
+        simulator: [created, image]
+    env:
+      E2E_IOS_IMAGE_SIMULATOR: ${{ matrix.simulator == 'image' && '1' || '' }}
     # To find build-app's job and artifact in this run (see the wait below).
     # publish.yml grants it too, since a called workflow's jobs get no more
     # than their caller's.
@@ -519,7 +529,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-artifacts-ios
+          name: e2e-artifacts-ios-${{ matrix.simulator }}
           path: |
             ${{ runner.temp }}/e2e-artifacts
             ${{ runner.temp }}/e2e-artifacts-prepare

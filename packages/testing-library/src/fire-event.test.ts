@@ -4,6 +4,11 @@
  */
 
 import { Component, signal } from '@angular/core';
+import type {
+  ImageErrorDetail,
+  ImageLoadDetail,
+  LynxEvent,
+} from '@blotch/angular-lynx';
 import { configure, getConfig } from '@testing-library/dom';
 import { describe, it, expect } from 'vitest';
 import { render, fireEvent, eventMap, screen, waitForUpdate } from './index.js';
@@ -174,6 +179,107 @@ describe('fireEvent', () => {
     });
   });
 
+  it("sizes a view from an image's load", async () => {
+    /**
+     * A view sized to its picture's share of a 960 × 680 frame. The
+     * picture's size only arrives with `bindload`'s detail.
+     */
+    @Component({
+      selector: 'test-image-load',
+      template: `
+        <view
+          class="placement"
+          [style.width.%]="width()"
+          [style.height.%]="height()"
+        >
+          <image src="photo.png" (bindload)="loaded($event)" />
+        </view>
+      `,
+    })
+    class ImageLoadComponent {
+      readonly width = signal(100);
+      readonly height = signal(100);
+      loaded({ detail }: LynxEvent<ImageLoadDetail>) {
+        this.width.set((detail.width / 960) * 100);
+        this.height.set((detail.height / 680) * 100);
+      }
+    }
+
+    const { container } = await render(ImageLoadComponent);
+    const placement = container.querySelector('.placement')!;
+
+    fireEvent.load(container.querySelector('image')!, {
+      detail: { width: 240, height: 340 },
+    });
+    await waitForUpdate();
+
+    expect(placement).toHaveStyle({ width: '25%', height: '50%' });
+  });
+
+  it("gives an image's (binderror) what went wrong", async () => {
+    let failure: ImageErrorDetail | undefined;
+
+    @Component({
+      selector: 'test-image-error',
+      template: `<image src="missing.png" (binderror)="failed($event)" />`,
+    })
+    class ImageErrorComponent {
+      failed({ detail }: LynxEvent<ImageErrorDetail>) {
+        failure = detail;
+      }
+    }
+
+    const { container } = await render(ImageErrorComponent);
+    const detail: ImageErrorDetail = {
+      errMsg: 'not found',
+      error_code: 404,
+      lynx_categorized_code: 0,
+    };
+    fireEvent.error(container.querySelector('image')!, { detail });
+
+    expect(failure).toEqual(detail);
+  });
+
+  it("gives a handler a CustomEvent's detail", async () => {
+    let size: ImageLoadDetail | undefined;
+
+    @Component({
+      selector: 'test-custom-event',
+      template: `<image src="photo.png" (bindload)="loaded($event)" />`,
+    })
+    class CustomEventComponent {
+      loaded({ detail }: LynxEvent<ImageLoadDetail>) {
+        size = detail;
+      }
+    }
+
+    const { container } = await render(CustomEventComponent);
+    fireEvent(
+      container.querySelector('image')!,
+      new CustomEvent('bindEvent:load', {
+        detail: { width: 240, height: 340 },
+      }),
+    );
+
+    expect(size).toEqual({ width: 240, height: 340 });
+  });
+
+  it('keeps a detail the test put on the event itself', () => {
+    const el = document.createElement('image');
+    let received: any = null;
+    addHandler(el, 'bindEvent', 'load', (e) => {
+      received = e;
+    });
+
+    // How a spec passed an image's size before fireEvent.load existed.
+    fireEvent(
+      el,
+      Object.assign(new Event('bindEvent:load'), { detail: { width: 1 } }),
+    );
+
+    expect(received.detail).toEqual({ width: 1 });
+  });
+
   it('uses a custom eventType as the event name prefix', () => {
     const el = document.createElement('div');
     let received: Event | null = null;
@@ -223,8 +329,10 @@ describe('eventMap', () => {
       'blur',
       'input',
       'confirm',
-      // Layout / image
+      // Layout / loading
       'layoutchange',
+      'load',
+      'error',
       'bgload',
       'bgerror',
       // Transition / animation

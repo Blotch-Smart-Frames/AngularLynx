@@ -131,15 +131,23 @@ A named helper runs the handlers a device would, in the same order:
 
 `init.eventType` fires at one kind of handler on the element and nothing else: `fireEvent.tap(element, { eventType: 'catchEvent' })` dispatches the DOM event `"catchEvent:tap"`, which reaches only the element's `(catchtap)`.
 
+`init.detail` is the event's own data, as a device sends it: an `<image>`'s size once it loads, say.
+
+```ts
+fireEvent.load(image, { detail: { width: 240, height: 340 } });
+```
+
 To dispatch a raw DOM event directly:
 
 ```ts
 fireEvent(element, new Event('bindEvent:tap'));
 ```
 
+A `CustomEvent`'s `detail` reaches the handler too: `fireEvent(element, new CustomEvent('bindEvent:load', { detail }))`.
+
 **Available named helpers:**
 
-`tap` · `longtap` · `touchstart` · `touchmove` · `touchcancel` · `touchend` · `longpress` · `scroll` · `scrollend` · `focus` · `blur` · `input` · `confirm` · `layoutchange` · `transitionend` · `animationend`
+`tap` · `longtap` · `touchstart` · `touchmove` · `touchcancel` · `touchend` · `longpress` · `keydown` · `keyup` · `mousedown` · `mouseup` · `mousemove` · `mouseclick` · `mousedblclick` · `mouselongpress` · `wheel` · `scroll` · `scrollend` · `scrolltoupper` · `scrolltolower` · `contentsizechanged` · `scrolltoupperedge` · `scrolltoloweredge` · `scrolltonormalstate` · `focus` · `blur` · `input` · `confirm` · `layoutchange` · `load` · `error` · `bgload` · `bgerror` · `transitionstart` · `transitionend` · `transitioncancel` · `animationend`
 
 ### `eventMap`
 
@@ -430,6 +438,6 @@ Template binding → PAPI registration → DOM listener key:
 | `renderHook()`          | ✓                       | —                 | —                       |
 | Snapshot serializer     | ✓ (RefProxy)            | —                 | —                       |
 | Vitest plugin           | ✓                       | —                 | — (`ng test` sets up)   |
-| Named fireEvent helpers | 30+                     | 16                | 16                      |
+| Named fireEvent helpers | 30+                     | 16                | 37                      |
 | Thread-aware fireEvent  | ✓                       | ✓                 | — (single thread)       |
 | Async state helper      | `waitSchedule()`        | `waitForUpdate()` | `waitForUpdate()`       |

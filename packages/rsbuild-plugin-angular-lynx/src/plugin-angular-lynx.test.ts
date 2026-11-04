@@ -12,6 +12,7 @@ vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
+vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
 vi.mock('./tailwind.js', () => ({ applyTailwind: vi.fn() }));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
@@ -28,6 +29,7 @@ import { applyLayers } from './layers.js';
 import { applyResolve } from './resolve.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
+import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
@@ -163,6 +165,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyResolve).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyStrictEsm with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyStrictEsm).toHaveBeenCalledWith(mockApi);
     });
 
     it('calls applyLayers with api', () => {

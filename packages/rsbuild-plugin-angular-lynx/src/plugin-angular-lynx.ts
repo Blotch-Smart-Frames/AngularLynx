@@ -9,6 +9,7 @@ import { applyLayers } from './layers.js';
 import { applyResolve } from './resolve.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
+import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
 import {
   deprecatedOptionsIn,
@@ -44,6 +45,7 @@ export const pluginAngularLynx = (
       applyEntry(api, normalizedOptions, backgroundEntries, appEntries);
       applyLayers(api);
       applyResolve(api);
+      applyStrictEsm(api);
       // applyAngularRules reads angular.json asynchronously and only then
       // registers its hooks (including the modifyRsbuildConfig that adds
       // polyfills, $localize init and global styles to `source.preEntry`).

@@ -17,6 +17,7 @@ import {
 } from './component-styles-cache.js';
 import {
   extractComponentStyles,
+  shipLibraryComponentStyles,
   writeModuleStylesheets,
 } from './component-styles.js';
 import {
@@ -541,10 +542,11 @@ export const applyAngularRules = async (
     const isJs = /\.[cm]?js$/.test(context.resourcePath);
     if (isJs) {
       // Plain JS files (third-party deps, .mjs/.cjs sources) bypass the
-      // Angular compiler — they don't carry component metadata. Run them
-      // through @angular/build's JavaScriptTransformer to apply the same
-      // advanced optimizations (pure annotations, async removal, etc.) as
-      // Angular's normal build, then run worklet transforms on top.
+      // Angular compiler. Run them through @angular/build's
+      // JavaScriptTransformer to apply the same advanced optimizations (pure
+      // annotations, async removal, etc.) as Angular's normal build, and its
+      // linker, which compiles a library's partially compiled declarations.
+      // Then run worklet transforms on top.
       const contents = await javascriptTransformer.transformData(
         context.resourcePath,
         context.code,
@@ -556,9 +558,16 @@ export const applyAngularRules = async (
           sideEffects: () => Promise.resolve(false),
         },
       );
+      // A prebuilt library's components carry their styles in their
+      // definitions. Lynx can't add CSS at runtime, so they leave the code
+      // here and ship as CSS files, as compileAngular() does for the app's.
       const code = transformCrossThread(
         transformWorklets(
-          Buffer.from(contents).toString(),
+          shipLibraryComponentStyles(
+            Buffer.from(contents).toString(),
+            context.resourcePath,
+            { basePath, cacheDir: componentCssCacheDir },
+          ),
           context.resourcePath,
         ),
         context.resourcePath,

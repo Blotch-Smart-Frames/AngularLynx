@@ -57,6 +57,8 @@ Component styles are scoped as in Angular on the web. `ViewEncapsulation.Emulate
 
 Type selectors match the tag the template wrote, as on the web: `app-card { height: 100%; }` styles a component's host, and `div { … }` a `<div>`, though both render as a `<view>`. The renderer gives such an element a `_ngtag-<tag>` class, and the build rewrites type selectors naming a tag that isn't a Lynx element to that class, in component and global styles. Selectors naming Lynx elements (`view`, `text`, `page`) are left as they are. A class outranks a type selector, so `app-card { color: red }` ties with `.title { color: blue }` on the same element, and the later rule wins. The root component's host is the page, which `app-root { … }` doesn't match: style it with `page`, or with `:host` in its own styles.
 
+Components from prebuilt libraries (a package from npm, or a workspace library consumed from its `dist`, whether ng-packagr compiled it partially or in full) get the same scoping and type selectors: the build takes their styles out of their compiled definitions after Angular's linker. Importing the component is enough, as on the web. Lynx compiles CSS into the bundle ahead of time, so the styles of every component in a library file ship, even for the ones the app doesn't use. Their code is still tree-shaken.
+
 ## Responsive Units
 
 - `rpx` — responsive pixels. `750rpx` = full screen width regardless of device

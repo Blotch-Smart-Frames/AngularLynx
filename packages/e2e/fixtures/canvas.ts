@@ -6,6 +6,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
+import { LibraryFrame } from 'e2e-prebuilt-library';
 
 /** A 1x1 cyan PNG (0, 255, 255). */
 const CYAN_PNG =
@@ -41,10 +42,13 @@ void main() {
  * vertex buffer arrived, the image decoded and uploaded, and the pixels read
  * back. A texture that didn't upload reads black (0,0,0,255). Hosts without
  * WebGL (Lynx Explorer) show "WebGL: none".
+ *
+ * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
+ * the counter page has no room for.
  */
 @Component({
   selector: 'app-canvas',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, LibraryFrame],
   template: `
     <view
       style="display: flex; flex-direction: row; align-items: center; margin-top: 16px;"
@@ -59,6 +63,7 @@ void main() {
         >WebGL: {{ result() }}</text
       >
     </view>
+    <e2e-library-frame />
   `,
 })
 export class CanvasRoute {

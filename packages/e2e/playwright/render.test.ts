@@ -246,6 +246,35 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// A library's components arrive already compiled, with their styles in their
+// definitions, so they used to bypass the build's style extraction: their
+// rules stayed strings in the JavaScript and never reached Lynx's CSS (issue
+// #240). The fixture library, compiled as ng-packagr compiles one, styles a
+// class, its `:host` and a type selector.
+test("a prebuilt library's component styles apply", async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Open canvas', { exact: true }).click();
+
+  const words = page.getByText('Styled by a prebuilt library', {
+    exact: true,
+  });
+  await expect(words).toHaveCSS('color', 'rgb(200, 30, 90)');
+  // Component hosts carry the class of their tag, which type selectors
+  // become.
+  await expect(page.locator('._ngtag-e2e-library-frame')).toHaveCSS(
+    'background-color',
+    'rgb(30, 60, 90)',
+  );
+  await expect(page.locator('._ngtag-e2e-library-label')).toHaveCSS(
+    'background-color',
+    'rgb(240, 200, 40)',
+  );
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

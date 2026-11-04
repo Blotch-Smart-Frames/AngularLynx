@@ -21,6 +21,33 @@ export type ModuleStylesheets = {
 };
 
 /**
+ * Prepends an import of each of a module's stylesheets (see
+ * component-styles.ts) to its code.
+ */
+export const importStylesheets = (
+  code: string,
+  resourcePath: string,
+  imports: readonly string[],
+): string => {
+  let importsString = '';
+  for (const stylesheet of imports) {
+    // Stylesheets live in node_modules/.cache/angular-lynx-css/, so
+    // compute the relative path from the component file. Prepending
+    // `./` when the relative path doesn't start with `..` keeps it a
+    // valid ES module specifier (rspack rejects bare specifiers here).
+    let relativeImport = path.relative(path.dirname(resourcePath), stylesheet);
+    if (!relativeImport.startsWith('.')) {
+      relativeImport = `./${relativeImport}`;
+    }
+    importsString += `import "${relativeImport}";`;
+  }
+  // Prepend the imports so the CSS chunks are pulled into the bundle
+  // before the component class is defined — matching the side-effect
+  // ordering Angular itself produces in its standard build.
+  return importsString + code;
+};
+
+/**
  * Transforms the Angular-compiled JS for a single component module before rspack
  * bundles it. This is the per-module half of the AngularLynx pipeline, extracted
  * from angular.ts's `api.transform` hook so it can be unit-tested as a pure
@@ -65,26 +92,7 @@ export const buildTransformedCode = (params: {
   let code = params.code;
 
   if (stylesheets) {
-    const { imports } = stylesheets;
-    let importsString = '';
-    for (let i = 0; i < imports.length; ++i) {
-      // Stylesheets live in node_modules/.cache/angular-lynx-css/, so
-      // compute the relative path from the component file. Prepending
-      // `./` when the relative path doesn't start with `..` keeps it a
-      // valid ES module specifier (rspack rejects bare specifiers here).
-      let relativeImport = path.relative(
-        path.dirname(resourcePath),
-        imports[i],
-      );
-      if (!relativeImport.startsWith('.')) {
-        relativeImport = `./${relativeImport}`;
-      }
-      importsString += `import "${relativeImport}";`;
-    }
-    // Prepend the imports so the CSS chunks are pulled into the bundle
-    // before the component class is defined — matching the side-effect
-    // ordering Angular itself produces in its standard build.
-    code = importsString + code;
+    code = importStylesheets(code, resourcePath, stylesheets.imports);
   }
   // Angular's runtime fills the %COMP% in an Emulated component's scoped
   // styles with ɵcmp.id. The CSS was compiled ahead of time with a scope ID

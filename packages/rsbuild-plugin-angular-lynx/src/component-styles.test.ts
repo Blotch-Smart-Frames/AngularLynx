@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractComponentStyles,
   fillCssVarNamespace,
+  shipLibraryComponentStyles,
   toLynxScopedCss,
   writeModuleStylesheets,
 } from './component-styles';
@@ -168,6 +169,47 @@ describe('extractComponentStyles()', () => {
     }
   });
 
+  describe('with inlineScopeIds', () => {
+    /**
+     * Runs the extracted code and returns the definition it builds.
+     */
+    const run = (code: string): { id: string; [key: string]: unknown } =>
+      new Function('i0', `${code}\nreturn App.ɵcmp;`)({
+        // Like Angular's, it works out an ID of its own.
+        ɵɵdefineComponent: (definition: object) => ({
+          ...definition,
+          id: 'c123',
+        }),
+      });
+
+    it("sets an Emulated component's ID inside its definition", () => {
+      const scopeId = generateComponentScopeId('App', FILE);
+
+      const { code } = extractComponentStyles(
+        definition('styles: ["[_nghost-%COMP%]{}"]'),
+        FILE,
+        { inlineScopeIds: true },
+      );
+
+      expect(code).toContain(
+        `App.ɵcmp = /*@__PURE__*/ /*@__PURE__*/ ((def) => (def.id = "${scopeId}", def))(/*@__PURE__*/ i0.ɵɵdefineComponent({`,
+      );
+      expect(run(code)).toMatchObject({ id: scopeId, vars: 0 });
+      expect(run(code)).not.toHaveProperty('styles');
+    });
+
+    it('leaves the ID of a component whose styles are global', () => {
+      const { code } = extractComponentStyles(
+        definition('styles: [".a{}"], encapsulation: 2'),
+        FILE,
+        { inlineScopeIds: true },
+      );
+
+      expect(code).not.toContain('def.id');
+      expect(run(code).id).toBe('c123');
+    });
+  });
+
   it('ignores definitions it cannot read', () => {
     for (const code of [
       'X = ɵɵdefineComponent(definition);',
@@ -260,6 +302,41 @@ describe('writeModuleStylesheets()', () => {
     expect(write('.a{color:red}')).toHaveBeenCalledOnce();
   });
 
+  describe('with nameByContent', () => {
+    const write = (css: string) =>
+      writeModuleStylesheets({
+        basePath,
+        cacheDir,
+        fileName: fileName(),
+        components: [{ className: 'App', scopeId: 'l1', stylesheets: [css] }],
+        nameByContent: true,
+      })!;
+
+    it('names each file after its CSS', () => {
+      const { imports, scopes } = write('.a{}');
+
+      expect(imports).toEqual([
+        expect.stringMatching(/src__app__app\.App\.0\.[0-9a-f]{10}\.css$/),
+      ]);
+      expect(fs.readFileSync(imports[0]!, 'utf-8')).toBe('.a{}');
+      expect(scopes).toEqual([{ className: 'App', scopeId: 'l1' }]);
+    });
+
+    it('writes changed CSS to a new file, and the same CSS once', () => {
+      const first = write('.a{}').imports[0];
+      const writeFile = vi.spyOn(fs, 'writeFileSync');
+
+      expect(write('.a{}').imports[0]).toBe(first);
+      expect(writeFile).not.toHaveBeenCalled();
+      expect(write('.a{color:red}').imports[0]).not.toBe(first);
+      // Under a temporary name, renamed when complete.
+      expect(
+        fs.readdirSync(cacheDir).filter((f) => f.endsWith('.tmp')),
+      ).toEqual([]);
+      expect(fs.readdirSync(cacheDir)).toHaveLength(2);
+    });
+  });
+
   it('works without a write callback', () => {
     expect(() =>
       writeModuleStylesheets({
@@ -271,5 +348,78 @@ describe('writeModuleStylesheets()', () => {
         ],
       }),
     ).not.toThrow();
+  });
+});
+
+describe('shipLibraryComponentStyles()', () => {
+  let basePath: string;
+  let cacheDir: string;
+
+  beforeEach(() => {
+    basePath = fs.mkdtempSync(path.join(os.tmpdir(), 'angular-lynx-css-'));
+    cacheDir = path.join(basePath, 'node_modules', '.cache', 'css');
+    fs.mkdirSync(cacheDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(basePath, { recursive: true, force: true });
+  });
+
+  /**
+   * The shape Angular's linker gives a library component compiled with
+   * ng-packagr: the class in a pure IIFE.
+   */
+  const linked = (styles: string): string =>
+    'export let Frame = /*#__PURE__*/ (() => {\nclass Frame {\n' +
+    `static ɵcmp = /*@__PURE__*/ i0.ɵɵdefineComponent({ type: Frame, selectors: [["lib-frame"]], ${styles} });\n` +
+    '}\nreturn Frame;\n})();\n';
+
+  it("imports a library component's scoped CSS and sets its ID in its definition", () => {
+    const fileName = path.join(
+      basePath,
+      'node_modules',
+      'lib',
+      'fesm2022',
+      'lib.mjs',
+    );
+    const scopeId = generateComponentScopeId('Frame', fileName);
+
+    const code = shipLibraryComponentStyles(
+      linked(
+        'styles: ["[_nghost-%COMP%]{display:block}three-d-frame[_ngcontent-%COMP%]{height:100%}"]',
+      ),
+      fileName,
+      { basePath, cacheDir },
+    );
+
+    const [, specifier] = /^import "([^"]+)";/.exec(code)!;
+    expect(specifier).toMatch(
+      /^\.\.\/\.\.\/\.cache\/css\/node_modules__lib__fesm2022__lib\.Frame\.0\.[0-9a-f]{10}\.css$/,
+    );
+    expect(
+      fs.readFileSync(
+        path.resolve(path.dirname(fileName), specifier!),
+        'utf-8',
+      ),
+    ).toBe(
+      `._nghost-${scopeId}{display:block}three-d-frame._ngcontent-${scopeId}{height:100%}`,
+    );
+    expect(code).toContain(`def.id = "${scopeId}"`);
+    expect(code).not.toContain('styles');
+    // Nothing outside the class's pure IIFE uses it, so a bundler can still
+    // drop the component when the app doesn't.
+    expect(code).not.toContain('Frame.ɵcmp');
+  });
+
+  it('leaves a module without component styles as it is', () => {
+    const code = linked('decls: 0');
+
+    expect(
+      shipLibraryComponentStyles(code, path.join(basePath, 'lib.mjs'), {
+        basePath,
+        cacheDir,
+      }),
+    ).toBe(code);
+    expect(fs.readdirSync(cacheDir)).toEqual([]);
   });
 });

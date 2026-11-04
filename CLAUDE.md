@@ -102,9 +102,13 @@ The runtime package ships an Angular schematics collection (`packages/runtime/sc
 ## Build & Run
 
 ```sh
-npm install && npm run build   # Build all packages
+npm install && npm run build   # Build the packages (not the examples or the website)
 npm run demo                   # Start demo dev server (ng serve)
+npm run build:examples         # Build every example, 4 at a time with 2 Angular workers each
+npm run build:all              # The packages and the website, which builds every example the same way
 ```
+
+`npm run build` leaves out the ~100 examples and the website on purpose. Each example is a full rspeedy build (Lynx and web), and turbo's default of 10 at once, each using every core, slows a laptop to a crawl; CI caps them the same way because they ran out of memory there too. `npm run demo` and `npm test` build what they need themselves.
 
 ## Debugging
 

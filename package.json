@@ -19,7 +19,9 @@
   ],
   "main": "index.js",
   "scripts": {
-    "build": "turbo run build",
+    "build": "turbo run build --filter=./packages/* --filter=!@blotch/angular-lynx-website",
+    "build:examples": "NG_BUILD_MAX_WORKERS=2 turbo run build --filter=./examples/* --concurrency=4",
+    "build:all": "turbo run build --filter=./packages/*",
     "test": "turbo run test",
     "test:no-cache": "turbo run test --force",
     "test:coverage": "turbo run test:coverage",

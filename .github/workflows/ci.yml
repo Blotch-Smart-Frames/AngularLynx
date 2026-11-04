@@ -49,7 +49,9 @@ jobs:
   # the ones examples happen to depend on) and, crucially, populates the shared
   # turbo cache that the sharded example builds below restore from — so
   # runtime/plugin/ui/dolan are compiled once here instead of redundantly inside
-  # every example shard.
+  # every example shard. Not the website: its build builds every example, which
+  # took 12 of this job's 14 minutes and left the shards only replaying them.
+  # build-website runs after the shards instead.
   build-packages:
     runs-on: ubuntu-latest
     steps:
@@ -71,19 +73,18 @@ jobs:
       # the script).
       - name: List this commit's turbo tasks
         run: npx turbo run build --dry=json > "$RUNNER_TEMP/turbo-tasks.json"
-      - run: npx turbo run build --filter=./packages/* --concurrency=4
+      - run: npx turbo run build --filter=./packages/* --filter=!@blotch/angular-lynx-website --concurrency=4
         env:
           NG_BUILD_MAX_WORKERS: 2
       # So the cache holds this commit's builds rather than every build since
       # it was first saved: turbo never evicts an entry itself.
       - name: Prune turbo cache
         run: node .github/scripts/prune-turbo-cache.mts "$RUNNER_TEMP/turbo-tasks.json"
-      # For the example shards below, and on master for save-turbo-cache. An
-      # artifact doesn't count toward the repository's Actions cache, so a
-      # PR's run shares this with its shards without saving a cache. It holds
-      # this commit's package builds, and its example builds too unless an
-      # example changed while turbo replayed the website's build (which builds
-      # them all) rather than running it.
+      # For the example shards and build-website below, and on master for
+      # save-turbo-cache. An artifact doesn't count toward the repository's
+      # Actions cache, so a PR's run shares this with its shards without
+      # saving a cache. It holds this commit's package builds, and the example
+      # builds master's cache already had.
       - name: Share turbo cache
         uses: actions/upload-artifact@v7
         with:
@@ -132,6 +133,8 @@ jobs:
         with:
           name: turbo-cache
           path: .turbo/cache
+      - name: List the downloaded cache entries
+        run: ls .turbo/cache > "$RUNNER_TEMP/downloaded.txt" 2>/dev/null || true
       - name: Build this shard's examples (lynx + web)
         # Partition examples round-robin by shard index (i % total) so heavy
         # examples spread evenly rather than clumping into one contiguous slice.
@@ -154,17 +157,63 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           NG_BUILD_MAX_WORKERS: 2
-      # When an example changes but nothing the website's build depends on
-      # does (a change to packages/ui, say), turbo replays the website's build
-      # instead of running it, and only this shard builds the example. So on
-      # master, this shard's cache goes to save-turbo-cache too. It holds only
-      # this commit's entries, since build-packages pruned the ones it
-      # downloaded.
+      # For build-website, whose build replays this shard's examples rather
+      # than building them again, and on master for save-turbo-cache. Only
+      # the entries this shard added: build-website and save-turbo-cache
+      # download build-packages' artifact as well, so uploading it again from
+      # every shard would only multiply each run's artifacts by eight.
+      - name: Keep only this shard's new cache entries
+        run: |
+          mkdir -p "$RUNNER_TEMP/shard-cache"
+          for entry in .turbo/cache/*; do
+            [ -e "$entry" ] || continue
+            grep -qxF "$(basename "$entry")" "$RUNNER_TEMP/downloaded.txt" \
+              || mv "$entry" "$RUNNER_TEMP/shard-cache/"
+          done
+      - name: Share turbo cache
+        uses: actions/upload-artifact@v7
+        with:
+          name: turbo-cache-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-cache
+          retention-days: 1
+          compression-level: 0
+          overwrite: true
+
+  # The website's build runs build-examples, which builds every example. With
+  # every shard's cache downloaded, those are cache hits that only restore
+  # each example's dist/, so this job spends its time on prepare-examples and
+  # rspress. Runs after a failed shard too: turbo builds whatever that shard
+  # didn't cache, and the website's own errors still show.
+  build-website:
+    needs: [build-packages, build-examples]
+    if: ${{ !cancelled() && needs.build-packages.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Download the package and example builds
+        uses: actions/download-artifact@v8
+        # Only a speed-up: without it, turbo builds everything itself.
+        continue-on-error: true
+        with:
+          pattern: turbo-cache*
+          path: .turbo/cache
+          # The caches share most entries, which are the same file in each.
+          merge-multiple: true
+      - run: npx turbo run build --filter=@blotch/angular-lynx-website
+        env:
+          NG_BUILD_MAX_WORKERS: 2
+      # On master, for save-turbo-cache. Only the website's entry is new here;
+      # the rest are the same files as the other jobs' and merge with them.
       - name: Share turbo cache
         if: github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v7
         with:
-          name: turbo-cache-shard-${{ matrix.shard }}
+          name: turbo-cache-website
           path: .turbo/cache
           include-hidden-files: true
           retention-days: 1
@@ -173,17 +222,17 @@ jobs:
 
   # Single aggregation gate so branch protection can require one "build" check
   # instead of eight shard checks. Runs always() and fails red (not "skipped")
-  # if any package build or example shard failed, so a required check is
-  # unambiguous.
+  # if any package build, example shard or the website failed, so a required
+  # check is unambiguous.
   build:
-    needs: [build-packages, build-examples]
+    needs: [build-packages, build-examples, build-website]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any build job failed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: echo "A package build or example shard failed" && exit 1
-      - run: echo "All package and example builds passed"
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: echo "A package build, example shard or the website failed" && exit 1
+      - run: echo "All package, example and website builds passed"
 
   test:
     runs-on: ubuntu-latest
@@ -296,11 +345,11 @@ jobs:
   # request used to save eleven turbo entries, one per job (4 GB for one push
   # once they had grown), which pushed the caches the native E2E jobs need
   # out of the repository's 10 GB within minutes. Now each master commit
-  # saves one: build-packages', the shards' and the test job's caches
-  # together, so it holds every package build, example build and coverage
-  # report of that commit.
+  # saves one: build-packages', the shards', build-website's and the test
+  # job's caches together, so it holds every package build, example build,
+  # the website and coverage report of that commit.
   save-turbo-cache:
-    needs: [build-packages, build-examples, test]
+    needs: [build-packages, build-examples, build-website, test]
     # Also after a failed shard or test job: turbo caches only the tasks that
     # passed.
     if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.build-packages.result == 'success' }}

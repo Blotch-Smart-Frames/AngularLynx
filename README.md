@@ -92,8 +92,10 @@ graph TB
 ## Development
 
 ```bash
-npm install && npm run build   # Build all packages
+npm install && npm run build   # Build the packages (not the examples or the website)
 npm run demo                   # Start dev server (ng serve)
+npm run build:examples         # Build every example, 4 at a time
+npm run build:all              # The packages and the website, which builds every example
 ```
 
 Scan the QR code with [Lynx Explorer](https://lynxjs.org/guide/start/quick-start.html) to run on your phone. Saving a file updates the app in place. Turn on Lynx DevTool in Explorer's settings tab so it can also reload the app, for changes it can't apply in place.

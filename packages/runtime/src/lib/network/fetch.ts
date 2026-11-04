@@ -299,18 +299,46 @@ const NORMALIZED_METHODS = new Set([
 ]);
 
 /**
- * Parses a request URL. There's no page URL on Lynx to resolve a relative
- * one against (Lynx's HTTP services reject it as "unsupported URL"), so it
- * must be absolute.
+ * Parses an absolute URL. There's no page URL on Lynx to resolve a relative
+ * one against (Lynx's HTTP services reject it as "unsupported URL").
  */
 const parseUrl = (input: string): string => {
   try {
     return new URL(input).href;
   } catch {
     throw new TypeError(
-      `Failed to parse URL from ${input}. Lynx has no page URL to resolve a relative URL against, so requests need an absolute URL.`,
+      `Failed to parse URL from ${input}. Lynx has no page URL to resolve a relative URL against, so this needs an absolute URL.`,
     );
   }
+};
+
+/**
+ * A relative URL: one with no scheme.
+ */
+const isRelative = (url: string): boolean =>
+  !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
+
+/**
+ * Only for checking that a relative URL parses: it's never fetched or shown.
+ */
+const PLACEHOLDER_BASE = 'http://placeholder.invalid/';
+
+/**
+ * Parses a request's URL. An absolute one is serialized, as in a browser. A
+ * relative one stays as written, since there's no page URL to resolve it
+ * against: it can name a file the app bundles (`/static/model.glb`), which
+ * fetch() reads for a GET. three.js's FileLoader, and so GLTFLoader, wraps
+ * every URL in a Request before it fetches, so the Request must hold it;
+ * fetch() rejects any other request for a relative URL.
+ */
+const parseRequestUrl = (input: string): string => {
+  if (!isRelative(input)) return parseUrl(input);
+  try {
+    new URL(input, PLACEHOLDER_BASE);
+  } catch {
+    throw new TypeError(`Failed to parse URL from ${input}.`);
+  }
+  return input;
 };
 
 /** The Fetch Standard's defaults for a request's other options. */
@@ -372,7 +400,7 @@ export class LynxRequest extends LynxBody {
       );
     }
     super(source);
-    this.url = base ? base.url : parseUrl(String(input));
+    this.url = base ? base.url : parseRequestUrl(String(input));
     this.method = normalizedMethod;
     this.headers = new LynxHeaders(init.headers ?? base?.headers);
     if (type !== null && !this.headers.has('content-type')) {
@@ -551,34 +579,28 @@ export class LynxResponse extends LynxBody {
 let nextFetchId = 0;
 
 /**
- * A relative URL: one with no scheme.
+ * The response to a request for a relative URL: for a GET, the file the app
+ * bundles at that URL, read by the shell (see bundled-asset.ts). Lynx has no
+ * page URL to resolve it against, so any other request for one fails.
  */
-const isRelative = (url: string): boolean =>
-  !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
-
-/**
- * The response to a GET of a file the app bundles, read by the shell, or
- * null for any other request.
- */
-const bundledResponse = (
-  input: string | URL | LynxRequest,
-  init?: RequestInit,
-): LynxResponse | null => {
-  if (typeof input !== 'string' || !isRelative(input)) return null;
-  if (init?.method && init.method.toUpperCase() !== 'GET') return null;
-  const bytes = readBundledAsset(input);
-  if (!bytes) return null;
+const bundledResponse = (request: LynxRequest): LynxResponse | TypeError => {
+  const bytes = request.method === 'GET' ? readBundledAsset(request.url) : null;
+  if (!bytes) {
+    return new TypeError(
+      `Failed to fetch ${request.url}. Lynx has no page URL to resolve a relative URL against: only a GET of a file the app bundles can use one, and other requests need an absolute URL.`,
+    );
+  }
   return new LynxResponse(
     new ExtractedBody(bytes),
     {
       status: 200,
       statusText: 'OK',
       headers: {
-        'content-type': typeOfAsset(input),
+        'content-type': typeOfAsset(request.url),
         'content-length': String(bytes.byteLength),
       },
     },
-    { url: input, redirected: false, type: 'basic' },
+    { url: request.url, redirected: false, type: 'basic' },
   );
 };
 
@@ -631,21 +653,17 @@ export const relayFetch = (
   init?: RequestInit,
 ): Promise<LynxResponse> =>
   new Promise((resolve, reject) => {
-    // A file the app bundles, under a URL relative to the app, which Lynx
-    // has no page URL to resolve (see bundled-asset.ts).
-    const bundled = bundledResponse(input, init);
-    if (bundled) {
-      resolve(bundled);
-      return;
-    }
     const request = new LynxRequest(input, init);
     const { signal } = request;
     if (signal.aborted) {
       reject(signal.reason);
       return;
     }
-    // An object URL or a data: URL needs no request: its bytes are here.
-    const local = localResponse(request.url);
+    // A file the app bundles, under a URL relative to the app, or an object
+    // URL or a data: URL, needs no request: its bytes are here.
+    const local = isRelative(request.url)
+      ? bundledResponse(request)
+      : localResponse(request.url);
     if (local) {
       if (local instanceof LynxResponse) resolve(local);
       else reject(local);

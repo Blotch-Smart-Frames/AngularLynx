@@ -231,6 +231,21 @@ test('local and secure storage keep their values after a reload', async ({
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// <canvas> is the browser's in the web preview, with its own WebGL2 (issue
+// #211; native/canvas.yaml checks the app's own iOS and Android builds,
+// where the runtime's context draws through the shell). The canvas page
+// draws a texture createImageBitmap() decoded through a shader, then shows a
+// pixel it read back.
+test('a canvas draws with WebGL2', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Open canvas', { exact: true }).click();
+  await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

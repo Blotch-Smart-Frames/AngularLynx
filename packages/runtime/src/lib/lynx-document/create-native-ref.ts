@@ -5,6 +5,7 @@ import type { ElementRef } from '../types/lynx';
 // module). The individual creators below import only PAPI globals and types.
 import { createBlockElement } from './element-creators/create-block-element';
 import { createBlurViewElement } from './element-creators/create-blur-view-element';
+import { createCanvasElement } from './element-creators/create-canvas-element';
 import { createCommentElement } from './element-creators/create-comment-element';
 import { createCoverViewElement } from './element-creators/create-cover-view-element';
 import { createDefaultElement } from './element-creators/create-default-element';
@@ -121,6 +122,8 @@ export const createNativeRefByTag = (
       return createVideoElement(pageId);
     case 'cover-view':
       return createCoverViewElement(pageId);
+    case 'canvas':
+      return createCanvasElement(pageId);
     case 'comment':
       return createCommentElement(pageId);
     // Unknown tags become views rather than passing straight through to

@@ -12,7 +12,8 @@ import XElement
 /// (scripts/build-lynx-ios-frameworks.sh) and the shell registers the same
 /// classes under the same names here, before the first LynxConfig or LynxView
 /// exists. `<blur-view>` is XElement's with UIKit's blur materials and glass
-/// transitions added (BlurView).
+/// transitions added (BlurView). `<canvas>` is the shell's own, for WebGL
+/// (AngularLynxWebGL.h).
 enum XElementRegistry {
   static func register() {
     let elements: [(String, AnyClass)] = [
@@ -35,6 +36,10 @@ enum XElementRegistry {
     ]
     for (name, ui) in elements {
       LynxComponentRegistry.registerUI(ui, withName: name)
+    }
+    // The shell's own <canvas> (AngularLynxWebGL.h): Lynx has none.
+    if let canvas = NSClassFromString("AngularLynxCanvas") {
+      LynxComponentRegistry.registerUI(canvas, withName: "canvas")
     }
     // The elements whose size comes from their content (a text field's
     // text, an overlay's screen, a refresh's header) also measure themselves

@@ -14,6 +14,7 @@
  */
 
 import { isMainThread } from './background-call';
+import { installCanvasGlobals } from './canvas/dom-globals';
 import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
 
@@ -297,4 +298,12 @@ if (
     ) as unknown as number;
   (globalThis as any).cancelIdleCallback = (id: number): void =>
     clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
+}
+
+// What three.js and angular-three need of the browser to draw in a <canvas>
+// (canvas/dom-globals.ts): performance.now(), images, ResizeObserver and the
+// like. Last, since it adds to the `document` and `window` stand-ins above.
+// The main thread only: Angular, and the scene, run there.
+if (isMainThread()) {
+  installCanvasGlobals(globalThis as unknown as Record<string, any>);
 }

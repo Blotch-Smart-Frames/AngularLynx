@@ -47,6 +47,12 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageModule.swift` the Keychain, readable after the first unlock and never moved to another device.
 
+## Canvas and WebGL
+
+`<canvas>` (issue #211) is the shell's: `CanvasUI.kt`, a `TextureView` registered as the `canvas` element (`addBehavior(CanvasUI.behavior())`), and `WebGLModule.kt`, the `AngularLynxWebGL` module the runtime's WebGL2 context sends its calls to. `MainActivity` turns on main-thread modules (`setEnableMTSModule(true)`), so the runtime, which runs on Lynx's main thread, calls the module synchronously with `lynx.module(name)`, on the UI thread. Each context (`WebGLContext.kt`) is an EGL context with OpenGL ES 3.0 and an offscreen default framebuffer, which `present` copies into the canvas's surface; `WebGLOps.kt` is generated from the runtime's opcodes (`npm run generate:webgl-ops -w packages/native`). `AssetsModule.kt` (`AngularLynxAssets`) reads a file the app bundles for the main thread's `fetch`, which has no page URL to resolve `/static/...` against.
+
+Android's GLES has no 2D uploads from a `PIXEL_UNPACK_BUFFER` and no `glGetVertexAttribPointerv`, so those log a warning and answer 0.
+
 ## Global props
 
 `MainActivity.globalProps()` sends what the runtime reads and Lynx has no API for (see the package README), again on every configuration change and accessibility setting change.

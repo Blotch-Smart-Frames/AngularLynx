@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LynxErrorHandler } from '../error-handler/lynx-error-handler';
 import { LynxDocument } from '../lynx-document';
+import { ɵDomRendererFactory2 } from '@angular/platform-browser';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { provideRenderer } from './providers';
 import { LYNX_DOCUMENT } from './token';
@@ -42,8 +43,12 @@ describe('provideRenderer', () => {
 
       // TransferState's factory looks up Angular SSR's `<script id="ng-state">`
       // via getElementById; Lynx never has one, so it must exist and say so.
-      expect(Object.keys(doc)).toEqual(['getElementById']);
+      expect(Object.keys(doc)).toEqual(['getElementById', 'defaultView']);
       expect(doc.getElementById('ng-state')).toBeNull();
+      // The window, where code that measures elements (ngxtension's resize
+      // directive, which angular-three sizes its canvas with) looks for
+      // ResizeObserver.
+      expect(doc.defaultView).toBe(globalThis);
     });
   });
 
@@ -69,6 +74,17 @@ describe('provideRenderer', () => {
       // disableImageSizeWarning AND disableImageLazyLoadWarning are set.
       expect(config.disableImageSizeWarning).toBe(true);
       expect(config.disableImageLazyLoadWarning).toBe(true);
+    });
+  });
+
+  describe('ɵDomRendererFactory2', () => {
+    it('is the Lynx factory, for libraries that wrap the DOM renderer', () => {
+      // angular-three's provideNgtRenderer() wraps whatever this resolves to.
+      vi.stubGlobal('__MAIN_THREAD__', false);
+      const injector = createInjector();
+      expect(injector.get(ɵDomRendererFactory2)).toBe(
+        injector.get(LynxRendererFactory2),
+      );
     });
   });
 

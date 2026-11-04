@@ -12,6 +12,7 @@ import {
   vi,
 } from 'vitest';
 import type { ElementRef } from '../types/lynx';
+import { LynxCanvasElement } from '../canvas/canvas-element';
 import { LynxElement } from '../lynx-element';
 import { LynxListElement } from '../lynx-element/lynx-list-element';
 import { ANDROID_BLUR_CAPTURE_TARGET } from './android-blur-capture';
@@ -351,10 +352,32 @@ describe('LynxDocument', () => {
     });
 
     it('falls back to __CreateView for unknown tags', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const viewCallsBefore = asMock(globalThis.__CreateView).mock.calls.length;
       doc.createElement('custom-tag');
       const viewCallsAfter = asMock(globalThis.__CreateView).mock.calls.length;
       expect(viewCallsAfter).toBeGreaterThan(viewCallsBefore);
+      expect(warn).toHaveBeenCalledWith(
+        'Unknown element tag "custom-tag". Falling back to view element.',
+      );
+      warn.mockRestore();
+    });
+
+    it('makes angular-three’s tags views, without a warning each', () => {
+      // provideNgtRenderer() asks for an element for every `ngt-*` tag.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      doc.createElement('ngt-mesh');
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('makes a <canvas> with its own element, as HTMLCanvasElement', () => {
+      // Without the shell's WebGL module (as here) the canvas is a view.
+      globalThis.__AddEvent = mock(() => {});
+      globalThis.__InvokeUIMethod = mock(() => []);
+      const canvas = doc.createElement('canvas');
+      expect(canvas).toBeInstanceOf(LynxCanvasElement);
+      expect(canvas.tagName).toBe('canvas');
     });
 
     it('returns distinct elements on successive calls', () => {

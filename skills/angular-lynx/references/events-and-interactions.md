@@ -30,9 +30,13 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 
 ## `(click)` and several handlers per element
 
-- `(click)` runs on a tap, as `(bindtap)` does: the renderer maps it like Lynx for Web (`click` → `tap`, bubbling). Angular's `RouterLink` depends on this. Other DOM event names, such as `(mouseover)`, are silently ignored.
+- `(click)` runs on a tap, as `(bindtap)` does: the renderer maps it like Lynx for Web (`click` → `tap`, bubbling). Angular's `RouterLink` depends on this. Other DOM event names, such as `(mouseover)`, are silently ignored, except pointer events (below).
 - Native Lynx keeps **one** handler per event name on an element (its event map is keyed by name, whatever the bind/catch type). The renderer registers one native handler per event that runs every Angular listener in order, so `routerLink` plus `(bindtap)` on one element both run. If any listener uses `catch`, the event stops at the element after all of them run.
 - A main-thread script (`[mainThreadBindtap]`) registers its own native handler, so it still replaces a `(bindtap)` on the same element.
+
+## Pointer events
+
+`(pointerdown)`, `(pointermove)`, `(pointerup)`, `(pointercancel)`, `(pointerover)`, `(pointerout)`, `(pointerenter)`, `(pointerleave)`, `(gotpointercapture)` and `(lostpointercapture)` work on every element, with no `bind` prefix, as on the web: the renderer makes each touch into the pointer events a browser fires for one, in its order. `$event` is a DOM `PointerEvent`: `pointerId` is the finger, `pointerType` is `'touch'`, `offsetX`/`offsetY` are relative to the element. A touch's events stay with the element it started on, as if captured. In the web preview they're the browser's own, mouse included. Libraries written for the web, such as angular-three, use them; a `(click)` on an element with pointer listeners has `offsetX`/`offsetY` where the pointer lifted.
 
 ## Handlers can change the element tree
 

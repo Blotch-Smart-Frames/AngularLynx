@@ -1,0 +1,146 @@
+# `<canvas>`
+
+A drawing surface with a WebGL2 context, for 3D scenes with three.js, angular-three or plain WebGL. Lynx has no canvas of its own: this one is AngularLynx's.
+
+<Go example="element-canvas" defaultFile="src/app/app.ts" />
+
+## Where it works
+
+| Where                                                                                                | `getContext('webgl2')`                                                        |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| iOS and Android apps built with [`ng build --platform ios\|android`](/guide/building-for-production) | Draws with the phone's OpenGL ES 3.0                                          |
+| The web preview                                                                                      | The browser's WebGL2: the element is an HTML `<canvas>`                       |
+| Lynx Explorer, and native apps that embed Lynx themselves                                            | `null`: the canvas is an empty view. Their apps don't have the canvas element |
+
+## Usage
+
+Give the canvas a size with CSS, and draw once it's laid out:
+
+```typescript title="src/app/scene.ts"
+import {
+  afterNextRender,
+  Component,
+  type ElementRef,
+  viewChild,
+} from '@angular/core';
+import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
+import * as THREE from 'three';
+
+@Component({
+  selector: 'app-scene',
+  imports: [LYNX_ELEMENTS],
+  template: `<canvas #canvas class="h-[300px] w-full"></canvas>`,
+})
+export class Scene {
+  readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+
+  constructor() {
+    afterNextRender(() => {
+      const canvas = this.canvas()
+        .nativeElement as unknown as HTMLCanvasElement;
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(devicePixelRatio);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+      camera.position.z = 3;
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(),
+        new THREE.MeshNormalMaterial(),
+      );
+      scene.add(cube);
+
+      // Fit the drawing buffer to the canvas's size.
+      new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }).observe(canvas);
+
+      renderer.setAnimationLoop(() => {
+        cube.rotation.y += 0.01;
+        renderer.render(scene, camera);
+      });
+    });
+  }
+}
+```
+
+Like an HTML canvas:
+
+- `width` and `height` are the drawing buffer's size in pixels, 300 by 150 to start. The element's CSS size is how big it's shown.
+- `getContext('webgl2')` returns the same context every time. There's no `'2d'` context, and `'webgl'` (WebGL 1) is `null`: three.js needs WebGL2 anyway.
+- Pointer events (`pointerdown`, `pointermove`, `pointerup` and the rest) work, from the finger's touches. They work on every element, not only a canvas: see [Element events](/api/angular-lynx/element-events).
+- `clientWidth`, `clientHeight` and `getBoundingClientRect()` answer from the element's last layout, and `ResizeObserver` reports its size as it changes.
+
+## angular-three
+
+[angular-three](https://github.com/angular-threejs/angular-three) works with its own renderer, as on the web:
+
+```typescript title="src/app/app.config.ts"
+import { provideZonelessChangeDetection } from '@angular/core';
+import { provideRenderer } from '@blotch/angular-lynx';
+import { provideNgtRenderer } from 'angular-three/dom';
+
+export const appConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideNgtRenderer(),
+  ],
+};
+```
+
+`provideRenderer()` comes first: angular-three's renderer wraps Angular's, which on Lynx is AngularLynx's. `<ngt-canvas>` sizes itself, and its events (`(click)`, `(pointerover)` on a mesh) come from touches.
+
+:::warning
+angular-three 4.2 lists Angular 20 and 21, and three.js below 0.183, as its peer dependencies. On Angular 22, install it with `npm install angular-three --legacy-peer-deps`, or add an [`overrides`](https://docs.npmjs.com/cli/configuring-npm/package-json#overrides) entry. Pin `three` to `0.182.x`.
+:::
+
+## Images and models
+
+Textures and models load as on the web:
+
+- three.js's `TextureLoader` (an `Image`), `ImageBitmapLoader` (`createImageBitmap()`) and `GLTFLoader`, including `.glb` files with their textures inside.
+- From `https://` URLs, `data:` URLs, object URLs (`URL.createObjectURL()`), and files your app imports (`import model from './frame.glb'`).
+
+The phone decodes images, and the pixels go straight to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
+
+## Attributes
+
+| Attribute | Type     | Default | Description                             |
+| --------- | -------- | ------- | --------------------------------------- |
+| `width`   | `number` | `300`   | The drawing buffer's width, in pixels.  |
+| `height`  | `number` | `150`   | The drawing buffer's height, in pixels. |
+
+Plus the [common attributes](/api/elements/view#attributes), such as `id`, `class` and `style`.
+
+## Events
+
+| Event                       | Description                                                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `webglcontextlost`          | The context was lost: `WEBGL_lose_context`'s `loseContext()` was called (three.js does when it's disposed). |
+| `webglcontextcreationerror` | `getContext('webgl2')` couldn't make a context.                                                             |
+
+Plus pointer events and the [common events](/api/elements/view#events), such as `bindtap`.
+
+## Performance
+
+Your scene's JavaScript runs on the thread Lynx lays the page out on, and each frame's WebGL calls go to the phone's GPU together, once a frame. A scene of a few meshes, lit and shadowed, draws at 60 frames a second on the Android emulator. Keep the drawing buffer to the screen's pixel ratio, at most 2, and stop the loop (`setAnimationLoop(null)`) when the scene is off screen.
+
+:::tip
+The iOS Simulator draws OpenGL ES on the Mac's CPU, so a lit scene runs at a few frames a second there, and very large triangles can lose a corner. Check frame rates on a phone.
+:::
+
+## What's different from the web
+
+- No 2D context: libraries that draw with `getContext('2d')` don't work.
+- `toDataURL()` and `toBlob()` aren't there. Read pixels with `readPixels()`.
+- A `<canvas>` or `<video>` can't be a texture: use images, `ImageBitmap`s or typed arrays.
+- A lost context isn't restored: make a new renderer.
+- `crypto.randomUUID()`, which AngularLynx adds for angular-three, isn't cryptographically secure: don't use it for secrets.
+
+## Related
+
+- [`<svg>`](/api/elements/svg): vector drawings
+- [The JavaScript environment](/guide/concepts/javascript-environment): the browser APIs AngularLynx adds

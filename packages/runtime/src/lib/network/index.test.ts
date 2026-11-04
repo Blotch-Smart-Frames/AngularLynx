@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   installBase64Globals,
+  createObjectURL,
   installNetworkGlobals,
+  LynxBlob,
   lynxAtob,
   lynxBtoa,
   LynxDOMException,
@@ -13,6 +15,7 @@ import {
   LynxTextEncoder,
   LynxXMLHttpRequest,
   relayFetch,
+  revokeObjectURL,
 } from './index';
 
 describe('installBase64Globals', () => {
@@ -54,7 +57,23 @@ describe('installNetworkGlobals', () => {
       Request: LynxRequest,
       Response: LynxResponse,
       XMLHttpRequest: LynxXMLHttpRequest,
+      Blob: LynxBlob,
     });
+  });
+
+  it('gives URL object URLs, unless it has them', () => {
+    const LynxURLLike = class {};
+    const target: Record<string, unknown> = { URL: LynxURLLike };
+    installNetworkGlobals(target);
+    expect((LynxURLLike as any).createObjectURL).toBe(createObjectURL);
+    expect((LynxURLLike as any).revokeObjectURL).toBe(revokeObjectURL);
+
+    const own = () => '';
+    const BrowserURL = class {
+      static createObjectURL = own;
+    };
+    installNetworkGlobals({ URL: BrowserURL });
+    expect(BrowserURL.createObjectURL).toBe(own);
   });
 
   it("keeps the runtime's own, and its Fetch classes along with its fetch (the web preview)", () => {
@@ -65,6 +84,7 @@ describe('installNetworkGlobals', () => {
       ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,
+      Blob: own,
     };
     installNetworkGlobals(target);
 
@@ -74,6 +94,7 @@ describe('installNetworkGlobals', () => {
       ReadableStream: own,
       fetch: own,
       XMLHttpRequest: own,
+      Blob: own,
     });
   });
 

@@ -1,3 +1,4 @@
+// cspell:words swiftshader
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,7 +25,17 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // WebGL on a machine without a GPU, such as CI's: Chromium falls back
+        // to SwiftShader only when allowed. The canvas test draws with it.
+        launchOptions: { args: ['--enable-unsafe-swiftshader'] },
+      },
+    },
+  ],
   webServer: {
     command: `node ${JSON.stringify(path.join(here, 'serve.ts'))}`,
     url: `http://127.0.0.1:${port}/`,

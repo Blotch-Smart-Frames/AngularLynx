@@ -4,6 +4,8 @@ import type { RelayedResponse } from './background-fetch';
 import { LynxRequest, LynxResponse, relayFetch } from './fetch';
 import { LynxHeaders } from './headers';
 import { LynxReadableStream } from './readable-stream';
+import { createObjectURL, LynxBlob, revokeObjectURL } from './blob';
+import { toWords } from './words';
 
 vi.mock('../background-call', () => ({ callOnBackground: vi.fn() }));
 
@@ -448,5 +450,113 @@ describe('relayFetch', () => {
     await relayFetch(URL_, { signal: controller.signal });
     controller.abort();
     expect(call).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a body given as a Blob', () => {
+  it('sends its bytes and type', async () => {
+    const request = new LynxRequest(URL_, {
+      method: 'POST',
+      body: new LynxBlob(['hi'], { type: 'text/x' }),
+    });
+    expect(request.headers.get('content-type')).toBe('text/x');
+    expect(await request.text()).toBe('hi');
+    const untyped = new LynxRequest(URL_, {
+      method: 'POST',
+      body: new LynxBlob(['hi']),
+    });
+    expect(untyped.headers.get('content-type')).toBeNull();
+  });
+});
+
+describe('a response given a stream', () => {
+  const streamOf = (...chunks: (Uint8Array | ArrayBuffer)[]) =>
+    new LynxReadableStream<Uint8Array>({
+      start: (controller) => {
+        for (const chunk of chunks) controller.enqueue(chunk as Uint8Array);
+        controller.close();
+      },
+    });
+
+  it('reads the stream when its body is read, as three.js’s FileLoader needs', async () => {
+    const stream = streamOf(
+      new TextEncoder().encode('ab'),
+      new TextEncoder().encode('c').buffer as ArrayBuffer,
+    );
+    const response = new LynxResponse(stream);
+    expect(response.body).toBe(stream);
+    expect(response.bodyUsed).toBe(false);
+    expect(await response.text()).toBe('abc');
+    expect(response.bodyUsed).toBe(true);
+    await expect(response.text()).rejects.toThrow(/already read/);
+  });
+
+  it('can’t be cloned', () => {
+    expect(() => new LynxResponse(streamOf()).clone()).toThrow(
+      /stream can't be cloned/,
+    );
+  });
+
+  it('still can’t be a request’s body', () => {
+    expect(
+      () => new LynxRequest(URL_, { method: 'POST', body: streamOf() }),
+    ).toThrow(/ReadableStream request bodies/);
+  });
+});
+
+describe('relayFetch of a URL that needs no request', () => {
+  beforeEach(() => {
+    call.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads an object URL’s blob, and fails once it’s revoked', async () => {
+    const url = createObjectURL(new LynxBlob(['glb'], { type: 'model/x' }));
+    const response = await relayFetch(url);
+    expect(response.status).toBe(200);
+    expect(response.url).toBe(url);
+    expect(response.headers.get('content-type')).toBe('model/x');
+    expect(response.headers.get('content-length')).toBe('3');
+    expect(await response.text()).toBe('glb');
+    revokeObjectURL(url);
+    await expect(relayFetch(url)).rejects.toThrow(TypeError);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('reads a data: URL', async () => {
+    const response = await relayFetch('data:text/plain;base64,aGk=');
+    expect(await response.text()).toBe('hi');
+    expect(response.headers.get('content-type')).toBe('text/plain');
+    await expect(relayFetch('data:bad')).rejects.toThrow(TypeError);
+  });
+
+  it('reads a file the app bundles from the shell', async () => {
+    const invoke = vi.fn(() => toWords(new TextEncoder().encode('{"a":1}')));
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    const response = await relayFetch('/static/data.json');
+    expect(await response.json()).toEqual({ a: 1 });
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.url).toBe('/static/data.json');
+    expect(
+      (await relayFetch('/static/data.json', { method: 'get' })).status,
+    ).toBe(200);
+  });
+
+  it('sends the rest on: a POST, an absolute URL, a file it doesn’t bundle', async () => {
+    const invoke = vi.fn(() => null);
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    await expect(
+      relayFetch('/static/data.json', { method: 'POST', body: 'x' }),
+    ).rejects.toThrow(/Failed to parse URL/);
+    await expect(relayFetch('/static/missing.json')).rejects.toThrow(
+      /Failed to parse URL/,
+    );
+    expect(invoke).toHaveBeenCalledOnce();
+    call.mockResolvedValueOnce(relayed());
+    await relayFetch(new URL(URL_));
+    expect(invoke).toHaveBeenCalledOnce();
   });
 });

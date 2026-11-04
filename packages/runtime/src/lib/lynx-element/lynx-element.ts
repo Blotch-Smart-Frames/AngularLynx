@@ -22,6 +22,13 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { sanitizeSvgContent } from './svg-content';
+import {
+  type LayoutRect,
+  LayoutTracker,
+  type LynxDOMRect,
+  toDOMRect,
+} from './layout';
+import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { dropsTap, WebLongPress } from './web-long-press';
 import {
   type BaseLynxElement,
@@ -333,6 +340,15 @@ export class LynxElement implements BaseLynxElement {
   #listeners: Listener[] = [];
   /** Recognizes long presses on Lynx for Web (see #listenForWebLongPress). */
   #webLongPress: WebLongPress | null = null;
+  /** Turns touches into pointer events, once a pointer listener is added. */
+  #pointerEvents: PointerEventSource | null = null;
+  /**
+   * Where the last pointer went down or up on the element, on Lynx for Web,
+   * whose pointer events are the browser's (see #addPointerListener).
+   */
+  #webPointer: { offsetX: number; offsetY: number } | null = null;
+  /** The element's layout, once something needs it (see layout.ts). */
+  #layout: LayoutTracker | null = null;
   /**
    * The handler registered natively for each event (see nativeEventKey). It
    * runs every listener for that event, since native Lynx keeps only one.
@@ -1356,6 +1372,8 @@ export class LynxElement implements BaseLynxElement {
    * gets one native handler that runs all of them (see #syncNativeHandler).
    */
   addEventListener(name: string, cb: (event: any) => any) {
+    if (POINTER_EVENT_NAMES.has(name))
+      return this.#addPointerListener(name, cb);
     const parsed = parseEventName(name);
     if (!parsed) {
       return () => {};
@@ -1385,6 +1403,14 @@ export class LynxElement implements BaseLynxElement {
    * event for was never added, so removing it does nothing.
    */
   removeEventListener(name: string, cb: (event: any) => any): void {
+    if (POINTER_EVENT_NAMES.has(name)) {
+      if (__WEB__) {
+        (this.element as unknown as EventTarget).removeEventListener(name, cb);
+      } else {
+        this.#pointerEvents?.remove(name, cb);
+      }
+      return;
+    }
     const parsed = parseEventName(name);
     if (!parsed) return;
     const entry = this.#listeners.find(
@@ -1394,6 +1420,133 @@ export class LynxElement implements BaseLynxElement {
         other.eventName === parsed.eventName,
     );
     if (entry) this.#removeListener(entry);
+  }
+
+  /**
+   * A pointer listener (see pointer-events.ts): on Lynx for Web, a DOM
+   * listener on the element, which gets the browser's own pointer events;
+   * natively, one of the pointer events the element makes from its touches.
+   */
+  #addPointerListener(name: string, cb: (event: any) => any): () => void {
+    if (__WEB__) {
+      const target = this.element as unknown as EventTarget;
+      if (!this.#webPointer) {
+        this.#webPointer = { offsetX: 0, offsetY: 0 };
+        const record = (event: Event) => {
+          const { offsetX, offsetY } = event as PointerEvent;
+          this.#webPointer = { offsetX, offsetY };
+        };
+        target.addEventListener('pointerdown', record);
+        target.addEventListener('pointerup', record);
+      }
+      target.addEventListener(name, cb);
+      return () => target.removeEventListener(name, cb);
+    }
+    this.#pointerEvents ??= new PointerEventSource({
+      uid: __GetElementUniqueID(this.element),
+      layoutOrigin: () => this.#layoutTracker().rect,
+      listen: (event, listener) => this.addEventListener(event, listener),
+      eventTarget: this,
+    });
+    // Offsets for touches on a child come from the element's layout.
+    this.#layoutTracker().start();
+    return this.#pointerEvents.add(name, cb);
+  }
+
+  /**
+   * Makes `pointerId`'s events this element's until it lifts, as a DOM
+   * element's method does. A Lynx touch always goes to the element it
+   * started on, so this changes only `hasPointerCapture()` and fires
+   * `gotpointercapture` (see pointer-events.ts).
+   */
+  setPointerCapture(pointerId: number): void {
+    if (__WEB__) {
+      (this.element as unknown as Element).setPointerCapture(pointerId);
+      return;
+    }
+    this.#pointerEvents?.setPointerCapture(pointerId);
+  }
+
+  releasePointerCapture(pointerId: number): void {
+    if (__WEB__) {
+      (this.element as unknown as Element).releasePointerCapture(pointerId);
+      return;
+    }
+    this.#pointerEvents?.releasePointerCapture(pointerId);
+  }
+
+  hasPointerCapture(pointerId: number): boolean {
+    if (__WEB__) {
+      return (this.element as unknown as Element).hasPointerCapture(pointerId);
+    }
+    return this.#pointerEvents?.hasPointerCapture(pointerId) ?? false;
+  }
+
+  #layoutTracker(): LayoutTracker {
+    this.#layout ??= new LayoutTracker({
+      listen: (event, listener) => this.addEventListener(event, listener),
+      measure: (callback) =>
+        __InvokeUIMethod(this.element, 'boundingClientRect', {}, (result) =>
+          callback(
+            result?.code === 0 && result.data
+              ? (result.data as LayoutRect)
+              : null,
+          ),
+        ),
+    });
+    return this.#layout;
+  }
+
+  /**
+   * The element's box relative to the LynxView, now, as a DOM element's
+   * method answers. Lynx has no synchronous layout read, so this is the box
+   * from the element's last `layoutchange` (see layout.ts): the first call
+   * starts listening, and the box is empty until the element's next layout.
+   * Code that needs it from the start can call `observeLayout()`, or use
+   * `ResizeObserver`. On Lynx for Web it's the DOM element's own.
+   */
+  getBoundingClientRect(): LynxDOMRect {
+    if (__WEB__) {
+      return (this.element as unknown as Element).getBoundingClientRect();
+    }
+    const tracker = this.#layoutTracker();
+    tracker.start();
+    return toDOMRect(tracker.rect);
+  }
+
+  /**
+   * The element's width, from its last layout (see getBoundingClientRect).
+   */
+  get clientWidth(): number {
+    return this.getBoundingClientRect().width;
+  }
+
+  get clientHeight(): number {
+    return this.getBoundingClientRect().height;
+  }
+
+  get offsetWidth(): number {
+    return this.getBoundingClientRect().width;
+  }
+
+  get offsetHeight(): number {
+    return this.getBoundingClientRect().height;
+  }
+
+  /**
+   * Calls `observer` with the element's box after each layout that moves or
+   * resizes it, from the next one on. What `ResizeObserver` is built on.
+   * Returns a function that stops it.
+   */
+  observeLayout(observer: (rect: LayoutRect) => void): () => void {
+    return this.#layoutTracker().observe(observer);
+  }
+
+  /**
+   * The box from the element's last layout, or null before the first.
+   */
+  get layoutRect(): LayoutRect | null {
+    return this.#layout?.rect ?? null;
   }
 
   /**
@@ -1512,6 +1665,24 @@ export class LynxElement implements BaseLynxElement {
     // The browser's click after a long press on Lynx for Web, which native
     // Lynx doesn't follow with a tap (see web-long-press.ts).
     if (__WEB__ && entry.eventName === 'tap' && dropsTap()) return undefined;
+    // A `click` (a tap) on an element with pointer listeners is where its
+    // pointer lifted, as a browser's click is: angular-three, for one, only
+    // counts a click that ends near where its pointerdown was.
+    const pointer = __WEB__
+      ? this.#webPointer
+      : this.#pointerEvents?.lastOffset;
+    if (
+      pointer &&
+      entry.eventName === 'tap' &&
+      event &&
+      typeof event === 'object' &&
+      event.offsetX === undefined
+    ) {
+      event.offsetX = pointer.offsetX;
+      event.offsetY = pointer.offsetY;
+      event.button = 0;
+      event.pointerType = __WEB__ ? 'mouse' : 'touch';
+    }
     let result: unknown;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a

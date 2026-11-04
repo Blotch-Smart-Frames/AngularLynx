@@ -154,7 +154,15 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 
 ### HTTP needs absolute URLs
 
-`HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. See [http-requests.md](http-requests.md).
+`HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. Files the app bundles are the exception in `ng build --platform` apps. See [http-requests.md](http-requests.md).
+
+### No 2D canvas, and WebGL only in built apps
+
+`<canvas>` has only a WebGL2 context, and only in apps built with `ng build --platform ios|android` and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
+
+### `getBoundingClientRect()` is the last layout's
+
+An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer synchronously from its last `layoutchange`, so they're empty until it's laid out. `ResizeObserver` works on Lynx elements. For a box native measures now, use `SelectorQuery`'s `boundingClientRect`.
 
 ### `TextEncoder` / `TextDecoder` are UTF-8 only
 

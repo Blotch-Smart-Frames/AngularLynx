@@ -866,7 +866,12 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
       path.join(appDir, 'src/app/hello', file),
     );
   }
-  for (const file of ['lazy-route.ts', 'gestures.ts', 'storage.ts']) {
+  for (const file of [
+    'lazy-route.ts',
+    'gestures.ts',
+    'storage.ts',
+    'canvas.ts',
+  ]) {
     copyFileSync(
       path.join(FIXTURES_DIR, file),
       path.join(appDir, 'src/app', file),
@@ -897,6 +902,10 @@ export const routes: Routes = [
   {
     path: 'storage',
     loadComponent: () => import('./storage').then((m) => m.StorageRoute),
+  },
+  {
+    path: 'canvas',
+    loadComponent: () => import('./canvas').then((m) => m.CanvasRoute),
   },
 ];
 `,

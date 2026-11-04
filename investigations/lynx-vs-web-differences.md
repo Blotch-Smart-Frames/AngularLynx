@@ -2843,9 +2843,49 @@ WebAssembly support is **severely restricted**:
 
 None of these elements exist in Lynx:
 
-- **`<canvas>`** — not supported. There is no 2D drawing surface or Canvas API. For custom drawing, use native bridge modules or SVG (limited).
+- **`<canvas>`** — Lynx has none. AngularLynx adds one with a WebGL2 context, but no 2D context (see the next section).
 - **`<video>` / `<audio>`** — not supported as built-in elements. Media playback requires native bridge integration via `lynx.requireModule()`.
 - **`<iframe>`** — replaced by the Lynx-specific `<frame>` element (which embeds another Lynx page, not arbitrary web content). There is no way to embed web URLs.
+
+---
+
+## `<canvas>` with WebGL2 is AngularLynx's own, drawn through a main-thread module
+
+### What you'd expect (web)
+
+`<canvas>` with `getContext('webgl2')`, whose calls run on the GPU as they're made, and whose answers (a shader's compile status, a uniform's location) come back at once. three.js, angular-three and every WebGL library rely on that.
+
+### What Lynx does
+
+Open-source Lynx has no canvas on iOS or Android (lynx-family/lynx has no WebGL; `@lynx-js/web-elements` has an `x-canvas`, marked deprecated because "this proposals cannot be implemented on other platforms"). AngularLynx adds it (issue #211):
+
+- **The element.** The shells register a `canvas` UI (`AngularLynxCanvas` on iOS, a `CAEAGLLayer` view; `CanvasUI` on Android, a `TextureView`), paired with its context by a `canvas-id` attribute the runtime sets. On Lynx for Web, `__CreateElement('canvas')` gives a real HTML `<canvas>` (web-core creates a tag it has no element for as it is), so the browser's WebGL2 draws. A host without the shell's module (Lynx Explorer) gets a view, because on Android an element nothing is registered for stops the elements after it rendering.
+- **Synchronous native calls from the main thread.** Angular runs on the main thread, where `NativeModules` doesn't exist, and the relay to the background thread is asynchronous. Lynx 4.1 has main-thread modules: with `enableMTSModule` on the LynxView builder (iOS `builder.enableMTSModule`, Android `setEnableMTSModule(true)`), the modules registered on the builder's config are callable from main-thread JavaScript as `lynx.module(name).invoke(method, ...args)`, synchronously, on the UI thread (`LynxLepusModule::InvokeMethod`, `renderer_ng.cc`'s `module` function). The WebGL context uses the `AngularLynxWebGL` module, and `fetch` the `AngularLynxAssets` module (below).
+- **A call's cost.** Measured on Lynx 4.1: about 80 µs a call on the iOS Simulator, nearly all of it Lynx logging each module call at INFO level (2 µs with the minimum log level at warning), and about 7 µs on the Android emulator. So the context doesn't make one per GL call: it records the calls into an array and sends them in one `run` at the end of the task (a microtask), or when a call needs an answer. A three.js frame is one call. A program's link status, log, active uniforms and attributes and their locations come back together after each link, and the limits, precisions and extensions when the context is made.
+- **What crosses the bridge.** Numbers, strings, arrays and plain objects. An `ArrayBuffer` or typed array arrives as an empty map; returning an `NSData` crashes the main thread's PrimJS (`js_object_toString` on the result); a string ends at its first NUL (Android too). So bytes cross as an array of 32-bit words with the byte count last: `Array.from(new Uint32Array(buffer))` builds it at C speed, about 0.1–0.2 µs a word to convert natively. Base64 in JavaScript was 5 ms per 64 KB on iOS.
+- **Arrays coming back on iOS** are array-likes that `.map()` and destructuring read, but `new Int32Array(value)` reads as empty. The runtime turns them into plain arrays (`numbersFrom` in `network/words.ts`) before making typed arrays; three.js reads `VIEWPORT` and `SCISSOR_BOX` that way.
+- **OpenGL ES 3.0.** Its shading language, GLSL ES 3.00, is WebGL2's, so three.js's shaders compile as they are. OpenGL ES is deprecated on iOS (since iOS 12) but still in the iOS 27.2 SDK. The default framebuffer is an offscreen one the shell makes at the canvas's `width` and `height` (multisampled when `antialias`), copied to the view after each frame that drew to it, and cleared, as WebGL's is, unless `preserveDrawingBuffer`. GLES can't read a multisampled framebuffer (`readPixels()` and `copyTexImage2D()` on one are `INVALID_OPERATION`, and read nothing), so a read of the default framebuffer resolves its samples first, as showing a frame does.
+- **The iOS Simulator renders OpenGL ES on the CPU** ("Apple Software Renderer"): a lit, shadowed three.js scene at three times the screen's resolution took about 850 ms a frame, and a smaller one ran at about 7 fps. It also dropped one triangle of a floor plane whose corners reached far outside the view, which the Android emulator and Chrome drew from the same commands. Judge frame rates on a phone.
+
+### What to do
+
+Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, `HTMLElement` and `HTMLCanvasElement` classes nothing is an instance of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+
+---
+
+## A file the app bundles has no URL `fetch` can reach on a phone
+
+### What you'd expect (web)
+
+`fetch('/static/image/x.png')` resolves against the page's URL and loads the file the build emitted.
+
+### What Lynx does
+
+There's no page URL on the main thread, and in an app built with `ng build --platform`, the app's `dist/` is inside the app, not on a server: Lynx's own `<image>` reads `/static/...` through the shell's resource fetcher. (`ng serve` gives assets absolute URLs on the dev server, so they load in Lynx Explorer.) A texture or glTF model an app imports would fail to load.
+
+### What to do
+
+Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpClient) answers a GET of a relative URL from the shell's `AngularLynxAssets` module, which reads the file the way the resource fetchers do (`BundleResourceFetcher.localFile` on iOS, `BundleAssets` on Android). A host without the module still rejects relative URLs.
 
 ---
 

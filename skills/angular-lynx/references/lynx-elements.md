@@ -29,6 +29,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 | `<blur-view>`   | Blurs what's behind it; Liquid Glass on iOS  | `blur-effect`, `blur-radius`, `blur-material`, `glass-style`, `glass-tint-color`         |
 | `<frame>`       | Embedded Lynx page                           | `src` (URL to `.lynx.bundle`)                                                            |
 | `<svg>`         | Inline SVG rendering                         | `content` (SVG string)                                                                   |
+| `<canvas>`      | WebGL2 drawing surface, for three.js         | `width`, `height` (drawing buffer, in pixels)                                            |
 | `<block>`       | Grouping container                           | —                                                                                        |
 | `<raw-text>`    | Unprocessed text                             | —                                                                                        |
 
@@ -125,6 +126,65 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 - **`blur-material`** (`ultra-thin`, `thin`, `regular`, `thick` or `chrome`) draws one of UIKit's adaptive materials, which follow light and dark mode, in place of `blur-effect` and `blur-radius`. Only the iOS app that `ng build --platform ios` makes has it: Lynx Explorer and Android ignore it, so set a `blur-effect` too.
 - **Glass comes and goes smoothly in that iOS app.** Inside a `glass-container` that's already on screen, a glass view materializes when it's added or shown and dissolves when it's removed or hidden. Two glass views with the same `glass-effect-id` are one piece of glass changing shape when one goes and the other comes in the same update: inside a container, the first morphs into the second; elsewhere, such as a button and the menu it opens, the second takes over as the first's content fades out. Lynx Explorer pops glass in and out instead.
 - `npx @blotch/dolan add glass` adds `<blur-view ui-glass>`, which picks the effect, material and tint for the platform, its version and the color scheme, so an app rarely sets these attributes itself.
+
+### 3D with `<canvas>`
+
+`<canvas>` has a WebGL2 context, which three.js and angular-three draw with. Lynx has no canvas: this is AngularLynx's. On iOS and Android it draws with OpenGL ES 3.0 in apps built with `ng build --platform ios|android`, and in the web preview it's the browser's canvas. Lynx Explorer has none: there `getContext('webgl2')` is `null` and the canvas is an empty view.
+
+```typescript
+import {
+  afterNextRender,
+  Component,
+  type ElementRef,
+  viewChild,
+} from '@angular/core';
+import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
+import * as THREE from 'three';
+
+@Component({
+  selector: 'app-scene',
+  imports: [LYNX_ELEMENTS],
+  template: `<canvas #canvas class="h-[300px] w-full"></canvas>`,
+})
+export class Scene {
+  readonly canvas = viewChild.required<ElementRef<LynxCanvasElement>>('canvas');
+
+  constructor() {
+    // Draw once the canvas is laid out.
+    afterNextRender(() => {
+      const canvas = this.canvas()
+        .nativeElement as unknown as HTMLCanvasElement;
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+      camera.position.z = 4;
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(),
+        new THREE.MeshNormalMaterial(),
+      );
+      scene.add(cube);
+      // The canvas's size comes from its layout, as on the web.
+      new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }).observe(canvas);
+      renderer.setAnimationLoop((time) => {
+        cube.rotation.y = time / 1000;
+        renderer.render(scene, camera);
+      });
+    });
+  }
+}
+```
+
+- **Like an HTML canvas:** `width` and `height` are the drawing buffer's size (300 by 150 to start); CSS sizes it on screen. `getContext('webgl2')` only: no `'2d'` context, and `'webgl'` is `null`. No `toDataURL()`/`toBlob()`: use `readPixels()`. A `<canvas>` or video can't be a texture.
+- **What three.js needs works:** `ResizeObserver`, `getBoundingClientRect()`/`clientWidth` (from the element's last layout), pointer events from touches, `performance.now()`, `devicePixelRatio`, `requestAnimationFrame`. `TextureLoader`, `ImageBitmapLoader` and `GLTFLoader` (`.glb` with embedded textures) load from `https://`, `data:` and object URLs and from files the app imports; the phone decodes images. `DRACOLoader` and `KTX2Loader` need Workers or WebAssembly: they don't work.
+- **angular-three:** add `provideNgtRenderer()` from `angular-three/dom` after `provideRenderer()`: it wraps AngularLynx's renderer. `<ngt-canvas>` sizes itself, and mesh events come from touches. angular-three 4.2 lists Angular below 22 and three.js below 0.183 as peers: install with `--legacy-peer-deps` (or an npm `overrides` entry) and pin `three@0.182`.
+- **Performance:** WebGL calls are batched: a frame that asks the context nothing (`getParameter()`, `readPixels()`, `getError()`…) reaches the shell in one call. The iOS Simulator renders OpenGL ES on the CPU, at a few frames a second for a lit scene: judge speed on a phone.
+- `crypto.randomUUID()`, which the runtime adds for angular-three, isn't cryptographically secure.
 
 ### Input Handling
 

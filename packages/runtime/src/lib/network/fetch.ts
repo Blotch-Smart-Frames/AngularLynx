@@ -5,6 +5,8 @@ import type {
   RelayedResponse,
 } from './background-fetch';
 import { base64ToBytes, bytesToBase64 } from './base64';
+import { blobForURL, decodeDataURL, LynxBlob } from './blob';
+import { readBundledAsset, typeOfAsset } from './bundled-asset';
 import { LynxHeaders, type HeadersInit } from './headers';
 import { isDisturbed, LynxReadableStream } from './readable-stream';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
@@ -97,6 +99,9 @@ const extractBody = (
       type: 'application/x-www-form-urlencoded;charset=UTF-8',
     };
   }
+  if (body instanceof LynxBlob) {
+    return { source: body.bytesSync().slice(), type: body.type || null };
+  }
   for (const kind of ['Blob', 'FormData', 'ReadableStream']) {
     const type = (globalThis as any)[kind];
     if (typeof type === 'function' && body instanceof type) {
@@ -122,6 +127,42 @@ const bodyStream = (bytes: Uint8Array): LynxReadableStream<Uint8Array> =>
   });
 
 /**
+ * A stream's chunks, joined.
+ */
+const readAll = async (
+  stream: LynxReadableStream<Uint8Array>,
+): Promise<Uint8Array> => {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk =
+      value instanceof Uint8Array
+        ? value
+        : new Uint8Array(value as ArrayBuffer);
+    chunks.push(chunk);
+    size += chunk.byteLength;
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+};
+
+/**
+ * Whether a body is a ReadableStream (ours, or a library's).
+ */
+const isStream = (body: unknown): body is LynxReadableStream<Uint8Array> =>
+  typeof body === 'object' &&
+  body !== null &&
+  typeof (body as { getReader?: unknown }).getReader === 'function';
+
+/**
  * What `Request` and `Response` share: the body and the ways to read it.
  */
 abstract class LynxBody {
@@ -131,11 +172,23 @@ abstract class LynxBody {
 
   abstract readonly headers: LynxHeaders;
 
-  constructor(source: BodySource) {
+  /**
+   * A body given as a stream (`new Response(stream)`), which is read when the
+   * body is: three.js's FileLoader re-wraps each download this way to report
+   * its progress.
+   */
+  #streamed = false;
+
+  constructor(source: BodySource, stream?: LynxReadableStream<Uint8Array>) {
     this.#source = source;
+    if (stream) {
+      this.#stream = stream;
+      this.#streamed = true;
+    }
   }
 
   get body(): LynxReadableStream<Uint8Array> | null {
+    if (this.#streamed) return this.#stream!;
     if (this.#source === null) return null;
     this.#stream ??= bodyStream(toBytes(this.#source));
     return this.#stream;
@@ -167,6 +220,8 @@ abstract class LynxBody {
    * The body for sending to the other thread, without consuming it.
    */
   protected relayedBody(): RelayedBody {
+    // A request can't have a stream for its body (extractBody refuses one),
+    // so only text or bytes are ever relayed.
     const source = this.#source;
     if (source === null) return null;
     return typeof source === 'string'
@@ -179,12 +234,18 @@ abstract class LynxBody {
    */
   protected cloneSource(): BodySource {
     this.#assertUnused('clone');
+    if (this.#streamed) {
+      throw new TypeError(
+        "Failed to execute 'clone': a body given as a stream can't be cloned on Lynx",
+      );
+    }
     return this.#source;
   }
 
   async #consume(): Promise<BodySource> {
     this.#assertUnused('text');
     this.#used = true;
+    if (this.#streamed) return readAll(this.#stream!);
     return this.#source;
   }
 
@@ -395,11 +456,14 @@ export class LynxResponse extends LynxBody {
         `Failed to construct 'Response': The status provided (${status}) is outside the range [200, 599].`,
       );
     }
+    // A response, unlike a request, can take a stream for its body.
     const { source, type } =
       body instanceof ExtractedBody
         ? { source: body.source, type: null }
-        : extractBody(body);
-    super(source);
+        : isStream(body)
+          ? { source: null, type: null }
+          : extractBody(body);
+    super(source, isStream(body) ? body : undefined);
     this.status = status;
     this.statusText = init.statusText ?? '';
     this.headers = new LynxHeaders(init.headers);
@@ -487,6 +551,72 @@ export class LynxResponse extends LynxBody {
 let nextFetchId = 0;
 
 /**
+ * A relative URL: one with no scheme.
+ */
+const isRelative = (url: string): boolean =>
+  !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url);
+
+/**
+ * The response to a GET of a file the app bundles, read by the shell, or
+ * null for any other request.
+ */
+const bundledResponse = (
+  input: string | URL | LynxRequest,
+  init?: RequestInit,
+): LynxResponse | null => {
+  if (typeof input !== 'string' || !isRelative(input)) return null;
+  if (init?.method && init.method.toUpperCase() !== 'GET') return null;
+  const bytes = readBundledAsset(input);
+  if (!bytes) return null;
+  return new LynxResponse(
+    new ExtractedBody(bytes),
+    {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'content-type': typeOfAsset(input),
+        'content-length': String(bytes.byteLength),
+      },
+    },
+    { url: input, redirected: false, type: 'basic' },
+  );
+};
+
+/**
+ * The response to a `blob:` URL (see blob.ts) or a `data:` URL, read here, or
+ * null for a URL that needs the network. A revoked object URL fails, as in
+ * a browser.
+ */
+const localResponse = (url: string): LynxResponse | TypeError | null => {
+  if (url.startsWith('blob:')) {
+    const blob = blobForURL(url);
+    if (!blob) return new TypeError('Failed to fetch');
+    return new LynxResponse(
+      new ExtractedBody(blob.bytesSync().slice()),
+      {
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'content-type': blob.type,
+          'content-length': String(blob.size),
+        },
+      },
+      { url, redirected: false, type: 'basic' },
+    );
+  }
+  if (url.startsWith('data:')) {
+    const data = decodeDataURL(url);
+    if (!data) return new TypeError('Failed to fetch');
+    return new LynxResponse(
+      new ExtractedBody(data.bytes),
+      { status: 200, statusText: 'OK', headers: { 'content-type': data.type } },
+      { url, redirected: false, type: 'basic' },
+    );
+  }
+  return null;
+};
+
+/**
  * `fetch` for Lynx's main thread: runs the request on the background thread
  * and resolves with its response. It rejects with the signal's reason when
  * the signal aborts, which also aborts the background thread's request, and
@@ -501,10 +631,24 @@ export const relayFetch = (
   init?: RequestInit,
 ): Promise<LynxResponse> =>
   new Promise((resolve, reject) => {
+    // A file the app bundles, under a URL relative to the app, which Lynx
+    // has no page URL to resolve (see bundled-asset.ts).
+    const bundled = bundledResponse(input, init);
+    if (bundled) {
+      resolve(bundled);
+      return;
+    }
     const request = new LynxRequest(input, init);
     const { signal } = request;
     if (signal.aborted) {
       reject(signal.reason);
+      return;
+    }
+    // An object URL or a data: URL needs no request: its bytes are here.
+    const local = localResponse(request.url);
+    if (local) {
+      if (local instanceof LynxResponse) resolve(local);
+      else reject(local);
       return;
     }
     const id = nextFetchId++;

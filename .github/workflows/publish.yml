@@ -58,6 +58,8 @@ jobs:
     needs: version
     uses: ./.github/workflows/e2e.yml
     permissions:
+      # e2e.yml's ios job finds build-app's artifact through the API.
+      actions: read
       contents: read
       issues: write
     with:
@@ -127,6 +129,9 @@ jobs:
     needs: [version, wait-for-npm]
     uses: ./.github/workflows/e2e.yml
     permissions:
+      # GitHub checks every called job's permissions, including the ios job
+      # this run skips.
+      actions: read
       contents: read
       issues: write
     with:

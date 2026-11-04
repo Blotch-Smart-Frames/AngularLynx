@@ -6,35 +6,46 @@ Makes part of a custom title bar the handle that drags the window, like the CSS 
 
 ## Usage
 
-```typescript title="src/app/title-bar.ts"
+```typescript title="src/app/app.ts"
 import { Component } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
-  selector: 'app-title-bar',
+  selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view style="height: 44px; flex-direction: row; align-items: center;">
-      <title-bar-view [moveable]="true" style="flex: 1; height: 100%;">
-        <text>My App</text>
-      </title-bar-view>
-      <view style="width: 44px; height: 100%;" (bindtap)="close()">
-        <text>✕</text>
+    <view style="display: flex; flex-direction: column; height: 100%;">
+      <view
+        style="display: flex; flex-direction: row; align-items: center; height: 44px;"
+      >
+        <title-bar-view
+          [moveable]="true"
+          style="display: flex; align-items: center; flex: 1; height: 100%;"
+        >
+          <text>My App</text>
+        </title-bar-view>
+        <view style="width: 44px; height: 100%;" (bindtap)="close()">
+          <text>✕</text>
+        </view>
       </view>
+
+      <scroll-view style="flex: 1;" scroll-orientation="vertical">
+        <!-- The rest of the window -->
+      </scroll-view>
     </view>
   `,
 })
-export class TitleBar {
+export class App {
   close(): void {}
 }
 ```
 
 Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
-Dragging the title moves the window, and the close button next to it stays tappable.
+Put the title bar across the top of the window, above the page's content. Dragging anywhere on the `<title-bar-view>` moves the window. Keep buttons, such as close, outside it, next to it in the bar: they stay tappable, and a press on them doesn't start a drag.
 
 :::warning
-iOS and Android have no `<title-bar-view>`. Like any element the [host app](/guide/glossary#host-app) doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
+iOS and Android have no `<title-bar-view>`. Like any element the host app doesn't register, iOS leaves an empty box in its place and Android can drop the elements after it. Don't render it on iOS or Android.
 :::
 
 ## Attributes

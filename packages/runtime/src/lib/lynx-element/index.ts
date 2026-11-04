@@ -1,4 +1,5 @@
 export {
+  listenForScrollsFromTheStart,
   LynxElement,
   processPendingAttributeRemovals,
   processPendingRemovals,

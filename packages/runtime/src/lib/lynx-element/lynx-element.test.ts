@@ -27,6 +27,7 @@ describe('LynxElement', () => {
     globalThis.__SetClasses = vi.fn();
     globalThis.__GetClasses = vi.fn(() => []);
     globalThis.__AddEvent = vi.fn();
+    globalThis.__SetDataset = vi.fn();
     globalThis.__GetEvents = vi.fn(() => ({}));
     globalThis.__SetEvents = vi.fn();
   });
@@ -679,6 +680,50 @@ describe('LynxElement', () => {
       expect(addEvent()).toHaveBeenCalledTimes(1);
       nativeHandler()({ type: 'tap' });
       expect(calls).toEqual(['template', 'routerLink']);
+    });
+
+    it('leaves an event to a main-thread directive’s handler while it holds it', () => {
+      // Lynx keeps one handler per event name: registering the element's own
+      // over a [mainThreadBindscroll]'s would stop the app's scroll handler.
+      element = new LynxElement(fakeRef);
+      const before = vi.fn();
+      element.addEventListener('bindscroll', before);
+      expect(addEvent()).toHaveBeenCalledTimes(1);
+      // Bound and caught by the directive: counted.
+      element.holdNativeEvent('scroll');
+      element.holdNativeEvent('scroll');
+
+      const after = vi.fn();
+      const removeAfter = element.addEventListener('catchscroll', after);
+      removeAfter();
+      element.addEventListener('global-bindscroll', vi.fn());
+      // Only the global listener, which has a handler of its own.
+      expect(addEvent()).toHaveBeenCalledTimes(2);
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'global-bindEvent',
+        'scroll',
+        expect.anything(),
+      );
+
+      element.releaseNativeEvent('scroll');
+      expect(addEvent()).toHaveBeenCalledTimes(2);
+      element.releaseNativeEvent('scroll');
+      expect(addEvent()).toHaveBeenCalledTimes(3);
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'bindEvent',
+        'scroll',
+        expect.anything(),
+      );
+      nativeHandler()({ type: 'scroll' });
+      expect(before).toHaveBeenCalledOnce();
+      expect(after).not.toHaveBeenCalled();
+
+      // Nothing to register again for an event it has no listener for.
+      element.holdNativeEvent('tap');
+      element.releaseNativeEvent('tap');
+      expect(addEvent()).toHaveBeenCalledTimes(3);
     });
 
     it('keeps the handler while a listener is left, and removes it after the last', () => {

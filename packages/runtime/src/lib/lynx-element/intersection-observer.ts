@@ -8,10 +8,27 @@
  * with a `uiappear` or `uidisappear` listener gets one when it comes into view
  * or leaves it (see the `[lynxExposure]` directive). Native checks it about 20
  * times a second, against every scroll container around the element, the
- * LynxView and the screen. So this observer listens for those two events, and
- * when one comes, measures the element and its scroll containers to fill in
- * the entry: `boundingClientRect`, `intersectionRect`, `intersectionRatio` and
- * `rootBounds`, as the browser's observer reports them.
+ * LynxView and the screen. That's all an observer with the browser's defaults
+ * asks (the viewport as the root, no root margin, a threshold of 0), so such
+ * an observer listens for those two events, and when one comes, measures the
+ * element and its scroll containers to fill in the entry: `boundingClientRect`,
+ * `intersectionRect`, `intersectionRatio` and `rootBounds`, as the browser's
+ * observer reports them.
+ *
+ * Exposure can't answer for `root`, `rootMargin` or `threshold` (issue #236).
+ * Its attributes (`exposure-area`, `exposure-screen-margin-*`) belong to the
+ * element, not to one of its observers, and setting them changes when the
+ * element's own exposure handlers run. They take one ratio rather than a list,
+ * and move the screen's edges rather than a root's. Lynx's native
+ * `intersection-observers` attribute takes margins in px only, sends every
+ * observer's crossings as the same `intersection` event, and on iOS never sets
+ * the root it's given (LynxUIIntersectionObserver.mm). So an observer given
+ * any of the three works the crossings out itself, as a browser does. It
+ * measures the element, its root and the scroll containers between them, and
+ * reports each time the part of the element inside the root (grown by the root
+ * margin) crosses a threshold. It measures when the element is laid out, when
+ * exposure says the element came or went, and 20 times a second while a
+ * scroll container between the element and its root scrolls.
  *
  * Exposure sends nothing for an element that starts off screen, but a
  * browser's observer reports each element once when observing starts,
@@ -19,12 +36,6 @@
  * nobody can see. So once the element has been laid out, the observer
  * measures it, and works out the first entry from those boxes, unless Lynx
  * has said by then.
- *
- * It takes the browser's defaults: the viewport as the root, no root margin,
- * and a threshold of 0, so it reports when any part of the element comes into
- * view and when the last of it leaves. `root`, `rootMargin` and `threshold`
- * are read and kept as browsers keep them, but don't change what it reports
- * yet, and it warns once if they're given.
  *
  * The web preview's main thread, a browser frame, keeps the browser's own,
  * wrapped to take a Lynx element, as `ResizeObserver` is (canvas/dom-globals.ts).
@@ -66,13 +77,14 @@ const isLynxElement = (value: unknown): value is ObservedElement =>
  * The elements exposure checks an element against, besides the LynxView and
  * the screen: the UIs whose `isScrollContainer` is true on iOS and Android.
  * An element scrolled out of one of them is out of view, wherever it is on
- * the screen.
+ * the screen. Each with the event it sends as it scrolls, which an observer
+ * that measures for itself measures on.
  */
-const SCROLL_CONTAINERS = new Set([
-  'scroll-view',
-  'list',
-  'viewpager',
-  'scroll-coordinator',
+const SCROLL_EVENTS = new Map([
+  ['scroll-view', 'bindscroll'],
+  ['list', 'bindscroll'],
+  ['viewpager', 'bindoffsetchange'],
+  ['scroll-coordinator', 'bindoffset'],
 ]);
 
 export type LynxIntersectionObserverEntry = {
@@ -100,74 +112,175 @@ type IntersectionOptions = {
 type Observation = {
   /** Removes the listeners observing it added. */
   stop: () => void;
-  /** Whether the last entry said it was intersecting; null before the first. */
-  intersecting: boolean | null;
+  /**
+   * The last entry's threshold index: how many of the thresholds its ratio
+   * reached, and 0 when it wasn't intersecting. Null before the first entry.
+   */
+  index: number | null;
+  /** What the last exposure event said; null before one comes. */
+  exposed: boolean | null;
   /**
    * How many exposure events have come: a measurement started for an older
-   * one, or for the first entry, gives way to the newest.
+   * one, or for the first entry, gives way to the newest. For an observer
+   * that goes by exposure.
    */
   events: number;
+  /**
+   * For an observer that measures for itself: whether a measurement is under
+   * way, and whether to measure again once it answers, as something moved
+   * meanwhile.
+   */
+  measuring: boolean;
+  again: boolean;
+  /**
+   * For an observer that measures for itself: whether the element has had a
+   * box. One that can't be measured after that has gone, rather than never
+   * had a layout (as the testing library's elements haven't).
+   */
+  measured: boolean;
+  /**
+   * For an observer that measures for itself: the scroll containers it
+   * listens to, each with what stops it listening.
+   */
+  scrollListeners: Map<ObservedElement, () => void>;
+  /** For an observer that measures for itself: measures the target again. */
+  sample: () => void;
 };
 
 /** The boxes an entry is worked out from, each null if it couldn't be measured. */
 type Geometry = {
   box: LayoutRect | null;
-  /** The LynxView's: the page's box. Null if the element isn't on the page. */
+  /**
+   * The root's box: the page's (the LynxView's) for an observer with no root.
+   * Null if it couldn't be measured, or the element isn't on the page.
+   */
   root: LayoutRect | null;
+  /** Whether the element is inside the root: on the page, for no root. */
+  inRoot: boolean;
+  /** The scroll containers between the element and the root. */
   scrollContainers: (LayoutRect | null)[];
+  /**
+   * The elements whose scrolling moves the element in its root: the scroll
+   * containers between them, and the root if it scrolls. A scroll container
+   * around the root moves both together.
+   */
+  scrolledBy: ObservedElement[];
 };
 
-const measure = (element: ObservedElement): Promise<LayoutRect | null> =>
-  new Promise((resolve) => measureLayout(element.element, resolve));
+/**
+ * The measurements under way, by native element, until native answers.
+ * Observers that measure together then ask once for the page and each scroll
+ * container they share. Native measures when it gets to a request, so an
+ * answer shared with a later request is at most a round trip older than its
+ * own would have been.
+ *
+ * On iOS and Android, native answers `boundingClientRect` before the call
+ * returns, so nothing is under way for long; and the microtasks queued before
+ * the call run before it returns, too, so nothing here is cleared in a
+ * microtask (see investigations/lynx-vs-web-differences.md).
+ */
+const measurements = new Map<unknown, Promise<LayoutRect | null>>();
 
 /**
- * Measures the element, the page it's on, and the scroll containers around
- * it. The parents are read when measuring starts, not when observing does:
- * a component observing its host in its constructor does so before Angular
- * has put the host on the page.
+ * The boxes measured while measuring everything that's scrolling (see
+ * sampleScrolling), by native element. Native would measure the page and a
+ * shared scroll container the same for each observation, so they're asked for
+ * once.
  */
-const measureGeometry = async (target: ObservedElement): Promise<Geometry> => {
+let sampleMeasurements: Map<unknown, Promise<LayoutRect | null>> | null = null;
+
+const measure = (element: ObservedElement): Promise<LayoutRect | null> => {
+  const native = element.element;
+  const shared = sampleMeasurements?.get(native) ?? measurements.get(native);
+  if (shared) return shared;
+  let answered = false;
+  const rect = new Promise<LayoutRect | null>((resolve) =>
+    measureLayout(native, (box) => {
+      answered = true;
+      measurements.delete(native);
+      resolve(box);
+    }),
+  );
+  sampleMeasurements?.set(native, rect);
+  // Answered already, as on a device: nothing under way to share.
+  if (!answered) measurements.set(native, rect);
+  return rect;
+};
+
+/**
+ * Measures the element, its root (the page it's on, for no root), and the
+ * scroll containers between them. The parents are read when measuring
+ * starts, not when observing does: a component observing its host in its
+ * constructor does so before Angular has put the host on the page.
+ */
+const measureGeometry = async (
+  target: ObservedElement,
+  root: ObservedElement | null,
+): Promise<Geometry> => {
   const scrollContainers: ObservedElement[] = [];
   let top = target;
-  // Up to the page and no further: nothing above it is in the LynxView. The
-  // testing library's page sits in a jsdom body, whose nodes aren't Lynx
-  // elements to walk.
+  let inRoot = false;
+  // Up to the root, or the page and no further: nothing above it is in the
+  // LynxView. The testing library's page sits in a jsdom body, whose nodes
+  // aren't Lynx elements to walk. An element is never inside itself, as in
+  // browsers: observed against itself, it's not intersecting.
   while (!top.isRootPageElement) {
     const parent = top.parentNode();
     if (!parent) break;
-    if (SCROLL_CONTAINERS.has(parent.tagName)) scrollContainers.push(parent);
+    if (parent === root) {
+      inRoot = true;
+      break;
+    }
+    if (SCROLL_EVENTS.has(parent.tagName)) scrollContainers.push(parent);
     top = parent;
   }
-  const page = top.isRootPageElement ? top : null;
-  const [box, root, ...scrollBoxes] = await Promise.all([
+  if (!root) inRoot = top.isRootPageElement === true;
+  const rootElement = root ?? (inRoot ? top : null);
+  // Outside its root, nothing between them clips it, or moves it in the root.
+  const clips = inRoot ? scrollContainers : [];
+  const [box, rootBox, ...scrollBoxes] = await Promise.all([
     measure(target),
-    page ? measure(page) : null,
-    ...scrollContainers.map(measure),
+    rootElement ? measure(rootElement) : null,
+    ...clips.map(measure),
   ]);
   return {
     box: box ?? null,
-    root: root ?? null,
+    root: rootBox ?? null,
+    inRoot,
     scrollContainers: scrollBoxes,
+    scrolledBy:
+      root && inRoot && SCROLL_EVENTS.has(root.tagName)
+        ? [...clips, root]
+        : clips,
   };
 };
 
 /**
  * The part of `a` inside `b`, or null if they don't overlap. Boxes that only
- * touch don't, as exposure has it (CGRectIntersectsRect on iOS).
+ * touch overlap only if `touching` says so: exposure has it that they don't
+ * (CGRectIntersectsRect on iOS), and browsers that they do, with an empty
+ * intersection, so an element with no size inside the root is intersecting.
  */
-const intersect = (a: LayoutRect, b: LayoutRect): LayoutRect | null => {
+const intersect = (
+  a: LayoutRect,
+  b: LayoutRect,
+  touching: boolean,
+): LayoutRect | null => {
   const left = Math.max(a.left, b.left);
   const top = Math.max(a.top, b.top);
   const right = Math.min(a.left + a.width, b.left + b.width);
   const bottom = Math.min(a.top + a.height, b.top + b.height);
-  return right > left && bottom > top
+  const overlaps = touching
+    ? right >= left && bottom >= top
+    : right > left && bottom > top;
+  return overlaps
     ? { left, top, width: right - left, height: bottom - top }
     : null;
 };
 
 /**
- * The part of the element in view: inside the LynxView and every scroll
- * container.
+ * The part of the element in view, as exposure sees it: inside the LynxView
+ * and every scroll container.
  */
 const visiblePart = ({
   box,
@@ -176,7 +289,7 @@ const visiblePart = ({
 }: Geometry): LayoutRect | null => {
   let visible = box;
   for (const clip of [root, ...scrollContainers]) {
-    visible = visible && clip ? intersect(visible, clip) : null;
+    visible = visible && clip ? intersect(visible, clip, false) : null;
   }
   return visible;
 };
@@ -184,10 +297,11 @@ const visiblePart = ({
 const area = (rect: LayoutRect): number => rect.width * rect.height;
 
 /**
- * The entry for `target`. Whether it's intersecting is exposure's answer
- * when an event brought it (`exposed`), and the boxes' otherwise.
+ * The entry for `target`, for an observer that goes by exposure. Whether
+ * it's intersecting is exposure's answer when an event brought it
+ * (`exposed`), and the boxes' otherwise.
  */
-const entryFor = (
+const exposureEntryFor = (
   target: ObservedElement,
   geometry: Geometry,
   exposed: boolean | null,
@@ -210,6 +324,106 @@ const entryFor = (
     intersectionRect: toDOMRect(isIntersecting ? visible : null),
     intersectionRatio,
     isIntersecting,
+  };
+};
+
+/** One side of a root margin, as given: a length in px, or a percentage. */
+type MarginSide = {
+  readonly text: string;
+  readonly value: number;
+  readonly percent: boolean;
+};
+
+/** A root margin's four sides: top, right, bottom and left. */
+type Margin = readonly MarginSide[];
+
+/**
+ * The root's box grown by the root margin; shrunk, for a negative one, but
+ * never past nothing. Percentages are of the root's height for the top and
+ * bottom, and its width for the sides, as Chromium and WebKit take them.
+ */
+const grow = (rect: LayoutRect, margin: Margin): LayoutRect => {
+  const [top, right, bottom, left] = margin.map((side, index) =>
+    side.percent
+      ? (side.value * (index % 2 ? rect.width : rect.height)) / 100
+      : side.value,
+  );
+  return {
+    left: rect.left - left,
+    top: rect.top - top,
+    width: Math.max(rect.width + left + right, 0),
+    height: Math.max(rect.height + top + bottom, 0),
+  };
+};
+
+/**
+ * How many of the (sorted) thresholds `ratio` has reached. Within a
+ * millionth, as WebKit compares them: an intersection's edges, worked out from
+ * the boxes' sums, can come out a hair short of the whole element.
+ */
+const thresholdIndexOf = (
+  ratio: number,
+  thresholds: readonly number[],
+): number => {
+  let index = 0;
+  while (index < thresholds.length && thresholds[index] <= ratio + 1e-6) {
+    index++;
+  }
+  return index;
+};
+
+/**
+ * The entry for `target`, for an observer that measures for itself, with its
+ * threshold index: what Chromium and WebKit compare to decide whether to
+ * report it. Not intersecting is 0, and an element is intersecting only once
+ * it has reached a threshold, so one half in view isn't intersecting an
+ * observer whose threshold is 1. `exposed` is exposure's answer, for an
+ * element that has never had a box to measure.
+ */
+const measuredEntryFor = (
+  target: ObservedElement,
+  geometry: Geometry,
+  margin: Margin,
+  thresholds: readonly number[],
+  exposed: boolean | null,
+): { entry: LynxIntersectionObserverEntry; index: number } => {
+  const { box } = geometry;
+  const rootBounds = geometry.root && grow(geometry.root, margin);
+  let visible: LayoutRect | null = null;
+  let overlaps = false;
+  let ratio = 0;
+  if (!box) {
+    // Never anything to measure: in the testing library, whose elements have
+    // no layout (on a device, an element with no UI, which exposure says
+    // nothing of either). Exposure's answer, all of it or none of it, so a
+    // test's uiappear brings the whole element into view. Gone, after it had
+    // a box: none of it.
+    overlaps = exposed === true;
+    ratio = overlaps ? 1 : 0;
+  } else if (geometry.inRoot && rootBounds) {
+    visible = box;
+    for (const clip of [...geometry.scrollContainers, rootBounds]) {
+      visible = visible && clip ? intersect(visible, clip, true) : null;
+    }
+    if (visible) {
+      overlaps = true;
+      // As in browsers: an element with no area that's in view is all in view.
+      ratio = area(box) === 0 ? 1 : Math.min(area(visible) / area(box), 1);
+    }
+  }
+  const index = overlaps ? thresholdIndexOf(ratio, thresholds) : 0;
+  return {
+    index,
+    entry: {
+      target,
+      time: performance.now(),
+      // The root margin included, as in browsers.
+      rootBounds: rootBounds ? toDOMRect(rootBounds) : null,
+      boundingClientRect: toDOMRect(box),
+      intersectionRect: toDOMRect(visible),
+      intersectionRatio: ratio,
+      isIntersecting: index > 0,
+    },
   };
 };
 
@@ -236,63 +450,89 @@ const thresholdsOf = (
 };
 
 /**
- * The root margin as browsers keep it: four lengths, in px or %, as the
- * `margin` shorthand spells them.
+ * The root margin's four sides, in px or %, as the `margin` shorthand spells
+ * them.
  */
-const rootMarginOf = (margin: string | undefined): string => {
+const rootMarginOf = (margin: string | undefined): Margin => {
   const tokens = String(margin ?? '')
     .trim()
     .split(/\s+/)
     .filter(Boolean);
   if (tokens.length > 4) throw invalidRootMargin();
-  const lengths = tokens.map((token) => {
+  const sides = tokens.map((token): MarginSide => {
     const match = /^(-?(?:\d+\.?\d*|\.\d+))(px|%)?$/.exec(token);
     if (!match || (!match[2] && Number(match[1]) !== 0)) {
       throw invalidRootMargin();
     }
-    return match[2] ? token : '0px';
+    return match[2]
+      ? { text: token, value: Number(match[1]), percent: match[2] === '%' }
+      : NO_MARGIN;
   });
-  const [top = '0px', right = top, bottom = top, left = right] = lengths;
-  return `${top} ${right} ${bottom} ${left}`;
+  const [top = NO_MARGIN, right = top, bottom = top, left = right] = sides;
+  return [top, right, bottom, left];
 };
+
+const NO_MARGIN: MarginSide = { text: '0px', value: 0, percent: false };
 
 const invalidRootMargin = (): SyntaxError =>
   new SyntaxError(
     "Failed to construct 'IntersectionObserver': rootMargin must be specified in pixels or percent.",
   );
 
-const DEFAULT_ROOT_MARGIN = '0px 0px 0px 0px';
-
-let warnedOfOptions = false;
+/** How often an observer that measures for itself measures while its element scrolls, in ms: as often as exposure checks. */
+const SAMPLE_INTERVAL = 50;
 
 /**
- * Says, once, which of an observer's options it can't honor yet. Once, as a
- * list of a hundred images each with its own observer would say it a hundred
- * times.
+ * How many more times it measures after a scroll event: for 300 ms, longer
+ * than the 200 ms a list leaves between its scroll events by default
+ * (`scroll-event-throttle`). So it measures right through a list's scroll,
+ * and once more where the scroll stops.
  */
-const warnOfOptions = (observer: LynxIntersectionObserver): void => {
-  if (warnedOfOptions) return;
-  const ignored = [
-    observer.root !== null && 'root',
-    observer.rootMargin !== DEFAULT_ROOT_MARGIN && 'rootMargin',
-    (observer.thresholds.length !== 1 || observer.thresholds[0] !== 0) &&
-      'threshold',
-  ].filter(Boolean);
-  if (!ignored.length) return;
-  warnedOfOptions = true;
-  console.warn(
-    `[angular-lynx] IntersectionObserver on Lynx reports when an element comes into view and when it leaves, inside its scroll containers and the screen. It ignores ${ignored.join(', ')} for now.`,
-  );
+const SAMPLES_AFTER_SCROLL = 6;
+
+/**
+ * The measurements to redo while something scrolls, each with how many times
+ * it's left. All of them on one timer, so the observations measured in a turn
+ * share the measurements of their page and scroll containers.
+ */
+const scrolling = new Map<() => void, number>();
+let samplingTimer: ReturnType<typeof setTimeout> | null = null;
+
+const sampleWhileScrolling = (sample: () => void): void => {
+  scrolling.set(sample, SAMPLES_AFTER_SCROLL);
+  if (samplingTimer === null) {
+    samplingTimer = setTimeout(sampleScrolling, SAMPLE_INTERVAL);
+  }
 };
 
-/** For tests: lets the next observer with options warn again. */
-export const resetIntersectionObserverWarning = (): void => {
-  warnedOfOptions = false;
+const sampleScrolling = (): void => {
+  samplingTimer = null;
+  // Every sample starts measuring before this returns, so they share boxes.
+  sampleMeasurements = new Map();
+  // A copy, as each sample's count changes as it's taken.
+  for (const [sample, left] of Array.from(scrolling)) {
+    if (left > 1) scrolling.set(sample, left - 1);
+    else scrolling.delete(sample);
+    sample();
+  }
+  sampleMeasurements = null;
+  if (scrolling.size && samplingTimer === null) {
+    samplingTimer = setTimeout(sampleScrolling, SAMPLE_INTERVAL);
+  }
+};
+
+const stopSampling = (sample: () => void): void => {
+  scrolling.delete(sample);
+  if (!scrolling.size && samplingTimer !== null) {
+    clearTimeout(samplingTimer);
+    samplingTimer = null;
+  }
 };
 
 /**
- * `IntersectionObserver` for Lynx elements, from their exposure events (see
- * the top of this file).
+ * `IntersectionObserver` for Lynx elements, from their exposure events, or
+ * its own measurements when it's given options exposure can't answer for
+ * (see the top of this file).
  */
 export class LynxIntersectionObserver {
   static readonly forLynxElements = true;
@@ -300,6 +540,13 @@ export class LynxIntersectionObserver {
   readonly rootMargin: string;
   readonly thresholds: readonly number[];
   readonly #callback: IntersectionCallback;
+  readonly #root: ObservedElement | null;
+  readonly #margin: Margin;
+  /**
+   * Whether it's been given a root, a root margin or thresholds, which
+   * exposure can't answer for, so it measures for itself.
+   */
+  readonly #measures: boolean;
   readonly #observed = new Map<ObservedElement, Observation>();
   #records: LynxIntersectionObserverEntry[] = [];
   #delivering = false;
@@ -316,14 +563,30 @@ export class LynxIntersectionObserver {
     this.#callback = callback;
     // A document as the root is the viewport, as no root is.
     const root = options.root;
-    this.root =
+    if (
       root === undefined ||
+      root === null ||
       root === (globalThis as { document?: unknown }).document
-        ? null
-        : root;
-    this.rootMargin = rootMarginOf(options.rootMargin);
+    ) {
+      this.#root = null;
+    } else if (isLynxElement(root)) {
+      this.#root = root;
+    } else {
+      // As browsers say of what's neither: an ElementRef, say, rather than
+      // its nativeElement.
+      throw new TypeError(
+        "Failed to construct 'IntersectionObserver': Failed to read the 'root' property from 'IntersectionObserverInit': The provided value is not of type '(Document or Element)'.",
+      );
+    }
+    this.root = this.#root;
+    this.#margin = rootMarginOf(options.rootMargin);
+    this.rootMargin = this.#margin.map((side) => side.text).join(' ');
     this.thresholds = thresholdsOf(options.threshold);
-    warnOfOptions(this);
+    this.#measures =
+      this.#root !== null ||
+      this.#margin.some((side) => side.value !== 0) ||
+      this.thresholds.length !== 1 ||
+      this.thresholds[0] !== 0;
   }
 
   observe(target: unknown): void {
@@ -339,33 +602,50 @@ export class LynxIntersectionObserver {
     // The callbacks below all run later, once `observation` and `stopLayout`
     // are set: an element never calls back as a listener is added.
     const stopAppear = target.addEventListener('binduiappear', () => {
-      void this.#report(target, observation, true);
+      this.#exposure(target, observation, true);
     });
     const stopDisappear = target.addEventListener('binduidisappear', () => {
-      void this.#report(target, observation, false);
+      this.#exposure(target, observation, false);
     });
     // The first entry, once the element has been laid out: before that, it
     // has no box to measure. From an element already laid out and one laid
-    // out right after, the one entry.
+    // out right after, the one entry. An observer that goes by exposure
+    // leaves the later layouts to exposure; one that measures for itself
+    // measures each, as a layout that moves or resizes the element can take
+    // it across a threshold.
     let laidOut = false;
-    const first = (): void => {
+    const layout = (): void => {
+      if (this.#measures) {
+        observation.sample();
+        return;
+      }
       if (laidOut) return;
       laidOut = true;
       stopLayout();
       void this.#report(target, observation, null);
     };
-    const stopLayout = target.observeLayout(first);
+    const stopLayout = target.observeLayout(layout);
     const observation: Observation = {
       stop: () => {
         stopAppear();
         stopDisappear();
         stopLayout();
+        for (const stopScroll of observation.scrollListeners.values())
+          stopScroll();
+        observation.scrollListeners.clear();
+        stopSampling(observation.sample);
       },
-      intersecting: null,
+      index: null,
+      exposed: null,
       events: 0,
+      measuring: false,
+      again: false,
+      measured: false,
+      scrollListeners: new Map(),
+      sample: () => this.#sample(target, observation),
     };
     this.#observed.set(target, observation);
-    if (target.layoutRect) queueMicrotask(first);
+    if (target.layoutRect) queueMicrotask(layout);
   }
 
   unobserve(target: unknown): void {
@@ -390,9 +670,20 @@ export class LynxIntersectionObserver {
     return this.#records.splice(0);
   }
 
+  #exposure(
+    target: ObservedElement,
+    observation: Observation,
+    exposed: boolean,
+  ): void {
+    observation.exposed = exposed;
+    if (this.#measures) observation.sample();
+    else void this.#report(target, observation, exposed);
+  }
+
   /**
-   * Measures the element and queues its entry, if it says something new.
-   * `exposed` is what an exposure event said, or null for the first entry.
+   * For an observer that goes by exposure: measures the element and queues
+   * its entry, if it says something new. `exposed` is what an exposure event
+   * said, or null for the first entry.
    */
   async #report(
     target: ObservedElement,
@@ -400,15 +691,84 @@ export class LynxIntersectionObserver {
     exposed: boolean | null,
   ): Promise<void> {
     const event = exposed === null ? 0 : ++observation.events;
-    const geometry = await measureGeometry(target);
+    const geometry = await measureGeometry(target, null);
     // Unobserved in the meantime, or a newer event's measurement will report.
     if (this.#observed.get(target) !== observation) return;
     if (observation.events !== event) return;
-    const entry = entryFor(target, geometry, exposed);
+    const entry = exposureEntryFor(target, geometry, exposed);
     // Browsers report a change, not the same answer twice: exposure's first
     // `uiappear` usually agrees with the first entry.
-    if (entry.isIntersecting === observation.intersecting) return;
-    observation.intersecting = entry.isIntersecting;
+    const index = entry.isIntersecting ? 1 : 0;
+    if (index === observation.index) return;
+    observation.index = index;
+    this.#queue(entry);
+  }
+
+  /**
+   * For an observer that measures for itself: measures the element, its
+   * root and the scroll containers between them, and queues its entry if
+   * it's crossed a threshold. One measurement at a time, and one more if
+   * something moved while it was under way, so it never falls behind.
+   */
+  #sample(target: ObservedElement, observation: Observation): void {
+    if (this.#observed.get(target) !== observation) return;
+    if (observation.measuring) {
+      observation.again = true;
+      return;
+    }
+    observation.measuring = true;
+    void measureGeometry(target, this.#root).then((geometry) => {
+      observation.measuring = false;
+      // Unobserved in the meantime.
+      if (this.#observed.get(target) !== observation) return;
+      this.#listenForScrolls(observation, geometry.scrolledBy);
+      if (geometry.box) observation.measured = true;
+      const { entry, index } = measuredEntryFor(
+        target,
+        geometry,
+        this.#margin,
+        this.thresholds,
+        observation.measured ? null : observation.exposed,
+      );
+      if (index !== observation.index) {
+        observation.index = index;
+        this.#queue(entry);
+      }
+      if (observation.again) {
+        observation.again = false;
+        observation.sample();
+      }
+    });
+  }
+
+  /**
+   * Listens to the scroll containers whose scrolling moves the element in
+   * its root, to measure it while they scroll, and stops listening to any
+   * it's left.
+   */
+  #listenForScrolls(
+    observation: Observation,
+    scrolledBy: readonly ObservedElement[],
+  ): void {
+    const current = new Set(scrolledBy);
+    for (const [scroller, stopScroll] of observation.scrollListeners) {
+      if (current.has(scroller)) continue;
+      stopScroll();
+      observation.scrollListeners.delete(scroller);
+    }
+    for (const scroller of scrolledBy) {
+      if (observation.scrollListeners.has(scroller)) continue;
+      const event = SCROLL_EVENTS.get(scroller.tagName) as string;
+      observation.scrollListeners.set(
+        scroller,
+        scroller.addEventListener(event, () => {
+          sampleWhileScrolling(observation.sample);
+        }),
+      );
+    }
+  }
+
+  #queue(entry: LynxIntersectionObserverEntry): void {
     this.#records.push(entry);
     this.#deliverSoon();
   }

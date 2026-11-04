@@ -87,18 +87,29 @@ describe('scheduleSettleFlush', () => {
     vi.stubGlobal('__GetElementUniqueID', () => 1);
     const addEvent = vi.fn();
     vi.stubGlobal('__AddEvent', addEvent);
+    // A flush sends an element's handlers to a UI that's already made only
+    // with a change it counts: the element's dataset, set to what it is.
+    const setDataset = vi.fn();
+    vi.stubGlobal('__SetDataset', setDataset);
     const flush = (globalThis as any).__FlushElementTree;
-    const element = new LynxElement({} as never);
+    const native = {};
+    const element = new LynxElement(native as never);
+    element.setAttribute('data-kind', 'card');
+    setDataset.mockClear();
 
     const stop = element.addEventListener('binduiappear', () => {});
     await flushMicrotasks();
     expect(addEvent).toHaveBeenCalledOnce();
+    expect(setDataset).toHaveBeenCalledExactlyOnceWith(native, {
+      kind: 'card',
+    });
     expect(flush).toHaveBeenCalledTimes(1);
 
     // A second listener shares the native handler: nothing new to flush.
     const stopSecond = element.addEventListener('binduiappear', () => {});
     await flushMicrotasks();
     expect(flush).toHaveBeenCalledTimes(1);
+    expect(setDataset).toHaveBeenCalledOnce();
 
     stopSecond();
     stop();
@@ -109,6 +120,7 @@ describe('scheduleSettleFlush', () => {
       'uiappear',
       undefined,
     );
+    expect(setDataset).toHaveBeenCalledTimes(2);
     expect(flush).toHaveBeenCalledTimes(2);
 
     // Inside a cycle, end() flushes it.

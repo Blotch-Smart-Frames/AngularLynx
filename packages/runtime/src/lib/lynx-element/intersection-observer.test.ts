@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   installIntersectionObserver,
   LynxIntersectionObserver,
-  resetIntersectionObserverWarning,
 } from './intersection-observer';
 import type { LayoutRect } from './layout';
 
@@ -85,8 +84,19 @@ const page = () => element('page', rect(0, 0, 400, 800));
  * Lets the measurements answer and the observer call back.
  */
 const settle = async () => {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+
+/**
+ * How many times native has been asked for `fake`'s box.
+ */
+const measurements = (fake: FakeElement) =>
+  vi
+    .mocked(
+      (globalThis as unknown as { __InvokeUIMethod: (n: object) => void })
+        .__InvokeUIMethod,
+    )
+    .mock.calls.filter(([native]) => native === fake.element).length;
 
 beforeEach(() => {
   boxes.clear();
@@ -113,7 +123,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  resetIntersectionObserverWarning();
 });
 
 describe('IntersectionObserver on Lynx', () => {
@@ -456,26 +465,576 @@ describe('IntersectionObserver on Lynx', () => {
     ).toBeNull();
   });
 
-  it('warns once of options it ignores', () => {
+  it('takes only an element or the document as the root, as browsers do', () => {
+    expect(new LynxIntersectionObserver(() => {}, { root: null }).root).toBe(
+      null,
+    );
+    // An ElementRef, say, rather than its nativeElement.
+    expect(
+      () =>
+        new LynxIntersectionObserver(() => {}, { root: { nativeElement: 1 } }),
+    ).toThrow(TypeError);
+  });
+
+  it('honors its options without a warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    new LynxIntersectionObserver(() => {});
-    new LynxIntersectionObserver(() => {}, { threshold: 0 });
-    expect(warn).not.toHaveBeenCalled();
     new LynxIntersectionObserver(() => {}, {
       root: element(),
       rootMargin: '100px',
       threshold: [0, 1],
     });
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0][0]).toContain(
-      'ignores root, rootMargin, threshold',
-    );
-    new LynxIntersectionObserver(() => {}, { threshold: 0.5 });
-    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
 
-    resetIntersectionObserverWarning();
-    new LynxIntersectionObserver(() => {}, { threshold: 0.5 });
-    expect(warn.mock.calls[1][0]).toContain('ignores threshold for now');
+describe('IntersectionObserver on Lynx, given options', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+
+  afterEach(() => {
+    // Lets any measuring still going stop, so the next test starts afresh.
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+
+  /**
+   * The latest entry the observer's callback was given.
+   */
+  const last = (callback: ReturnType<typeof vi.fn>) =>
+    callback.mock.lastCall?.[0].at(-1);
+
+  /**
+   * A scroll-view in the top half of the page, with a long column in it.
+   */
+  const scrolling = () => {
+    const root = page();
+    const scroller = element('scroll-view', rect(0, 0, 400, 400), root);
+    const content = element('view', rect(0, 0, 400, 2000), scroller);
+    return { root, scroller, content };
+  };
+
+  it('reports each threshold the element crosses as its scroll-view scrolls', async () => {
+    const { root, scroller, content } = scrolling();
+    const target = element('view', null, content);
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, {
+      threshold: [0.5, 0, 1],
+    }).observe(target);
+    // Below the scroll-view's bottom.
+    target.layout(rect(0, 500, 400, 100));
+    await settle();
+    expect(callback).toHaveBeenCalledOnce();
+    expect(last(callback)).toMatchObject({
+      target,
+      isIntersecting: false,
+      intersectionRatio: 0,
+      intersectionRect: { width: 0, height: 0 },
+      rootBounds: { x: 0, y: 0, width: 400, height: 800 },
+    });
+    // It listens to the scroll-view, and to nothing that doesn't scroll.
+    expect(scroller.listening('bindscroll')).toBe(1);
+    expect(content.listening('bindscroll')).toBe(0);
+    expect(root.listening('bindscroll')).toBe(0);
+
+    // Scrolled until 30% of it shows: measured on the next sample.
+    target.move(rect(0, 370, 400, 100));
+    scroller.fire('bindscroll');
+    await settle();
+    expect(callback).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(50);
+    await settle();
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(last(callback)).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 0.3,
+      intersectionRect: { x: 0, y: 370, width: 400, height: 30 },
+    });
+
+    // 60%: past the next threshold.
+    target.move(rect(0, 340, 400, 100));
+    scroller.fire('bindscroll');
+    vi.advanceTimersByTime(50);
+    await settle();
+    expect(last(callback).intersectionRatio).toBeCloseTo(0.6);
+
+    // Still moving after the last scroll event, as a list between its
+    // throttled ones: measured anyway, and found all in view.
+    target.move(rect(0, 200, 400, 100));
+    vi.advanceTimersByTime(50);
+    await settle();
+    expect(callback).toHaveBeenCalledTimes(4);
+    expect(last(callback).intersectionRatio).toBe(1);
+
+    // Moving within the band between two thresholds says nothing new.
+    target.move(rect(0, 150, 400, 100));
+    vi.advanceTimersByTime(50);
+    await settle();
+    expect(callback).toHaveBeenCalledTimes(4);
+
+    // A while after the last scroll event, it stops measuring.
+    vi.advanceTimersByTime(500);
+    await settle();
+    const count = measurements(target);
+    vi.advanceTimersByTime(500);
+    await settle();
+    expect(measurements(target)).toBe(count);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('is intersecting only once a threshold is reached, as in Chromium and WebKit', async () => {
+    const target = element('view', null, page());
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 1 }).observe(target);
+    // Half off the bottom of the page.
+    target.layout(rect(0, 750, 400, 100));
+    await settle();
+    expect(last(callback)).toMatchObject({
+      isIntersecting: false,
+      intersectionRatio: 0.5,
+      intersectionRect: { y: 750, height: 50 },
+    });
+
+    target.layout(rect(0, 600, 400, 100));
+    await settle();
+    expect(last(callback)).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 1,
+    });
+  });
+
+  it('measures each layout, which can take the element across a threshold', async () => {
+    const target = element('view', null, page());
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 0.5 }).observe(target);
+    target.layout(rect(0, 700, 400, 100));
+    await settle();
+    expect(last(callback).isIntersecting).toBe(true);
+
+    // Grown taller, with only a quarter of it on the page.
+    target.layout(rect(0, 700, 400, 400));
+    await settle();
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(last(callback)).toMatchObject({
+      isIntersecting: false,
+      intersectionRatio: 0.25,
+    });
+  });
+
+  it('grows the root by the root margin, in px', async () => {
+    const near = element('view', null, page());
+    const far = element('view', null, page());
+    const callback = vi.fn();
+    const observer = new LynxIntersectionObserver(callback, {
+      rootMargin: '0px 0px 400px 0px',
+    });
+    observer.observe(near);
+    observer.observe(far);
+    // 200px below the page's bottom, and 500px.
+    near.layout(rect(0, 1000, 400, 100));
+    far.layout(rect(0, 1300, 400, 100));
+    await settle();
+    const [[entries]] = callback.mock.calls;
+    expect(entries[0]).toMatchObject({
+      target: near,
+      isIntersecting: true,
+      intersectionRatio: 1,
+      rootBounds: { x: 0, y: 0, width: 400, height: 1200 },
+    });
+    expect(entries[1]).toMatchObject({ target: far, isIntersecting: false });
+  });
+
+  it('takes a root margin’s percentages of the root’s height and width, and shrinks it with a negative one', async () => {
+    const root = page();
+    const across = element('view', null, root);
+    const above = element('view', null, root);
+    const callback = vi.fn();
+    // A line across the middle of the page, 40px in from each side.
+    const observer = new LynxIntersectionObserver(callback, {
+      rootMargin: '-50% -10%',
+    });
+    observer.observe(across);
+    observer.observe(above);
+    across.layout(rect(0, 350, 400, 100));
+    above.layout(rect(0, 0, 400, 100));
+    await settle();
+    const [[entries]] = callback.mock.calls;
+    expect(entries[0]).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 0,
+      intersectionRect: { x: 40, y: 400, width: 320, height: 0 },
+      rootBounds: { x: 40, y: 400, width: 320, height: 0 },
+    });
+    expect(entries[1].isIntersecting).toBe(false);
+  });
+
+  it('counts an element touching the root’s edge, or with no size, as intersecting, as browsers do', async () => {
+    const root = page();
+    const touching = element('view', null, root);
+    const empty = element('view', null, root);
+    const callback = vi.fn();
+    // The page as the root: the browser's rules, rather than exposure's.
+    const observer = new LynxIntersectionObserver(callback, { root });
+    observer.observe(touching);
+    observer.observe(empty);
+    touching.layout(rect(0, 800, 400, 100));
+    // A sentinel at the end of a feed.
+    empty.layout(rect(0, 500, 0, 0));
+    await settle();
+    const [[entries]] = callback.mock.calls;
+    expect(entries[0]).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 0,
+    });
+    expect(entries[1]).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 1,
+    });
+  });
+
+  it('checks the element against its root, clipped by the scroll containers between them, and not the screen', async () => {
+    const root = page();
+    const outer = element('scroll-view', rect(0, 0, 400, 800), root);
+    // A scroll-view scrolled below the page, with another in it.
+    const list = element('scroll-view', rect(0, 1000, 400, 400), outer);
+    const inner = element('scroll-view', rect(0, 1000, 400, 100), list);
+    const shown = element('view', null, list);
+    const clipped = element('view', null, inner);
+    const callback = vi.fn();
+    const observer = new LynxIntersectionObserver(callback, {
+      root: list,
+      threshold: [0, 1],
+    });
+    observer.observe(shown);
+    observer.observe(clipped);
+    shown.layout(rect(0, 1200, 400, 100));
+    // Half below the inner scroll-view's bottom.
+    clipped.layout(rect(0, 1050, 400, 100));
+    await settle();
+    const [[entries]] = callback.mock.calls;
+    expect(entries[0]).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 1,
+      rootBounds: { x: 0, y: 1000, width: 400, height: 400 },
+    });
+    expect(entries[1]).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 0.5,
+    });
+    // The root's scrolling and the inner scroll-view's move them in the
+    // root; the outer one's moves the root along with them.
+    expect(list.listening('bindscroll')).toBe(2);
+    expect(inner.listening('bindscroll')).toBe(1);
+    expect(outer.listening('bindscroll')).toBe(0);
+  });
+
+  it('reports an element outside its root, or the root itself, as not intersecting', async () => {
+    const root = page();
+    const box = element('view', rect(0, 0, 400, 400), root);
+    const outside = element('view', null, root);
+    const callback = vi.fn();
+    const observer = new LynxIntersectionObserver(callback, { root: box });
+    observer.observe(outside);
+    observer.observe(box);
+    outside.layout(rect(0, 100, 10, 10));
+    box.layout(rect(0, 0, 400, 400));
+    await settle();
+    const [[entries]] = callback.mock.calls;
+    expect(entries[0]).toMatchObject({
+      isIntersecting: false,
+      rootBounds: { width: 400, height: 400 },
+    });
+    expect(entries[1].isIntersecting).toBe(false);
+  });
+
+  it('reports an element off the page, or whose root or scroll container can’t be measured, as not intersecting', async () => {
+    const detached = element(
+      'view',
+      null,
+      element('view', rect(0, 0, 400, 800)),
+    );
+    const unmeasured = element('view', null);
+    const inside = element('view', null, unmeasured);
+    const scrolled = element(
+      'view',
+      null,
+      element('scroll-view', null, page()),
+    );
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 0.5 }).observe(
+      detached,
+    );
+    new LynxIntersectionObserver(callback, { root: unmeasured }).observe(
+      inside,
+    );
+    new LynxIntersectionObserver(callback, { threshold: 0.5 }).observe(
+      scrolled,
+    );
+    detached.layout(rect(0, 0, 10, 10));
+    inside.layout(rect(0, 0, 10, 10));
+    scrolled.layout(rect(0, 0, 10, 10));
+    await settle();
+    expect(
+      callback.mock.calls.map(([[entry]]) => [
+        entry.isIntersecting,
+        entry.rootBounds?.height ?? null,
+      ]),
+    ).toEqual([
+      [false, null],
+      [false, null],
+      [false, 800],
+    ]);
+  });
+
+  it('listens for the scroll events of each kind of scroll container', async () => {
+    const root = page();
+    const coordinator = element(
+      'scroll-coordinator',
+      rect(0, 0, 400, 800),
+      root,
+    );
+    const pager = element('viewpager', rect(0, 0, 400, 800), coordinator);
+    const list = element('list', rect(0, 0, 400, 800), pager);
+    const target = element('view', null, list);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(target);
+    target.layout(rect(0, 0, 10, 10));
+    await settle();
+    expect(list.listening('bindscroll')).toBe(1);
+    expect(pager.listening('bindoffsetchange')).toBe(1);
+    expect(coordinator.listening('bindoffset')).toBe(1);
+
+    // A page turned: measured as it moves.
+    const count = measurements(target);
+    pager.fire('bindoffsetchange');
+    vi.advanceTimersByTime(50);
+    expect(measurements(target)).toBe(count + 1);
+  });
+
+  it('stops listening to a scroll container it has left, and to every one once unobserved', async () => {
+    const { root, scroller } = scrolling();
+    const other = element('scroll-view', rect(0, 400, 400, 400), root);
+    const target = element('view', null, scroller);
+    const observer = new LynxIntersectionObserver(() => {}, {
+      threshold: 1,
+    });
+    observer.observe(target);
+    target.layout(rect(0, 0, 10, 10));
+    await settle();
+    expect(scroller.listening('bindscroll')).toBe(1);
+
+    // Moved into the other scroll-view, and laid out there.
+    target.parent = other;
+    target.layout(rect(0, 400, 10, 10));
+    await settle();
+    expect(scroller.listening('bindscroll')).toBe(0);
+    expect(other.listening('bindscroll')).toBe(1);
+
+    other.fire('bindscroll');
+    expect(vi.getTimerCount()).toBe(1);
+    observer.unobserve(target);
+    expect(other.listening('bindscroll')).toBe(0);
+    expect(target.listening('binduiappear')).toBe(0);
+    expect(target.layoutObservers.size).toBe(0);
+    // Nothing left to measure while it scrolls.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('asks once for the boxes of a scroll container its observers share, as they measure together', async () => {
+    const { root, scroller, content } = scrolling();
+    const first = element('view', null, content);
+    const second = element('view', null, content);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(first);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(second);
+    first.layout(rect(0, 0, 10, 10));
+    second.layout(rect(0, 10, 10, 10));
+    await settle();
+
+    const [pageCount, scrollerCount] = [
+      measurements(root),
+      measurements(scroller),
+    ];
+    scroller.fire('bindscroll');
+    vi.advanceTimersByTime(50);
+    expect(measurements(first)).toBe(2);
+    expect(measurements(second)).toBe(2);
+    expect(measurements(root)).toBe(pageCount + 1);
+    expect(measurements(scroller)).toBe(scrollerCount + 1);
+  });
+
+  it('shares a box still being measured, and measures afresh once native has answered', async () => {
+    // Native holds its answers until the test lets them go.
+    const answers: (() => void)[] = [];
+    vi.stubGlobal(
+      '__InvokeUIMethod',
+      vi.fn(
+        (
+          native: object,
+          _method: string,
+          _params: unknown,
+          callback: (result: { code: number; data?: unknown }) => void,
+        ) => {
+          const box = boxes.get(native);
+          answers.push(() =>
+            callback(box ? { code: 0, data: box } : { code: 2 }),
+          );
+        },
+      ),
+    );
+    const answer = async () => {
+      for (const send of answers.splice(0)) send();
+      await settle();
+    };
+    const root = page();
+    const first = element('view', rect(0, 0, 10, 10), root);
+    const second = element('view', rect(0, 10, 10, 10), root);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(first);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(second);
+    first.fire('binduiappear');
+    await settle();
+    // Asked for later, with the page's box still coming.
+    second.fire('binduiappear');
+    expect(measurements(root)).toBe(1);
+    await answer();
+    first.fire('binduidisappear');
+    expect(measurements(root)).toBe(2);
+    await answer();
+  });
+
+  it('measures afresh each time when native answers at once, as the testing library’s does', async () => {
+    vi.stubGlobal(
+      '__InvokeUIMethod',
+      vi.fn(
+        (
+          _native: object,
+          _method: string,
+          _params: unknown,
+          callback: (result: { code: number }) => void,
+        ) => callback({ code: 0 }),
+      ),
+    );
+    const root = page();
+    const target = element('view', null, root);
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 1 }).observe(target);
+    target.fire('binduiappear');
+    await settle();
+    target.fire('binduidisappear');
+    await settle();
+    expect(measurements(root)).toBe(2);
+    expect(
+      callback.mock.calls.map(([[entry]]) => entry.intersectionRatio),
+    ).toEqual([1, 0]);
+  });
+
+  it('asks once per sample for a box its observers share, when native answers at once', async () => {
+    vi.stubGlobal(
+      '__InvokeUIMethod',
+      vi.fn(
+        (
+          native: object,
+          _method: string,
+          _params: unknown,
+          callback: (result: { code: number; data?: unknown }) => void,
+        ) => {
+          const box = boxes.get(native);
+          callback(box ? { code: 0, data: box } : { code: 2 });
+        },
+      ),
+    );
+    const { root, scroller, content } = scrolling();
+    const first = element('view', null, content);
+    const second = element('view', null, content);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(first);
+    new LynxIntersectionObserver(() => {}, { threshold: 1 }).observe(second);
+    first.layout(rect(0, 0, 10, 10));
+    second.layout(rect(0, 10, 10, 10));
+    await settle();
+
+    const [pageCount, scrollerCount] = [
+      measurements(root),
+      measurements(scroller),
+    ];
+    scroller.fire('bindscroll');
+    vi.advanceTimersByTime(50);
+    expect(measurements(root)).toBe(pageCount + 1);
+    expect(measurements(scroller)).toBe(scrollerCount + 1);
+    await settle();
+    // Outside a sample, each measures afresh.
+    first.layout(rect(0, 20, 10, 10));
+    second.layout(rect(0, 30, 10, 10));
+    expect(measurements(root)).toBe(pageCount + 3);
+    await settle();
+  });
+
+  it('measures once more when the element moves while it’s being measured', async () => {
+    const target = element('view', null, page());
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 1 }).observe(target);
+    // Laid out off the page, then on it, before the first measurement
+    // answers.
+    target.layout(rect(0, 900, 400, 100));
+    target.layout(rect(0, 0, 400, 100));
+    target.layout(rect(0, 10, 400, 100));
+    await settle();
+    expect(measurements(target)).toBe(2);
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(last(callback).isIntersecting).toBe(true);
+  });
+
+  it('takes exposure’s answer for an element that has never had a box, as in the testing library', async () => {
+    const target = element('view', null, page());
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: [0.5, 1] }).observe(
+      target,
+    );
+    target.fire('binduiappear');
+    await settle();
+    expect(last(callback)).toMatchObject({
+      isIntersecting: true,
+      intersectionRatio: 1,
+    });
+
+    target.fire('binduidisappear');
+    await settle();
+    expect(last(callback)).toMatchObject({
+      isIntersecting: false,
+      intersectionRatio: 0,
+    });
+  });
+
+  it('reports an element that has gone as not intersecting, whatever exposure last said', async () => {
+    const target = element('view', null, page());
+    const callback = vi.fn();
+    new LynxIntersectionObserver(callback, { threshold: 1 }).observe(target);
+    target.layout(rect(0, 0, 400, 100));
+    target.fire('binduiappear');
+    await settle();
+    expect(last(callback).isIntersecting).toBe(true);
+
+    // Its UI gone, as a list's recycled cell's.
+    target.move(null);
+    target.fire('binduiappear');
+    await settle();
+    expect(last(callback)).toMatchObject({
+      isIntersecting: false,
+      boundingClientRect: { width: 0, height: 0 },
+    });
+  });
+
+  it('stops reporting an element unobserved while it’s being measured', async () => {
+    const target = element('view', null, page());
+    target.layout(rect(0, 0, 10, 10));
+    const callback = vi.fn();
+    const observer = new LynxIntersectionObserver(callback, { threshold: 1 });
+    // Unobserved before its first measurement starts, and again while one
+    // is under way.
+    observer.observe(target);
+    observer.unobserve(target);
+    observer.observe(target);
+    target.fire('binduiappear');
+    observer.unobserve(target);
+    await settle();
+    expect(callback).not.toHaveBeenCalled();
   });
 });
 

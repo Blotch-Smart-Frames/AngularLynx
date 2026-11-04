@@ -510,6 +510,38 @@ describe('LynxDocument', () => {
       vi.unstubAllGlobals();
     });
 
+    it('gives a new scroll-view or list a scroll handler from the start on iOS, and only there', () => {
+      /**
+       * iOS hands a scroll-view's scroll events only to the handlers it had
+       * when its UI was made, so one added later must find one there.
+       */
+      const scrollHandlers = () =>
+        asMock(globalThis.__AddEvent).mock.calls.filter(
+          ([, type, name]) => type === 'bindEvent' && name === 'scroll',
+        );
+      vi.stubGlobal('SystemInfo', { platform: 'iOS' });
+      const scroller = doc.createElement('scroll-view');
+      const list = doc.createElement('list');
+      doc.createElement('view');
+      expect(scrollHandlers().map(([element]) => element)).toEqual([
+        scroller.element,
+        list.element,
+      ]);
+      // A listener added later shares the handler: nothing more to register.
+      const listener = vi.fn();
+      scroller.addEventListener('bindscroll', listener);
+      expect(scrollHandlers()).toHaveLength(2);
+      scrollHandlers()[0][3].value({ type: 'scroll' });
+      expect(listener).toHaveBeenCalledOnce();
+
+      asMock(globalThis.__AddEvent).mockClear();
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      doc.createElement('scroll-view');
+      doc.createElement('list');
+      expect(scrollHandlers()).toHaveLength(0);
+      vi.unstubAllGlobals();
+    });
+
     it('creates a comment element via createCommentElement (__CreateView + display:none)', () => {
       // The 'comment' tag doesn't go through __CreateElement — it uses
       // __CreateView and stamps `display:none` inline. That flow is shared by

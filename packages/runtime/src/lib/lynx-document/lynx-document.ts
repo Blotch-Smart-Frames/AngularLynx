@@ -1,6 +1,7 @@
 import { devStats } from '../devtools/stats';
 import { globalEvents } from '../global-events';
 import {
+  listenForScrollsFromTheStart,
   LynxElement,
   type LynxListElement,
   scheduleSettleFlush,
@@ -89,7 +90,9 @@ export class LynxDocument implements LynxDocumentBase {
     // recreated, so they are handled here rather than via the shared raw-ref
     // dispatch (createNativeRefByTag), which the recreation path also uses.
     if (tag === 'list') {
-      return createListElement(this.#pageId);
+      const list = createListElement(this.#pageId);
+      listenForScrollsFromTheStart(list);
+      return list;
     }
     if (tag === 'page') {
       const result = createPageElement(this.page, this.#pageElementRequested);
@@ -114,6 +117,7 @@ export class LynxDocument implements LynxDocumentBase {
     if (tag === 'blur-view') {
       el.updateBlurMaterial();
     }
+    if (tag === 'scroll-view') listenForScrollsFromTheStart(el);
     return el;
   }
   createText(value: string): LynxElement {

@@ -20,6 +20,7 @@ beforeEach(() => {
   globalThis.__AddInlineStyle = vi.fn();
   globalThis.__SetInlineStyles = vi.fn();
   globalThis.__AddEvent = vi.fn();
+  globalThis.__SetDataset = vi.fn();
   globalThis.__InvokeUIMethod = vi.fn();
 });
 

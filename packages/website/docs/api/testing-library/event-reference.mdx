@@ -64,7 +64,7 @@ await waitForUpdate(); // the component's (document:click) has run
 | `fireEvent.uiappear`    | `(binduiappear)`    |
 | `fireEvent.uidisappear` | `(binduidisappear)` |
 
-A device sends `uiappear` when an element comes into view, and `uidisappear` when it leaves. The [`lynxExposure` directive](/guide/exposure) and `IntersectionObserver` listen for them, so firing one is how a test scrolls an element into view:
+A device sends `uiappear` when an element comes into view, and `uidisappear` when it leaves. The [`lynxExposure` directive](/guide/exposure) and `IntersectionObserver` listen for them, so firing one is how a test scrolls an element into view. An `IntersectionObserver` given a `threshold`, `rootMargin` or `root` sees all of the element come in (an `intersectionRatio` of 1) and all of it leave, as there's no layout to measure in a test:
 
 ```typescript
 fireEvent.uiappear(frame);

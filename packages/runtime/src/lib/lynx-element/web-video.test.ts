@@ -25,6 +25,7 @@ describe('<video> events on Lynx for Web', () => {
     video = { currentTime: 0, duration: NaN, error: null };
     let nextId = 1;
     vi.stubGlobal('__GetElementUniqueID', () => nextId++);
+    vi.stubGlobal('__SetDataset', () => {});
     vi.stubGlobal(
       '__AddEvent',
       (

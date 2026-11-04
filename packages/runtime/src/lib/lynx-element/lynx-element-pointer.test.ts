@@ -29,6 +29,7 @@ beforeEach(() => {
     return id;
   });
   globalThis.__AddEvent = vi.fn();
+  globalThis.__SetDataset = vi.fn();
   globalThis.__InvokeUIMethod = vi.fn();
 });
 

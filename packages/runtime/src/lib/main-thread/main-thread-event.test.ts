@@ -124,6 +124,39 @@ describe('LynxMainThreadEvent', () => {
       },
     );
 
+    it('holds the event on its element while it has a handler for it, so the element’s own listeners don’t replace it', () => {
+      const element = {
+        element: {},
+        holdNativeEvent: vi.fn(),
+        releaseNativeEvent: vi.fn(),
+      };
+      const directive = createDirective(element);
+      directive.mainThreadBindscroll = makeHandle('w-scroll');
+      directive.ngOnChanges({ mainThreadBindscroll: {} as any });
+      expect(element.holdNativeEvent).toHaveBeenCalledExactlyOnceWith('scroll');
+
+      // A new handler for the same input: still held, once.
+      directive.mainThreadBindscroll = makeHandle('w-scroll-2');
+      directive.ngOnChanges({ mainThreadBindscroll: {} as any });
+      expect(element.holdNativeEvent).toHaveBeenCalledOnce();
+
+      // Removed: handed back after its handler has gone.
+      directive.mainThreadBindscroll = undefined;
+      directive.ngOnChanges({ mainThreadBindscroll: {} as any });
+      expect(element.releaseNativeEvent).toHaveBeenCalledExactlyOnceWith(
+        'scroll',
+      );
+      expect(addEvent.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        element.releaseNativeEvent.mock.invocationCallOrder[0],
+      );
+
+      // And when the directive is destroyed.
+      directive.mainThreadCatchscroll = makeHandle('w-catch-scroll');
+      directive.ngOnChanges({ mainThreadCatchscroll: {} as any });
+      directive.ngOnDestroy();
+      expect(element.releaseNativeEvent).toHaveBeenCalledTimes(2);
+    });
+
     it('registers a plain function the build did not wrap, and passes its ID to __AddEvent', () => {
       const nativeHandle = {};
       const directive = createDirective({ element: nativeHandle });

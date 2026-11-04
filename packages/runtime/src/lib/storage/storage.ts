@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { callOnBackground } from '../background-call';
+import type { PlatformType } from '../system-info/system-info';
 
 /**
  * What the shells' storage modules call back with: `{ value }` for a stored
@@ -117,8 +118,9 @@ const memoryStore = (): StringStore => {
 const browserStorage = (): BrowserStorage | undefined => {
   if (
     typeof SystemInfo === 'undefined' ||
-    // `@lynx-js/types`' PlatformType leaves out the 'web' web-core reports.
-    (SystemInfo.platform as string) !== 'web'
+    // The global is typed by `@lynx-js/types`, whose PlatformType leaves out
+    // the 'web' web-core reports; AngularLynx's own PlatformType has it.
+    (SystemInfo.platform as PlatformType) !== 'web'
   ) {
     return undefined;
   }

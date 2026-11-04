@@ -1,6 +1,28 @@
 import { Injectable, signal } from '@angular/core';
-import type { SystemInfo, PlatformType } from '@lynx-js/types';
+import type { SystemInfo } from '@lynx-js/types';
 import { callOnBackground, isMainThread } from '../background-call';
+
+/**
+ * The platform the app runs on, spelled exactly as Lynx reports it. Compare
+ * with these strings as written: `'iOS'`, not `'ios'`.
+ *
+ * The casing is uneven because each platform's Lynx code names itself (Lynx
+ * core's desktop code returns `'windows'` but `'macOS'`), so it can't be
+ * normalized without breaking comparisons against what Lynx reports.
+ *
+ * It differs from `@lynx-js/types`' `PlatformType` in two places:
+ * - It adds `'web'`, which web-core (Lynx for Web, the docs' live previews)
+ *   reports. Without it, code that checks for the web needs a cast.
+ * - It drops `'pc'`, the name desktop Lynx used before 3.3, which no Lynx
+ *   that AngularLynx supports reports.
+ */
+export type PlatformType =
+  | 'Android'
+  | 'iOS'
+  | 'Harmony'
+  | 'windows'
+  | 'macOS'
+  | 'web';
 
 /**
  * The OS version the host app sent in its global props, if it sent one. The
@@ -85,10 +107,14 @@ export class LynxSystemInfo {
   }
 
   /**
-   * The platform of the current device (e.g. `'iOS'`, `'Android'`).
+   * The platform of the current device (e.g. `'iOS'`, `'Android'`, or
+   * `'web'` in Lynx for Web). See {@link PlatformType}.
    */
   get platform(): PlatformType {
-    return this.#info.platform;
+    // `@lynx-js/types` types SystemInfo.platform without the 'web' web-core
+    // reports and with the retired 'pc', so it's narrowed to the values Lynx
+    // actually reports.
+    return this.#info.platform as PlatformType;
   }
 
   /**

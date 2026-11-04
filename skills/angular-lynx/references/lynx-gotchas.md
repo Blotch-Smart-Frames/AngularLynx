@@ -125,6 +125,10 @@ Use runtime logic with conditional classes. For `prefers-reduced-motion`, `prefe
 
 Lynx builds the native main thread's `SystemInfo` without the OS version. `LynxSystemInfo.osVersion` fills it in from the host's `osVersion` global prop (the generated apps send it), or else from the background thread shortly after the first frame; read it in a `computed()`.
 
+### `LynxSystemInfo.platform` is spelled as Lynx reports it
+
+Compare it with the exact strings in `PlatformType` (exported from `@blotch/angular-lynx`): `'Android'`, `'iOS'`, `'Harmony'`, `'windows'`, `'macOS'` or `'web'`. The casing is uneven, and `platform === 'ios'` never matches. `'web'` is the web preview. Type against the runtime's `PlatformType`, not `@lynx-js/types`' one, which leaves out `'web'` and still lists the retired `'pc'`.
+
 ### No `::before` / `::after`
 
 Use explicit `<view>` elements for decorative content.

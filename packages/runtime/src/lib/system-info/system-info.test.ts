@@ -43,6 +43,13 @@ describe('LynxSystemInfo', () => {
       expect(service.platform).toBe('iOS');
     });
 
+    // `@lynx-js/types` leaves 'web' out of its PlatformType, so this is the
+    // value the runtime's own PlatformType adds.
+    it("exposes Lynx for Web's platform, 'web'", () => {
+      vi.stubGlobal('SystemInfo', { ...mockSystemInfo, platform: 'web' });
+      expect(new LynxSystemInfo().platform).toBe('web');
+    });
+
     it('exposes engineVersion', () => {
       const service = new LynxSystemInfo();
       expect(service.engineVersion).toBe('3.2');

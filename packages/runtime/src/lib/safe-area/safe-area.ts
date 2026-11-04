@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, Injector } from '@angular/core';
 import { LynxGlobalData } from '../data-flow/global-data';
-import { LynxSystemInfo } from '../system-info/system-info';
+import { LynxSystemInfo, type PlatformType } from '../system-info/system-info';
 
 /**
  * CSS `env()` value for the top safe area inset (notch / status bar).
@@ -63,9 +63,10 @@ export class LynxSafeArea {
   );
 
   /**
-   * The current platform (`'iOS'`, `'Android'`, `'Harmony'`, etc.).
+   * The current platform (`'iOS'`, `'Android'`, `'web'`, etc.). Same as
+   * {@link LynxSystemInfo.platform}.
    */
-  get platform() {
+  get platform(): PlatformType {
     return this.#injector.get(LynxSystemInfo).platform;
   }
 }

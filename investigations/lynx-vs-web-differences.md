@@ -4943,7 +4943,7 @@ lynx-core is the same script on every platform, so the background `lynx` on web 
 
 ### The fix
 
-`LynxSessionStorage` checks `SystemInfo.platform === 'web'` (web-core reports `'web'`, which `@lynx-js/types`' `PlatformType` leaves out) and uses its in-memory store there, as it does in tests and SSR.
+`LynxSessionStorage` checks `SystemInfo.platform === 'web'` (web-core reports `'web'`, which `@lynx-js/types`' `PlatformType` leaves out; the runtime's own `PlatformType` adds it) and uses its in-memory store there, as it does in tests and SSR.
 
 ---
 

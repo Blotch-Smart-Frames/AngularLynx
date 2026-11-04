@@ -241,6 +241,16 @@ export class Card {
 
 Lynx's CSS engine can't match attribute selectors, so AngularLynx scopes with classes where the web uses attributes. In the element tree, a component's elements carry a `_ngcontent-<id>` class, and its host element a `_nghost-<id>` class.
 
+Type selectors match the tag the template wrote, as on the web, though a component's host and a web tag such as `<div>` render as a `<view>`:
+
+```css
+app-chart {
+  height: 100%;
+}
+```
+
+The renderer gives each such element a `_ngtag-<tag>` class, and the build rewrites a type selector naming a tag that isn't a Lynx element to that class, in component and global styles (`app-chart.active`, `app-chart > view`, `::ng-deep app-chart`). Type selectors for Lynx elements, such as `view` and `text`, stay as they are. A class is more specific than a type selector, so `app-chart { color: red }` ties with `.title { color: blue }` on the same element and the later rule wins, where on the web the class wins. The root component's host is the page, which `app-root { … }` doesn't match: style it with `page`, or with `:host` in its own styles.
+
 ## Related
 
 - [Tailwind CSS](/guide/tailwindcss)

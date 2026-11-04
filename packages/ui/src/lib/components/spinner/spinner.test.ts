@@ -78,7 +78,9 @@ describe('UiSpinner', () => {
     const { host, spinner } = await renderSpinner();
     host.className.set('ml-2');
     await waitForUpdate();
-    expect(spinner().getAttribute('class')).toBe('ml-2');
+    // Next to the `_ngtag-` class the renderer gives a component's host, so
+    // type selectors naming the component match it.
+    expect(spinner().getAttribute('class')?.split(' ')).toContain('ml-2');
   });
 
   // A class on a component lands on its host too (issue #181): the host is

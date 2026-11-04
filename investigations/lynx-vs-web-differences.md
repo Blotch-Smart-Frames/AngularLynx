@@ -5228,6 +5228,24 @@ The plugin lets Angular's compiler scope each component's styles as on the web, 
 
 ---
 
+## A type selector naming a component's host or a web tag matches nothing, because the element is a `<view>`
+
+### What you'd expect (web)
+
+`app-card { height: 100%; }` styles every `<app-card>`, and `div { … }` every `<div>`. The browser creates an element of the tag the template wrote, so a type selector naming it matches, in a component's styles (scoped to `app-card[_ngcontent-c1]`) and in global ones.
+
+### What Lynx does
+
+Lynx only has its own elements. The renderer creates a `<view>` for any other tag (`createDefaultElement`), and for a component's host, unless `registerHostElement` names another element. Lynx's CSS matches a type selector against the element's own tag, which is `view`, and a view can't take another tag: Lynx creates an element's native UI from its tag, and has none registered for `app-card`. So `three-d-frame { height: 100%; }` never applied, the frame kept its content's height (0), and angular-three's canvas inside it, sized `height: 100%`, never got a size to render into (issue #227). The web preview is the same: `<lynx-view>` renders a view as `<x-view>`, which `app-card` doesn't match either. React Lynx doesn't meet this, as JSX has no host elements and names only Lynx elements.
+
+### The fix
+
+The renderer marks each element it creates for a tag that isn't a Lynx element, component hosts included, with a class made from the tag (`_ngtag-app-card`; `LynxRenderer.createElement`, with the list of Lynx tags in `packages/runtime/src/lib/lynx-document/element-tags.ts`). A PostCSS plugin the build plugin adds to every environment (`typeSelectorsForLynx` in `packages/rsbuild-plugin-angular-lynx/src/type-selectors.ts`) rewrites type selectors naming such tags to the class, in component styles (after Angular has scoped them, so `:host(app-card)`, `::ng-deep app-card` and `app-card.active > view` come out right) and global styles alike. Type selectors naming Lynx's own elements (`view`, `text`, `page`) stay as they are. The class is a scope class, so binding `class` on the element keeps it.
+
+Two differences remain. A class is more specific than a type selector, so `app-card { color: red }` now ties with `.title { color: blue }` on the same element (the later rule wins), where on the web the class wins. And the root component's host is the page, which gets no tag class (it would show in every `render()` snapshot of the testing library, whose root is the page too), so `app-root { … }` still matches nothing: style the root with `page` or `:root`, or with `:host` in its own styles.
+
+---
+
 ## A main-thread script can't read an element's position synchronously
 
 ### What you'd expect (web)

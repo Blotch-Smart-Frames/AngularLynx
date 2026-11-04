@@ -14,6 +14,7 @@ vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
 vi.mock('./tailwind.js', () => ({ applyTailwind: vi.fn() }));
+vi.mock('./type-selectors.js', () => ({ applyTypeSelectors: vi.fn() }));
 vi.mock('./utils/options.js', async (importOriginal) => ({
   deprecatedOptionsIn: (await importOriginal<typeof OptionsModule>())
     .deprecatedOptionsIn,
@@ -31,6 +32,7 @@ import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
+import { applyTypeSelectors } from './type-selectors.js';
 import { normalizeOptions } from './utils/options.js';
 import { pluginAngularLynx } from './plugin-angular-lynx';
 
@@ -125,6 +127,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyTailwind).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyTypeSelectors with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyTypeSelectors).toHaveBeenCalledWith(mockApi);
     });
 
     // entry.ts points the background entries at the files angular.ts writes,
@@ -224,6 +233,8 @@ describe('pluginAngularLynx', () => {
       const cssOrder = vi.mocked(applyCSS).mock.invocationCallOrder[0];
       const tailwindOrder =
         vi.mocked(applyTailwind).mock.invocationCallOrder[0];
+      const typeSelectorsOrder =
+        vi.mocked(applyTypeSelectors).mock.invocationCallOrder[0];
       const entryOrder = vi.mocked(applyEntry).mock.invocationCallOrder[0];
       const layersOrder = vi.mocked(applyLayers).mock.invocationCallOrder[0];
       const angularOrder =
@@ -235,7 +246,9 @@ describe('pluginAngularLynx', () => {
       const loggerOrder = vi.mocked(applyDevLogger).mock.invocationCallOrder[0];
 
       expect(cssOrder).toBeLessThan(tailwindOrder);
-      expect(tailwindOrder).toBeLessThan(entryOrder);
+      // After Tailwind, so its PostCSS plugin runs on Tailwind's rules.
+      expect(tailwindOrder).toBeLessThan(typeSelectorsOrder);
+      expect(typeSelectorsOrder).toBeLessThan(entryOrder);
       expect(entryOrder).toBeLessThan(layersOrder);
       expect(layersOrder).toBeLessThan(angularOrder);
       expect(angularOrder).toBeLessThan(generatorOrder);

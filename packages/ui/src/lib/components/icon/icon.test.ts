@@ -101,7 +101,9 @@ describe('UiIcon', () => {
     const { host, svg } = await renderIcon();
     host.className.set('mr-2');
     await waitForUpdate();
-    expect(svg().getAttribute('class')).toBe('mr-2');
+    // Next to the `_ngtag-` class the renderer gives a component's host, so
+    // type selectors naming the component match it.
+    expect(svg().getAttribute('class')?.split(' ')).toContain('mr-2');
   });
 });
 

@@ -52,7 +52,7 @@ Read [events-and-interactions.md](references/events-and-interactions.md)
 
 ## Styling & CSS
 
-Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`). No CSS inheritance (except nested `<text>`, and CSS variables). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Component styles are scoped as in Angular (`ViewEncapsulation.Emulated`). CSS variables from `[style.--x]` bindings, and dark mode and Android's wallpaper colors with `LynxTheme`.
+Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`). No CSS inheritance (except nested `<text>`, and CSS variables). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Component styles are scoped as in Angular (`ViewEncapsulation.Emulated`), and type selectors match component hosts (`app-card { … }`). CSS variables from `[style.--x]` bindings, and dark mode and Android's wallpaper colors with `LynxTheme`.
 
 Read [styling-and-css.md](references/styling-and-css.md)
 

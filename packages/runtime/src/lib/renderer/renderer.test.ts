@@ -60,6 +60,40 @@ describe('LynxRenderer', () => {
       const el = renderer.createElement('view');
       expect(el).toBeInstanceOf(InMemoryElement);
     });
+
+    /**
+     * Creates an element through the renderer and returns the scope classes
+     * the renderer gave it.
+     */
+    const scopeClassesOf = (tag: string): string[] => {
+      const { renderer, doc } = createRenderer();
+      const el = new InMemoryElement();
+      vi.spyOn(doc, 'createElement').mockReturnValue(el);
+      const spy = vi.spyOn(el, 'addScopeClass');
+      renderer.createElement(tag);
+      return spy.mock.calls.map(([name]) => name);
+    };
+
+    // A component's host and a web tag render as a view, so a type selector
+    // naming them only matches through the class the build plugin rewrites
+    // it to (issue #227).
+    it.each(['app-card', 'three-d-frame', 'div'])(
+      'gives a <%s> its tag class',
+      (tag) => {
+        expect(scopeClassesOf(tag)).toEqual([`_ngtag-${tag}`]);
+      },
+    );
+
+    it('lowercases the tag class, as type selectors ignore case', () => {
+      expect(scopeClassesOf('App-Card')).toEqual(['_ngtag-app-card']);
+    });
+
+    it.each(['view', 'text', 'image', 'scroll-view', 'list'])(
+      'gives a Lynx <%s> no tag class, as Lynx matches its tag',
+      (tag) => {
+        expect(scopeClassesOf(tag)).toEqual([]);
+      },
+    );
   });
 
   describe('createComment', () => {

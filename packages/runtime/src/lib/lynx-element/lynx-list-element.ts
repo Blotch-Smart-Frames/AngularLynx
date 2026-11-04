@@ -189,6 +189,23 @@ export class LynxListElement extends LynxElement {
   }
 
   /**
+   * The items, anchors included: they live in this linked list, not in the
+   * `#children` a release walks, and a list in a destroyed view must let
+   * them go too (see LynxElement.virtualChildren).
+   */
+  override virtualChildren(): LynxElement[] {
+    const children: LynxElement[] = [];
+    for (
+      let child = this.#firstVirtualChild;
+      child;
+      child = child._virtualNext
+    ) {
+      children.push(child);
+    }
+    return children;
+  }
+
+  /**
    * The UI children list as of the last _processUpdate() call, pre-filtered
    * and cached — for componentAtIndex/componentAtIndexes (create-list-element.ts)
    * to read via plain array indexing. See their call sites' doc comments:

@@ -497,8 +497,25 @@ export class LynxElement implements BaseLynxElement {
    *
    * Keyed by `__GetElementUniqueID` (a number), never the ref itself — hashing a
    * native ref crashes the Lepus engine (see LynxDocument.createComment).
+   *
+   * An entry goes when its native ref does: when recreation swaps the ref, and
+   * when Angular destroys the element's view (see markDestroyed / #release).
+   * The map holds the wrapper and the wrapper holds its native element, so an
+   * entry left behind keeps that element, and the UI drawn for it, alive.
    */
   static #byNativeId = new Map<number, LynxElement>();
+
+  /**
+   * Elements Angular destroyed since the last commit (see markDestroyed),
+   * released once their removal has committed (see #commitPendingReleases).
+   */
+  static #pendingReleases = new Set<LynxElement>();
+
+  /**
+   * Set when Angular destroys this element, until it's released (see
+   * #release) or put back in the tree.
+   */
+  #destroyed = false;
 
   /**
    * Returns the canonical wrapper driving `ref`, or a fresh wrapper if none is
@@ -531,9 +548,9 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * Drops this wrapper's current native id from the registry. Called when the
-   * native ref is swapped (recreate-on-remount) for the STALE id, and by the
-   * renderer's destroyNode when Angular tears the element down, so the registry
-   * doesn't retain wrappers for dead native refs.
+   * native ref is swapped (recreate-on-remount) for the STALE id, and when the
+   * element is released after Angular destroyed it (see #release), so the
+   * registry doesn't retain wrappers for dead native refs.
    */
   deregisterNative(): void {
     const id = __GetElementUniqueID(this.#nativeRef);
@@ -542,6 +559,41 @@ export class LynxElement implements BaseLynxElement {
     if (LynxElement.#byNativeId.get(id) === this) {
       LynxElement.#byNativeId.delete(id);
     }
+  }
+
+  /**
+   * @internal Angular destroyed this element: the renderer's destroyNode.
+   *
+   * Angular calls destroyNode only for a destroyed view's top-level nodes.
+   * `destroyLView` walks them with `applyView`, which never descends into an
+   * element's children, and the views nested in it (embedded views, child
+   * components' views) are cleaned up by `destroyViewTree` without the
+   * renderer. So this element releases its whole subtree (see #release),
+   * whatever views the elements under it belong to.
+   *
+   * It waits for the commit at the end of the cycle (see
+   * #commitPendingReleases), when the cycle's moves are done: an element
+   * moved out of the subtree in the meantime, as CDK's DomPortal hands its
+   * element back when it's destroyed, isn't under this one any more and
+   * stays registered. An element still in the tree then (a leave animation
+   * delays Angular's removal) is released when its removal commits.
+   */
+  markDestroyed(): void {
+    // The page is the app's root and is never removed (see remove()).
+    if (this.isRootPageElement) return;
+    this.#destroyed = true;
+    LynxElement.#pendingReleases.add(this);
+    // A view destroyed outside change detection (a detached route view the
+    // reuse strategy drops) has no end() to commit it.
+    scheduleSettleFlush();
+  }
+
+  /**
+   * @internal The children this element keeps out of `#children`, which a
+   * release must reach too: a list's items (see LynxListElement). None here.
+   */
+  virtualChildren(): LynxElement[] {
+    return [];
   }
 
   /**
@@ -768,6 +820,7 @@ export class LynxElement implements BaseLynxElement {
     // attached to its old parent, so __InsertElementBefore auto-reparents the
     // whole subtree (see #pendingRemovals).
     newChild.#cancelPendingRemoval();
+    newChild.#keepIfDestroyed();
     newChild.#removeIfMoveWouldBeLost(this);
     // If the child was genuinely removed in a PREVIOUS cycle its native painting
     // node is gone — rebuild a fresh native element + subtree before re-attaching
@@ -822,6 +875,7 @@ export class LynxElement implements BaseLynxElement {
     // See insertBefore: cancel a pending removal so a move keeps its subtree,
     // then rebuild the child if its painting node was destroyed in a prior cycle.
     newChild.#cancelPendingRemoval();
+    newChild.#keepIfDestroyed();
     newChild.#removeIfMoveWouldBeLost(this);
     newChild.#recreateIfDead();
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
@@ -956,11 +1010,30 @@ export class LynxElement implements BaseLynxElement {
   }
 
   static commitPendingRemovals(): void {
-    if (LynxElement.#pendingRemovals.size === 0) return;
-    const items = [...LynxElement.#pendingRemovals];
-    LynxElement.#pendingRemovals.clear();
-    for (const el of items) {
-      el.#doRemove();
+    if (LynxElement.#pendingRemovals.size > 0) {
+      const items = [...LynxElement.#pendingRemovals];
+      LynxElement.#pendingRemovals.clear();
+      for (const el of items) {
+        el.#doRemove();
+      }
+    }
+    LynxElement.#commitPendingReleases();
+  }
+
+  /**
+   * Releases the elements Angular destroyed this cycle (see markDestroyed)
+   * that are out of the tree. Runs after the removals, so an element whose
+   * removal just committed was released by it (see #doRemove); what's left
+   * here was already out: a list item (its list keeps it until the list
+   * updates), or a view Angular destroyed after detaching it earlier.
+   */
+  static #commitPendingReleases(): void {
+    if (LynxElement.#pendingReleases.size === 0) return;
+    const elements = [...LynxElement.#pendingReleases];
+    LynxElement.#pendingReleases.clear();
+    for (const el of elements) {
+      // Still in the tree: released when its removal commits.
+      if (el.#destroyed && !el.#jsParent && !el._virtualParent) el.#release();
     }
   }
 
@@ -1101,6 +1174,16 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Cancels a release Angular asked for (see markDestroyed) because the
+   * element is going back in the tree: whoever puts it back still uses it.
+   */
+  #keepIfDestroyed(): void {
+    if (!this.#destroyed) return;
+    this.#destroyed = false;
+    LynxElement.#pendingReleases.delete(this);
+  }
+
+  /**
    * Before this element moves under `newParent`: removes it for good if Lynx
    * would lose the move, so the insert that follows rebuilds it (see
    * #recreateIfDead) instead.
@@ -1145,7 +1228,10 @@ export class LynxElement implements BaseLynxElement {
    * in Lynx's PAPI.
    */
   #doRemove(): void {
-    const parent = this.parentNode();
+    // The native parent, not parentNode()'s wrapper: the parent may have been
+    // released already (an ancestor's removal earlier in this commit released
+    // the subtree), and looking it up would register a new wrapper for it.
+    const parent = __GetParent(this.element);
     if (!parent) {
       return;
     }
@@ -1190,7 +1276,7 @@ export class LynxElement implements BaseLynxElement {
     // painting node dies, and the next re-insert rebuilds it from cache (see
     // #recreateSubtree). That is why we mark the whole subtree painting-dead just
     // below rather than "parking" the children somewhere to keep them alive.
-    __RemoveElement((parent as LynxElement).element, this.element);
+    __RemoveElement(parent, this.element);
     // The native painting nodes of this element and its entire subtree are now
     // gone (Lynx tears them down for a non-move removal — is_move=false). Unlink
     // from the JS parent and mark the subtree painting-dead so the next re-insert
@@ -1211,6 +1297,33 @@ export class LynxElement implements BaseLynxElement {
     if (jsParent && isTextish(this)) {
       LynxElement.#enqueueTextNormalization(jsParent);
     }
+    // Angular destroyed it (see markDestroyed): nothing will put it back.
+    if (this.#destroyed) this.#release();
+  }
+
+  /**
+   * Lets go of this element and everything under it, after Angular destroyed
+   * it (see markDestroyed) and it left the tree:
+   *
+   * - drops each one from the registry (see #byNativeId), which would keep
+   *   the wrapper, and so its native element, alive;
+   * - takes each native element's event handlers off it. The native element
+   *   holds them and they hold the wrapper, which holds the native element:
+   *   a loop through native code, which the garbage collector can't follow;
+   * - marks each painting-dead, so if one does come back after all (content
+   *   a surviving view projected into the destroyed one, shown again), it's
+   *   rebuilt and registered again, with its handlers, as any remount is
+   *   (see #recreateSubtree). Its caches are kept for that.
+   */
+  #release(): void {
+    this.#destroyed = false;
+    this.#paintingDead = true;
+    this.deregisterNative();
+    for (const { eventType, eventName } of this.#nativeHandlers.values()) {
+      __AddEvent(this.element, eventType, eventName, undefined);
+    }
+    for (const child of this.#children) child.#release();
+    for (const child of this.virtualChildren()) child.#release();
   }
 
   /**

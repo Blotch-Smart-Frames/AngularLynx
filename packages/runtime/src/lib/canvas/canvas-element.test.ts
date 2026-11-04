@@ -152,6 +152,51 @@ describe('LynxCanvasElement', () => {
     expect(bridge.destroy).toHaveBeenCalledOnce();
   });
 
+  it('frees its context when it is garbage-collected', async () => {
+    // A FinalizationRegistry whose callbacks the test runs, as the engine
+    // would once the canvas is collected. The module makes its registry when
+    // it loads, so it's loaded again under the stub.
+    const finalizers: { target: object; held: unknown }[] = [];
+    let callback: (held: unknown) => void = () => {};
+    vi.stubGlobal(
+      'FinalizationRegistry',
+      class {
+        constructor(cleanup: (held: unknown) => void) {
+          callback = cleanup;
+        }
+        register(target: object, held: unknown): void {
+          finalizers.push({ target, held });
+        }
+      },
+    );
+    vi.resetModules();
+    const fresh = await import('./canvas-element');
+    const freshBridge = await import('./webgl-bridge');
+    freshBridge.setWebGLBridgeForTesting(bridge);
+
+    const canvas = new fresh.LynxCanvasElement({} as ElementRef);
+    canvas.getContext('webgl2');
+    expect(finalizers).toHaveLength(1);
+    expect(finalizers[0]!.target).toBe(canvas);
+    expect(bridge.destroy).not.toHaveBeenCalled();
+
+    callback(finalizers[0]!.held);
+    expect(bridge.destroy).toHaveBeenCalledOnce();
+    freshBridge.setWebGLBridgeForTesting(undefined);
+  });
+
+  it('still makes a context where the engine has no FinalizationRegistry', async () => {
+    vi.stubGlobal('FinalizationRegistry', undefined);
+    vi.resetModules();
+    const fresh = await import('./canvas-element');
+    const freshBridge = await import('./webgl-bridge');
+    freshBridge.setWebGLBridgeForTesting(bridge);
+
+    const canvas = new fresh.LynxCanvasElement({} as ElementRef);
+    expect(canvas.getContext('webgl2')).not.toBeNull();
+    freshBridge.setWebGLBridgeForTesting(undefined);
+  });
+
   it('fires the context’s events to its listeners', () => {
     const canvas = new LynxCanvasElement({} as ElementRef);
     expect(canvas.dispatchContextEvent('webglcontextlost')).toBe(true);

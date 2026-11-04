@@ -20,6 +20,23 @@ const CONTEXT_EVENTS: ReadonlySet<string> = new Set([
   'webglcontextcreationerror',
 ]);
 
+/**
+ * Frees a context's GL side when its canvas is garbage-collected, as a
+ * browser frees a canvas's context with it. Angular destroying a canvas frees
+ * its context at once (see releaseContext), but only for a canvas at the top
+ * of the view it destroys: Angular says nothing of the elements under those.
+ * Nor can the runtime free a canvas's context when the view it's shown in
+ * goes, since content another view projected into it may be shown again
+ * (see LynxElement.markDestroyed). Once nothing can reach the canvas, the
+ * context can go. The held value names the context by id, never the canvas,
+ * which would keep it alive; the shells' `destroy` ignores an id they've
+ * freed already. Null where the engine has no FinalizationRegistry.
+ */
+const contextFinalizer: FinalizationRegistry<() => void> | null =
+  typeof FinalizationRegistry === 'function'
+    ? new FinalizationRegistry((free) => free())
+    : null;
+
 type ContextListener = (event: {
   type: string;
   preventDefault(): void;
@@ -204,6 +221,7 @@ export class LynxCanvasElement extends LynxElement {
       this,
       resolved,
     );
+    contextFinalizer?.register(this, () => bridge.destroy(contextId));
     return this.#context;
   }
 

@@ -395,7 +395,67 @@ Static template content survives because its wrappers are adopted canonically at
 
 ### The fix
 
-A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and `LynxRenderer.destroyNode` (now non-null) drops the entry when Angular tears the element down. Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a _fresh_ embedded view).
+A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and an element Angular destroys leaves the registry with everything under it (see the next section). Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a _fresh_ embedded view).
+
+---
+
+## A destroyed view's elements stay alive unless the renderer releases every one of them, and Angular names only the top-level ones
+
+Every screen left behind kept its native UI: in an app switching between two screens, each round left about 90 elements and 68 `LynxUIView`s alive on the iOS Simulator (`heap <pid>`), and a screen with a `<canvas>` cost 20 to 25 MB a visit (issue #237).
+
+### What you'd expect (web)
+
+When Angular destroys a view, its DOM nodes become garbage once nothing references them. Angular's DOM renderer doesn't even implement `destroyNode`.
+
+### What Lynx does
+
+The runtime keeps a registry from native id to `LynxElement` (see the section above), and a registered wrapper keeps its native element, and so its UI, alive. Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
+
+### The fix
+
+`LynxRenderer.destroyNode` calls `LynxElement.markDestroyed()`. When the element's removal commits (`processPendingRemovals`, at the end of the cycle), it releases its whole subtree, `#children` and a `<list>`'s items alike: each element leaves the registry, its native event handlers come off its native element (they hold the wrapper), and it's marked painting-dead. Waiting for the commit sees the tree as the cycle leaves it, so an element handed back out of the subtree in the meantime (CDK's `DomPortal` does it on destroy) stays registered, and an element still in the tree (a leave animation holding Angular's removal back) is released when its removal commits.
+
+A destroyed view's subtree can hold content that a surviving view projected into it (a component's `@if (open) { <view><ng-content /></view> }`, or a `@boundary` that failed). Releasing it is safe: shown again, a painting-dead element is rebuilt and registered again, with its handlers (recreate-on-remount). A detached view (route reuse, `ViewContainerRef.detach()`) isn't destroyed, so it stays registered until Angular destroys it.
+
+A `<canvas>`'s GL context is the one thing that can't be rebuilt, so it isn't freed with the subtree: a canvas at the top of a destroyed view frees it at once, and any other canvas's goes when the canvas is garbage-collected (a `FinalizationRegistry`, which the main thread has), as a browser frees a canvas's context.
+
+This alone changed nothing on device, because of the next section. Covered by `packages/runtime/src/lib/renderer/teardown.test.ts` ("releasing a destroyed view").
+
+---
+
+## PrimJS never collects objects in a cycle through `#private` fields when a native element is in the cycle
+
+### What you'd expect (web)
+
+A JavaScript engine collects a cycle of objects that nothing else reaches, whatever the objects hold.
+
+### What Lynx does
+
+The main thread compiles to ES2019, so SWC lowers a class's `#private` fields to one `WeakMap` per field, keyed by the instance. PrimJS keeps any object that's in a cycle through those WeakMaps while something in the cycle holds a native element (an `ElementRef` from `__CreateView` and friends). Measured on the iOS Simulator (Lynx 4.1), each case created on the main thread, dropped, then checked with a `WeakRef` after allocating enough to make PrimJS collect:
+
+| Case                                                                                                                    | Collected? |
+| ----------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Two objects pointing at each other through `#private` fields, each holding a native element in another `#private` field | **No**     |
+| The same, with one native element appended to the other                                                                 | **No**     |
+| An object whose `#private` field points at itself, holding a native element                                             | **No**     |
+| A `#private`-field object and a plain object holding a native element, pointing at each other                           | **No**     |
+| The two-object cycle through ordinary properties, each holding a native element                                         | Yes        |
+| The two-object cycle through `#private` fields, with no native element                                                  | Yes        |
+| A `#private` field holding a native element, no cycle                                                                   | Yes        |
+| Plain `WeakMap`s whose values lead back to their keys, no native element                                                | Yes        |
+
+Every `LynxElement` is in such a cycle with its parent (`#children` and `#jsParent`), so no element was ever freed, nor the native element and UI it holds: with the registry fixed, the screens' wrappers were out of the registry and still never collected.
+
+`WeakRef` can't target a native element (`TypeError: WeakRef target must be an object`), so a test has to watch an object holding one.
+
+### The fix
+
+The build compiles the app's own code and AngularLynx's packages with SWC's `privateFieldsAsProperties` assumption (`packages/rsbuild-plugin-angular-lynx/src/layers.ts`), on both threads: a `#private` field becomes a non-enumerable property with a generated key, which PrimJS collects. Other packages keep the standard compile. With both fixes, the probe app's counts stopped climbing: 137 `LynxUIView`s after 20, 40 and 60 rounds, where they had grown 1395, 2755, 4115.
+
+Two things change for the code compiled this way:
+
+- **`#field in object` throws.** SWC's properties mode compiles it to a call on the field's key, a string (`_field.has(object)`). Check with `instanceof`, or a public property, instead. (Other packages keep the standard compile so this can't break them.)
+- **A private field is an own property**, non-enumerable, named `__private_<n>_<name>`: `Object.getOwnPropertyNames()` lists it, `Object.keys()`, `JSON.stringify()` and spreading don't.
 
 ---
 
@@ -4887,7 +4947,7 @@ Things that caught the copy out:
 
 - **Every Lynx for Web element has `border-style: solid`** with `0px` widths. `0px` matches a plain div's default (because a plain div has `border-style: none`), so a copier that only inlines non-default values leaves it out, and the copy draws 3px (`medium`) black borders. Border and outline widths are always inlined.
 - **The main thread runs in an iframe's realm** while its elements belong to the page, so `instanceof HTMLSlotElement` and the like are always false. The code checks `nodeType`/`localName`, and goes through `element.ownerDocument.defaultView` for every DOM API, so its observers, frames and images all belong to the page.
-- **`if (__WEB__)` around a call doesn't remove the code it calls.** A static import of the glass code stayed in the native bundle (32 kB) after the branch was dropped: on the ES2019 main thread, classes with `#private` fields compile to `(x = new WeakMap(), class {…})` sequences, which the minifier can't prove free of side effects. A dynamic `import()` inside the branch works, because the bundler never follows an import in a dead branch.
+- **`if (__WEB__)` around a call doesn't remove the code it calls.** A static import of the glass code stayed in the native bundle (32 kB) after the branch was dropped: on the ES2019 main thread, classes with `#private` fields compile to `(x = …, class {…})` sequences, which the minifier can't prove free of side effects. A dynamic `import()` inside the branch works, because the bundler never follows an import in a dead branch.
 - **GLSL ES 1.0 only lets a loop counter index a uniform array.** Indexing one with a function parameter fails to compile in WebGL 1, so the per-shape distance is written out in each loop.
 - **The page's own stylesheet isn't in the image.** The copy leaves out every property that matches a plain div, and the plain div was probed in the page, where the docs site makes every element `border-box`. In the image, which has only the browser's styles, a padded card was then `content-box`, grew by its padding, and pushed what's in it down: a dimming layer under clear glass showed as a half disc low in the circle. The div is now probed in a shadow root of its own, reset with `all: initial`.
 - **Safari ignores an SVG viewBox for a `<foreignObject>`'s content** in an image: it draws the HTML from the root's corner at one pixel per CSS pixel. A viewBox cropped the copy to the region and scaled it to the image in Chromium only, so in Safari glass refracted what's up and to the left of it, and drew the image's unfilled part as a dark band. The copy is now moved and scaled with a CSS transform instead, in an SVG the size of the image.

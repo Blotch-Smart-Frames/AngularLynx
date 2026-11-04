@@ -1,8 +1,12 @@
 // cspell:words ɵɵdefine ɵcmp
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript';
-import type { ModuleStylesheets } from './transform-module.js';
+import {
+  importStylesheets,
+  type ModuleStylesheets,
+} from './transform-module.js';
 import { generateComponentScopeId } from './utils/angular/component-scope-id.js';
 
 /**
@@ -17,6 +21,22 @@ export type ExtractedComponentStyles = {
   scopeId: string | undefined;
   /** The stylesheets, ready to be written as CSS files. */
   stylesheets: string[];
+};
+
+export type ExtractComponentStylesOptions = {
+  /**
+   * Sets each Emulated component's `ɵcmp.id` inside its definition, rather
+   * than leaving it to the loader (buildTransformedCode in
+   * transform-module.ts), which assigns it after the class.
+   *
+   * For a library's modules. The loader's assignment is a module-level
+   * statement that uses the class, so the bundler could no longer drop the
+   * library's components the app doesn't use, along with everything they
+   * import. Inside the definition, the ID is set in the class's own
+   * initializer: Angular's build wraps a library's classes in pure IIFEs,
+   * and the call that sets it is marked pure too.
+   */
+  inlineScopeIds?: boolean;
 };
 
 export type ExtractComponentStylesResult = {
@@ -88,10 +108,17 @@ const isDefineComponentCall = (node: ts.Node): node is ts.CallExpression => {
  *
  * Only `styles` arrays made of string literals are taken, which is what the
  * compiler emits. Anything else is left in place.
+ *
+ * The app's components come here from its own Angular compilation. A
+ * library's come already compiled, and reach it after Angular's linker has
+ * turned their `ɵɵngDeclareComponent` (partial compilation, which ng-packagr
+ * uses) into the same `ɵɵdefineComponent` the app's compile emits; a library
+ * compiled in full has that already.
  */
 export const extractComponentStyles = (
   code: string,
   fileName: string,
+  options: ExtractComponentStylesOptions = {},
 ): ExtractComponentStylesResult => {
   if (!code.includes('ɵɵdefineComponent')) {
     return { code, components: [] };
@@ -105,7 +132,7 @@ export const extractComponentStyles = (
     ts.ScriptKind.JS,
   );
   const components: ExtractedComponentStyles[] = [];
-  const removals: Array<{ start: number; end: number }> = [];
+  const edits: Array<{ start: number; end: number; text: string }> = [];
 
   const visit = (node: ts.Node): void => {
     if (isDefineComponentCall(node)) {
@@ -146,14 +173,32 @@ export const extractComponentStyles = (
           // next one, so the definition stays valid.
           const index = properties.indexOf(styles);
           const next = properties[index + 1];
-          removals.push({
+          edits.push({
             start: styles.getStart(sourceFile),
             end: next
               ? next.getStart(sourceFile)
               : properties.hasTrailingComma
                 ? properties.end
                 : styles.end,
+            text: '',
           });
+          if (scopeId && options.inlineScopeIds) {
+            // ɵɵdefineComponent takes no ID: it works one out from the
+            // definition. So the definition it returns gets the ID the CSS
+            // was scoped with, as the loader's assignment would. The compiler
+            // marks the call pure (`/*@__PURE__*/ i0.ɵɵdefineComponent(…)`).
+            // Its comment now marks the wrapping call, so the inner call is
+            // marked again.
+            const start = node.getStart(sourceFile);
+            edits.push(
+              {
+                start,
+                end: start,
+                text: `/*@__PURE__*/ ((def) => (def.id = ${JSON.stringify(scopeId)}, def))(/*@__PURE__*/ `,
+              },
+              { start: node.end, end: node.end, text: ')' },
+            );
+          }
         }
       }
     }
@@ -161,9 +206,12 @@ export const extractComponentStyles = (
   };
   visit(sourceFile);
 
+  // Applied from the end, so each edit's offsets still hold. No two edits
+  // start at the same offset: a wrapper opens before its call's `styles` and
+  // closes after them.
   let result = code;
-  for (const { start, end } of removals.sort((a, b) => b.start - a.start)) {
-    result = result.slice(0, start) + result.slice(end);
+  for (const { start, end, text } of edits.sort((a, b) => b.start - a.start)) {
+    result = result.slice(0, start) + text + result.slice(end);
   }
   return { code: result, components };
 };
@@ -176,6 +224,15 @@ export const extractComponentStyles = (
  * reported through `onWritten`: on a watch rebuild the files change after
  * rspack's watcher collected the edit, so the plugin reports them to rspack as
  * changed, or the new CSS would only ship on the following rebuild.
+ *
+ * With `nameByContent`, each file is named after its content instead, and
+ * written once. That's for a library's modules, which the loader compiles
+ * while rspack is building, so the plugin can't report a rewrite in time:
+ * when a workspace library is rebuilt into its `dist` during `ng serve`,
+ * changed CSS gets a new file, which rspack has to read, rather than an old
+ * one rspack has already compiled. The loader also runs for each thread and
+ * environment at once, so the file is written under a temporary name and
+ * renamed, and no build reads it half-written.
  */
 export const writeModuleStylesheets = (params: {
   basePath: string;
@@ -183,8 +240,10 @@ export const writeModuleStylesheets = (params: {
   fileName: string;
   components: readonly ExtractedComponentStyles[];
   onWritten?: (filePath: string) => void;
+  nameByContent?: boolean;
 }): ModuleStylesheets | undefined => {
-  const { basePath, cacheDir, fileName, components, onWritten } = params;
+  const { basePath, cacheDir, fileName, components, onWritten, nameByContent } =
+    params;
   if (components.length === 0) return undefined;
 
   const prefix = path
@@ -195,6 +254,23 @@ export const writeModuleStylesheets = (params: {
   const scopes: ModuleStylesheets['scopes'] = [];
   for (const { className, scopeId, stylesheets } of components) {
     stylesheets.forEach((css, index) => {
+      if (nameByContent) {
+        const hash = createHash('sha256')
+          .update(css)
+          .digest('hex')
+          .slice(0, 10);
+        const filePath = path.join(
+          cacheDir,
+          `${prefix}.${className}.${index}.${hash}.css`,
+        );
+        if (!fs.existsSync(filePath)) {
+          const temporary = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+          fs.writeFileSync(temporary, css);
+          fs.renameSync(temporary, filePath);
+        }
+        imports.push(filePath);
+        return;
+      }
       const filePath = path.join(
         cacheDir,
         `${prefix}.${className}.${index}.css`,
@@ -212,4 +288,37 @@ export const writeModuleStylesheets = (params: {
     if (scopeId) scopes.push({ className, scopeId });
   }
   return { imports, scopes };
+};
+
+/**
+ * Ships the styles of the components a library module defines, which arrive
+ * already compiled: the module's code after Angular's linker, with each
+ * component's styles out of its definition and an import of their CSS files
+ * in their place.
+ *
+ * The app's components go through compileAngular() in angular.ts, which
+ * extracts their styles as Angular emits them. A library doesn't go through
+ * that compilation, so before this its styles stayed strings in its
+ * JavaScript and never reached Lynx: its `:host`, class and type selector
+ * rules all matched nothing. This uses the same extraction and the same cache
+ * directory, so the CSS is scoped the same way, and goes through the same
+ * PostCSS (type selectors, Tailwind) as the app's.
+ */
+export const shipLibraryComponentStyles = (
+  code: string,
+  fileName: string,
+  options: { basePath: string; cacheDir: string },
+): string => {
+  const extracted = extractComponentStyles(code, fileName, {
+    inlineScopeIds: true,
+  });
+  const stylesheets = writeModuleStylesheets({
+    ...options,
+    fileName,
+    components: extracted.components,
+    nameByContent: true,
+  });
+  return stylesheets
+    ? importStylesheets(extracted.code, fileName, stylesheets.imports)
+    : code;
 };

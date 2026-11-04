@@ -1,5 +1,6 @@
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -144,6 +145,8 @@ export const scaffoldApp = async (
   // replaces the generated hello component, and a lazy route proves chunk
   // loading. Done after the tests, which expect hello's generated template.
   applyFixtures(appDir, options.tailwind && (options.tailwindVersion ?? '4'));
+  step('Layer 2: compile a prebuilt library');
+  await addPrebuiltLibrary(appDir, pm, exec);
 
   if (!options.buildOnly) {
     await extractMessages(appDir, exec, pm);
@@ -966,6 +969,50 @@ const addUiTheme = (appDir: string, tailwind: '3' | '4') => {
 
   // @import has to come before Tailwind's directives.
   writeFileSync(stylesPath, `@import './styles/default.css';\n${styles}`);
+};
+
+/**
+ * Where the prebuilt library fixture's sources go in the app, as
+ * `ng generate library` puts a workspace library's.
+ */
+const PREBUILT_LIBRARY_DIR = 'projects/e2e-prebuilt-library';
+
+/**
+ * Compiles the prebuilt library fixture (fixtures/prebuilt-library), which
+ * canvas.ts uses, and points the app's `paths` at its `dist`, as the Angular
+ * CLI does for a workspace library. It's compiled the way ng-packagr compiles
+ * one, with the app's own `ngc`, so the app's build gets its components the
+ * way it gets a package's from npm: already compiled, for Angular's linker
+ * (issue #240).
+ */
+const addPrebuiltLibrary = async (
+  appDir: string,
+  pm: ReturnType<typeof packageManagerCommands>,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+) => {
+  const libraryDir = path.join(appDir, PREBUILT_LIBRARY_DIR);
+  cpSync(path.join(FIXTURES_DIR, 'prebuilt-library'), libraryDir, {
+    recursive: true,
+  });
+  await exec(
+    ...pm.exec('ngc', ['-p', `${PREBUILT_LIBRARY_DIR}/tsconfig.json`]),
+  );
+  copyFileSync(
+    path.join(libraryDir, 'package.json'),
+    path.join(libraryDir, 'dist', 'package.json'),
+  );
+
+  const tsconfigPath = path.join(appDir, 'tsconfig.json');
+  const tsconfig = readFileSync(tsconfigPath, 'utf8');
+  const withPaths = tsconfig.replace(
+    '"compilerOptions": {',
+    `"compilerOptions": {\n    "paths": { "e2e-prebuilt-library": ["./${PREBUILT_LIBRARY_DIR}/dist"] },`,
+  );
+  check(
+    withPaths !== tsconfig,
+    "Couldn't add the prebuilt library to tsconfig.json's paths; the tsconfig ng new generates has changed shape. Update addPrebuiltLibrary() in packages/e2e/src/scaffold.ts.",
+  );
+  writeFileSync(tsconfigPath, withPaths);
 };
 
 /**

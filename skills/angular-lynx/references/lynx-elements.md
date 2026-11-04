@@ -132,17 +132,19 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 <input
   placeholder="Enter your name"
   type="text"
-  (bindinput)="onInput($any($event))"
+  (bindinput)="onInput($event)"
 />
 
 <textarea
   placeholder="Enter description"
-  (bindinput)="onInput($any($event))"
+  (bindinput)="onInput($event)"
 ></textarea>
 ```
 
 ```typescript
-onInput(event: { detail: { value: string } }) {
-  this.inputValue.set(event.detail.value);
+import { type InputDetail, type LynxEvent } from '@blotch/angular-lynx';
+
+onInput({ detail }: LynxEvent<InputDetail>) {
+  this.inputValue.set(detail.value);
 }
 ```

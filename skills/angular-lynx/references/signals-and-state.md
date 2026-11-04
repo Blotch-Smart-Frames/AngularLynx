@@ -87,8 +87,8 @@ Use Angular's built-in control flow with signals:
 
 ```typescript
 // Handlers set signals directly, whether the change is text or structure
-onInput(event: { detail: { value: string } }) {
-  this.inputValue.set(event.detail.value);
+onInput({ detail }: LynxEvent<InputDetail>) {
+  this.inputValue.set(detail.value);
 }
 
 // An @if that adds or removes elements is fine too: no setTimeout needed

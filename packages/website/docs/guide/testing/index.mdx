@@ -123,6 +123,7 @@ it('favorites the item', async () => {
 
 - **`container`:** the root `<page>` element that holds everything rendered.
 - **`componentRef`:** the component's `ComponentRef`, for reading its instance or its injector.
+- **`rerender({ inputs })`:** changes the inputs `render(Component, { inputs })` set, keeping the component. See [Set inputs](./patterns#set-inputs).
 - **`rerender(Component, options?)`:** renders another component in its place.
 - **`asFragment()`:** a copy of the tree, for snapshot tests.
 - **`unmount()`:** destroys the app. The library also cleans up after every test by itself.

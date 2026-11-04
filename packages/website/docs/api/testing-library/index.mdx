@@ -60,17 +60,29 @@ Add the library with [`ng generate @blotch/angular-lynx:add-testing`](/api/schem
 ### `render(component, options?)`
 
 ```typescript
-function render<Q extends Queries = typeof queries>(
-  component: Type<unknown>,
-  options?: RenderOptions<Q>,
-): Promise<RenderResult<Q>>;
+function render<Q extends Queries = typeof queries, C = unknown>(
+  component: Type<C>,
+  options?: RenderOptions<Q, C>,
+): Promise<RenderResult<Q, C>>;
 ```
 
 Bootstraps `component` as a Lynx app, renders it into the test's DOM, and resolves once the first render is done.
 
+```typescript
+const { getByText, rerender } = await render(Greeting, {
+  inputs: { name: 'Lynx' },
+});
+expect(getByText('Hello, Lynx')).toBeTruthy();
+
+await rerender({ inputs: { name: 'Angular' } });
+expect(getByText('Hello, Angular')).toBeTruthy();
+```
+
 - It first destroys the app a previous `render()` left, and clears `document.body`.
 - The app gets `provideZonelessChangeDetection()`, `provideRenderer()` and your `options.providers`.
+- **`options.inputs`** are set before the first change detection, as a parent template binds them. A required input has its value when the template first reads it, and `ngOnInit` sees them all.
 - Elements render under a `<page>` element, the result's `container`.
+- It rejects a name that isn't one of the component's inputs, and lists the ones it has.
 
 ### `cleanup()`
 
@@ -181,29 +193,48 @@ Every query, unbound, each taking the container first: Testing Library's, with `
 ### `RenderOptions`
 
 ```typescript
-type RenderOptions<Q extends Queries = typeof queries> = {
+type RenderOptions<Q extends Queries = typeof queries, C = unknown> = {
   providers?: (Provider | EnvironmentProviders)[];
   queries?: Q;
+  inputs?: RenderInputs<C>;
 };
 ```
 
-| Property    | Description                                                                        |
-| ----------- | ---------------------------------------------------------------------------------- |
-| `providers` | Extra providers for the test app, such as `provideRouter(routes)`                  |
-| `queries`   | Custom queries to bind to `container`, next to the library's [`queries`](#queries) |
+| Property    | Description                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `providers` | Extra providers for the test app, such as `provideRouter(routes)`                                       |
+| `queries`   | Custom queries to bind to `container`, next to the library's [`queries`](#queries)                      |
+| `inputs`    | Values for the component's inputs, keyed by the name a template binds. An aliased input takes its alias |
+
+### `RenderInputs`
+
+```typescript
+type RenderInputs<C = unknown> = {
+  [K in keyof C]?: InputValue<C[K]>;
+} & Record<string, unknown>;
+```
+
+Each of the component's properties takes the value its input does. For `readonly count = input(0)`, `inputs: { count: 'three' }` doesn't compile. Other names are allowed too, such as `class` for `input('', { alias: 'class' })`. `render()` checks every name when the test runs.
 
 ### `RenderResult`
 
 | Property       | Type                                             | Description                                                                       |
 | -------------- | ------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `container`    | `Element`                                        | The `<page>` element that holds everything rendered                               |
-| `componentRef` | `ComponentRef<unknown>`                          | The root component. Use `componentRef.injector.get(Token)` to reach a service     |
+| `componentRef` | `ComponentRef<C>`                                | The root component. Use `componentRef.injector.get(Token)` to reach a service     |
 | `unmount`      | `() => void`                                     | Destroys the app, like `cleanup()`                                                |
+| `rerender`     | `({ inputs }) => Promise<RenderResult>`          | Changes inputs `render()` set, keeping the component. See below                   |
 | `rerender`     | `(component, options?) => Promise<RenderResult>` | Renders another component in its place                                            |
 | `asFragment`   | `() => DocumentFragment`                         | A copy of `container`, for snapshot tests                                         |
 | `getByText`, … | Query functions                                  | Every query in [`queries`](#queries), bound to `container`, plus your custom ones |
 
-`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, it can't see signal inputs. Set a writable signal on `componentRef.instance` instead.
+**`rerender({ inputs })`** sets the inputs you pass, runs change detection, and resolves when the tree shows them. The component keeps its state.
+
+- **Inputs you leave out keep their values.** Angular has no way to put an input back to its initial value.
+- **It only changes inputs `render()` set.** Angular sets those through input bindings, and a component with input bindings takes no other inputs. To change an input later, give `render()` its starting value.
+- **`componentRef.setInput()` fails after `render()` sets inputs**, for the same reason (NG0317). Use `rerender({ inputs })`.
+
+**Plain Vitest can't set signal inputs.** `ng test` compiles components ahead of time, so `inputs`, `rerender({ inputs })` and `componentRef.setInput()` all reach `input()` and `model()`. Plain Vitest compiles components at runtime, where Angular sees only `@Input()` and `inputs` metadata. Set a writable signal on `componentRef.instance` there instead.
 
 ### Query types
 

@@ -57,13 +57,22 @@ Each method takes the element and an optional `init` object. It runs the element
 | `fireEvent.focus`   | `(bindfocus)`   |
 | `fireEvent.blur`    | `(bindblur)`    |
 
-## Layout and images
+## Layout and loading
 
 | Method                   | Binding              |
 | ------------------------ | -------------------- |
 | `fireEvent.layoutchange` | `(bindlayoutchange)` |
+| `fireEvent.load`         | `(bindload)`         |
+| `fireEvent.error`        | `(binderror)`        |
 | `fireEvent.bgload`       | `(bindbgload)`       |
 | `fireEvent.bgerror`      | `(bindbgerror)`      |
+
+An `<image>`, `<svg>`, `<frame>` or `<webview>` fires `load` once its content arrives, and an `<image>`, `<video>`, `<webview>` or `<overlay>` fires `error` when it fails. Pass what the element would report as `detail`, such as an image's size:
+
+```typescript
+fireEvent.load(image, { detail: { width: 240, height: 340 } });
+await waitForUpdate();
+```
 
 ## Animations and transitions
 
@@ -80,6 +89,17 @@ For an event without a method, create it yourself. Its type is the binding's eve
 
 ```typescript
 fireEvent(element, new Event('bindEvent:change')); // runs (bindchange)
+```
+
+A `CustomEvent`'s `detail` reaches the handler as `$event.detail`. A `<viewpager>` that moved to its third page:
+
+```typescript
+fireEvent(
+  pager,
+  new CustomEvent('bindEvent:change', {
+    detail: { index: 2, isDragged: true },
+  }),
+);
 ```
 
 ## Related

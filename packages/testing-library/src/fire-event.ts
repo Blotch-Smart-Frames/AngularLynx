@@ -68,8 +68,13 @@ export const eventMap = {
   blur: { defaultInit: {} },
   input: { defaultInit: {} },
   confirm: { defaultInit: {} },
-  // Layout / image
+  // Layout / loading. `load` is an <image>, <svg>, <frame> or <webview>
+  // reporting its content arrived, and `error` an <image>, <video>,
+  // <webview> or <overlay> reporting it didn't. A device sends both to the
+  // element alone, with what happened in `detail` (an image's size, say).
   layoutchange: { defaultInit: {} },
+  load: { defaultInit: {} },
+  error: { defaultInit: {} },
   bgload: { defaultInit: {} },
   bgerror: { defaultInit: {} },
   // Transition / animation
@@ -193,8 +198,27 @@ const deliver = (
   return notCanceled;
 };
 
+/**
+ * Makes the `detail` an event inherits, as a CustomEvent's is a getter on its
+ * prototype, a property of the event itself. The testing environment hands a
+ * handler `Object.assign({}, event)`, which copies only own properties, so a
+ * `new CustomEvent('bindEvent:load', { detail })` would otherwise run the
+ * handler with no `detail` at all. A named helper's init is already copied
+ * onto its event (see createLynxEvent).
+ */
+const keepDetail = (event: Event): Event => {
+  if ('detail' in event && !Object.hasOwn(event, 'detail')) {
+    Object.defineProperty(event, 'detail', {
+      value: (event as CustomEvent).detail,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  return event;
+};
+
 export const fireEvent: FireEvent = ((elem: Element, event: Event) => {
-  return domFireEvent(elem, event);
+  return domFireEvent(elem, keepDetail(event));
 }) as FireEvent;
 
 for (const key of Object.keys(eventMap) as EventName[]) {

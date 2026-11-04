@@ -5901,3 +5901,31 @@ Lynx for Web has no Lynx video element (there's no `x-video` in `@lynx-js/web-el
 ### The fix
 
 On web, `LynxElement` fills in the two details from the HTMLVideoElement before running the listeners (`packages/runtime/src/lib/lynx-element/web-video.ts`): `currentTime` and `duration` (0 until the metadata loads, where the browser has `NaN`), and `MediaError`'s `code` and `message`. `binderror` is typed `LynxEvent<VideoErrorDetail>`, with no `| undefined`. The web preview still has only what Lynx lists for it: `bindfirstframe`, `bindpaused` and `bindstopped` don't fire there, and `stop`/`seek` aren't methods of an HTMLVideoElement.
+
+---
+
+## The main thread has no `IntersectionObserver`: AngularLynx's comes from exposure, and reports only when an element starts or stops being visible
+
+### What you'd expect (web)
+
+`new IntersectionObserver(callback, { root, rootMargin, threshold }).observe(element)` reports the element once when observing starts, in view or not, then each time the share of it inside the root (the viewport, grown by `rootMargin`) crosses a threshold. It's purely geometric: a transparent element in the viewport is intersecting.
+
+### What Lynx does
+
+The main thread, where Angular runs, has no `IntersectionObserver`, so browser code that creates one throws `ReferenceError` (issue #226: a 3D frame built on angular-three, which stops drawing while scrolled out of view). Lynx's own `lynx.createIntersectionObserver()` is a background-thread API that finds elements by selector, so it can't take `ElementRef.nativeElement`.
+
+What the main thread does have is exposure: an element listening for `uiappear` or `uidisappear` gets one when it comes into view and one when it leaves. Native checks about 20 times a second (`LynxUIExposure.m`, `UIExposure.java`). It checks against every scroll container around the element (the UIs whose `isScrollContainer` is true: `scroll-view`, `list`, `viewpager`, `scroll-coordinator`), the LynxView and the screen. An element with no size, or one hidden or with opacity below 0.01, isn't visible. An element that starts out of view gets no event at all. `exposure-area` takes one ratio per element, not a list of thresholds per observer, and the events carry no boxes.
+
+### The fix
+
+The runtime installs `IntersectionObserver` on the main thread (`packages/runtime/src/lib/lynx-element/intersection-observer.ts`). It listens for the two events and, when one comes, measures the element, the page and the scroll containers around it with the `boundingClientRect` UI method, to fill in `boundingClientRect`, `intersectionRect`, `intersectionRatio` and `rootBounds`. For the first entry, it measures the same boxes once the element has been laid out and works out from them whether the element is in view, unless an exposure event has come by then. The web preview keeps the browser's own, wrapped to take Lynx elements (as a target and as the root).
+
+What's still different on a device:
+
+- It reports only when an element starts or stops being visible: threshold 0 on the viewport. `root`, `rootMargin` and `threshold` are normalized and kept as browsers keep them, but don't change what's reported, and the first observer given them logs a warning.
+- An entry's boxes are measured after Lynx notices the change, up to a twentieth of a second after it happened, so an element scrolling into view reports a small `intersectionRatio`.
+- Exposure's visibility rules apply after the first entry, so a fully transparent element is reported out of view.
+
+Checked on the iOS Simulator and the Android emulator (Lynx Explorer 4.1), and in the web preview, with a scroll-view of 300px cards. The first entries were right: the card cut off by the scroll-view's bottom reported 0.92 on all three, and the cards below it reported out of view. Cards scrolling in and out were reported as they crossed the edge, and so was a card that observed from `afterNextRender()`.
+
+Angular runs `afterNextRender()` callbacks after the renderer's `end()` has flushed, and an event handler reaches native only with a flush. So an observer started there, with nothing else changing afterwards, would never hear its element's events. `LynxElement` now schedules the settle flush whenever it adds or removes a native handler outside change detection. The device check doesn't show this case on its own: native flushes after the first render anyway, and the other cards' updates flushed too.

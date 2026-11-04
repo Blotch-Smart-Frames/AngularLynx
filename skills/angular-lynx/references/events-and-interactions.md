@@ -27,6 +27,8 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 | Confirm         | `bindconfirm`              | Keyboard action button pressed (on `input`)                              |
 | Layout change   | `bindlayoutchange`         | Element laid out or resized (`detail.width`, `detail.height`)            |
 | Keyboard height | `bindkeyboardheightchange` | Keyboard shows, resizes or hides, on a focused `input` (`detail.height`) |
+| Comes into view | `binduiappear`             | Element comes into view (see [Coming into view](#coming-into-view))      |
+| Leaves view     | `binduidisappear`          | Element leaves view                                                      |
 
 ## `(click)` and several handlers per element
 
@@ -95,6 +97,29 @@ export class Card {
 - **State from code:** `fail()` and `end()` on the state manager work. `activate()` does nothing on any platform.
 - **Lynx reads few options:** a tap's `maxDuration` and `maxDistance`, a long press's `minDuration` and `maxDistance`, and a pan's `minDistance`. `enabled(false)`, `activeOffsetX`, a fling's `direction` and `numberOfTaps` do nothing; to turn a gesture off, bind `[lynxGesture]` to `[]`.
 - **The web preview recognizes gestures too**, by the same rules, from a mouse or a finger.
+
+## Coming into view
+
+Lynx calls an element coming into view _exposure_. Native checks about 20 times a second whether an element is inside every scroll container around it and on screen, has a size, and isn't fully transparent, and fires `uiappear` and `uidisappear` when that changes. An element that starts out of view gets no event.
+
+- **`[lynxExposure]`** (`LynxExposure`, `exportAs: 'lynxExposure'`) gives a template a `visible()` signal for the element. It starts `false`.
+- **`IntersectionObserver`** takes Lynx elements, so browser code and libraries that watch elements work:
+
+```typescript
+constructor() {
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) this.onScreen.set(entry.isIntersecting);
+  });
+  observer.observe(inject(ElementRef).nativeElement);
+  inject(DestroyRef).onDestroy(() => observer.disconnect());
+}
+```
+
+On a device it reports each element once observing starts, after the element's first layout, then each time it comes into view or leaves. Entries have `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured just after Lynx notices the change, so an element scrolling in reports a small `intersectionRatio`. `root`, `rootMargin` and `threshold` don't change what it reports yet: it logs a warning once and reports starting and stopping only. The web preview uses the browser's own observer, where they work.
+
+- **`LynxGlobalExposure`** reports, in batches, the elements with an `exposure-id` that came into view and left, for analytics.
+
+In tests, `fireEvent.uiappear(element)` and `fireEvent.uidisappear(element)` bring an element into view and take it out.
 
 ## Event Payload
 

@@ -15,6 +15,7 @@
 
 import { isMainThread } from './background-call';
 import { installCanvasGlobals } from './canvas/dom-globals';
+import { installIntersectionObserver } from './lynx-element/intersection-observer';
 import { installBase64Globals, installNetworkGlobals } from './network';
 import { installUrl } from './url';
 
@@ -306,4 +307,9 @@ if (
 // The main thread only: Angular, and the scene, run there.
 if (isMainThread()) {
   installCanvasGlobals(globalThis as unknown as Record<string, any>);
+  // Lynx's main thread has no IntersectionObserver either, so code written
+  // for the browser that watches whether an element is on screen threw as it
+  // started (issue #226). Lynx's exposure events say instead
+  // (lynx-element/intersection-observer.ts).
+  installIntersectionObserver(globalThis as unknown as Record<string, any>);
 }

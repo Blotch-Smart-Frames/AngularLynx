@@ -63,6 +63,11 @@ export const eventMap = {
   scrolltoupperedge: { defaultInit: {} },
   scrolltoloweredge: { defaultInit: {} },
   scrolltonormalstate: { defaultInit: {} },
+  // Exposure: an element coming into view, inside its scroll containers and
+  // the screen, and leaving it. What `[lynxExposure]` and the runtime's
+  // IntersectionObserver listen for.
+  uiappear: { defaultInit: {} },
+  uidisappear: { defaultInit: {} },
   // Form / focus
   focus: { defaultInit: {} },
   blur: { defaultInit: {} },

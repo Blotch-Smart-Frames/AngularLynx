@@ -3,7 +3,7 @@ import {
   markFirstRenderComplete,
   setInsideChangeDetection,
 } from '../lynx-render-lifecycle';
-import { scheduleSettleFlush } from './lynx-element';
+import { LynxElement, scheduleSettleFlush } from './lynx-element';
 
 /**
  * scheduleSettleFlush() is the safety-net flush for native content created
@@ -78,5 +78,44 @@ describe('scheduleSettleFlush', () => {
 
     await flushMicrotasks();
     expect((globalThis as any).__FlushElementTree).not.toHaveBeenCalled();
+  });
+
+  it('flushes a listener added or removed outside a CD cycle', async () => {
+    // An IntersectionObserver observing from an afterNextRender() callback,
+    // which Angular runs after end() has flushed: the uiappear handler it
+    // adds would otherwise not reach native until something else changed.
+    vi.stubGlobal('__GetElementUniqueID', () => 1);
+    const addEvent = vi.fn();
+    vi.stubGlobal('__AddEvent', addEvent);
+    const flush = (globalThis as any).__FlushElementTree;
+    const element = new LynxElement({} as never);
+
+    const stop = element.addEventListener('binduiappear', () => {});
+    await flushMicrotasks();
+    expect(addEvent).toHaveBeenCalledOnce();
+    expect(flush).toHaveBeenCalledTimes(1);
+
+    // A second listener shares the native handler: nothing new to flush.
+    const stopSecond = element.addEventListener('binduiappear', () => {});
+    await flushMicrotasks();
+    expect(flush).toHaveBeenCalledTimes(1);
+
+    stopSecond();
+    stop();
+    await flushMicrotasks();
+    expect(addEvent).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'bindEvent',
+      'uiappear',
+      undefined,
+    );
+    expect(flush).toHaveBeenCalledTimes(2);
+
+    // Inside a cycle, end() flushes it.
+    setInsideChangeDetection(true);
+    element.addEventListener('binduiappear', () => {});
+    await flushMicrotasks();
+    expect(flush).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
   });
 });

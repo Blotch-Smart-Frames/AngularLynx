@@ -161,7 +161,7 @@ A `CustomEvent`'s `detail` reaches the handler too: `fireEvent(element, new Cust
 
 **Available named helpers:**
 
-`tap` · `longtap` · `touchstart` · `touchmove` · `touchcancel` · `touchend` · `longpress` · `keydown` · `keyup` · `mousedown` · `mouseup` · `mousemove` · `mouseclick` · `mousedblclick` · `mouselongpress` · `wheel` · `scroll` · `scrollend` · `scrolltoupper` · `scrolltolower` · `contentsizechanged` · `scrolltoupperedge` · `scrolltoloweredge` · `scrolltonormalstate` · `focus` · `blur` · `input` · `confirm` · `layoutchange` · `load` · `error` · `bgload` · `bgerror` · `transitionstart` · `transitionend` · `transitioncancel` · `animationend`
+`tap` · `longtap` · `touchstart` · `touchmove` · `touchcancel` · `touchend` · `longpress` · `keydown` · `keyup` · `mousedown` · `mouseup` · `mousemove` · `mouseclick` · `mousedblclick` · `mouselongpress` · `wheel` · `scroll` · `scrollend` · `scrolltoupper` · `scrolltolower` · `contentsizechanged` · `scrolltoupperedge` · `scrolltoloweredge` · `scrolltonormalstate` · `uiappear` · `uidisappear` · `focus` · `blur` · `input` · `confirm` · `layoutchange` · `load` · `error` · `bgload` · `bgerror` · `transitionstart` · `transitionend` · `transitioncancel` · `animationend`
 
 ### `eventMap`
 

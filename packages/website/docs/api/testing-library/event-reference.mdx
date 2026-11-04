@@ -48,6 +48,20 @@ Each method takes the element and an optional `init` object. It runs the element
 | `fireEvent.scrolltonormalstate` | `(bindscrolltonormalstate)` |
 | `fireEvent.contentsizechanged`  | `(bindcontentsizechanged)`  |
 
+## Coming into view
+
+| Method                  | Binding             |
+| ----------------------- | ------------------- |
+| `fireEvent.uiappear`    | `(binduiappear)`    |
+| `fireEvent.uidisappear` | `(binduidisappear)` |
+
+A device sends `uiappear` when an element comes into view, and `uidisappear` when it leaves. The [`lynxExposure` directive](/guide/exposure) and `IntersectionObserver` listen for them, so firing one is how a test scrolls an element into view:
+
+```typescript
+fireEvent.uiappear(frame);
+await waitForUpdate();
+```
+
 ## Forms and focus
 
 | Method              | Binding         |

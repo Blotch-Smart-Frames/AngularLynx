@@ -48,6 +48,22 @@ export const toDOMRect = (rect: LayoutRect | null): LynxDOMRect => {
   return { ...box, toJSON: () => ({ ...box }) };
 };
 
+/**
+ * Asks native for a native element's box now, relative to the LynxView: the
+ * `boundingClientRect` UI method. It answers later, with null if the element
+ * has no UI to measure (it was never flushed, or it's gone).
+ */
+export const measureLayout = (
+  element: unknown,
+  callback: (rect: LayoutRect | null) => void,
+): void => {
+  __InvokeUIMethod(element as never, 'boundingClientRect', {}, (result) =>
+    callback(
+      result?.code === 0 && result.data ? (result.data as LayoutRect) : null,
+    ),
+  );
+};
+
 /** What the tracker needs from its element. */
 export type LayoutHost = {
   /** Adds a listener for one of the element's Lynx events (`bindlayoutchange`). */

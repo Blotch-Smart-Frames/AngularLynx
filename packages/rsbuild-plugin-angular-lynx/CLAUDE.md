@@ -64,6 +64,8 @@ src/
   client/                              # Hot update clients the dev bundles run (see Hot Updates)
   budgets-plugin.ts                    # Checks angular.json budgets on the lynx environment's bundles and component styles
   file-replacements.ts                 # Swaps angular.json fileReplacements into the bundle (the compiler host swaps them in the program)
+  resolve.ts                           # Resolves imports to a package's ES module build (no `require` condition)
+  strict-esm.ts                        # Builds .mjs and "type": "module" .js files as strict ES modules, which Rsbuild's JS rule overrides
   polyfills.js                         # The first preEntry module: browser globals Angular expects (AbortController, Node, document…)
   es-builtins.js                       # ES2021–ES2026 built-ins the engines lack, imported by polyfills.js; a plain script so tests run it in a vm realm
   css.ts                               # CSS handling

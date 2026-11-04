@@ -92,7 +92,7 @@ A few choices behind the table:
 - **`ViewEncapsulation.Emulated`**, the default: one `EmulatedLynxRenderer` per component, keyed by its `ɵcmp.id`. It adds a `_ngcontent-<id>` class to every element it creates, and a `_nghost-<id>` class to each host element of the component.
 - **`ViewEncapsulation.ShadowDom`**: logs a warning and falls back to `LynxRenderer`.
 
-The browser's emulated renderer adds `_ngcontent-*` and `_nghost-*` attributes, and Angular's compiler scopes the component's selectors with them. Lynx's CSS engine can't match attribute selectors, so the build plugin turns them into class selectors and sets each component's `ɵcmp.id` to the scope ID the CSS was compiled with, made from its class name and file path. Elements keep their scope classes when Angular replaces their whole class list.
+The browser's emulated renderer adds `_ngcontent-*` and `_nghost-*` attributes, and Angular's compiler scopes the component's selectors with them. Lynx's CSS engine can't match attribute selectors, so the build plugin turns them into class selectors and sets each component's `ɵcmp.id` to the scope ID the CSS was compiled with, made from its class name and file path. Elements keep their scope classes when Angular replaces their whole class list. Every renderer also gives an element whose tag isn't a Lynx element (a component's host, or a web tag such as `div`) a `_ngtag-<tag>` class, and the build plugin rewrites type selectors naming such tags to it, so `app-card { … }` matches the `<view>` the host renders as.
 
 ## The flush cycle
 

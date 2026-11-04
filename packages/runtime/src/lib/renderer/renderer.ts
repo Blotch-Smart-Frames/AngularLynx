@@ -4,6 +4,7 @@ import {
   RendererStyleFlags2,
 } from '@angular/core';
 import type { LynxDocumentBase } from '../lynx-document';
+import { tagClassFor } from '../lynx-document/element-tags';
 import type { BaseLynxElement } from '../lynx-element';
 
 /**
@@ -35,6 +36,19 @@ import type { BaseLynxElement } from '../lynx-element';
 const collapseWhitespace = (value: string): string =>
   value.replace(/[ \t\n\r\f\v]+/g, ' ');
 
+/**
+ * Marks an element created for a tag Lynx has no element for (a component's
+ * host, or a web tag such as `div`) with the tag's class. It renders as a
+ * `<view>` (or the element `registerHostElement` names), so a type selector
+ * naming the tag, such as `app-card { height: 100%; }`, would match nothing;
+ * the build plugin rewrites such selectors to the class (see element-tags.ts).
+ * A scope class, so binding `class` doesn't drop it.
+ */
+const markTag = (element: BaseLynxElement, tag: string): void => {
+  const tagClass = tagClassFor(tag);
+  if (tagClass) element.addScopeClass(tagClass);
+};
+
 export class LynxRenderer implements Renderer2 {
   readonly #document: LynxDocumentBase;
   /**
@@ -56,7 +70,9 @@ export class LynxRenderer implements Renderer2 {
     // and holds no other resources that require explicit cleanup.
   }
   createElement(name: string, _namespace?: string | null): BaseLynxElement {
-    return this.#document.createElement(name);
+    const element = this.#document.createElement(name);
+    markTag(element, name);
+    return element;
   }
   createComment(_value: string): BaseLynxElement {
     return this.#document.createComment();

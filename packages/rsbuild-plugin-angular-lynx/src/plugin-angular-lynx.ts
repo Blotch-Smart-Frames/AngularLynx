@@ -10,6 +10,7 @@ import { applyResolve } from './resolve.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyTailwind } from './tailwind.js';
+import { applyTypeSelectors } from './type-selectors.js';
 import {
   deprecatedOptionsIn,
   normalizeOptions,
@@ -38,6 +39,8 @@ export const pluginAngularLynx = (
       });
       applyCSS(api, normalizedOptions);
       applyTailwind(api);
+      // After Tailwind, so it also sees the rules Tailwind writes.
+      applyTypeSelectors(api);
       // The app's entry modules, which entry.ts finds and the Angular
       // transform makes take hot updates (see hot-updates.ts).
       const appEntries = new Set<string>();

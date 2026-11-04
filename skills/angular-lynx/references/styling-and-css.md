@@ -55,6 +55,8 @@ CSS properties do **not** inherit from parent to child (except nested `<text>` i
 
 Component styles are scoped as in Angular on the web. `ViewEncapsulation.Emulated` (the default) applies a component's rules only to its own template, with `:host`, `:host-context()` and `::ng-deep`. Lynx can't match attribute selectors, so elements carry `_ngcontent-<id>` and `_nghost-<id>` classes instead of attributes. `ViewEncapsulation.None` makes rules global. `ViewEncapsulation.ShadowDom` falls back to `None` with a warning. Component stylesheets must be plain CSS.
 
+Type selectors match the tag the template wrote, as on the web: `app-card { height: 100%; }` styles a component's host, and `div { … }` a `<div>`, though both render as a `<view>`. The renderer gives such an element a `_ngtag-<tag>` class, and the build rewrites type selectors naming a tag that isn't a Lynx element to that class, in component and global styles. Selectors naming Lynx elements (`view`, `text`, `page`) are left as they are. A class outranks a type selector, so `app-card { color: red }` ties with `.title { color: blue }` on the same element, and the later rule wins. The root component's host is the page, which `app-root { … }` doesn't match: style it with `page`, or with `:host` in its own styles.
+
 ## Responsive Units
 
 - `rpx` — responsive pixels. `750rpx` = full screen width regardless of device

@@ -364,7 +364,8 @@ jobs:
   # in Explorer alone missed shells without it (#34). Explorer stays because
   # the dev path is just as much what users run, and the second host costs a
   # few minutes in a job that has already booted the device and installed
-  # Maestro. Each host's flows run even if the other's fail.
+  # Maestro. Each host's flows run even if the other's fail. On iOS, a pull
+  # request tests only the app's own binary (see the ios job).
   #
   # The iOS job tests the app build-app made, as the Android job does. The
   # shell has to be built on macOS, so this job builds it from the app's
@@ -373,9 +374,22 @@ jobs:
   # which took 7 to 8 of its 25 to 30 minutes, plus 3 to 4 more restoring
   # Verdaccio and the harness's dependencies for it. The nightly macOS
   # fresh-app job still installs and builds the app on a Mac.
+  #
+  # It starts with the run rather than after build-app, and waits for
+  # build-app's app partway through. The simulator's first boot starves this
+  # runner for about 10 minutes: whatever runs beside it crawls (xcodebuild
+  # took 6 minutes instead of 1.5, and a 300 MB cache restored at 0.5 MB/s),
+  # so the boot is the job's floor, and starting it 4 minutes sooner takes 4
+  # minutes off the run.
   ios:
-    needs: [setup, build-app]
-    if: always() && needs.build-app.result == 'success'
+    needs: setup
+    if: needs.setup.outputs.native == 'true'
+    # To find build-app's job and artifact in this run (see the wait below).
+    # publish.yml grants it too, since a called workflow's jobs get no more
+    # than their caller's.
+    permissions:
+      actions: read
+      contents: read
     # Apple silicon, which the prebuilt Lynx Explorer simulator app targets,
     # with Xcode 27: the shell's toolchain (packages/native/README.md) and the
     # Xcode that built the pinned Lynx frameworks (27.1). They hold only
@@ -432,6 +446,29 @@ jobs:
         timeout-minutes: 10
         run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # needs: can't wait for one job partway through another, so this asks
+      # the API. build-app's job is "build-app", or "<caller> / build-app"
+      # when publish.yml calls this workflow; it's the only one of that name
+      # in a run that tests native, since publish.yml's post-publish check
+      # doesn't. An artifact of the same name from an earlier attempt of this
+      # run is the same commit's app, so a re-run uses it.
+      - name: Wait for build-app's app
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: e2e-app-${{ needs.setup.outputs.registry }}
+        run: |
+          runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          until [ "$(gh api "$runs/artifacts?name=$ARTIFACT" --jq .total_count)" != 0 ]; do
+            conclusion=$(gh api --paginate "$runs/jobs" --jq '.jobs[]
+              | select(.name == "build-app" or (.name | endswith(" / build-app")))
+              | select(.status == "completed") | .conclusion')
+            if [ -n "$conclusion" ] && [ "$conclusion" != success ]; then
+              echo "::error::build-app ended with $conclusion, so there's no app to test."
+              exit 1
+            fi
+            sleep 10
+          done
       # The app without node_modules: angular.json, package-lock.json and
       # dist/ with the bundle the shell embeds and Explorer loads.
       - uses: actions/download-artifact@v8
@@ -466,14 +503,19 @@ jobs:
         with:
           path: ~/.cache/angular-lynx/lynx-ios
           key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
+      # A pull request tests the app's own binary only: it's what users ship,
+      # and Explorer's flows added about 4.5 minutes to the run's slowest job.
+      # The nightly run, a manual one and the release gate test Explorer too.
       - name: 'Layer 6: iOS Simulator'
-        # The flows took 9 to 10 minutes of the 20 to 24 this step took when
-        # it also scaffolded the app.
+        # The shell's flows take about 4 minutes and Explorer's 4.5; the
+        # shell's build up to 6 while the simulator boots.
         timeout-minutes: 30
+        env:
+          EXPLORER: ${{ github.event_name != 'pull_request' && '--explorer' || '' }}
         run: >-
           node packages/e2e/src/native/run-native.ts --platform ios
           --app "$RUNNER_TEMP/app" --native "$RUNNER_TEMP/native/package"
-          --explorer --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
+          $EXPLORER --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

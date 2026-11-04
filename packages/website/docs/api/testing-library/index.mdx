@@ -102,6 +102,7 @@ Fires a Lynx event at `element`, which runs the handlers a device would, such as
 - **`init`**: properties to set on the event. `{ detail: { value: 'hi' } }` arrives as `$event.detail.value`.
 - **`init.bubbles`**: overrides whether the event goes up to the page. `{ bubbles: false }` keeps a tap on `element`.
 - **`init.eventType`**: fires at one kind of handler on `element` alone, such as `'catchEvent'` for its `(catch*)` handler.
+- **`event`**: an event of type `'<eventType>:<name>'`, such as `new Event('bindEvent:change')`, for an event without a method. A `CustomEvent`'s `detail` arrives as `$event.detail`.
 
 **`fireEvent` doesn't render.** The handler runs before `fireEvent` returns, so a spy or a signal you read directly already shows the change. Angular renders the result in a change detection it schedules for after the current task. Await `waitForUpdate()` before checking the rendered output.
 

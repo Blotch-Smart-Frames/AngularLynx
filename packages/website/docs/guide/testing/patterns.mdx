@@ -1,6 +1,39 @@
 # Testing patterns
 
-Recipes for common tests with `@blotch/angular-lynx-testing-library`: signal changes, events, host data, native APIs, error fallbacks and snapshots. Set up the library first, as in [Testing](./).
+Recipes for common tests with `@blotch/angular-lynx-testing-library`: inputs, signal changes, events, host data, native APIs, error fallbacks and snapshots. Set up the library first, as in [Testing](./).
+
+## Set inputs
+
+Pass `inputs` to `render()`, as a parent template would bind them:
+
+```typescript title="src/app/greeting.test.ts"
+import { Component, input } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { render } from '@blotch/angular-lynx-testing-library';
+
+@Component({
+  selector: 'app-greeting',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>Hello, {{ name() }}</text>`,
+})
+class Greeting {
+  readonly name = input.required<string>();
+}
+
+it('greets by name', async () => {
+  const { getByText, rerender } = await render(Greeting, {
+    inputs: { name: 'Lynx' },
+  });
+  expect(getByText('Hello, Lynx')).toBeTruthy();
+
+  await rerender({ inputs: { name: 'Angular' } });
+  expect(getByText('Hello, Angular')).toBeTruthy();
+});
+```
+
+- **Inputs are set before the first render**, so a required input has its value and `ngOnInit` sees it. No host component is needed.
+- **Use the name a template binds.** An aliased input, such as `input('', { alias: 'class' })`, takes its alias: `inputs: { class: 'p-4' }`.
+- **`rerender({ inputs })` keeps the component** and changes only the inputs you pass. It can change only inputs `render()` set, so give `render()` a starting value for any input you change later.
 
 ## Change a signal, then wait
 
@@ -24,7 +57,7 @@ it('shows the new label', async () => {
   const { container, componentRef } = await render(Label);
   expect(container.querySelector('text')!.textContent).toBe('initial');
 
-  (componentRef.instance as Label).label.set('updated');
+  componentRef.instance.label.set('updated');
   await waitForUpdate();
 
   expect(container.querySelector('text')!.textContent).toBe('updated');
@@ -170,7 +203,7 @@ class Price {
 it('shows the fallback when the price is bad', async () => {
   const { getByText, componentRef } = await render(Price);
 
-  (componentRef.instance as Price).price.set(Number.NaN);
+  componentRef.instance.price.set(Number.NaN);
   await waitForUpdate();
 
   expect(getByText('Price unavailable')).toBeTruthy();
@@ -198,7 +231,7 @@ it('catches the bad price', async () => {
     providers: [{ provide: ErrorHandler, useValue: handler }],
   });
 
-  (componentRef.instance as Price).price.set(Number.NaN);
+  componentRef.instance.price.set(Number.NaN);
   await waitForUpdate();
 
   expect(handler.caught.map((error) => error.message)).toEqual(['Bad price']);
@@ -227,11 +260,11 @@ const { componentRef } = await render(Label);
 const store = componentRef.injector.get(CartStore);
 
 // Change state on the instance, then wait for the update.
-(componentRef.instance as Label).label.set('updated');
+componentRef.instance.label.set('updated');
 await waitForUpdate();
 ```
 
-`componentRef.setInput()` works under `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, it doesn't. Change writable signals on the instance there.
+To change an input, use [`rerender({ inputs })`](#set-inputs). `componentRef.setInput()` works too when `render()` set no inputs. Both need `ng test`, which compiles components ahead of time. Under plain Vitest, which compiles them at runtime, they can't reach signal inputs, so change writable signals on the instance there.
 
 ## Custom queries
 

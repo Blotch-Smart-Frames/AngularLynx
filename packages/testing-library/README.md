@@ -63,23 +63,37 @@ import { render } from '@blotch/angular-lynx-testing-library';
 const { container, getByText, queryByRole } = await render(MyComponent);
 ```
 
-`render` is **async** — it `await`s Angular's `bootstrapApplication`. The initial change detection cycle runs before the promise resolves, so the container is ready to query immediately.
+`render` is **async** — it `await`s Angular's `createApplication`, then bootstraps the component. The initial change detection cycle runs before the promise resolves, so the container is ready to query immediately.
 
 **Options:**
 
-| Option      | Type                                   | Description                                                           |
-| ----------- | -------------------------------------- | --------------------------------------------------------------------- |
-| `providers` | `(Provider \| EnvironmentProviders)[]` | Additional providers injected into the app (services, tokens, mocks). |
+| Option      | Type                                   | Description                                                                                                                              |
+| ----------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `providers` | `(Provider \| EnvironmentProviders)[]` | Additional providers injected into the app (services, tokens, mocks).                                                                    |
+| `queries`   | `Queries`                              | Custom queries to bind to `container`, next to the library's.                                                                            |
+| `inputs`    | `RenderInputs<C>`                      | Values for the component's inputs, keyed by the name a template binds (an aliased input's alias). Set before the first change detection. |
+
+```ts
+const { getByText, rerender } = await render(Greeting, {
+  inputs: { name: 'Lynx' },
+});
+
+// Keeps the component and changes only the inputs passed.
+await rerender({ inputs: { name: 'Angular' } });
+```
+
+`rerender({ inputs })` can change only inputs `render()` set: Angular sets them through `inputBinding()`, and a component with input bindings refuses other inputs (and `componentRef.setInput()`). Give `render()` the starting value of any input a test changes later.
 
 `provideZonelessChangeDetection()` and `provideRenderer()` are always included — you do not need to provide them.
 
 **Return value:**
 
-| Property     | Type         | Description                                                                                                            |
-| ------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `container`  | `Element`    | The JSDOM `<page>` root element. All rendered children are descendants.                                                |
-| `unmount`    | `() => void` | Destroys the Angular app.                                                                                              |
-| `...queries` | —            | Every query in [`queries`](#queries) bound to `container` (`getByText`, `getByRole`, `getByAccessibilityLabel`, etc.). |
+| Property     | Type                                                                                        | Description                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `container`  | `Element`                                                                                   | The JSDOM `<page>` root element. All rendered children are descendants.                                                |
+| `unmount`    | `() => void`                                                                                | Destroys the Angular app.                                                                                              |
+| `rerender`   | `({ inputs }) => Promise<RenderResult>` or `(component, options?) => Promise<RenderResult>` | Changes inputs `render()` set, keeping the component; or renders another component in its place.                       |
+| `...queries` | —                                                                                           | Every query in [`queries`](#queries) bound to `container` (`getByText`, `getByRole`, `getByAccessibilityLabel`, etc.). |
 
 ### `cleanup()`
 

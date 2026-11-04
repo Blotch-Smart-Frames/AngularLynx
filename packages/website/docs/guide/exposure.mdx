@@ -78,8 +78,34 @@ export class SceneFrame {
 
 - **It reports each element once observing starts**, as a browser does, then each time the element comes into view or leaves it. The first report waits for the element's first layout. After that, the same rules as `lynxExposure` decide what counts as visible.
 - **Entries have the browser's fields**: `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured when Lynx notices the change, so an element scrolling into view reports a small `intersectionRatio`.
-- **`root`, `rootMargin` and `threshold` don't work on a device yet.** The observer reports only when an element starts or stops being visible, and logs a warning once if you pass them. They work in the web preview, which uses the browser's own `IntersectionObserver`.
 - **In tests**, [`fireEvent.uiappear()` and `fireEvent.uidisappear()`](/api/testing-library/event-reference#coming-into-view) bring an element into view and take it out.
+
+### Thresholds, a root margin and a root
+
+`threshold`, `rootMargin` and `root` work as they do in the browser:
+
+```typescript
+// Count a video as seen once half of it is on screen.
+const seen = new IntersectionObserver(
+  ([entry]) => entry.intersectionRatio >= 0.5 && this.markSeen(),
+  { threshold: 0.5 },
+);
+
+// Load the next page while the end of the list is still 400px away.
+// `list` is viewChild.required<ElementRef>('list'), for a <list #list>.
+const nearEnd = new IntersectionObserver(
+  ([entry]) => entry.isIntersecting && this.loadMore(),
+  { root: this.list().nativeElement, rootMargin: '0px 0px 400px 0px' },
+);
+```
+
+- **`threshold`** reports each time the visible part of the element crosses one of the values, with its `intersectionRatio` then. As in Chrome and Safari, `isIntersecting` is `true` only once the element has reached a threshold: with `threshold: 1`, a half-visible element isn't intersecting.
+- **`rootMargin`** grows the root's box before the element is checked against it, or shrinks it with negative values, in `px` or `%`. Percentages are of the root's height for the top and bottom, and of its width for the sides.
+- **`root`** is an element around the observed one, such as a `<scroll-view>` or `<list>`. The element is checked against the root, clipped by the scroll containers between them, and not against the screen.
+- **`rootMargin` grows only the root**, as in the browser, and not the scroll containers inside it. To load ahead in a `<scroll-view>` or `<list>`, make it the root, as `nearEnd` does above.
+- **With any of these options, the observer measures the element itself**: when it's laid out, when it comes into view or leaves, and 20 times a second while a scroll container between it and the root scrolls. That's a measurement per observed element each time, so leave the options out when all you need is to know when an element comes into view and leaves.
+- **A scroll container with a `mainThreadBindscroll` or `mainThreadCatchscroll` handler keeps its scroll events for that handler.** Lynx gives an element one handler per event, so the observer doesn't hear that container scroll, and measures only when the element is laid out, comes into view or leaves.
+- **In tests**, `fireEvent.uiappear()` brings all of the element into view (an `intersectionRatio` of 1), and `fireEvent.uidisappear()` takes all of it out, since the test environment has no layout to measure.
 
 ## Track impressions across the page
 

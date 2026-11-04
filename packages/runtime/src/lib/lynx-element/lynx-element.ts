@@ -223,6 +223,24 @@ const isIOS = (): boolean => {
 };
 
 /**
+ * Gives a new scroll-view or list a `scroll` handler on iOS, so that a
+ * listener added later hears its scroll events. iOS's scroll-view
+ * (LynxUIScroller) and list (LynxUIListScroll) hand their scroll event
+ * manager the element's event set the first time they're told of one, as the
+ * UI is made, and never a later one. So a scroll handler added after that is
+ * never called, even after a flush: an IntersectionObserver with options adds
+ * one once it has measured its element, which is laid out by then. The
+ * handler does nothing; the listeners added later share it (see
+ * #syncNativeHandler), and Android, which reads the set afresh, needs none.
+ */
+export const listenForScrollsFromTheStart = (element: LynxElement): void => {
+  if (__WEB__ || !isIOS()) return;
+  element.addEventListener('bindscroll', ignoreScroll);
+};
+
+const ignoreScroll = (): void => {};
+
+/**
  * Whether inserting `child` into `parent` before a sibling would leave it
  * drawing nothing: on iOS, a `<blur-view>` (a UIVisualEffectView) put among a plain
  * element's children anywhere but at the end shows nothing, nor do its
@@ -343,6 +361,8 @@ export class LynxElement implements BaseLynxElement {
   #addedTraits: string[] = [];
   /** Every listener Angular added, in the order it added them. */
   #listeners: Listener[] = [];
+  /** How many main-thread directive handlers hold each event (see holdNativeEvent). */
+  readonly #heldEvents = new Map<string, number>();
   /** Recognizes long presses on Lynx for Web (see #listenForWebLongPress). */
   #webLongPress: WebLongPress | null = null;
   /** Turns touches into pointer events, once a pointer listener is added. */
@@ -1638,6 +1658,8 @@ export class LynxElement implements BaseLynxElement {
    */
   #syncNativeHandler(entry: Listener): void {
     const key = nativeEventKey(entry.eventType, entry.eventName);
+    // A main-thread directive has the event's one handler (see holdNativeEvent).
+    if (this.#heldEvents.has(key)) return;
     const listeners = this.#listenersLike(entry);
     const current = this.#nativeHandlers.get(key);
     const eventType = listeners.length ? combinedEventType(listeners) : null;
@@ -1648,6 +1670,7 @@ export class LynxElement implements BaseLynxElement {
     // Angular advises for browser APIs, listens for uiappear or
     // layoutchange and would hear nothing until something else changed.
     scheduleSettleFlush();
+    this.#sendHandlersWithNextFlush();
     if (current) {
       // Passing undefined as the listener tells the Lynx SDK to remove the
       // handler for this type+name combination.
@@ -1672,6 +1695,62 @@ export class LynxElement implements BaseLynxElement {
       type: 'worklet',
       value: handler.dispatch,
     });
+  }
+
+  /**
+   * Leaves the element's handler for `eventName` to a main-thread directive
+   * (`[mainThreadBindscroll]` and the like), which registers its own with
+   * `__AddEvent`. Lynx keeps one handler per event name (see nativeEventKey),
+   * so registering the element's own afterwards would replace the
+   * directive's: an IntersectionObserver with options, listening for a
+   * scroll-view's scroll events, would stop the app's main-thread scroll
+   * handler. Until releaseNativeEvent, the element's listeners for the event
+   * aren't registered natively, and don't hear it, as they didn't when the
+   * directive registered after them. Counted, as `mainThreadBindscroll` and
+   * `mainThreadCatchscroll` share one.
+   */
+  holdNativeEvent(eventName: string): void {
+    this.#heldEvents.set(eventName, (this.#heldEvents.get(eventName) ?? 0) + 1);
+    // The directive's handler replaces the element's natively.
+    this.#nativeHandlers.delete(eventName);
+  }
+
+  /**
+   * Hands `eventName` back once the directive has removed its handler, and
+   * registers the element's own for the listeners it has for it.
+   */
+  releaseNativeEvent(eventName: string): void {
+    const held = this.#heldEvents.get(eventName);
+    // Not held: the element's handler is registered already.
+    if (held === undefined) return;
+    if (held > 1) {
+      this.#heldEvents.set(eventName, held - 1);
+      return;
+    }
+    this.#heldEvents.delete(eventName);
+    const entry = this.#listeners.find(
+      (listener) =>
+        listener.eventName === eventName &&
+        listener.eventType !== 'global-bindEvent',
+    );
+    if (entry) this.#syncNativeHandler(entry);
+  }
+
+  /**
+   * Makes the next flush give the element's UI its handlers, when the UI is
+   * already made. Lynx sends an element's handlers to its UI with its props,
+   * and a flush sends an element's props only if one of them changed:
+   * FiberElement's flush counts a change of attributes, styles or dataset,
+   * but not of handlers. So a handler added to an element already on screen,
+   * with nothing else about it changing, never reached the UI on iOS or
+   * Android, even after a flush: an IntersectionObserver observing an element
+   * that's showing heard none of its exposure events, nor of a scroll-view's
+   * scroll events. Setting the dataset to what it is changes nothing, but
+   * counts. A UI not made yet gets everything as it's made anyway.
+   */
+  #sendHandlersWithNextFlush(): void {
+    if (__WEB__) return;
+    __SetDataset(this.element, { ...this.#dataset });
   }
 
   /**

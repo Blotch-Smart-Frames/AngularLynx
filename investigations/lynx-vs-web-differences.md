@@ -5922,7 +5922,7 @@ On web, `LynxElement` fills in the two details from the HTMLVideoElement before 
 
 ---
 
-## The main thread has no `IntersectionObserver`: AngularLynx's comes from exposure, and reports only when an element starts or stops being visible
+## The main thread has no `IntersectionObserver`: AngularLynx's comes from exposure, and measures for itself to honor `root`, `rootMargin` and `threshold`
 
 ### What you'd expect (web)
 
@@ -5934,19 +5934,108 @@ The main thread, where Angular runs, has no `IntersectionObserver`, so browser c
 
 What the main thread does have is exposure: an element listening for `uiappear` or `uidisappear` gets one when it comes into view and one when it leaves. Native checks about 20 times a second (`LynxUIExposure.m`, `UIExposure.java`). It checks against every scroll container around the element (the UIs whose `isScrollContainer` is true: `scroll-view`, `list`, `viewpager`, `scroll-coordinator`), the LynxView and the screen. An element with no size, or one hidden or with opacity below 0.01, isn't visible. An element that starts out of view gets no event at all. `exposure-area` takes one ratio per element, not a list of thresholds per observer, and the events carry no boxes.
 
+Exposure's attributes can't stand in for an observer's options (issue #236). `exposure-area` and `exposure-screen-margin-*` belong to the element, so two observers of one element can't each have their own, and setting them changes when the element's own `(binduiappear)` and `[lynxExposure]` handlers run. There's one `exposure-area`, where `threshold` can be a list. The screen margins move the screen's edges, not a scroll container's, and nothing stands for `root`.
+
+Lynx also has an `intersection-observers` element attribute: an array of `{ thresholds, relativeToIdSelector, relativeToScreen, marginTop, … }`, each a native observer checked 20 times a second, which sends the element an `intersection` event as it crosses a threshold. It doesn't fit either:
+
+- **On iOS it never sets the root.** `LynxUIIntersectionObserver initWithOptions:` looks the root up only `if (!relativeToIdSelector && [relativeToIdSelector hasPrefix:@"#"])`, which is never true, so every attribute observer is relative to the LynxView.
+- **On Android it does nothing unless the element already listens for `intersection`** when the attribute is set (`LynxBaseUI.setIntersectionObservers` checks `mEvents.containsKey("intersection")`).
+- **Its margins are lengths only** (`LynxUnitUtils toPtFromUnitValue:`), with no percentages.
+- **Every observer in the array sends the same event**, whose `observerId` is the target's id selector, so the events don't say which observer crossed.
+
+Scroll events also come at different rates: a `<list>` sends `scroll` every 200 ms unless `scroll-event-throttle` says otherwise (engine version 3.4 and up), a `<viewpager>` sends `offsetchange` and a `<scroll-coordinator>` sends `offset`.
+
 ### The fix
 
-The runtime installs `IntersectionObserver` on the main thread (`packages/runtime/src/lib/lynx-element/intersection-observer.ts`). It listens for the two events and, when one comes, measures the element, the page and the scroll containers around it with the `boundingClientRect` UI method, to fill in `boundingClientRect`, `intersectionRect`, `intersectionRatio` and `rootBounds`. For the first entry, it measures the same boxes once the element has been laid out and works out from them whether the element is in view, unless an exposure event has come by then. The web preview keeps the browser's own, wrapped to take Lynx elements (as a target and as the root).
+The runtime installs `IntersectionObserver` on the main thread (`packages/runtime/src/lib/lynx-element/intersection-observer.ts`). The web preview keeps the browser's own, wrapped to take Lynx elements (as a target and as the root).
+
+An observer with the browser's defaults (no root, no root margin, a threshold of 0) asks only what exposure answers. It listens for the two events and, when one comes, measures the element, the page and the scroll containers around it with the `boundingClientRect` UI method, to fill in `boundingClientRect`, `intersectionRect`, `intersectionRatio` and `rootBounds`. For the first entry, it measures the same boxes once the element has been laid out and works out from them whether the element is in view, unless an exposure event has come by then.
+
+An observer given a `root`, a `rootMargin` or a `threshold` works the crossings out from the boxes, as a browser does. It measures the element, its root (the page, for no root) and the scroll containers between them: once the element has been laid out, at each later layout, at each exposure event, and every 50 ms while one of those scroll containers (or the root, if it scrolls) is scrolling. It keeps sampling for 300 ms after the last scroll event, longer than a list's 200 ms between events, so it follows a list's scroll and catches where it stops. One timer drives every observer, so observers measuring together ask once for the page's and each shared scroll container's box. The rules are Chromium's and WebKit's (`intersection_geometry.cc`, `IntersectionObserver.cpp`):
+
+- An entry is reported when the threshold index changes: how many thresholds the ratio has reached, or 0 when the element doesn't intersect. So `isIntersecting` is `true` only once a threshold is reached, and with `threshold: 1` a half-visible element isn't intersecting.
+- Boxes that only touch intersect, so an element with no size inside the root, such as a sentinel at the end of a feed, is intersecting, with a ratio of 1.
+- `rootMargin` grows the root's box: percentages are of its height for the top and bottom, and its width for the sides. `rootBounds` includes it. It doesn't grow the scroll containers between the element and the root, which still clip it.
+- An element that isn't inside the root, or is the root, isn't intersecting.
 
 What's still different on a device:
 
-- It reports only when an element starts or stops being visible: threshold 0 on the viewport. `root`, `rootMargin` and `threshold` are normalized and kept as browsers keep them, but don't change what's reported, and the first observer given them logs a warning.
-- An entry's boxes are measured after Lynx notices the change, up to a twentieth of a second after it happened, so an element scrolling into view reports a small `intersectionRatio`.
-- Exposure's visibility rules apply after the first entry, so a fully transparent element is reported out of view.
+- An entry's boxes are measured after Lynx notices the change. For an observer without options, that's up to a twentieth of a second after it happened, so an element scrolling into view reports a small `intersectionRatio`. For one with options, it's up to 50 ms after a scroll event. An element moved by an animation, with no scroll or layout, is measured again only when exposure says it came or went.
+- For an observer without options, exposure's visibility rules apply after the first entry, so a fully transparent element is reported out of view. An observer with options goes by the boxes, as browsers do.
+- Only the scroll containers between the element and the root clip it, not every ancestor with `overflow: hidden`.
+- In the testing library, where elements have no layout, an observer with options takes `uiappear` as all of the element coming into view (a ratio of 1) and `uidisappear` as all of it leaving.
 
 Checked on the iOS Simulator and the Android emulator (Lynx Explorer 4.1), and in the web preview, with a scroll-view of 300px cards. The first entries were right: the card cut off by the scroll-view's bottom reported 0.92 on all three, and the cards below it reported out of view. Cards scrolling in and out were reported as they crossed the edge, and so was a card that observed from `afterNextRender()`.
 
-Angular runs `afterNextRender()` callbacks after the renderer's `end()` has flushed, and an event handler reaches native only with a flush. So an observer started there, with nothing else changing afterwards, would never hear its element's events. `LynxElement` now schedules the settle flush whenever it adds or removes a native handler outside change detection. The device check doesn't show this case on its own: native flushes after the first render anyway, and the other cards' updates flushed too.
+Angular runs `afterNextRender()` callbacks after the renderer's `end()` has flushed, and an event handler reaches native only with a flush. So an observer started there, with nothing else changing afterwards, would never hear its element's events. `LynxElement` now schedules the settle flush whenever it adds or removes a native handler outside change detection. The device check doesn't show this case on its own: native flushes after the first render anyway, and the other cards' updates flushed too. (A flush wasn't enough for an element already on screen: see the next section.)
+
+The options (issue #236) were checked on the iOS 27 Simulator and the Android API 34 emulator (Lynx Explorer 4.1), with six 200px cards in a 400px scroll-view, scrolled by `scrollTo` with `smooth: true`. Each card's observer had `threshold: [0, 0.5, 1]`. A zero-height sentinel at the end of the scroll-view had two observers with a `400px` bottom margin, one rooted at the scroll-view and one with no root. Each card also had an observer with `rootMargin: '-50% 0px'`.
+
+- The first entries matched the browser's rules. The two cards in view reported 1, and the card touching the scroll-view's bottom edge reported intersecting with a ratio of 0. The sentinel's `rootBounds` were the scroll-view's box grown by 400px (380..1180), and the page's (0..1274 on iOS, 0..1290 on Android).
+- While the cards scrolled, the entries came at each crossing (0.09, 0.60, 1.00 as a card came in).
+- The observer rooted at the scroll-view reported the sentinel at a scroll of 500. The one with no root reported it only at 800, where it touched the scroll-view's bottom: the scroll-view clips it, as in a browser.
+- The center line followed the card under the middle of the screen.
+- A plain observer created a second after the cards were on screen saw its card come in and leave.
+
+`boundingClientRect` answered before `__InvokeUIMethod` returned, on both platforms, and the microtasks queued before the call ran before it returned too: the callback is a native→JS call, and Lynx runs every pending microtask as one ends (see `lynx-render-lifecycle.ts`). A probe that queued a microtask, then called the method, logged `before answer qm promise after`. The first version of the observer cleared a map of measurements in a microtask, and so found it gone halfway through adding to it.
+
+---
+
+## A handler added to an element already on screen never reached it
+
+### What you'd expect (web)
+
+`element.addEventListener('scroll', …)` works whenever it's called: before the element is shown or long after.
+
+### What Lynx does
+
+`__AddEvent` stores the handler on the element and marks its events dirty. At the next flush, `FiberElement` puts the handlers in the element's prop bundle (`ElementManager::ResolveEvents`), but sends the bundle to an existing UI only if something it counts as a change happened: attributes, styles, dataset or gestures set `need_update`, and events don't (`fiber_element.cc`, then `PerformElementContainerCreateOrUpdate`). A UI being made gets everything. So a handler added to an element whose UI was already made, with nothing else about the element changing, never reached iOS or Android, even after `__FlushElementTree()`.
+
+Checked on the iOS 27 Simulator and the Android API 34 emulator with a scroll-view and a `bindscroll` listener added through `addEventListener`. Added in `afterNextRender()`, before native first made the UI, it heard every scroll. Added from a `setTimeout` a second later, it heard none. It heard none either when followed by `__FlushElementTree()`, or by a signal change that ran change detection.
+
+That's any listener added after an element first shows. An `IntersectionObserver` or `ResizeObserver` observing an element already on screen, from a tap or a timer, heard nothing. So did a scroll listener on a scroll-view already on screen.
+
+### The fix
+
+`LynxElement.#syncNativeHandler` sets the element's dataset to what it already is (`__SetDataset` with `LynxElement`'s own copy) whenever it registers or removes a native handler. That counts as a change, so the next flush sends the handlers along. The web preview's elements are DOM elements, whose listeners work at once, so it skips this.
+
+Checked on both: an `IntersectionObserver` created a second after its card was laid out reported the card coming into view and leaving.
+
+---
+
+## On iOS, a scroll-view or list sends `scroll` only to the handlers it had when its UI was made
+
+### What you'd expect (web)
+
+A scroll listener added at any time hears the scrolls after it.
+
+### What Lynx does
+
+iOS's scroll-view (`LynxUIScroller`) and list (`LynxUIListScroll`) make their `LynxScrollEventManager` in the first `eventDidSet`, as the UI is made, and hand it the event set of that moment. `setRawEvents:andLepusRawEvents:` makes a new set each time and calls `eventDidSet` again, but the manager keeps the first. `sendScrollEvent:` asks the manager whether `scroll`, `scrolltoupper` or `scrolltolower` is bound, so a handler added later is never called, even once the handlers reach the UI (see the previous section). Android's `UIScrollView.setEvents` and `UIListContainer.setEvents` read the new set each time. iOS sends `scroll` on each frame of a scroll, with no throttle.
+
+### The fix
+
+`LynxDocument.createElement` gives each scroll-view and list a `bindscroll` listener that does nothing, on iOS only (`listenForScrollsFromTheStart`), so the UI is made with a `scroll` handler. Listeners added later share it. An `IntersectionObserver` with options adds its listener once it has measured its element, after the scroll-view's UI has been made.
+
+The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS, which the do-nothing listener drops.
+
+---
+
+## An element's listener replaced a main-thread directive's handler for the same event
+
+### What you'd expect (web)
+
+Any number of listeners for an event on one element all run.
+
+### What Lynx does
+
+Lynx keeps one main-thread handler per event name on an element (`AttributeHolder::SetWorkletEvent` assigns into `lepus_events_` by name, whatever the bind/catch type). `LynxElement` registers its listeners as one such handler, and so does `LynxMainThreadEvent` (`[mainThreadBindscroll]` and the rest), each with `__AddEvent`, so whichever registers last wins. The directive registers in `ngOnChanges`, after the template's own listeners, so it always won. But a listener added later, such as an `IntersectionObserver` with options listening for its scroll-view's scroll events, replaced the app's main-thread scroll handler.
+
+### The fix
+
+The directive holds the event on its element while it has a handler for it (`LynxElement.holdNativeEvent`, counted for `bind` and `catch`). Meanwhile, the element registers none of its own for that event, and hands it back once the directive's handler has gone (`releaseNativeEvent`), registering its own for the listeners it has. The element's listeners for a held event don't hear it, as they didn't before when the directive registered after them.
+
+Checked on the iOS 27 Simulator and the Android API 34 emulator with a `[mainThreadBindscroll]` on a scroll-view whose cards had observers with thresholds. The main-thread handler kept running through every scroll. The observers there reported only what layout and exposure told them.
 
 ---
 

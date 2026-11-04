@@ -147,6 +147,17 @@ type Registration = {
 })
 export class LynxMainThreadEvent implements OnChanges, OnDestroy {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
+
+  /**
+   * The element, as a LynxElement, which keeps its own listeners off the
+   * events this directive has handlers for. A test's stand-in may not.
+   */
+  get #host(): {
+    holdNativeEvent?(eventName: string): void;
+    releaseNativeEvent?(eventName: string): void;
+  } {
+    return this.#el as never;
+  }
   readonly #registrations = new Map<string, Registration>();
 
   mainThreadBindtap?: MaybeHandle;
@@ -208,8 +219,15 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
         // would. Leaving it registered would keep the old handler firing.
         if (this.#registrations.delete(inputName)) {
           __AddEvent(elementRef, eventType, eventName, noHandler());
+          this.#host.releaseNativeEvent?.(eventName);
         }
         continue;
+      }
+
+      // Lynx keeps one handler per event name: the element mustn't register
+      // its own over this one (see LynxElement.holdNativeEvent).
+      if (!this.#registrations.has(inputName)) {
+        this.#host.holdNativeEvent?.(eventName);
       }
 
       // type: 'worklet' tells the Lynx engine to invoke this handler via the
@@ -238,6 +256,7 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
     // closure (or, worse, leak a reference that pins the component graph).
     for (const [inputName, { eventType, eventName }] of this.#registrations) {
       __AddEvent(elementRef, eventType, eventName, noHandler());
+      this.#host.releaseNativeEvent?.(eventName);
       this.#release(inputName);
     }
     this.#registrations.clear();

@@ -34,7 +34,8 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 
 - `(click)` runs on a tap, as `(bindtap)` does: the renderer maps it like Lynx for Web (`click` → `tap`, bubbling). Angular's `RouterLink` depends on this. Other DOM event names, such as `(mouseover)`, are silently ignored, except pointer events (below).
 - Native Lynx keeps **one** handler per event name on an element (its event map is keyed by name, whatever the bind/catch type). The renderer registers one native handler per event that runs every Angular listener in order, so `routerLink` plus `(bindtap)` on one element both run. If any listener uses `catch`, the event stops at the element after all of them run.
-- A main-thread script (`[mainThreadBindtap]`) registers its own native handler, so it still replaces a `(bindtap)` on the same element.
+- A main-thread script (`[mainThreadBindtap]`) registers its own native handler and keeps the event while it's bound: a `(bindtap)` on the same element doesn't run, and a listener added later (an `IntersectionObserver`'s on a `<scroll-view>`, say) waits until the script is unbound, rather than replacing it.
+- A listener added after the element is on screen works, from a timer, a tap or a library's observer (`nativeElement.addEventListener('bindscroll', …)`). Lynx sends an element's handlers to its native view only along with another change, so the renderer makes one that changes nothing. On iOS, a `<scroll-view>` or `<list>` sends `scroll` only to the handlers it had when it was created, so each one gets a do-nothing `bindscroll` handler then, and later listeners share it.
 
 ## Pointer events
 
@@ -142,7 +143,23 @@ constructor() {
 }
 ```
 
-On a device it reports each element once observing starts, after the element's first layout, then each time it comes into view or leaves. Entries have `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured just after Lynx notices the change, so an element scrolling in reports a small `intersectionRatio`. `root`, `rootMargin` and `threshold` don't change what it reports yet: it logs a warning once and reports starting and stopping only. The web preview uses the browser's own observer, where they work.
+On a device it reports each element once observing starts, after the element's first layout, then each time it comes into view or leaves. Entries have `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured just after Lynx notices the change, so an element scrolling in reports a small `intersectionRatio`. The web preview uses the browser's own observer.
+
+`threshold`, `rootMargin` (px or %) and `root` (an element around the observed one, such as a `<scroll-view>` or `<list>`) work as in the browser. Given any of them, the observer measures the element itself: when it's laid out, when exposure says it came or went, and 20 times a second while a scroll container between it and the root scrolls. It reports each time the visible part crosses a threshold. Points that catch people out:
+
+- `isIntersecting` is `true` only once a threshold is reached, as in Chrome and Safari: with `threshold: 1`, a half-visible element isn't intersecting. Read `intersectionRatio` for the share.
+- `rootMargin` grows the root only, not the scroll containers inside it. With no root it grows the page, which a `<scroll-view>` still clips, so to load ahead in a scroll-view or list, pass it as `root`:
+
+```typescript
+new IntersectionObserver(([entry]) => entry.isIntersecting && this.loadMore(), {
+  root: this.list().nativeElement,
+  rootMargin: '0px 0px 400px 0px',
+});
+```
+
+- Options cost a measurement per observed element each time, so leave them out to hear only when an element comes into view and leaves.
+- Lynx gives an element one handler per event, and a `[mainThreadBindscroll]` or `[mainThreadCatchscroll]` keeps a scroll container's: an observer inside it doesn't hear it scroll, and measures only on layout and exposure.
+- In tests, `fireEvent.uiappear()` brings all of an element into view for an observer with options (`intersectionRatio` 1), and `fireEvent.uidisappear()` takes all of it out: the test environment has no layout.
 
 - **`LynxGlobalExposure`** reports, in batches, the elements with an `exposure-id` that came into view and left, for analytics.
 

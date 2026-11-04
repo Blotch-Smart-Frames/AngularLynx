@@ -154,6 +154,7 @@ describe('LynxElement on Lynx for Web', () => {
       if (!ids.has(ref)) ids.set(ref, nextId++);
       return ids.get(ref);
     });
+    vi.stubGlobal('__SetDataset', () => {});
     vi.stubGlobal(
       '__AddEvent',
       (

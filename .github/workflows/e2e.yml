@@ -270,8 +270,9 @@ jobs:
           name: e2e-artifacts-${{ strategy.job-index }}
           path: ${{ runner.temp }}/e2e-artifacts
 
-  # Builds the app the Android job runs: scaffold, fixtures, production build,
-  # then `ng build --platform android`, the APK users ship. It runs apart from
+  # Builds the app the native jobs run: scaffold, fixtures, production build,
+  # then `ng build --platform android`, the APK users ship. The iOS job builds
+  # its shell from the same app's bundle. It runs apart from
   # fresh-app's tests, dev server and browser checks (which continue in
   # parallel) so the emulator starts sooner, and the APK builds here rather
   # than in the Android job so the emulator only boots once there's an app to
@@ -365,14 +366,16 @@ jobs:
   # few minutes in a job that has already booted the device and installed
   # Maestro. Each host's flows run even if the other's fail.
   #
-  # The iOS job builds its own app: the shell has to be built on macOS, which
-  # needs the app installed with macOS's native dependencies (rspack and
-  # esbuild ship platform binaries, so the Linux job's node_modules won't do).
+  # The iOS job tests the app build-app made, as the Android job does. The
+  # shell has to be built on macOS, so this job builds it from the app's
+  # bundle with the packed native builder, which uses only Node's built-ins
+  # (run-native.ts --native). It used to scaffold and install the app itself,
+  # which took 7 to 8 of its 25 to 30 minutes, plus 3 to 4 more restoring
+  # Verdaccio and the harness's dependencies for it. The nightly macOS
+  # fresh-app job still installs and builds the app on a Mac.
   ios:
-    needs: [setup, package-contract]
-    if: >-
-      always() && needs.setup.outputs.native == 'true'
-      && (needs.package-contract.result == 'success' || needs.package-contract.result == 'skipped')
+    needs: [setup, build-app]
+    if: always() && needs.build-app.result == 'success'
     # Apple silicon, which the prebuilt Lynx Explorer simulator app targets,
     # with Xcode 27: the shell's toolchain (packages/native/README.md) and the
     # Xcode that built the pinned Lynx frameworks (27.1). They hold only
@@ -380,17 +383,17 @@ jobs:
     # could import) for iOS 15, so the image's default Xcode 27 links them,
     # as a user's would. macos-15 and macos-26 default to Xcode 16.4 and 26.6.
     runs-on: xcode-27
-    # The last 55 passing runs before this limit took 15 to 47 minutes (28 in
-    # the middle). Within it, the harness stops a Maestro session that hangs
-    # (src/native/maestro.ts), and the Layer 6 step has a limit of its own.
-    timeout-minutes: 60
+    # The flows take about 10 minutes of it. Within it, the harness stops a
+    # Maestro session that hangs (src/native/maestro.ts), and the Layer 6
+    # step has a limit of its own.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          # This job doesn't run `npm ci` (see the harness's dependencies
-          # below), so npm's cache would only cost a restore and a save.
+          # This job installs no packages: run-native.ts and the native
+          # builder use only Node's built-ins.
           package-manager-cache: false
       - name: Lynx Explorer version
         id: explorer
@@ -412,48 +415,12 @@ jobs:
       # Booting the simulator is the slowest step, so start it first (run-
       # native.ts needs only Node). The simulator keeps booting while the
       # steps below run; the test step waits for it to finish. Its log goes
-      # to its own folder, because run.ts empties the artifacts folder.
+      # to its own folder, which the test step doesn't empty.
       - name: Start the iOS Simulator
         timeout-minutes: 10
         run: >-
           node packages/e2e/src/native/run-native.ts --platform ios --prepare
           --artifacts-dir "$RUNNER_TEMP/e2e-artifacts-prepare"
-      # Of the monorepo's dependencies, the harness needs only two here:
-      # Verdaccio (registry.ts) and publint (which check-packages.ts imports,
-      # and run.ts imports check-packages.ts). Everything else it runs is
-      # Node's built-ins and TypeScript that Node strips itself, and the app
-      # comes from the tarballs. `npm ci` installed all 1.1 GB of the
-      # monorepo's dependencies for them, which took 4 to 8 minutes on this
-      # runner. The versions come from the lockfile, so they move with it.
-      - name: Versions of the harness's dependencies
-        id: harness
-        run: |
-          node -e '
-            const lock = require("./package-lock.json").packages;
-            const specs = ["verdaccio", "publint"].map(
-              (name) => `${name}@${lock[`node_modules/${name}`].version}`,
-            );
-            console.log(`specs=${specs.join(" ")}`);
-            console.log(`key=${specs.join("-")}`);
-          ' >> "$GITHUB_OUTPUT"
-      - name: Cache the harness's dependencies
-        id: harness-cache
-        uses: actions/cache@v6
-        with:
-          path: node_modules
-          key: e2e-harness-${{ runner.os }}-${{ steps.harness.outputs.key }}
-      # Installed in a folder of their own and moved in: in the repository,
-      # npm would install the whole workspace.
-      - name: Install the harness's dependencies
-        if: steps.harness-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 10
-        env:
-          SPECS: ${{ steps.harness.outputs.specs }}
-        run: |
-          # $SPECS is unquoted on purpose: it holds one package per word.
-          npm install --prefix "$RUNNER_TEMP/e2e-harness" --no-save --no-package-lock \
-            --no-audit --no-fund --ignore-scripts $SPECS
-          mv "$RUNNER_TEMP/e2e-harness/node_modules" node_modules
       - name: Cache Maestro
         id: maestro-cache
         uses: actions/cache@v6
@@ -465,48 +432,48 @@ jobs:
         timeout-minutes: 10
         run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - run: echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # The app without node_modules: angular.json, package-lock.json and
+      # dist/ with the bundle the shell embeds and Explorer loads.
+      - uses: actions/download-artifact@v8
+        with:
+          name: e2e-app-${{ needs.setup.outputs.registry }}
+          path: ${{ runner.temp }}/app
       - uses: actions/download-artifact@v8
         if: needs.setup.outputs.registry == 'local'
         with:
           name: e2e-tarballs
           path: ${{ runner.temp }}/tarballs
-      - name: Date for the registry cache key
-        id: date
+      # The version the app installed, from the tarball the other jobs
+      # tested, or from npm when this run tests the public registry.
+      - name: Unpack the native builder
+        env:
+          REGISTRY: ${{ needs.setup.outputs.registry }}
         run: |
-          echo "date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-          echo "month=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
-      # Its own key, so it never races fresh-app's macOS entry (full matrix
-      # only) for the same one; that entry's storage is still a good start.
-      - name: Cache Verdaccio storage
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/verdaccio-storage
-          key: verdaccio-storage-ios-${{ steps.date.outputs.date }}
-          restore-keys: |
-            verdaccio-storage-ios-${{ steps.date.outputs.month }}-
-            verdaccio-storage-${{ runner.os }}-${{ steps.date.outputs.month }}-
-      # The prebuilt Lynx XCFrameworks the shell links, which `ng build
-      # --platform ios` downloads on first use. frameworks.ts pins them.
+          version=$(node -p "require(process.argv[1]).packages['node_modules/@blotch/angular-lynx-native'].version" \
+            "$RUNNER_TEMP/app/package-lock.json")
+          if [ "$REGISTRY" = local ]; then
+            tarball="$RUNNER_TEMP/tarballs/blotch-angular-lynx-native-$version.tgz"
+          else
+            npm pack "@blotch/angular-lynx-native@$version" --pack-destination "$RUNNER_TEMP"
+            tarball="$RUNNER_TEMP/blotch-angular-lynx-native-$version.tgz"
+          fi
+          mkdir -p "$RUNNER_TEMP/native"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/native"
+      # The prebuilt Lynx XCFrameworks the shell links, which the native
+      # builder downloads on first use. frameworks.ts pins them.
       - name: Cache Lynx iOS frameworks
         uses: actions/cache@v6
         with:
           path: ~/.cache/angular-lynx/lynx-ios
           key: lynx-ios-frameworks-${{ hashFiles('packages/native/src/ios/frameworks.ts') }}
       - name: 'Layer 6: iOS Simulator'
-        # Took 13 to 37 minutes in eight runs before this limit, about half of
-        # it the flows.
-        timeout-minutes: 40
-        env:
-          REGISTRY: ${{ needs.setup.outputs.registry }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          args=(--layers 2 --build-only --ios --shell --explorer
-            --registry "$REGISTRY"
-            --storage "$RUNNER_TEMP/verdaccio-storage"
-            --artifacts-dir "$RUNNER_TEMP/e2e-artifacts")
-          if [ "$REGISTRY" = local ]; then args+=(--tarballs "$RUNNER_TEMP/tarballs"); fi
-          if [ -n "$VERSION" ] && [ "$REGISTRY" = public ]; then args+=(--version "$VERSION"); fi
-          node packages/e2e/src/run.ts "${args[@]}"
+        # The flows took 9 to 10 minutes of the 20 to 24 this step took when
+        # it also scaffolded the app.
+        timeout-minutes: 30
+        run: >-
+          node packages/e2e/src/native/run-native.ts --platform ios
+          --app "$RUNNER_TEMP/app" --native "$RUNNER_TEMP/native/package"
+          --explorer --artifacts-dir "$RUNNER_TEMP/e2e-artifacts"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -515,8 +482,6 @@ jobs:
             ${{ runner.temp }}/e2e-artifacts
             ${{ runner.temp }}/e2e-artifacts-prepare
 
-  # Runs the APK and the bundle build-app made. It skips `npm ci`:
-  # run-native.ts and everything it imports use only Node built-ins.
   android:
     needs: [setup, build-app]
     if: always() && needs.build-app.result == 'success'

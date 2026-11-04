@@ -5,8 +5,12 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+
+import type * as Native from '@blotch/angular-lynx-native';
 
 import { CheckError, check, run, step } from '../process.ts';
 import { HTTP_DATA, serveStatic } from '../static-server.ts';
@@ -16,12 +20,91 @@ import type { NativeHost } from './maestro.ts';
 
 type Platform = 'ios' | 'android';
 
+type AngularJson = {
+  projects: Record<
+    string,
+    {
+      root?: string;
+      architect: {
+        build: {
+          options: { appId: string } & Record<string, unknown>;
+          configurations?: Record<string, Record<string, unknown>>;
+          defaultConfiguration?: string;
+        };
+      };
+    }
+  >;
+};
+
+const readAngularJson = (appDir: string): AngularJson =>
+  JSON.parse(readFileSync(path.join(appDir, 'angular.json'), 'utf8'));
+
+/**
+ * Builds the app's binary from its built bundle with the native builder in
+ * `nativeDir` (an unpacked @blotch/angular-lynx-native), calling it as `ng
+ * build --platform` does. For an app copied without node_modules: CI's iOS
+ * job gets the app the Linux build-app job scaffolded and bundled, so the
+ * Mac only builds the shell. Installing the app there took 7 to 8 minutes of
+ * the job, and the native builder uses only Node's built-ins.
+ *
+ * What it skips is `ng build --platform`'s own wiring (Angular CLI, the
+ * builder, rspeedy), which is the same on every platform: build-app runs it
+ * for Android, and the nightly macOS fresh-app job installs and builds the
+ * app on a Mac.
+ */
+const buildWithNativePackage = async (
+  platform: Platform,
+  appDir: string,
+  nativeDir: string,
+  logFile: string,
+) => {
+  step(`Layer 6: the ${platform} app, from the built bundle`);
+  const native = (await import(
+    pathToFileURL(path.join(nativeDir, 'dist/index.js')).href
+  )) as typeof Native;
+  const [projectName, project] = Object.entries(
+    readAngularJson(appDir).projects,
+  )[0]!;
+  const { build } = project.architect;
+  // What Angular CLI hands the builder for a plain `ng build`: the base
+  // options with the default configuration's on top.
+  const options = {
+    ...build.options,
+    ...(build.defaultConfiguration
+      ? build.configurations?.[build.defaultConfiguration]
+      : {}),
+  };
+  const bundleDir = path.join(appDir, 'dist');
+  const log = (message: string) => {
+    console.log(message);
+    appendFileSync(logFile, `${message}\n`);
+  };
+  const { artifacts } = await native.buildNativeApp({
+    platform,
+    projectRoot: path.join(appDir, project.root ?? ''),
+    workDir: path.join(tmpdir(), 'angular-lynx-e2e-native', projectName),
+    projectName,
+    packageVersion: JSON.parse(
+      readFileSync(path.join(appDir, 'package.json'), 'utf8'),
+    ).version,
+    bundleDir,
+    outputDir: path.join(bundleDir, platform),
+    app: options,
+    log,
+  });
+  for (const artifact of artifacts) {
+    log(`  ✓ ${path.relative(appDir, artifact)}`);
+  }
+};
+
 /**
  * Describes the app's own binary from `ng build --platform`, the command users
  * run, for the Maestro flows. It runs the build first unless `prebuilt`: CI
  * builds the Android app in another job, before the emulator starts, and
- * hands this one the app's folder with the APK in `dist/android`. The iOS
- * build needs Lynx's XCFrameworks: published ones, or a local folder in
+ * hands this one the app's folder with the APK in `dist/android`. With
+ * `nativeDir`, it builds the binary from the app's bundle with that native
+ * builder instead (see buildWithNativePackage). The iOS build needs Lynx's
+ * XCFrameworks: published ones, or a local folder in
  * ANGULAR_LYNX_IOS_FRAMEWORKS (see packages/native/README.md).
  */
 const shellHost = async (
@@ -29,24 +112,19 @@ const shellHost = async (
   appDir: string,
   logFile: string,
   prebuilt: boolean,
+  nativeDir: string | undefined,
 ): Promise<NativeHost> => {
-  if (!prebuilt) {
+  if (nativeDir) {
+    await buildWithNativePackage(platform, appDir, nativeDir, logFile);
+  } else if (!prebuilt) {
     step(`Layer 6: ng build --platform ${platform}`);
     await run('npx', ['ng', 'build', '--platform', platform], {
       cwd: appDir,
       logFile,
     });
   }
-  const angularJson = JSON.parse(
-    readFileSync(path.join(appDir, 'angular.json'), 'utf8'),
-  ) as {
-    projects: Record<
-      string,
-      { architect: { build: { options: { appId: string } } } }
-    >;
-  };
-  const appId = Object.values(angularJson.projects)[0]!.architect.build.options
-    .appId;
+  const appId = Object.values(readAngularJson(appDir).projects)[0]!.architect
+    .build.options.appId;
   const outputDir = path.join(appDir, 'dist', platform);
   const binary = readdirSync(outputDir).find((file) =>
     platform === 'ios'
@@ -178,9 +256,10 @@ const HOST_NAMES = {
  *   node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
  *   node packages/e2e/src/native/run-native.ts --platform ios --app <app> --explorer
  *
- * CI's iOS job calls runNative() through `run.ts --ios --shell --explorer`
- * with the app it just built on the Mac; the Android job runs this script
- * with the app folder (and APK) the Linux build job made.
+ * CI's native jobs run this script with the app folder the Linux build-app
+ * job made: the Android job with the APK built there (`--prebuilt`), the iOS
+ * job with the native builder to build the app from its bundle (`--native`).
+ * run.ts --ios --shell --explorer runs it on an app it builds itself.
  */
 export const runNative = async ({
   platform,
@@ -188,6 +267,7 @@ export const runNative = async ({
   appDir,
   explorer = !appDir,
   prebuilt = false,
+  nativeDir,
   artifactsDir,
   port,
   keepRunning = false,
@@ -204,6 +284,11 @@ export const runNative = async ({
   explorer?: boolean;
   /** Use the binary already in `<appDir>/dist/<platform>` instead of building it. */
   prebuilt?: boolean;
+  /**
+   * An unpacked @blotch/angular-lynx-native to build the binary with from
+   * `<appDir>/dist`, instead of running `ng build --platform` in the app.
+   */
+  nativeDir?: string;
   artifactsDir: string;
   port: number;
   keepRunning?: boolean;
@@ -240,7 +325,13 @@ export const runNative = async ({
           kind === 'shell'
             ? await runFlows(
                 platform,
-                await shellHost(platform, appDir!, logFile, prebuilt),
+                await shellHost(
+                  platform,
+                  appDir!,
+                  logFile,
+                  prebuilt,
+                  nativeDir,
+                ),
                 options,
               )
             : await runInExplorer(platform, requestLog, options);
@@ -277,6 +368,9 @@ if (import.meta.main) {
       explorer: { type: 'boolean', default: false },
       // With --app, use the binary ng build --platform already wrote.
       prebuilt: { type: 'boolean', default: false },
+      // With --app, build the binary from the app's dist/ with this unpacked
+      // @blotch/angular-lynx-native, for an app without node_modules.
+      native: { type: 'string' },
       'artifacts-dir': { type: 'string' },
       port: { type: 'string', default: '3210' },
       // Start the simulator booting and download Explorer, then exit. A later
@@ -308,12 +402,21 @@ if (import.meta.main) {
         !values.prebuilt || values.app,
         '--prebuilt needs --app, the folder holding the built app',
       );
+      check(
+        !values.native || values.app,
+        '--native needs --app, the folder holding the built app',
+      );
+      check(
+        !values.native || !values.prebuilt,
+        '--native builds the app; --prebuilt uses one already built. Pass one.',
+      );
       await runNative({
         platform: values.platform,
         distDir: values.dist,
         appDir: values.app,
         explorer: !values.app || values.explorer || !!values.dist,
         prebuilt: values.prebuilt,
+        nativeDir: values.native,
         artifactsDir,
         port: Number(values.port),
       });

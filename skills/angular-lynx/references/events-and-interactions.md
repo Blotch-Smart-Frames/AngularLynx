@@ -34,7 +34,8 @@ Lynx uses prefixes instead of `on*` attributes. Each prefix controls propagation
 
 - `(click)` runs on a tap, as `(bindtap)` does: the renderer maps it like Lynx for Web (`click` → `tap`, bubbling). Angular's `RouterLink` depends on this. Other DOM event names, such as `(mouseover)`, are silently ignored, except pointer events (below).
 - Native Lynx keeps **one** handler per event name on an element (its event map is keyed by name, whatever the bind/catch type). The renderer registers one native handler per event that runs every Angular listener in order, so `routerLink` plus `(bindtap)` on one element both run. If any listener uses `catch`, the event stops at the element after all of them run.
-- A main-thread script (`[mainThreadBindtap]`) registers its own native handler, so it still replaces a `(bindtap)` on the same element.
+- A main-thread script (`[mainThreadBindtap]`) registers its own native handler and keeps the event while it's bound: a `(bindtap)` on the same element doesn't run, and a listener added later (an `IntersectionObserver`'s on a `<scroll-view>`, say) waits until the script is unbound, rather than replacing it.
+- A listener added after the element is on screen works, from a timer, a tap or a library's observer (`nativeElement.addEventListener('bindscroll', …)`). Lynx sends an element's handlers to its native view only along with another change, so the renderer makes one that changes nothing. On iOS, a `<scroll-view>` or `<list>` sends `scroll` only to the handlers it had when it was created, so each one gets a do-nothing `bindscroll` handler then, and later listeners share it.
 
 ## Pointer events
 

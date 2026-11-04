@@ -164,6 +164,10 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 
 `<canvas>` has only a WebGL2 context, and only in apps built with `ng build --platform ios|android` and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
 
+### `<video>` in the web preview only plays and pauses
+
+The web preview plays `<video>` in the browser's own HTML video. `invoke('play')` and `invoke('pause')` work, and `(bindplaying)`, `(bindtimeupdate)`, `(bindended)` and `(binderror)` fire with the same `detail` as on the phone. `(bindfirstframe)`, `(bindpaused)` and `(bindstopped)` never fire there, and `stop` and `seek` do nothing, so don't rely on them to keep the UI's state.
+
 ### `getBoundingClientRect()` is the last layout's
 
 An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer synchronously from its last `layoutchange`, so they're empty until it's laid out. `ResizeObserver` works on Lynx elements. For a box native measures now, use `SelectorQuery`'s `boundingClientRect`.

@@ -30,6 +30,7 @@ import {
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
 import { dropsTap, WebLongPress } from './web-long-press';
+import { webVideoDetail } from './web-video';
 import {
   type BaseLynxElement,
   DOM_EVENT_ALIASES,
@@ -1665,6 +1666,19 @@ export class LynxElement implements BaseLynxElement {
     // The browser's click after a long press on Lynx for Web, which native
     // Lynx doesn't follow with a tap (see web-long-press.ts).
     if (__WEB__ && entry.eventName === 'tap' && dropsTap()) return undefined;
+    // The web preview's HTMLVideoElement sends no detail (see web-video.ts).
+    if (
+      __WEB__ &&
+      this.tagName === 'video' &&
+      event &&
+      typeof event === 'object'
+    ) {
+      const detail = webVideoDetail(
+        entry.eventName,
+        this.element as unknown as HTMLVideoElement,
+      );
+      if (detail) event.detail = detail;
+    }
     // A `click` (a tap) on an element with pointer listeners is where its
     // pointer lifted, as a browser's click is: angular-three, for one, only
     // counts a click that ends near where its pointerdown was.

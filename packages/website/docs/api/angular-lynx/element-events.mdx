@@ -165,7 +165,7 @@ See [`<scroll-view>`](/api/elements/scroll-view#events).
 | `<video>`              | `bindfirstframe`                                                      | `LynxEvent<VideoFirstFrameDetail>`         |
 | `<video>`              | `bindtimeupdate`                                                      | `LynxEvent<VideoTimeUpdateDetail>`         |
 | `<video>`              | `bindbuffering`                                                       | `LynxEvent<VideoBufferingDetail>`          |
-| `<video>`              | `binderror`                                                           | `LynxEvent<VideoErrorDetail \| undefined>` |
+| `<video>`              | `binderror`                                                           | `LynxEvent<VideoErrorDetail>`              |
 | `<video>`              | `bindplaying`, `bindpaused`, `bindstopped`, `bindended`, `bindlooped` | `LynxEvent`                                |
 | `<viewpager>`          | `bindchange`, `bindwillchange`                                        | `LynxEvent<ViewPagerChangeDetail>`         |
 | `<viewpager>`          | `bindoffsetchange`                                                    | `LynxEvent<ViewPagerOffsetChangeDetail>`   |
@@ -174,7 +174,6 @@ See [`<scroll-view>`](/api/elements/scroll-view#events).
 | `<webview>`            | `bindmessage`                                                         | `LynxEvent<WebViewMessageDetail>`          |
 | `<webview>`            | `bindopenwindow`, `bindlocationchange`                                | `LynxEvent<WebViewUrlDetail>`              |
 
-- **`<video>`'s `binderror` may have no `detail`.** The [web preview](/guide/glossary#web-preview) plays a plain HTML `<video>`, whose error sends none, so check `detail` before reading it.
 - **The other elements fire only the common events,** such as `<view>`, `<blur-view>` and `<list-item>`.
 
 ## Related

@@ -5885,3 +5885,19 @@ The engine (`core/list/decoupled_list_event_manager.cc`, `SendLayoutCompleteEven
 ### The fix
 
 `ListLayoutCompleteDetail` (`packages/runtime/src/lib/types/element-events.ts`) types `scrollInfo` as optional and uses the `visibleItem…` names, so a handler has to check for `scrollInfo`.
+
+---
+
+## `<video>`'s `bindtimeupdate` and `binderror` have an empty `detail` in the web preview
+
+### What you'd expect (web)
+
+A video's `timeupdate` handler reads the position from the element (`video.currentTime`), and `error` reads `video.error`. Lynx moves both into the event: `bindtimeupdate` sends `{ current, duration }` and `binderror` sends `{ errorCode, errorMsg }`.
+
+### What Lynx does
+
+Lynx for Web has no Lynx video element (there's no `x-video` in `@lynx-js/web-elements`): `<video>` is the browser's HTMLVideoElement. `@lynx-js/web-core` passes its events through with `detail: domEvent.detail ?? {}` (`createCrossThreadEvent`), and a media event has no `detail`, so both arrived as `{}`. The `element-video` example's `{{ current().toFixed(1) }}` threw `Cannot read properties of undefined (reading 'toFixed')` once play was pressed.
+
+### The fix
+
+On web, `LynxElement` fills in the two details from the HTMLVideoElement before running the listeners (`packages/runtime/src/lib/lynx-element/web-video.ts`): `currentTime` and `duration` (0 until the metadata loads, where the browser has `NaN`), and `MediaError`'s `code` and `message`. `binderror` is typed `LynxEvent<VideoErrorDetail>`, with no `| undefined`. The web preview still has only what Lynx lists for it: `bindfirstframe`, `bindpaused` and `bindstopped` don't fire there, and `stop`/`seek` aren't methods of an HTMLVideoElement.

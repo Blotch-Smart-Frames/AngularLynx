@@ -55,9 +55,20 @@ describe('LynxRequest', () => {
     expect(new LynxRequest(new URL(URL_)).url).toBe(URL_);
   });
 
-  it('rejects a relative URL, since Lynx has no page URL to resolve it against', () => {
-    expect(() => new LynxRequest('/api/data')).toThrow(
-      /Failed to parse URL from \/api\/data\. Lynx has no page URL/,
+  it('keeps a relative URL as written, since Lynx has no page URL to resolve it against', () => {
+    expect(new LynxRequest('/static/model.glb').url).toBe('/static/model.glb');
+    expect(new LynxRequest('models/a.glb?v=1').url).toBe('models/a.glb?v=1');
+    expect(new LynxRequest(new LynxRequest('/static/a.glb')).url).toBe(
+      '/static/a.glb',
+    );
+  });
+
+  it('rejects a URL that doesn’t parse', () => {
+    expect(() => new LynxRequest('https://bad host.com')).toThrow(
+      /Failed to parse URL from https:\/\/bad host\.com\. Lynx has no page URL/,
+    );
+    expect(() => new LynxRequest('//[bad')).toThrow(
+      'Failed to parse URL from //[bad.',
     );
   });
 
@@ -545,18 +556,58 @@ describe('relayFetch of a URL that needs no request', () => {
     ).toBe(200);
   });
 
-  it('sends the rest on: a POST, an absolute URL, a file it doesn’t bundle', async () => {
+  it('reads a bundled file for a Request, as three.js’s FileLoader makes one', async () => {
+    const invoke = vi.fn(() => toWords(new Uint8Array([103, 108, 84, 70])));
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    const request = new LynxRequest('/static/model.glb', {
+      headers: new LynxHeaders({}),
+      credentials: 'same-origin',
+    });
+    const response = await relayFetch(request);
+    expect(invoke).toHaveBeenCalledWith('read', '/static/model.glb');
+    expect(response.url).toBe('/static/model.glb');
+    expect(response.headers.get('content-type')).toBe('model/gltf-binary');
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([
+      103, 108, 84, 70,
+    ]);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('rejects an aborted request for a bundled file without reading it', async () => {
+    const invoke = vi.fn(() => toWords(new Uint8Array([1])));
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
+    const controller = new AbortController();
+    controller.abort('stop');
+    await expect(
+      relayFetch('/static/model.glb', { signal: controller.signal }),
+    ).rejects.toBe('stop');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects other requests for a relative URL: a POST, a file it doesn’t bundle', async () => {
     const invoke = vi.fn(() => null);
     vi.stubGlobal('lynx', { module: () => ({ invoke }) });
     await expect(
       relayFetch('/static/data.json', { method: 'POST', body: 'x' }),
-    ).rejects.toThrow(/Failed to parse URL/);
+    ).rejects.toThrow(
+      'Failed to fetch /static/data.json. Lynx has no page URL to resolve a relative URL against',
+    );
+    await expect(
+      relayFetch(new LynxRequest('/static/data.json', { method: 'PUT' })),
+    ).rejects.toThrow(TypeError);
+    expect(invoke).not.toHaveBeenCalled();
     await expect(relayFetch('/static/missing.json')).rejects.toThrow(
-      /Failed to parse URL/,
+      /Failed to fetch \/static\/missing\.json/,
     );
     expect(invoke).toHaveBeenCalledOnce();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('sends an absolute URL on without reading a bundled file', async () => {
+    const invoke = vi.fn(() => null);
+    vi.stubGlobal('lynx', { module: () => ({ invoke }) });
     call.mockResolvedValueOnce(relayed());
     await relayFetch(new URL(URL_));
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

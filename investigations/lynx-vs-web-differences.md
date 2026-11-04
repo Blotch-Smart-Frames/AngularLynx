@@ -2096,7 +2096,7 @@ Found while relaying the main thread's requests (issue #85), in Lynx Explorer 4.
 ### What Lynx does
 
 - **A failed request resolves, with status 499.** `LynxHttpService` (iOS: `SDK_ERROR_STATUS_CODE`; Android: `CODE_FAILED_INTERNALLY`) answers a refused connection, a bad host, a relative URL ("unsupported URL") or Android's cleartext block with status 499, the error's description as `statusText`, no headers and no body. The runtime treats a 499 with no headers as a network failure and rejects, so `HttpClient` reports status 0 as on the web.
-- **There's no page URL**, so relative URLs fail ("unsupported URL"). The runtime rejects them with a clear `TypeError` before sending.
+- **There's no page URL**, so relative URLs fail ("unsupported URL"). The runtime rejects them with a clear `TypeError` before sending, except a GET of a file the app bundles (below). A `Request` holds a relative URL as written (`new Request('/static/model.glb').url` is `/static/model.glb`, where a browser resolves it against the page), since three.js's `FileLoader` wraps every URL in a `Request` before it fetches: `fetch()` rejects it when it isn't such a GET.
 - **On iOS, `statusText` is `OK` for every status**, 404 included (`LynxHttpService.m` hard-codes it). Android uses the HTTP reason phrase, which is empty over HTTP/2.
 - **Requests get default headers:** Lynx's `Request` sets `Content-Type: text/plain;charset=UTF-8` when there's no body or a non-`ArrayBuffer` body without a type, so GETs carry it; on iOS, `NSURLSession` adds `application/x-www-form-urlencoded` to a POST of bytes without a type.
 - **`fetch` isn't on the background thread's `globalThis`.** The background bundle's wrapper (`RuntimeWrapperWebpackPlugin`'s `tt.define(..., function(..., fetch, XMLHttpRequest, ...)`) takes it as a parameter and falls back to `lynx.fetch`, so `globalThis.fetch` is `undefined` while the bare name `fetch` works. `Headers`, `Request`, `Response`, `AbortController`, `URL` and `TextCodecHelper` are real globals there. The main thread has none of them.
@@ -2885,7 +2885,7 @@ There's no page URL on the main thread, and in an app built with `ng build --pla
 
 ### What to do
 
-Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpClient) answers a GET of a relative URL from the shell's `AngularLynxAssets` module, which reads the file the way the resource fetchers do (`BundleResourceFetcher.localFile` on iOS, `BundleAssets` on Android). A host without the module still rejects relative URLs.
+Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpClient) answers a GET of a relative URL, given as a string or a `Request`, from the shell's `AngularLynxAssets` module, which reads the file the way the resource fetchers do (`BundleResourceFetcher.localFile` on iOS, `BundleAssets` on Android). A host without the module still rejects relative URLs.
 
 ---
 

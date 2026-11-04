@@ -102,7 +102,7 @@ angular-three 4.2 lists Angular 20 and 21, and three.js below 0.183, as its peer
 Textures and models load as on the web:
 
 - three.js's `TextureLoader` (an `Image`), `ImageBitmapLoader` (`createImageBitmap()`) and `GLTFLoader`, including `.glb` files with their textures inside.
-- From `https://` URLs, `data:` URLs, object URLs (`URL.createObjectURL()`), and files your app imports (`import model from './frame.glb'`).
+- From `https://` URLs, `data:` URLs, object URLs (`URL.createObjectURL()`), and files your app bundles, by their path in `dist/`: copy a model in with [`output.copy`](https://rsbuild.rs/config/output/copy) in `lynx.config.ts`, then load `'/assets/models/frame.glb'`. A build has no loader for `import model from './frame.glb'`.
 
 The phone decodes images, and the pixels go straight to the GPU. Loaders that need Web Workers or WebAssembly, such as `DRACOLoader` and `KTX2Loader`, don't work.
 

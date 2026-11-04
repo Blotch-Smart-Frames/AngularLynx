@@ -720,9 +720,11 @@ describe('LynxElement', () => {
       expect(before).toHaveBeenCalledOnce();
       expect(after).not.toHaveBeenCalled();
 
-      // Nothing to register again for an event it has no listener for.
+      // Nothing to register again for an event it has no listener for, nor
+      // for one that was never held.
       element.holdNativeEvent('tap');
       element.releaseNativeEvent('tap');
+      element.releaseNativeEvent('scroll');
       expect(addEvent()).toHaveBeenCalledTimes(3);
     });
 

@@ -1720,9 +1720,11 @@ export class LynxElement implements BaseLynxElement {
    * registers the element's own for the listeners it has for it.
    */
   releaseNativeEvent(eventName: string): void {
-    const held = (this.#heldEvents.get(eventName) ?? 0) - 1;
-    if (held > 0) {
-      this.#heldEvents.set(eventName, held);
+    const held = this.#heldEvents.get(eventName);
+    // Not held: the element's handler is registered already.
+    if (held === undefined) return;
+    if (held > 1) {
+      this.#heldEvents.set(eventName, held - 1);
       return;
     }
     this.#heldEvents.delete(eventName);

@@ -11,7 +11,15 @@ import {
   platformBrowserTesting,
 } from '@angular/platform-browser/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { InputDetail } from '../types/element-events';
+import type { LynxEvent } from '../types/lynx-event';
 import { LynxTextareaValueAccessor } from './lynx-textarea-value-accessor';
+
+/**
+ * The fields the accessor reads from Lynx's bindinput event.
+ */
+const inputEvent = (value: string) =>
+  ({ detail: { value } }) as LynxEvent<InputDetail>;
 
 describe('LynxTextareaValueAccessor', () => {
   beforeAll(() => {
@@ -47,7 +55,7 @@ describe('LynxTextareaValueAccessor', () => {
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
-    dir.onInput(new CustomEvent('bindinput', { detail: { value: 'hi' } }));
+    dir.onInput(inputEvent('hi'));
 
     expect(onChange).toHaveBeenCalledWith('hi');
   });
@@ -59,7 +67,7 @@ describe('LynxTextareaValueAccessor', () => {
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
-    dir.onInput({} as Event);
+    dir.onInput({} as LynxEvent<InputDetail>);
 
     expect(onChange).toHaveBeenCalledWith('');
   });
@@ -70,10 +78,10 @@ describe('LynxTextareaValueAccessor', () => {
     );
     const onChange = vi.fn();
 
-    expect(() => dir.onInput({} as Event)).not.toThrow();
+    expect(() => dir.onInput({} as LynxEvent<InputDetail>)).not.toThrow();
 
     dir.registerOnChange(onChange);
-    dir.onInput(new CustomEvent('bindinput', { detail: { value: 'x' } }));
+    dir.onInput(inputEvent('x'));
 
     expect(onChange).toHaveBeenCalledWith('x');
   });

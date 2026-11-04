@@ -7,7 +7,15 @@ import {
   platformBrowserTesting,
 } from '@angular/platform-browser/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { InputDetail } from '../types/element-events';
+import type { LynxEvent } from '../types/lynx-event';
 import { LynxInputValueAccessor } from './lynx-input-value-accessor';
+
+/**
+ * The fields the accessor reads from Lynx's bindinput event.
+ */
+const inputEvent = (value: string) =>
+  ({ detail: { value } }) as LynxEvent<InputDetail>;
 
 describe('LynxInputValueAccessor', () => {
   beforeAll(() => {
@@ -43,7 +51,7 @@ describe('LynxInputValueAccessor', () => {
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
-    dir.onInput(new CustomEvent('bindinput', { detail: { value: 'hi' } }));
+    dir.onInput(inputEvent('hi'));
 
     expect(onChange).toHaveBeenCalledWith('hi');
   });
@@ -55,7 +63,7 @@ describe('LynxInputValueAccessor', () => {
     const onChange = vi.fn();
     dir.registerOnChange(onChange);
 
-    dir.onInput({} as Event);
+    dir.onInput({} as LynxEvent<InputDetail>);
 
     expect(onChange).toHaveBeenCalledWith('');
   });
@@ -67,10 +75,10 @@ describe('LynxInputValueAccessor', () => {
     const onChange = vi.fn();
 
     // Before registration, onInput must not throw (default no-op onChange).
-    expect(() => dir.onInput({} as Event)).not.toThrow();
+    expect(() => dir.onInput({} as LynxEvent<InputDetail>)).not.toThrow();
 
     dir.registerOnChange(onChange);
-    dir.onInput(new CustomEvent('bindinput', { detail: { value: 'x' } }));
+    dir.onInput(inputEvent('x'));
 
     expect(onChange).toHaveBeenCalledWith('x');
   });

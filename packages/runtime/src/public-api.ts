@@ -110,6 +110,48 @@ export {
   LynxWebView,
 } from './lib/lynx-elements';
 export type { BaseLynxElement } from './lib/lynx-element/types';
+// The type of `$event` on element events. Angular infers it in templates;
+// these name it for a handler declared apart from its template.
+export type {
+  AccessibilityActionDetail,
+  LayoutChangeDetail,
+  LynxEvent,
+  LynxEventTarget,
+  UIAppearanceDetail,
+} from './lib/types/lynx-event';
+export type {
+  FrameLoadDetail,
+  FrameLoadMetricsDetail,
+  ImageErrorDetail,
+  ImageLoadDetail,
+  InputDetail,
+  InputSelectionDetail,
+  InputValueDetail,
+  ListAttachedCell,
+  ListItemInfo,
+  ListLayoutCompleteDetail,
+  ListScrollDetail,
+  ListScrollStateChangeDetail,
+  ListSnapDetail,
+  OverlayErrorDetail,
+  OverlayTouchDetail,
+  RefreshHeaderOffsetDetail,
+  RefreshStartDetail,
+  RefreshStateChangeDetail,
+  ScrollCoordinatorOffsetDetail,
+  ScrollDetail,
+  TextLayoutDetail,
+  TextSelectionChangeDetail,
+  VideoBufferingDetail,
+  VideoErrorDetail,
+  VideoFirstFrameDetail,
+  VideoTimeUpdateDetail,
+  ViewPagerChangeDetail,
+  ViewPagerOffsetChangeDetail,
+  WebViewErrorDetail,
+  WebViewMessageDetail,
+  WebViewUrlDetail,
+} from './lib/types/element-events';
 export { LynxLogger } from './lib/lynx-logger';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';

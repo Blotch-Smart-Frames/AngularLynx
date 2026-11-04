@@ -1,0 +1,178 @@
+# Element events
+
+The type of `$event` on every Lynx element event. Angular infers it in your templates, so a misspelt `detail` field fails the build. `import type { LynxEvent, ImageLoadDetail } from '@blotch/angular-lynx';`
+
+## Usage
+
+```typescript title="src/app/photo.ts"
+import { Component, signal } from '@angular/core';
+import {
+  type ImageLoadDetail,
+  LYNX_ELEMENTS,
+  type LynxEvent,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-photo',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <image [src]="url" (bindload)="loaded($event)" />
+    <text>{{ size()?.width }} × {{ size()?.height }}</text>
+  `,
+})
+export class Photo {
+  readonly url = 'https://example.com/photo.jpg';
+  readonly size = signal<ImageLoadDetail | null>(null);
+
+  loaded({ detail }: LynxEvent<ImageLoadDetail>): void {
+    this.size.set(detail);
+  }
+}
+```
+
+- **In a template, write nothing.** Angular knows each element's events: in `(bindload)="size.set($event.detail)"`, `$event` is already `LynxEvent<ImageLoadDetail>`.
+- **For a handler declared in the class,** type its parameter with `LynxEvent` and the event's detail type, from the tables below.
+- **Every prefix has the same type.** `(catchtap)`, `(capture-bindtap)` and `(global-bindtap)` get what `(bindtap)` gets, and so on for every event.
+- **An event the element doesn't fire** stays the DOM `Event`, such as `(bindload)` on a `<view>`.
+- **`$event` isn't a DOM `Event`.** A handler that takes `Event` no longer compiles: change its parameter to the type below.
+
+## API
+
+### `LynxEvent`
+
+```typescript
+type LynxEvent<Detail = unknown> = {
+  readonly type: string;
+  readonly timestamp: number;
+  readonly target: LynxEventTarget;
+  readonly currentTarget: LynxEventTarget;
+  readonly detail: Detail;
+  stopPropagation(): void;
+  preventDefault(): void;
+};
+```
+
+| Field                                   | Description                                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                                  | The event's name without its prefix, such as `'load'`.                                                                                            |
+| `timestamp`                             | When the event fired, in milliseconds. It's `timestamp`, not the DOM's `timeStamp`.                                                               |
+| `target`                                | The element the event started on.                                                                                                                 |
+| `currentTarget`                         | The element whose handler is running.                                                                                                             |
+| `detail`                                | The event's own data. `LynxEvent` with no `Detail` has `detail: unknown`: for events with none, such as `bindstartplay`.                          |
+| `stopPropagation()`, `preventDefault()` | Do nothing. Use the `catch` prefix to stop an event (see [Handling taps and events](/guide/elements/event-handling#stop-an-event-from-bubbling)). |
+
+### `LynxEventTarget`
+
+```typescript
+type LynxEventTarget = {
+  readonly id: string;
+  readonly uid: number;
+  readonly dataset: Readonly<Record<string, unknown>>;
+};
+```
+
+Plain data, not the element: it has no methods. `id` is the element's `id` attribute, `uid` Lynx's internal number for it, and `dataset` its `data-*` attributes without the `data-` prefix. A `dataset` value is `unknown` because a property binding, such as `[data-item]="item"`, keeps its value's type.
+
+## Events every element fires
+
+| Event                                                                                            | `$event`                                |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| `bindtap`, `bindlongpress`, `bindtouchstart`, `bindtouchmove`, `bindtouchend`, `bindtouchcancel` | `TouchEvent` from `@lynx-js/types`      |
+| `bindmousedown`, `bindmouseup`, `bindmousemove`, `bindmouseenter`, `bindmouseleave`              | `MouseEvent` from `@lynx-js/types`      |
+| `bindlayoutchange`                                                                               | `LynxEvent<LayoutChangeDetail>`         |
+| `binduiappear`, `binduidisappear`                                                                | `LynxEvent<UIAppearanceDetail>`         |
+| `bindanimationstart`, `bindanimationiteration`, `bindanimationend`, `bindanimationcancel`        | `AnimationEvent` from `@lynx-js/types`  |
+| `bindtransitionstart`, `bindtransitionend`, `bindtransitioncancel`                               | `TransitionEvent` from `@lynx-js/types` |
+| `bindaccessibilityaction`                                                                        | `LynxEvent<AccessibilityActionDetail>`  |
+
+`TouchEvent` has the same fields as `LynxEvent<{ x: number; y: number }>`, plus `touches` and `changedTouches`. Import it, and the other `@lynx-js/types` events, by name: without the import, TypeScript uses the DOM's `TouchEvent`. The detail types are on [`<view>`](/api/elements/view#events).
+
+## Each element's own events
+
+The fields of each detail type are in its element's Events table.
+
+### `<image>` and `<svg>`
+
+| Event                                                                           | `$event`                      |
+| ------------------------------------------------------------------------------- | ----------------------------- |
+| `bindload`                                                                      | `LynxEvent<ImageLoadDetail>`  |
+| `binderror` (`<image>`)                                                         | `LynxEvent<ImageErrorDetail>` |
+| `bindstartplay`, `bindcurrentloopcomplete`, `bindfinalloopcomplete` (`<image>`) | `LynxEvent`                   |
+
+See [`<image>`](/api/elements/image#events) and [`<svg>`](/api/elements/svg#events).
+
+### `<text>`
+
+| Event                 | `$event`                               |
+| --------------------- | -------------------------------------- |
+| `bindlayout`          | `LynxEvent<TextLayoutDetail>`          |
+| `bindselectionchange` | `LynxEvent<TextSelectionChangeDetail>` |
+
+See [`<text>`](/api/elements/text#events).
+
+### `<input>` and `<textarea>`
+
+| Event                                  | `$event`                          |
+| -------------------------------------- | --------------------------------- |
+| `bindinput`                            | `LynxEvent<InputDetail>`          |
+| `bindfocus`, `bindblur`, `bindconfirm` | `LynxEvent<InputValueDetail>`     |
+| `bindselection`                        | `LynxEvent<InputSelectionDetail>` |
+| `bindbeforeinput`                      | `LynxEvent<BeforeInputDetail>`    |
+| `bindkeyboardheightchange`             | `LynxEvent<KeyboardHeightDetail>` |
+| `bindkeyboard`                         | `LynxEvent<KeyboardDetail>`       |
+| `bindline` (`<textarea>`)              | `LynxEvent<TextareaLineDetail>`   |
+
+See [`<input>`](/api/elements/input#events) and [`<textarea>`](/api/elements/textarea#events).
+
+### `<scroll-view>`
+
+| Event                                                                                                                                                                          | `$event`                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `bindscroll`, `bindscrollend`, `bindscrolltoupper`, `bindscrolltolower`, `bindscrolltoupperedge`, `bindscrolltoloweredge`, `bindscrolltonormalstate`, `bindcontentsizechanged` | `LynxEvent<ScrollDetail>` |
+
+See [`<scroll-view>`](/api/elements/scroll-view#events).
+
+### `<list>`
+
+| Event                                                  | `$event`                                 |
+| ------------------------------------------------------ | ---------------------------------------- |
+| `bindscroll`, `bindscrolltoupper`, `bindscrolltolower` | `LynxEvent<ListScrollDetail>`            |
+| `bindscrollstatechange`                                | `LynxEvent<ListScrollStateChangeDetail>` |
+| `bindlayoutcomplete`                                   | `LynxEvent<ListLayoutCompleteDetail>`    |
+| `bindsnap`                                             | `LynxEvent<ListSnapDetail>`              |
+
+`ListScrollDetail` adds `<list>`'s fields to `ScrollDetail`. `ListAttachedCell` and `ListItemInfo` are the types of its item arrays. See [`<list>`](/api/elements/list#events).
+
+### Other elements
+
+| Element                | Event                                                                 | `$event`                                   |
+| ---------------------- | --------------------------------------------------------------------- | ------------------------------------------ |
+| `<frame>`              | `bindload`                                                            | `LynxEvent<FrameLoadDetail>`               |
+| `<frame>`              | `bindloadmetrics`                                                     | `LynxEvent<FrameLoadMetricsDetail>`        |
+| `<overlay>`            | `bindshowoverlay`, `binddismissoverlay`, `bindrequestclose`           | `LynxEvent`                                |
+| `<overlay>`            | `bindoverlaytouch`                                                    | `LynxEvent<OverlayTouchDetail>`            |
+| `<overlay>`            | `binderror`                                                           | `LynxEvent<OverlayErrorDetail>`            |
+| `<refresh>`            | `bindstartrefresh`                                                    | `LynxEvent<RefreshStartDetail>`            |
+| `<refresh>`            | `bindheaderoffset`                                                    | `LynxEvent<RefreshHeaderOffsetDetail>`     |
+| `<refresh>`            | `bindrefreshstatechange`                                              | `LynxEvent<RefreshStateChangeDetail>`      |
+| `<scroll-coordinator>` | `bindoffset`                                                          | `LynxEvent<ScrollCoordinatorOffsetDetail>` |
+| `<video>`              | `bindfirstframe`                                                      | `LynxEvent<VideoFirstFrameDetail>`         |
+| `<video>`              | `bindtimeupdate`                                                      | `LynxEvent<VideoTimeUpdateDetail>`         |
+| `<video>`              | `bindbuffering`                                                       | `LynxEvent<VideoBufferingDetail>`          |
+| `<video>`              | `binderror`                                                           | `LynxEvent<VideoErrorDetail \| undefined>` |
+| `<video>`              | `bindplaying`, `bindpaused`, `bindstopped`, `bindended`, `bindlooped` | `LynxEvent`                                |
+| `<viewpager>`          | `bindchange`, `bindwillchange`                                        | `LynxEvent<ViewPagerChangeDetail>`         |
+| `<viewpager>`          | `bindoffsetchange`                                                    | `LynxEvent<ViewPagerOffsetChangeDetail>`   |
+| `<webview>`            | `bindload`                                                            | `LynxEvent`                                |
+| `<webview>`            | `binderror`                                                           | `LynxEvent<WebViewErrorDetail>`            |
+| `<webview>`            | `bindmessage`                                                         | `LynxEvent<WebViewMessageDetail>`          |
+| `<webview>`            | `bindopenwindow`, `bindlocationchange`                                | `LynxEvent<WebViewUrlDetail>`              |
+
+- **`<video>`'s `binderror` may have no `detail`.** The [web preview](/guide/glossary#web-preview) plays a plain HTML `<video>`, whose error sends none, so check `detail` before reading it.
+- **The other elements fire only the common events,** such as `<view>`, `<blur-view>` and `<list-item>`.
+
+## Related
+
+- [Handling taps and events](/guide/elements/event-handling)
+- [Elements](/api/angular-lynx/elements): `LYNX_ELEMENTS`
+- [Testing event reference](/api/testing-library/event-reference): firing these events in tests

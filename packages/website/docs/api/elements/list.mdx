@@ -67,7 +67,7 @@ Item gaps are CSS properties that only `<list>` understands, not attributes. Set
 
 ## Events
 
-Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+Read the payload from `$event.detail`. Angular types `$event` for each event: see [Element events](/api/angular-lynx/element-events#list).
 
 | Event                   | `detail`                                                                                                                                                                                                     | Description                                                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
@@ -75,7 +75,7 @@ Read the payload from `$event.detail` (see [Handling taps and events](/guide/ele
 | `bindscrolltoupper`     | Same as `bindscroll`                                                                                                                                                                                         | Near the start, by `upper-threshold-item-count`.                                                                  |
 | `bindscrolltolower`     | Same as `bindscroll`                                                                                                                                                                                         | Near the end, by `lower-threshold-item-count`. Use it to load more.                                               |
 | `bindscrollstatechange` | `{ state: 1 \| 2 \| 3 \| 4 }`                                                                                                                                                                                | iOS and Android. Scroll state: `1` stopped, `2` dragging, `3` slowing down, `4` animating.                        |
-| `bindlayoutcomplete`    | `{ 'layout-id': number; scrollInfo: object; diffResult?: object; visibleItemBeforeUpdate?: object[]; visibleItemAfterUpdate?: object[] }`                                                                    | Layout finished, after the first render or an update. The optional fields need `need-layout-complete-info`.       |
+| `bindlayoutcomplete`    | `{ 'layout-id': number; scrollInfo?: object; diffResult?: object; visibleItemBeforeUpdate?: object[]; visibleItemAfterUpdate?: object[] }`                                                                   | Layout finished, after the first render or an update. The optional fields need `need-layout-complete-info`.       |
 | `bindsnap`              | `{ position: number; currentScrollTop: number; currentScrollLeft: number; targetScrollTop: number; targetScrollLeft: number }`                                                                               | With `item-snap`: about to snap to the item at `position`.                                                        |
 
 Plus the [common events](/api/elements/view#events), such as `bindtap`.

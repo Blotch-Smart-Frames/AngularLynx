@@ -77,9 +77,12 @@ function panInterceptScopeInput(
  *    endpoint that renderer.setProperty() would reach.
  *
  * 3. Events (bindtap, catchtap, bindinput, bindscroll, …) are NOT declared as
- *    @Output() because Angular would intercept them and skip the renderer's
- *    listen() call, breaking native Lynx event delivery. They continue to work
- *    via renderer.listen() which handles all unrecognized event names.
+ *    outputs. Angular would still add the native listener with
+ *    renderer.listen(), but it would also subscribe the handler to the output,
+ *    so DebugElement.triggerEventHandler() would run it twice, and every
+ *    binding would hold a subscription to an output that never emits. Their
+ *    `$event` types come from each tag's element type instead (see
+ *    types/element-events.ts), which Angular's template checker reads.
  */
 @Directive({
   inputs: [

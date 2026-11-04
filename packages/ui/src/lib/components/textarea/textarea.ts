@@ -85,7 +85,7 @@ import { cn } from '../../utils/cn';
         [attr.enable-scroll-bar]="maxLines() != null ? 'true' : null"
         class="text-sm text-foreground"
         style="border: none; background: transparent; height: 100%; width: 100%; line-height: 20px; position: relative; z-index: 1;"
-        (bindinput)="onInput($any($event))"
+        (bindinput)="onInput($event)"
         (bindfocus)="onFocus()"
         (bindblur)="onBlur()"
       ></textarea>

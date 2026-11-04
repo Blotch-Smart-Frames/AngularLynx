@@ -109,13 +109,33 @@ onTouchMove(event: TouchEvent) {
 
 To know where on a control the finger is, give everything inside the control `[user-interaction-enabled]="false"`, so the control itself is always the target, and read `x`. On the web, measure the control's left edge (`boundingClientRect`) when the press starts and subtract it.
 
-Input events provide the current value:
+### Typed `$event`
+
+Angular types `$event` from the element and the event, so a template needs no cast, and a misspelt `detail` field fails the build:
+
+```html
+<input (bindinput)="name.set($event.detail.value)" />
+<image [src]="url" (bindload)="loaded($event)" />
+```
 
 ```typescript
-onInput(event: { detail: { value: string } }) {
-  this.inputValue.set(event.detail.value);
+import {
+  type ImageLoadDetail,
+  type LynxEvent,
+} from '@blotch/angular-lynx';
+
+loaded({ detail }: LynxEvent<ImageLoadDetail>) {
+  this.size.set({ width: detail.width, height: detail.height });
 }
 ```
+
+- **Non-touch events are `LynxEvent<Detail>`**, from `@blotch/angular-lynx`, with `type`, `timestamp`, `target`, `currentTarget` and `detail`. Each event has an exported detail type: `ImageLoadDetail`, `LayoutChangeDetail`, `ScrollDetail`, `ListScrollDetail`, `InputDetail` (for `bindinput`), `InputValueDetail` (`bindfocus`, `bindblur`, `bindconfirm`), `KeyboardHeightDetail`, `VideoTimeUpdateDetail`, `WebViewMessageDetail`, `ViewPagerChangeDetail` and so on. An event with no detail, such as `<webview>`'s `bindload`, is `LynxEvent` (`detail: unknown`).
+- **Tap, long-press and touch events are `TouchEvent`**, mouse events `MouseEvent`, and animation and transition events `AnimationEvent` and `TransitionEvent`, all from `@lynx-js/types`. Import them by name: without the import, TypeScript uses the DOM's.
+- **Never type a Lynx event handler's parameter as `Event` or cast to `CustomEvent`.** `$event` isn't a DOM event, so `onInput(event: Event)` fails `ng build` and `ng test`. `$any($event)` compiles but throws the checking away.
+- **Every prefix gives the same type:** `(catchtap)`, `(capture-bindtap)` and `(global-bindtap)` get what `(bindtap)` gets, and so on for every other event.
+- **An event the element doesn't fire stays a DOM `Event`**, such as `(bindload)` on a `<view>`: that's the sign of a typo in the event name or the wrong element.
+- **`target.dataset` values are `unknown`:** a `[data-item]="item"` binding keeps the item's type, so narrow before using one.
+- **`<video>`'s `binderror` is `LynxEvent<VideoErrorDetail | undefined>`:** the web preview's plain HTML `<video>` sends no detail.
 
 ## Tap vs Long Press
 

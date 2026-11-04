@@ -14,7 +14,9 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   backgroundFn,
   createMainThreadRef,
+  type InputDetail,
   LYNX_ELEMENTS,
+  type LynxEvent,
   LynxMainThread,
   mainThreadFn,
   MainThreadRef,
@@ -316,8 +318,12 @@ export class Hello implements OnInit {
     this.count.update((count) => count + 1);
   }
 
-  onInput(event: Event) {
-    this.typed.set((event as CustomEvent<{ value: string }>).detail.value);
+  /**
+   * Typed as the packed runtime types `$event`, so the E2E build checks that
+   * the types reach an installed app.
+   */
+  onInput({ detail }: LynxEvent<InputDetail>) {
+    this.typed.set(detail.value);
   }
 
   /**

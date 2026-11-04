@@ -1,5 +1,3 @@
-import type { MouseEvent, TouchEvent } from '@lynx-js/types';
-
 declare global {
   /**
    * Determines if code should be placed in the background thread, used as a compile-time define macro
@@ -74,38 +72,6 @@ declare global {
   ): Promise<unknown>;
 }
 
-declare global {
-  // oxlint-disable-next-line typescript/consistent-type-definitions -- interface required for global augmentation
-  interface HTMLElementEventMap {
-    bindtap: TouchEvent;
-    catchtap: TouchEvent;
-    'capture-bindtap': TouchEvent;
-    'capture-catchtap': TouchEvent;
-    'global-bindtap': TouchEvent;
-    bindtouchstart: TouchEvent;
-    bindtouchend: TouchEvent;
-    bindtouchmove: TouchEvent;
-    bindtouchcancel: TouchEvent;
-    bindlongpress: TouchEvent;
-    catchtouchstart: TouchEvent;
-    catchtouchend: TouchEvent;
-    catchtouchmove: TouchEvent;
-    catchtouchcancel: TouchEvent;
-    catchlongpress: TouchEvent;
-    // Lynx's mouse events, which a mouse fires on web and Lynx PC instead of
-    // touch events. Without these entries Angular types `$event` on them as a
-    // plain DOM `Event`, with no coordinates, so a drag handler can't read
-    // where the cursor is. Lynx delivers its own MouseEvent object, not the
-    // DOM's, so that's the type here.
-    bindmousedown: MouseEvent;
-    bindmouseup: MouseEvent;
-    bindmousemove: MouseEvent;
-    bindmouseenter: MouseEvent;
-    bindmouseleave: MouseEvent;
-    catchmousedown: MouseEvent;
-    catchmouseup: MouseEvent;
-    catchmousemove: MouseEvent;
-    catchmouseenter: MouseEvent;
-    catchmouseleave: MouseEvent;
-  }
-}
+// Keeps this file a module, which `declare global` needs. The types of
+// element events' `$event` are in lynx-event.ts and element-events.ts.
+export {};

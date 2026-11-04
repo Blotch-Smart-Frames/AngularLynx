@@ -91,7 +91,7 @@ import { cn } from '../../utils/cn';
         [attr.disabled]="disabled() || undefined"
         class="text-sm text-foreground"
         style="border: none; background: transparent; height: 100%; width: 100%; position: relative; z-index: 1;"
-        (bindinput)="onInput($any($event))"
+        (bindinput)="onInput($event)"
         (bindfocus)="onFocus()"
         (bindblur)="onBlur()"
       />

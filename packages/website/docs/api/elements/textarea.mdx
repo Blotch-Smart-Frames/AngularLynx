@@ -17,16 +17,12 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
     <textarea
       placeholder="Write a message"
       maxlines="6"
-      (bindinput)="onInput($event)"
+      (bindinput)="text.set($event.detail.value)"
     ></textarea>
   `,
 })
 export class Message {
   readonly text = signal('');
-
-  onInput(event: Event): void {
-    this.text.set((event as CustomEvent<{ value: string }>).detail.value);
-  }
 }
 ```
 
@@ -64,15 +60,19 @@ Plus the [common attributes](/api/elements/view#attributes), such as `id` and `c
 
 ## Events
 
-Read the payload from `$event.detail` (see [Handling taps and events](/guide/elements/event-handling)).
+Read the payload from `$event.detail`. Angular types `$event` for each event: see [Element events](/api/angular-lynx/element-events#input-and-textarea).
 
-| Event           | `detail`                                                                                 | Description                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `bindinput`     | `{ value: string; selectionStart: number; selectionEnd: number; isComposing?: boolean }` | The text changed. `isComposing` is `true` while a keyboard that builds characters from several keystrokes is mid-character. |
-| `bindfocus`     | `{ value: string }`                                                                      | The field got focus.                                                                                                        |
-| `bindblur`      | `{ value: string }`                                                                      | The field lost focus.                                                                                                       |
-| `bindconfirm`   | `{ value: string }`                                                                      | The user pressed the keyboard's return key. Fires only when `confirm-type` is set.                                          |
-| `bindselection` | `{ selectionStart: number; selectionEnd: number }`                                       | The cursor or the selection moved.                                                                                          |
+| Event                      | `detail`                                                                                    | Description                                                                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bindinput`                | `{ value: string; selectionStart: number; selectionEnd: number; isComposing?: boolean }`    | The text changed. `isComposing` is `true` while a keyboard that builds characters from several keystrokes is mid-character.                                                                                 |
+| `bindfocus`                | `{ value: string }`                                                                         | The field got focus.                                                                                                                                                                                        |
+| `bindblur`                 | `{ value: string }`                                                                         | The field lost focus.                                                                                                                                                                                       |
+| `bindconfirm`              | `{ value: string }`                                                                         | The user pressed the keyboard's return key. Fires only when `confirm-type` is set.                                                                                                                          |
+| `bindselection`            | `{ selectionStart: number; selectionEnd: number }`                                          | The cursor or the selection moved.                                                                                                                                                                          |
+| `bindbeforeinput`          | `{ value: string; cursor: number; length: number; replace: string; isComposing?: boolean }` | iOS only. An edit is about to replace `length` characters from `cursor` with `replace`. `value` is the text before it.                                                                                      |
+| `bindkeyboardheightchange` | `{ height: number }`                                                                        | iOS and Android. The keyboard showed, changed size or hid (`0`), while the field has focus. iOS sends points from the bottom of the window; Android sends physical pixels from the bottom of the Lynx view. |
+| `bindkeyboard`             | `{ show: boolean; keyboardHeight?: number; safeAreaBottom?: number }`                       | iOS only. The keyboard is showing or hiding. As it shows, it also sends its height and the bottom safe-area inset, in points.                                                                               |
+| `bindline`                 | `{ line: number }`                                                                          | The number of lines changed. On iOS and Android, `-1` means an edit would have gone over `maxlines`.                                                                                                        |
 
 Plus the [common events](/api/elements/view#events), such as `bindtap`.
 

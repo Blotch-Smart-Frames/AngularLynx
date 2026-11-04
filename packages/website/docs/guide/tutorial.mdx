@@ -201,7 +201,7 @@ Add this row to the template, between the count and `@for`:
     class="flex-1 rounded-[10px] border border-zinc-200 bg-white px-3.5 py-3 text-[15px]"
     placeholder="What needs to be done?"
     [value]="draft()"
-    (bindinput)="onInput($event)"
+    (bindinput)="draft.set($event.detail.value)"
   />
   <view
     class="items-center rounded-[10px] bg-indigo-500 px-5 py-3 justify-center"
@@ -212,7 +212,7 @@ Add this row to the template, between the count and `@for`:
 </view>
 ```
 
-Then add `draft`, `#nextId`, `onInput()` and `addTodo()` to the class, around `todos`:
+Then add `draft`, `#nextId` and `addTodo()` to the class, around `todos`:
 
 ```typescript
   readonly draft = signal('');
@@ -220,10 +220,6 @@ Then add `draft`, `#nextId`, `onInput()` and `addTodo()` to the class, around `t
     // the two todos from step 3
   ]);
   #nextId = 3;
-
-  onInput(event: Event): void {
-    this.draft.set((event as CustomEvent<{ value: string }>).detail.value);
-  }
 
   addTodo(): void {
     const text = this.draft().trim();
@@ -238,7 +234,7 @@ Then add `draft`, `#nextId`, `onInput()` and `addTodo()` to the class, around `t
 
 `<input>` is Lynx's text field. It fires `bindinput` on every keystroke, instead of the DOM `input` event.
 
-- **The text is in `event.detail.value`**, not `event.target.value`. Angular types `$event` as a plain `Event`, so `onInput()` casts it to `CustomEvent<{ value: string }>` to read `detail`.
+- **The text is in `$event.detail.value`**, not `$event.target.value`. Angular knows what `<input>`'s `bindinput` sends, so a misspelt field in `$event.detail` fails the build.
 - `[value]="draft()"` writes the signal back into the field. That's how `addTodo()` clears it.
 - `#nextId` is an ES private field. It's plain state that the template never reads, so it doesn't need to be a signal.
 

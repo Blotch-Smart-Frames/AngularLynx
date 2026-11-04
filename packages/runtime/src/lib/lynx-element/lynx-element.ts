@@ -26,6 +26,7 @@ import {
   type LayoutRect,
   LayoutTracker,
   type LynxDOMRect,
+  measureLayout,
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
@@ -1486,14 +1487,7 @@ export class LynxElement implements BaseLynxElement {
   #layoutTracker(): LayoutTracker {
     this.#layout ??= new LayoutTracker({
       listen: (event, listener) => this.addEventListener(event, listener),
-      measure: (callback) =>
-        __InvokeUIMethod(this.element, 'boundingClientRect', {}, (result) =>
-          callback(
-            result?.code === 0 && result.data
-              ? (result.data as LayoutRect)
-              : null,
-          ),
-        ),
+      measure: (callback) => measureLayout(this.element, callback),
     });
     return this.#layout;
   }
@@ -1604,6 +1598,12 @@ export class LynxElement implements BaseLynxElement {
     const current = this.#nativeHandlers.get(key);
     const eventType = listeners.length ? combinedEventType(listeners) : null;
     if (current?.eventType === eventType) return;
+    // A handler reaches native with the next flush, and one added outside
+    // change detection may get none: an IntersectionObserver or
+    // ResizeObserver observing from an afterNextRender() callback, as
+    // Angular advises for browser APIs, listens for uiappear or
+    // layoutchange and would hear nothing until something else changed.
+    scheduleSettleFlush();
     if (current) {
       // Passing undefined as the listener tells the Lynx SDK to remove the
       // handler for this type+name combination.

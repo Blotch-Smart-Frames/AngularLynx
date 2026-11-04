@@ -46,7 +46,7 @@ Read [lynx-elements.md](references/lynx-elements.md)
 
 ## Events & Interactions
 
-The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`. `(click)` as an alias for tap, pointer events made from touches, several handlers on one element. Touch coordinates on each platform, drags, and gestures (`[lynxGesture]` with pan, tap, long press and fling) and how they compete. Angular template syntax: `(bindtap)="handler($event)"`, and the typed `$event` (`LynxEvent<Detail>` and each event's detail type) that replaces casting to `Event` or `CustomEvent`.
+The `bind`/`catch`/`capture-bind`/`capture-catch` prefix system, and `global-bind` for touches anywhere. Event types: `tap`, `longpress`, `input`, `scroll`, `load`, `animationend`, `layoutchange`, `uiappear`. Elements coming into view with `[lynxExposure]`, `IntersectionObserver` and `LynxGlobalExposure`. `(click)` as an alias for tap, pointer events made from touches, several handlers on one element. Touch coordinates on each platform, drags, and gestures (`[lynxGesture]` with pan, tap, long press and fling) and how they compete. Angular template syntax: `(bindtap)="handler($event)"`, and the typed `$event` (`LynxEvent<Detail>` and each event's detail type) that replaces casting to `Event` or `CustomEvent`.
 
 Read [events-and-interactions.md](references/events-and-interactions.md)
 

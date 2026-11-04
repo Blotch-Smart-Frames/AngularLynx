@@ -324,6 +324,9 @@ describe('eventMap', () => {
       'scrolltoupperedge',
       'scrolltoloweredge',
       'scrolltonormalstate',
+      // Exposure
+      'uiappear',
+      'uidisappear',
       // Form / focus
       'focus',
       'blur',

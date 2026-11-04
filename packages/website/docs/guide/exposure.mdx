@@ -1,6 +1,6 @@
 # Detect when elements are visible
 
-Find out when an element scrolls onto or off the screen, as you would with `IntersectionObserver` on the web. Use it to render heavy content only when needed, or to track which items the user saw. Lynx calls this **exposure** (see [Glossary](/guide/glossary#exposure)).
+Find out when an element scrolls onto or off the screen. Use it to render heavy content only when needed, or to track which items the user saw. Lynx calls this **exposure** (see [Glossary](/guide/glossary#exposure)).
 
 ## Choose an API
 
@@ -8,6 +8,7 @@ Find out when an element scrolls onto or off the screen, as you would with `Inte
 | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Change what one element shows when it becomes visible               | The [`lynxExposure` directive](#watch-one-element): a `visible()` signal per element                       |
 | Record impressions across the whole page, for example for analytics | The [`LynxGlobalExposure` service](#track-impressions-across-the-page): batched events for tagged elements |
+| Watch elements from code, or use a library written for the browser  | [`IntersectionObserver`](#use-intersectionobserver), as on the web                                         |
 
 ## Watch one element
 
@@ -42,6 +43,43 @@ export class FeedItem {}
 - **The directive cleans up after itself** when the element is destroyed.
 
 The directive switches content in and out as the user scrolls. To create a component the first time it appears and keep it, combine `lynxExposure` with [`@defer`](/guide/defer).
+
+## Use `IntersectionObserver`
+
+`IntersectionObserver` takes Lynx elements, so code and libraries written for the browser work unchanged. Observe an element from its `ElementRef`:
+
+```typescript title="src/app/scene-frame.ts"
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  inject,
+  signal,
+} from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-scene-frame',
+  imports: [LYNX_ELEMENTS],
+  template: `<text>{{ onScreen() ? 'Drawing' : 'Paused' }}</text>`,
+})
+export class SceneFrame {
+  readonly onScreen = signal(false);
+
+  constructor() {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) this.onScreen.set(entry.isIntersecting); // [!code highlight]
+    });
+    observer.observe(inject(ElementRef).nativeElement); // [!code highlight]
+    inject(DestroyRef).onDestroy(() => observer.disconnect());
+  }
+}
+```
+
+- **It reports each element once observing starts**, as a browser does, then each time the element comes into view or leaves it. The first report waits for the element's first layout. After that, the same rules as `lynxExposure` decide what counts as visible.
+- **Entries have the browser's fields**: `isIntersecting`, `intersectionRatio`, `boundingClientRect`, `intersectionRect`, `rootBounds` and `target`. The boxes are measured when Lynx notices the change, so an element scrolling into view reports a small `intersectionRatio`.
+- **`root`, `rootMargin` and `threshold` don't work on a device yet.** The observer reports only when an element starts or stops being visible, and logs a warning once if you pass them. They work in the web preview, which uses the browser's own `IntersectionObserver`.
+- **In tests**, [`fireEvent.uiappear()` and `fireEvent.uidisappear()`](/api/testing-library/event-reference#coming-into-view) bring an element into view and take it out.
 
 ## Track impressions across the page
 

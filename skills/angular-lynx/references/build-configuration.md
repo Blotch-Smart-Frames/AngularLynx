@@ -78,7 +78,7 @@ Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default t
 
 `ng test` takes the options of Angular's unit-test builder. It finds `*.spec.ts` and `*.test.ts` files, compiles them ahead of time like the app, and loads `@blotch/angular-lynx-testing-library`'s setup when the project has it. Templates are checked strictly, so a component using Lynx elements imports `LYNX_ELEMENTS`. The testing library's `fireEvent` sends an event the way a device does: a touch event goes down from the page through the `capture-bind` and `capture-catch` handlers, then back up through the `bind` and `catch` ones, and a `catch` handler stops it. An event that doesn't bubble, such as `input`, runs only the target's own handler.
 
-`fireEvent` has a method for each common event (`tap`, `input`, `scroll`, `layoutchange`, an `<image>`'s `load` and `error`, …). Pass what the element would report as `detail`, and the handler gets it as `$event.detail`:
+`fireEvent` has a method for each common event (`tap`, `input`, `scroll`, `layoutchange`, an `<image>`'s `load` and `error`, `uiappear` and `uidisappear` for an element coming into view and leaving it, …). Pass what the element would report as `detail`, and the handler gets it as `$event.detail`:
 
 ```typescript
 fireEvent.load(image, { detail: { width: 240, height: 340 } });

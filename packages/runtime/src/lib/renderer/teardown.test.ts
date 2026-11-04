@@ -38,8 +38,12 @@ import {
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
   Directive,
+  ElementRef,
   inject,
+  type OnDestroy,
+  type OnInit,
   provideZonelessChangeDetection,
+  Renderer2,
   RendererFactory2,
   signal,
   ViewContainerRef,
@@ -51,7 +55,11 @@ import {
   platformBrowserTesting,
 } from '@angular/platform-browser/testing';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { processPendingRemovals } from '../lynx-element';
+import {
+  type BaseLynxElement,
+  LynxElement,
+  processPendingRemovals,
+} from '../lynx-element';
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
 import { markFirstRenderComplete } from '../lynx-render-lifecycle';
@@ -105,21 +113,35 @@ let pageRoot: FakeEl;
 // Nodes __RemoveElement'd since the last __FlushElementTree. Anything still here
 // at flush time was not reinserted → its painting node dies (is_move=false).
 const pendingRemovedSinceFlush = new Set<FakeEl>();
-// Every __AddEvent registration, so a test can prove a rebuilt element re-binds
-// its template handlers (native events don't survive a painting-node teardown).
-const addEventCalls: { id: number; type: string; name: string }[] = [];
+// Every __AddEvent call, so a test can prove a rebuilt element re-binds its
+// template handlers (native events don't survive a painting-node teardown),
+// and that a released element's handlers come off it (`removed`).
+const addEventCalls: {
+  id: number;
+  type: string;
+  name: string;
+  removed: boolean;
+}[] = [];
+// Every fake element made, in or out of the tree: a list keeps its items out
+// of the native tree until the list asks for them, and a released subtree is
+// out of it too.
+const created: FakeEl[] = [];
 
-const makeEl = (tag: string, text?: string): FakeEl => ({
-  id: nextId++,
-  tag,
-  parent: null,
-  children: [],
-  text,
-  attrs: new Map(),
-  classes: new Set(),
-  styles: new Map(),
-  hasPaintingNode: true,
-});
+const makeEl = (tag: string, text?: string): FakeEl => {
+  const el: FakeEl = {
+    id: nextId++,
+    tag,
+    parent: null,
+    children: [],
+    text,
+    attrs: new Map(),
+    classes: new Set(),
+    styles: new Map(),
+    hasPaintingNode: true,
+  };
+  created.push(el);
+  return el;
+};
 
 const detach = (child: FakeEl): void => {
   const p = child.parent;
@@ -131,6 +153,7 @@ const detach = (child: FakeEl): void => {
 
 const installNativeFakes = (): void => {
   nextId = 1;
+  created.length = 0;
   pageRoot = makeEl('page');
   pendingRemovedSinceFlush.clear();
   addEventCalls.length = 0;
@@ -207,9 +230,18 @@ const installNativeFakes = (): void => {
   };
   g.__SetInlineStyles = (n: FakeEl, value: unknown) =>
     n.styles.set('__inline', value);
-  g.__AddEvent = (el: FakeEl, type: string, name: string) => {
-    addEventCalls.push({ id: el.id, type, name });
+  g.__AddEvent = (
+    el: FakeEl,
+    type: string,
+    name: string,
+    handler?: unknown,
+  ) => {
+    addEventCalls.push({ id: el.id, type, name, removed: handler == null });
   };
+  // <list>: the list itself, and the callbacks it registers on each update.
+  const lists = globalThis as unknown as Record<string, unknown>;
+  lists.__CreateList = () => makeEl('list');
+  lists.__UpdateListCallbacks = () => {};
   g.__FlushElementTree = () => {
     const killSubtree = (n: FakeEl): void => {
       n.hasPaintingNode = false;
@@ -264,6 +296,19 @@ const renderedDescendants = (): FakeEl[] => {
 };
 const findRenderedByClass = (cls: string): FakeEl[] =>
   renderedDescendants().filter((n) => n.classes.has(cls));
+
+/**
+ * Every fake element ever made with the class, whether in the tree or not.
+ */
+const createdByClass = (cls: string): FakeEl[] =>
+  created.filter((n) => n.classes.has(cls));
+
+/**
+ * Whether each native element still has a wrapper in LynxElement's registry,
+ * which keeps the wrapper, and through it the native element, alive.
+ */
+const registered = (elements: FakeEl[]): boolean[] =>
+  elements.map((el) => LynxElement.byUniqueId(el.id) !== undefined);
 
 /**
  * Does `ancestor` sit somewhere above `node` in the tree?
@@ -695,6 +740,161 @@ class BoundaryCard {
   `,
 })
 class BoundaryHost {}
+
+/**
+ * A destroyed view's nested elements, the issue #237 shape: Angular calls
+ * destroyNode only for `outer`, the view's top-level node, never `inner` or
+ * `leaf` under it.
+ */
+@Component({
+  selector: 'leak-host',
+  standalone: true,
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `@if (show()) {
+    <view class="outer"
+      ><view class="inner"><text class="leaf">hi</text></view></view
+    >
+  }`,
+})
+class LeakHost {
+  readonly show = signal(true);
+}
+
+@Component({
+  selector: 'leak-child',
+  standalone: true,
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view class="child-view"><text class="child-text">c</text></view>`,
+})
+class LeakChild {}
+
+/**
+ * A listener added the way a library adds one, straight on the element, and
+ * never removed: Angular removes its template listeners when it destroys a
+ * view, but knows nothing of this one.
+ */
+@Directive({ selector: '[libraryListener]', standalone: true })
+class LibraryListener {
+  constructor() {
+    const element: BaseLynxElement = inject(ElementRef).nativeElement;
+    element.addEventListener('bindlayoutchange', () => {});
+  }
+}
+
+/**
+ * Views nested in the destroyed one: a child component's view, an @if and
+ * an @for, all cleaned up by Angular's destroyViewTree without the renderer,
+ * and an element with a listener, whose native handler must come off it.
+ */
+@Component({
+  selector: 'nested-views-host',
+  standalone: true,
+  imports: [LeakChild, LibraryListener],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `@if (show()) {
+    <view class="screen">
+      <leak-child />
+      @if (true) {
+        <text class="nested-if">if</text>
+      }
+      @for (n of rows; track n) {
+        <text class="nested-row">{{ n }}</text>
+      }
+      <view class="listened" libraryListener></view>
+    </view>
+  }`,
+})
+class NestedViewsHost {
+  readonly show = signal(true);
+  readonly rows = [1, 2];
+}
+
+/**
+ * A <list> in the destroyed view: its items live in the list's own linked
+ * list, not in the element's children, and aren't in the native tree until
+ * the list asks for them.
+ */
+@Component({
+  selector: 'list-leak-host',
+  standalone: true,
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `@if (show()) {
+    <view class="list-screen">
+      <list>
+        @for (n of rows; track n) {
+          <list-item class="item"
+            ><text class="item-text">{{ n }}</text></list-item
+          >
+        }
+      </list>
+    </view>
+  }`,
+})
+class ListLeakHost {
+  readonly show = signal(true);
+  readonly rows = [1, 2, 3];
+}
+
+/**
+ * CDK DomPortal's shape: a component moves an element from a surviving view
+ * into its own on init, and hands it back on destroy. Angular has already
+ * called destroyNode on the destroyed view's root by then, so the release
+ * must see the tree as the cycle leaves it.
+ */
+let portalSource: BaseLynxElement;
+
+@Directive({ selector: '[portalSource]', standalone: true })
+class PortalSource {
+  constructor() {
+    portalSource = inject(ElementRef).nativeElement;
+  }
+}
+
+@Component({
+  selector: 'portal-borrower',
+  standalone: true,
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view class="borrowed-slot"></view>`,
+})
+class PortalBorrower implements OnInit, OnDestroy {
+  readonly #renderer = inject(Renderer2);
+  readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
+  #home: BaseLynxElement | null = null;
+
+  ngOnInit(): void {
+    this.#home = this.#renderer.parentNode(portalSource);
+    this.#renderer.appendChild(this.#host, portalSource);
+  }
+
+  ngOnDestroy(): void {
+    this.#renderer.appendChild(this.#home, portalSource);
+  }
+}
+
+@Component({
+  selector: 'portal-host',
+  standalone: true,
+  imports: [PortalSource, PortalBorrower],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  // .home after .away, so handing the element back is a native move that
+  // keeps its native element (see LynxElement.#removeIfMoveWouldBeLost):
+  // released by mistake, nothing would register it again.
+  template: `
+    @if (show()) {
+      <view class="away"><portal-borrower /></view>
+    }
+    <view class="home"><view class="portal" portalSource></view></view>
+  `,
+})
+class PortalHost {
+  readonly show = signal(true);
+}
 
 describe('renderer teardown', () => {
   beforeAll(() => {
@@ -1149,5 +1349,255 @@ describe('renderer teardown', () => {
     expect(textEl.children.map((c) => c.text)).toContain('hi');
     expect(findRenderedByClass('bomb')).toHaveLength(1);
     errorSpy.mockRestore();
+  });
+
+  describe('releasing a destroyed view (issue #237)', () => {
+    it('drops nested elements from the registry when their view is destroyed', async () => {
+      const fixture = TestBed.createComponent(LeakHost);
+      fixture.detectChanges();
+      const ids = ['outer', 'inner', 'leaf'].map(
+        (name) => findByClass(name)[0].id,
+      );
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(ids.map((id) => LynxElement.byUniqueId(id))).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+    });
+
+    it('releases the elements of the views nested in it: child components, @if and @for', async () => {
+      const fixture = TestBed.createComponent(NestedViewsHost);
+      fixture.detectChanges();
+      const classes = [
+        'screen',
+        'child-view',
+        'child-text',
+        'nested-if',
+        'nested-row',
+        'listened',
+      ];
+      const elements = classes.flatMap((name) => findByClass(name));
+      // The two rows, and the raw text in each <text>, are in there too.
+      expect(elements).toHaveLength(7);
+      const withText = elements.flatMap((el) => [el, ...el.children]);
+      expect(registered(withText).every(Boolean)).toBe(true);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(registered(withText).some(Boolean)).toBe(false);
+    });
+
+    it('takes the native event handlers off the elements it releases', async () => {
+      const fixture = TestBed.createComponent(NestedViewsHost);
+      fixture.detectChanges();
+      const [listened] = findByClass('listened');
+      const calls = (): { removed: boolean }[] =>
+        addEventCalls.filter(
+          (c) => c.id === listened.id && c.name === 'layoutchange',
+        );
+      expect(calls()).toEqual([expect.objectContaining({ removed: false })]);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // The native element held the handler, and the handler held the wrapper.
+      expect(calls()).toEqual([
+        expect.objectContaining({ removed: false }),
+        expect.objectContaining({ removed: true }),
+      ]);
+    });
+
+    it("releases a <list>'s items, which aren't in the element's children", async () => {
+      const fixture = TestBed.createComponent(ListLeakHost);
+      fixture.detectChanges();
+      await flush();
+      const items = createdByClass('item');
+      const texts = createdByClass('item-text');
+      expect(items).toHaveLength(3);
+      expect(registered([...items, ...texts]).every(Boolean)).toBe(true);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(registered([...items, ...texts]).some(Boolean)).toBe(false);
+    });
+
+    it('keeps a detached route view registered, and releases it when it is destroyed', async () => {
+      const fixture = TestBed.createComponent(RouteOutletHost);
+      fixture.detectChanges();
+      await flush();
+      const vcr = lastOutletVcr;
+      const ref = vcr.createComponent(RoutePage);
+      fixture.detectChanges();
+      await flush();
+
+      // Detached, not destroyed: the reuse strategy will put it back.
+      vcr.detach(0);
+      fixture.detectChanges();
+      await flush();
+      const detached = ['page', 'card', 'cond-img', 'row'].flatMap((name) =>
+        createdByClass(name),
+      );
+      expect(registered(detached).every(Boolean)).toBe(true);
+
+      // Put back: its elements are rebuilt, under new native ids, and those
+      // are registered.
+      vcr.insert(ref.hostView);
+      fixture.detectChanges();
+      await flush();
+      const rebuilt = ['page', 'card', 'cond-img', 'row'].flatMap((name) =>
+        findRenderedByClass(name),
+      );
+      expect(rebuilt).toHaveLength(6);
+      expect(registered(rebuilt).every(Boolean)).toBe(true);
+
+      // Detached again, then dropped from the reuse cache: Angular destroys
+      // the view outside change detection, with nothing left to remove.
+      vcr.detach(0);
+      fixture.detectChanges();
+      await flush();
+      ref.destroy();
+      await flush();
+
+      expect(registered(rebuilt).some(Boolean)).toBe(false);
+    });
+
+    it("releases a surviving view's projected content with the slot it's in, and registers it again when it's shown", async () => {
+      const fixture = TestBed.createComponent(ReprojHost);
+      fixture.detectChanges();
+      await flush();
+      const slot = lastSlot;
+      const [first] = findByClass('projected');
+      expect(registered([first])).toEqual([true]);
+
+      slot.open.set(false);
+      fixture.detectChanges();
+      await flush();
+      expect(registered([first])).toEqual([false]);
+
+      slot.open.set(true);
+      fixture.detectChanges();
+      await flush();
+      const [shown] = findRenderedByClass('projected');
+      expect(shown.id).not.toBe(first.id);
+      expect(registered([shown, ...shown.children])).toEqual([true, true]);
+    });
+
+    it('keeps an element moved out of the destroyed view before the cycle ends', async () => {
+      const fixture = TestBed.createComponent(PortalHost);
+      fixture.detectChanges();
+      await flush();
+      const [portal] = findRenderedByClass('portal');
+      expect(isAncestorOf(findByClass('away')[0], portal)).toBe(true);
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      // Handed back home by the borrower's ngOnDestroy, after Angular's
+      // destroyNode on .away: still on screen and still registered.
+      expect(isAncestorOf(findByClass('home')[0], portal)).toBe(true);
+      expect(findRenderedByClass('portal')).toEqual([portal]);
+      expect(registered([portal])).toEqual([true]);
+      expect(registered(createdByClass('borrowed-slot'))).toEqual([false]);
+    });
+  });
+
+  describe('LynxElement.markDestroyed', () => {
+    const doc = (): LynxDocument =>
+      TestBed.inject(LYNX_DOCUMENT) as LynxDocument;
+
+    it("doesn't register a parent again when a child's removal commits after the parent's", () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const outer = document.createElement('view');
+      const inner = document.createElement('view');
+      const leaf = document.createElement('text');
+      page.appendChild(outer);
+      outer.appendChild(inner);
+      inner.appendChild(leaf);
+      const refs = [outer, inner, leaf].map(
+        (el) => el.element as unknown as FakeEl,
+      );
+
+      // Both removals are queued, the outer one first: committing it
+      // releases inner too, before inner's own removal commits.
+      outer.markDestroyed();
+      outer.remove();
+      leaf.markDestroyed();
+      leaf.remove();
+      processPendingRemovals();
+
+      // Looking the parent up by its native ref would have made it a new
+      // wrapper, registered for good.
+      expect(registered(refs)).toEqual([false, false, false]);
+    });
+
+    it('waits for an element still in the tree to be removed', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const el = document.createElement('view');
+      page.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      // As when a leave animation holds Angular's removal back.
+      el.markDestroyed();
+      processPendingRemovals();
+      expect(registered([ref])).toEqual([true]);
+
+      el.remove();
+      processPendingRemovals();
+      expect(registered([ref])).toEqual([false]);
+    });
+
+    it('keeps an element put back in the tree in the same cycle', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const el = document.createElement('view');
+      page.appendChild(el);
+      const ref = el.element as unknown as FakeEl;
+
+      el.markDestroyed();
+      el.remove();
+      page.appendChild(el);
+      processPendingRemovals();
+
+      expect(registered([ref])).toEqual([true]);
+      expect(ref.parent).toBe(pageRoot);
+    });
+
+    it('releases a detached element destroyed outside change detection, on its own', async () => {
+      const document = doc();
+      const page = document.createRootElement();
+      const el = document.createElement('view');
+      page.appendChild(el);
+      el.remove();
+      processPendingRemovals();
+      const ref = el.element as unknown as FakeEl;
+      expect(registered([ref])).toEqual([true]);
+
+      el.markDestroyed();
+      await flush();
+
+      expect(registered([ref])).toEqual([false]);
+    });
+
+    it('never releases the page', () => {
+      const document = doc();
+      const page = document.createRootElement();
+      page.markDestroyed();
+      processPendingRemovals();
+
+      expect(registered([pageRoot])).toEqual([true]);
+    });
   });
 });

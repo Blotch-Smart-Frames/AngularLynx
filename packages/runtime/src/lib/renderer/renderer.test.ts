@@ -32,16 +32,18 @@ describe('LynxRenderer', () => {
   });
 
   describe('destroyNode', () => {
-    it('deregisters the node from the canonical-wrapper registry', () => {
-      // Non-null so Angular walks a destroyed view and cleans up each node's
-      // native-id → wrapper entry (see LynxElement.#byNativeId). It must be a
-      // no-op for nodes without the method (background/SSR elements).
+    it('marks the node destroyed, so its subtree is released', () => {
+      // Non-null so Angular walks a destroyed view's top-level nodes; the
+      // element releases its subtree from the canonical-wrapper registry
+      // (see LynxElement.markDestroyed; teardown.test.ts covers the release).
+      // It must be a no-op for nodes without the method (background/SSR
+      // elements).
       const { renderer } = createRenderer();
       expect(renderer.destroyNode).toBeTypeOf('function');
 
-      const node = { deregisterNative: vi.fn() };
+      const node = { markDestroyed: vi.fn() };
       renderer.destroyNode!(node);
-      expect(node.deregisterNative).toHaveBeenCalledTimes(1);
+      expect(node.markDestroyed).toHaveBeenCalledTimes(1);
 
       const bare = {};
       expect(() => renderer.destroyNode!(bare)).not.toThrow();

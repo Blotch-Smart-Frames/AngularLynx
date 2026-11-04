@@ -40,7 +40,7 @@ Reads Lynx's global `SystemInfo`. Lynx fills it in once when the page starts, so
 get platform(): PlatformType;
 ```
 
-The platform, such as `'iOS'` or `'Android'`.
+The platform, such as `'iOS'`, `'Android'` or `'web'`. See [`PlatformType`](#platformtype) for every value.
 
 ### `LynxSystemInfo.osVersion`
 
@@ -105,11 +105,19 @@ A theme object, if the [host app](/guide/glossary#host-app) provides one. For li
 
 ## Types
 
-`PlatformType` comes from `@lynx-js/types`:
+### `PlatformType`
 
 ```typescript
-type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'pc';
+import type { PlatformType } from '@blotch/angular-lynx';
+
+type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'web';
 ```
+
+The platform, spelled exactly as Lynx reports it. Compare with the strings as written: `'iOS'` matches, `'ios'` never does.
+
+- **The casing is Lynx's.** Each platform names itself, so `'windows'` is lower case and `'macOS'` isn't.
+- **`'web'`** is the [web preview](/guide/glossary#web-preview). `@lynx-js/types`' own `PlatformType` leaves it out.
+- **`'pc'` isn't a value.** `@lynx-js/types` still lists it: desktop Lynx reported it before Lynx 3.3, and no supported version does.
 
 ## Related
 

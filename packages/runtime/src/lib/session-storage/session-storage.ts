@@ -9,6 +9,7 @@ import {
   subscribeSessionStorageFromMainThread,
   unsubscribeSessionStorageFromMainThread,
 } from '../background-call';
+import type { PlatformType } from '../system-info/system-info';
 import type { SessionStorageSubscription } from './session-storage.types';
 
 /**
@@ -70,8 +71,9 @@ export class LynxSessionStorage {
    * the session-storage example in the docs' live preview. So the web uses the
    * in-memory fallback, like tests and SSR.
    *
-   * `@lynx-js/types`' `PlatformType` leaves out the `'web'` that web-core
-   * reports, hence the widening to `string`.
+   * The global `SystemInfo` is typed by `@lynx-js/types`, whose
+   * `PlatformType` leaves out the `'web'` that web-core reports, hence the
+   * cast to AngularLynx's own {@link PlatformType}, which has it.
    */
   #hasNativeSessionStorage(): boolean {
     return (
@@ -79,7 +81,7 @@ export class LynxSessionStorage {
       typeof (lynx as any).setSessionStorageItem === 'function' &&
       !(
         typeof SystemInfo !== 'undefined' &&
-        (SystemInfo.platform as string) === 'web'
+        (SystemInfo.platform as PlatformType) === 'web'
       )
     );
   }

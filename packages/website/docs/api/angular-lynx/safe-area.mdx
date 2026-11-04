@@ -76,15 +76,19 @@ readonly isNotchScreen: Signal<boolean>;
 get platform(): PlatformType;
 ```
 
-The platform, such as `'iOS'` or `'Android'`. Same as [`LynxSystemInfo.platform`](/api/angular-lynx/system-info).
+The platform, such as `'iOS'`, `'Android'` or `'web'`. Same as [`LynxSystemInfo.platform`](/api/angular-lynx/system-info#lynxsysteminfoplatform).
 
 ## Types
 
-`PlatformType` comes from `@lynx-js/types`:
+### `PlatformType`
 
 ```typescript
-type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'pc';
+import type { PlatformType } from '@blotch/angular-lynx';
+
+type PlatformType = 'Android' | 'iOS' | 'Harmony' | 'windows' | 'macOS' | 'web';
 ```
+
+The values are explained on the [system info page](/api/angular-lynx/system-info#platformtype).
 
 ## Related
 

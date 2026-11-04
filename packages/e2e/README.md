@@ -32,7 +32,7 @@ The iOS run creates and reuses its own simulator, "AngularLynx E2E", so your own
 node packages/e2e/src/native/run-native.ts --platform ios --dist <app>/dist
 ```
 
-Add `--app <app>` instead of `--dist` to test the app's own binary from `ng build --platform` rather than Lynx Explorer (the "shell" mode; `--app` builds it, `--prebuilt` uses the one already in `<app>/dist/<platform>`). Add `--explorer` too to test both, one after the other on the same device; a failure in one still lets the other run. iOS shells need Lynx's XCFrameworks: see [`packages/native/README.md`](../native/README.md#lynx-for-ios) for `ANGULAR_LYNX_IOS_FRAMEWORKS`.
+Add `--app <app>` instead of `--dist` to test the app's own binary from `ng build --platform` rather than Lynx Explorer (the "shell" mode; `--app` builds it, `--prebuilt` uses the one already in `<app>/dist/<platform>`, and `--native <dir>` builds it from `<app>/dist` with an unpacked `@blotch/angular-lynx-native`, for an app without `node_modules`). Add `--explorer` too to test both, one after the other on the same device; a failure in one still lets the other run. iOS shells need Lynx's XCFrameworks: see [`packages/native/README.md`](../native/README.md#lynx-for-ios) for `ANGULAR_LYNX_IOS_FRAMEWORKS`.
 
 ```sh
 node packages/e2e/src/native/run-native.ts --platform android --app <app>
@@ -40,7 +40,7 @@ node packages/e2e/src/native/run-native.ts --platform android --app <app>
 
 Android has no `npm run e2e` flag: boot an emulator first (CI uses API 34 with Google APIs; on Apple silicon, the `arm64-v8a` image), put `adb` on your `PATH`, then run the same command with `--platform android`.
 
-In CI, Layer 6 tests both hosts on both platforms. The Linux `build-app` job scaffolds the app, builds its APK (`--build-native android`) and hands the app folder (`--export-app`) to the `android` job, which runs `run-native.ts --app <app> --prebuilt --explorer` on the emulator. The `ios` job, on GitHub's `xcode-27` image, scaffolds and builds the app itself (the shell can only be built on macOS) with `run.ts --ios --shell --explorer`.
+In CI, Layer 6 tests both hosts on both platforms. The Linux `build-app` job scaffolds the app, builds its APK (`--build-native android`) and hands the app folder (`--export-app`) to the `android` job, which runs `run-native.ts --app <app> --prebuilt --explorer` on the emulator. The `ios` job, on GitHub's `xcode-27` image, gets the same app folder. The shell can only be built on macOS, so it runs `run-native.ts --app <app> --native <dir> --explorer`, where `<dir>` is the unpacked `@blotch/angular-lynx-native` tarball. That builds the shell from the app's bundle the way `ng build --platform ios` does, without installing the app on the Mac (the native builder uses only Node's built-ins). The nightly macOS `fresh-app` job still installs and builds the app on a Mac.
 
 ## What each layer does
 

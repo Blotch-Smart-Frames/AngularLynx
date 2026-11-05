@@ -3,8 +3,8 @@ import {
   diffLines,
   structuredPatch,
   applyPatch,
-  type Hunk,
-  type ParsedDiff,
+  type StructuredPatch,
+  type StructuredPatchHunk as Hunk,
 } from 'diff';
 
 export type FileStatus =
@@ -143,7 +143,7 @@ export const summarizeComponent = (analysis: ComponentAnalysis): FileStatus => {
   return 'up-to-date';
 };
 
-export { type Hunk } from 'diff';
+export type { StructuredPatchHunk as Hunk } from 'diff';
 
 export const getHunks = (
   currentContent: string,
@@ -185,7 +185,7 @@ export const applySelectedHunks = (
   acceptedIndices: number[],
 ): string | false => {
   const patch = structuredPatch('file', 'file', currentContent, newContent);
-  const partial: ParsedDiff = {
+  const partial: StructuredPatch = {
     ...patch,
     hunks: patch.hunks.filter((_, i) => acceptedIndices.includes(i)),
   };

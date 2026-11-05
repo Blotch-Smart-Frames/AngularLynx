@@ -34,12 +34,15 @@
 // re-show assertions: it prunes dead-painting-node subtrees, so a bug that
 // re-attaches a stale ref shows up as MISSING content, matching device.
 import '@angular/compiler';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import {
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
   Directive,
   ElementRef,
   inject,
+  Injector,
   type OnDestroy,
   type OnInit,
   provideZonelessChangeDetection,
@@ -907,6 +910,65 @@ class PortalHost {
   readonly show = signal(true);
 }
 
+/**
+ * angular-three's shape (issues #279 and #280): a renderer wrapping this one
+ * makes elements with it that it never inserts into the tree or destroys
+ * through it, so neither Angular's destroyNode nor the release reaches them.
+ * It sets aside the element made for each `ngt-*` tag, and an `*args`
+ * (NgtArgs) hangs its directive's injector on its anchor comment, which it
+ * keeps to itself. The injector leads to the view, and so to the screen.
+ */
+@Directive({ selector: '[keptOutOfTree]', standalone: true })
+class KeptOutOfTree {
+  constructor() {
+    const renderer = inject(Renderer2);
+    renderer.createElement('ngt-mesh');
+    const anchor = renderer.createComment('args');
+    Object.assign(anchor, { anchor: { injector: inject(Injector) } });
+  }
+}
+
+/** Every KeptOutScreen made, held weakly. */
+const keptOutScreens: WeakRef<object>[] = [];
+
+@Component({
+  selector: 'kept-out-screen',
+  standalone: true,
+  imports: [KeptOutOfTree],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<view class="kept-out" keptOutOfTree></view>`,
+})
+class KeptOutScreen {
+  constructor() {
+    keptOutScreens.push(new WeakRef(this));
+  }
+}
+
+@Component({
+  selector: 'kept-out-host',
+  standalone: true,
+  imports: [KeptOutScreen],
+  encapsulation: ViewEncapsulation.None,
+  template: `@if (show()) {
+    <kept-out-screen />
+  }`,
+})
+class KeptOutHost {
+  readonly show = signal(true);
+}
+
+/**
+ * Collects garbage, as the engine would. A WeakRef's target stays alive
+ * until the task that made or read it ends, so it waits a task first.
+ */
+const collectGarbage = async (): Promise<void> => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc') as () => void;
+  await flush();
+  gc();
+};
+
 describe('renderer teardown', () => {
   beforeAll(() => {
     TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -1523,6 +1585,29 @@ describe('renderer teardown', () => {
       expect(findRenderedByClass('portal')).toEqual([portal]);
       expect(registered([portal])).toEqual([true]);
       expect(registered(createdByClass('borrowed-slot'))).toEqual([false]);
+    });
+
+    it('lets a screen go when another renderer kept some of its elements out of the tree', async () => {
+      const fixture = TestBed.createComponent(KeptOutHost);
+      fixture.detectChanges();
+      await flush();
+      const { show } = fixture.componentInstance;
+      show.set(false);
+      fixture.detectChanges();
+      show.set(true);
+      fixture.detectChanges();
+      await flush();
+      expect(keptOutScreens.filter((screen) => screen.deref())).toHaveLength(2);
+
+      show.set(false);
+      fixture.detectChanges();
+      await flush();
+      await collectGarbage();
+
+      // The registry finds wrappers; it doesn't keep them. Held strongly,
+      // the anchor kept each screen for the app's life (#279), and with
+      // angular-three, a scene's canvas and its native UI (#280).
+      expect(keptOutScreens.filter((screen) => screen.deref())).toHaveLength(0);
     });
   });
 

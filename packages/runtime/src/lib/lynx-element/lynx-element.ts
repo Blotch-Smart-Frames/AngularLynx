@@ -502,10 +502,49 @@ export class LynxElement implements BaseLynxElement {
    *
    * An entry goes when its native ref does: when recreation swaps the ref, and
    * when Angular destroys the element's view (see markDestroyed / #release).
-   * The map holds the wrapper and the wrapper holds its native element, so an
-   * entry left behind keeps that element, and the UI drawn for it, alive.
+   *
+   * Each wrapper is held weakly, as a browser holds a node's JavaScript
+   * wrapper. The registry finds wrappers; it mustn't be what keeps one alive.
+   * A wrapper in the tree is held by its parent's `#children`, up to the page,
+   * which the document holds; one out of the tree that can come back is held
+   * by the view Angular keeps it in; one with listeners is held by the
+   * handlers on its native element. One that nothing else holds can never be
+   * found or used again. Yet a renderer that wraps this one can make elements
+   * Angular never inserts or destroys through it: angular-three keeps the
+   * element it makes for each `ngt-*` tag, each component host inside a
+   * scene and each anchor comment there to itself. Held strongly, those
+   * stayed registered for the app's life, with everything they reach: the
+   * anchor comment of an `*args` holds its directive's injector, and so the
+   * whole screen, its elements and their native UIs (#279), and a scene
+   * component's host holds the canvas store, and so the `<canvas>` and its
+   * native view (#280).
    */
-  static #byNativeId = new Map<number, LynxElement>();
+  static #byNativeId = new Map<number, WeakRef<LynxElement>>();
+
+  /**
+   * Deletes a collected wrapper's entry (see #byNativeId). Each registration
+   * holds the id it was registered under, never the wrapper, which would keep
+   * it alive. Null where the engine has no FinalizationRegistry: the entries
+   * left, an id and an empty WeakRef each, are small.
+   */
+  static #collected: FinalizationRegistry<number> | null =
+    typeof FinalizationRegistry === 'function'
+      ? new FinalizationRegistry((id) => {
+          // A newer element may hold the id now (native ids are reused).
+          if (!LynxElement.#byNativeId.get(id)?.deref()) {
+            LynxElement.#byNativeId.delete(id);
+          }
+        })
+      : null;
+
+  static #register(id: number, element: LynxElement): void {
+    LynxElement.#byNativeId.set(id, new WeakRef(element));
+    LynxElement.#collected?.register(element, id);
+  }
+
+  static #registered(id: number): LynxElement | undefined {
+    return LynxElement.#byNativeId.get(id)?.deref();
+  }
 
   /**
    * Elements Angular destroyed since the last commit (see markDestroyed),
@@ -527,7 +566,7 @@ export class LynxElement implements BaseLynxElement {
    * canonical wrapper.
    */
   static #canonicalFor(ref: ElementRef): LynxElement {
-    const existing = LynxElement.#byNativeId.get(__GetElementUniqueID(ref));
+    const existing = LynxElement.#registered(__GetElementUniqueID(ref));
     return existing ?? new LynxElement(ref);
   }
 
@@ -537,7 +576,7 @@ export class LynxElement implements BaseLynxElement {
    * global-events/native-source.ts), which names the element by its id.
    */
   static byUniqueId(uniqueId: number): LynxElement | undefined {
-    return LynxElement.#byNativeId.get(uniqueId);
+    return LynxElement.#registered(uniqueId);
   }
 
   constructor(element: ElementRef) {
@@ -545,7 +584,7 @@ export class LynxElement implements BaseLynxElement {
     // Register as the canonical wrapper for this native ref. #canonicalFor()
     // checks the map before constructing, so this never overwrites an existing
     // canonical wrapper with a throwaway.
-    LynxElement.#byNativeId.set(__GetElementUniqueID(element), this);
+    LynxElement.#register(__GetElementUniqueID(element), this);
   }
 
   /**
@@ -558,7 +597,7 @@ export class LynxElement implements BaseLynxElement {
     const id = __GetElementUniqueID(this.#nativeRef);
     // Only clear if WE are the registered wrapper — a later element that reused
     // this id (native id reuse) must keep its entry.
-    if (LynxElement.#byNativeId.get(id) === this) {
+    if (LynxElement.#registered(id) === this) {
       LynxElement.#byNativeId.delete(id);
     }
   }
@@ -1396,7 +1435,7 @@ export class LynxElement implements BaseLynxElement {
     this.deregisterNative();
     const fresh = createNativeRefByTag(this.tagName, getPageId(), this.#text);
     this.#nativeRef = fresh;
-    LynxElement.#byNativeId.set(__GetElementUniqueID(fresh), this);
+    LynxElement.#register(__GetElementUniqueID(fresh), this);
 
     if (this.tagName === 'raw-text') {
       // #text may be stale: normalization is SKIPPED for a subtree while it is

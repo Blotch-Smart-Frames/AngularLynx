@@ -660,6 +660,91 @@ describe('LynxElement', () => {
     expect(LynxElement.byUniqueId(-1)).toBeUndefined();
   });
 
+  describe('its registry, once an element is collected', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /**
+     * Loads LynxElement again under a FinalizationRegistry whose callbacks
+     * the test runs, and WeakRefs whose targets the test can collect, as
+     * the engine would once nothing else holds them.
+     */
+    const withCollection = async () => {
+      const collected = new Set<object>();
+      const finalizers: { target: object; held: unknown }[] = [];
+      let cleanup: (held: unknown) => void = () => {};
+      vi.stubGlobal(
+        'FinalizationRegistry',
+        class {
+          constructor(callback: (held: unknown) => void) {
+            cleanup = callback;
+          }
+          register(target: object, held: unknown): void {
+            finalizers.push({ target, held });
+          }
+        },
+      );
+      vi.stubGlobal(
+        'WeakRef',
+        class<T extends object> {
+          readonly #target: T;
+          constructor(target: T) {
+            this.#target = target;
+          }
+          deref(): T | undefined {
+            return collected.has(this.#target) ? undefined : this.#target;
+          }
+        },
+      );
+      vi.resetModules();
+      const fresh = await import('./lynx-element');
+      /**
+       * Collects `target` and runs the callbacks registered for it.
+       */
+      const collect = (target: object): void => {
+        collected.add(target);
+        for (const finalizer of finalizers) {
+          if (finalizer.target === target) cleanup(finalizer.held);
+        }
+      };
+      return { LynxElement: fresh.LynxElement, collect };
+    };
+
+    it('no longer finds it', async () => {
+      const { LynxElement: Fresh, collect } = await withCollection();
+      const collectedElement = new Fresh(fakeRef);
+      const id = __GetElementUniqueID(fakeRef);
+      expect(Fresh.byUniqueId(id)).toBe(collectedElement);
+
+      collect(collectedElement);
+      expect(Fresh.byUniqueId(id)).toBeUndefined();
+      // A new wrapper for the native element is the canonical one.
+      const next = new Fresh(fakeRef);
+      expect(Fresh.byUniqueId(id)).toBe(next);
+    });
+
+    it('keeps the entry of a newer element with the same id', async () => {
+      const { LynxElement: Fresh, collect } = await withCollection();
+      const older = new Fresh(fakeRef);
+      const id = __GetElementUniqueID(fakeRef);
+      // Native ids are reused: a newer element is registered under the id
+      // before the older one is collected.
+      const newer = new Fresh(fakeRef);
+
+      collect(older);
+      expect(Fresh.byUniqueId(id)).toBe(newer);
+    });
+
+    it('still registers elements where the engine has no FinalizationRegistry', async () => {
+      vi.stubGlobal('FinalizationRegistry', undefined);
+      vi.resetModules();
+      const { LynxElement: Fresh } = await import('./lynx-element');
+      const registered = new Fresh(fakeRef);
+      expect(Fresh.byUniqueId(__GetElementUniqueID(fakeRef))).toBe(registered);
+    });
+  });
+
   it('addEventListener with unrecognized event does not call __AddEvent', () => {
     element = new LynxElement(fakeRef);
     const cb = vi.fn();

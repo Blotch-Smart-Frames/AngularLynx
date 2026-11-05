@@ -139,9 +139,13 @@
           margin-top: 20px;
           width: 100%;
 
+          // Two buttons a row at most (three 40% bases don't fit), each at
+          // least as wide as its label: nowrap makes the whole label the
+          // minimum width, so a pair too wide for a row wraps instead of
+          // breaking a label over two lines inside the 36px-high button.
           .action-btn {
-            flex: 1;
-            min-width: 0;
+            flex: 1 1 40%;
+            white-space: nowrap;
           }
         }
       }

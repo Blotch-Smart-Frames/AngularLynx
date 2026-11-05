@@ -3,6 +3,12 @@ import { globalEvents } from '../global-events';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 
+/**
+ * What a removed handler is replaced with natively: native Lynx keeps a
+ * worklet handler that `undefined` would remove (see removeNativeHandler).
+ */
+const NO_HANDLER = { type: 'worklet', value: { _workletType: 'main-thread' } };
+
 describe('LynxElement', () => {
   let element: LynxElement;
   let fakeRef: ElementRef;
@@ -628,7 +634,7 @@ describe('LynxElement', () => {
     cleanup();
   });
 
-  it('cleanup function calls __AddEvent with undefined to remove the event', () => {
+  it('cleanup function replaces the native handler with one that does nothing', () => {
     element = new LynxElement(fakeRef);
     const cb = vi.fn();
 
@@ -639,6 +645,22 @@ describe('LynxElement', () => {
     expect(globalThis.__AddEvent).toHaveBeenCalledWith(
       fakeRef,
       'bindEvent',
+      'tap',
+      NO_HANDLER,
+    );
+  });
+
+  it('cleanup function removes a global-bind handler with undefined', () => {
+    // Lynx keeps global-bind handlers apart, where undefined removes them.
+    element = new LynxElement(fakeRef);
+
+    const cleanup = element.addEventListener('global-bindtap', vi.fn());
+    (globalThis.__AddEvent as ReturnType<typeof vi.fn>).mockClear();
+    cleanup();
+
+    expect(globalThis.__AddEvent).toHaveBeenCalledWith(
+      fakeRef,
+      'global-bindEvent',
       'tap',
       undefined,
     );
@@ -747,7 +769,7 @@ describe('LynxElement', () => {
         fakeRef,
         'bindEvent',
         'tap',
-        undefined,
+        NO_HANDLER,
       );
     });
 
@@ -773,7 +795,7 @@ describe('LynxElement', () => {
           .mock.calls.slice(1)
           .map((call) => call[1]),
       ).toEqual(['bindEvent', 'catchEvent']);
-      expect(addEvent().mock.calls[1]![3]).toBeUndefined();
+      expect(addEvent().mock.calls[1]![3]).toEqual(NO_HANDLER);
 
       removeCatch();
       expect(addEvent()).toHaveBeenLastCalledWith(fakeRef, 'bindEvent', 'tap', {
@@ -851,7 +873,7 @@ describe('LynxElement', () => {
         fakeRef,
         'bindEvent',
         'tap',
-        undefined,
+        NO_HANDLER,
       );
     });
 

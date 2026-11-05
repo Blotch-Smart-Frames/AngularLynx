@@ -421,6 +421,8 @@ A `<canvas>`'s GL context is the one thing that can't be rebuilt, so it isn't fr
 
 This alone changed nothing on device, because of the next section. Covered by `packages/runtime/src/lib/renderer/teardown.test.ts` ("releasing a destroyed view").
 
+The handlers didn't really come off until #261: the release passed `undefined` to `__AddEvent`, which native Lynx ignores for the handlers `LynxElement` registers, so a screen with any listener, or with a `<scroll-view>` on iOS, was still never freed. See "`__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx".
+
 ---
 
 ## PrimJS never collects objects in a cycle through `#private` fields when a native element is in the cycle
@@ -5331,11 +5333,27 @@ The main thread's element functions have no layout read. `__GetComputedStyleByKe
 
 ### What Lynx does
 
-Native Lynx keeps a handler registered as a worklet (`{ type: 'worklet', value }`, which every `[mainThreadBind*]` input uses). `Element::FiberAddEvent` (`core/renderer/dom/fiber/fiber_element.cc`) calls `RemoveEvent()` for an empty callback, and `AttributeHolder::RemoveEvent()` (`attribute_holder.cc`) only erases from `static_events_`, which holds background-thread handlers. Worklet handlers live in `lepus_events_`, so the old one keeps firing. On the iOS Simulator, a `[mainThreadBindtap]` set to `null` still ran on the next tap.
+Native Lynx keeps a handler registered as a worklet (`{ type: 'worklet', value }`), which is every handler AngularLynx registers: each `[mainThreadBind*]` input, and the one handler `LynxElement` registers per event for its listeners (a template's `(bindtap)`, `renderer.listen()`, `addEventListener()`). `FiberElement::FiberAddEvent` (`core/renderer/dom/fiber/fiber_element.cc`) calls `RemoveEvent()` for an empty callback, and `AttributeHolder::RemoveEvent()` (`attribute_holder.cc`) only erases from `static_events_`, which holds background-thread handlers, and `global_bind_events_`. Worklet handlers live in `lepus_events_`, so the old one stays. Still so on Lynx's develop branch in November 2026.
+
+Two things follow:
+
+- **A removed handler keeps firing.** On the iOS Simulator, a `[mainThreadBindtap]` set to `null` still ran on the next tap.
+- **An element with a handler is never freed** (#261). The native element holds the function registered for it. `LynxElement`'s holds the element's wrapper, which holds the native element, and with a template listener, Angular's listener holds the view's `LView` and everything in it: a loop through native code, which the garbage collector can't follow. So a screen left behind kept every element and every UI, whatever #237's release did. iOS gives each `<scroll-view>` a `scroll` handler from the start (see "On iOS, a scroll-view or list sends `scroll` only to the handlers it had when its UI was made"), so a screen with a scroll view leaked even without listeners. Counted with `heap <pid>` on the iOS Simulator (Lynx 4.1), in `examples/ui-dock` (a router app: four lazy screens under a dock) switching between two screens:
+
+  | Rounds (two navigations each) | 0   | 20    | 40    | 60    |
+  | ----------------------------- | --- | ----- | ----- | ----- |
+  | `LynxUIView`s, before         | 83  | 1,203 | 2,323 | 3,443 |
+  | `LynxUIView`s, after          | 83  | 83    | 83    | 83    |
+  | `LynxUIScroller`s, before     | 1   | 41    | 81    | 121   |
+  | `LynxUIScroller`s, after      | 1   | 1     | 1     | 1     |
+
+  Before, every screen's component was still alive after 60 rounds (`WeakRef`s, 121 of 121); after, only the one showing. The same held without the router (an `@if` between two screens), for a `<view>` with a `(bindtap)` alone (21 of 21 screens kept, then 2), and on the Android emulator (21 of 21 screens kept, then 2; 74 Android views, then 14). Node's V8 collected them all along, as the test environment has no native code to hold the function.
 
 ### The fix
 
-`LynxMainThreadEvent` removes a handler by registering a worklet with no ID, `{ type: 'worklet', value: { _workletType: 'main-thread' } }`, which replaces the old one and which `runWorklet` ignores. React Lynx removes main-thread handlers the same way (`updateWorkletEvent` in `packages/react/runtime/src/snapshot/snapshot/workletEvent.ts`). Layer 6's `native/main-thread.yaml` checks it on device.
+`removeNativeHandler` (`packages/runtime/src/lib/lynx-element/remove-native-handler.ts`) removes a handler by registering a worklet with no ID, `{ type: 'worklet', value: { _workletType: 'main-thread' } }`, with the type the handler was added with. Lynx keeps one handler per event name, so it replaces the old one, and `runWorklet` ignores it. The same type lets Lynx's listener refactor (`EnableEventHandleRefactor`), which matches by type, remove its copy too. React Lynx removes main-thread handlers the same way (`updateWorkletEvent` in `packages/react/runtime/src/snapshot/snapshot/workletEvent.ts`). A `global-bindEvent` handler still goes with `undefined`, which removes it from `global_bind_events_`.
+
+`LynxMainThreadEvent` uses it when an input is unbound or the directive is destroyed, and `LynxElement` when its last listener for an event goes and when it releases a destroyed view's elements (see "A destroyed view's elements stay alive unless the renderer releases every one of them"). Layer 6's `native/main-thread.yaml` checks on device that a removed main-thread handler stops firing. `packages/runtime/src/lib/renderer/teardown.test.ts` stores handlers as Lynx does, so its release test fails if a function stays registered.
 
 ---
 
@@ -6079,6 +6097,8 @@ iOS's scroll-view (`LynxUIScroller`) and list (`LynxUIListScroll`) make their `L
 `LynxDocument.createElement` gives each scroll-view and list a `bindscroll` listener that does nothing, on iOS only (`listenForScrollsFromTheStart`), so the UI is made with a `scroll` handler. Listeners added later share it. An `IntersectionObserver` with options adds its listener once it has measured its element, after the scroll-view's UI has been made.
 
 The cost is a scroll event to the main thread for each `scrollViewDidScroll:` of every scroll-view on iOS, which the do-nothing listener drops.
+
+Until #261, that listener also kept every screen with a scroll-view alive after it was left: Angular never removes it, the release of a destroyed view passed `undefined` to take it off, and native Lynx keeps a worklet handler that `undefined` would remove (see "`__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx").
 
 ---
 

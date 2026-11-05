@@ -59,7 +59,7 @@
     "cfonts": "^3.3.1",
     "clsx": "^2.1.0",
     "commander": "^13.0.0",
-    "diff": "^8.0.3",
+    "diff": "^9.0.0",
     "picocolors": "^1.1.0",
     "tailwind-merge": "^3.0.0"
   },

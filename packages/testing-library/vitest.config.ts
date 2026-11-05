@@ -36,7 +36,11 @@ export default defineConfig({
     // LynxTestingEnv is installed on top of jsdom in src/setup.ts.
     environment: 'jsdom',
     globals: true,
-    setupFiles: [path.resolve(import.meta.dirname, 'src/setup.ts')],
+    setupFiles: [
+      path.resolve(import.meta.dirname, 'src/setup.ts'),
+      // Keeps the Angular version out of the snapshots (see the file).
+      path.resolve(import.meta.dirname, 'test-utils/mask-ng-version.ts'),
+    ],
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',

@@ -514,6 +514,23 @@ describe('ES2021–ES2026 built-in polyfills', () => {
         `Array.fromAsync(null)`,
         `Array.fromAsync(5)`,
         `Array.fromAsync([Promise.reject(new RangeError())])`,
+        // The async iterator is read by hand, not with `for await` (see
+        // es-builtins.js), so check what `for await` would have checked.
+        `Array.fromAsync({ [Symbol.asyncIterator]: () => 1 })`,
+        `Array.fromAsync({ [Symbol.asyncIterator]: () => ({ next: async () => 1 }) })`,
+        `Array.fromAsync({ [Symbol.asyncIterator]: () => ({ next: () => { throw new RangeError(); } }) })`,
+        `(async () => {
+          let calls = 0;
+          const items = {
+            [Symbol.asyncIterator]() {
+              return {
+                next: async () => (calls++ < 2 ? { value: calls, done: false } : { done: true }),
+                return: () => { throw new Error('not called'); },
+              };
+            },
+          };
+          return [await Array.fromAsync(items), calls];
+        })()`,
         `(async () => {
           class Collection {
             constructor(...args) { this.args = args; }
@@ -586,6 +603,32 @@ describe('ES2021–ES2026 built-in polyfills', () => {
           return log;
         })`),
       ).toBe('["closed","RangeError"]');
+    });
+
+    it("rejects with the mapper's error when an async iterable's return() fails", async () => {
+      // As the spec's AsyncIteratorClose does for a throw completion. Node
+      // 24's own Array.fromAsync never settles here, whether return() throws
+      // or rejects, so this is checked on its own.
+      realm = polyfilled;
+      for (const close of [
+        `() => { throw new SyntaxError(); }`,
+        `async () => { throw new SyntaxError(); }`,
+      ]) {
+        expect(
+          await run(`describeAsyncResult(() => {
+            const items = {
+              [Symbol.asyncIterator]() {
+                return {
+                  next: async () => ({ value: 1, done: false }),
+                  return: ${close},
+                };
+              },
+            };
+            return Array.fromAsync(items, () => { throw new RangeError(); });
+          })`),
+          close,
+        ).toBe('throws RangeError');
+      }
     });
   });
 

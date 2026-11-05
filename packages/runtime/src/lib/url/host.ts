@@ -297,7 +297,7 @@ const parseIpv6 = (input: string): number[] => {
 const serializeIpv6 = (address: readonly number[]): string => {
   let compress: number | null = null;
   let longest = 1;
-  for (let index = 0; index < 8; ) {
+  for (let index = 0; index < 8;) {
     let end = index;
     while (end < 8 && address[end] === 0) end++;
     if (end - index > longest) {

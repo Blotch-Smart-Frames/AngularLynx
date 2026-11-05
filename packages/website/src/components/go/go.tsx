@@ -31,7 +31,7 @@ const useIsPhone = () =>
     () => false,
   );
 
-export const Go = ({ langAlias, ...props }: GoProps) => {
+const InteractiveGo = ({ langAlias, ...props }: GoProps) => {
   // On a desktop, lay the example out at a phone's size and scale it down to
   // fit the pane whole, rather than reflowing it to the pane's width: the web
   // preview should look like the app does on iOS (see native-parity.ts). On a
@@ -51,6 +51,16 @@ export const Go = ({ langAlias, ...props }: GoProps) => {
     </GoConfigProvider>
   );
 };
+
+/**
+ * An example's code and live preview. Rspress 2.1 also renders each page to
+ * Markdown at build time, for AI tools (on by default), and that renderer
+ * runs components' effects with no DOM, which the preview's need, so a page
+ * with an example failed to render there. A live preview has nothing to put
+ * in Markdown, so it's left out there, as Rspress's own BrowserOnly does.
+ */
+export const Go = (props: GoProps) =>
+  import.meta.env.SSG_MD ? null : <InteractiveGo {...props} />;
 
 export type { GoProps };
 export default Go;

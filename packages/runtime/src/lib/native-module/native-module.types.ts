@@ -37,9 +37,9 @@ export interface NativeModuleMap {}
  * cross; other properties of the module aren't reachable.
  */
 export type NativeModuleProxy<T> = {
-  [K in keyof T as T[K] extends (...args: any[]) => unknown
-    ? K
-    : never]: T[K] extends (...args: infer A) => infer R
+  [
+    K in keyof T as T[K] extends (...args: any[]) => unknown ? K : never
+  ]: T[K] extends (...args: infer A) => infer R
     ? (...args: A) => Promise<Awaited<R>>
     : never;
 };

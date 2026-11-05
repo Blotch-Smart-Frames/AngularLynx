@@ -77,9 +77,7 @@ The build wraps any function whose first statement is `'main thread'` (or `'main
 type MainThreadFnHandle<
   TArgs extends unknown[] = unknown[],
   TReturn = unknown,
-> = {
-  /* internal */
-};
+> = {/* internal */};
 ```
 
 `MainThread.TouchEvent` and the other event types are on [`LynxMainThreadEvent`](/api/main-thread/main-thread-event#types).

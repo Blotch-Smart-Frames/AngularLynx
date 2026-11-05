@@ -54,11 +54,11 @@
     "@blotch/angular-lynx-native": "22.2.11",
     "@blotch/rsbuild-plugin-angular-lynx": "22.2.11",
     "@lynx-js/qrcode-rsbuild-plugin": "^0.7.3",
-    "@lynx-js/rspeedy": "^0.18.0"
+    "@lynx-js/rspeedy": "^0.18.4"
   },
   "devDependencies": {
-    "@angular-devkit/architect": "^0.2202.2",
-    "@angular/build": "^22.2.1",
+    "@angular-devkit/architect": "^0.2202.5",
+    "@angular/build": "^22.2.5",
     "@types/node": "^22.0.0",
     "typescript": "~6.0.0"
   },

@@ -109,8 +109,7 @@ describe('LynxFont', () => {
       let toggle = 0;
       addFontMock.mockImplementation((_font: any, cb: any) => {
         toggle++;
-        if (toggle === 1)
-          cb(); // A loads
+        if (toggle === 1) cb(); // A loads
         else if (toggle === 2) cb(failErr); // B fails
         // Third call (C) never calls the callback → stays 'loading'
       });

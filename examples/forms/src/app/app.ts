@@ -18,16 +18,24 @@ import { UiTextarea } from '../components/ui/textarea';
   template: `
     <scroll-view class="h-screen bg-background" scroll-orientation="vertical">
       <view class="p-6">
-        <text class="text-[28px] font-bold text-foreground mb-1">Contact Us</text>
-        <text class="text-[13px] text-muted-foreground mb-5">Angular signal forms — powered by Lynx.</text>
+        <text class="mb-1 text-[28px] font-bold text-foreground"
+          >Contact Us</text
+        >
+        <text class="mb-5 text-[13px] text-muted-foreground"
+          >Angular signal forms — powered by Lynx.</text
+        >
 
-        <view class="bg-card border border-border rounded-xl p-5 mb-5">
+        <view class="mb-5 rounded-xl border border-border bg-card p-5">
           <ui-input
             label="Name *"
             type="text"
             placeholder="Your name"
             [formField]="contactForm.name"
-            [error]="contactForm.name().touched() && contactForm.name().errors().length ? 'Name is required' : ''"
+            [error]="
+              contactForm.name().touched() && contactForm.name().errors().length
+                ? 'Name is required'
+                : ''
+            "
           />
 
           <ui-input
@@ -52,8 +60,10 @@ import { UiTextarea } from '../components/ui/textarea';
         </ui-button>
 
         @if (submitted()) {
-          <view class="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl p-3.5 mt-4">
-            <text class="text-sm text-[#166534] font-semibold mb-1">
+          <view
+            class="mt-4 rounded-xl border border-[#bbf7d0] bg-[#f0fdf4] p-3.5"
+          >
+            <text class="mb-1 text-sm font-semibold text-[#166534]">
               Message sent from {{ contactForm.name().value() }}!
             </text>
             <text class="text-[13px] text-[#166534]">

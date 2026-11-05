@@ -31,7 +31,7 @@ const delay = (ms: number): Promise<void> =>
 
         <!-- 1. A crash in one widget swaps in a fallback, nothing else breaks -->
         <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
-          <text class="mb-3 text-[11px] font-bold uppercase text-zinc-400">
+          <text class="uppercase mb-3 text-[11px] font-bold text-zinc-400">
             Recover with $reset
           </text>
 
@@ -39,7 +39,9 @@ const delay = (ms: number): Promise<void> =>
             <app-price-tile symbol="LYNX" [price]="price()" />
           } @error (let err, retry = $reset) {
             <view class="rounded-lg bg-red-50 p-3">
-              <text class="mb-2 text-[13px] text-red-800">{{ err.message }}</text>
+              <text class="mb-2 text-[13px] text-red-800">{{
+                err.message
+              }}</text>
               <view
                 class="self-start rounded-lg bg-red-600 px-3 py-1.5"
                 (bindtap)="restorePrice(); retry()"
@@ -61,14 +63,14 @@ const delay = (ms: number): Promise<void> =>
 
         <!-- 2. Different errors, different fallbacks -->
         <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
-          <text class="mb-3 text-[11px] font-bold uppercase text-zinc-400">
+          <text class="uppercase mb-3 text-[11px] font-bold text-zinc-400">
             Pick a fallback with when
           </text>
 
           @boundary {
             <app-profile-card [failure]="failure()" />
           } @error (let err, retry = $reset; when isOffline(err)) {
-            <view class="flex flex-row items-center rounded-lg bg-amber-50 p-3">
+            <view class="flex-row items-center rounded-lg bg-amber-50 p-3 flex">
               <text class="flex-1 text-[13px] text-amber-800">
                 You're offline. We'll show your profile once you reconnect.
               </text>
@@ -76,7 +78,9 @@ const delay = (ms: number): Promise<void> =>
                 class="ml-2 rounded-lg bg-amber-500 px-3 py-1.5"
                 (bindtap)="failure.set('none'); retry()"
               >
-                <text class="text-[13px] font-semibold text-white">Reconnect</text>
+                <text class="text-[13px] font-semibold text-white"
+                  >Reconnect</text
+                >
               </view>
             </view>
           } @error (let err, retry = $reset) {
@@ -93,12 +97,14 @@ const delay = (ms: number): Promise<void> =>
             </view>
           }
 
-          <view class="mt-3 flex flex-row">
+          <view class="mt-3 flex-row flex">
             <view
               class="mr-2 flex-1 items-center rounded-[10px] bg-zinc-900 py-2.5"
               (bindtap)="failure.set('offline')"
             >
-              <text class="text-[14px] font-semibold text-white">Go offline</text>
+              <text class="text-[14px] font-semibold text-white"
+                >Go offline</text
+              >
             </view>
             <view
               class="flex-1 items-center rounded-[10px] bg-zinc-900 py-2.5"
@@ -113,7 +119,7 @@ const delay = (ms: number): Promise<void> =>
 
         <!-- 3. resource() values throw in the error state; the boundary catches it -->
         <view class="mb-4 rounded-xl border border-zinc-200 bg-white p-4">
-          <text class="mb-3 text-[11px] font-bold uppercase text-zinc-400">
+          <text class="uppercase mb-3 text-[11px] font-bold text-zinc-400">
             Async data with resource()
           </text>
 
@@ -150,12 +156,14 @@ const delay = (ms: number): Promise<void> =>
             }
           }
 
-          <view class="mt-3 flex flex-row">
+          <view class="mt-3 flex-row flex">
             <view
               class="mr-2 flex-1 items-center rounded-[10px] bg-zinc-900 py-2.5"
               (bindtap)="nextQuote()"
             >
-              <text class="text-[14px] font-semibold text-white">Next quote</text>
+              <text class="text-[14px] font-semibold text-white"
+                >Next quote</text
+              >
             </view>
             <view
               class="flex-1 items-center rounded-[10px] py-2.5"
@@ -176,8 +184,8 @@ const delay = (ms: number): Promise<void> =>
 
         <!-- 4. Caught errors still reach the ErrorHandler via onViewError -->
         <view class="rounded-xl border border-zinc-200 bg-white p-4">
-          <view class="mb-2.5 flex flex-row items-center justify-between">
-            <text class="text-[11px] font-bold uppercase text-zinc-400">
+          <view class="mb-2.5 flex-row items-center flex justify-between">
+            <text class="uppercase text-[11px] font-bold text-zinc-400">
               ErrorHandler.onViewError
             </text>
             @if (log.entries().length > 0) {

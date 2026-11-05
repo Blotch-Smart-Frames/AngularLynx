@@ -54,7 +54,7 @@ describe('installComponentPackages', () => {
     const { installComponentPackages } = await import('./install-packages');
     installComponentPackages(root, ['chart', 'line-chart']);
     expect(installPackages).toHaveBeenCalledWith(root, [
-      '@tanstack/charts@^1.1.0',
+      '@tanstack/charts@^1.2.0',
       'd3-shape@^3.2.0',
       '@types/d3-shape@^3.1.8',
     ]);
@@ -69,7 +69,7 @@ describe('installComponentPackages', () => {
     const p = await import('@clack/prompts');
     expect(p.log.warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        'npm install @tanstack/charts@^1.1.0 d3-shape@^3.2.0 @types/d3-shape@^3.1.8',
+        'npm install @tanstack/charts@^1.2.0 d3-shape@^3.2.0 @types/d3-shape@^3.1.8',
       ),
     );
   });

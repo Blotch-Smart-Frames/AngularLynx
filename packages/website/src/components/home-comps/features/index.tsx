@@ -47,7 +47,7 @@ const featuresConfig = [
     isRowSet: 360,
   },
   {
-    icon: 'fa-light fa-mobile',
+    icon: 'fa-light fa-pen-nib',
     title: 'Real native UI, drawn by Lynx',
     desc: "Lynx is ByteDance's open-source engine, used in TikTok. It turns your templates into the phone's own UI controls, styled with CSS, so your app scrolls and feels like any other app.",
     illustration: true,

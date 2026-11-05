@@ -543,7 +543,40 @@ const fromAsync = async (Constructor, items, mapper, thisArg) => {
       index++;
     };
     if (isAsync) {
-      for await (const value of items) await add(value);
+      // Iterated by hand rather than with `for await`. From @rspack/core
+      // 2.2.9, SWC lowers `for await` even at the main thread's ES2019
+      // target, through a helper it adds to the file. The published
+      // polyfills.js ends in `export {}`, so there SWC imports the helper.
+      // This file has no imports, so compiled on its own (as the plugin's
+      // tests compile it from source) it gets the helper by `require()`,
+      // which a strict ES module, as the package's `"type": "module"` makes
+      // it, doesn't define: the main thread threw as it loaded. Written out,
+      // it needs no helper however it's compiled.
+      const iterator = items[Symbol.asyncIterator]();
+      if (!isObject(iterator)) {
+        throw new TypeError('Async iterator is not an object');
+      }
+      const next = iterator.next;
+      for (;;) {
+        const step = await next.call(iterator);
+        if (!isObject(step)) {
+          throw new TypeError('Iterator result is not an object');
+        }
+        if (step.done) break;
+        try {
+          await add(step.value);
+        } catch (error) {
+          // As `for await` does: close the iterator, and throw this error
+          // whatever return() does.
+          try {
+            const method = iterator.return;
+            if (method != null) await method.call(iterator);
+          } catch {
+            // The original error is the one to report.
+          }
+          throw error;
+        }
+      }
     } else {
       // Not `for await`: on the main thread, PrimJS's doesn't await a sync
       // iterable's values, as the spec's async-from-sync iterator does.

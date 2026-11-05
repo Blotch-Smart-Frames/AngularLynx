@@ -162,6 +162,22 @@ describe('LynxElement', () => {
         'blue !important',
       );
     });
+
+    it("gives display: block Lynx's linear, which lays out as a block does", () => {
+      // Lynx lays `block` out as a row (see display.ts).
+      globalThis.__AddInlineStyle = vi.fn();
+      element = new LynxElement(fakeRef);
+
+      element.setStyle('display', 'block');
+      element.setStyle('display', 'inline-flex !important');
+      element.setStyle('display', 'none');
+
+      expect(vi.mocked(globalThis.__AddInlineStyle).mock.calls).toEqual([
+        [fakeRef, 'display', 'linear'],
+        [fakeRef, 'display', 'flex !important'],
+        [fakeRef, 'display', 'none'],
+      ]);
+    });
   });
 
   describe('removeStyle', () => {
@@ -190,6 +206,27 @@ describe('LynxElement', () => {
         fakeRef,
         'color: red; font-size: 16px',
       );
+    });
+
+    it("gives display: block Lynx's linear, which lays out as a block does", () => {
+      globalThis.__SetInlineStyles = vi.fn();
+      element = new LynxElement(fakeRef);
+
+      element.setInlineStyles('width: 100%; display: block');
+
+      expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(
+        fakeRef,
+        'width: 100%; display: linear',
+      );
+    });
+
+    it('passes null through, when Angular removes the style attribute', () => {
+      globalThis.__SetInlineStyles = vi.fn();
+      element = new LynxElement(fakeRef);
+
+      element.setAttribute('style', null);
+
+      expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(fakeRef, null);
     });
   });
 

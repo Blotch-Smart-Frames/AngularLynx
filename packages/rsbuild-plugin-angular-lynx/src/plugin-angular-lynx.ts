@@ -3,6 +3,7 @@ import { ANGULAR_CLI_CONTEXT_PLUGIN_NAME } from './angular-cli-context.js';
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
 import { applyCSS } from './css.js';
+import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
@@ -42,6 +43,10 @@ export const pluginAngularLynx = (
       applyTailwind(api);
       // After Tailwind, so it also sees the rules Tailwind writes.
       applyTypeSelectors(api);
+      // Its PostCSS plugin visits declarations, which PostCSS does after
+      // Tailwind writes them and before Tailwind 4's lowering at OnceExit,
+      // wherever the plugin is in the list (see display.ts).
+      applyDisplay(api);
       // The app's entry modules, which entry.ts finds and the Angular
       // transform makes take hot updates (see hot-updates.ts).
       const appEntries = new Set<string>();

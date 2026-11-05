@@ -8,7 +8,8 @@ Lynx uses a subset of CSS with fundamentally different defaults. Read this befor
 
 - **Default display is `linear`** (not `block`). Lynx's linear layout is inspired by Android's LinearLayout.
 - Supported `display` values: `linear`, `flex`, `grid`, `relative`, `none`
-- `block` and `inline` are **not supported**
+- **`display: block` becomes `linear`.** Lynx has no block layout and would lay a `block` element out as a row, so a child with no width would shrink to nothing. The build rewrites it in every stylesheet (component styles, a library's included, and global ones), and the runtime in inline styles (`[style.display]`, `style="..."`), so `:host { display: block }` works as on the web
+- The other values Lynx lacks become the value that lays the children out the same way: `inline` and `inline-block` become `linear`, `inline-flex` becomes `flex`, `inline-grid` becomes `grid`. Lynx can't place elements inline, so such an element still stretches across its parent; add `align-self: flex-start` (`self-start`) to make it hug its content
 - `scroll-view` is always forced to `linear`, regardless of CSS
 
 ### Linear Layout Properties

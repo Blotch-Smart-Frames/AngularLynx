@@ -43,7 +43,8 @@ page {
 }
 ```
 
-- **Elements stack vertically by default.** Lynx's default `display` is `linear`, which lays children out in a column. `flex` and `grid` work as on the web. `block`, `inline` and `inline-block` don't exist.
+- **Elements stack vertically by default.** Lynx's default `display` is `linear`, which lays children out in a column. `flex` and `grid` work as on the web.
+- **`display: block` becomes `linear`.** Lynx has no block layout, and would lay a `block` element out as a row, so the build rewrites it in your stylesheets, and AngularLynx does the same in inline styles. `:host { display: block }` keeps working. `inline-flex` and `inline-grid` become `flex` and `grid`, and `inline` and `inline-block` become `linear`. An element can't sit inline next to others, though, so it still stretches across its parent.
 - **`flex-direction: row` needs `display: flex`.** On a linear element it does nothing. In Tailwind, write `flex flex-row`, not `flex-row` alone.
 - **Children stretch across their parent.** A child with no width fills the parent's cross axis. Add `align-self: flex-start` (Tailwind `self-start`) to make a badge hug its content.
 - **Boxes are `border-box`**, and **margins never collapse**: a 16px bottom margin above a 16px top margin makes 32px.

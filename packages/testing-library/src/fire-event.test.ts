@@ -74,7 +74,7 @@ describe('fireEvent', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view>
             <text>
@@ -92,7 +92,7 @@ describe('fireEvent', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view>
             <text>

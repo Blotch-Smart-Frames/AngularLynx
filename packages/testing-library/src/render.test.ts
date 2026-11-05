@@ -37,7 +37,7 @@ describe('render', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view />
         </page>
@@ -53,7 +53,7 @@ describe('render', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Hello Lynx
@@ -72,7 +72,7 @@ describe('render', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view>
             <text>
@@ -125,7 +125,7 @@ describe('render', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             initial
@@ -141,7 +141,7 @@ describe('render', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             updated
@@ -171,7 +171,7 @@ describe('@if control flow', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Visible
@@ -208,7 +208,7 @@ describe('@for control flow', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Alpha
@@ -245,7 +245,7 @@ describe('@for control flow', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view
             style="display: none;"
@@ -275,7 +275,7 @@ describe('@for control flow', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             A
@@ -294,7 +294,7 @@ describe('@for control flow', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             A
@@ -335,7 +335,7 @@ describe('@if control flow — reactive toggle', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view
             style="display: none;"
@@ -365,7 +365,7 @@ describe('@if control flow — reactive toggle', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Conditional
@@ -384,7 +384,7 @@ describe('@if control flow — reactive toggle', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view
             style="display: none;"
@@ -446,7 +446,7 @@ describe('rerender', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Component A
@@ -462,7 +462,7 @@ describe('rerender', () => {
     expect(result.asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             Component B
@@ -621,7 +621,7 @@ describe('asFragment', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <view>
             <text>
@@ -679,7 +679,7 @@ describe('options.providers', () => {
     expect(asFragment()).toMatchInlineSnapshot(`
       <DocumentFragment>
         <page
-          ng-version="22.2.1"
+          ng-version="0.0.0-PLACEHOLDER"
         >
           <text>
             hello-from-provider

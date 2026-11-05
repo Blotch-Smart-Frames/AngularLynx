@@ -106,9 +106,7 @@ export class AppState {
   isAuthenticated = computed(() => this.currentUser() !== null);
 }
 
-@Component({
-  /* ... */
-})
+@Component({/* ... */})
 export class HeaderComponent {
   #state = inject(AppState);
   user = this.#state.currentUser;

@@ -61,6 +61,60 @@
     margin-bottom: 60px;
   }
 
+  // The apps to switch between, above the preview. A segmented row of pills
+  // in the page's own red, so it reads as part of the page and not of the
+  // preview's chrome.
+  .tabs {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    margin-top: -28px;
+    margin-bottom: 14px;
+    border-radius: 999px;
+    background: rgba(127, 127, 127, 0.1);
+  }
+
+  .tab {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    color: var(--home-desc-color);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color 160ms ease-out,
+      color 160ms ease-out;
+
+    &:hover {
+      color: var(--home-title-color);
+    }
+
+    &:focus-visible {
+      outline: 2px solid #dd0031;
+      outline-offset: 2px;
+    }
+
+    &[aria-selected='true'] {
+      color: #fff;
+      background: #dd0031;
+    }
+  }
+
+  // What the selected app is, under the tabs: short, one line on a desktop.
+  .blurb {
+    color: var(--home-features-item-desc-color);
+    text-align: center;
+    font-size: 14px;
+    line-height: 22px;
+    max-width: 640px;
+    margin: 0 20px 20px;
+    min-height: 44px;
+  }
+
   // The live preview: as wide as the feature cards above it, so the page
   // keeps one column edge.
   .demo {
@@ -142,6 +196,15 @@
 
     .demo {
       margin: 0 auto;
+    }
+
+    .tabs {
+      margin: 0 auto 14px;
+    }
+
+    .blurb {
+      text-align: left;
+      margin: 0 40px 20px;
     }
 
     .show-case-list {

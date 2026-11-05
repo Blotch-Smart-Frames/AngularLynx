@@ -309,3 +309,15 @@ Use `rotateX()`/`rotateY()`/`rotateZ()` and `scaleX()`/`scaleY()`/`scaleZ()` sep
 | `position`     | `static`      | `relative`   |
 | `border-style` | `none`        | `solid`      |
 | `font-size`    | `16px`        | `14px`       |
+
+---
+
+## Build
+
+### A hex color that reads as an exponent is mangled
+
+The CSS pipeline minifies `rgba(92, 94, 102, 1)` to `#5c5e66`, and a later tokenizer reads `5e66` as a number: the web preview's stylesheet holds `#5c9999`. Any hex with a digit, `e`, digit run (`#3e4048` too) is at risk; `#71717a` or `#3f3f46` is fine. Pick a neighbouring value (`rgba(92, 95, 102, 1)`) until it's fixed. Not yet checked on iOS and Android.
+
+### `this.#field?.()[key]` throws when the field is unset
+
+The Lynx bundle compiles first-party `#private` fields to properties, and that pass puts the `[key]` outside the optional chain's short-circuit, so `this.#onColors?.()[scheme]` throws `Cannot read properties of undefined` instead of giving `undefined`. Split it: `const fn = this.#onColors; const colors = fn ? fn()[scheme] : undefined;`. A local constant in the same shape compiles correctly.

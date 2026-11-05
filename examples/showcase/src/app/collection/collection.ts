@@ -46,7 +46,7 @@ const TILE_MAPS: Record<Cut, string> = Object.fromEntries(
     <view class="flex h-full w-full flex-col">
       <view
         class="flex flex-row items-end justify-between border-b border-foreground px-5 pt-safe-3 pb-3"
-        style="height: 92px"
+        style="min-height: 92px"
       >
         <text
           class="shrink-0 font-wide text-[26px] leading-[30px] text-foreground"

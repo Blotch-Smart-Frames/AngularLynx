@@ -70,6 +70,51 @@ export const addSafeAreaUtilities = ({
 };
 
 /**
+ * What Tailwind passes a color it was given as a function:
+ * - an opacity modifier sets only `opacityValue` (`bg-primary/50` → `0.5`);
+ * - a plain class whose utility has an opacity variable sets
+ *   `opacityVariable` too, and `opacityValue` is `var(--tw-bg-opacity, 1)`
+ *   (`bg-primary`);
+ * - other plain classes pass neither (`caret-primary`);
+ * - `theme('colors.primary')` in a stylesheet passes an `opacityValue` of 1.
+ */
+type ColorOptions = {
+  opacityValue?: string | number;
+  opacityVariable?: string;
+};
+
+/**
+ * A theme color that takes Tailwind's opacity modifiers on Lynx.
+ *
+ * A plain class reads the complete color, as it always has:
+ * `bg-primary` → `background-color: var(--primary)`. A modifier reads the
+ * color's channels from its `-rgb` twin:
+ * `bg-primary/50` → `background-color: rgba(var(--primary-rgb), 0.5)`.
+ *
+ * Lynx substitutes `var()` as text before it parses the value, so with
+ * `--primary-rgb: 24, 24, 27` its color parser sees `rgba(24, 24, 27, 0.5)`
+ * (`CSSValue::Substitution` in lynx-family/lynx). The channels are
+ * comma-separated because every Lynx color parser takes `rgba()` in that
+ * form. Lynx takes `hsl()` only with commas, which is why the shadcn/ui form,
+ * `hsl(var(--x) / 0.5)`, draws nothing.
+ *
+ * Plain classes stay on `var(--x)` so they don't need the channels: with a
+ * theme copied before the `-rgb` variables existed, every plain class still
+ * draws, and only modifiers don't. Tailwind's `<alpha-value>` placeholder
+ * can't do that, as it puts the channels in plain classes too. An alpha of 1
+ * is the plain color, so `bg-primary/100` and `theme('colors.primary')` read
+ * `var(--primary)` as well.
+ */
+export const themeColor =
+  (name: string) =>
+  ({ opacityValue, opacityVariable }: ColorOptions = {}): string =>
+    opacityValue === undefined ||
+    opacityVariable !== undefined ||
+    String(opacityValue) === '1'
+      ? `var(--${name})`
+      : `rgba(var(--${name}-rgb), ${opacityValue})`;
+
+/**
  * Tailwind plugin that maps @blotch/ui CSS variables to semantic color utilities
  * and registers safe-area-aware padding utilities.
  *
@@ -86,10 +131,9 @@ export const addSafeAreaUtilities = ({
  * referencing them directly avoids color-function parsing entirely. This matches
  * the official React Lynx Tailwind example.
  *
- * Tradeoff: Tailwind opacity modifiers on semantic colors (bg-primary/50) don't
- * work — the value is opaque with no separable channels. For the rare
- * translucent-semantic need, add a dedicated rgba() variable (see
- * `--destructive-subtle` → `destructive.subtle`) or use `opacity-*` on the element.
+ * Opacity modifiers (`bg-primary/50`, `text-foreground/70`,
+ * `border-border/60`) read each color's `--x-rgb` channels instead; see
+ * `themeColor`.
  *
  * Safe area: see `addSafeAreaUtilities` for the `*-safe` / `*-safe-<n>` padding
  * utilities that keep content clear of notches and home indicators.
@@ -106,40 +150,69 @@ export const blotchPlugin = plugin(
   {
     theme: {
       extend: {
+        // Tailwind's types only allow strings here, but it also takes a
+        // function, which it calls with the modifier's alpha: that's how it
+        // applies `<alpha-value>` itself. Every color but destructive.subtle
+        // and glass.dim, which are translucent already, has an `--x-rgb` twin
+        // in the theme, so takes opacity modifiers.
         colors: {
-          background: 'var(--background)',
-          foreground: 'var(--foreground)',
+          background: themeColor('background'),
+          foreground: themeColor('foreground'),
           primary: {
-            DEFAULT: 'var(--primary)',
-            foreground: 'var(--primary-foreground)',
+            DEFAULT: themeColor('primary'),
+            foreground: themeColor('primary-foreground'),
           },
           secondary: {
-            DEFAULT: 'var(--secondary)',
-            foreground: 'var(--secondary-foreground)',
+            DEFAULT: themeColor('secondary'),
+            foreground: themeColor('secondary-foreground'),
           },
           muted: {
-            DEFAULT: 'var(--muted)',
-            foreground: 'var(--muted-foreground)',
+            DEFAULT: themeColor('muted'),
+            foreground: themeColor('muted-foreground'),
           },
           accent: {
-            DEFAULT: 'var(--accent)',
-            foreground: 'var(--accent-foreground)',
+            DEFAULT: themeColor('accent'),
+            foreground: themeColor('accent-foreground'),
           },
           destructive: {
-            DEFAULT: 'var(--destructive)',
-            foreground: 'var(--destructive-foreground)',
-            // Pre-composed translucent red for subtle destructive backgrounds,
-            // since bg-destructive/10 (opacity modifier) can't work here.
+            DEFAULT: themeColor('destructive'),
+            foreground: themeColor('destructive-foreground'),
+            // Red at 10%, the destructive alert's background. It's
+            // translucent already, so it has no channels and takes no
+            // modifier. It predates modifiers and stays for the apps that
+            // use it: bg-destructive/10 draws the same color, but only in a
+            // theme that has --destructive-rgb.
             subtle: 'var(--destructive-subtle)',
           },
-          border: 'var(--border)',
-          input: 'var(--input)',
-          ring: 'var(--ring)',
+          border: themeColor('border'),
+          input: themeColor('input'),
+          ring: themeColor('ring'),
           card: {
-            DEFAULT: 'var(--card)',
-            foreground: 'var(--card-foreground)',
+            DEFAULT: themeColor('card'),
+            foreground: themeColor('card-foreground'),
           },
-        },
+          // Chart series colors, e.g. bg-chart-1 for a legend swatch that
+          // matches the first series.
+          chart: {
+            1: themeColor('chart-1'),
+            2: themeColor('chart-2'),
+            3: themeColor('chart-3'),
+            4: themeColor('chart-4'),
+            5: themeColor('chart-5'),
+          },
+          // What sits on Liquid Glass, and its tint: text-glass-foreground,
+          // bg-glass-tint, bg-glass-dim (see the glass component).
+          glass: {
+            tint: {
+              DEFAULT: themeColor('glass-tint'),
+              foreground: themeColor('glass-tint-foreground'),
+            },
+            foreground: themeColor('glass-foreground'),
+            'muted-foreground': themeColor('glass-muted-foreground'),
+            'clear-foreground': themeColor('glass-clear-foreground'),
+            dim: 'var(--glass-dim)',
+          },
+        } as unknown as Record<string, string>,
         borderRadius: {
           lg: 'var(--radius)',
           md: 'calc(var(--radius) - 2px)',

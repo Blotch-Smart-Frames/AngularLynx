@@ -254,7 +254,7 @@ export class UiMenuSection {
 
   protected readonly titleClass = computed(() =>
     cn(
-      'text-glass-muted-foreground pb-1 pt-2 text-[13px]',
+      'pb-1 pt-2 text-[13px] text-glass-muted-foreground',
       this.#design() === 'material' ? 'px-3' : 'px-4',
     ),
   );

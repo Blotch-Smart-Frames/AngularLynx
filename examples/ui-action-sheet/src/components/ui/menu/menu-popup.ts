@@ -170,7 +170,7 @@ export const measureMenuElement = async (
         }
         @if (dims()) {
           <view
-            class="bg-glass-dim h-full w-full absolute left-0 top-0"
+            class="h-full w-full bg-glass-dim absolute left-0 top-0"
             [style.opacity]="dimOpacity()"
             [style.transition]="dimTransition"
           ></view>

@@ -114,11 +114,12 @@ describe('scheduleSettleFlush', () => {
     stopSecond();
     stop();
     await flushMicrotasks();
+    // Replaced with a handler that does nothing (see removeNativeHandler).
     expect(addEvent).toHaveBeenLastCalledWith(
       expect.anything(),
       'bindEvent',
       'uiappear',
-      undefined,
+      { type: 'worklet', value: { _workletType: 'main-thread' } },
     );
     expect(setDataset).toHaveBeenCalledTimes(2);
     expect(flush).toHaveBeenCalledTimes(2);

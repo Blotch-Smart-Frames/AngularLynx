@@ -21,6 +21,31 @@ export type ModuleStylesheets = {
 };
 
 /**
+ * The specifier a module imports one of its stylesheets by: the stylesheet's
+ * path relative to the module, with `/` between its segments on every OS.
+ *
+ * On Windows, path.relative() separates them with backslashes, which in the
+ * import's string literal are escapes: `..\..\node_modules\.cache\…` read as
+ * `....` plus a newline and `ode_modules.cache…`, which didn't resolve. So
+ * every component with styles failed to build on Windows. `paths` is
+ * node:path, or path.win32 in tests.
+ */
+export const stylesheetSpecifier = (
+  resourcePath: string,
+  stylesheet: string,
+  paths: Pick<typeof path, 'dirname' | 'relative' | 'sep'> = path,
+): string => {
+  const relative = paths
+    .relative(paths.dirname(resourcePath), stylesheet)
+    .split(paths.sep)
+    .join('/');
+  // Stylesheets live in node_modules/.cache/angular-lynx-css/. Prepending
+  // `./` when the relative path doesn't start with `..` keeps it a valid ES
+  // module specifier (rspack rejects bare specifiers here).
+  return relative.startsWith('.') ? relative : `./${relative}`;
+};
+
+/**
  * Prepends an import of each of a module's stylesheets (see
  * component-styles.ts) to its code.
  */
@@ -31,15 +56,9 @@ export const importStylesheets = (
 ): string => {
   let importsString = '';
   for (const stylesheet of imports) {
-    // Stylesheets live in node_modules/.cache/angular-lynx-css/, so
-    // compute the relative path from the component file. Prepending
-    // `./` when the relative path doesn't start with `..` keeps it a
-    // valid ES module specifier (rspack rejects bare specifiers here).
-    let relativeImport = path.relative(path.dirname(resourcePath), stylesheet);
-    if (!relativeImport.startsWith('.')) {
-      relativeImport = `./${relativeImport}`;
-    }
-    importsString += `import "${relativeImport}";`;
+    // JSON.stringify writes the specifier as a string literal whatever
+    // characters it holds.
+    importsString += `import ${JSON.stringify(stylesheetSpecifier(resourcePath, stylesheet))};`;
   }
   // Prepend the imports so the CSS chunks are pulled into the bundle
   // before the component class is defined — matching the side-effect

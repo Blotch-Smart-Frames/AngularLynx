@@ -44,6 +44,14 @@ updates:
       # check pass code using an API Node 22 lacks. Majors move by hand.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # The examples and packages/ui use Tailwind 3 on purpose: their
+      # tailwind.config.ts uses @lynx-js/tailwind-preset, which supports only
+      # Tailwind 3 (its peer range is ^3.4.0), and they cover the Tailwind 3
+      # setup apps made before Tailwind 4 still have. With Tailwind 4 the build
+      # skips their config and they render unstyled, though the build passes.
+      # examples/tailwind-4 covers Tailwind 4. Majors move by hand.
+      - dependency-name: 'tailwindcss'
+        update-types: ['version-update:semver-major']
       # The rsbuild plugin's types come from both its own @rsbuild/core and
       # @rspack/core and from @lynx-js/rspeedy's, which pins an exact
       # @rsbuild/core (and so an @rspack/core minor). Moving the plugin's

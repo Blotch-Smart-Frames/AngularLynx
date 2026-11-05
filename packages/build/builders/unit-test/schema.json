@@ -26,7 +26,7 @@
       "default": false
     },
     "browsers": {
-      "description": "Specifies the browsers to use for test execution. When not specified, tests are run in a Node.js environment using jsdom. For both Vitest and Karma, browser names ending with 'Headless' (e.g., 'ChromeHeadless') will enable headless mode.",
+      "description": "Specifies the browsers to use for test execution. When not specified, the Vitest runner runs tests in a Node.js environment using `happy-dom` if it is installed, otherwise `jsdom`, and the Karma runner uses the browsers of its configuration. Browser names ending with `Headless` enable headless mode (e.g., `ChromiumHeadless` for Vitest with the Playwright provider, or `ChromeHeadless` for Karma).",
       "type": "array",
       "items": {
         "type": "string"
@@ -276,7 +276,7 @@
     },
     "outputFile": {
       "type": "string",
-      "description": "Specifies a file path for the test report, applying only to the first reporter. To configure output files for multiple reporters, use the tuple format `['reporter-name', { outputFile: '...' }]` within the `reporters` option. When not provided, output is written to the console."
+      "description": "Specifies a file path for the test report. This path is used by every configured reporter that writes to a file. To write a separate file for each reporter, use the tuple format `['reporter-name', { outputFile: '...' }]` within the `reporters` option. When not provided, output is written to the console."
     },
     "providersFile": {
       "type": "string",

@@ -129,6 +129,26 @@ describe('installGlobalWindow', () => {
       expect(SCREEN_EVENTS.has('pointermove')).toBe(true);
     });
 
+    it('leaves jsdom the listeners its selector engine adds as it starts', () => {
+      const { target, original } = browserGlobal();
+      // jsdom starts the engine, which listens for clicks on the window, on
+      // its document's first selector, and only then.
+      const engine = vi.fn();
+      let started = false;
+      target['document'].querySelector = () => {
+        if (started) return;
+        started = true;
+        target['addEventListener']('click', engine);
+      };
+      const events = hubFor(target);
+
+      installGlobalWindow(target, events);
+      target['document'].querySelector(':root');
+
+      expect(original.add).toHaveBeenCalledWith('click', engine);
+      expect(events.window.hasListeners('click')).toBe(false);
+    });
+
     it("keeps jsdom's size", () => {
       const { target } = browserGlobal();
       installGlobalWindow(target, hubFor(target));

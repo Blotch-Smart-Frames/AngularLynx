@@ -4,8 +4,9 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 /**
  * A sign-up card written as it would be for the browser, with HTML tags,
  * DOM events and type selectors. Each tag renders as the Lynx element it maps
- * to: the `<main>` and `<div>` are views, the `<h1>`, `<p>`, `<label>` and
- * `<button>` are texts, and the `<img>` is an image.
+ * to: the `<main>`, `<div>`, `<ul>` and `<li>` are views, the `<h1>`, `<p>`,
+ * `<label>` and `<button>` are texts, and the `<img>` is an image. The text
+ * straight inside each `<li>` is drawn in a `<text>` of its own.
  */
 @Component({
   selector: 'app-root',
@@ -32,6 +33,10 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
         <p class="welcome" [hidden]="!joined()">
           Welcome aboard, {{ name() || 'friend' }}!
         </p>
+        <ul>
+          <li>No account needed</li>
+          <li>Leave any time</li>
+        </ul>
       </div>
     </main>
   `,
@@ -89,6 +94,13 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
       font-weight: 600;
       text-align: center;
       color: #ffffff;
+    }
+    ul {
+      margin-top: 16px;
+    }
+    li {
+      padding: 8px 0;
+      border-top: 1px solid #e4e4e7;
     }
     .welcome {
       margin-top: 16px;

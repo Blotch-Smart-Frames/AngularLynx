@@ -44,7 +44,7 @@ export class App {}
 A [Lynx](/guide/glossary#lynx) app has no HTML. Its templates use Lynx [**elements**](/guide/glossary#element) instead, and on a phone each one becomes a native UI control.
 
 - A `<view>` is a box, like a `<div>`. A `<text>` holds text, like a `<span>`.
-- **Text renders only inside `<text>`.** Text placed directly in a `<view>` doesn't show up, and you get no error.
+- **Text goes in `<text>`.** Text placed directly in a `<view>` shows in a plain `<text>` of its own, but the `<view>`'s styles don't reach it.
 - `imports: [LYNX_ELEMENTS]` lets Angular type-check Lynx elements and their attributes. Every component that uses them needs it.
 
 The starter's `<router-outlet>` and `<scroll-view>` are gone. This app has one screen, and `<scroll-view>` comes back in step 7. See [Elements and layout](/guide/elements/) for every element.

@@ -725,8 +725,12 @@ Text nodes can live directly inside any block element (`<div>`, `<section>`, etc
 
 Text must be wrapped in a `<text>` element (`<x-text>` in AngularLynx). Raw text nodes inside a `<view>` are unsupported and will not render. This applies to all text content — even a single word.
 
+AngularLynx draws such text in an anonymous `<text>` of its own (`LynxElement`'s `#putInTextWrapper`), which Angular never sees, so `<view>Hello</view>` and `<div>Hello</div>` show "Hello" (measured on the iOS 27 Simulator and Android API 34 emulator with Lynx Explorer 4.1, and in the web preview, including `@if` toggles and `@for` reorders of the text). The anonymous `<text>` has no class, and nothing inherits from the `<view>`, so the text draws at the default size and color; and each run is a box of its own, stacking with the elements beside it.
+
+A `<text>` holding an empty raw-text takes a line of height, where a `<text>` with no children takes none and a browser gives empty or whitespace-only text no box (measured the same way, on iOS and Android). So the anonymous `<text>` is hidden (`display: none; overflow: hidden`) while its text is blank, as an empty `{{ name() }}` is, and an empty interpolation in a `<view>` takes no room, as it didn't before it was wrapped.
+
 ```html
-<!-- WRONG — raw text in x-view doesn't render -->
+<!-- WRONG — raw text in x-view doesn't render (AngularLynx wraps it) -->
 <x-view>Hello world</x-view>
 
 <!-- CORRECT -->

@@ -47,7 +47,7 @@ Style elements with CSS classes or `style`, as on the web. Lynx CSS has some gap
 </view>
 ```
 
-- **Text renders only inside `<text>`.** A word placed straight in a `<view>` doesn't appear at all, with no error.
+- **Only a `<text>` draws text.** A word placed straight in a `<view>` still shows: AngularLynx draws it in a plain `<text>` of its own. That `<text>` gets none of the `<view>`'s text styles, and each run of text takes its own line, so put text you style in a `<text>`.
 - **Nest `<text>` for inline styles.** A `<text>` inside another `<text>` flows inline, like a `<span>`, and picks up text styles such as color from the outer one.
 - **Write text across lines naturally.** AngularLynx trims the leading and trailing spaces that template indentation leaves, so the text above renders flush.
 - **Styles don't inherit, except in text.** A `color` or `font-size` on a `<view>` doesn't reach the `<text>` inside it. Set text styles on the `<text>` element.
@@ -136,7 +136,7 @@ What carries over:
 
 What doesn't carry over:
 
-- **Text straight inside a block tag doesn't show.** Put `<div>Hello</div>`'s text in a `<p>` or `<span>`.
+- **Text straight inside a block tag is plain.** `<div class="text-sm">Hello</div>` shows "Hello" in a `<text>` of its own, at the default size and color: text styles don't reach it from the `<div>`. Text beside a tag, as in `<div>Hi <b>there</b></div>`, takes a line of its own. Put the text in a `<p>` to style it and keep it on one line.
 - **Each tag is a box.** Two `<span>`s side by side in a `<div>` stack, as any two elements in a `<view>` do. Inside a `<p>`, they run inline.
 - **There are no browser styles.** An `<h1>` is the size of any other text, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
 - **There's no browser behavior.** `<a href>` opens nothing (use `routerLink`), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.

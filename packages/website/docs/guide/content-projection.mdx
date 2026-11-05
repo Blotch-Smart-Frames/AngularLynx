@@ -4,7 +4,7 @@
 
 ## The Lynx rules
 
-1. **Projected text must land inside a `<text>`.** Lynx renders text only inside `<text>`. If your component takes text, put the `<ng-content>` inside a `<text>`. Text projected into a `<view>` doesn't appear.
+1. **Projected text belongs inside a `<text>`.** Lynx draws text only in a `<text>`. If your component takes text, put the `<ng-content>` inside a `<text>`, so your styles reach it. Text projected into a `<view>` still shows, in a plain `<text>` of its own, but unstyled.
 2. **A nested `<text>` is inline.** When the parent passes `<text>` elements into your `<text>`, they flow as styled runs, like `<span>`s.
 3. **The host element is a real box.** `<app-card>` becomes a plain, unstyled `<view>` in the layout, between the parent and your template. Every static attribute the parent writes on it, such as `class="mb-2"`, lands on that host. When the component must fill or stretch, or takes a `class`, style the host rather than a view inside it: see [Make the host the element](#make-the-host-the-element).
 

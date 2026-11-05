@@ -189,6 +189,8 @@ const queries: LynxQueries;
 
 Every query, unbound, each taking the container first: Testing Library's, with `*ByRole` and `*ByAccessibilityLabel` from this library. Each one is also exported on its own, such as `getByAccessibilityLabel(container, 'Close')`.
 
+`getByText` finds the element whose own text matches, as in a browser. For text written straight in a `<view>` or `<div>`, that's the plain `<text>` the runtime draws it in (see [HTML tags](/guide/elements/#html-tags)): its `parentElement` is the `<view>`.
+
 ## Types
 
 ### `RenderOptions`

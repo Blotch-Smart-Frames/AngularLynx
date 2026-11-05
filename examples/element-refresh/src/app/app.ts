@@ -62,7 +62,7 @@ export class App {
 
   #generateItems(): { id: number; name: string; time: string }[] {
     const now = new Date().toLocaleTimeString();
-    return Array.from({ length: 5 }, (_) => ({
+    return Array.from({ length: 5 }, () => ({
       id: ++this.#counter,
       name: `Item ${this.#counter}`,
       time: now,

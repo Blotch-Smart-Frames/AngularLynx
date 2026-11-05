@@ -109,8 +109,8 @@ export const loadTarballs = async (dir: string): Promise<PackedPackage[]> => {
     `${dir} has no tarball for ${missing.map((pkg) => pkg.name).join(', ')}.`,
   );
   // Keep publish order, whatever order the directory listing returned.
-  return PUBLISHABLE_PACKAGES.map(
-    (pkg) => packed.find((candidate) => candidate.pkg === pkg)!,
+  return PUBLISHABLE_PACKAGES.map((pkg) =>
+    packed.find((candidate) => candidate.pkg === pkg)!,
   );
 };
 

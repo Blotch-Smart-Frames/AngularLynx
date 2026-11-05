@@ -38,7 +38,7 @@
     "dolan:update:force": "turbo run dolan:update:force"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.5",
     "@vitest/ui": "^4.1.10",
     "cspell": "^9.7.0",
     "oxfmt": "^0.48.0",

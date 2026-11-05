@@ -80,7 +80,7 @@ const weeks = (value: number): string => `W${formatNumber(value)}`;
       <view class="flex flex-col pt-safe-3">
         <view
           class="flex flex-row items-end justify-between border-b border-foreground px-5 pb-3"
-          style="height: 92px"
+          style="min-height: 92px"
         >
           <view class="flex flex-col">
             <text class="font-wide text-[28px] leading-[32px] text-foreground"

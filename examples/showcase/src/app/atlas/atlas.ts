@@ -42,16 +42,17 @@ type ScrollWorkletEvent = {
 
 /**
  * Parallax, on the main thread: as the sheet scrolls up over the plate, the
- * plate follows at half speed, so the stone seems to sit deeper than the
- * paper. A main-thread script moves the element in the scroll event itself,
- * with no render in between.
+ * plate's stage follows at half speed, so the stone seems to sit deeper than
+ * the paper. The stage moves inside the plate, which clips it, so nothing
+ * slides out over the sheet. A main-thread script moves the element in the
+ * scroll event itself, with no render in between.
  */
 const parallax = (event: ScrollWorkletEvent) => {
   'main thread';
-  const plate = event.currentTarget.querySelector('#plate');
-  if (!plate) return;
+  const stage = event.currentTarget.querySelector('#plate-stage');
+  if (!stage) return;
   const y = Math.max(0, event.detail.scrollTop);
-  plate.setStyleProperty('transform', `translateY(${(y * 0.5).toFixed(1)}px)`);
+  stage.setStyleProperty('transform', `translateY(${(y * 0.5).toFixed(1)}px)`);
 };
 
 /**
@@ -93,132 +94,137 @@ const parallax = (event: ScrollWorkletEvent) => {
         [consume-slide-event]="slideAngles"
         accessibility-label="The stone. Drag sideways to turn it."
       >
-        <view
-          class="flex flex-row items-center justify-between px-5 pt-safe-3 pb-1"
-        >
-          <text class="font-wide text-[15px] tracking-[5px] text-paper"
-            >FACET</text
-          >
-          <blur-view
-            ui-glass
-            shape="capsule"
-            class="flex h-7 items-center justify-center px-3"
-          >
-            <text
-              class="font-narrow text-[11px] tracking-[2px] text-glass-foreground"
-            >
-              {{ renderer() }}
-            </text>
-          </blur-view>
-        </view>
-
-        <view
-          class="relative flex items-center justify-center"
-          style="height: 320px"
-        >
-          @defer (on idle) {
-            <view
-              appStoneScene
-              class="absolute top-0 right-0 bottom-0 left-0"
-              [gem]="atlas.gem()"
-              [color]="atlas.color()"
-              [cut]="atlas.cut()"
-              [spin]="spin()"
-              [planWidth]="mapSize"
-              [animate]="!reduceMotion()"
-              (ready)="hasGl.set($event)"
-            ></view>
-          }
+        <!-- The stage: what the parallax moves, inside the plate's clip. -->
+        <view id="plate-stage" class="flex flex-col">
           <view
-            class="relative"
-            [style.width.px]="dialSize"
-            [style.height.px]="dialSize"
+            class="flex flex-row items-center justify-between px-5 pt-safe-3 pb-1"
           >
-            @if (!hasGl()) {
-              <!-- No WebGL here (Lynx Explorer): the diagram stands in. -->
-              <svg
-                class="absolute"
-                style="left: 2px; top: 2px"
-                [style.width.px]="mapSize"
-                [style.height.px]="mapSize"
-                [attr.content]="facetMap()"
-              ></svg>
+            <text class="font-wide text-[15px] tracking-[5px] text-paper"
+              >FACET</text
+            >
+            <blur-view
+              ui-glass
+              shape="capsule"
+              class="flex h-7 items-center justify-center px-3"
+            >
+              <text
+                class="font-narrow text-[11px] tracking-[2px] text-glass-foreground"
+              >
+                {{ renderer() }}
+              </text>
+            </blur-view>
+          </view>
+
+          <view
+            class="relative flex items-center justify-center"
+            style="height: 320px"
+          >
+            @defer (on idle) {
+              <view
+                appStoneScene
+                class="absolute top-0 right-0 bottom-0 left-0"
+                [gem]="atlas.gem()"
+                [color]="atlas.color()"
+                [cut]="atlas.cut()"
+                [spin]="spin()"
+                [planWidth]="mapSize"
+                [animate]="!reduceMotion()"
+                (ready)="hasGl.set($event)"
+              ></view>
             }
             <view
-              class="absolute top-0 left-0"
+              class="relative"
               [style.width.px]="dialSize"
               [style.height.px]="dialSize"
-              [style.transform]="dialTransform()"
-              [style.transition]="dialTransition()"
             >
-              <svg
+              @if (!hasGl()) {
+                <!-- No WebGL here (Lynx Explorer): the diagram stands in. -->
+                <svg
+                  class="absolute"
+                  style="left: 2px; top: 2px"
+                  [style.width.px]="mapSize"
+                  [style.height.px]="mapSize"
+                  [attr.content]="facetMap()"
+                ></svg>
+              }
+              <view
+                class="absolute top-0 left-0"
                 [style.width.px]="dialSize"
                 [style.height.px]="dialSize"
-                [attr.content]="dial"
-              ></svg>
-              @for (figure of figures; track figure.value) {
-                <text
-                  class="absolute text-center font-wide text-[10px] text-paper"
-                  [style.width.px]="figureBox"
-                  [style.left.px]="figure.x"
-                  [style.top.px]="figure.y"
-                  [style.transform]="figure.rotate"
-                >
-                  {{ figure.value }}
-                </text>
-              }
+                [style.transform]="dialTransform()"
+                [style.transition]="dialTransition()"
+              >
+                <svg
+                  [style.width.px]="dialSize"
+                  [style.height.px]="dialSize"
+                  [attr.content]="dial"
+                ></svg>
+                @for (figure of figures; track figure.value) {
+                  <text
+                    class="absolute text-center font-wide text-[10px] text-paper"
+                    [style.width.px]="figureBox"
+                    [style.left.px]="figure.x"
+                    [style.top.px]="figure.y"
+                    [style.transform]="figure.rotate"
+                  >
+                    {{ figure.value }}
+                  </text>
+                }
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="flex flex-row items-end justify-between px-5 pt-1 pb-3">
-          <!-- The name cuts in as the stone changes: the old one leaves as the
+          <view class="flex flex-row items-end justify-between px-5 pt-1 pb-3">
+            <!-- The name cuts in as the stone changes: the old one leaves as the
                new one enters. The group itself has the height, because on
                Lynx an absolute child is placed from its parent's box, and the
                group's host would otherwise be zero tall. -->
-          <lynx-transition-group
-            class="flex-1"
-            style="height: 56px"
-            [each]="gemList()"
-            [trackBy]="trackGem"
-            name="cut"
-            [duration]="320"
-          >
-            <ng-template let-gem>
-              <view class="absolute right-0 bottom-0 left-0 flex flex-col">
-                <!-- Long names (Padparadscha, Alexandrite) set smaller, so
-                     the name stays one line beside the chip. -->
-                <text
-                  class="font-wide text-paper"
-                  [text-maxline]="1"
-                  [style.font-size.px]="nameSize(gem.name)"
-                  [style.line-height.px]="nameSize(gem.name) + 4"
-                >
-                  {{ upper(gem.name) }}
-                </text>
-                <text class="font-narrow text-[12px] tracking-[2px] text-paper">
-                  {{ upper(gem.species) }}
-                </text>
-              </view>
-            </ng-template>
-          </lynx-transition-group>
-          <blur-view
-            ui-glass
-            interactive
-            shape="capsule"
-            class="flex h-9 items-center justify-center px-4"
-            [accessibility-element]="true"
-            accessibility-traits="button"
-            accessibility-label="Cut and light"
-            [uiSheetSource]="cutSheet"
-            (bindtap)="cutSheetOpen.set(true)"
-          >
-            <text
-              class="font-narrow text-[11px] tracking-[2px] text-glass-foreground"
+            <lynx-transition-group
+              class="flex-1"
+              style="height: 56px"
+              [each]="gemList()"
+              [trackBy]="trackGem"
+              name="cut"
+              [duration]="320"
             >
-              {{ upper(cutLabel()) }}
-            </text>
-          </blur-view>
+              <ng-template let-gem>
+                <view class="absolute right-0 bottom-0 left-0 flex flex-col">
+                  <!-- Long names (Padparadscha, Alexandrite) set smaller, so
+                     the name stays one line beside the chip. -->
+                  <text
+                    class="font-wide text-paper"
+                    [text-maxline]="1"
+                    [style.font-size.px]="nameSize(gem.name)"
+                    [style.line-height.px]="nameSize(gem.name) + 4"
+                  >
+                    {{ upper(gem.name) }}
+                  </text>
+                  <text
+                    class="font-narrow text-[12px] tracking-[2px] text-paper"
+                  >
+                    {{ upper(gem.species) }}
+                  </text>
+                </view>
+              </ng-template>
+            </lynx-transition-group>
+            <blur-view
+              ui-glass
+              interactive
+              shape="capsule"
+              class="flex h-9 items-center justify-center px-4"
+              [accessibility-element]="true"
+              accessibility-traits="button"
+              accessibility-label="Cut and light"
+              [uiSheetSource]="cutSheet"
+              (bindtap)="cutSheetOpen.set(true)"
+            >
+              <text
+                class="font-narrow text-[11px] tracking-[2px] text-glass-foreground"
+              >
+                {{ upper(cutLabel()) }}
+              </text>
+            </blur-view>
+          </view>
         </view>
       </view>
 

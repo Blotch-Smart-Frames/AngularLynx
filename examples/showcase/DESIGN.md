@@ -77,7 +77,7 @@ spacing:
   note-row: '56px'
   parcel-strip: '64px'
   band-bezel: '88px'
-  screen-header: '92px'
+  screen-header: '92px min'
   dock-clearance: '128px'
 components:
   detent:
@@ -208,7 +208,7 @@ Phone-first at 402 × 778 (the iPhone 17 Pro safe-area view) and full width on a
 
 The atlas stacks the plate over the sheet in a single scroll-view. The plate is the stone's color edge to edge: a wordmark row (28px chip with safe-area padding), a 320px stage with the 308px dial centered, and a 56px name row with a 12px bottom margin. A main-thread scroll script moves the plate at half the scroll speed so the stone sits deeper than the paper. Below it, the sheet is a stack of tier bands separated by hairlines: the parcel strip (64px) of ten 30px discs in 36px cells, three main bands (52px) and the origin bezel (88px), then a 56px note row. Each band is a row: a 108px label column, a flexible rule or scale, and a 64px right-aligned figure column. A 128px spacer lets the last band scroll out from under the dock.
 
-Market and Collection open with a 92px header (title bottom-left, labels or detents bottom-right) on a hairline. Market's chart bands pad 16px top and bottom and share the hairline between them. Collection is a two-column flow list with 8px tile padding inside a 12px edge (`px-3`, `p-2`), padded 100px at the bottom for the dock.
+Market and Collection open with a header at least 92px tall (title bottom-left, labels or detents bottom-right) on a hairline; on a phone the safe-area inset adds to it, so it pads rather than fixes its height. Market's chart bands pad 16px top and bottom and share the hairline between them. Collection is a two-column flow list with 8px tile padding inside a 12px edge (`px-3`, `p-2`), padded 100px at the bottom for the dock.
 
 The ground under every screen is a 3 × 9 tiling of 134px facet-map tiles (three across a phone so the repeat never shows), placed under the scroll container rather than inside it.
 
@@ -216,7 +216,7 @@ Sheets stack their rows with 12px gaps (`gap-3`); the cut sheet uses 20px betwee
 
 ## Elevation & Depth
 
-The sheet is flat. Nothing on paper casts a shadow, and surfaces do not step in tone: depth on paper is drawn, as a hairline or as the ground's seven-percent facet map under the content. The parallax (the plate at half scroll speed) is the only spatial cue on the atlas.
+The sheet is flat. Nothing on paper casts a shadow, and surfaces do not step in tone: depth on paper is drawn, as a hairline or as the ground's seven-percent facet map under the content. The parallax (the plate's stage at half scroll speed, clipped by the plate so nothing slides out over the sheet) is the only spatial cue on the atlas.
 
 What floats is glass: the dock, the capsule chips on the plate, and the cut and lot sheets (`variant="glass"`). Glass carries the stone's tint through `--glass-tint`, so it reads as the stone's color seen through frosted paper. The glass primitive's solid fallback (Reduce Transparency, or a platform without blur) is the one shadow in the system: `0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15)`. No other element sets `box-shadow`.
 

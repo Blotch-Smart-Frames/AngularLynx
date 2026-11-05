@@ -22,17 +22,17 @@
     "cspell": "cspell ."
   },
   "dependencies": {
-    "@tanstack/charts": "^1.1.0",
+    "@tanstack/charts": "^1.2.0",
     "@types/d3-shape": "^3.1.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-shape": "^3.2.0",
-    "tailwind-merge": "^3.3.0"
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@angular/build": "^22.2.2",
-    "@angular/cli": "^22.2.2",
-    "@angular/compiler-cli": "^22.2.1",
+    "@angular/build": "^22.2.5",
+    "@angular/cli": "^22.2.5",
+    "@angular/compiler-cli": "^22.2.4",
     "@blotch/angular-lynx": "*",
     "@blotch/angular-lynx-build": "*",
     "@blotch/angular-lynx-testing-library": "*",

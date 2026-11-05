@@ -9,6 +9,11 @@ updates:
       interval: 'weekly'
     commit-message:
       prefix: 'chore'
+    # Change a package.json range only when the new version falls outside
+    # it. The default raised every range to the new version, peer ranges of
+    # the published packages included (@angular/forms ^22.2.0 became
+    # ^22.2.4), which narrows what apps may install for no reason.
+    versioning-strategy: 'increase-if-necessary'
     ignore:
       # Angular majors go through the update-angular skill: ng update's
       # migrations across the packages and ~100 examples, the published peer
@@ -32,6 +37,18 @@ updates:
       # typescript peer range), so a TypeScript minor on its own fails the
       # install. The update-angular skill moves TypeScript with Angular.
       - dependency-name: 'typescript'
+        update-types:
+          ['version-update:semver-major', 'version-update:semver-minor']
+      # The rsbuild plugin's types come from both its own @rsbuild/core and
+      # @rspack/core and from @lynx-js/rspeedy's, which pins an exact
+      # @rsbuild/core (and so an @rspack/core minor). Moving the plugin's
+      # copies to a newer minor than rspeedy's installs a second @rspack/core,
+      # and the plugin's declaration build fails on its two Compiler types.
+      # Move them by hand when rspeedy moves its @rsbuild/core.
+      - dependency-name: '@rsbuild/core'
+        update-types:
+          ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: '@rspack/core'
         update-types:
           ['version-update:semver-major', 'version-update:semver-minor']
     groups:

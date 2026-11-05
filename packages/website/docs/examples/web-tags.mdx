@@ -1,0 +1,17 @@
+# Web Tags
+
+A sign-up card written as it would be for the browser: HTML tags, DOM events and type selectors. Each tag renders as the [Lynx](/guide/glossary#lynx) element it stands for.
+
+<Go example="web-tags" defaultFile="src/app/app.ts" />
+
+## What it shows
+
+- **HTML tags** — the `<main>` and `<div>` render as views, the `<h1>`, `<p>`, `<label>` and `<button>` as texts, and the `<img>` as an image. See [HTML tags](/guide/elements/#html-tags).
+- **Type selectors** — `h1 { … }` and `button { … }` in the component's styles match those tags, as on the web. See [CSS on Lynx](/guide/styling).
+- **DOM events** — `(input)` reads `$event.target.value`, `(keyup.enter)` runs on the keyboard's return key, and `(click)` on a tap. See [DOM event names](/guide/elements/event-handling#dom-event-names).
+- **`[hidden]`** — the welcome line stays hidden until you join.
+
+## Related
+
+- [Coming from web Angular](/guide/coming-from-web)
+- [Form Input](/examples/form-input): the same kind of form, in Lynx elements

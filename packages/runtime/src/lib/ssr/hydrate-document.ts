@@ -85,7 +85,7 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     }
     const el = this.#nextElement();
     // The snapshot holds the element the host registered (registerHostElement),
-    // so the wrapper takes its tag too.
+    // or the one an HTML tag renders as, so the wrapper takes its tag too.
     el.tagName = hostElementOf(tag);
     return el;
   }

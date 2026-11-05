@@ -44,6 +44,7 @@ import {
   type BaseLynxElement,
   DOM_EVENT_ALIASES,
   EVENT_PREFIXES,
+  SAME_NAME_DOM_EVENTS,
   type LynxEventType,
 } from './types';
 
@@ -90,12 +91,47 @@ const parseEventName = (
 ): Pick<Listener, 'eventType' | 'eventName'> | undefined => {
   const alias = DOM_EVENT_ALIASES.get(name);
   if (alias) return { eventType: 'bindEvent', eventName: alias };
+  if (SAME_NAME_DOM_EVENTS.has(name)) {
+    return { eventType: 'bindEvent', eventName: name };
+  }
   for (const [prefix, eventType] of EVENT_PREFIXES) {
     if (name.startsWith(prefix)) {
       return { eventType, eventName: name.slice(prefix.length) };
     }
   }
   return undefined;
+};
+
+/**
+ * What the HTML `hidden` attribute gives an element. `display: none` sizes it
+ * to 0×0, but on iOS a `<text>` in it still draws its glyphs from that
+ * corner; `overflow: hidden` clips them (see "A `display: none` element still
+ * draws its text on iOS" in investigations/lynx-vs-web-differences.md).
+ */
+const HIDDEN_STYLE = 'display: none; overflow: hidden';
+
+/**
+ * Puts a text field's text where a web handler reads it. Lynx sends it in
+ * `detail.value` (with `input`, `focus`, `blur` and `confirm`), and a handler
+ * written for the browser reads `event.target.value`, as
+ * `(input)="name.set($any($event.target).value)"` does. A target with a
+ * `value` of its own keeps it.
+ */
+const fillTargetValue = (event: {
+  detail?: { value?: unknown };
+  target?: unknown;
+}): void => {
+  const value = event.detail?.value;
+  const target = event.target as Record<string, unknown> | null | undefined;
+  if (
+    typeof value === 'string' &&
+    target &&
+    typeof target === 'object' &&
+    !('value' in target) &&
+    Object.isExtensible(target)
+  ) {
+    target['value'] = value;
+  }
 };
 
 /**
@@ -352,6 +388,12 @@ export class LynxElement implements BaseLynxElement {
    * `__AddInlineStyle` drops any name that isn't a CSS property.
    */
   #runtimeStyle = '';
+  /**
+   * Set by the HTML `hidden` attribute, which Lynx doesn't have: the element
+   * gets HIDDEN_STYLE ahead of the app's own inline style, which wins over
+   * it, as an author's style wins over a browser's `[hidden]` rule.
+   */
+  #hidden = false;
   /**
    * The CSS variables `[style.--x]` bindings set, which go into the inline
    * style string after the app's style="...", for the same reason as
@@ -687,6 +729,19 @@ export class LynxElement implements BaseLynxElement {
     this.#attrs.set('text', displayed);
   }
   setAttribute(name: string, value: any): void {
+    // HTML's `hidden`, as `[hidden]="!open()"` or a bare `hidden` sets it.
+    // Like any boolean attribute, it hides whenever it's there, whatever its
+    // value; a `false` property binding or a removal takes it away.
+    if (name === 'hidden') {
+      this.#setHidden(value != null && value !== false);
+      return;
+    }
+    // An `<img>`'s `alt` (an `<img>` is an `<image>`, see web-tags.ts) is what
+    // a screen reader says for it, which Lynx calls `accessibility-label`.
+    // An `<image>` is an accessibility element already, so it's read.
+    if (name === 'alt' && this.tagName === 'image') {
+      name = 'accessibility-label';
+    }
     if (name === 'class') {
       // Use __SetClasses (not __AddClass) because setAttribute replaces the
       // entire class attribute with a space-separated list. __AddClass treats
@@ -871,19 +926,29 @@ export class LynxElement implements BaseLynxElement {
 
   /**
    * The whole inline style to give the native element: the runtime's
-   * declarations first, so the app's own wins where both set the same name,
+   * declarations first (`hidden`'s HIDDEN_STYLE, then #runtimeStyle), so
+   * the app's own wins where both set the same name,
    * then the app's style="...", then its `[style.--x]` variables, which win
    * over the attribute as bindings do on the web. Without runtime
    * declarations or variables it's the app's value as is.
    */
   #withRuntimeStyle(inlineStyle: string | null): string | null {
-    if (!this.#runtimeStyle && this.#customProperties.size === 0) {
+    if (
+      !this.#hidden &&
+      !this.#runtimeStyle &&
+      this.#customProperties.size === 0
+    ) {
       return inlineStyle;
     }
     const variables = [...this.#customProperties]
       .map(([name, value]) => `${name}: ${value}`)
       .join('; ');
-    return [this.#runtimeStyle, inlineStyle?.replace(/[\s;]+$/, ''), variables]
+    return [
+      this.#hidden ? HIDDEN_STYLE : '',
+      this.#runtimeStyle,
+      inlineStyle?.replace(/[\s;]+$/, ''),
+      variables,
+    ]
       .filter(Boolean)
       .join('; ');
   }
@@ -899,6 +964,12 @@ export class LynxElement implements BaseLynxElement {
   #setRuntimeStyle(style: string): void {
     if (style === this.#runtimeStyle) return;
     this.#runtimeStyle = style;
+    this.#rewriteInlineStyle();
+  }
+
+  #setHidden(hidden: boolean): void {
+    if (hidden === this.#hidden) return;
+    this.#hidden = hidden;
     this.#rewriteInlineStyle();
   }
 
@@ -1624,8 +1695,10 @@ export class LynxElement implements BaseLynxElement {
    * (bind/catch/capture-bind/capture-catch) to extract the native event name
    * and determine the event type for __AddEvent. A DOM name Lynx calls
    * something else (see DOM_EVENT_ALIASES) listens for the Lynx event, so
-   * `(click)`, and Angular's RouterLink with it, runs on a tap.
-   * Other names (e.g. `mouseover`) are ignored: Lynx has no event for them.
+   * `(click)`, and Angular's RouterLink with it, runs on a tap, and one Lynx
+   * sends under the same name (SAME_NAME_DOM_EVENTS), such as `(input)`,
+   * listens for it. Other names (e.g. `mouseover`) are ignored: iOS and
+   * Android have no event for them.
    *
    * An element can have any number of listeners for one event, as on the
    * web: a template's `(bindtap)` next to a directive's host listener for
@@ -2001,6 +2074,7 @@ export class LynxElement implements BaseLynxElement {
       if (typeof event.stopImmediatePropagation !== 'function') {
         event.stopImmediatePropagation = () => {};
       }
+      fillTargetValue(event);
     }
     // The browser's click after a long press on Lynx for Web, which native
     // Lynx doesn't follow with a tap (see web-long-press.ts).

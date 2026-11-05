@@ -409,6 +409,38 @@ describe('LynxDocument', () => {
       warn.mockRestore();
     });
 
+    it('makes an HTML tag the Lynx element it renders as, without a warning', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const div = doc.createElement('div');
+      const span = doc.createElement('span');
+      expect(div.tagName).toBe('view');
+      expect(span.tagName).toBe('text');
+      expect(asMock(globalThis.__CreateView)).toHaveBeenCalled();
+      expect(asMock(globalThis.__CreateText)).toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('sizes an <img> to its picture, as a browser does', () => {
+      const img = doc.createElement('img');
+      expect(img.tagName).toBe('image');
+      expect(asMock(globalThis.__CreateImage)).toHaveBeenCalled();
+      expect(asMock(globalThis.__SetAttribute)).toHaveBeenCalledWith(
+        img.element,
+        'auto-size',
+        true,
+      );
+    });
+
+    it('leaves a Lynx <image> its own size', () => {
+      doc.createElement('image');
+      expect(asMock(globalThis.__SetAttribute)).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'auto-size',
+        expect.anything(),
+      );
+    });
+
     it('makes angular-three’s tags views, without a warning each', () => {
       // provideNgtRenderer() asks for an element for every `ngt-*` tag.
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

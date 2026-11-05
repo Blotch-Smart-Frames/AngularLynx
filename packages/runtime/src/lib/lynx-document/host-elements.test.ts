@@ -34,6 +34,21 @@ describe('registerHostElement', () => {
     expect(hostElementOf('view')).toBe('view');
   });
 
+  it('gives an HTML tag the Lynx element it renders as', () => {
+    expect(hostElementOf('div')).toBe('view');
+    expect(hostElementOf('span')).toBe('text');
+    expect(hostElementOf('img')).toBe('image');
+  });
+
+  it('puts a registration ahead of the HTML tag of the same name', () => {
+    @Component({ selector: 'search', template: '' })
+    class TestSearch {}
+
+    registerHostElement(TestSearch, 'scroll-view');
+
+    expect(hostElementOf('search')).toBe('scroll-view');
+  });
+
   it('throws for a component that has no element to make', () => {
     @Component({ selector: '[testAttribute]', template: '' })
     class TestAttribute {}

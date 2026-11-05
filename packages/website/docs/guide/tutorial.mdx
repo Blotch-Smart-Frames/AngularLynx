@@ -234,7 +234,7 @@ Then add `draft`, `#nextId` and `addTodo()` to the class, around `todos`:
 
 `<input>` is Lynx's text field. It fires `bindinput` on every keystroke, instead of the DOM `input` event.
 
-- **The text is in `$event.detail.value`**, not `$event.target.value`. Angular knows what `<input>`'s `bindinput` sends, so a misspelt field in `$event.detail` fails the build.
+- **The text is in `$event.detail.value`.** Angular knows what `<input>`'s `bindinput` sends, so a misspelt field in `$event.detail` fails the build. The web's `(input)` and `$event.target.value` work too, untyped.
 - `[value]="draft()"` writes the signal back into the field. That's how `addTodo()` clears it.
 - `#nextId` is an ES private field. It's plain state that the template never reads, so it doesn't need to be a signal.
 

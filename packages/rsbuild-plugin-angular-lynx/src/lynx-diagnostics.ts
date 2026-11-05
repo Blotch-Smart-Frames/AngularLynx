@@ -3,51 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * HTML elements that silently fall back to <view> in Lynx.
- * Key: HTML tag name. Value: suggested Lynx replacement (null = no equivalent).
+ * HTML tags that don't work on Lynx, which a build warns about.
+ * Key: HTML tag name. Value: the Lynx element to use instead (null = none).
+ *
+ * The common tags aren't here: the runtime renders each as a Lynx element
+ * (`div` as a view, `p` as a text, `img` as an image; see its
+ * lynx-document/web-tags.ts), so they need no warning. A test keeps the two
+ * apart. These render as a plain `<view>`, with a warning at run time too.
  */
 const HTML_ELEMENT_SUGGESTIONS: Record<string, string | null> = {
-  // Container elements → <view>
-  div: 'view',
-  section: 'view',
-  article: 'view',
-  aside: 'view',
-  header: 'view',
-  footer: 'view',
-  main: 'view',
-  nav: 'view',
-  figure: 'view',
-  figcaption: 'view',
+  // A <details> doesn't open and close on Lynx.
   details: 'view',
-  summary: 'view',
-  form: 'view',
-  fieldset: 'view',
-  button: 'view',
-  // Text elements → <text>
-  span: 'text',
-  p: 'text',
-  h1: 'text',
-  h2: 'text',
-  h3: 'text',
-  h4: 'text',
-  h5: 'text',
-  h6: 'text',
-  label: 'text',
-  strong: 'text',
-  em: 'text',
-  b: 'text',
-  i: 'text',
-  small: 'text',
+  summary: 'text',
+  // Text a <view> holds doesn't show, and <pre>'s spaces would collapse.
   pre: 'text',
-  code: 'text',
-  blockquote: 'text',
   legend: 'text',
-  a: 'text',
-  // Special mappings
-  img: 'image',
-  ul: 'list',
-  ol: 'list',
-  li: 'list-item',
+  caption: 'text',
   // Table elements → <view> (use flex/grid)
   table: 'view',
   thead: 'view',
@@ -56,14 +27,13 @@ const HTML_ELEMENT_SUGGESTIONS: Record<string, string | null> = {
   tr: 'view',
   td: 'view',
   th: 'view',
-  // No Lynx equivalent. (<canvas> has one: the runtime's, with WebGL2.)
+  // No Lynx equivalent. (<video> and <canvas> are Lynx elements, and
+  // <canvas> is the runtime's, with WebGL2.)
   select: null,
   option: null,
-  video: null,
   audio: null,
   iframe: null,
   br: null,
-  hr: null,
 };
 
 /**
@@ -151,8 +121,8 @@ export type LynxDiagnostic = {
  * Scans Angular AOT-compiled output for HTML elements used in templates.
  *
  * Angular's compiler emits ɵɵelementStart(idx, "tag") and ɵɵelement(idx, "tag")
- * for every template element. We regex-match these to detect HTML element usage
- * that will silently fall back to <view> at runtime.
+ * for every template element. We regex-match these to detect the HTML tags
+ * that fall back to a plain <view> at runtime (HTML_ELEMENT_SUGGESTIONS).
  */
 export const scanCompiledOutputForHtmlElements = (
   fileCache: Map<string, string | Uint8Array>,

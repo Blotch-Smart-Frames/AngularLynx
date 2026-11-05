@@ -23,6 +23,43 @@ export const EVENT_PREFIXES: [string, LynxEventType][] = [
  */
 export const DOM_EVENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['click', 'tap'],
+  // The return key on a text field, where a browser sends a key event for
+  // Enter: `<input (keyup.enter)="search()">` runs when the keyboard's return
+  // key is pressed. iOS and Android send no other key events.
+  ['keydown.enter', 'confirm'],
+  ['keyup.enter', 'confirm'],
+]);
+
+/**
+ * DOM event names Lynx sends under the same name, for the same thing: an
+ * `<input>`'s `input`, `focus` and `blur`, an `<image>`'s `load` and `error`,
+ * a `<scroll-view>`'s `scroll`, a touch, or the end of a CSS animation or
+ * transition. A listener for one, with no `bind` or `catch` prefix, hears it
+ * as `bind` does, so `(input)` works as `(bindinput)` does.
+ *
+ * Other DOM names, such as `mouseover` or `keydown`, stay ignored. iOS and
+ * Android never send them, but the web preview would, so listening for them
+ * would make the preview do what the app on a phone doesn't.
+ */
+export const SAME_NAME_DOM_EVENTS: ReadonlySet<string> = new Set([
+  'input',
+  'focus',
+  'blur',
+  'load',
+  'error',
+  'scroll',
+  'scrollend',
+  'touchstart',
+  'touchmove',
+  'touchend',
+  'touchcancel',
+  'animationstart',
+  'animationend',
+  'animationiteration',
+  'animationcancel',
+  'transitionstart',
+  'transitionend',
+  'transitioncancel',
 ]);
 
 import type { Element as LynxJsElement } from '@lynx-js/types/main-thread';

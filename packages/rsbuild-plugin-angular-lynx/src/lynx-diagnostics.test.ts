@@ -1,5 +1,6 @@
 // cspell:words ɵɵelement ɵɵrepeater ɵɵelementStart ɵɵtext ɵɵdomElement ɵɵdomElementStart ɵɵdomElementEnd
 import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createLynxDiagnosticsReporter,
@@ -19,10 +20,10 @@ describe('scanCompiledOutputForHtmlElements', () => {
       `
       function AppComponent_Template(rf, ctx) {
         if (rf & 1) {
-          i0.ɵɵelementStart(0, "div");
+          i0.ɵɵelementStart(0, "table");
           i0.ɵɵtext(1, "Hello");
           i0.ɵɵelementEnd();
-          i0.ɵɵelement(2, "span");
+          i0.ɵɵelement(2, "pre");
         }
       }
     `,
@@ -31,10 +32,10 @@ describe('scanCompiledOutputForHtmlElements', () => {
     const result = scanCompiledOutputForHtmlElements(fileCache);
 
     expect(result).toHaveLength(2);
-    expect(result[0]!.message).toContain('<div>');
+    expect(result[0]!.message).toContain('<table>');
     expect(result[0]!.message).toContain('Use <view> instead');
     expect(result[0]!.category).toBe('html-element');
-    expect(result[1]!.message).toContain('<span>');
+    expect(result[1]!.message).toContain('<pre>');
     expect(result[1]!.message).toContain('Use <text> instead');
   });
 
@@ -45,8 +46,8 @@ describe('scanCompiledOutputForHtmlElements', () => {
       `
       function Plain_Template(rf, ctx) {
         if (rf & 1) {
-          i0.ɵɵdomElementStart(0, "div")(1, "view");
-          i0.ɵɵdomElement(2, "img");
+          i0.ɵɵdomElementStart(0, "table")(1, "view");
+          i0.ɵɵdomElement(2, "td");
           i0.ɵɵdomElementEnd();
         }
       }
@@ -56,8 +57,8 @@ describe('scanCompiledOutputForHtmlElements', () => {
     const result = scanCompiledOutputForHtmlElements(fileCache);
 
     expect(result.map((d) => d.message)).toEqual([
-      expect.stringContaining('<div> is not a Lynx element'),
-      expect.stringContaining('<img> is not a Lynx element. Use <image>'),
+      expect.stringContaining('<table> is not a Lynx element'),
+      expect.stringContaining('<td> is not a Lynx element. Use <view>'),
     ]);
   });
 
@@ -77,6 +78,34 @@ describe('scanCompiledOutputForHtmlElements', () => {
 
     const result = scanCompiledOutputForHtmlElements(fileCache);
     expect(result).toHaveLength(0);
+  });
+
+  it('does not warn for the HTML tags the runtime renders as Lynx elements', () => {
+    // The runtime's lists of them (lynx-document/web-tags.ts): a tag there
+    // renders, as a view, text or image, so a warning would be wrong.
+    const source = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        '../../runtime/src/lib/lynx-document/web-tags.ts',
+      ),
+      'utf-8',
+    );
+    const lists = [...source.matchAll(/const \w+_TAGS = \[([^\]]*)\]/g)];
+    const tags = [
+      ...lists.flatMap(([, list]) =>
+        [...list!.matchAll(/'([a-z0-9]+)'/g)].map(([, tag]) => tag!),
+      ),
+      'img',
+    ];
+    expect(tags).toEqual(expect.arrayContaining(['div', 'span', 'button']));
+    const fileCache = new Map<string, string>([
+      [
+        '/src/app/app.ts',
+        tags.map((tag, i) => `i0.ɵɵelement(${i}, "${tag}");`).join('\n'),
+      ],
+    ]);
+
+    expect(scanCompiledOutputForHtmlElements(fileCache)).toEqual([]);
   });
 
   it('does not warn for hyphenated elements (Lynx or Angular components)', () => {
@@ -100,11 +129,11 @@ describe('scanCompiledOutputForHtmlElements', () => {
     fileCache.set(
       '/src/app/app.ts',
       `
-      i0.ɵɵelementStart(0, "div");
+      i0.ɵɵelementStart(0, "table");
       i0.ɵɵelementEnd();
-      i0.ɵɵelementStart(1, "div");
+      i0.ɵɵelementStart(1, "table");
       i0.ɵɵelementEnd();
-      i0.ɵɵelementStart(2, "div");
+      i0.ɵɵelementStart(2, "table");
       i0.ɵɵelementEnd();
     `,
     );
@@ -117,7 +146,7 @@ describe('scanCompiledOutputForHtmlElements', () => {
     const fileCache = new Map<string, string>();
     fileCache.set(
       '/node_modules/@angular/material/button.js',
-      `i0.ɵɵelementStart(0, "div");`,
+      `i0.ɵɵelementStart(0, "table");`,
     );
 
     const result = scanCompiledOutputForHtmlElements(fileCache);
@@ -137,12 +166,12 @@ describe('scanCompiledOutputForHtmlElements', () => {
 
   it('handles Uint8Array contents', () => {
     const fileCache = new Map<string, string | Uint8Array>();
-    const code = `i0.ɵɵelementStart(0, "div");`;
+    const code = `i0.ɵɵelementStart(0, "table");`;
     fileCache.set('/src/app/app.ts', Buffer.from(code));
 
     const result = scanCompiledOutputForHtmlElements(fileCache);
     expect(result).toHaveLength(1);
-    expect(result[0]!.message).toContain('<div>');
+    expect(result[0]!.message).toContain('<table>');
   });
 
   it('detects elements emitted via ɵɵrepeaterCreate (@for single root)', () => {
@@ -151,13 +180,13 @@ describe('scanCompiledOutputForHtmlElements', () => {
       '/src/app/app.ts',
       // The @for insertion-point optimization emits the root tag through
       // ɵɵrepeaterCreate rather than ɵɵelementStart.
-      `i0.ɵɵrepeaterCreate(0, AppComponent_For_1_Template, 2, 1, "div", null);`,
+      `i0.ɵɵrepeaterCreate(0, AppComponent_For_1_Template, 2, 1, "table", null);`,
     );
 
     const result = scanCompiledOutputForHtmlElements(fileCache);
 
     expect(result).toHaveLength(1);
-    expect(result[0]!.message).toContain('<div>');
+    expect(result[0]!.message).toContain('<table>');
   });
 
   it('detects text-replacement elements', () => {
@@ -165,9 +194,9 @@ describe('scanCompiledOutputForHtmlElements', () => {
     fileCache.set(
       '/src/app/app.ts',
       `
-      i0.ɵɵelementStart(0, "h1");
-      i0.ɵɵelementStart(1, "p");
-      i0.ɵɵelement(2, "strong");
+      i0.ɵɵelementStart(0, "pre");
+      i0.ɵɵelementStart(1, "legend");
+      i0.ɵɵelement(2, "caption");
     `,
     );
 
@@ -496,7 +525,8 @@ describe('reportLynxDiagnostics', () => {
     reportLynxDiagnostics([
       {
         file: '/src/app.ts',
-        message: 'src/app.ts: <div> is not a Lynx element. Use <view> instead.',
+        message:
+          'src/app.ts: <table> is not a Lynx element. Use <view> instead.',
         category: 'html-element',
       },
       {
@@ -545,7 +575,7 @@ describe('reportLynxDiagnostics', () => {
 describe('createLynxDiagnosticsReporter', () => {
   const diagnostic = (file: string): LynxDiagnostic => ({
     file,
-    message: `${file}: <div> is not a Lynx element. Use <view> instead.`,
+    message: `${file}: <table> is not a Lynx element. Use <view> instead.`,
     category: 'html-element',
   });
   const modules = (...files: (string | undefined)[]) =>
@@ -572,7 +602,7 @@ describe('createLynxDiagnosticsReporter', () => {
     expect(warnSpy.mock.calls).toEqual([
       ['[Lynx] HTML elements detected in templates:'],
       [
-        '  /repo/src/app/rendered.ts: <div> is not a Lynx element. Use <view> instead.',
+        '  /repo/src/app/rendered.ts: <table> is not a Lynx element. Use <view> instead.',
       ],
     ]);
   });

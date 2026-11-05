@@ -473,6 +473,89 @@ describe('LynxElement', () => {
     });
   });
 
+  describe('the HTML hidden attribute', () => {
+    beforeEach(() => {
+      globalThis.__SetInlineStyles = vi.fn();
+      globalThis.__AddInlineStyle = vi.fn();
+      globalThis.__SetAttribute = vi.fn();
+    });
+
+    const lastInlineStyle = () =>
+      (globalThis.__SetInlineStyles as ReturnType<typeof vi.fn>).mock.calls.at(
+        -1,
+      )?.[1];
+
+    it('hides the element, as [hidden] and a bare hidden do', () => {
+      element = new LynxElement(fakeRef);
+
+      element.setProperty('hidden', true);
+      // Clipped too: on iOS a hidden <text> still draws from its corner.
+      expect(lastInlineStyle()).toBe('display: none; overflow: hidden');
+
+      element.setProperty('hidden', false);
+      expect(lastInlineStyle()).toBeNull();
+
+      // A bare `hidden` attribute is an empty string: there, so hidden.
+      element.setAttribute('hidden', '');
+      expect(lastInlineStyle()).toBe('display: none; overflow: hidden');
+      element.removeAttribute('hidden');
+      expect(lastInlineStyle()).toBeNull();
+      // Lynx has no hidden attribute to pass it to.
+      expect(globalThis.__SetAttribute).not.toHaveBeenCalled();
+    });
+
+    it("lets the app's own inline display win, as an author style does", () => {
+      element = new LynxElement(fakeRef);
+      element.setInlineStyles('display: flex; color: red');
+
+      element.setAttribute('hidden', '');
+
+      expect(lastInlineStyle()).toBe(
+        'display: none; overflow: hidden; display: flex; color: red',
+      );
+    });
+
+    it('writes nothing again when it doesn’t change', () => {
+      element = new LynxElement(fakeRef);
+      element.setProperty('hidden', true);
+      element.setProperty('hidden', true);
+
+      expect(globalThis.__SetInlineStyles).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('alt on an image', () => {
+    beforeEach(() => {
+      globalThis.__SetAttribute = vi.fn();
+    });
+
+    it('is what a screen reader says, its accessibility-label', () => {
+      element = new LynxElement(fakeRef);
+      element.tagName = 'image';
+
+      element.setAttribute('alt', 'The team at the summit');
+
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        fakeRef,
+        'accessibility-label',
+        'The team at the summit',
+      );
+    });
+
+    it('stays alt on another element, which has none', () => {
+      element = new LynxElement(fakeRef);
+      element.tagName = 'view';
+
+      element.setAttribute('alt', 'Ignored');
+
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        fakeRef,
+        'alt',
+        'Ignored',
+      );
+    });
+  });
+
   describe('accessibility traits the runtime adds', () => {
     const traits = () =>
       (globalThis.__SetAttribute as ReturnType<typeof vi.fn>).mock.calls
@@ -925,6 +1008,84 @@ describe('LynxElement', () => {
         'tap',
         { type: 'worklet', value: expect.any(Function) },
       );
+    });
+  });
+
+  describe('DOM event names', () => {
+    const addEvent = () => globalThis.__AddEvent as ReturnType<typeof vi.fn>;
+    const nativeHandler = (): ((event: unknown) => unknown) =>
+      (addEvent().mock.calls.at(-1)![3] as { value: (e: unknown) => unknown })
+        .value;
+
+    it('hear the Lynx event of the same name, bubbling, as bind does', () => {
+      element = new LynxElement(fakeRef);
+      for (const name of ['input', 'focus', 'blur', 'load', 'error']) {
+        element.addEventListener(name, vi.fn());
+        expect(addEvent()).toHaveBeenLastCalledWith(
+          fakeRef,
+          'bindEvent',
+          name,
+          expect.anything(),
+        );
+      }
+    });
+
+    it('hear the return key for an Enter key event', () => {
+      element = new LynxElement(fakeRef);
+      element.addEventListener('keyup.enter', vi.fn());
+
+      expect(addEvent()).toHaveBeenLastCalledWith(
+        fakeRef,
+        'bindEvent',
+        'confirm',
+        expect.anything(),
+      );
+    });
+
+    it('ignore a name a phone never sends, which the web preview would', () => {
+      element = new LynxElement(fakeRef);
+      element.addEventListener('mouseover', vi.fn());
+      element.addEventListener('keydown', vi.fn());
+
+      expect(addEvent()).not.toHaveBeenCalled();
+    });
+
+    it("give a text field's event its text in target.value, as on the web", () => {
+      element = new LynxElement(fakeRef);
+      const onInput = vi.fn((event: any) => event.target.value);
+      element.addEventListener('input', onInput);
+
+      nativeHandler()({
+        type: 'input',
+        detail: { value: 'Ada' },
+        target: { uid: 1 },
+      });
+
+      expect(onInput).toHaveReturnedWith('Ada');
+    });
+
+    it('leave a target’s own value, and an event with no target, alone', () => {
+      element = new LynxElement(fakeRef);
+      const onInput = vi.fn((event: any) => event.target?.value);
+      element.addEventListener('bindinput', onInput);
+
+      nativeHandler()({
+        type: 'input',
+        detail: { value: 'typed' },
+        target: { value: 'own' },
+      });
+      nativeHandler()({ type: 'input', detail: { value: 'typed' } });
+      nativeHandler()({
+        type: 'input',
+        detail: { value: 'typed' },
+        target: Object.freeze({ uid: 1 }),
+      });
+
+      expect(onInput.mock.results.map((r) => r.value)).toEqual([
+        'own',
+        undefined,
+        undefined,
+      ]);
     });
   });
 

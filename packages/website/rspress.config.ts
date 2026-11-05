@@ -419,6 +419,7 @@ export default defineConfig({
         { text: 'Todo List', link: '/examples/todo-list' },
         { text: 'Form Input', link: '/examples/form-input' },
         { text: 'Signal Forms', link: '/examples/forms' },
+        { text: 'Web Tags', link: '/examples/web-tags' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'App Patterns' },
         { text: 'Settings Page', link: '/examples/settings-page' },

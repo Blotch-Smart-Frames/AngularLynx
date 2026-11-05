@@ -1,4 +1,5 @@
 import { type Type, reflectComponentType } from '@angular/core';
+import { WEB_TAG_ELEMENTS } from './web-tags';
 
 /**
  * The Lynx elements a component's host can be, besides the `<view>` every
@@ -69,7 +70,8 @@ export const registerHostElement = (
 
 /**
  * The Lynx element to create for a tag: the registered host element for a
- * component's tag, or the tag itself.
+ * component's tag, the element an HTML tag renders as (`div` → `view`, see
+ * web-tags.ts), or the tag itself.
  */
 export const hostElementOf = (tag: string): string =>
-  hostElements.get(tag) ?? tag;
+  hostElements.get(tag) ?? WEB_TAG_ELEMENTS.get(tag) ?? tag;

@@ -39,6 +39,11 @@ updates:
       - dependency-name: 'typescript'
         update-types:
           ['version-update:semver-major', 'version-update:semver-minor']
+      # @types/node's major is the Node version it types, and the packages
+      # support Node 22.12 and later (engines), so a newer major lets the type
+      # check pass code using an API Node 22 lacks. Majors move by hand.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
       # The rsbuild plugin's types come from both its own @rsbuild/core and
       # @rspack/core and from @lynx-js/rspeedy's, which pins an exact
       # @rsbuild/core (and so an @rspack/core minor). Moving the plugin's

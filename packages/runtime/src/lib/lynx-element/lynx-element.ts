@@ -23,6 +23,11 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import {
+  readsSafeAreaInsets,
+  safeAreaInsetsStyle,
+  withSafeAreaInsets,
+} from './safe-area-insets';
 import { sanitizeSvgContent } from './svg-content';
 import {
   type LayoutRect,
@@ -353,6 +358,13 @@ export class LynxElement implements BaseLynxElement {
    * #runtimeStyle.
    */
   #customProperties = new Map<string, string>();
+  /**
+   * Set once any of the inline styles above reads a safe-area inset. They're
+   * kept as written, with their env(safe-area-inset-*), and each write fills
+   * in the insets the shell sent (see safe-area-insets.ts), so
+   * refreshSafeAreaInsets() can write them again when the insets change.
+   */
+  #readsSafeArea = false;
   /**
    * The app's own `accessibility-traits`, and the traits the runtime adds to
    * them (see setAccessibilityTrait). They're kept apart so that the app
@@ -765,6 +777,33 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Gives the page the CSS variables that carry the safe-area insets to the
+   * stylesheets, whose `env(safe-area-inset-*)` the build plugin makes read
+   * them (see safe-area-insets.ts). followSafeAreaInsets calls it on the page
+   * when it's created and whenever the insets change, as they do on
+   * rotation. They're the page's runtime style, so the app's own style on
+   * `<page>` doesn't drop them. The page is never a blur-view, whose material
+   * uses the same slot.
+   */
+  updateSafeAreaInsets(): void {
+    this.#setRuntimeStyle(safeAreaInsetsStyle());
+  }
+
+  /**
+   * Writes the inline styles of every element that reads a safe-area inset
+   * again, with the insets the shell just sent (see #readsSafeArea). Lynx
+   * resolves no `var()` inside a `calc()` in an inline style, so they can't
+   * follow a CSS variable as the stylesheets do. The insets change rarely:
+   * on rotation, and once at launch on iOS.
+   */
+  static refreshSafeAreaInsets(): void {
+    for (const ref of LynxElement.#byNativeId.values()) {
+      const element = ref.deref();
+      if (element && element.#readsSafeArea) element.#rewriteInlineStyle();
+    }
+  }
+
+  /**
    * Adds `trait` to the app's own `accessibility-traits`, or takes it away.
    * The app can still set its traits at any time: setAttribute merges the two
    * (see withAddedTraits), so neither undoes the other.
@@ -795,13 +834,18 @@ export class LynxElement implements BaseLynxElement {
       const text = String(value);
       if (this.#customProperties.get(key) === text) return;
       this.#customProperties.set(key, text);
+      if (readsSafeAreaInsets(text)) this.#readsSafeArea = true;
       this.#rewriteInlineStyle();
       return;
     }
     // `[style.display]="open ? 'block' : 'none'"` would lay the element out
     // as a row: Lynx has no block layout (see display.ts).
     if (key === 'display') value = toLynxDisplay(value);
-    __AddInlineStyle(this.element, key, value);
+    // `[style.padding-bottom]="'calc(1rem + env(safe-area-inset-bottom))'"`
+    // gets the inset the shell sends (see safe-area-insets.ts), and is kept
+    // as written to get the next one.
+    if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
+    __AddInlineStyle(this.element, key, withSafeAreaInsets(value));
     this.#inlineStyleKeys.set(key, value);
   }
   removeStyle(key: string): void {
@@ -818,8 +862,10 @@ export class LynxElement implements BaseLynxElement {
     // it removes the attribute.
     if (typeof inlineStyle === 'string') {
       inlineStyle = withLynxDisplay(inlineStyle);
+      // Its env(safe-area-inset-*) get the insets as in setStyle.
+      if (readsSafeAreaInsets(inlineStyle)) this.#readsSafeArea = true;
     }
-    __SetInlineStyles(this.element, this.#withRuntimeStyle(inlineStyle));
+    __SetInlineStyles(this.element, this.#inlineStyleFor(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
   }
 
@@ -842,6 +888,14 @@ export class LynxElement implements BaseLynxElement {
       .join('; ');
   }
 
+  /**
+   * The whole inline style to give the native element (see
+   * #withRuntimeStyle), with the safe-area insets filled in.
+   */
+  #inlineStyleFor(inlineStyle: string | null): string | null {
+    return withSafeAreaInsets(this.#withRuntimeStyle(inlineStyle));
+  }
+
   #setRuntimeStyle(style: string): void {
     if (style === this.#runtimeStyle) return;
     this.#runtimeStyle = style;
@@ -854,12 +908,12 @@ export class LynxElement implements BaseLynxElement {
   #rewriteInlineStyle(): void {
     __SetInlineStyles(
       this.element,
-      this.#withRuntimeStyle(this.#inlineStyleWhole),
+      this.#inlineStyleFor(this.#inlineStyleWhole),
     );
     // __SetInlineStyles replaces every inline style, including the [style.x]
     // ones __AddInlineStyle set, which the app didn't ask to drop.
     for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(this.element, key, value);
+      __AddInlineStyle(this.element, key, withSafeAreaInsets(value));
     }
   }
 
@@ -1463,12 +1517,12 @@ export class LynxElement implements BaseLynxElement {
     if (this.#classes) __SetClasses(fresh, this.#classes);
     // Whole-string styles first, then per-key overrides — same order as the
     // original setAttribute('style') vs [style.x] application.
-    const inlineStyle = this.#withRuntimeStyle(this.#inlineStyleWhole);
+    const inlineStyle = this.#inlineStyleFor(this.#inlineStyleWhole);
     if (inlineStyle != null) {
       __SetInlineStyles(fresh, inlineStyle);
     }
     for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(fresh, key, value);
+      __AddInlineStyle(fresh, key, withSafeAreaInsets(value));
     }
     for (const {
       eventType,

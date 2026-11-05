@@ -7,6 +7,7 @@ import {
   scheduleSettleFlush,
 } from '../lynx-element';
 import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
+import { followSafeAreaInsets } from './page-safe-area';
 import {
   __pageElementRef,
   setPageElementRef,
@@ -71,6 +72,9 @@ export class LynxDocument implements LynxDocumentBase {
     setPageElementRef(pageElement);
     // The document and window hear the screen's events from the page.
     globalEvents().attach(this.page, (id) => LynxElement.byUniqueId(id));
+    // Every env(safe-area-inset-*) reads the insets the shell sends from the
+    // page's variables.
+    followSafeAreaInsets(this.page);
     return this.page;
   }
   createElement(name: string, value?: string): LynxElement | LynxListElement {

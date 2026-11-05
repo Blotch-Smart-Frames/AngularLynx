@@ -7,6 +7,13 @@ final class LynxViewController: UIViewController {
   private var lynxView: LynxView?
   private var lastViewport: CGRect = .zero
 
+  /// Whether the page fills the screen, under the status bar and the home
+  /// indicator: angular.json's `edgeToEdge`, which the generator writes into
+  /// Info.plist. A project generated before the option existed has no key,
+  /// and gets the default.
+  private let edgeToEdge =
+    Bundle.main.object(forInfoDictionaryKey: "AngularLynxEdgeToEdge") as? Bool ?? true
+
   override func viewDidLoad() {
     super.viewDidLoad()
     view.backgroundColor = UIColor(named: "LaunchBackground") ?? .systemBackground
@@ -87,18 +94,31 @@ final class LynxViewController: UIViewController {
     layoutLynxView()
   }
 
-  /// Keeps the LynxView inside the safe area, so a freshly generated app
-  /// doesn't draw under the notch or the home indicator. The insets are also
-  /// passed as global props for apps that want to know them.
+  /// The insets change once the view is in its window (they're 0 in
+  /// viewDidLoad, when the first global props go), and again on rotation.
+  /// An edge-to-edge LynxView keeps its frame when only they change, so
+  /// layoutLynxView wouldn't send them.
+  override func viewSafeAreaInsetsDidChange() {
+    super.viewSafeAreaInsetsDidChange()
+    lynxView?.updateGlobalProps(with: globalProps())
+  }
+
+  /// Lays the LynxView out over the whole screen, so the page draws under
+  /// the status bar and the home indicator, as Safari does for a page with
+  /// `viewport-fit=cover`, and pads itself with CSS env(safe-area-inset-*).
+  /// With `"edgeToEdge": false` in angular.json, it sits inside the safe area
+  /// instead, and nothing draws under the notch or the home indicator.
   ///
-  /// CSS env(safe-area-inset-*) is 0 on every side, which is right for a page
-  /// that's already inside the safe area, and matches Android, where Lynx
-  /// never sets it. Lynx reads it from the key window when a LynxView is
-  /// created, and viewDidLoad runs before SceneDelegate makes the window key.
-  /// Creating the LynxView later would make env() add the insets a second time.
+  /// Lynx's own env(safe-area-inset-*) stays 0 here: Lynx reads it from the
+  /// key window when a LynxView is created, and viewDidLoad runs before
+  /// SceneDelegate makes the window key. It couldn't follow a rotation
+  /// anyway, as an element reads env() once. The runtime gives every
+  /// env(safe-area-inset-*) the safeArea* global props below instead, as CSS
+  /// variables on the page that restyle what reads them when they change, and
+  /// 0 when the LynxView is inside the safe area (see `edgeToEdge` there).
   private func layoutLynxView() {
     guard let lynxView else { return }
-    let frame = view.bounds.inset(by: view.safeAreaInsets)
+    let frame = edgeToEdge ? view.bounds : view.bounds.inset(by: view.safeAreaInsets)
     guard frame != lastViewport else { return }
     lastViewport = frame
     lynxView.frame = frame
@@ -113,12 +133,16 @@ final class LynxViewController: UIViewController {
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
   /// (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
   /// (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
-  /// safe-area insets. The Android shell sends the same keys, and Lynx
-  /// Explorer sends theme and isNotchScreen too.
+  /// safe-area insets and `edgeToEdge`, which env(safe-area-inset-*) reads.
+  /// The Android shell sends the same keys, and Lynx Explorer sends theme and
+  /// isNotchScreen too.
   private func globalProps() -> LynxTemplateData {
     let insets = view.safeAreaInsets
     var props: [String: Any] = [
       "platform": "ios",
+      // Whether the page fills the screen. The runtime gives env() the insets
+      // below only then; otherwise the page is already inside them.
+      "edgeToEdge": edgeToEdge,
       "safeAreaTop": insets.top,
       "safeAreaBottom": insets.bottom,
       "safeAreaLeft": insets.left,

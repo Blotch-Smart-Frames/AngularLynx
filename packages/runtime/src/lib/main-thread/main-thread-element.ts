@@ -4,6 +4,7 @@ import {
   type LynxAnimationOptions,
 } from '../animation/animation';
 import type { MainThread } from './types';
+import { withSafeAreaInsets } from '../lynx-element/safe-area-insets';
 
 /**
  * Batched flush — coalesces multiple style/attribute mutations into a single
@@ -51,14 +52,23 @@ export class MainThreadElement {
     return __GetAttributeNames(this.#element);
   }
 
+  /**
+   * Sets one inline style. An env(safe-area-inset-*) in the value gets the
+   * inset a generated app's shell sends, as in a template's inline style
+   * (see safe-area-insets.ts). Unlike a template's, it isn't written again
+   * when the insets change: the script owns the value it set.
+   */
   setStyleProperty(name: string, value: string): void {
-    __AddInlineStyle(this.#element, name, value);
+    __AddInlineStyle(this.#element, name, withSafeAreaInsets(value));
     scheduleFlush();
   }
 
+  /**
+   * Sets several inline styles, as setStyleProperty does each.
+   */
   setStyleProperties(styles: Record<string, string>): void {
     for (const key in styles) {
-      __AddInlineStyle(this.#element, key, styles[key]!);
+      __AddInlineStyle(this.#element, key, withSafeAreaInsets(styles[key]!));
     }
     scheduleFlush();
   }

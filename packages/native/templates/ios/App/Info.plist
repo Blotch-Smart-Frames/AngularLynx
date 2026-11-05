@@ -43,6 +43,8 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>AngularLynxEdgeToEdge</key>
+	<true/>
 	<!-- /angular-lynx:info -->
 </dict>
 </plist>

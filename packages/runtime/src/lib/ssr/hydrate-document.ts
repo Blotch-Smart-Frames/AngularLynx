@@ -2,6 +2,7 @@ import { LynxElement } from '../lynx-element';
 import { LynxDocument, type LynxDocumentBase } from '../lynx-document';
 import { globalEvents } from '../global-events';
 import { hostElementOf } from '../lynx-document/host-elements';
+import { followSafeAreaInsets } from '../lynx-document/page-safe-area';
 import type { ElementRef } from '../types/lynx';
 
 /**
@@ -66,6 +67,8 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     this.#page = page;
     // The document and window hear the screen's events from the page.
     globalEvents().attach(page, (id) => LynxElement.byUniqueId(id));
+    // As LynxDocument does: env(safe-area-inset-*) reads the shell's insets.
+    followSafeAreaInsets(page);
     return page;
   }
 

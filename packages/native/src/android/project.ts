@@ -60,6 +60,7 @@ export const properties = (app: ResolvedApp): string =>
     `versionCode=${app.buildNumber}`,
     `appName=${propertyValue(app.name)}`,
     `screenOrientation=${SCREEN_ORIENTATIONS[app.orientation]}`,
+    `edgeToEdge=${app.edgeToEdge}`,
     '',
   ].join('\n');
 

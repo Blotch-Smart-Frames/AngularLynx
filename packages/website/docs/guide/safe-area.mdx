@@ -25,17 +25,47 @@ The **safe area** is the part of the screen that hardware and system bars don't 
 
 ## Where the insets come from
 
-| Where the app runs                                       | What `env()` gives                                                   |
-| -------------------------------------------------------- | -------------------------------------------------------------------- |
-| Apps from `ng build --platform`                          | 0 on every side: the app already keeps the page inside the safe area |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) on iPhone | The window's insets, wherever your page sits on screen               |
-| Your own iOS app                                         | The window's insets when the LynxView was created (see below)        |
-| Android, in any app                                      | 0 on every side: Lynx doesn't read insets on Android                 |
-| [Web preview](/guide/glossary#web-preview)               | 0                                                                    |
+| Where the app runs                                       | What `env()` gives                                                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Apps from `ng build --platform`                          | The window's insets, on iOS and Android, following rotation. 0 on every side with `"edgeToEdge": false` |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) on iPhone | The window's insets, wherever your page sits on screen                                                  |
+| Your own iOS app                                         | The window's insets when the LynxView was created, or the insets your app sends (see below)             |
+| Your own Android app                                     | 0 on every side, unless your app sends the insets (see below): Lynx doesn't read them on Android        |
+| [Web preview](/guide/glossary#web-preview)               | 0                                                                                                       |
 
-Apps you build with `ng build --platform ios` or `--platform android` place the whole page below the status bar and above the home indicator, so you don't need inset padding there, and `env()` adds none. They still send the insets as numbers, with `isNotchScreen`: see [What the generated apps pass](/guide/embedding/host-data#what-the-generated-apps-pass).
+### The apps `ng build --platform` makes
 
-On iOS, Lynx reads the window's insets each time a LynxView is created. A LynxView created before its window is shown reads 0, which is how the generated iOS app keeps `env()` at 0.
+They draw the page over the whole screen, under the status bar and the home indicator, as Safari does for a page with `viewport-fit=cover`. A scroll view's content scrolls under the status bar, a header image or a map reaches the top edge, and a bar that floats at the bottom, such as the [dock](/dolan/dock), floats over a page that runs to the bottom of the screen. Pad the content, not the screen:
+
+```angular-html
+<scroll-view scroll-orientation="vertical" class="flex-1">
+  <view class="flex flex-col px-4 pt-safe-3 pb-safe-24">
+    <!-- the first row starts below the status bar, and scrolls under it -->
+  </view>
+</scroll-view>
+```
+
+`env()` follows the insets when they change: when the phone rotates, and on Android when the keyboard opens. The keyboard pushes the page up so the input you type into stays above it, and the bottom inset is 0 while it's open, because the page then ends above the navigation bar.
+
+To keep the page inside the safe area instead, set `edgeToEdge` to `false` in the build target's options in `angular.json`. The page then starts below the status bar and ends above the home indicator, and `env()` is 0 on every side:
+
+```jsonc title="angular.json"
+"options": {
+  "appName": "Example",
+  "appId": "com.example.app",
+  "edgeToEdge": false
+}
+```
+
+The apps send the insets as numbers too, with `isNotchScreen` and `edgeToEdge`: see [What the generated apps pass](/guide/embedding/host-data#what-the-generated-apps-pass).
+
+Lynx's own `env()` can't follow the window there: on Android it's always 0, and on iOS each element reads it once. So the build points each `env(safe-area-inset-*)` in a stylesheet at a CSS variable the page sets from the app's insets, and the runtime writes the insets into inline styles and style bindings itself. One place it doesn't reach is a CSS variable defined in a stylesheet: in `--gap: calc(env(safe-area-inset-top) + 8px)`, `env()` stays Lynx's own, 0 in these apps. Write `env()` where the variable is read instead, as in `padding-top: calc(env(safe-area-inset-top) + 8px)`.
+
+### Your own app
+
+On iOS, Lynx reads the window's insets each time a LynxView is created, and never again: a LynxView created before its window is shown reads 0, and one on screen keeps the insets it read when the phone rotates.
+
+To have `env()` follow the window as the generated apps do, send the same global props they send: `edgeToEdge: true` with `safeAreaTop`, `safeAreaRight`, `safeAreaBottom` and `safeAreaLeft`, the part of the LynxView the system bars cover, again whenever it changes. This works on Android too.
 
 ## Tailwind utilities
 

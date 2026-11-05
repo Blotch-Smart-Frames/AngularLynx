@@ -12,6 +12,7 @@ describe('resolveAppOptions', () => {
       version: '1.0.0',
       buildNumber: 1,
       orientation: 'portrait',
+      edgeToEdge: true,
       permissions: {},
       deepLinkSchemes: [],
       icon: undefined,

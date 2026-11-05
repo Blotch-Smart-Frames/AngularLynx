@@ -43,7 +43,14 @@ describe('properties', () => {
         'versionCode=42',
         'appName=My App',
         'screenOrientation=sensorLandscape',
+        'edgeToEdge=true',
       ].join('\n'),
+    );
+  });
+
+  it('tells the shell to keep the page inside the safe area', () => {
+    expect(properties(app({ edgeToEdge: false }))).toContain(
+      'edgeToEdge=false',
     );
   });
 

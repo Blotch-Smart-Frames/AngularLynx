@@ -147,6 +147,11 @@
       "default": "portrait",
       "description": "The screen orientations the app supports."
     },
+    "edgeToEdge": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the page fills the screen, under the status bar and the home indicator, with CSS env(safe-area-inset-*) carrying the insets. false lays the page out inside the safe area, with env() at 0."
+    },
     "icon": {
       "type": "string",
       "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root."

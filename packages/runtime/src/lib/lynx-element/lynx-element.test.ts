@@ -2,6 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { globalEvents } from '../global-events';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
+import { setSafeAreaInsets } from './safe-area-insets';
+
+/** What a generated app's shell sends on an iPhone with a Dynamic Island. */
+const PHONE = {
+  edgeToEdge: true,
+  safeAreaTop: 62,
+  safeAreaRight: 0,
+  safeAreaBottom: 34,
+  safeAreaLeft: 0,
+};
 
 /**
  * What a removed handler is replaced with natively: native Lynx keeps a
@@ -178,6 +188,25 @@ describe('LynxElement', () => {
         [fakeRef, 'display', 'none'],
       ]);
     });
+
+    it("gives env(safe-area-inset-*) the shell's inset", () => {
+      // Lynx's own env() is 0 in a generated app (see safe-area-insets.ts).
+      globalThis.__AddInlineStyle = vi.fn();
+      setSafeAreaInsets(PHONE);
+      element = new LynxElement(fakeRef);
+
+      element.setStyle(
+        'padding-bottom',
+        'calc(49px + env(safe-area-inset-bottom))',
+      );
+      element.setStyle('opacity', 0.5);
+      setSafeAreaInsets(undefined);
+
+      expect(vi.mocked(globalThis.__AddInlineStyle).mock.calls).toEqual([
+        [fakeRef, 'padding-bottom', 'calc(49px + 34px)'],
+        [fakeRef, 'opacity', 0.5],
+      ]);
+    });
   });
 
   describe('removeStyle', () => {
@@ -220,6 +249,22 @@ describe('LynxElement', () => {
       );
     });
 
+    it("gives env(safe-area-inset-*) the shell's inset", () => {
+      globalThis.__SetInlineStyles = vi.fn();
+      setSafeAreaInsets(PHONE);
+      element = new LynxElement(fakeRef);
+
+      element.setInlineStyles(
+        'top: env(safe-area-inset-top); --gap: calc(env(safe-area-inset-top) + 8px)',
+      );
+      setSafeAreaInsets(undefined);
+
+      expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(
+        fakeRef,
+        'top: 62px; --gap: calc(62px + 8px)',
+      );
+    });
+
     it('passes null through, when Angular removes the style attribute', () => {
       globalThis.__SetInlineStyles = vi.fn();
       element = new LynxElement(fakeRef);
@@ -227,6 +272,85 @@ describe('LynxElement', () => {
       element.setAttribute('style', null);
 
       expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(fakeRef, null);
+    });
+  });
+
+  describe('safe-area insets', () => {
+    const VARIABLES = [
+      '--angular-lynx-safe-area-inset-top: 62px',
+      '--angular-lynx-safe-area-inset-right: 0px',
+      '--angular-lynx-safe-area-inset-bottom: 34px',
+      '--angular-lynx-safe-area-inset-left: 0px',
+    ].join('; ');
+
+    beforeEach(() => {
+      globalThis.__SetInlineStyles = vi.fn();
+      globalThis.__AddInlineStyle = vi.fn();
+    });
+
+    afterEach(() => setSafeAreaInsets(undefined));
+
+    describe('updateSafeAreaInsets', () => {
+      it("gives the page the stylesheets' variables, ahead of the app's own style", () => {
+        const page = new LynxElement(fakeRef);
+        page.setInlineStyles('background-color: red');
+
+        setSafeAreaInsets(PHONE);
+        page.updateSafeAreaInsets();
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          `${VARIABLES}; background-color: red`,
+        );
+
+        // The app replacing its style keeps them.
+        page.setInlineStyles('background-color: blue');
+        expect(globalThis.__SetInlineStyles).toHaveBeenLastCalledWith(
+          fakeRef,
+          `${VARIABLES}; background-color: blue`,
+        );
+      });
+
+      it('writes nothing while the insets stay the same, or for a host that sends none', () => {
+        const page = new LynxElement(fakeRef);
+        page.updateSafeAreaInsets();
+        expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+
+        setSafeAreaInsets(PHONE);
+        page.updateSafeAreaInsets();
+        vi.mocked(globalThis.__SetInlineStyles).mockClear();
+        page.updateSafeAreaInsets();
+        expect(globalThis.__SetInlineStyles).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('refreshSafeAreaInsets', () => {
+      // The phone rotates: what an inline style read has to follow, as Lynx
+      // resolves no var() in an inline calc().
+      it('writes the inline styles that read an inset again, with the new insets', () => {
+        setSafeAreaInsets(PHONE);
+        const bar = new LynxElement(fakeRef);
+        bar.setInlineStyles(
+          'position: absolute; bottom: env(safe-area-inset-bottom)',
+        );
+        bar.setStyle('height', 'calc(49px + env(safe-area-inset-bottom))');
+        bar.setStyle('--gap', 'env(safe-area-inset-top)');
+        bar.setStyle('opacity', 0.5);
+        const plain = new LynxElement({} as ElementRef);
+        plain.setInlineStyles('width: 10px');
+        vi.mocked(globalThis.__SetInlineStyles).mockClear();
+        vi.mocked(globalThis.__AddInlineStyle).mockClear();
+
+        setSafeAreaInsets({ ...PHONE, safeAreaTop: 0, safeAreaBottom: 21 });
+        LynxElement.refreshSafeAreaInsets();
+
+        expect(vi.mocked(globalThis.__SetInlineStyles).mock.calls).toEqual([
+          [fakeRef, 'position: absolute; bottom: 21px; --gap: 0px'],
+        ]);
+        expect(vi.mocked(globalThis.__AddInlineStyle).mock.calls).toEqual([
+          [fakeRef, 'height', 'calc(49px + 21px)'],
+          [fakeRef, 'opacity', 0.5],
+        ]);
+      });
     });
   });
 

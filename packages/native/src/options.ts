@@ -19,6 +19,13 @@ export type NativeAppOptions = {
   /** The store build number (CFBundleVersion / versionCode). */
   readonly buildNumber?: number;
   readonly orientation?: Orientation;
+  /**
+   * Whether the page fills the screen, under the status bar and the home
+   * indicator, with CSS `env(safe-area-inset-*)` carrying the insets, as
+   * Safari does for a page with `viewport-fit=cover`. Defaults to true; false
+   * lays the page out inside the safe area, with `env()` at 0.
+   */
+  readonly edgeToEdge?: boolean;
   /** Each permission the app uses, with the reason shown to the user. */
   readonly permissions?: Partial<Record<Permission, string>>;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
@@ -74,6 +81,7 @@ export type ResolvedApp = {
   readonly version: string;
   readonly buildNumber: number;
   readonly orientation: Orientation;
+  readonly edgeToEdge: boolean;
   readonly permissions: Partial<Record<Permission, string>>;
   readonly deepLinkSchemes: readonly string[];
   readonly icon?: string;
@@ -191,6 +199,7 @@ export const resolveAppOptions = (
     version,
     buildNumber,
     orientation: options.orientation ?? 'portrait',
+    edgeToEdge: options.edgeToEdge ?? true,
     permissions,
     deepLinkSchemes,
     icon: options.icon,

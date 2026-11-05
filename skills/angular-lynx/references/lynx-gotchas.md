@@ -28,6 +28,8 @@ Angular Router v21+ and the zoneless scheduler use these internally. Without pol
 
 Lynx has no flow layout. Default is `linear` (like Android LinearLayout). Only `linear`, `flex`, `grid`, `relative`, `none` are supported.
 
+`display: block` would lay out as a `flex` row on Lynx, so AngularLynx turns it into `linear`: the build in stylesheets, the runtime in inline styles. `inline` and `inline-block` become `linear` too, and `inline-flex` and `inline-grid` become `flex` and `grid`. A test that reads the style back sees the Lynx value: after `[style.display]="'block'"`, `element.style.display` is `'linear'`. A value from a `var()` (`display: var(--d)`) isn't rewritten.
+
 ### `scroll-view` requires explicit height
 
 Without `height: 100vh` or a flex constraint, scroll-view expands to fit content and never scrolls.

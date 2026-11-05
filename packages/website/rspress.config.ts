@@ -9,7 +9,19 @@ import {
 import mermaid from 'rspress-plugin-mermaid';
 
 export default defineConfig({
-  plugins: [mermaid()],
+  plugins: [
+    mermaid({
+      // Mermaid 12 draws flowcharts, sequence and state diagrams in its new
+      // "neo" look, which also wraps flowchart labels at 120px and lays state
+      // diagrams out with ELK. Keep the look the diagrams were drawn in, as
+      // Mermaid 10 drew it.
+      mermaidConfig: {
+        flowchart: { look: 'classic', wrappingWidth: 200 },
+        sequence: { look: 'classic' },
+        state: { look: 'classic', layout: 'dagre' },
+      },
+    }),
+  ],
   root: 'docs',
   title: 'AngularLynx',
   description:

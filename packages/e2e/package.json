@@ -29,6 +29,6 @@
     "create-angular-lynx": "*",
     "publint": "^0.3.25",
     "typescript": "~6.0.0",
-    "verdaccio": "^6.10.5"
+    "verdaccio": "^7.0.2"
   }
 }

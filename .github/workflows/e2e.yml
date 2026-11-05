@@ -197,6 +197,17 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+      # Verdaccio 7 refuses to start on a Node older than 24, so a job testing
+      # one installs Node 24 first and has registry.ts start Verdaccio with it.
+      # The next setup-node then puts the matrix's Node first on the PATH, for
+      # the harness and the app.
+      - uses: actions/setup-node@v7
+        if: matrix.node != '24'
+        with:
+          node-version: 24
+      - name: Node 24 for Verdaccio
+        if: matrix.node != '24'
+        run: echo "E2E_VERDACCIO_NODE=$(node -p process.execPath)" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}

@@ -2,6 +2,14 @@
 # run's temporary directory and replaces STORAGE_DIR with an absolute path.
 storage: STORAGE_DIR
 
+# npm won't publish without a token, and Verdaccio turns away one it didn't
+# issue, so registry.ts signs a user up and puts that user's token in the
+# run's .npmrc. The file is relative to this config, which is in the run's
+# temporary directory, so each run signs up afresh.
+auth:
+  htpasswd:
+    file: ./htpasswd
+
 # The packages built in this run are large (dolan alone ships ~270 files), and
 # Verdaccio's default 10 MB limit would reject some of them.
 max_body_size: 200mb

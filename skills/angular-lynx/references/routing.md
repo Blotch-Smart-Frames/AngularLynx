@@ -40,7 +40,7 @@ export const routes: Routes = [
 
 ## Navigation
 
-Use Angular's own `routerLink` and `routerLinkActive` from `@angular/router`, on any element:
+Use Angular's own `routerLink` and `routerLinkActive` from `@angular/router`, on any element, `<a>` included (it renders as a `<text>`, which `RouterLink` doesn't take for a browser link):
 
 ```typescript
 import { Component } from '@angular/core';

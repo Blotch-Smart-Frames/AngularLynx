@@ -56,7 +56,7 @@ Not `content-box`. Width/height include padding and border.
 
 ### `display: none` text still draws on iOS
 
-Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>` inside still draws its glyphs, spilling out from the element's top-left corner. Give the element `overflow: hidden` while it's hidden.
+Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>` inside still draws its glyphs, spilling out from the element's top-left corner. Give the element `overflow: hidden` while it's hidden. HTML's `hidden` attribute (`[hidden]="!open()"`) does both.
 
 ### No CSS inheritance
 

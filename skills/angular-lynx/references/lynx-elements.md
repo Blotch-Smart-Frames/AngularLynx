@@ -36,11 +36,30 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 ## Element Rules
 
 - **All visible text must be in `<text>`** — raw text in `<view>` does not render
-- **Unknown tags become `<view>`** with a console warning (invisible on device). So does a component's host, unless the component calls `registerHostElement()` (see "A component's host is a real `<view>`" in [lynx-gotchas.md](lynx-gotchas.md))
+- **Common HTML tags render as Lynx elements** (see [HTML tags](#html-tags)). Other unknown tags become `<view>` with a console warning (invisible on device). So does a component's host, unless the component calls `registerHostElement()` (see "A component's host is a real `<view>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
 - **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
 - **`<input>` and `<textarea>` have no border and are one line of text tall.** Size and outline them with classes (`h-10 border border-zinc-200`)
 - **`accessibility-traits` is a single trait on Android.** `button,selected` works on iOS only: Android reads the list as no trait, so the element stops being a button. For state that changes, bind `[lynxAccessibilityTraits]="{ selected: chosen() }"` (part of `LYNX_ELEMENTS`), which adds the trait after the element's own on iOS and leaves Android's alone
+
+## HTML tags
+
+A template written for the browser renders: the runtime creates the Lynx element each common HTML tag stands for.
+
+| HTML tags                                                                                                                                                                                                          | Render as           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| `div`, `section`, `article`, `aside`, `header`, `footer`, `main`, `nav`, `ul`, `ol`, `li`, `dl`, `dt`, `dd`, `form`, `fieldset`, `figure`, `figcaption`, `blockquote`, `address`, `hgroup`, `search`, `menu`, `hr` | `<view>`            |
+| `span`, `p`, `h1`–`h6`, `a`, `button`, `label`, `strong`, `b`, `em`, `i`, `small`, `code`, `s`, `u`, `mark`, `sub`, `sup`, `abbr`, `cite`, `q`, `time`, `del`, `ins`, `kbd`, `samp`, `var`, `dfn`                  | `<text>`            |
+| `img`                                                                                                                                                                                                              | `<image auto-size>` |
+
+- **Text tags are a `<text>`:** text inside one shows, and a tag nested in one runs inline (`<p>Hi <strong>there</strong></p>` is one line). A `<view>` or `<image>` inside one is laid out inline.
+- **Text straight inside a block tag doesn't show**, as in a `<view>`: `<div>Hello</div>` needs a `<p>` or `<span>` around the text.
+- **An `<img>` sizes to its picture** until CSS gives it a size (`auto-size`), and its `alt` becomes `accessibility-label`.
+- **HTML's `hidden`** (`hidden`, `[hidden]="!open()"`) hides any element with `display: none; overflow: hidden`, ahead of the element's own inline style.
+- **The element's `tagName` is the Lynx element** (`'text'` for a `<p>`). Type selectors still match the HTML tag (`p { … }`, see [styling-and-css.md](styling-and-css.md)). `RouterLink` treats an `<a>` as a plain element, so `<a routerLink>` navigates on a tap.
+- **No browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing, a `<form>` doesn't submit, `disabled` doesn't stop a `<button>`'s taps, and two `<span>`s in a `<div>` stack.
+- **Other HTML tags** (`table`, `tr`, `td`, `select`, `option`, `br`, `pre`, `details`, `iframe`, `audio`…) render as a plain `<view>`, and the build warns about each.
+- **Lynx elements are still the better choice** in new code: `LYNX_ELEMENTS` types their attributes (`<image mode>`) and their events' `$event`, while an HTML tag's `$event` is typed as the DOM's.
 
 ## Usage Examples
 

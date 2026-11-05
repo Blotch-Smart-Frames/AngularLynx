@@ -587,9 +587,9 @@ spills over the footer instead of scrolling. The fix has two parts:
 
 ```html
 <!-- Header/scroll/footer column: the middle section scrolls -->
-<view class="flex-col flex" style="height: 100vh">
+<view class="flex flex-col" style="height: 100vh">
   <view><!-- header --></view>
-  <view class="flex-1 flex-col flex">
+  <view class="flex flex-1 flex-col">
     <!-- column, claims remaining height -->
     <scroll-view scroll-orientation="vertical" class="h-full w-full">
       <!-- long content scrolls here -->
@@ -657,9 +657,17 @@ Default display is `block` for block elements, `inline` for inline. `display: fl
 
 ### What Lynx does
 
-Lynx does not have flow layout. **Default display is `linear`** (Lynx's own layout model, inspired by Android LinearLayout). Supported values: `linear`, `flex`, `grid`, `relative`, `none`. `block` and `inline` are not supported.
+Lynx does not have flow layout. **Default display is `linear`** (Lynx's own layout model, inspired by Android LinearLayout). Supported values: `linear`, `flex`, `grid`, `relative`, `none`. `inline`, `inline-block`, `inline-flex`, `inline-grid` and `flow-root` are dropped, so the element keeps the default.
+
+`block` is worse than dropped: Lynx's CSS parser takes it, but its layout engine has no block layout, so it logs "Unexpected display type" and lays the element out as `flex`, a row (`LayoutComputedStyle::GetDisplay` in `core/renderer/starlight/style/layout_computed_style.cc`; only the legacy W3C mode, `cssAlignWithLegacyW3C`, maps it to `linear`). A child that doesn't set its width shrinks to its content, and `align-items: stretch` gives it the full height. `:host { display: block }`, which most Angular components that size themselves carry (and `ng generate component --display-block` writes), took a wrapped component's width away: `three-d-frame` inside a `display: block` host laid out 0 × 374 on the iOS Simulator, so the canvas inside it never drew (issue #260). Lynx for Web passes `block` to the browser, which lays it out as a block, so the web preview didn't show it.
 
 `scroll-view` is always forced to `linear`, regardless of what CSS you set.
+
+### The fix
+
+Each value Lynx lacks becomes the Lynx value that lays the element's children out the same way: `block`, `flow-root`, `inline` and `inline-block` become `linear` (a vertical stack whose children stretch across it, as a block's do), `inline-flex` becomes `flex` and `inline-grid` becomes `grid`. A PostCSS plugin the build plugin adds to every environment (`displayForLynx` in `packages/rsbuild-plugin-angular-lynx/src/display.ts`) rewrites stylesheets: component styles, a library's as well as the app's, and global ones. It runs as a `Declaration` visitor, so it sees what Tailwind writes and rewrites Tailwind 4's `inline-flex` before its lowering would drop it. The runtime rewrites inline styles, `[style.display]` bindings and `style="..."` alike (`packages/runtime/src/lib/lynx-element/display.ts`). A test keeps the two maps the same.
+
+What can't carry over is the outside of an inline value: Lynx can't flow elements along a line, so an `inline-block` or `inline-flex` element still stretches across its parent, where on the web it hugs its content. Add `align-self: flex-start` for that (see "Children stretch to fill the parent's cross axis by default"). A `display` value from a `var()` reaches Lynx unchanged.
 
 ---
 
@@ -4046,13 +4054,11 @@ A `<div style="display:flex">` is block-level, so it fills its container's width
 
 Views default to **`linear`** layout (`display: linear`, `linear-direction: column` — see the `defaultDisplayLinear: true` plugin option). In linear layout a child with **no explicit `width`** and no `align-self` override **expands to fill the parent's cross axis** — so a badge/pill/chip in a column container renders full-bleed, not hugging its text.
 
-There is no `inline`/`inline-flex` display in Lynx to opt out. The lever is **`align-self: flex-start`** (Tailwind `self-start`) on the child, which overrides the container's `align-items` and lets the child size to its content on the cross axis. This is supported in both linear and flex layouts.
+`inline-flex` and `inline-block` don't opt out: the build turns them into `flex` and `linear`, which lay the element's children out as the web does, but the element itself still stretches (see "`display` values: no `block`/`inline`, default is `linear`"). The lever is **`align-self: flex-start`** (Tailwind `self-start`) on the child, which overrides the container's `align-items` and lets the child size to its content on the cross axis. This is supported in both linear and flex layouts.
 
 ```ts
 // A badge that hugs its content regardless of parent layout:
-cva('flex items-center self-start rounded-full px-2.5 py-0.5', {
-  /* … */
-});
+cva('flex items-center self-start rounded-full px-2.5 py-0.5', {/* … */});
 ```
 
 Note the parent trap that makes this bite: `class="flex-row"` alone does **not** create a row. `flex-row` only emits `flex-direction: row`, which linear layout ignores (it uses `linear-direction`). Without a `flex` class the view stays a linear column, so its children stack _and_ stretch full-width. Use `flex flex-row` for an actual horizontal row.
@@ -4356,7 +4362,7 @@ Color it with `var(--ring)` / `var(--destructive)`: `var()` resolves in inline s
 <view [class]="wrapperClass()">
   <!-- ring layer: FIRST child, fades via opacity -->
   <view
-    class="absolute top-0 right-0 bottom-0 left-0 rounded-xl opacity-0"
+    class="absolute bottom-0 left-0 right-0 top-0 rounded-xl opacity-0"
     [style.transition]="'opacity 150ms ease'"
     [style.box-shadow]="ringShadow()"
     [style.opacity]="ringVisible() ? 1 : 0"
@@ -4743,7 +4749,7 @@ Elevate the sticky header with a `z-index` **on web only**, gating it on the `__
 
 ```html
 <view
-  class="bg-zinc-100 px-4 py-1.5 sticky top-0"
+  class="sticky top-0 bg-zinc-100 px-4 py-1.5"
   [class.z-10]="isWeb"
   [flatten]="false"
 >

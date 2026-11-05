@@ -22,6 +22,7 @@ import {
   isInsideChangeDetection,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import { toLynxDisplay, withLynxDisplay } from './display';
 import { sanitizeSvgContent } from './svg-content';
 import {
   type LayoutRect,
@@ -757,6 +758,9 @@ export class LynxElement implements BaseLynxElement {
       this.#rewriteInlineStyle();
       return;
     }
+    // `[style.display]="open ? 'block' : 'none'"` would lay the element out
+    // as a row: Lynx has no block layout (see display.ts).
+    if (key === 'display') value = toLynxDisplay(value);
     __AddInlineStyle(this.element, key, value);
     this.#inlineStyleKeys.set(key, value);
   }
@@ -769,6 +773,12 @@ export class LynxElement implements BaseLynxElement {
     this.#inlineStyleKeys.delete(key);
   }
   setInlineStyles(inlineStyle: string): void {
+    // A `style="display: block"` lays out as Lynx's `linear`, as a
+    // `[style.display]` binding does (see setStyle). Angular passes null when
+    // it removes the attribute.
+    if (typeof inlineStyle === 'string') {
+      inlineStyle = withLynxDisplay(inlineStyle);
+    }
     __SetInlineStyles(this.element, this.#withRuntimeStyle(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
   }

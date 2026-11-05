@@ -14,7 +14,7 @@ This page lists everything that changes when you move Angular code from the brow
 | `<input (input)>`                                       | `<input (bindinput)>`, with the value in `$event.detail.value`        |
 | `(click)`                                               | `(bindtap)`, or `(catchtap)` to stop it bubbling. `(click)` works too |
 | `:root { --x: … }`                                      | `page { --x: … }`                                                     |
-| `display: block`                                        | `display: linear` (the default) or `display: flex`                    |
+| `display: block`                                        | `display: linear`, the default. `display: block` becomes it           |
 | `:hover`, `@media`                                      | No equivalent. Use signals, and `LynxSystemInfo` for screen size      |
 | `bootstrapApplication` from `@angular/platform-browser` | `bootstrapApplication` from `@blotch/angular-lynx`                    |
 | Zone.js or zoneless                                     | Zoneless only                                                         |

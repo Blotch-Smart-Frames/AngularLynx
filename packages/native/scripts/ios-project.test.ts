@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LYNX_IOS_FRAMEWORKS } from '../src/ios/frameworks.ts';
+import { IOS_FRAMEWORKS } from '../src/ios/frameworks.ts';
 import { APP_PROJECT, HOST_PROJECT } from './generate-ios-project.ts';
 import { renderIosProject } from './ios-project.ts';
 
@@ -27,7 +27,7 @@ describe('the iOS template project', () => {
 
   it('links and embeds every framework the builder downloads', () => {
     const pbxproj = renderIosProject(APP_PROJECT)['project.pbxproj']!;
-    for (const name of LYNX_IOS_FRAMEWORKS) {
+    for (const name of IOS_FRAMEWORKS) {
       expect(pbxproj).toContain(
         `/* ${name}.xcframework in Frameworks */ = {isa = PBXBuildFile;`,
       );
@@ -35,6 +35,12 @@ describe('the iOS template project', () => {
         `/* ${name}.xcframework in Embed Frameworks */ = {isa = PBXBuildFile;`,
       );
     }
+  });
+
+  it("compiles against ANGLE's headers, which its frameworks lack", () => {
+    const pbxproj = renderIosProject(APP_PROJECT)['project.pbxproj']!;
+    expect(pbxproj).toContain('libGLESv2.xcframework in Embed Frameworks');
+    expect(pbxproj).toContain('"$(PROJECT_DIR)/Frameworks/ANGLE/include"');
   });
 });
 

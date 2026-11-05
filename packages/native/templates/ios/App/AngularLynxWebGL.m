@@ -276,18 +276,15 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
 @implementation AngularLynxCanvasView
 
 + (Class)layerClass {
-  return [CAEAGLLayer class];
+  return [CAMetalLayer class];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
   if ((self = [super initWithFrame:frame])) {
-    CAEAGLLayer *layer = (CAEAGLLayer *)self.layer;
-    // A new drawable each frame, as WebGL's preserveDrawingBuffer: false.
-    layer.drawableProperties = @{
-      kEAGLDrawablePropertyRetainedBacking : @NO,
-      kEAGLDrawablePropertyColorFormat : kEAGLColorFormatRGBA8,
-    };
-    layer.opaque = NO;
+    // ANGLE sets the layer's device and pixel format when it makes the
+    // window surface, and sizes its drawables from the layer's bounds and
+    // scale, so the frame copied into it is at the screen's resolution.
+    self.layer.opaque = NO;
     self.opaque = NO;
     self.contentScaleFactor = UIScreen.mainScreen.scale;
     // Lynx dispatches touches itself, from the LynxView.
@@ -303,11 +300,6 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   }
   _canvasId = [canvasId copy];
   if (_canvasId) [AngularLynxCanvasRegistry setView:self forCanvasId:_canvasId];
-}
-
-- (void)layoutSubviews {
-  [super layoutSubviews];
-  if (_canvasId) [[AngularLynxCanvasRegistry contextForCanvasId:_canvasId] viewDidResize];
 }
 
 - (void)dealloc {

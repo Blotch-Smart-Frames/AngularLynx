@@ -129,7 +129,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 ### 3D with `<canvas>`
 
-`<canvas>` has a WebGL2 context, which three.js and angular-three draw with. Lynx has no canvas: this is AngularLynx's. On iOS and Android it draws with OpenGL ES 3.0 in apps built with `ng build --platform ios|android`, and in the web preview it's the browser's canvas. Lynx Explorer has none: there `getContext('webgl2')` is `null` and the canvas is an empty view.
+`<canvas>` has a WebGL2 context, which three.js and angular-three draw with. Lynx has no canvas: this is AngularLynx's. In apps built with `ng build --platform ios|android` it draws with OpenGL ES 3.0: on iOS, ANGLE's on Metal (as Safari's WebGL does), and on Android, the phone's. In the web preview it's the browser's canvas. Lynx Explorer has none: there `getContext('webgl2')` is `null` and the canvas is an empty view.
 
 ```typescript
 import {
@@ -184,7 +184,7 @@ export class Scene {
 - **What three.js needs works:** `ResizeObserver`, `getBoundingClientRect()`/`clientWidth` (from the element's last layout), pointer events from touches (on the canvas and on `document`), `performance.now()`, `devicePixelRatio`, `requestAnimationFrame`. `TextureLoader`, `ImageBitmapLoader` and `GLTFLoader` (`.glb` with embedded textures) load from `https://`, `data:` and object URLs and from files the app bundles (by their path in `dist/`, see [http-requests.md](http-requests.md)); the phone decodes images. `DRACOLoader` and `KTX2Loader` need Workers or WebAssembly: they don't work.
 - **angular-three:** add `provideNgtRenderer()` from `angular-three/dom` after `provideRenderer()`: it wraps AngularLynx's renderer. `<ngt-canvas>` sizes itself, and mesh events come from touches. angular-three 4.2 lists Angular below 22 and three.js below 0.183 as peers: install with `--legacy-peer-deps` (or an npm `overrides` entry) and pin `three@0.182`.
 - **The GL context goes with the canvas:** at once when Angular destroys the view the canvas is at the top of, otherwise when the canvas is garbage-collected, as in a browser. To free it as soon as a component goes, dispose of it there (three.js: `renderer.dispose()` and `renderer.forceContextLoss()` in `ngOnDestroy`).
-- **Performance:** WebGL calls are batched: a frame that asks the context nothing (`getParameter()`, `readPixels()`, `getError()`…) reaches the shell in one call. The iOS Simulator renders OpenGL ES on the CPU, at a few frames a second for a lit scene: judge speed on a phone.
+- **Performance:** WebGL calls are batched: a frame that asks the context nothing (`getParameter()`, `readPixels()`, `getError()`…) reaches the shell in one call. The iOS Simulator and the Android emulator draw on the Mac's GPU (a shadowed three.js scene runs at 60 fps in the Simulator), but a phone's GPU is slower: judge speed on a phone. On an app's first launch after it's installed, each material's shaders compile when it's first drawn (up to 2 s for the first in the Simulator); later launches reuse them.
 - `crypto.randomUUID()`, which the runtime adds for angular-three, isn't cryptographically secure.
 
 ### Input Handling

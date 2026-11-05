@@ -1,10 +1,18 @@
 #import "AngularLynxWebGL.h"
 
-#import <OpenGLES/ES3/gl.h>
-#import <OpenGLES/ES3/glext.h>
+#import <EGL/egl.h>
+#import <EGL/eglext.h>
+#import <EGL/eglext_angle.h>
+#import <GLES3/gl3.h>
 #import <QuartzCore/QuartzCore.h>
 
 #import "AngularLynxWebGLOps.h"
+
+// UIKit's module brings Apple's OpenGL ES headers into every file, and their
+// declarations, marked deprecated, merge with ANGLE's of the same names. The
+// calls still go to ANGLE: the app links libGLESv2 explicitly, ahead of the
+// OpenGLES framework UIKit links automatically.
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 NSData *AngularLynxBytesFromWords(NSArray *words);
 
@@ -103,6 +111,23 @@ static NSArray *wordsFromBytes(const void *bytes, NSUInteger length) {
   return words;
 }
 
+/// ANGLE's display on Metal, made once and shared by every context. Nothing
+/// else in the app draws with ANGLE, so it's never terminated.
+static EGLDisplay metalDisplay(void) {
+  static EGLDisplay display = EGL_NO_DISPLAY;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    const EGLAttrib attributes[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE,
+                                    EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE};
+    EGLDisplay candidate =
+        eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, (void *)EGL_DEFAULT_DISPLAY, attributes);
+    if (candidate != EGL_NO_DISPLAY && eglInitialize(candidate, NULL, NULL)) {
+      display = candidate;
+    }
+  });
+  return display;
+}
+
 static NSString *glString(GLenum name) {
   const GLubyte *value = glGetString(name);
   return value ? [NSString stringWithUTF8String:(const char *)value] : @"";
@@ -138,7 +163,9 @@ static NSUInteger componentsOf(GLenum format) {
 }
 
 @implementation AngularLynxWebGLContext {
-  EAGLContext *_context;
+  EGLDisplay _display;
+  EGLConfig _config;
+  EGLContext _context;
   BOOL _alpha;
   BOOL _depth;
   BOOL _stencil;
@@ -155,13 +182,10 @@ static NSUInteger componentsOf(GLenum format) {
   GLsizei _width;
   GLsizei _height;
 
-  // The view's layer, as a framebuffer each frame is copied into.
+  // The view's layer, as a window surface each frame is copied into. Made
+  // when a frame is first shown in the view, as the surface's framebuffer 0.
   __weak AngularLynxCanvasView *_view;
-  GLuint _layerFramebuffer;
-  GLuint _layerBuffer;
-  GLint _layerWidth;
-  GLint _layerHeight;
-  BOOL _layerStale;
+  EGLSurface _surface;
   /// A frame was finished before there was a view to show it in.
   BOOL _framePending;
 
@@ -181,11 +205,49 @@ static NSUInteger componentsOf(GLenum format) {
                            error:(NSString **)error {
   if (!(self = [super init])) return nil;
   _canvasId = [canvasId copy];
-  _context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES3];
-  if (!_context) {
-    *error = @"This device has no OpenGL ES 3.0";
+  _display = metalDisplay();
+  if (_display == EGL_NO_DISPLAY) {
+    *error = @"ANGLE could not start on Metal";
     return nil;
   }
+  // The window surface only receives finished frames: the default
+  // framebuffer the app draws to, with its depth, stencil and samples, is
+  // the offscreen one below. So the surface needs color and nothing else.
+  const EGLint configAttributes[] = {
+      EGL_RED_SIZE,        8,
+      EGL_GREEN_SIZE,      8,
+      EGL_BLUE_SIZE,       8,
+      EGL_ALPHA_SIZE,      8,
+      EGL_DEPTH_SIZE,      0,
+      EGL_STENCIL_SIZE,    0,
+      EGL_SAMPLES,         0,
+      EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
+      EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+      EGL_NONE,
+  };
+  EGLint configCount = 0;
+  if (!eglChooseConfig(_display, configAttributes, &_config, 1, &configCount) ||
+      configCount < 1) {
+    *error = @"ANGLE has no RGBA8 window config";
+    return nil;
+  }
+  // Robust resource initialization makes textures, renderbuffers and
+  // buffers made without data read as zeros, as WebGL requires and as
+  // browsers get it from ANGLE, rather than as whatever the memory held.
+  const EGLint contextAttributes[] = {
+      EGL_CONTEXT_MAJOR_VERSION,                3,
+      EGL_CONTEXT_MINOR_VERSION,                0,
+      EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE, EGL_TRUE,
+      EGL_NONE,
+  };
+  _context = eglCreateContext(_display, _config, EGL_NO_CONTEXT, contextAttributes);
+  if (_context == EGL_NO_CONTEXT) {
+    *error = [NSString
+        stringWithFormat:@"ANGLE could not make an OpenGL ES 3.0 context (EGL error 0x%x)",
+                         eglGetError()];
+    return nil;
+  }
+  _surface = EGL_NO_SURFACE;
   _alpha = ![attributes[@"alpha"] isEqual:@NO];
   _depth = ![attributes[@"depth"] isEqual:@NO];
   _stencil = [attributes[@"stencil"] isEqual:@YES];
@@ -194,8 +256,7 @@ static NSUInteger componentsOf(GLenum format) {
   _namesCapacity = 256;
   _names = calloc(_namesCapacity, sizeof(GLuint));
 
-  EAGLContext *previous = [EAGLContext currentContext];
-  [EAGLContext setCurrentContext:_context];
+  [self makeCurrent];
   if ([attributes[@"antialias"] isEqual:@NO]) {
     _samples = 0;
   } else {
@@ -210,14 +271,10 @@ static NSUInteger componentsOf(GLenum format) {
     glGenFramebuffers(1, &_resolveFramebuffer);
     glGenRenderbuffers(1, &_resolveBuffer);
   }
-  glGenFramebuffers(1, &_layerFramebuffer);
-  glGenRenderbuffers(1, &_layerBuffer);
-  _layerStale = YES;
   _drawFramebuffer = _framebuffer;
   _readFramebuffer = _framebuffer;
   [self allocateDrawingBufferWidth:1 height:1];
   glBindFramebuffer(GL_FRAMEBUFFER, _framebuffer);
-  [EAGLContext setCurrentContext:previous];
   return self;
 }
 
@@ -227,20 +284,40 @@ static NSUInteger componentsOf(GLenum format) {
 }
 
 - (void)destroy {
-  if (!_context) return;
-  EAGLContext *previous = [EAGLContext currentContext];
-  [EAGLContext setCurrentContext:_context];
+  if (_context == EGL_NO_CONTEXT) return;
+  [self makeCurrent];
   glDeleteFramebuffers(1, &_framebuffer);
   glDeleteRenderbuffers(1, &_colorBuffer);
   if (_depthStencilBuffer) glDeleteRenderbuffers(1, &_depthStencilBuffer);
   if (_resolveFramebuffer) glDeleteFramebuffers(1, &_resolveFramebuffer);
   if (_resolveBuffer) glDeleteRenderbuffers(1, &_resolveBuffer);
-  glDeleteFramebuffers(1, &_layerFramebuffer);
-  glDeleteRenderbuffers(1, &_layerBuffer);
   for (NSValue *sync in _syncs.allValues) glDeleteSync(sync.pointerValue);
   [_syncs removeAllObjects];
-  [EAGLContext setCurrentContext:previous == _context ? nil : previous];
-  _context = nil;
+  // The objects the app made go with the context.
+  eglMakeCurrent(_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  if (_surface != EGL_NO_SURFACE) eglDestroySurface(_display, _surface);
+  _surface = EGL_NO_SURFACE;
+  eglDestroyContext(_display, _context);
+  _context = EGL_NO_CONTEXT;
+}
+
+/// Makes this the thread's context, drawing to the view's surface when there
+/// is one (ANGLE has surfaceless contexts for the rest). Nothing else in the
+/// app uses ANGLE, so the context stays current after a batch, and the next
+/// batch for the same canvas skips the switch.
+- (void)makeCurrent {
+  if (eglGetCurrentContext() == _context && eglGetCurrentSurface(EGL_DRAW) == _surface) return;
+  eglMakeCurrent(_display, _surface, _surface, _context);
+}
+
+/// Lets go of the view's surface, which holds its layer.
+- (void)releaseSurface {
+  if (_surface == EGL_NO_SURFACE) return;
+  if (eglGetCurrentSurface(EGL_DRAW) == _surface) {
+    eglMakeCurrent(_display, EGL_NO_SURFACE, EGL_NO_SURFACE, _context);
+  }
+  eglDestroySurface(_display, _surface);
+  _surface = EGL_NO_SURFACE;
 }
 
 #pragma mark - Default framebuffer
@@ -343,19 +420,16 @@ static NSUInteger componentsOf(GLenum format) {
 }
 
 - (void)attachView:(AngularLynxCanvasView *)view {
-  if (_view == view) return;
+  // A view that went away has already turned _view (weak) to nil, but its
+  // layer lives on in the surface until the surface is let go of here.
+  if (_view == view && (view || _surface == EGL_NO_SURFACE)) return;
+  [self releaseSurface];
   _view = view;
-  _layerStale = YES;
   if (view) {
-    CAEAGLLayer *layer = (CAEAGLLayer *)view.layer;
-    layer.opaque = !_alpha;
+    view.layer.opaque = !_alpha;
     view.opaque = !_alpha;
     if (_framePending) [self present];
   }
-}
-
-- (void)viewDidResize {
-  _layerStale = YES;
 }
 
 /// Shows the finished frame: copies the default framebuffer (resolving it
@@ -364,28 +438,25 @@ static NSUInteger componentsOf(GLenum format) {
 - (void)present {
   AngularLynxCanvasView *view = _view;
   CGSize size = view.bounds.size;
-  if (!view || size.width < 1 || size.height < 1) {
+  // ANGLE sizes the layer's next drawable from its bounds and scale, as
+  // here, when the blit below first draws to it.
+  CGFloat scale = view.layer.contentsScale;
+  GLint layerWidth = (GLint)(size.width * scale);
+  GLint layerHeight = (GLint)(size.height * scale);
+  if (!view || layerWidth < 1 || layerHeight < 1) {
     _framePending = YES;
     return;
   }
-  EAGLContext *previous = [EAGLContext currentContext];
-  [EAGLContext setCurrentContext:_context];
-  CAEAGLLayer *layer = (CAEAGLLayer *)view.layer;
-  if (_layerStale) {
-    _layerStale = NO;
-    glBindRenderbuffer(GL_RENDERBUFFER, _layerBuffer);
-    [_context renderbufferStorage:GL_RENDERBUFFER fromDrawable:layer];
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &_layerWidth);
-    glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &_layerHeight);
-    glBindFramebuffer(GL_FRAMEBUFFER, _layerFramebuffer);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, _layerBuffer);
+  if (_surface == EGL_NO_SURFACE) {
+    _surface = eglCreateWindowSurface(_display, _config, (__bridge EGLNativeWindowType)view.layer,
+                                      NULL);
+    if (_surface == EGL_NO_SURFACE) {
+      NSLog(@"[AngularLynxWebGL] No window surface for the canvas (EGL error 0x%x)", eglGetError());
+      _framePending = YES;
+      return;
+    }
   }
-  if (_layerWidth < 1 || _layerHeight < 1) {
-    _framePending = YES;
-    [self restoreBindings];
-    [EAGLContext setCurrentContext:previous];
-    return;
-  }
+  [self makeCurrent];
   // A blit is clipped by the scissor test, and skipped with rasterizer
   // discard on, so both are off while the frame is copied.
   GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
@@ -402,12 +473,14 @@ static NSUInteger componentsOf(GLenum format) {
   }
   glBindFramebuffer(GL_READ_FRAMEBUFFER, source);
   glReadBuffer(GL_COLOR_ATTACHMENT0);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _layerFramebuffer);
-  BOOL sameSize = _layerWidth == _width && _layerHeight == _height;
-  glBlitFramebuffer(0, 0, _width, _height, 0, 0, _layerWidth, _layerHeight, GL_COLOR_BUFFER_BIT,
+  // Framebuffer 0 is the window surface's.
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  BOOL sameSize = layerWidth == _width && layerHeight == _height;
+  glBlitFramebuffer(0, 0, _width, _height, 0, 0, layerWidth, layerHeight, GL_COLOR_BUFFER_BIT,
                     sameSize ? GL_NEAREST : GL_LINEAR);
-  glBindRenderbuffer(GL_RENDERBUFFER, _layerBuffer);
-  [_context presentRenderbuffer:GL_RENDERBUFFER];
+  if (!eglSwapBuffers(_display, _surface)) {
+    NSLog(@"[AngularLynxWebGL] Showing a frame failed (EGL error 0x%x)", eglGetError());
+  }
   _framePending = NO;
   if (scissor) glEnable(GL_SCISSOR_TEST);
   if (discard) glEnable(GL_RASTERIZER_DISCARD);
@@ -415,7 +488,6 @@ static NSUInteger componentsOf(GLenum format) {
   // asked to keep it.
   if (!_preserveDrawingBuffer) [self clearDrawingBuffer];
   [self restoreBindings];
-  [EAGLContext setCurrentContext:previous];
 }
 
 - (void)restoreBindings {
@@ -888,9 +960,8 @@ static BOOL isUnsignedUniform(GLenum type) {
 #pragma mark - Running a batch
 
 - (NSArray *)run:(NSArray *)commands {
-  if (!_context) return @[];
-  EAGLContext *previous = [EAGLContext currentContext];
-  if (previous != _context) [EAGLContext setCurrentContext:_context];
+  if (_context == EGL_NO_CONTEXT) return @[];
+  [self makeCurrent];
   NSUInteger count = commands.count;
   __unsafe_unretained id *items = (__unsafe_unretained id *)malloc(sizeof(id) * MAX(count, 1));
   [commands getObjects:items range:NSMakeRange(0, count)];
@@ -907,7 +978,6 @@ static BOOL isUnsignedUniform(GLenum type) {
     }
   }
   free(items);
-  if (previous != _context) [EAGLContext setCurrentContext:previous];
   return results;
 }
 

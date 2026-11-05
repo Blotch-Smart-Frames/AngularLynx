@@ -9,24 +9,25 @@
 // (`enableMTSModule`). The runtime batches the calls into one `run` per frame;
 // see packages/runtime/src/lib/canvas/webgl-bridge.ts for the protocol.
 //
-// OpenGL ES is deprecated on iOS but still in the SDK, and its shading
-// language, GLSL ES 3.00, is WebGL2's, so three.js's shaders compile as they
-// are. GLES_SILENCE_DEPRECATION keeps each GL call from warning.
-
-#define GLES_SILENCE_DEPRECATION 1
+// The OpenGL ES 3.0 is ANGLE's, on Metal (libEGL and libGLESv2, prebuilt
+// with Lynx's frameworks by scripts/build-angle-ios-frameworks.sh), rather
+// than iOS's own OpenGL ES. Apple deprecated that in iOS 12, and the
+// Simulator runs it on the CPU, where a lit three.js scene took seconds a
+// frame; Metal draws on the GPU on a phone and in the Simulator alike.
+// ANGLE is also what Safari draws WebGL with. Its shading language, GLSL ES
+// 3.00, is WebGL2's, so three.js's shaders compile as they are.
 
 #import <Foundation/Foundation.h>
 #import <Lynx/LynxModule.h>
 #import <Lynx/LynxUI.h>
-#import <OpenGLES/EAGL.h>
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class AngularLynxCanvasView;
 
-/// The drawing surface: a view backed by a CAEAGLLayer, which the context
-/// copies each finished frame into.
+/// The drawing surface: a view backed by a CAMetalLayer, which the context
+/// copies each finished frame into (an EGL window surface on the layer).
 @interface AngularLynxCanvasView : UIView
 @property(nonatomic, copy, nullable) NSString *canvasId;
 @end
@@ -47,8 +48,9 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable AngularLynxDecodedImage *)imageWithId:(NSInteger)imageId;
 @end
 
-/// One WebGL context: an EAGLContext with an offscreen default framebuffer
-/// the size of the canvas's `width` and `height`.
+/// One WebGL context: an EGL context on ANGLE's Metal display, with an
+/// offscreen default framebuffer the size of the canvas's `width` and
+/// `height`.
 @interface AngularLynxWebGLContext : NSObject
 @property(nonatomic, readonly, copy) NSString *canvasId;
 - (nullable instancetype)initWithCanvasId:(NSString *)canvasId
@@ -58,8 +60,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray *)run:(NSArray *)commands;
 /// Shows frames in this view, or nowhere while it's nil.
 - (void)attachView:(nullable AngularLynxCanvasView *)view;
-/// The view's size changed: the next frame reallocates its layer's storage.
-- (void)viewDidResize;
 - (void)destroy;
 @end
 

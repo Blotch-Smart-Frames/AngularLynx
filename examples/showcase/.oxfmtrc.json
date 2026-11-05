@@ -12,7 +12,11 @@
   "bracketSameLine": false,
   "bracketSpacing": true,
   "sortTailwindcss": {
-    "functions": ["cn", "cva", "clsx"],
+    "functions": [
+      "cn",
+      "cva",
+      "clsx"
+    ],
     "stylesheet": "./src/styles.css"
   },
   "ignorePatterns": [
@@ -21,6 +25,7 @@
     "**/fesm2022/**",
     "**/esm2022/**",
     "**/schematics/**/*.js",
-    "**/.claude/**"
+    "**/.claude/**",
+    "**/.impeccable/**"
   ]
 }

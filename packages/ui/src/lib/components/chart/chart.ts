@@ -483,8 +483,12 @@ export class UiChart {
           ? option()
           : option;
     // Colors set at runtime above the chart, such as Android's wallpaper
-    // colors, take the place of the theme's (see UI_THEME_COLORS).
-    const replaced = this.#replacedColors?.()[scheme];
+    // colors, take the place of the theme's (see UI_THEME_COLORS). Not
+    // `this.#replacedColors?.()[scheme]`: the Lynx build compiles that chain
+    // with the index outside the short-circuit (`(undefined)[scheme]`), which
+    // throws in any app that doesn't provide the token.
+    const replacedColors = this.#replacedColors;
+    const replaced = replacedColors ? replacedColors()[scheme] : undefined;
     const colors = scheme === 'dark' ? this.#theme.dark : this.#theme.light;
     return replaced ? { ...colors, ...replaced } : colors;
   });

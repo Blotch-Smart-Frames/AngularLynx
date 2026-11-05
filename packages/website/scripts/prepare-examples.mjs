@@ -51,6 +51,8 @@ const BINARY_EXTENSIONS = new Set([
 // `.angular` (the Angular CLI's compiler cache) and `.turbo` (turbo's logs)
 // are build leftovers, not example source. Copying them shipped ~19 MB of
 // caches with every deploy and listed them in the example's file browser.
+// `.impeccable` holds a designed example's working files (its surface brief
+// and decision logs), which aren't part of the app either.
 const SKIP_DIRS = new Set([
   'node_modules',
   'dist',
@@ -58,6 +60,7 @@ const SKIP_DIRS = new Set([
   '.git',
   '.angular',
   '.turbo',
+  '.impeccable',
 ]);
 
 const walkDir = (dir, base = dir) => {

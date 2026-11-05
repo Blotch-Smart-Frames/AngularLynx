@@ -131,7 +131,7 @@ page {
 }
 ```
 
-- **`[style.--x]` bindings set CSS variables.** `<view [style.--accent]="accent()">` gives the element `--accent`, which its descendants read with `var(--accent)`: CSS variables inherit, unlike other properties. A binding wins over the same variable in `style="..."`, as on the web.
+- **`[style.--x]` bindings set CSS variables.** `<view [style.--accent]="accent()">` gives the element `--accent`, which its descendants read with `var(--accent)`: CSS variables inherit, unlike other properties. A binding wins over the same variable in `style="..."`, as on the web. **Not in the web preview:** Lynx for Web's inline-style parser drops the `--`, so there the binding changes nothing a `var()` reads. Where the preview must follow a runtime color, bind it where it's used (`[style.background-color]="accent()"`, a chart's `[color]`, glass's `[tint]`); a class that switches (`[class.dark]`) re-resolves everywhere, since its variables live in a stylesheet rule.
 - **Don't wrap raw HSL channels** (`--x: 240 5.9% 10%` in `hsl(var(--x))`, the shadcn/ui pattern): that expands to the space-separated form Lynx drops.
 - **The dolan UI theme** stores each color whole (`--primary`) and as channels (`--primary-rgb`). Its Tailwind plugin maps `bg-primary` to `var(--primary)` and `bg-primary/50` to `rgba(var(--primary-rgb), 0.5)`, so opacity modifiers work on every theme color. Keep each pair the same color when editing a theme; `npx @blotch/dolan doctor` reports a mismatch or a missing `-rgb` variable.
 

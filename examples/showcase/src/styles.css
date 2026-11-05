@@ -1,0 +1,167 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* The @blotch/ui theme, which `dolan init` copied into src/styles. */
+@import './styles/default.css';
+@import './styles/dark.css';
+@import './styles/tailwind.css';
+
+/*
+ * Routed Gothic (SIL OFL 1.1, see assets/fonts/OFL.txt): the lettering of
+ * engineering drawings, which a lapidary's cut sheet is. Three widths, one
+ * voice: wide for names and figures, regular for body, narrow for labels.
+ */
+@font-face {
+  font-family: 'RoutedGothic';
+  src: url('./assets/fonts/routed-gothic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'RoutedGothicNarrow';
+  src: url('./assets/fonts/routed-gothic-narrow.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'RoutedGothicWide';
+  src: url('./assets/fonts/routed-gothic-wide.ttf') format('truetype');
+}
+
+@theme inline {
+  --font-routed: 'RoutedGothic';
+  --font-narrow: 'RoutedGothicNarrow';
+  --font-wide: 'RoutedGothicWide';
+  /* The paper the plate's lettering is drawn in, whatever the light. */
+  --color-paper: var(--paper);
+  /* The chosen stone's color: the app sets --stone on its root view. */
+  --color-stone: var(--stone);
+}
+
+/* Every text element is set in Routed Gothic unless a class says otherwise:
+   Lynx text doesn't inherit a font from its parents. Routed Gothic has one
+   weight, so where a component asks for a heavier one (the dock's labels,
+   a toast's title) emphasis comes from the wide cut instead of a faked bold. */
+text {
+  font-family: 'RoutedGothic';
+}
+.font-medium,
+.font-semibold,
+.font-bold {
+  font-family: 'RoutedGothicWide';
+  font-weight: 400;
+}
+
+/*
+ * Three values: ink, paper and the stone. Day is ink on paper; the theme's
+ * tokens take those two so every component reads them. The stone comes in
+ * through --primary, which the root view binds to the chosen stone.
+ *
+ * Colors are written so that none compiles to a hex with a digit-e-digit
+ * run (#5c5e66, #3e4048): the CSS pipeline reads such a run as an exponent
+ * and mangles the color (see investigations/lynx-vs-web-differences.md).
+ */
+page {
+  --paper: rgba(246, 243, 236, 1);
+  --ink: rgba(22, 24, 29, 1);
+  --stone: #17b4c6;
+  --stone-rgb: 23, 180, 198;
+
+  --background: rgba(246, 243, 236, 1);
+  --background-rgb: 246, 243, 236;
+  --foreground: rgba(22, 24, 29, 1);
+  --foreground-rgb: 22, 24, 29;
+  --card: rgba(246, 243, 236, 1);
+  --card-rgb: 246, 243, 236;
+  --card-foreground: rgba(22, 24, 29, 1);
+  --card-foreground-rgb: 22, 24, 29;
+  --popover: rgba(246, 243, 236, 1);
+  --popover-rgb: 246, 243, 236;
+  --popover-foreground: rgba(22, 24, 29, 1);
+  --popover-foreground-rgb: 22, 24, 29;
+  --primary-foreground: rgba(246, 243, 236, 1);
+  --primary-foreground-rgb: 246, 243, 236;
+  --secondary: rgba(232, 228, 218, 1);
+  --secondary-rgb: 232, 228, 218;
+  --secondary-foreground: rgba(22, 24, 29, 1);
+  --secondary-foreground-rgb: 22, 24, 29;
+  --muted: rgba(232, 228, 218, 1);
+  --muted-rgb: 232, 228, 218;
+  --muted-foreground: rgba(92, 95, 102, 1);
+  --muted-foreground-rgb: 92, 95, 102;
+  --accent: rgba(232, 228, 218, 1);
+  --accent-rgb: 232, 228, 218;
+  --accent-foreground: rgba(22, 24, 29, 1);
+  --accent-foreground-rgb: 22, 24, 29;
+  --border: rgba(22, 24, 29, 1);
+  --border-rgb: 22, 24, 29;
+  --input: rgba(22, 24, 29, 1);
+  --input-rgb: 22, 24, 29;
+  --glass-foreground: rgba(22, 24, 29, 1);
+  --glass-foreground-rgb: 22, 24, 29;
+  --glass-muted-foreground: rgba(63, 65, 73, 1);
+  --glass-muted-foreground-rgb: 63, 65, 73;
+  --glass-tint-foreground: rgba(246, 243, 236, 1);
+  --glass-tint-foreground-rgb: 246, 243, 236;
+  /* No rounded corners on paper: the sheet's panels and detents are square. */
+  --radius: 0px;
+}
+
+/*
+ * Night: paper and ink swap. The root view carries the class, so this block
+ * stands on its own (the stock dark theme is written for the page element).
+ */
+.dark {
+  --background: rgba(17, 19, 24, 1);
+  --background-rgb: 17, 19, 24;
+  /* The dock's active item takes --primary. The root view binds that to the
+     stone on a phone; where the binding can't reach (the web preview) the
+     active item must still read on the dark capsule, so it falls to paper. */
+  --primary: rgba(242, 239, 230, 1);
+  --primary-rgb: 242, 239, 230;
+  --foreground: rgba(242, 239, 230, 1);
+  --foreground-rgb: 242, 239, 230;
+  --card: rgba(17, 19, 24, 1);
+  --card-rgb: 17, 19, 24;
+  --card-foreground: rgba(242, 239, 230, 1);
+  --card-foreground-rgb: 242, 239, 230;
+  --popover: rgba(17, 19, 24, 1);
+  --popover-rgb: 17, 19, 24;
+  --popover-foreground: rgba(242, 239, 230, 1);
+  --popover-foreground-rgb: 242, 239, 230;
+  --primary-foreground: rgba(17, 19, 24, 1);
+  --primary-foreground-rgb: 17, 19, 24;
+  --secondary: rgba(36, 38, 46, 1);
+  --secondary-rgb: 36, 38, 46;
+  --secondary-foreground: rgba(242, 239, 230, 1);
+  --secondary-foreground-rgb: 242, 239, 230;
+  --muted: rgba(36, 38, 46, 1);
+  --muted-rgb: 36, 38, 46;
+  --muted-foreground: rgba(166, 164, 156, 1);
+  --muted-foreground-rgb: 166, 164, 156;
+  --accent: rgba(36, 38, 46, 1);
+  --accent-rgb: 36, 38, 46;
+  --accent-foreground: rgba(242, 239, 230, 1);
+  --accent-foreground-rgb: 242, 239, 230;
+  --destructive: rgba(127, 29, 29, 1);
+  --destructive-rgb: 127, 29, 29;
+  --destructive-foreground: rgba(242, 239, 230, 1);
+  --destructive-foreground-rgb: 242, 239, 230;
+  --destructive-subtle: rgba(127, 29, 29, 0.1);
+  --border: rgba(242, 239, 230, 1);
+  --border-rgb: 242, 239, 230;
+  --input: rgba(242, 239, 230, 1);
+  --input-rgb: 242, 239, 230;
+  --ring-subtle: rgba(212, 212, 216, 0.4);
+  --glass-foreground: rgba(242, 239, 230, 1);
+  --glass-foreground-rgb: 242, 239, 230;
+  --glass-muted-foreground: rgba(212, 210, 200, 1);
+  --glass-muted-foreground-rgb: 212, 210, 200;
+  --glass-tint-foreground: rgba(17, 19, 24, 1);
+  --glass-tint-foreground-rgb: 17, 19, 24;
+  --glass-clear-foreground: rgba(255, 255, 255, 1);
+  --glass-clear-foreground-rgb: 255, 255, 255;
+  --glass-dim: rgba(0, 0, 0, 0.35);
+}

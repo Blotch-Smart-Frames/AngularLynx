@@ -6207,3 +6207,72 @@ With multi-touch on, Lynx numbers each finger from 0 and keeps its number until 
 ### The fix
 
 `pointerIdOf()` (`packages/runtime/src/lib/lynx-element/pointer-events.ts`) gives a touch whose identifier is above `0xffff` (an address, never a finger's number) the pointerId `0`, the number multi-touch gives the first finger. Elements and the document use it alike, so a finger has the same `pointerId` at both.
+
+---
+
+## `[style.--x]` bindings don't reach `var()` in the web preview
+
+### What you'd expect (web)
+
+A custom property set inline on an element (`style="--stone: #d9103f"`, or `el.style.setProperty('--stone', …)`) is read by every `var(--stone)` below it, and re-resolved when it changes.
+
+### What Lynx does
+
+On iOS and Android, `__SetInlineStyles` keeps a `--x` declaration and the descendants' `var(--x)` follow it, which is how `[style.--x]` works there. Lynx for Web doesn't (measured 2026-11-05 in the showcase example's preview, web-core bundled with Lynx 4.4): its inline-style parser (`set_inline_styles_in_str`, in web-core's WASM) writes the declaration without its dashes, so the DOM holds `stone: #d9103f`, which nothing reads. Its `__AddInlineStyle` with a raw string key keeps the dashes but namespaces the name (`--\%NS\%stone`), which a stylesheet's `var(--stone)` doesn't match either. So in the web preview a `[style.--x]` binding changes nothing visible: a `.plate { background-color: var(--stone) }` rule kept the stylesheet's default while the binding changed under it.
+
+- **Bind the value where it's used** when the web preview must follow it: `[style.background-color]="color()"`, a chart's `[color]`, glass's `[tint]`. A class that switches, such as `[class.dark]`, does re-resolve, because its variables live in a stylesheet rule.
+- The runtime can't put this right from outside: an element has one inline style, written through web-core's parser. Tried for the showcase and reverted: setting each variable again with `__AddInlineStyle` after the whole style (that's where the namespaced name came from).
+
+---
+
+## Hex colors that read as an exponent compile wrong
+
+### What you'd expect (web)
+
+`rgba(92, 94, 102, 1)` and `#5c5e66` are the same color, whichever a tool prefers.
+
+### What Lynx does
+
+The build minifies `rgba(92, 94, 102, 1)` to `#5c5e66` (lightningcss, correct), and the compiled stylesheet in the web preview then holds `--muted-foreground: #5c9999` (measured 2026-11-05 through `document.styleSheets` in the showcase example's preview). `rgba(62, 64, 72, 1)`, `#3e4048`, went the same way. Both hexes contain a digit, an `e` and digits (`5e66`, `3e4048`), which a CSS re-tokenizer between lightningcss and the page reads as a number in scientific notation. Neighbouring hexes without such a run (`#71717a`, `#a6a49c`, `#3f3f46`) come through whole. Not yet checked on iOS and Android, whose bundle encodes CSS differently.
+
+- Until it's found, avoid a color whose hex has `[0-9]e[0-9]` in it. The showcase uses `rgba(92, 95, 102, 1)` and `rgba(63, 65, 73, 1)` in their place.
+
+---
+
+## `this.#field?.()[key]` throws where `#field` is unset
+
+### What you'd expect (web)
+
+`a?.()[k]` is `undefined` when `a` is nullish: the whole chain short-circuits.
+
+### What Lynx does
+
+Nothing; it's the build. The main thread is ES2019 (PrimJS), and the Lynx bundle's SWC pass compiles first-party `#private` fields to properties (`privateFieldsAsProperties`, see `packages/rsbuild-plugin-angular-lynx/src/layers.ts`). With that, `this.#replacedColors?.()[scheme]` came out as `(null == (r = this.#replacedColors) ? void 0 : r.call(this))[scheme]`, the index outside the conditional, so an unset field throws `Cannot read properties of undefined (reading 'light')`. Measured in the web bundle (2026-11-05); the Lynx bundle goes through the same pass. The same shape on a local constant (`replaced?.()[active]` in icon-theme.ts) compiles correctly.
+
+`packages/ui`'s chart had the private-field form and threw in every app that didn't provide `UI_THEME_COLORS`. No example copy showed it, because none had been re-synced since dynamic color (#163) added the line; the showcase was the first to take the current chart.
+
+- Write it in two steps: `const fn = this.#field; const value = fn ? fn()[key] : undefined;`.
+
+---
+
+## An element at `opacity: 0` never comes into view on a phone
+
+### What you'd expect (web)
+
+`IntersectionObserver` reports an element in the viewport whatever its opacity, so "hidden until it scrolls into view, then fade in" starts from `opacity: 0`.
+
+### What Lynx does
+
+Exposure, which `[lynxExposure]` and the runtime's `IntersectionObserver` are built on, counts only an element that "isn't fully transparent" (Lynx's own rule, alongside being on screen and having a size). A band hidden with `opacity: 0` until `visible()` is therefore never exposed, so `visible()` stays `false` and the band never shows: the showcase's market screen was empty on iOS (2026-11-05) while the web preview, whose observer is the browser's, showed it. Hide with a small opacity (`0.02`) and a transform instead.
+
+---
+
+## A `full-span` item at the end of a flow list opened the list scrolled to it on iOS
+
+### What you'd expect (web)
+
+A list opens at its top, whatever its last item spans.
+
+### What Lynx does
+
+Measured once (2026-11-05, iOS 27 Simulator, Lynx 4.4): a `<list list-type="flow" span-count="2">` of forty items whose last `<list-item>` had `full-span="true"` (a footnote across both columns) opened scrolled to its end, with that footnote and the last four items on screen; scrolling up reached the rest. The web preview opened the same list at the top. With the footnote moved out of the list (into the header), the list opens at the top on iOS too. Not yet narrowed down (the footnote's span, its being last, or the flow layout) and not checked on Android.

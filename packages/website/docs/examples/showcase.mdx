@@ -1,0 +1,30 @@
+# Facet: a gem atlas
+
+The showcase app: a jeweler's gem atlas that uses most of what AngularLynx offers in one real app. A stone drawn on the GPU inside a faceting dial, a cut sheet of its figures, a market of charts and a collection of lots, all written as ordinary Angular.
+
+<Go example="showcase" defaultFile="src/app/atlas/atlas.ts" />
+
+Drag the dial sideways to turn the stone, and tap another stone to recolor the whole app. Open the **cut** chip to recut it or see it by lamplight.
+
+## What it shows
+
+- **3D on the GPU** — `src/app/atlas/stone-scene.ts` draws the stone with three.js in a [`<canvas>`](/api/elements/canvas): a refractive, dispersive material on the cut's own geometry, on Metal on iOS through ANGLE, on the phone's GL ES on Android, and on WebGL2 here. Lynx Explorer has no canvas, so the plate falls back to the cut's diagram.
+- **Procedural cuts** — `src/app/cut/cut-geometry.ts` builds each cut as rings of facet corners, the way a lapidary describes it; the same build gives the plate its plan view as an [`<svg>`](/api/elements/svg).
+- **Gestures** — a [pan and a fling](/guide/gestures/) on the plate turn the dial with momentum; `consume-slide-event` keeps sideways drags from scrolling the page.
+- **A main-thread script** — the plate parallaxes under the sheet in a [`mainThreadBindscroll`](/guide/main-thread/) handler, with no render in between.
+- **Liquid Glass** — the dock, the chips and the sheets are `ui-glass`; the cut sheet grows out of the chip that opens it (`uiSheetSource`).
+- **Charts** — the market's area, bar, scatter and candlestick charts, in the stone's color.
+- **A virtualized list** — the collection is a two-column [`<list>`](/api/elements/list) in flow layout; hold a lot to keep it, and search from the dock.
+- **Routing and `@defer`** — three lazy routes, with the three.js scene behind an [`@defer`](/guide/defer) block so the first screen paints before it loads.
+- **Transitions** — the stone's name cuts in and out with `LynxTransitionGroup`; the market's charts cut in as they scroll into view, through [`lynxExposure`](/guide/exposure).
+- **Storage** — the chosen stone, cut, light and kept lots persist with [`LynxLocalStorage`](/guide/persistent-storage).
+- **Dark mode** — "Night" swaps ink and paper through [`LynxTheme`](/guide/dark-mode), and the alexandrite turns red under lamplight, as the real stone does.
+- **Custom fonts** — Routed Gothic, an engineering-drawing lettering, in three widths through [`@font-face`](/guide/custom-fonts/).
+
+Species, formulas, refractive indices, dispersion and hardness are reference gemology. Prices, lots and the market's series are illustrative, and the app says so.
+
+## Related
+
+- [Kitchen sink](/examples/) — every element and component, one screen each
+- [Todo List](/examples/todo-list) — the smallest app
+- [Native apps](/guide/native-apps) — building the iOS and Android apps

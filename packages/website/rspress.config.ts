@@ -410,6 +410,9 @@ export default defineConfig({
       '/examples/': [
         { text: 'Overview', link: '/examples/' },
         { dividerType: 'solid' },
+        { sectionHeaderText: 'Showcase' },
+        { text: 'Facet: a gem atlas', link: '/examples/showcase' },
+        { dividerType: 'solid' },
         { sectionHeaderText: 'Getting Started' },
         { text: 'Hello World', link: '/examples/hello-world' },
         { text: 'Counter', link: '/examples/counter' },

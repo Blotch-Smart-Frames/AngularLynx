@@ -83,6 +83,7 @@ The AngularLynx renderer handles this transparently — you use `@for` as normal
 3. **`<list-item>` must be a direct child of `<list>`** — wrapping it in other elements breaks recycling
 4. **Don't set `z-index` on `<list-item>`** — it interferes with the recycling mechanism. Set z-index on content inside the list item instead
 5. **Explicit height required** — same as `<scroll-view>`, the list needs a bounded height to scroll
+6. **Keep a footer out of a flow list** — a `full-span="true"` item at the end of a `list-type="flow"` list opened the list scrolled to its end on iOS (measured once, Lynx 4.4). Put a footnote above or below the list, and clear a floating bar with `padding-bottom` on the list
 
 ## List vs Scroll-View
 

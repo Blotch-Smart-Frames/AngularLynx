@@ -1,0 +1,240 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-05T20:40:00Z",
+  "title": "Design System: Facet",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "rgba(22, 24, 29, 1)",
+        "tonalRamp": [
+          "oklch(15% 0.012 270)",
+          "oklch(20% 0.012 270)",
+          "oklch(30% 0.012 270)",
+          "oklch(45% 0.010 270)",
+          "oklch(60% 0.008 270)",
+          "oklch(75% 0.006 270)",
+          "oklch(88% 0.004 270)",
+          "oklch(95% 0.002 270)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "rgba(246, 243, 236, 1)",
+        "tonalRamp": [
+          "oklch(15% 0.004 85)",
+          "oklch(28% 0.006 85)",
+          "oklch(42% 0.008 85)",
+          "oklch(56% 0.010 85)",
+          "oklch(70% 0.012 85)",
+          "oklch(82% 0.012 85)",
+          "oklch(92% 0.010 85)",
+          "oklch(96% 0.010 85)"
+        ]
+      },
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "rgba(17, 19, 24, 1)"
+      },
+      "paper-night": {
+        "role": "neutral",
+        "displayName": "Night Paper",
+        "canonical": "rgba(242, 239, 230, 1)"
+      },
+      "paper-trace": {
+        "role": "neutral",
+        "displayName": "Paper Trace",
+        "canonical": "rgba(232, 228, 218, 1)"
+      },
+      "paper-trace-night": {
+        "role": "neutral",
+        "displayName": "Night Paper Trace",
+        "canonical": "rgba(36, 38, 46, 1)"
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "rgba(92, 95, 102, 1)",
+        "tonalRamp": [
+          "oklch(15% 0.010 270)",
+          "oklch(25% 0.012 270)",
+          "oklch(35% 0.012 270)",
+          "oklch(47% 0.012 270)",
+          "oklch(60% 0.010 270)",
+          "oklch(74% 0.008 270)",
+          "oklch(86% 0.005 270)",
+          "oklch(95% 0.003 270)"
+        ]
+      },
+      "graphite-night": {
+        "role": "neutral",
+        "displayName": "Night Graphite",
+        "canonical": "rgba(166, 164, 156, 1)"
+      },
+      "stone": {
+        "role": "primary",
+        "displayName": "The Stone (Paraíba by default)",
+        "canonical": "#17b4c6",
+        "tonalRamp": [
+          "oklch(18% 0.040 207)",
+          "oklch(30% 0.070 207)",
+          "oklch(42% 0.100 207)",
+          "oklch(55% 0.120 207)",
+          "oklch(70% 0.130 207)",
+          "oklch(80% 0.100 207)",
+          "oklch(90% 0.060 207)",
+          "oklch(96% 0.025 207)"
+        ]
+      },
+      "stone-padparadscha": { "role": "primary", "displayName": "Padparadscha", "canonical": "#ff8f72" },
+      "stone-tanzanite": { "role": "primary", "displayName": "Tanzanite", "canonical": "#4b58d9" },
+      "stone-mandarin": { "role": "primary", "displayName": "Mandarin", "canonical": "#ff7a16" },
+      "stone-muzo": { "role": "primary", "displayName": "Muzo", "canonical": "#1e9f66" },
+      "stone-mogok": { "role": "primary", "displayName": "Mogok", "canonical": "#d9103f" },
+      "stone-kunzite": { "role": "primary", "displayName": "Kunzite", "canonical": "#e79bd9" },
+      "stone-tsavorite": { "role": "primary", "displayName": "Tsavorite", "canonical": "#15a03c" },
+      "stone-sphene": { "role": "primary", "displayName": "Sphene", "canonical": "#c8c122" },
+      "stone-alexandrite": { "role": "primary", "displayName": "Alexandrite (day)", "canonical": "#2f9d6b" },
+      "stone-alexandrite-night": { "role": "primary", "displayName": "Alexandrite (night)", "canonical": "#b4304d" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The stone's name on the plate, uppercase, in paper; steps down to 26px over 8 characters and 22px over 10." },
+      "headline": { "displayName": "Headline", "purpose": "Screen titles (MARKET, COLLECTION), uppercase." },
+      "title": { "displayName": "Title", "purpose": "Sheet headers and the market's lead figures." },
+      "figure": { "displayName": "Figure", "purpose": "A band's value, right-aligned in its 64px column; a lot's price." },
+      "body": { "displayName": "Body", "purpose": "Sheet descriptions and lot facts." },
+      "caption": { "displayName": "Caption", "purpose": "Notes, legends and illustrative notices, in graphite." },
+      "label": { "displayName": "Label", "purpose": "Band labels, chips, detents and species lines: Narrow, tracked 2px, uppercase." },
+      "wordmark": { "displayName": "Wordmark", "purpose": "FACET at the plate's top-left, tracked 5px." }
+    },
+    "shadows": [
+      {
+        "name": "glass-solid-fallback",
+        "value": "0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15)",
+        "purpose": "The glass primitive's only shadow, drawn when glass falls back to a solid surface (Reduce Transparency or no blur). Nothing on paper casts a shadow."
+      }
+    ],
+    "motion": [
+      { "name": "cut-enter", "value": "320ms ease-out; opacity 0 → 1, transform translateY(14px) scaleY(0.7) → none", "purpose": "A panel or name entering: scaleY from the top edge plus a fade." },
+      { "name": "cut-leave", "value": "200ms ease-in; opacity 1 → 0, transform none → translateY(-14px) scaleY(0.7)", "purpose": "The outgoing panel or name." },
+      { "name": "band-cut-in", "value": "420ms ease-out; opacity 0.02 → 1, transform translateY(18px) scaleY(0.8) → none", "purpose": "A market band revealed by lynxExposure as it scrolls into view; rests at opacity 0.02 because Lynx never reports a fully transparent element as exposed." },
+      { "name": "recolor", "value": "background-color 600ms ease-out", "purpose": "The plate's flood when the stone changes; the 3D material's color lerps toward the new stone over the same time." },
+      { "name": "detent", "value": "background-color 120ms ease-out", "purpose": "A detent filling with ink when chosen or pressed." },
+      { "name": "swatch-select", "value": "transform 300ms ease-out, border-width 300ms ease-out", "purpose": "The chosen parcel disc scaling to 1.2 and taking its 2px ring." },
+      { "name": "dial-drag", "value": "transition: none; 420px of drag per full turn; fling momentum from the native deltaX", "purpose": "The dial, figures and stone turning under the finger and after it lifts." },
+      { "name": "breath", "value": "key light orbits at π/3 rad/s (one orbit per 6s)", "purpose": "Idle motion in the 3D stone so the fire moves at rest; off under Reduce Motion." },
+      { "name": "parallax", "value": "plate translateY = scrollTop × 0.5, on the main thread", "purpose": "The plate following the sheet at half speed so the stone sits deeper than the paper." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "402px" }
+    ],
+    "platformNotes": [
+      "Lynx app (web preview through Lynx for Web, native iOS and Android). Tailwind 4 utilities on the @blotch/ui theme: complete rgba() values with -rgb twins, no HSL.",
+      "A [style.--x] binding does not reach var() in Lynx for Web, so an element whose color must change binds the color itself (the plate, chart series, markers) and the dark block gives --primary a paper fallback.",
+      "The CSS pipeline mangles a hex with a digit-e-digit run (#5c5e66, #3e4048) as an exponent, so token values are chosen to avoid such runs."
+    ]
+  },
+  "components": [
+    {
+      "name": "Detent",
+      "kind": "button",
+      "refersTo": "detent",
+      "description": "A square hairline switch that inverts ink and paper when chosen or pressed; the cut, light, range and KEEP controls.",
+      "html": "<div class=\"ds-detents\"><button class=\"ds-detent\">ROUND</button><button class=\"ds-detent ds-detent-on\">OVAL</button><button class=\"ds-detent\">CUSHION</button><button class=\"ds-detent\">STEP</button></div>",
+      "css": ".ds-detents { display: flex; gap: 8px; } .ds-detent { flex: 1; height: 40px; border: 1px solid var(--foreground, #16181d); border-radius: 0; background: transparent; color: var(--foreground, #16181d); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; } .ds-detent:hover { background: rgba(22, 24, 29, 0.06); } .ds-detent:focus-visible { outline: 1px solid var(--primary, #17b4c6); outline-offset: 2px; } .ds-detent:active, .ds-detent-on, .ds-detent-on:hover { background: var(--foreground, #16181d); color: var(--background, #f6f3ec); }"
+    },
+    {
+      "name": "Glass Chip",
+      "kind": "chip",
+      "refersTo": "chip-glass",
+      "description": "A capsule of glass on the plate: the renderer chip (28px) and the cut chip (36px) that the cut sheet grows out of.",
+      "html": "<div class=\"ds-chip-stage\"><span class=\"ds-chip ds-chip-sm\">WEBGL2</span><button class=\"ds-chip\">OVAL BRILLIANT</button></div>",
+      "css": ".ds-chip-stage { display: flex; gap: 12px; align-items: center; padding: 16px; background: var(--stone, #17b4c6); } .ds-chip { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 9999px; background: rgba(246, 243, 236, 0.28); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); color: var(--glass-foreground, #16181d); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; } .ds-chip-sm { height: 28px; padding: 0 12px; cursor: default; } .ds-chip:hover { background: rgba(246, 243, 236, 0.4); } .ds-chip:focus-visible { outline: 1px solid var(--background, #f6f3ec); outline-offset: 2px; }"
+    },
+    {
+      "name": "Cut Sheet Band",
+      "kind": "custom",
+      "refersTo": "band",
+      "description": "A 52px tier band: label column, a hairline scale with the stone's marker, and a right-aligned figure.",
+      "html": "<div class=\"ds-band\"><span class=\"ds-band-label\">REFRACTION</span><span class=\"ds-band-scale\"><i class=\"ds-band-rule\"></i><i class=\"ds-band-tick\" style=\"left:0\"></i><i class=\"ds-band-tick\" style=\"right:0\"></i><i class=\"ds-band-marker\" style=\"left:14.7%\"></i></span><span class=\"ds-band-figure\">1.635</span></div>",
+      "css": ".ds-band { display: flex; align-items: center; height: 52px; padding: 0 20px; border-bottom: 1px solid var(--foreground, #16181d); background: transparent; } .ds-band-label { width: 108px; color: var(--muted-foreground, #5c5f66); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; } .ds-band-scale { position: relative; flex: 1; height: 14px; } .ds-band-rule { position: absolute; left: 0; right: 0; top: 7px; border-bottom: 1px solid var(--foreground, #16181d); } .ds-band-tick { position: absolute; top: 3px; height: 8px; border-left: 1px solid var(--foreground, #16181d); } .ds-band-marker { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 9999px; background: var(--stone, #17b4c6); } .ds-band-figure { width: 64px; text-align: right; color: var(--foreground, #16181d); font-family: 'RoutedGothicWide', 'Arial', sans-serif; font-size: 18px; }"
+    },
+    {
+      "name": "Lot Tile",
+      "kind": "card",
+      "refersTo": "lot-tile",
+      "description": "A collection tile: the lot's stone color with its cut's facet map, over a paper sheet of carat, stone and price.",
+      "html": "<article class=\"ds-tile\"><div class=\"ds-tile-plate\"><svg width=\"104\" height=\"104\" viewBox=\"0 0 104 104\" fill=\"none\" stroke=\"rgba(246,243,236,0.75)\" stroke-width=\"1\"><circle cx=\"52\" cy=\"52\" r=\"43\"/><polygon points=\"52,9 82,22 95,52 82,82 52,95 22,82 9,52 22,22\"/><polygon points=\"52,28 69,35 76,52 69,69 52,76 35,69 28,52 35,35\"/><path d=\"M52 9L52 28M82 22L69 35M95 52L76 52M82 82L69 69M52 95L52 76M22 82L35 69M9 52L28 52M22 22L35 35\"/></svg></div><div class=\"ds-tile-sheet\"><span class=\"ds-tile-carat\">2.14 ct</span><span class=\"ds-tile-kind\">PARAÍBA · OVAL</span><span class=\"ds-tile-price\">$51,400</span></div><span class=\"ds-keep\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6L9 17l-5-5\"/></svg></span></article>",
+      "css": ".ds-tile { position: relative; display: flex; flex-direction: column; width: 180px; border: 1px solid var(--foreground, #16181d); border-radius: 0; background: var(--background, #f6f3ec); cursor: pointer; } .ds-tile:hover .ds-tile-plate { filter: brightness(1.04); } .ds-tile:focus-visible { outline: 1px solid var(--primary, #17b4c6); outline-offset: 2px; } .ds-tile-plate { display: flex; align-items: center; justify-content: center; height: 150px; background: var(--stone, #17b4c6); } .ds-tile-sheet { display: flex; flex-direction: column; padding: 8px 12px 12px; border-top: 1px solid var(--foreground, #16181d); } .ds-tile-carat { color: var(--foreground, #16181d); font-family: 'RoutedGothicWide', 'Arial', sans-serif; font-size: 20px; line-height: 24px; } .ds-tile-kind { color: var(--muted-foreground, #5c5f66); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; } .ds-tile-price { margin-top: 4px; color: var(--foreground, #16181d); font-family: 'RoutedGothic', 'Arial', sans-serif; font-size: 14px; } .ds-keep { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 9999px; background: var(--foreground, #16181d); color: var(--background, #f6f3ec); }"
+    },
+    {
+      "name": "Parcel Discs",
+      "kind": "nav",
+      "refersTo": "swatch-disc",
+      "description": "The ten stones as 30px discs in a 64px strip; the chosen one scales to 1.2 and takes a 2px ink ring.",
+      "html": "<div class=\"ds-parcel\"><button class=\"ds-disc ds-disc-on\" style=\"background:#17b4c6\" aria-label=\"Paraíba\"></button><button class=\"ds-disc\" style=\"background:#ff8f72\" aria-label=\"Padparadscha\"></button><button class=\"ds-disc\" style=\"background:#4b58d9\" aria-label=\"Tanzanite\"></button><button class=\"ds-disc\" style=\"background:#ff7a16\" aria-label=\"Mandarin\"></button><button class=\"ds-disc\" style=\"background:#1e9f66\" aria-label=\"Muzo\"></button><button class=\"ds-disc\" style=\"background:#d9103f\" aria-label=\"Mogok\"></button><button class=\"ds-disc\" style=\"background:#e79bd9\" aria-label=\"Kunzite\"></button><button class=\"ds-disc\" style=\"background:#15a03c\" aria-label=\"Tsavorite\"></button><button class=\"ds-disc\" style=\"background:#c8c122\" aria-label=\"Sphene\"></button><button class=\"ds-disc\" style=\"background:#2f9d6b\" aria-label=\"Alexandrite\"></button></div>",
+      "css": ".ds-parcel { display: flex; justify-content: center; align-items: center; height: 64px; border-bottom: 1px solid var(--foreground, #16181d); } .ds-disc { width: 30px; height: 30px; margin: 0 3px; border: 0 solid var(--foreground, #16181d); border-radius: 9999px; padding: 0; cursor: pointer; transition: transform 300ms ease-out, border-width 300ms ease-out; } .ds-disc:hover { transform: scale(1.1); } .ds-disc:focus-visible { outline: 1px solid var(--foreground, #16181d); outline-offset: 3px; } .ds-disc-on, .ds-disc-on:hover { transform: scale(1.2); border-width: 2px; }"
+    },
+    {
+      "name": "Dock",
+      "kind": "nav",
+      "refersTo": "detent",
+      "description": "The floating glass dock: a 62px capsule bar whose active item takes the stone, beside a 62px circular search action.",
+      "html": "<nav class=\"ds-dock\"><div class=\"ds-dock-bar\"><a class=\"ds-dock-item ds-dock-item-on\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z\"/></svg><span>Atlas</span></a><a class=\"ds-dock-item\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M3 3v18h18M7 15l4-5 3 3 6-7\"/></svg><span>Market</span></a><a class=\"ds-dock-item\" href=\"#\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg><span>Collection</span></a></div><button class=\"ds-dock-action\" aria-label=\"Search lots\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M20 20l-3.5-3.5\"/></svg></button></nav>",
+      "css": ".ds-dock { display: flex; gap: 10px; align-items: center; padding: 16px; background: var(--background, #f6f3ec); } .ds-dock-bar { display: flex; flex: 1; height: 62px; padding: 4px; border: 1px solid rgba(22, 24, 29, 0.12); border-radius: 9999px; background: rgba(246, 243, 236, 0.55); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15); } .ds-dock-item { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 9999px; color: var(--glass-foreground, #16181d); text-decoration: none; font-family: 'RoutedGothicWide', 'Arial', sans-serif; font-size: 11px; transition: background-color 200ms ease-out; } .ds-dock-item:hover { background: rgba(22, 24, 29, 0.06); } .ds-dock-item:focus-visible { outline: 1px solid var(--primary, #17b4c6); outline-offset: -2px; } .ds-dock-item-on, .ds-dock-item-on:hover { background: rgba(var(--primary-rgb, 23, 180, 198), 0.35); } .ds-dock-action { display: flex; align-items: center; justify-content: center; width: 62px; height: 62px; border: 1px solid rgba(22, 24, 29, 0.12); border-radius: 9999px; background: rgba(246, 243, 236, 0.55); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15); color: var(--glass-foreground, #16181d); cursor: pointer; } .ds-dock-action:hover { background: rgba(246, 243, 236, 0.7); } .ds-dock-action:focus-visible { outline: 1px solid var(--primary, #17b4c6); outline-offset: 2px; }"
+    },
+    {
+      "name": "Screen Header",
+      "kind": "custom",
+      "refersTo": "band",
+      "description": "The 92px header Market and Collection open with: a Wide uppercase title bottom-left and tracked labels bottom-right, on a hairline.",
+      "html": "<header class=\"ds-header\"><div class=\"ds-header-title\"><span class=\"ds-header-name\">MARKET</span><span class=\"ds-header-sub\">PARAÍBA · ILLUSTRATIVE</span></div><div class=\"ds-header-detents\"><button class=\"ds-header-detent\">1Y</button><button class=\"ds-header-detent ds-header-detent-on\">3Y</button><button class=\"ds-header-detent\">10Y</button></div></header>",
+      "css": ".ds-header { display: flex; align-items: flex-end; justify-content: space-between; height: 92px; padding: 0 20px 12px; border-bottom: 1px solid var(--foreground, #16181d); background: transparent; } .ds-header-title { display: flex; flex-direction: column; } .ds-header-name { color: var(--foreground, #16181d); font-family: 'RoutedGothicWide', 'Arial', sans-serif; font-size: 28px; line-height: 32px; } .ds-header-sub { color: var(--muted-foreground, #5c5f66); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; } .ds-header-detents { display: flex; width: 168px; gap: 4px; } .ds-header-detent { flex: 1; height: 36px; border: 1px solid var(--foreground, #16181d); border-radius: 0; background: transparent; color: var(--foreground, #16181d); font-family: 'RoutedGothicNarrow', 'Arial Narrow', sans-serif; font-size: 11px; letter-spacing: 2px; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out; } .ds-header-detent:hover { background: rgba(22, 24, 29, 0.06); } .ds-header-detent:focus-visible { outline: 1px solid var(--primary, #17b4c6); outline-offset: 2px; } .ds-header-detent-on, .ds-header-detent-on:hover { background: var(--foreground, #16181d); color: var(--background, #f6f3ec); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lapidary's Cut Sheet",
+    "overview": "Facet is drawn the way a faceting diagram is drawn: one weight of line, one lettering, on drawing paper. The sheet has three values and no more. Ink rules every tick, border and detent at a single pixel; paper is the ground; the stone is one runtime variable that floods the plate, tints every chart and piece of glass, and changes the moment the visitor taps another stone. There is no gray tonal ladder to hide behind: what isn't ink or paper is the stone.\n\nThe facet geometry that builds the 3D stone is also the pattern system. The crown's plan edges, emitted as an SVG of 1px hairlines, draw the plate's diagram where there is no WebGL, each lot's tile in the collection, and, tiled at seven percent ink, the ground under every screen. Nothing is decorated with an unrelated texture; the ornament is the data.\n\nDensity is a bench sheet's: fixed tier bands with a label column, a rule and a figure, not cards. Only what floats is glass (the dock, the chips, the sheets) and only what floats is round. Night does not re-theme the app; it swaps the paper for ink and leaves the stone alone.",
+    "keyCharacteristics": [
+      "Three values: ink, paper and the stone; the stone is a variable, never a fixed accent.",
+      "Every rule is a 1px hairline in the foreground color; no tints, no shadows on paper.",
+      "Routed Gothic in three widths and one weight; emphasis is width, never boldness.",
+      "Fixed tier bands (52 / 64 / 88px) with a 108px label column and a right-aligned 64px figure column.",
+      "Square on paper, capsule in glass. Corners round only on things that float or on discs.",
+      "Chosen means inverted: a detent fills with ink and its label turns to paper.",
+      "Motion is a cut-in: scale from the top edge plus a fade, with the stone's color crossfading under it."
+    ],
+    "rules": [
+      { "name": "The Three Values Rule", "body": "A screen is ink, paper and the stone. A fourth color appears only as data (the dispersion bar's spectrum, a stone disc in the parcel) and never as decoration.", "section": "colors" },
+      { "name": "The Hairline Rule", "body": "Every rule, tick, border and detent edge is a 1px line in `--foreground`. No 2px borders except the dispersion marker and the selected swatch's ring; no translucent rules on paper.", "section": "colors" },
+      { "name": "The Stone Is A Variable Rule", "body": "New surfaces read the stone through `--stone`, `--primary` or `atlas.color()`, never a literal hex. Where a `[style.--x]` binding can't reach a `var()` (the web preview), bind the color itself, as the plate does.", "section": "colors" },
+      { "name": "The No Exponent Rule", "body": "Token values are chosen so no hex compiles with a digit-e-digit run (`#5c5e66` would be mangled by the CSS pipeline). `graphite` is `#5c5f66` for that reason, and a new neutral must be checked the same way.", "section": "colors" },
+      { "name": "The Width Not Weight Rule", "body": "Routed Gothic ships one weight. `font-medium`, `font-semibold` and `font-bold` resolve to the Wide cut at weight 400, so emphasis in any ui component (a toast's title, the dock's labels) comes from width, never a faked bold.", "section": "typography" },
+      { "name": "The Set Face Rule", "body": "Lynx text inherits no font. Every `<text>` is Routed Gothic by the global `text` rule; a different width is a class on that element (`font-wide`, `font-narrow`), never on a parent.", "section": "typography" },
+      { "name": "The Glass Floats Rule", "body": "Glass is for what floats over the sheet: dock, chips, sheets. A band, a tile, a detent or a header is never glass.", "section": "elevation" },
+      { "name": "The Flat Paper Rule", "body": "No shadows, gradients or tonal steps on paper. If a surface needs separating, rule it.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do read the stone through `--stone` / `--primary` / `atlas.color()`, and bind the color itself on an element whose `var()` must change in the web preview.",
+      "Do rule with 1px hairlines in `--foreground` (`border-b`, `border-l` on views) for every separator, tick and scale.",
+      "Do set emphasis with the Wide cut and labels with the Narrow cut at 11px / 2px tracking, uppercase.",
+      "Do keep the tier heights (52 / 64 / 88 / 56 / 92px) and the 108px label and 64px figure columns when adding a band.",
+      "Do invert ink and paper for a chosen or pressed state, transitioned over 120ms ease-out.",
+      "Do enter new content with a cut-in (scaleY from the top plus a fade, 320ms ease-out in, 200ms ease-in out; 420ms for a band revealed on scroll) and crossfade a recolor over 600ms.",
+      "Do write theme colors as complete `rgba()` with `-rgb` twins, and check a new hex for a digit-e-digit run before committing it.",
+      "Do honor Reduce Motion (static bands, no lamp orbit) and give every control an `accessibility-label`, interactive glass `accessibility-traits=\"button\"`."
+    ],
+    "donts": [
+      "Don't add a fourth color, a gray scale or a tinted hover state; the only colors are ink, paper, the stone and data.",
+      "Don't round a corner on paper. `--radius` is 0; rounding belongs to discs, capsules and glass sheets only.",
+      "Don't cast a shadow or lay a gradient on the sheet; the dispersion bar's spectrum is data, not a precedent.",
+      "Don't make a band, tile, detent or header glass; glass is for the dock, chips and sheets.",
+      "Don't fake bold: Routed Gothic has one weight, and `font-bold` already resolves to Wide.",
+      "Don't author HSL, set a font on a parent view, or hide a band at opacity 0 (it never becomes exposed).",
+      "Don't tint a pressed detent with the stone or a translucent ink; chosen is a full inversion."
+    ]
+  }
+}

@@ -130,7 +130,7 @@ export class Card {
 
 Lynx calls an element coming into view _exposure_. Native checks about 20 times a second whether an element is inside every scroll container around it and on screen, has a size, and isn't fully transparent, and fires `uiappear` and `uidisappear` when that changes. An element that starts out of view gets no event.
 
-- **`[lynxExposure]`** (`LynxExposure`, `exportAs: 'lynxExposure'`) gives a template a `visible()` signal for the element. It starts `false`.
+- **`[lynxExposure]`** (`LynxExposure`, `exportAs: 'lynxExposure'`) gives a template a `visible()` signal for the element. It starts `false`. Lynx exposes only an element that isn't fully transparent: hide a "reveal on scroll" element with `opacity: 0.02` and a transform, not `opacity: 0`, or it never comes into view on a phone (the web preview's observer is the browser's and doesn't care).
 - **`IntersectionObserver`** takes Lynx elements, so browser code and libraries that watch elements work:
 
 ```typescript

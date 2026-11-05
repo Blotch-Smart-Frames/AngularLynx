@@ -45,13 +45,13 @@
   },
   "theme": {
     "default.css": {
-      "hash": "43076919dc0628d4"
+      "hash": "df5b6172b99d88e0"
     },
     "dark.css": {
-      "hash": "20229ae915a63dfd"
+      "hash": "2d60711510067786"
     },
     "tailwind.css": {
-      "hash": "51f07add1c4d8d3b"
+      "hash": "2aad604570ec5045"
     }
   }
 }

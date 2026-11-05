@@ -71,13 +71,13 @@
   },
   "theme": {
     "default.css": {
-      "hash": "6010e930f4314a61"
+      "hash": "df5b6172b99d88e0"
     },
     "tailwind-plugin.ts": {
-      "hash": "876a158a2aca3afa"
+      "hash": "0706a8e28039a2ca"
     },
     "dark.css": {
-      "hash": "73345d8f2179fd64"
+      "hash": "2d60711510067786"
     }
   }
 }

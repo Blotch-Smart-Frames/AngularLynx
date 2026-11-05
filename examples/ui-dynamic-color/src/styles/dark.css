@@ -9,7 +9,7 @@
  * alternative to default.css.
  */
 
-.dark {
+page.dark {
   --background: rgba(9, 9, 11, 1);
   --background-rgb: 9, 9, 11;
   --foreground: rgba(250, 250, 250, 1);

@@ -153,7 +153,8 @@ export const blotchPlugin = plugin(
         // Tailwind's types only allow strings here, but it also takes a
         // function, which it calls with the modifier's alpha: that's how it
         // applies `<alpha-value>` itself. Every color but destructive.subtle
-        // has an `--x-rgb` twin in the theme, so takes opacity modifiers.
+        // and glass.dim, which are translucent already, has an `--x-rgb` twin
+        // in the theme, so takes opacity modifiers.
         colors: {
           background: themeColor('background'),
           foreground: themeColor('foreground'),
@@ -198,6 +199,18 @@ export const blotchPlugin = plugin(
             3: themeColor('chart-3'),
             4: themeColor('chart-4'),
             5: themeColor('chart-5'),
+          },
+          // What sits on Liquid Glass, and its tint: text-glass-foreground,
+          // bg-glass-tint, bg-glass-dim (see the glass component).
+          glass: {
+            tint: {
+              DEFAULT: themeColor('glass-tint'),
+              foreground: themeColor('glass-tint-foreground'),
+            },
+            foreground: themeColor('glass-foreground'),
+            'muted-foreground': themeColor('glass-muted-foreground'),
+            'clear-foreground': themeColor('glass-clear-foreground'),
+            dim: 'var(--glass-dim)',
           },
         } as unknown as Record<string, string>,
         borderRadius: {

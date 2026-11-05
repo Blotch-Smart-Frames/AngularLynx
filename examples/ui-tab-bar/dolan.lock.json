@@ -26,13 +26,13 @@
   },
   "theme": {
     "default.css": {
-      "hash": "43076919dc0628d4"
+      "hash": "df5b6172b99d88e0"
     },
     "tailwind-plugin.ts": {
-      "hash": "48f5669cd884d13e"
+      "hash": "0706a8e28039a2ca"
     },
     "dark.css": {
-      "hash": "20229ae915a63dfd"
+      "hash": "2d60711510067786"
     }
   }
 }

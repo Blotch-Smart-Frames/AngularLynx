@@ -68,5 +68,18 @@ page.dark {
   --chart-5: rgba(226, 54, 112, 1);
   --chart-5-rgb: 226, 54, 112;
 
+  /* Liquid Glass (the glass component): see default.css. */
+  --glass-tint: rgba(250, 250, 250, 1);
+  --glass-tint-rgb: 250, 250, 250;
+  --glass-tint-foreground: rgba(24, 24, 27, 1);
+  --glass-tint-foreground-rgb: 24, 24, 27;
+  --glass-foreground: rgba(250, 250, 250, 1);
+  --glass-foreground-rgb: 250, 250, 250;
+  --glass-muted-foreground: rgba(212, 212, 216, 1);
+  --glass-muted-foreground-rgb: 212, 212, 216;
+  --glass-clear-foreground: rgba(255, 255, 255, 1);
+  --glass-clear-foreground-rgb: 255, 255, 255;
+  --glass-dim: rgba(0, 0, 0, 0.35);
+
   --radius: 8px;
 }

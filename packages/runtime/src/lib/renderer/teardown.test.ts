@@ -80,6 +80,9 @@ type FakeEl = {
   attrs: Map<string, unknown>;
   classes: Set<string>;
   styles: Map<string, unknown>;
+  // The handler the element holds for each event, as Lynx 4.1's
+  // AttributeHolder keeps them (see __AddEvent below).
+  events: Map<string, unknown>;
   // Whether this node still has a live native painting node (a rendered UI
   // view). Cleared by __FlushElementTree for a node removed and not reinserted
   // in the same flush — see the two-layer model below.
@@ -114,13 +117,11 @@ let pageRoot: FakeEl;
 // at flush time was not reinserted → its painting node dies (is_move=false).
 const pendingRemovedSinceFlush = new Set<FakeEl>();
 // Every __AddEvent call, so a test can prove a rebuilt element re-binds its
-// template handlers (native events don't survive a painting-node teardown),
-// and that a released element's handlers come off it (`removed`).
+// template handlers (native events don't survive a painting-node teardown).
 const addEventCalls: {
   id: number;
   type: string;
   name: string;
-  removed: boolean;
 }[] = [];
 // Every fake element made, in or out of the tree: a list keeps its items out
 // of the native tree until the list asks for them, and a released subtree is
@@ -137,6 +138,7 @@ const makeEl = (tag: string, text?: string): FakeEl => {
     attrs: new Map(),
     classes: new Set(),
     styles: new Map(),
+    events: new Map(),
     hasPaintingNode: true,
   };
   created.push(el);
@@ -236,7 +238,13 @@ const installNativeFakes = (): void => {
     name: string,
     handler?: unknown,
   ) => {
-    addEventCalls.push({ id: el.id, type, name, removed: handler == null });
+    addEventCalls.push({ id: el.id, type, name });
+    // One handler per name, a global-bind one apart. `undefined` erases only
+    // a global-bind one: a worklet stays in `lepus_events_` until another
+    // replaces it (AttributeHolder::RemoveEvent in attribute_holder.cc).
+    const key = type === 'global-bindEvent' ? `global:${name}` : name;
+    if (handler != null) el.events.set(key, handler);
+    else if (type === 'global-bindEvent') el.events.delete(key);
   };
   // <list>: the list itself, and the callbacks it registers on each update.
   const lists = globalThis as unknown as Record<string, unknown>;
@@ -786,7 +794,8 @@ class LibraryListener {
 /**
  * Views nested in the destroyed one: a child component's view, an @if and
  * an @for, all cleaned up by Angular's destroyViewTree without the renderer,
- * and an element with a listener, whose native handler must come off it.
+ * and elements with listeners, whose native handlers must come off them: one
+ * Angular removes, and one it doesn't know of.
  */
 @Component({
   selector: 'nested-views-host',
@@ -804,12 +813,14 @@ class LibraryListener {
         <text class="nested-row">{{ n }}</text>
       }
       <view class="listened" libraryListener></view>
+      <view class="tapped" (bindtap)="taps = taps + 1"></view>
     </view>
   }`,
 })
 class NestedViewsHost {
   readonly show = signal(true);
   readonly rows = [1, 2];
+  taps = 0;
 }
 
 /**
@@ -1398,21 +1409,24 @@ describe('renderer teardown', () => {
       const fixture = TestBed.createComponent(NestedViewsHost);
       fixture.detectChanges();
       const [listened] = findByClass('listened');
-      const calls = (): { removed: boolean }[] =>
-        addEventCalls.filter(
-          (c) => c.id === listened.id && c.name === 'layoutchange',
-        );
-      expect(calls()).toEqual([expect.objectContaining({ removed: false })]);
+      const [tapped] = findByClass('tapped');
+      /**
+       * Whether the element still holds a function for the event.
+       */
+      const holdsFunction = (el: FakeEl, name: string): boolean =>
+        typeof (el.events.get(name) as { value?: unknown })?.value ===
+        'function';
+      expect(holdsFunction(listened, 'layoutchange')).toBe(true);
+      expect(holdsFunction(tapped, 'tap')).toBe(true);
 
       fixture.componentInstance.show.set(false);
       fixture.detectChanges();
       await flush();
 
-      // The native element held the handler, and the handler held the wrapper.
-      expect(calls()).toEqual([
-        expect.objectContaining({ removed: false }),
-        expect.objectContaining({ removed: true }),
-      ]);
+      // The native element held the handler, and the handler held the
+      // wrapper, and with a template listener, the view's LView (#261).
+      expect(holdsFunction(listened, 'layoutchange')).toBe(false);
+      expect(holdsFunction(tapped, 'tap')).toBe(false);
     });
 
     it("releases a <list>'s items, which aren't in the element's children", async () => {

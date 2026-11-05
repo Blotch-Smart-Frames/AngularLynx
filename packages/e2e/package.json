@@ -25,7 +25,7 @@
     "@blotch/rsbuild-plugin-angular-lynx": "*",
     "@lynx-js/web-core": "0.26.6",
     "@playwright/test": "^1.64.1",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.6",
     "create-angular-lynx": "*",
     "publint": "^0.3.25",
     "typescript": "~6.0.0",

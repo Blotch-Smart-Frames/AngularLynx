@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@bacons/xcode": "1.0.0-alpha.33",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.6.6",
     "typescript": "~6.0.0"
   },
   "engines": {

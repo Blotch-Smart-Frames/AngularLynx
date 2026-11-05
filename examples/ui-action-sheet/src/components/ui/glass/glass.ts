@@ -303,7 +303,7 @@ export class UiGlass {
       // own glass one.
       increaseContrast &&
         !this.#systemDrawsGlass &&
-        'border-glass-foreground border',
+        'border border-glass-foreground',
       // The glass points the foreground tokens its content reads at the
       // right color (a variable redefined here reaches the projected text,
       // since variables inherit and `color` doesn't): white on see-through

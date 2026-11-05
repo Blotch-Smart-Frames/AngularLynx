@@ -26,7 +26,7 @@
     "@blotch/angular-lynx-build": "*",
     "@lynx-js/tailwind-preset": "^0.6.0",
     "@lynx-js/types": "^4.4.2",
-    "tailwindcss": "^3.4.19",
+    "tailwindcss": "^4.3.3",
     "typescript": "~6.0.0"
   }
 }

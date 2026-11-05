@@ -12,11 +12,7 @@
   "bracketSameLine": false,
   "bracketSpacing": true,
   "sortTailwindcss": {
-    "functions": [
-      "cn",
-      "cva",
-      "clsx"
-    ],
+    "functions": ["cn", "cva", "clsx"],
     "stylesheet": "./src/styles.css"
   },
   "ignorePatterns": [

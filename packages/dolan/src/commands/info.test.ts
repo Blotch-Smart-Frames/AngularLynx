@@ -168,8 +168,8 @@ describe('infoCommand', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
 
     const { infoCommand } = await import('./info');
-    // spinner is depended on by button, and has no dependencies of its own —
-    // exercises the "Used by" plain-name branch with no config.
+    // spinner is depended on by button — exercises the "Used by" plain-name
+    // branch with no config.
     await infoCommand('spinner');
 
     const p = await import('@clack/prompts');
@@ -177,7 +177,9 @@ describe('infoCommand', () => {
       .map((c) => c[0])
       .join('\n');
 
-    expect(messages).toContain('button');
-    expect(messages).toContain('none');
+    // Match the whole "Used by" line: spinner depends on icon, so a bare
+    // 'none' was never in this output. Vitest 4 left the previous test's
+    // calls in the mock, and its "Used by: none" made that assertion pass.
+    expect(messages).toMatch(/Used by:\s+button$/m);
   });
 });

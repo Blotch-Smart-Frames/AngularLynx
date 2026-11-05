@@ -2,6 +2,7 @@
   "import": ["../../cspell.json"],
   "words": [
     "cqmin",
+    "dagre",
     "globaldata",
     "initdata",
     "lynxsdk",

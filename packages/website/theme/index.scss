@@ -428,3 +428,12 @@ $angular-light-blue: #42a5f5;
     }
   }
 }
+
+// ======== Mermaid diagrams =========
+// Mermaid 12 puts each label's text in a <p>, and Rspress gives a doc's <p> a
+// 1.75rem line height. Mermaid sized the label's box at its own 1.5, before
+// the diagram was in the doc, so a two-line label lost the bottom of its last
+// line. Mermaid's own rule already takes the <p>'s margin off.
+.rp-doc foreignObject p {
+  line-height: inherit;
+}

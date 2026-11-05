@@ -234,6 +234,10 @@ A glass `<blur-view>` with per-corner radii (`rounded-t-3xl rounded-b-[54px]`) d
 
 A gradient `mask-image` works on a `<view>` everywhere, but on a `<scroll-view>` only on iOS and the web: Android draws the scroll view unmasked. Put the mask on a view around the scroll view. On iOS and Android, gradient stops must be percentages, so a stop a fixed distance from an edge has to come from the element's measured height.
 
+### `var()` inside `calc()` doesn't work in an inline style
+
+`style="height: calc(10px + var(--h))"`, or the same value in a `[style.height]` binding, gives the element no height: Lynx takes any inline `calc()` as a length without substituting the `var()` in it. The same declaration works in a stylesheet, and so does a bare `var()` inline. Compute the value in TypeScript, or move the `calc()` to a class. `env(safe-area-inset-*)` inside an inline `calc()` is fine: the runtime fills in the inset itself.
+
 ### `box-shadow: inset` not supported
 
 Only outer shadows.

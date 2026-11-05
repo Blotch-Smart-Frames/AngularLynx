@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createFixture, DEFAULT_CONFIG, type Fixture } from '../test-utils';
 
@@ -180,6 +181,8 @@ describe('infoCommand', () => {
     // Match the whole "Used by" line: spinner depends on icon, so a bare
     // 'none' was never in this output. Vitest 4 left the previous test's
     // calls in the mock, and its "Used by: none" made that assertion pass.
-    expect(messages).toMatch(/Used by:\s+button$/m);
+    // The label is bold where the terminal has color (as on CI), so strip
+    // the escape codes before matching across it.
+    expect(stripVTControlCharacters(messages)).toMatch(/Used by:\s+button$/m);
   });
 });

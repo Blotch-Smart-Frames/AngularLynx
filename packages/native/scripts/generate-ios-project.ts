@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 
 import type { Plugin } from 'vitest/config';
 
-import { LYNX_IOS_FRAMEWORKS } from '../src/ios/frameworks.ts';
+import { ANGLE_IOS_HEADERS, IOS_FRAMEWORKS } from '../src/ios/frameworks.ts';
 import {
   type IosProjectFiles,
   type IosProjectSpec,
@@ -34,7 +34,7 @@ export const APP_PROJECT: IosProjectSpec = {
   folderResources: ['LynxBundle'],
   // Prebuilt by scripts/build-lynx-ios-frameworks.sh. `Frameworks` is a
   // symlink to the download cache that the builder makes before each build.
-  frameworks: [...LYNX_IOS_FRAMEWORKS],
+  frameworks: [...IOS_FRAMEWORKS],
   // Identity (bundle ID, version, team) comes from here, which the generator
   // rewrites from angular.json on every build.
   xcconfig: 'Config/App.xcconfig',
@@ -50,6 +50,12 @@ export const APP_PROJECT: IosProjectSpec = {
     // validation for.
     TARGETED_DEVICE_FAMILY: '1',
     LD_RUNPATH_SEARCH_PATHS: ['$(inherited)', '@executable_path/Frameworks'],
+    // ANGLE's EGL and OpenGL ES headers, for the WebGL context: its
+    // frameworks don't have them.
+    HEADER_SEARCH_PATHS: [
+      '$(inherited)',
+      `$(PROJECT_DIR)/Frameworks/${ANGLE_IOS_HEADERS}`,
+    ],
   },
 };
 

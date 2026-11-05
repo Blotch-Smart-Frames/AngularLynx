@@ -4,22 +4,26 @@
 #
 # Lynx only publishes iOS source pods (the zips on its GitHub releases), so we
 # compile them once here, with CocoaPods, for device and simulator, then wrap
-# each pod's dynamic framework in an XCFramework. CI runs this per Lynx version
-# and uploads the zip it prints to a GitHub release; LYNX_IOS in
-# src/ios/frameworks.ts pins that zip's URL and SHA-256.
+# each pod's dynamic framework in an XCFramework. The zip also holds ANGLE's
+# frameworks and headers, which build-angle-ios-frameworks.sh builds, for the
+# shell's <canvas>. CI runs this per Lynx version and uploads the zip it
+# prints to a GitHub release; LYNX_IOS in src/ios/frameworks.ts pins that
+# zip's URL and SHA-256.
 #
 #   scripts/build-lynx-ios-frameworks.sh [work-dir]
 #
 # Needs Xcode, Node 22.18+ with the repository's dependencies installed
-# (`npm ci`), and Ruby >= 2.7 with Bundler (macOS's own Ruby 2.6 is too old).
+# (`npm ci`), Ruby >= 2.7 with Bundler (macOS's own Ruby 2.6 is too old), and
+# Python 3, Xcode's Metal toolchain and about 5 GB for ANGLE
+# (build-angle-ios-frameworks.sh).
 set -euo pipefail
 
 LYNX_VERSION=4.1.0
 # Counts rebuilds of one Lynx version whose frameworks changed (2 added
-# XElement). It goes into the zip's name, and so into the release tag and
-# the builder's cache folder; bump it with LYNX_IOS.build in
+# XElement, 3 ANGLE). It goes into the zip's name, and so into the release
+# tag and the builder's cache folder; bump it with LYNX_IOS.build in
 # src/ios/frameworks.ts, and reset it to 1 for a new Lynx version.
-BUILD=2
+BUILD=3
 PRIMJS_VERSION=4.1.1
 SDWEBIMAGE_VERSION=5.15.5
 SDWEBIMAGE_WEBP_VERSION=0.11.0
@@ -126,6 +130,14 @@ for name in "${FRAMEWORKS[@]}"; do
   xcodebuild -create-xcframework "${args[@]}" -output "$out/$name.xcframework" > /dev/null
 done
 
+# ANGLE, built in a folder of its own: its checkout is most of the 5 GB.
+"$here/build-angle-ios-frameworks.sh" "$work/angle"
+angle_out="$work/angle/out"
+cp -R "$angle_out"/*.xcframework "$angle_out/ANGLE" "$out/"
+for sdk_dir in "$angle_out"/dSYMs/*; do
+  cp -R "$sdk_dir" "$symbols/angle-$(basename "$sdk_dir")"
+done
+
 cat > "$out/VERSIONS" <<EOF
 lynx=$LYNX_VERSION
 build=$BUILD
@@ -134,6 +146,7 @@ sdwebimage=$SDWEBIMAGE_VERSION
 sdwebimage-webp=$SDWEBIMAGE_WEBP_VERSION
 serval-svg=$SERVAL_SVG_VERSION
 mj-refresh=$MJ_REFRESH_VERSION
+angle=$(cat "$angle_out/ANGLE/REVISION")
 xcode=$(xcodebuild -version | head -1 | cut -d' ' -f2)
 EOF
 

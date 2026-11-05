@@ -13,9 +13,10 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ANGLE_IOS_HEADERS,
   FRAMEWORKS_ENV,
+  IOS_FRAMEWORKS,
   LYNX_IOS,
-  LYNX_IOS_FRAMEWORKS,
   readFrameworksVersion,
   resolveLynxFrameworks,
 } from './frameworks.ts';
@@ -40,10 +41,12 @@ afterEach(() => {
  * A folder of empty-but-valid-looking XCFrameworks.
  */
 const fakeFrameworks = (folder: string) => {
-  for (const name of LYNX_IOS_FRAMEWORKS) {
+  for (const name of IOS_FRAMEWORKS) {
     mkdirSync(path.join(folder, `${name}.xcframework`), { recursive: true });
     writeFileSync(path.join(folder, `${name}.xcframework/Info.plist`), '');
   }
+  mkdirSync(path.join(folder, ANGLE_IOS_HEADERS, 'EGL'), { recursive: true });
+  writeFileSync(path.join(folder, ANGLE_IOS_HEADERS, 'EGL/egl.h'), '');
   writeFileSync(path.join(folder, 'VERSIONS'), 'lynx=4.1.0\nprimjs=4.1.1\n');
   return folder;
 };
@@ -64,6 +67,16 @@ describe('resolveLynxFrameworks', () => {
     process.env[FRAMEWORKS_ENV] = folder;
     await expect(resolveLynxFrameworks(log, () => {})).rejects.toThrow(
       /is missing PrimJS\.xcframework/,
+    );
+  });
+
+  it('says when a folder is from before ANGLE, whose headers it lacks', async () => {
+    const folder = fakeFrameworks(path.join(dir, 'local'));
+    rmSync(path.join(folder, 'libGLESv2.xcframework'), { recursive: true });
+    rmSync(path.join(folder, 'ANGLE'), { recursive: true });
+    process.env[FRAMEWORKS_ENV] = folder;
+    await expect(resolveLynxFrameworks(log, () => {})).rejects.toThrow(
+      /is missing libGLESv2\.xcframework, ANGLE\/include\./,
     );
   });
 

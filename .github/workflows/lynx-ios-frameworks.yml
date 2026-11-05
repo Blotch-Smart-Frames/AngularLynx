@@ -1,7 +1,8 @@
 # Builds Lynx for iOS as the prebuilt XCFrameworks that `ng build --platform
 # ios` links (see packages/native/README.md). Lynx only publishes iOS source
 # pods, so this compiles them once per Lynx version instead of on every
-# user's machine.
+# user's machine. The zip also holds ANGLE, which the shell's <canvas> draws
+# with and which only builds with Chromium's tooling.
 #
 # Run it by hand after bumping the versions (or BUILD) in
 # packages/native/scripts/build-lynx-ios-frameworks.sh. With `publish`, it
@@ -23,7 +24,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    # Xcode 27, the shell's toolchain (packages/native/README.md), as on the
+    # E2E jobs that link the zip. macos-15 defaults to Xcode 16.4.
+    runs-on: xcode-27
+    # About 15 minutes for Lynx's pods and as many for ANGLE's checkout and
+    # three builds.
+    timeout-minutes: 90
     permissions:
       contents: write
     steps:

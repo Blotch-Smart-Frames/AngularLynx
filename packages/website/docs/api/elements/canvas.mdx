@@ -6,11 +6,12 @@ A drawing surface with a WebGL2 context, for 3D scenes with three.js, angular-th
 
 ## Where it works
 
-| Where                                                                                                | `getContext('webgl2')`                                                        |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| iOS and Android apps built with [`ng build --platform ios\|android`](/guide/building-for-production) | Draws with the phone's OpenGL ES 3.0                                          |
-| The web preview                                                                                      | The browser's WebGL2: the element is an HTML `<canvas>`                       |
-| Lynx Explorer, and native apps that embed Lynx themselves                                            | `null`: the canvas is an empty view. Their apps don't have the canvas element |
+| Where                                                                                   | `getContext('webgl2')`                                                                                                    |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| iOS apps built with [`ng build --platform ios`](/guide/building-for-production)         | Draws with OpenGL ES 3.0 on Metal, through [ANGLE](https://chromium.googlesource.com/angle/angle), as Safari's WebGL does |
+| Android apps built with [`ng build --platform android`](/guide/building-for-production) | Draws with the phone's OpenGL ES 3.0                                                                                      |
+| The web preview                                                                         | The browser's WebGL2: the element is an HTML `<canvas>`                                                                   |
+| Lynx Explorer, and native apps that embed Lynx themselves                               | `null`: the canvas is an empty view. Their apps don't have the canvas element                                             |
 
 ## Usage
 
@@ -126,10 +127,10 @@ Plus pointer events and the [common events](/api/elements/view#events), such as 
 
 ## Performance
 
-Your scene's JavaScript runs on the thread Lynx lays the page out on, and each frame's WebGL calls go to the phone's GPU together, once a frame. A scene of a few meshes, lit and shadowed, draws at 60 frames a second on the Android emulator. Keep the drawing buffer to the screen's pixel ratio, at most 2, and stop the loop (`setAnimationLoop(null)`) when the scene is off screen.
+Your scene's JavaScript runs on the thread Lynx lays the page out on, and each frame's WebGL calls go to the phone's GPU together, once a frame. A scene of a few meshes, lit and shadowed, draws at 60 frames a second in the iOS Simulator and on the Android emulator. Keep the drawing buffer to the screen's pixel ratio, at most 2, and stop the loop (`setAnimationLoop(null)`) when the scene is off screen. The first time an app runs after it's installed, each material's shaders compile when it's first drawn (up to 2 seconds for the first one in the iOS Simulator); later launches reuse them.
 
 :::tip
-The iOS Simulator draws OpenGL ES on the Mac's CPU, so a lit scene runs at a few frames a second there, and very large triangles can lose a corner. Check frame rates on a phone.
+The iOS Simulator and the Android emulator both draw on the Mac's GPU, so a scene that's smooth there is a fair guide, but check frame rates on a phone before you ship: a phone's GPU is slower than a Mac's.
 :::
 
 ## What's different from the web

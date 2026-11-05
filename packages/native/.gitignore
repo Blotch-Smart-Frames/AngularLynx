@@ -1,6 +1,7 @@
 dist
 coverage
 .lynx-ios-build
+.angle-ios-build
 # Rendered on every build and test run by the iosTemplateProject Vite plugin
 # and shipped in the npm package; APP_PROJECT in
 # scripts/generate-ios-project.ts is the source.

@@ -13,33 +13,33 @@ import path from 'node:path';
 import { run } from '../process.ts';
 
 /**
- * The prebuilt Lynx XCFrameworks the iOS shell links.
+ * The prebuilt Lynx XCFrameworks the iOS shell links, with ANGLE's.
  *
  * Lynx publishes iOS only as source pods, and compiling them takes minutes and
  * needs CocoaPods (and so Ruby). scripts/build-lynx-ios-frameworks.sh compiles
- * them once per Lynx version in CI; the zip it produces is attached to a
- * GitHub release and pinned here by SHA-256, so every user links the same
- * binaries we tested.
+ * them once per Lynx version in CI, along with ANGLE (which needs Chromium's
+ * tooling, so is no easier to build on a user's Mac); the zip it produces is
+ * attached to a GitHub release and pinned here by SHA-256, so every user
+ * links the same binaries we tested.
  */
 export const LYNX_IOS = {
   version: '4.1.0',
   /**
    * Counts rebuilds of one Lynx version whose frameworks changed (2 added
-   * XElement); BUILD in the script. It's part of the cache folder, so a
-   * machine that cached an older zip downloads the new one instead of
+   * XElement, 3 ANGLE); BUILD in the script. It's part of the cache folder,
+   * so a machine that cached an older zip downloads the new one instead of
    * linking frameworks the shell no longer matches.
    */
-  build: 2,
-  url: 'https://github.com/Blotch-Smart-Frames/AngularLynx/releases/download/lynx-ios-4.1.0-2/lynx-ios-4.1.0-2.zip',
-  sha256: '88d0bbea842da734c3513df2a14e641d85cac645d3f432781af0da7c035e4646' as
+  build: 3,
+  url: 'https://github.com/Blotch-Smart-Frames/AngularLynx/releases/download/lynx-ios-4.1.0-3/lynx-ios-4.1.0-3.zip',
+  sha256: 'bc47a48227c9eebb1606ae17d23c0ff4ccc483e667a4e89b47dcb0590fdf0be1' as
     | string
     | undefined,
 } as const;
 
 /**
- * The frameworks in the zip. The template project (APP_PROJECT in
- * scripts/generate-ios-project.ts) and the frameworks build both read this
- * list, so it is the only place to change it.
+ * The frameworks the zip has from Lynx's pods. The frameworks build reads
+ * this list, so it is the only place to change it.
  */
 export const LYNX_IOS_FRAMEWORKS = [
   'Lynx',
@@ -54,6 +54,28 @@ export const LYNX_IOS_FRAMEWORKS = [
   'ServalSVG',
   'MJRefresh',
 ] as const;
+
+/**
+ * ANGLE's frameworks, which the shell's `<canvas>` draws WebGL with: OpenGL
+ * ES 3.0 on Metal (scripts/build-angle-ios-frameworks.sh). libEGL loads
+ * libGLESv2 from the app's Frameworks folder.
+ */
+export const ANGLE_IOS_FRAMEWORKS = ['libEGL', 'libGLESv2'] as const;
+
+/**
+ * Every framework in the zip, which the template project (APP_PROJECT in
+ * scripts/generate-ios-project.ts) links and embeds.
+ */
+export const IOS_FRAMEWORKS = [
+  ...LYNX_IOS_FRAMEWORKS,
+  ...ANGLE_IOS_FRAMEWORKS,
+] as const;
+
+/**
+ * ANGLE's EGL and OpenGL ES headers, in the zip next to the frameworks: its
+ * frameworks have none, and the shell's WebGL context compiles against them.
+ */
+export const ANGLE_IOS_HEADERS = 'ANGLE/include';
 
 /**
  * Overrides the download with a local folder of XCFrameworks, e.g. the
@@ -127,13 +149,19 @@ export const resolveLynxFrameworks = async (
 };
 
 const assertComplete = (dir: string, source: string) => {
-  const missing = LYNX_IOS_FRAMEWORKS.filter(
-    (name) => !existsSync(path.join(dir, `${name}.xcframework`, 'Info.plist')),
-  );
+  const missing = [
+    ...IOS_FRAMEWORKS.filter(
+      (name) =>
+        !existsSync(path.join(dir, `${name}.xcframework`, 'Info.plist')),
+    ).map((name) => `${name}.xcframework`),
+    // A folder from before ANGLE (build 2) has every Lynx framework but
+    // these, and the shell wouldn't compile against it.
+    ...(existsSync(path.join(dir, ANGLE_IOS_HEADERS, 'EGL/egl.h'))
+      ? []
+      : [ANGLE_IOS_HEADERS]),
+  ];
   if (missing.length > 0) {
-    throw new Error(
-      `${source} is missing ${missing.map((name) => `${name}.xcframework`).join(', ')}.`,
-    );
+    throw new Error(`${source} is missing ${missing.join(', ')}.`);
   }
 };
 

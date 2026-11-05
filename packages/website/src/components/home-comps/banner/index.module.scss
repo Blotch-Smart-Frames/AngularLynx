@@ -71,6 +71,22 @@
       background: #c3002f;
     }
   }
+
+  // The pixel backdrop: over the page and under the copy, drawn a pixel per
+  // square and scaled up crisp.
+  .banner-pixels {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .banner-pixels-canvas {
+    display: block;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+  }
 }
 
 @media (max-width: 1015px) {

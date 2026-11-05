@@ -52,6 +52,8 @@ $angular-light-blue: #42a5f5;
 
   // Banner
   --home-banner-title-color: #060606;
+  --home-banner-pixel-color: #{$angular-red};
+  --home-banner-pixel-opacity: 0.3;
 }
 
 :root.dark {
@@ -71,6 +73,8 @@ $angular-light-blue: #42a5f5;
   --home-blog-btn-color: rgba(255, 255, 255, 0.85);
 
   --home-banner-title-color: #fff;
+  --home-banner-pixel-color: #{color.adjust($angular-red, $lightness: 15%)};
+  --home-banner-pixel-opacity: 0.4;
 }
 
 // ======== Hero text styling =========

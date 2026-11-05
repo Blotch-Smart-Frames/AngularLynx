@@ -3,6 +3,7 @@
   "words": [
     "bootstatus",
     "devicetypes",
+    "htpasswd",
     "logcat",
     "noasan",
     "screencap",

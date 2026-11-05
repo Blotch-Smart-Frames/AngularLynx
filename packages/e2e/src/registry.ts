@@ -1,4 +1,10 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
@@ -45,6 +51,62 @@ const baseEnv = (context: RunContext): NodeJS.ProcessEnv => ({
   NPM_CONFIG_FUND: 'false',
   NPM_CONFIG_AUDIT: 'false',
 });
+
+/**
+ * The path of Verdaccio's command-line script, as its package.json's `bin`
+ * names it. Its entry point moved between majors (`build/index.js` in 6,
+ * `build/cjs/index.cjs` in 7), so a path relative to that broke. The
+ * package.json can't be resolved directly either, since 7's `exports` leaves
+ * it out, so it's found by walking up from the entry point.
+ */
+const verdaccioBin = (): string => {
+  let dir = path.dirname(createRequire(import.meta.url).resolve('verdaccio'));
+  for (;;) {
+    const packageJson = path.join(dir, 'package.json');
+    if (existsSync(packageJson)) {
+      const { name, bin } = JSON.parse(readFileSync(packageJson, 'utf8')) as {
+        name?: string;
+        bin?: string | Record<string, string>;
+      };
+      if (name === 'verdaccio' && bin) {
+        return path.join(dir, typeof bin === 'string' ? bin : bin['verdaccio']);
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error("Couldn't find Verdaccio's package.json.");
+    }
+    dir = parent;
+  }
+};
+
+/**
+ * Signs a user up with Verdaccio, through the endpoint npm signs users up
+ * with, and returns the user's token. npm sends no publish request without a
+ * token, and Verdaccio 7 turns away any token it didn't issue (6 took it as
+ * an anonymous user, so a made-up one used to do).
+ */
+const signUp = async (url: string): Promise<string> => {
+  const name = 'e2e';
+  const response = await fetch(`${url}-/user/org.couchdb.user:${name}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, password: 'e2e-local-registry' }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await response.text();
+  let token: unknown;
+  try {
+    ({ token } = JSON.parse(text) as { token?: unknown });
+  } catch {
+    // Not JSON; reported below.
+  }
+  check(
+    response.ok && typeof token === 'string',
+    `Verdaccio didn't sign the E2E user up: HTTP ${response.status} ${text}`,
+  );
+  return token;
+};
 
 /** Uses the public npm registry, for checking what is published right now. */
 export const usePublicRegistry = (context: RunContext): Registry => {
@@ -107,14 +169,11 @@ export const startLocalRegistry = async (
   // 127.0.0.1 rather than localhost: Node may resolve localhost to ::1, which
   // Verdaccio doesn't listen on.
   const url = `http://127.0.0.1:${port}/`;
-  const verdaccioMain = createRequire(import.meta.url).resolve('verdaccio');
-  const verdaccioBin = path.join(
-    path.dirname(verdaccioMain),
-    '../bin/verdaccio',
-  );
   const { child, output } = start(
-    process.execPath,
-    [verdaccioBin, '--config', config, '--listen', `127.0.0.1:${port}`],
+    // Verdaccio 7 refuses to start on Node 22, which CI's Node 22 job runs
+    // the harness on, so that job names a Node 24 for it (see e2e.yml).
+    process.env['E2E_VERDACCIO_NODE'] || process.execPath,
+    [verdaccioBin(), '--config', config, '--listen', `127.0.0.1:${port}`],
     {
       cwd: context.workDir,
       logFile: path.join(context.artifactsDir, 'verdaccio.log'),
@@ -159,12 +218,17 @@ export const startLocalRegistry = async (
     throw error;
   }
 
-  // Any token works: Verdaccio lets anyone publish, but npm refuses to send a
-  // publish request without credentials configured.
+  let token: string;
+  try {
+    token = await signUp(url);
+  } catch (error) {
+    stop(child);
+    throw error;
+  }
   const npmrc = path.join(context.workDir, '.npmrc');
   writeFileSync(
     npmrc,
-    `registry=${url}\n//127.0.0.1:${port}/:_authToken=e2e-local-registry\n`,
+    `registry=${url}\n//127.0.0.1:${port}/:_authToken=${token}\n`,
   );
   console.log(`Verdaccio is running on ${url} (storage: ${storage})`);
 

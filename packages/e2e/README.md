@@ -65,6 +65,7 @@ Layers 4 (the OS, package manager and version matrix) and 5 (release gates) are 
 - **The generated app lives in a temporary folder, never in the repo.** Inside the monorepo, Node would resolve missing dependencies from its `node_modules` and hide them.
 - **`@blotch/*` and `create-angular-lynx` never come from the public registry** in a local run. Verdaccio doesn't proxy them, so a broken local package can't be swapped for a published one.
 - **Verdaccio's storage is cached** in `node_modules/.cache/angular-lynx-e2e/verdaccio` (or `--storage <dir>`), so third-party packages only download once.
+- **Verdaccio needs Node 24 or later.** To test an app on an older Node, run the harness on that Node and set `E2E_VERDACCIO_NODE` to a Node 24 binary for Verdaccio, as CI's Node 22 job does.
 - **The packages under test come from [`packages/release`](../release/README.md)'s publish list.** A new public package must be added there or marked `"private": true`, or Layer 1 fails.
 - **Lynx Explorer is pinned** in `src/native/explorer.ts` with its SHA-256. Bump it together with the Lynx toolchain.
 - **Each host's flows run in one Maestro session**, so Maestro starts its driver once per host rather than once per flow. Every flow still opens the app with `native/open-app.yaml`, whose `launchApp` stops it first. A session that finishes no flow for 7 minutes (the driver's 3 to start, and 4 for a flow) is stopped, with a screenshot and the end of Maestro's log saved, and the flows it didn't finish run once more in a new session.

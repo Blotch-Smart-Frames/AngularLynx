@@ -2504,16 +2504,39 @@ These global keywords are **not supported** in Lynx. Many individual property do
 
 ### What Lynx does
 
-- **`calc()`** — supported with basic arithmetic (`+`, `-`, `*`, `/`, parentheses). Works with CSS variables via `var()`.
+- **`calc()`** — supported with basic arithmetic (`+`, `-`, `*`, `/`, parentheses). Works with CSS variables via `var()` in a stylesheet, but not in an inline style (see "`var()` inside `calc()` in an inline style is never substituted" below).
 - **`min()`, `max()`, `clamp()`** — not supported. Calculate responsive bounds in JavaScript and set them via signals or inline styles.
 - **`env()`** — **supported** for safe area insets: `env(safe-area-inset-top|right|bottom|left)` parses as a length, and it also works **inside `calc()`** (e.g. `padding-bottom: calc(1rem + env(safe-area-inset-bottom))`). Verified in the Lynx core CSS engine ([`lynx/core/renderer/css/css_style_utils.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/css/css_style_utils.cc) — `GetEnvValue`, and the `calc` parser accepts `env()` tokens).
+  - **A fallback isn't read:** `GetEnvValue` looks the whole text between the parentheses up as the name, so `env(safe-area-inset-bottom, 0px)` isn't a length at all and the declaration is dropped. The build and runtime rewrite below drop the fallback, so it works in an app.
   - **Caveat:** the four values are process-wide statics in Lynx's C++ core (`ComputedCSSStyle::SAFE_AREA_INSET_*`), not per view, and they're `0` until something sets them. Styles that depend on them then degrade to plain padding rather than erroring.
-    - On iOS, `LynxEnv`'s `setKeyWindowAndStatusBar` copies the key window's `safeAreaInsets` into them each time a LynxView is created (`initLayoutConfig`, called from `LynxTemplateRender`). Nothing updates them on rotation, and a LynxView created before its window is key reads 0.
-    - On Android nothing sets them, so `env()` is always 0.
-    - The generated iOS app creates its LynxView in `viewDidLoad`, which runs before `SceneDelegate` calls `makeKeyAndVisible`, so `env()` is 0 there too. That suits both generated apps, which inset the LynxView to the safe area themselves. Lynx Explorer creates its views later and gets the real insets (top 62, bottom 34 on the iPhone 18 Pro simulator), though its page already sits below the status bar.
+    - On iOS, `LynxEnv`'s `setKeyWindowAndStatusBar` copies the key window's `safeAreaInsets` into them each time a LynxView is created (`initLayoutConfig`, called from `LynxTemplateRender`; it's public, but reads only a scene that's already foreground-active, `LynxUIKitAPIAdapter.getKeyWindow`). A LynxView created before its window is key reads 0.
+    - On Android nothing sets them, so `env()` is always 0. `liblynx.so` doesn't export them either, so a host can't set them through JNI.
+    - **Nothing on screen follows a change.** An element resolves `env()` when its style is set; `DynamicCSSStylesManager::GetValueFlags` gives the `ENV` pattern no update flag (`// TODO:`), so a rotation, or setting the statics again, leaves every element with the value it read.
+    - **The generated apps (issue #281) don't use Lynx's `env()`.** They draw the page edge to edge and send `edgeToEdge` with the insets as global props. The build plugin (`safe-area.ts`) writes each `env(safe-area-inset-*)` in a stylesheet as `var(--angular-lynx-safe-area-inset-*, env(safe-area-inset-*))`, and the page sets the variables, which restyle every element that reads them when they change. Inline styles can't use a variable inside `calc()` (below), so the runtime writes the inset into them in px and writes them again when it changes (`lynx-element/safe-area-insets.ts`). Elsewhere, as in Lynx Explorer, nothing sets the variables and the `var()` falls back to Lynx's `env()`. A custom property defined in a stylesheet keeps Lynx's `env()`, as a `var()` inside a function in one never resolves.
+    - Measured on the iOS 27 simulator (iPhone 18 Pro, 62/34pt) and the Android emulator (Pixel 6 API 34, 48.76/24dp), November 2026: stylesheet `env()` and `calc(10px + env())`, Tailwind 4's `calc(calc(var(--spacing) * 2) + env())`, inline strings and `[style.height]` bindings all gave the insets, followed rotation, and on Android dropped the bottom inset to 0 while the keyboard was open. In Lynx Explorer the same bundle gave Explorer's own insets through the fallback; the web preview gave 0.
+    - Lynx Explorer creates its views later and gets the real insets (top 62, bottom 34 on the iPhone 18 Pro simulator), though its page already sits below the status bar.
     - Except when a `lynx://open` link starts Explorer: a bundle opened while Explorer isn't running yet reads 0 for every inset, even with `?fullscreen=true` (seen on the iOS 27 simulator, October 2026). To check a layout that pads for the insets, such as a tab bar above the home indicator, launch Explorer first, then open the link.
     - For JavaScript, the generated apps and Lynx Explorer send the insets (`safeAreaTop` and so on) and `isNotchScreen` as global props (issue #58). Inject `LynxSafeArea` for `isNotchScreen()`.
   - The `@blotch/ui` Tailwind plugin ships `*-safe` / `*-safe-<n>` padding utilities built on this (see `packages/ui/src/lib/theme/tailwind-plugin.ts`).
+
+---
+
+## `var()` inside `calc()` in an inline style is never substituted
+
+### What you'd expect (web)
+
+`style="height: calc(10px + var(--h))"` substitutes the variable, then computes the length, as the same declaration in a stylesheet does.
+
+### What Lynx does
+
+The declaration is dropped: the element gets no height. Only a stylesheet gets it right.
+
+- A bare `var()` inline works (`style="height: var(--h)"`, or `[style.height]="'var(--h, 34px)'"`), and so does `var()` inside `rgba()` (see "`var()` inside `rgba()` is substituted as text").
+- `calc()` with a `var()` fails both ways in, `style="..."` and a `[style.height]` binding, whichever side of the `+` the `var()` is on.
+- **Why:** `Element::MergeInlineStyles` (core/renderer/dom/fiber/fiber_element.cc) first hands each inline value to `UnitHandler::Process`, and looks for `var()` (`CSSStringParser::ParseVariable`) only if that fails. The length handler takes any `calc(...)` as a `CALC` value without reading inside it, so it succeeds, and the `var()` is never substituted; `calc()` can't evaluate it later. A stylesheet's declaration doesn't go that way: the CSS serializer marks any declaration holding a `var()` as a variable one at build time.
+- **Workaround:** compute the value in TypeScript, or put the `calc()` in a stylesheet. The runtime does the first for `env(safe-area-inset-*)` in inline styles (issue #281).
+
+Probe (2026-11-05): inline stripes on the iOS 27 simulator in a generated app, each meant to be 44pt.
 
 ---
 

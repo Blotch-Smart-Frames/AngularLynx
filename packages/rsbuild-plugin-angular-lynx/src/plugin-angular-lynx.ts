@@ -8,6 +8,7 @@ import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
 import { applyResolve } from './resolve.js';
+import { applySafeArea } from './safe-area.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
@@ -47,6 +48,9 @@ export const pluginAngularLynx = (
       // Tailwind writes them and before Tailwind 4's lowering at OnceExit,
       // wherever the plugin is in the list (see display.ts).
       applyDisplay(api);
+      // The same: each env(safe-area-inset-*) reads the inset a generated
+      // app's shell sends (see safe-area.ts).
+      applySafeArea(api);
       // The app's entry modules, which entry.ts finds and the Angular
       // transform makes take hot updates (see hot-updates.ts).
       const appEntries = new Set<string>();

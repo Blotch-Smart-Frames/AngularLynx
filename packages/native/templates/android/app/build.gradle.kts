@@ -53,6 +53,10 @@ android {
         // portrait, sensorLandscape or unspecified (follows the device).
         manifestPlaceholders["screenOrientation"] =
             appConfig.getProperty("screenOrientation") ?: "portrait"
+        // Whether MainActivity draws the page under the system bars (see
+        // its insets listener). A properties file written before the option
+        // existed has no line for it, and gets the default.
+        resValue("bool", "edge_to_edge", appConfig.getProperty("edgeToEdge") ?: "true")
     }
 
     signingConfigs {

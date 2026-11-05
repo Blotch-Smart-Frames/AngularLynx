@@ -38,8 +38,13 @@ import com.lynx.xelement.XElementBehaviors
 class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     private lateinit var lynxView: LynxView
 
-    // The system bar and cutout insets, and whether the screen has a cutout,
-    // as the window last reported them. Sent in the global props.
+    // Whether the page draws under the system bars and the cutout:
+    // angular.json's edgeToEdge, which app/build.gradle.kts writes as a
+    // resource.
+    private val edgeToEdge by lazy { resources.getBoolean(R.bool.edge_to_edge) }
+
+    // The safe-area insets, and whether the screen has a cutout, as the
+    // window last reported them. Sent in the global props.
     private var safeArea = Insets.NONE
     private var hasCutout = false
 
@@ -104,26 +109,39 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             }
         })
 
-        // Keep the app inside the safe area (status bar, navigation bar and
-        // camera cutout). Lynx has no way to give CSS env(safe-area-inset-*)
-        // values on Android, so they're 0, which is right for a page that's
-        // already inside the safe area. The iOS shell matches.
+        // Draw the page under the status bar, the navigation bar and the
+        // camera cutout, as Safari does for a page with viewport-fit=cover,
+        // and let it pad itself with CSS env(safe-area-inset-*). Lynx never
+        // sets env() on Android, so the runtime gives every
+        // env(safe-area-inset-*) the safeArea* global props instead, as CSS
+        // variables on the page. With "edgeToEdge": false in angular.json
+        // the page sits inside the safe area, and the runtime keeps env() at
+        // 0. The iOS shell matches.
         val container = FrameLayout(this)
         container.addView(lynxView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->
-            val safe = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or
-                    WindowInsetsCompat.Type.displayCutout() or
-                    WindowInsetsCompat.Type.ime(),
-            )
-            view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
-            // The keyboard isn't part of the safe area, as on iOS.
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
             )
+            val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val safe = if (edgeToEdge) {
+                // The keyboard still pushes the page up, so the input being
+                // typed into stays above it.
+                view.setPadding(0, 0, 0, keyboard.bottom)
+                // The part of the page the bars cover. While the keyboard is
+                // open the page ends at its top edge, above the navigation
+                // bar, so nothing covers the bottom.
+                Insets.of(bars.left, bars.top, bars.right, maxOf(0, bars.bottom - keyboard.bottom))
+            } else {
+                val padding = Insets.max(bars, keyboard)
+                view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
+                // The window's insets, as before the option existed. The
+                // keyboard isn't part of the safe area, as on iOS.
+                bars
+            }
             val cutout = insets.displayCutout != null
-            if (bars != safeArea || cutout != hasCutout) {
-                safeArea = bars
+            if (safe != safeArea || cutout != hasCutout) {
+                safeArea = safe
                 hasCutout = cutout
                 lynxView.updateGlobalProps(globalProps(resources.configuration))
             }
@@ -214,16 +232,20 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
      * The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
      * (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
      * (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
-     * safe-area insets in dp. The iOS shell sends the same keys, and Lynx
-     * Explorer sends theme and isNotchScreen too. Android 12 and later also
-     * send the wallpaper's colors, `dynamicColors` (LynxTheme.dynamicColors),
-     * which iOS has no equivalent of.
+     * safe-area insets in dp and `edgeToEdge`, which env(safe-area-inset-*)
+     * reads. The iOS shell sends the same keys, and Lynx Explorer sends theme
+     * and isNotchScreen too. Android 12 and later also send the wallpaper's
+     * colors, `dynamicColors` (LynxTheme.dynamicColors), which iOS has no
+     * equivalent of.
      */
     private fun globalProps(config: Configuration): Map<String, Any> {
         val density = resources.displayMetrics.density
         val night = config.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         val props = mutableMapOf<String, Any>(
             "platform" to "android",
+            // Whether the page fills the screen. The runtime gives env() the
+            // insets below only then; otherwise the page is already inside them.
+            "edgeToEdge" to edgeToEdge,
             "theme" to if (night) "Dark" else "Light",
             "isNotchScreen" to hasCutout,
             "safeAreaTop" to safeArea.top / density,

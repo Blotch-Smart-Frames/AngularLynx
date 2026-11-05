@@ -28,11 +28,12 @@ vi.mock('../lynx-element', () => {
     setInitialText = vi.fn();
     addEventListener = vi.fn(() => () => {});
     addTrailingEventListener = vi.fn(() => () => {});
+    updateSafeAreaInsets = vi.fn();
     constructor(ref: ElementRef) {
       this.element = ref;
     }
   }
-  return { LynxElement: MockLynxElement };
+  return { LynxElement: MockLynxElement, scheduleSettleFlush: vi.fn() };
 });
 
 describe('LynxHydrateDocument', () => {
@@ -58,6 +59,14 @@ describe('LynxHydrateDocument', () => {
       const root = doc.createRootElement();
 
       expect(root.isRootPageElement).toBe(true);
+    });
+
+    // As LynxDocument's does: env(safe-area-inset-*) reads the shell's
+    // insets from the page (see page-safe-area.ts).
+    it("gives the page the shell's safe-area insets", () => {
+      const root = new LynxHydrateDocument(pageRef, []).createRootElement();
+
+      expect(root.updateSafeAreaInsets).toHaveBeenCalled();
     });
 
     // As LynxDocument's does: the snapshot's page is the screen.

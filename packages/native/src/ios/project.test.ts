@@ -68,7 +68,15 @@ describe('infoPlistEntries', () => {
         '\t<string>UIInterfaceOrientationLandscapeLeft</string>',
         '\t<string>UIInterfaceOrientationLandscapeRight</string>',
         '</array>',
+        '<key>AngularLynxEdgeToEdge</key>',
+        '<true/>',
       ].join('\n'),
+    );
+  });
+
+  it('tells the shell to keep the page inside the safe area', () => {
+    expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
+      '<key>AngularLynxEdgeToEdge</key>\n<false/>',
     );
   });
 

@@ -187,6 +187,33 @@ describe('LynxDocument', () => {
       expect(asMock(globalThis.__RemoveElement)).not.toHaveBeenCalled();
     });
 
+    // env(safe-area-inset-*) reads a generated app's insets from the page's
+    // variables (see page-safe-area.ts), from the first frame on.
+    it("gives the page the shell's safe-area insets", () => {
+      vi.stubGlobal('lynx', {
+        __globalProps: {
+          edgeToEdge: true,
+          safeAreaTop: 62,
+          safeAreaBottom: 34,
+        },
+      });
+
+      const root = new LynxDocument().createRootElement();
+      vi.stubGlobal('lynx', undefined);
+      // The next test's page starts without them.
+      new LynxDocument().createRootElement();
+
+      expect(asMock(globalThis.__SetInlineStyles)).toHaveBeenCalledWith(
+        root.element,
+        [
+          '--angular-lynx-safe-area-inset-top: 62px',
+          '--angular-lynx-safe-area-inset-right: 0px',
+          '--angular-lynx-safe-area-inset-bottom: 34px',
+          '--angular-lynx-safe-area-inset-left: 0px',
+        ].join('; '),
+      );
+    });
+
     it('returns a LynxElement', () => {
       const doc = new LynxDocument();
       expect(doc.createRootElement()).toBeInstanceOf(LynxElement);

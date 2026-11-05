@@ -11,6 +11,7 @@ vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
+vi.mock('./safe-area.js', () => ({ applySafeArea: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
@@ -30,6 +31,7 @@ import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
 import { applyResolve } from './resolve.js';
+import { applySafeArea } from './safe-area.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
@@ -143,6 +145,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyDisplay).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applySafeArea with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applySafeArea).toHaveBeenCalledWith(mockApi);
     });
 
     // entry.ts points the background entries at the files angular.ts writes,

@@ -187,6 +187,10 @@ const replaceApp = (
     // fail compilation because those tags aren't known HTML elements and the
     // user hasn't yet added CUSTOM_ELEMENTS_SCHEMA (the build plugin injects
     // it automatically but the type-checker still surfaces template errors).
+    //
+    // The apps `ng build --platform` makes draw the page under the status bar
+    // and the home indicator, so the content pads itself by the safe-area
+    // insets, and scrolls under them.
     const newPath = `${sourceRoot}/app/app.ts`;
     const content = `import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
@@ -197,7 +201,9 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
   imports: [RouterOutlet, LYNX_ELEMENTS],
   template: \`
     <scroll-view scroll-orientation="vertical">
-      <view style="padding: 24px; align-items: center;">
+      <view
+        style="padding-top: calc(24px + env(safe-area-inset-top)); padding-right: 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); padding-left: 24px; align-items: center;"
+      >
         <text style="font-size: 24px; font-weight: bold;">{{ title() }}</text>
         <text style="font-size: 14px; margin-top: 8px; color: #666;">
           Edit src/app/app.ts to get started

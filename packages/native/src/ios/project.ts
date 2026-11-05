@@ -87,6 +87,12 @@ export const infoPlistEntries = (app: ResolvedApp): string => {
   };
 
   array('UISupportedInterfaceOrientations', ORIENTATIONS[app.orientation]);
+  // Read by LynxViewController, which lays the LynxView out over the whole
+  // screen or inside the safe area.
+  lines.push(
+    '<key>AngularLynxEdgeToEdge</key>',
+    app.edgeToEdge ? '<true/>' : '<false/>',
+  );
 
   for (const [permission, reason] of Object.entries(app.permissions)) {
     for (const key of PERMISSION_MAP[permission as keyof typeof PERMISSION_MAP]

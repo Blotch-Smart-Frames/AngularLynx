@@ -953,6 +953,7 @@ describe('unit-test builder', () => {
       'version',
       'buildNumber',
       'orientation',
+      'edgeToEdge',
       'icon',
       'permissions',
       'deepLinkSchemes',

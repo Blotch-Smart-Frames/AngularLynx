@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ElementRef } from '../types/lynx';
+import { setSafeAreaInsets } from '../lynx-element/safe-area-insets';
 import { MainThreadElement } from './main-thread-element';
 
 // A bare object is a valid ElementRef — it's an opaque brand type with no
@@ -101,6 +102,27 @@ describe('MainThreadElement', () => {
       await Promise.resolve();
       expect(flushElementTree).toHaveBeenCalledTimes(1);
     });
+  });
+
+  // As in a template's inline style (see safe-area-insets.ts).
+  it("gives env(safe-area-inset-*) the shell's inset", () => {
+    setSafeAreaInsets({
+      edgeToEdge: true,
+      safeAreaTop: 62,
+      safeAreaBottom: 34,
+    });
+    const el = new MainThreadElement(fakeRef);
+
+    el.setStyleProperty('padding-top', 'env(safe-area-inset-top)');
+    el.setStyleProperties({
+      bottom: 'calc(1rem + env(safe-area-inset-bottom))',
+    });
+    setSafeAreaInsets(undefined);
+
+    expect(vi.mocked(__AddInlineStyle).mock.calls).toEqual([
+      [fakeRef, 'padding-top', '62px'],
+      [fakeRef, 'bottom', 'calc(1rem + 34px)'],
+    ]);
   });
 
   describe('setStyleProperties', () => {

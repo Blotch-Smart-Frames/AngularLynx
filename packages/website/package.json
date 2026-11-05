@@ -22,19 +22,19 @@
     "@lynx-js/css-serializer": "^0.1.9",
     "@lynx-js/go-web": "^0.11.0",
     "@lynx-js/lynx-core": "^0.1.4",
-    "@lynx-js/web-core": "^0.26.2",
+    "@lynx-js/web-core": "^0.26.6",
     "@lynx-js/web-elements": "^0.12.12",
-    "@rspress/core": "^2.0.3",
+    "@rspress/core": "^2.0.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "rspress-plugin-mermaid": "^1.0.1"
+    "rspress-plugin-mermaid": "^1.0.3"
   },
   "devDependencies": {
     "@rsbuild/plugin-sass": "^1.5.1",
     "@shikijs/transformers": "^4.5.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "sass": "^1.80.0",
+    "@types/react-dom": "^19.3.0",
+    "sass": "^1.107.1",
     "typescript": "~5.6.3"
   }
 }

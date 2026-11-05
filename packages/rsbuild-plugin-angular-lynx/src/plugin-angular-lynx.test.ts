@@ -6,6 +6,7 @@ vi.mock('./background-entry.js', () => ({
   createBackgroundEntries: vi.fn(() => ({ _backgroundEntries: true })),
 }));
 vi.mock('./css.js', () => ({ applyCSS: vi.fn() }));
+vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
@@ -24,6 +25,7 @@ vi.mock('./utils/options.js', async (importOriginal) => ({
 import { applyAngularRules } from './angular.js';
 import { createBackgroundEntries } from './background-entry.js';
 import { applyCSS } from './css.js';
+import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
@@ -134,6 +136,13 @@ describe('pluginAngularLynx', () => {
       plugin.setup(mockApi);
 
       expect(applyTypeSelectors).toHaveBeenCalledWith(mockApi);
+    });
+
+    it('calls applyDisplay with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyDisplay).toHaveBeenCalledWith(mockApi);
     });
 
     // entry.ts points the background entries at the files angular.ts writes,

@@ -6,6 +6,7 @@ import {
   type OnDestroy,
   type SimpleChanges,
 } from '@angular/core';
+import { removeNativeHandler } from '../lynx-element/remove-native-handler';
 import type { BaseLynxElement } from '../lynx-element/types';
 import { __workletMap } from '../worklet-bridge';
 import type { MainThreadFnHandle } from './main-thread-fn';
@@ -63,18 +64,6 @@ const isMainThreadHandle = (h: MaybeHandle): h is MainThreadFnHandle =>
 // IDs for the plain functions the directive registers itself. They have their
 // own prefix so they never collide with the IDs mainThreadFn() gives.
 let nextHandlerId = 0;
-
-/**
- * The __AddEvent value that removes a main-thread handler: a worklet with no
- * ID, which runWorklet ignores. `undefined` works on the web, but native Lynx
- * keeps the handler: Element::RemoveEvent erases from `static_events_`, while
- * worklet handlers live in `lepus_events_` (attribute_holder.cc). React Lynx
- * removes them the same way (updateWorkletEvent in workletEvent.ts).
- */
-const noHandler = (): {
-  type: 'worklet';
-  value: { _workletType: 'main-thread' };
-} => ({ type: 'worklet', value: { _workletType: 'main-thread' } });
 
 /** A handler the directive has passed to __AddEvent for one of its inputs. */
 type Registration = {
@@ -218,7 +207,7 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
         // null or undefined removes the handler, as unbinding a DOM listener
         // would. Leaving it registered would keep the old handler firing.
         if (this.#registrations.delete(inputName)) {
-          __AddEvent(elementRef, eventType, eventName, noHandler());
+          removeNativeHandler(elementRef, eventType, eventName);
           this.#host.releaseNativeEvent?.(eventName);
         }
         continue;
@@ -250,12 +239,13 @@ export class LynxMainThreadEvent implements OnChanges, OnDestroy {
     if (!elementRef) return;
 
     // Lynx's PAPI has no __RemoveEvent: __AddEvent replaces the handler, here
-    // with one that does nothing (see noHandler). Without this cleanup, the
-    // worklet handle would keep its registration pointing at a destroyed
-    // component, and any subsequent native dispatch would invoke a stale
-    // closure (or, worse, leak a reference that pins the component graph).
+    // with one that does nothing (see removeNativeHandler). Without this
+    // cleanup, the worklet handle would keep its registration pointing at a
+    // destroyed component, and any subsequent native dispatch would invoke a
+    // stale closure (or, worse, leak a reference that pins the component
+    // graph).
     for (const [inputName, { eventType, eventName }] of this.#registrations) {
-      __AddEvent(elementRef, eventType, eventName, noHandler());
+      removeNativeHandler(elementRef, eventType, eventName);
       this.#host.releaseNativeEvent?.(eventName);
       this.#release(inputName);
     }

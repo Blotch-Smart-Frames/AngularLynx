@@ -22,6 +22,7 @@ import {
   isInsideChangeDetection,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
+import { toLynxDisplay, withLynxDisplay } from './display';
 import { sanitizeSvgContent } from './svg-content';
 import {
   type LayoutRect,
@@ -31,6 +32,7 @@ import {
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
+import { removeNativeHandler } from './remove-native-handler';
 import { dropsTap, WebLongPress } from './web-long-press';
 import { webVideoDetail } from './web-video';
 import {
@@ -757,6 +759,9 @@ export class LynxElement implements BaseLynxElement {
       this.#rewriteInlineStyle();
       return;
     }
+    // `[style.display]="open ? 'block' : 'none'"` would lay the element out
+    // as a row: Lynx has no block layout (see display.ts).
+    if (key === 'display') value = toLynxDisplay(value);
     __AddInlineStyle(this.element, key, value);
     this.#inlineStyleKeys.set(key, value);
   }
@@ -769,6 +774,12 @@ export class LynxElement implements BaseLynxElement {
     this.#inlineStyleKeys.delete(key);
   }
   setInlineStyles(inlineStyle: string): void {
+    // A `style="display: block"` lays out as Lynx's `linear`, as a
+    // `[style.display]` binding does (see setStyle). Angular passes null when
+    // it removes the attribute.
+    if (typeof inlineStyle === 'string') {
+      inlineStyle = withLynxDisplay(inlineStyle);
+    }
     __SetInlineStyles(this.element, this.#withRuntimeStyle(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
   }
@@ -1307,9 +1318,10 @@ export class LynxElement implements BaseLynxElement {
    *
    * - drops each one from the registry (see #byNativeId), which would keep
    *   the wrapper, and so its native element, alive;
-   * - takes each native element's event handlers off it. The native element
-   *   holds them and they hold the wrapper, which holds the native element:
-   *   a loop through native code, which the garbage collector can't follow;
+   * - takes each native element's event handlers off it (see
+   *   removeNativeHandler). The native element holds them and they hold the
+   *   wrapper, which holds the native element: a loop through native code,
+   *   which the garbage collector can't follow;
    * - marks each painting-dead, so if one does come back after all (content
    *   a surviving view projected into the destroyed one, shown again), it's
    *   rebuilt and registered again, with its handlers, as any remount is
@@ -1320,7 +1332,7 @@ export class LynxElement implements BaseLynxElement {
     this.#paintingDead = true;
     this.deregisterNative();
     for (const { eventType, eventName } of this.#nativeHandlers.values()) {
-      __AddEvent(this.element, eventType, eventName, undefined);
+      removeNativeHandler(this.element, eventType, eventName);
     }
     for (const child of this.#children) child.#release();
     for (const child of this.virtualChildren()) child.#release();
@@ -1785,9 +1797,7 @@ export class LynxElement implements BaseLynxElement {
     scheduleSettleFlush();
     this.#sendHandlersWithNextFlush();
     if (current) {
-      // Passing undefined as the listener tells the Lynx SDK to remove the
-      // handler for this type+name combination.
-      __AddEvent(this.element, current.eventType, entry.eventName, undefined);
+      removeNativeHandler(this.element, current.eventType, entry.eventName);
       this.#nativeHandlers.delete(key);
     }
     if (!eventType) return;

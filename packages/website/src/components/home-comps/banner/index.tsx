@@ -1,6 +1,6 @@
 import type React from 'react';
 import styles from './index.module.scss';
-import { DotPattern } from './dot-pattern';
+import { PixelBlast } from './pixel-blast';
 
 export const Banner: React.FC = () => {
   return (
@@ -17,7 +17,7 @@ export const Banner: React.FC = () => {
       <a href="/guide/quick-start" className={styles['banner-btn']}>
         Get started
       </a>
-      <DotPattern />
+      <PixelBlast />
     </div>
   );
 };

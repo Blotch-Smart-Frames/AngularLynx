@@ -14,7 +14,7 @@ export const VERSIONS = {
   /**
    * @lynx-js/types — TypeScript type definitions for the Lynx runtime APIs
    */
-  lynxTypes: '^4.3.0',
+  lynxTypes: '^4.4.2',
   /**
    * tailwindcss and @tailwindcss/postcss, for Tailwind CSS 4: the default when
    * the `tailwind` schema option is on. The build plugin rewrites what it

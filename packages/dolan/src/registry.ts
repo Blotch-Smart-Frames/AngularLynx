@@ -22,7 +22,7 @@ export type RegistryEntry = {
  * packages/ui/package.json by a test.
  */
 const CHART_PACKAGES = [
-  '@tanstack/charts@^1.1.0',
+  '@tanstack/charts@^1.2.0',
   'd3-shape@^3.2.0',
   '@types/d3-shape@^3.1.8',
 ];

@@ -1,0 +1,53 @@
+version: 2
+updates:
+  # One lockfile at the root covers every workspace (packages/* and
+  # examples/*), so the root directory is enough: Dependabot updates each
+  # workspace's package.json that names the dependency.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: 'chore'
+    ignore:
+      # Angular majors go through the update-angular skill: ng update's
+      # migrations across the packages and ~100 examples, the published peer
+      # ranges, and the docs, none of which a version bump does. Minors and
+      # patches still come through in the group below.
+      - dependency-name: '@angular/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@angular-devkit/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@schematics/angular'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'ng-packagr'
+        update-types: ['version-update:semver-major']
+      # Architect is versioned 0.MMmm.p (Angular 22.2 is 0.2202), so semver
+      # calls its move to the next Angular major (0.2300) a minor, and the
+      # rule above doesn't catch it. This holds back the next major's line
+      # only; the update-angular skill moves the bound up with each major.
+      - dependency-name: '@angular-devkit/architect'
+        versions: ['>=0.2300.0']
+      # Each Angular release accepts only some TypeScript minors (its
+      # typescript peer range), so a TypeScript minor on its own fails the
+      # install. The update-angular skill moves TypeScript with Angular.
+      - dependency-name: 'typescript'
+        update-types:
+          ['version-update:semver-major', 'version-update:semver-minor']
+    groups:
+      # One weekly PR for every minor and patch, instead of one per
+      # dependency for each of the ~100 example package.json files. Majors
+      # come one dependency per PR, since each can need code changes.
+      npm-minor-and-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    commit-message:
+      prefix: 'ci'
+    groups:
+      github-actions:
+        patterns: ['*']

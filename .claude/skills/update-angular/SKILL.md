@@ -89,6 +89,8 @@ The `consistent-package-versions` lint rule fails if they disagree, and `publish
 **`packages/build/package.json`** devDependencies:
 - `@angular-devkit/architect` → the matching `^0.MMmm.p` version
 
+**`.github/dependabot.yml`**: move the `@angular-devkit/architect` ignore up to the major after the target (`>=0.2400.0` for Angular 23). Semver calls architect's move to a new Angular major a minor, so the major-update ignores don't catch it. Left where it is, the bound covers the target's own line too, and Dependabot stops updating architect at all.
+
 ### 6. Check the schematics' third-party versions
 
 The schematics hard-code no Angular or AngularLynx version, so there is nothing to bump for them: `ng add` and `add-testing` install our packages at the runtime's own release (`ownVersionRange`), and `add-i18n` installs `@angular/localize` at the app's `@angular/core` range. The E2E tests fail if either is hard-coded again.

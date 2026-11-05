@@ -395,7 +395,7 @@ Static template content survives because its wrappers are adopted canonically at
 
 ### The fix
 
-A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper; `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and an element Angular destroys leaves the registry with everything under it (see the next section). Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a _fresh_ embedded view).
+A native-id → canonical-wrapper registry, `LynxElement.#byNativeId` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`), keyed by `__GetElementUniqueID` (a number — hashing a native ref crashes the Lepus engine). The constructor registers each wrapper, which the registry holds weakly (see the next section); `parentNode()`/`nextSibling()`/`querySelector()` return the registered canonical wrapper instead of a throwaway, so every adoption lands in the canonical tree. `#recreateSubtree` moves the entry from the stale ref's id to the fresh one on remount, and an element Angular destroys leaves the registry with everything under it (see the next section). Covered by the route-reuse test in `packages/runtime/src/lib/renderer/teardown.test.ts`, which drives `ViewContainerRef.detach()` + `insert()` with an intervening settle-flush — the detach/reattach path every prior remount test missed (they all toggled a signal, which creates a _fresh_ embedded view).
 
 ---
 
@@ -409,7 +409,7 @@ When Angular destroys a view, its DOM nodes become garbage once nothing referenc
 
 ### What Lynx does
 
-The runtime keeps a registry from native id to `LynxElement` (see the section above), and a registered wrapper keeps its native element, and so its UI, alive. Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
+The runtime keeps a registry from native id to `LynxElement` (see the section above), and until #279 a registered wrapper kept its native element, and so its UI, alive (the registry holds wrappers weakly now; see the end of this section). Angular calls `destroyNode` only for a destroyed view's **top-level** nodes: `destroyLView` walks them with `applyView`, which never descends into an element's children, and the views nested in it (child components' views, `@if`/`@for` blocks) are cleaned up by `destroyViewTree` without the renderer. So `destroyNode` deregistering just its node left every element under it registered, and each registered child's `#jsParent` kept the deregistered parent too.
 
 ### The fix
 
@@ -422,6 +422,24 @@ A `<canvas>`'s GL context is the one thing that can't be rebuilt, so it isn't fr
 This alone changed nothing on device, because of the next section. Covered by `packages/runtime/src/lib/renderer/teardown.test.ts` ("releasing a destroyed view").
 
 The handlers didn't really come off until #261: the release passed `undefined` to `__AddEvent`, which native Lynx ignores for the handlers `LynxElement` registers, so a screen with any listener, or with a `<scroll-view>` on iOS, was still never freed. See "`__AddEvent(element, type, name, undefined)` doesn't remove a main-thread handler on native Lynx".
+
+### Elements another renderer keeps out of the tree
+
+The release reaches only the elements in the destroyed subtree, and a renderer that wraps AngularLynx's can keep some of the elements it makes with it out of that tree (issues #279 and #280). angular-three makes an element with AngularLynx's renderer for every `ngt-*` tag, every component host inside a scene and every anchor comment there, then attaches the three.js objects to its scene instead. Angular's `destroyNode` and the release never reach those elements, and the registry held each one, strongly, for the app's life. After a screen with `<ngt-mesh><ngt-box-geometry /><ngt-mesh-basic-material /></ngt-mesh>` was left, the registry still held its `app-scene` host and its three `ngt-*` elements, none of them in the tree. What they hold decides what leaks:
+
+- **An `*args`** (`NgtArgs`, and so every `ngt-primitive`) hangs its directive's injector on its anchor comment. The injector leads to the view, so the whole screen stayed: its component, every element and every native UI (#279).
+- **A scene component's host** holds angular-three's canvas store, which holds the WebGL renderer and so the `<canvas>`. Without an `*args`, the screen's component and its other elements went, but every `<canvas>` stayed, with its native UI, view and Metal layer on iOS (#280).
+
+So the registry holds each wrapper weakly (a `WeakRef`, as a browser holds a node's JavaScript wrapper), and a `FinalizationRegistry` deletes a collected wrapper's entry. It finds wrappers; it doesn't keep them. A wrapper in the tree is still held by its parent's `#children`, up to the page, which the document holds; one Angular keeps out of the tree (a detached route view) is held by its view; and one with listeners is held by the handlers on its native element. One that nothing else holds can't be found or used again. The main thread has `WeakRef` and `FinalizationRegistry` (see "The main thread lacks newer built-ins").
+
+Measured on the iOS Simulator (Lynx 4.1) with `heap <pid>` and a `WeakRef` on each screen's component and canvas, in a router app (`ng build --platform ios`) whose Home screen has an `ngt-canvas`, after 18 Home ↔ Other round trips, on Other:
+
+| Home's scene                             | Homes alive, before → after | `<canvas>` wrappers alive | `AngularLynxCanvas` / `CAMetalLayer` | `LynxUIView` |
+| ---------------------------------------- | --------------------------- | ------------------------- | ------------------------------------ | ------------ |
+| `<ngt-box-geometry *args="[1, 1, 1]" />` | 19 of 19 → 1 of 19          | not counted               | 19 → 1                               | 39 → 3       |
+| `<ngt-box-geometry />`, no `*args`       | 1 of 19 → 1 of 19           | 19 of 19 → 0 of 19        | 19 → 0                               | 39 → 1       |
+
+(One Home is still alive on Other either way.) Covered by `packages/runtime/src/lib/renderer/teardown.test.ts` ("lets a screen go when another renderer kept some of its elements out of the tree"), which collects garbage in Node: V8 kept the screens too while the registry held them strongly.
 
 ---
 

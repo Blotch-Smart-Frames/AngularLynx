@@ -156,16 +156,23 @@ describe('LynxCanvasElement', () => {
     // A FinalizationRegistry whose callbacks the test runs, as the engine
     // would once the canvas is collected. The module makes its registry when
     // it loads, so it's loaded again under the stub.
-    const finalizers: { target: object; held: unknown }[] = [];
-    let callback: (held: unknown) => void = () => {};
+    // LynxElement's registry has one too, which the canvas is registered
+    // with when it's made, so each registration keeps its registry's
+    // callback.
+    const finalizers: {
+      target: object;
+      held: unknown;
+      cleanup: (held: unknown) => void;
+    }[] = [];
     vi.stubGlobal(
       'FinalizationRegistry',
       class {
+        readonly #cleanup: (held: unknown) => void;
         constructor(cleanup: (held: unknown) => void) {
-          callback = cleanup;
+          this.#cleanup = cleanup;
         }
         register(target: object, held: unknown): void {
-          finalizers.push({ target, held });
+          finalizers.push({ target, held, cleanup: this.#cleanup });
         }
       },
     );
@@ -175,12 +182,14 @@ describe('LynxCanvasElement', () => {
     freshBridge.setWebGLBridgeForTesting(bridge);
 
     const canvas = new fresh.LynxCanvasElement({} as ElementRef);
+    const made = finalizers.length;
     canvas.getContext('webgl2');
-    expect(finalizers).toHaveLength(1);
-    expect(finalizers[0]!.target).toBe(canvas);
+    expect(finalizers).toHaveLength(made + 1);
+    const context = finalizers.at(-1)!;
+    expect(context.target).toBe(canvas);
     expect(bridge.destroy).not.toHaveBeenCalled();
 
-    callback(finalizers[0]!.held);
+    context.cleanup(context.held);
     expect(bridge.destroy).toHaveBeenCalledOnce();
     freshBridge.setWebGLBridgeForTesting(undefined);
   });

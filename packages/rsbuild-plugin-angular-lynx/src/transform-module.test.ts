@@ -1,6 +1,7 @@
 // cspell:words ɵcmp
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildTransformedCode } from './transform-module';
+import { buildTransformedCode, stylesheetSpecifier } from './transform-module';
 
 const base = {
   resourcePath: '/proj/src/app/app.component.ts',
@@ -53,6 +54,35 @@ describe('buildTransformedCode', () => {
       });
 
       expect(result).toBe('import "./a.css";import "./b.css";BODY');
+    });
+  });
+
+  describe('stylesheetSpecifier on Windows', () => {
+    // A prebuilt library's module and its stylesheet, as the E2E release
+    // gate's Windows leg had them.
+    const library = String.raw`D:\a\my-app\projects\lib\dist\index.js`;
+    const cache = String.raw`D:\a\my-app\node_modules\.cache\angular-lynx-css`;
+
+    it('separates the segments with /, not the backslashes path.relative() gives', () => {
+      expect(
+        stylesheetSpecifier(
+          library,
+          `${cache}\\projects__lib__dist__index.Label.0.css`,
+          path.win32,
+        ),
+      ).toBe(
+        '../../../node_modules/.cache/angular-lynx-css/projects__lib__dist__index.Label.0.css',
+      );
+    });
+
+    it('starts a stylesheet below the module with ./', () => {
+      expect(
+        stylesheetSpecifier(
+          String.raw`D:\a\my-app\src\app\app.ts`,
+          String.raw`D:\a\my-app\src\app\styles\app.App.0.css`,
+          path.win32,
+        ),
+      ).toBe('./styles/app.App.0.css');
     });
   });
 

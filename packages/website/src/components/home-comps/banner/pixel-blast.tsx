@@ -19,7 +19,7 @@ const EDGE_FADE = 0.25;
 /** How far past the copy's box the thinning eases off, in CSS pixels. */
 const QUIET_FEATHER = 64;
 /** How much the pattern thins behind the copy: 0 not at all, 1 to nothing. */
-const QUIET_STRENGTH = 0.7;
+const QUIET_STRENGTH = 0.5;
 
 const UNIFORMS = [
   'uResolution',

@@ -59,9 +59,9 @@ const NATIVE_PARITY_RULES = [
   'x-overlay-ng::part(dialog) { z-index: 2147483647; }',
   // A finger can't drag an image off a phone's screen, but a mouse drags a
   // browser's `<img>` out as a file, and once that drag starts the page gets
-  // no more mousemoves and no mouseup: a swiper dragged by its photo moved
-  // one step and froze. Firefox needs the `dragstart` cancelled too (see
-  // `applyNativeParity`).
+  // no more mouse-move events and no mouse-up: a swiper dragged by its photo
+  // moved one step and froze. Firefox needs the drag's start event cancelled
+  // too (see `applyNativeParity`).
   'x-image::part(img) { -webkit-user-drag: none; user-select: none; }',
 ];
 

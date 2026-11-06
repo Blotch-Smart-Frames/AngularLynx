@@ -40,7 +40,7 @@ const featuresConfig = [
     actions: [
       { text: 'Coming from web Angular', link: '/guide/coming-from-web' },
       {
-        text: 'What works',
+        text: 'Feature compatibility',
         link: '/guide/coming-from-web#angular-feature-compatibility',
       },
     ],

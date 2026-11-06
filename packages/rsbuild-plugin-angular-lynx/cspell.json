@@ -1,7 +1,5 @@
 {
-  "import": [
-    "../../cspell.json"
-  ],
+  "import": ["../../cspell.json"],
   "words": [
     "abbrvs",
     "atrule",

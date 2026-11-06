@@ -35,7 +35,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 ## Element Rules
 
-- **Put visible text in `<text>`** — raw text straight in a `<view>` is drawn in an anonymous `<text>` of its own, unstyled (see "Raw text in `<view>` gets a plain `<text>`" in [lynx-gotchas.md](lynx-gotchas.md))
+- **Put visible text in `<text>`** — raw text straight in a `<view>` is drawn in an anonymous `<text>`, which inherits text styles (see "Raw text in `<view>` gets an anonymous `<text>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **Common HTML tags render as Lynx elements** (see [HTML tags](#html-tags)). Other unknown tags become `<view>` with a console warning (invisible on device). So does a component's host, unless the component calls `registerHostElement()` (see "A component's host is a real `<view>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
 - **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
@@ -53,11 +53,13 @@ A template written for the browser renders: the runtime creates the Lynx element
 | `img`                                                                                                                                                                                                              | `<image auto-size>` |
 
 - **Text tags are a `<text>`:** text inside one shows, and a tag nested in one runs inline (`<p>Hi <strong>there</strong></p>` is one line). A `<view>` or `<image>` inside one is laid out inline.
-- **Text straight inside a block tag is plain**, as in a `<view>`: `<div class="text-sm">Hello</div>` shows in an anonymous `<text>` at the default size and color, and `<div>Hi <b>there</b></div>` puts "Hi" and "there" on lines of their own. Put it in a `<p>` or `<span>` to style it or keep it on one line.
+- **Text and inline tags share a line.** In a block tag, a `<view>` or a component host, loose text and the inline tags beside it (`span`, `a`, `strong`, `b`, `em`, `code`, `label`…, not `p`, `h1`–`h6` or `button`) run on in one anonymous `<text>`: `<div>Hi <b>there</b></div>` is one line. In a flex or grid container, or a row, each is an item of its own, as on the web. The runtime tells them apart from the `display` the parent's classes, id and inline style can set, which the build lists for it (`globalThis.__angularLynxStyleIndex`), and regroups when they change. An `@if`/`@for` anchor between them stays in the line (as an empty raw-text, see [lynx-gotchas.md](lynx-gotchas.md)), so `{{ n }} @if (n !== 1) {items} @else {item}` is one line.
+- **Text styles inherit into HTML text tags and loose text**, through CSS variables: the build copies each inheritable declaration (`color`, `font-*`, `line-height`, `letter-spacing`, `text-align`, `text-decoration`, `text-shadow`, `direction`) to `--angular-lynx-<property>`, and those elements read the variable for each property their own rules don't set. Classes and stylesheet rules pass styles down; an inline `style` doesn't. A Lynx `<text>` reads none, as before.
+- **An inline tag in a line draws no box** on iOS and Android: its background shows behind its letters, without padding, borders or rounded corners. A lone inline tag (a badge alone in a `<div>`) is a box of its own and keeps them.
 - **An `<img>` sizes to its picture** until CSS gives it a size (`auto-size`), and its `alt` becomes `accessibility-label`.
 - **HTML's `hidden`** (`hidden`, `[hidden]="!open()"`) hides any element with `display: none; overflow: hidden`, ahead of the element's own inline style.
 - **The element's `tagName` is the Lynx element** (`'text'` for a `<p>`). Type selectors still match the HTML tag (`p { … }`, see [styling-and-css.md](styling-and-css.md)). `RouterLink` treats an `<a>` as a plain element, so `<a routerLink>` navigates on a tap.
-- **No browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing, a `<form>` doesn't submit, `disabled` doesn't stop a `<button>`'s taps, and two `<span>`s in a `<div>` stack.
+- **No browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing, a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other HTML tags** (`table`, `tr`, `td`, `select`, `option`, `br`, `pre`, `details`, `iframe`, `audio`…) render as a plain `<view>`, and the build warns about each.
 - **Lynx elements are still the better choice** in new code: `LYNX_ELEMENTS` types their attributes (`<image mode>`) and their events' `$event`, while an HTML tag's `$event` is typed as the DOM's.
 

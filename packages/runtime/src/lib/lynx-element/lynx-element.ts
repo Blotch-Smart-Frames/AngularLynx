@@ -30,6 +30,18 @@ import {
 } from './safe-area-insets';
 import { sanitizeSvgContent } from './svg-content';
 import {
+  ALL_TEXT_PROPERTIES,
+  ANONYMOUS_TEXT_CLASS,
+  LAYOUT_FLAG,
+  NOT_BLOCK_CONTAINERS,
+  TAKES_RAW_TEXT,
+  inheritanceStyleFor,
+  isBlankText,
+  isBlockDisplay,
+  isRowOrientation,
+  styleFlagsFor,
+} from './text-flow';
+import {
   type LayoutRect,
   LayoutTracker,
   type LynxDOMRect,
@@ -109,6 +121,32 @@ const parseEventName = (
  * draws its text on iOS" in investigations/lynx-vs-web-differences.md).
  */
 const HIDDEN_STYLE = 'display: none; overflow: hidden';
+
+/**
+ * The inline styles that decide whether an element lays out lines.
+ */
+const LAYOUT_STYLES: ReadonlySet<string> = new Set([
+  'display',
+  'linear-orientation',
+  'linear-direction',
+]);
+
+/**
+ * The value an inline style string gives a property, the last if several.
+ */
+const inlineDeclaration = (
+  style: string | null,
+  property: string,
+): string | undefined => {
+  let value: string | undefined;
+  for (const declaration of (style ?? '').split(';')) {
+    const colon = declaration.indexOf(':');
+    if (colon > 0 && declaration.slice(0, colon).trim() === property) {
+      value = declaration.slice(colon + 1).trim();
+    }
+  }
+  return value;
+};
 
 /**
  * Puts a text field's text where a web handler reads it. Lynx sends it in
@@ -308,42 +346,6 @@ const insertHidesBlurView = (
 const isTextish = (el: LynxElement): boolean =>
   el.tagName === 'text' || el.tagName === 'raw-text';
 
-/**
- * The elements a raw-text goes into as it is: a `<text>` (or an
- * `<inline-truncation>` in one), which draws it; elements that draw no
- * children's text, such as an `<input>` or an `<image>`, where the web shows
- * none either; and the flattened wrappers (`<block>`, `<if>`, `<for>`), which
- * may well be inside a `<text>`. Every other element, a `<view>`, a `<div>`'s
- * view or a component's host, gets the raw-text inside an anonymous `<text>`
- * (see LynxElement.#putInTextWrapper).
- */
-/**
- * Whether a raw-text's text draws nothing: empty, or a space, which is what
- * the renderer collapses whitespace to (see collapseWhitespace in
- * renderer.ts). A browser gives such text no box; Lynx gives a `<text>` that
- * holds it a line of height, so its anonymous `<text>` is hidden. A
- * non-breaking space is text.
- */
-const isBlankText = (text: string | undefined): boolean =>
-  !text || /^[ \t\n\r\f\v]*$/.test(text);
-
-const TAKES_RAW_TEXT: ReadonlySet<string> = new Set([
-  'text',
-  'raw-text',
-  'inline-truncation',
-  'block',
-  'if',
-  'for',
-  'input',
-  'textarea',
-  'image',
-  'svg',
-  'video',
-  'canvas',
-  'webview',
-  'frame',
-]);
-
 export class LynxElement implements BaseLynxElement {
   /**
    * The native element ref this wrapper currently drives.
@@ -504,14 +506,41 @@ export class LynxElement implements BaseLynxElement {
   /** Back-pointer to the JS parent, for O(1) detach from its #children. */
   #jsParent: LynxElement | null = null;
   /**
-   * On a raw-text: the anonymous `<text>` it's drawn in while its parent is
-   * an element that doesn't draw text, such as a `<view>` (see
-   * #putInTextWrapper). Kept once made, so the raw-text goes back into the
-   * same one.
+   * An anonymous `<text>`: one the runtime made to draw loose text, and the
+   * inline tags beside it, which Angular never sees (see #regroup).
    */
-  #textWrapper: LynxElement | null = null;
-  /** On an anonymous `<text>`: the raw-text it was made for. */
-  #wrappedText: LynxElement | null = null;
+  #anonymous = false;
+  /**
+   * Made for an HTML inline tag (`span`, `a`, `strong`…), which shares a
+   * line with the text beside it (see INLINE_FLOW_TAGS and #regroup).
+   */
+  #inlineFlow = false;
+  /**
+   * Made for an HTML text tag (`p`, `span`…) or an anonymous `<text>`: it
+   * takes the text styles its ancestors set, as on the web (see
+   * text-flow.ts). An element written as a Lynx `<text>` doesn't.
+   */
+  #webText = false;
+  /**
+   * The inline declarations that give a #webText element the text styles
+   * it inherits: one `var()` for each property its own rules don't set.
+   * Ahead of the app's own inline style, which wins over them.
+   */
+  #inheritStyle = '';
+  /**
+   * Set once loose text or an inline tag has been a child: the element's
+   * children are regrouped when they change, or when its classes do, as
+   * they decide whether it lays out lines (see #regroup).
+   */
+  #hasFlow = false;
+  /** Regroup the children when a removed element comes back (see #regroup). */
+  #regroupWhenRecreated = false;
+  /**
+   * On an anchor (`tagName` 'comment'): whether its native element is the
+   * empty raw-text it is in a `<text>`, rather than the hidden view
+   * LynxDocument makes (see #anchorFor and hydrateAnchor).
+   */
+  #anchorInText = false;
   /**
    * True once this element's native painting node has been destroyed by a
    * genuine (non-move) removal. The next appendChild/insertBefore rebuilds it.
@@ -566,6 +595,19 @@ export class LynxElement implements BaseLynxElement {
    * the cycle flushes (see #removedAttributes).
    */
   static #pendingAttributeRemovals = new Set<LynxElement>();
+
+  /**
+   * Elements whose loose text and inline tags may need regrouping (see
+   * #regroup), at the end of the cycle, when the cycle's inserts, moves and
+   * removals are in. Keyed by the wrapper, never a native ref.
+   */
+  static #pendingFlow = new Set<LynxElement>();
+
+  /** #webText elements whose inherited styles may have changed. */
+  static #pendingInheritance = new Set<LynxElement>();
+
+  /** Set while regrouping, whose own moves don't call for another. */
+  static #regrouping = false;
 
   /**
    * The attributes removed (set to null) since the last flush, which haven't
@@ -680,7 +722,7 @@ export class LynxElement implements BaseLynxElement {
     // A touch on loose text is its element's, as a text node's is in a
     // browser: the anonymous <text> around it isn't one of the app's, and
     // out of the tree it has no element to stand for.
-    if (element && element.#wrappedText) {
+    if (element && element.#anonymous) {
       return element.parentNode() ?? undefined;
     }
     return element;
@@ -731,9 +773,6 @@ export class LynxElement implements BaseLynxElement {
     if (this.isRootPageElement) return;
     this.#destroyed = true;
     LynxElement.#pendingReleases.add(this);
-    // A raw-text's anonymous <text> is Angular's text node as much as the
-    // raw-text is: it goes with it, and releases it (see #release).
-    this.#textWrapper?.markDestroyed();
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
     scheduleSettleFlush();
@@ -815,11 +854,13 @@ export class LynxElement implements BaseLynxElement {
       ].join(' ');
       __SetClasses(this.element, classes);
       this.#classes = classes;
+      this.#rulesChanged();
     } else if (name === 'style') {
       this.setInlineStyles(value);
     } else if (name === 'id') {
       __SetID(this.element, value);
       this.#id = value ?? null;
+      this.#rulesChanged();
     } else if (name.startsWith('data-')) {
       const data: Record<string, any> = {};
       const key = name.slice(5);
@@ -869,8 +910,11 @@ export class LynxElement implements BaseLynxElement {
         this.#text = text;
         this.#rawText = text;
         LynxElement.#enqueueTextNormalization(this);
-        const wrapper = this.#textWrapper;
-        if (wrapper) wrapper.#setHidden(isBlankText(text));
+        // Its anonymous <text> hides while all it holds is blank.
+        const parent = this.#jsParent;
+        if (parent && parent.#anonymous && parent.#jsParent) {
+          LynxElement.#pendingFlow.add(parent.#jsParent);
+        }
       }
       if (this.tagName === 'blur-view' && BLUR_MATERIAL_ATTRIBUTES.has(name)) {
         this.updateBlurMaterial();
@@ -960,6 +1004,7 @@ export class LynxElement implements BaseLynxElement {
     if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
     __AddInlineStyle(this.element, key, withSafeAreaInsets(value));
     this.#inlineStyleKeys.set(key, value);
+    if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
@@ -968,6 +1013,7 @@ export class LynxElement implements BaseLynxElement {
     }
     __AddInlineStyle(this.element, key, null);
     this.#inlineStyleKeys.delete(key);
+    if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
   }
   setInlineStyles(inlineStyle: string): void {
     // A `style="display: block"` lays out as Lynx's `linear`, as a
@@ -980,6 +1026,100 @@ export class LynxElement implements BaseLynxElement {
     }
     __SetInlineStyles(this.element, this.#inlineStyleFor(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
+    this.#layoutChanged();
+  }
+
+  /**
+   * The element's classes or id changed: so may the text styles it sets
+   * itself, which it doesn't inherit, and whether it lays out lines.
+   */
+  #rulesChanged(): void {
+    if (this.#webText && !this.#anonymous) {
+      LynxElement.#pendingInheritance.add(this);
+    }
+    this.#layoutChanged();
+  }
+
+  /**
+   * Its layout may have changed: its loose text may need regrouping.
+   */
+  #layoutChanged(): void {
+    if (this.#hasFlow) LynxElement.#pendingFlow.add(this);
+  }
+
+  /**
+   * The tokens a style index rule's selector can require of this element
+   * (see styleFlagsFor): its classes, its id and its tag.
+   */
+  #styleTokens(): Set<string> {
+    const tokens = new Set(this.#classes.split(/\s+/).filter(Boolean));
+    if (this.#id) tokens.add(`#${this.#id}`);
+    tokens.add(`<${this.tagName}>`);
+    return tokens;
+  }
+
+  /**
+   * Whether the children lay out in a column, as a block's do, where text
+   * and inline tags share lines: a view-like element whose CSS sets no other
+   * `display` and no row (see text-flow.ts).
+   */
+  #laysOutLines(): boolean {
+    if (NOT_BLOCK_CONTAINERS.has(this.tagName)) return false;
+    const inline = (property: string): unknown =>
+      this.#inlineStyleKeys.get(property) ??
+      inlineDeclaration(this.#inlineStyleWhole, property);
+    if (!isBlockDisplay(inline('display'))) return false;
+    if (
+      isRowOrientation(inline('linear-orientation')) ||
+      isRowOrientation(inline('linear-direction'))
+    ) {
+      return false;
+    }
+    return !(styleFlagsFor(this.#styleTokens()) & LAYOUT_FLAG);
+  }
+
+  /**
+   * Gives a #webText element the inherited value of each text style its own
+   * rules don't set (see #inheritStyle). An anonymous `<text>` has no rules
+   * of its own, and takes them all.
+   */
+  #applyInheritance(): void {
+    const own = this.#anonymous
+      ? 0
+      : styleFlagsFor(this.#styleTokens()) & ALL_TEXT_PROPERTIES;
+    const style = inheritanceStyleFor(own);
+    if (style === this.#inheritStyle) return;
+    this.#inheritStyle = style;
+    // One removed this cycle gets it when it's rebuilt (see #recreateSubtree).
+    if (!this.#paintingDead) this.#rewriteInlineStyle();
+  }
+
+  /**
+   * @internal Marks an element LynxDocument made for an HTML text tag (see
+   * WEB_TEXT_TAGS), and whether the tag is inline (see INLINE_FLOW_TAGS).
+   */
+  markWebText(inline: boolean): void {
+    this.#webText = true;
+    this.#inlineFlow = inline;
+    LynxElement.#pendingInheritance.add(this);
+  }
+
+  /**
+   * @internal An anchor a server render made: an empty raw-text if it was in
+   * a `<text>` (see #anchorFor), which the snapshot holds as it was.
+   */
+  hydrateAnchor(): void {
+    this.#anchorInText = __GetTag(this.element) === 'raw-text';
+  }
+
+  /**
+   * @internal Marks an anonymous `<text>` that a server render made, which
+   * the snapshot holds (see LynxHydrateDocument).
+   */
+  markAnonymousText(): void {
+    this.tagName = 'text';
+    this.#anonymous = true;
+    this.#webText = true;
   }
 
   /**
@@ -993,6 +1133,7 @@ export class LynxElement implements BaseLynxElement {
   #withRuntimeStyle(inlineStyle: string | null): string | null {
     if (
       !this.#hidden &&
+      !this.#inheritStyle &&
       !this.#runtimeStyle &&
       this.#customProperties.size === 0
     ) {
@@ -1003,6 +1144,7 @@ export class LynxElement implements BaseLynxElement {
       .join('; ');
     return [
       this.#hidden ? HIDDEN_STYLE : '',
+      this.#inheritStyle,
       this.#runtimeStyle,
       inlineStyle?.replace(/[\s;]+$/, ''),
       variables,
@@ -1048,10 +1190,19 @@ export class LynxElement implements BaseLynxElement {
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
     if (newChild.isRootPageElement) return;
-    // A raw-text in an anonymous <text> is in this element through it, so the
-    // <text> is what goes before.
-    if (refChild) refChild = refChild.#outermost();
-    if (newChild.#putInTextWrapper(this, refChild)) return;
+    if (this.#holdsFlow()) {
+      this.#flowInsert(newChild, refChild);
+    } else {
+      this.#attach(newChild, refChild);
+    }
+  }
+
+  /**
+   * Puts `newChild` before `refChild` (or at the end) in the native tree,
+   * and in #children: insertBefore and appendChild without the regrouping
+   * of loose text, which #regroup itself uses.
+   */
+  #attach(newChild: LynxElement, refChild: LynxElement | null): void {
     // A queued removal immediately followed by a re-insert is an Angular MOVE —
     // cancel the removal so the element keeps its children. It is still natively
     // attached to its old parent, so __InsertElementBefore auto-reparents the
@@ -1064,8 +1215,9 @@ export class LynxElement implements BaseLynxElement {
     // (see #recreateSubtree). A same-tick move was canceled just above and is
     // never painting-dead, so the fast move path pays only a boolean check.
     newChild.#recreateIfDead();
+    newChild.#anchorFor(this);
     if (refChild == null) {
-      this.appendChild(newChild);
+      this.#append(newChild);
     } else {
       // Never insert an element into its own subtree — Lynx would build a cyclic
       // native tree and hang the layout pass (see wouldFormCycle). Skipping is
@@ -1109,13 +1261,21 @@ export class LynxElement implements BaseLynxElement {
 
   appendChild(newChild: LynxElement): void {
     if (newChild.isRootPageElement) return;
-    if (newChild.#putInTextWrapper(this, null)) return;
+    if (this.#holdsFlow()) {
+      this.#flowInsert(newChild, null);
+    } else {
+      this.#append(newChild);
+    }
+  }
+
+  #append(newChild: LynxElement): void {
     // See insertBefore: cancel a pending removal so a move keeps its subtree,
     // then rebuild the child if its painting node was destroyed in a prior cycle.
     newChild.#cancelPendingRemoval();
     newChild.#keepIfDestroyed();
     newChild.#removeIfMoveWouldBeLost(this);
     newChild.#recreateIfDead();
+    newChild.#anchorFor(this);
     // Guard against a cycle-forming attach (see wouldFormCycle) — the same hang
     // insertBefore protects against.
     if (wouldFormCycle(this.element, newChild.element)) return;
@@ -1148,6 +1308,11 @@ export class LynxElement implements BaseLynxElement {
       // that shouldn't happen through the public API.
       /* v8 ignore next */
       if (i >= 0) prev.#children.splice(i, 1);
+      // The loose text it leaves may need regrouping (see #regroup).
+      if (prev !== this && !LynxElement.#regrouping) {
+        const holder = prev.#anonymous ? prev.#jsParent : prev;
+        if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
+      }
     }
     newChild.#jsParent = this;
     if (refChild) {
@@ -1163,82 +1328,221 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Puts this raw-text in an anonymous `<text>`, and that in `parent`, when
-   * `parent` doesn't draw text: Lynx draws text only inside a `<text>`, so
-   * `<div>Hello</div>` or `<view>{{ count() }}</view>` showed nothing, where
-   * a browser shows the text. Returns whether it did; a raw-text going into
-   * a `<text>` leaves its anonymous one instead, and is inserted as it is.
-   *
-   * The anonymous `<text>` is invisible to Angular: it never sees it from
-   * parentNode() or nextSibling(), and the raw-text stands for it as a
-   * refChild (see #outermost) and in remove(). Each raw-text gets its own, so
-   * text beside another element in a `<view>` stacks with it, as any two
-   * children of a `<view>` do. It's made once and kept, so a raw-text that
-   * moves keeps it, and one shown again (an `@if`) is rebuilt in it with the
-   * rest of the subtree (see #recreateSubtree). While the text is blank, as
-   * an empty `{{ name() }}` is, it's hidden, so it takes no room.
+   * Gives an anchor going into `parent` the native element it needs there.
+   * Angular's anchors for `@if`, `@for` and the like are hidden views (see
+   * createCommentElement), and on iOS a hidden view in a `<text>` leaves a
+   * gap and an empty line, wherever Angular put it: `<text>Hi @if (x)
+   * {…}</text>`, or a line #regroup made around one. In a `<text>`, an anchor
+   * is an empty raw-text, which draws nothing anywhere. It has no attributes,
+   * children or handlers, so the swap is the native element alone.
    */
-  #putInTextWrapper(
-    parent: LynxElement,
-    refChild: LynxElement | null,
-  ): boolean {
-    if (this.tagName !== 'raw-text') return false;
-    const wrapper = this.#textWrapper;
-    if (TAKES_RAW_TEXT.has(parent.tagName)) {
-      // Into a <text>: out of the anonymous one, which goes, empty.
-      if (wrapper && this.#jsParent === wrapper) {
-        LynxElement.#pendingRemovals.add(wrapper);
-      }
-      return false;
-    }
-    if (wrapper) {
-      if (this.#jsParent === wrapper) {
-        // Already in it, so the wrapper is what moves (or comes back): the
-        // raw-text's own removal or release, if Angular asked for one, is
-        // the wrapper's (see remove() and markDestroyed()).
-        this.#cancelPendingRemoval();
-        this.#keepIfDestroyed();
+  #anchorFor(parent: LynxElement): void {
+    if (this.tagName !== 'comment') return;
+    const inText = parent.tagName === 'text';
+    if (inText === this.#anchorInText) return;
+    const old = this.element;
+    const oldParent = __GetParent(old);
+    if (oldParent) __RemoveElement(oldParent, old);
+    this.deregisterNative();
+    this.#nativeRef = inText
+      ? __CreateRawText('')
+      : createNativeRefByTag('comment', getPageId());
+    LynxElement.#register(__GetElementUniqueID(this.#nativeRef), this);
+    this.#anchorInText = inText;
+  }
+
+  /**
+   * Whether loose text and inline tags among this element's children are
+   * regrouped (see #regroup): any element that doesn't take raw text as it
+   * is (see TAKES_RAW_TEXT), and isn't an anonymous `<text>` itself.
+   */
+  #holdsFlow(): boolean {
+    return !this.#anonymous && !TAKES_RAW_TEXT.has(this.tagName);
+  }
+
+  /**
+   * Whether this is loose text or an inline tag, which shares a line with
+   * the text and inline tags beside it (see #regroup).
+   */
+  #flows(): boolean {
+    return this.tagName === 'raw-text' || this.#inlineFlow;
+  }
+
+  /**
+   * Inserts `child` into this element, keeping Angular's order of its
+   * children, which is the native order with each anonymous `<text>` opened
+   * up. A `refChild` in an anonymous `<text>` takes loose text and inline
+   * tags in beside it; anything else splits the anonymous `<text>` there.
+   * Which text shares which `<text>` is decided at the end of the cycle, all
+   * at once (see #regroup), so until then loose text may sit in this element
+   * as it is: nothing is drawn before then.
+   */
+  #flowInsert(child: LynxElement, refChild: LynxElement | null): void {
+    const wrapper = refChild ? refChild.#jsParent : null;
+    if (
+      refChild &&
+      wrapper &&
+      wrapper.#anonymous &&
+      wrapper.#jsParent === this
+    ) {
+      if (child.#flows()) {
+        wrapper.#attach(child, refChild);
       } else {
-        wrapper.appendChild(this);
+        this.#attach(child, this.#splitBefore(wrapper, refChild));
       }
-    } else {
-      const made = new LynxElement(createNativeRefByTag('text', getPageId()));
-      made.tagName = 'text';
-      made.#wrappedText = this;
-      this.#textWrapper = made;
-      made.appendChild(this);
+      LynxElement.#pendingFlow.add(this);
+      return;
     }
-    const outer = this.#textWrapper!;
-    // Blank text takes no room, as in a browser (see isBlankText).
-    outer.#setHidden(isBlankText(this.#rawText));
-    if (refChild) {
-      parent.insertBefore(outer, refChild);
-    } else {
-      parent.appendChild(outer);
-    }
-    return true;
+    this.#attach(child, refChild);
+    if (child.#flows()) this.#hasFlow = true;
+    if (this.#hasFlow) LynxElement.#pendingFlow.add(this);
   }
 
   /**
-   * This element, or the anonymous `<text>` it's in (see #putInTextWrapper):
-   * the node its parent holds.
+   * Moves `member` and the members after it in `wrapper`, one of this
+   * element's anonymous texts, to a new one just after it, and returns that.
+   * An element that isn't text can then go between the two.
    */
-  #outermost(): LynxElement {
-    const wrapper = this.#textWrapper;
-    return wrapper && this.#jsParent === wrapper ? wrapper : this;
+  #splitBefore(wrapper: LynxElement, member: LynxElement): LynxElement {
+    const moving = wrapper.#children.slice(wrapper.#children.indexOf(member));
+    const after = this.#children[this.#children.indexOf(wrapper) + 1] ?? null;
+    const split = LynxElement.#anonymousText();
+    this.#attach(split, after);
+    for (const node of moving) split.#attach(node, null);
+    return split;
   }
 
   /**
-   * @internal Hydration: `wrapper` is the anonymous `<text>` this raw-text
-   * was drawn in when the snapshot was rendered (see #putInTextWrapper).
-   * The snapshot's tree has them together already, so this only records it.
+   * A new anonymous `<text>` (see #anonymous).
    */
-  hydrateTextWrapper(wrapper: LynxElement): void {
-    wrapper.tagName = 'text';
-    wrapper.#wrappedText = this;
-    this.#textWrapper = wrapper;
-    wrapper.#children = [this];
-    this.#jsParent = wrapper;
+  static #anonymousText(): LynxElement {
+    const text = new LynxElement(createNativeRefByTag('text', getPageId()));
+    text.tagName = 'text';
+    text.#anonymous = true;
+    text.#webText = true;
+    text.addClass(ANONYMOUS_TEXT_CLASS);
+    text.#applyInheritance();
+    return text;
+  }
+
+  /**
+   * Draws this element's loose text and inline tags, as a browser would.
+   * Lynx draws text only inside a `<text>`, and lays out lines only there,
+   * so each run of raw-texts and inline tags (`span`, `a`…) goes in an
+   * anonymous `<text>`, which Angular never sees: the raw-text stands for it
+   * (see parentNode() and nextSibling()). Then:
+   *
+   * - **In an element that lays out lines** (#laysOutLines), as a block
+   *   does, a run shares one `<text>`, so `<div>Hi <b>there</b></div>` is
+   *   one line. A lone inline tag stays as it is: a `<text>` already.
+   * - **In a flex or grid container,** or a row, each element is an item of
+   *   its own, as on the web: each raw-text gets a `<text>` of its own, and
+   *   an inline tag stays as it is.
+   *
+   * Angular's anchors for `@if` and `@for` end a run: on iOS a hidden view
+   * in a `<text>` leaves a gap. A `<text>` holding only blank text is hidden,
+   * since a browser gives blank text no box and Lynx gives it a line.
+   *
+   * Runs at the end of the cycle, before the flush (see commitPendingFlow),
+   * and changes only what differs, so a cycle that leaves the text as it was
+   * changes nothing.
+   */
+  #regroup(): void {
+    // Angular's order of the children: each anonymous <text> opened up.
+    const nodes: LynxElement[] = [];
+    for (const child of this.#children) {
+      if (child.#anonymous) nodes.push(...child.#children);
+      else nodes.push(child);
+    }
+    const lines = this.#laysOutLines();
+    const plan: (LynxElement | LynxElement[])[] = [];
+    let run: LynxElement[] = [];
+    const endRun = (): void => {
+      const members = run.filter((node) => node.#flows());
+      if (lines && (members.length > 1 || members[0]?.tagName === 'raw-text')) {
+        plan.push(run);
+      } else {
+        for (const node of run) {
+          plan.push(node.tagName === 'raw-text' ? [node] : node);
+        }
+      }
+      run = [];
+    };
+    // An anchor between two members of a run stays in it, as an empty
+    // raw-text (see #anchorFor), so `{{ n }} @if (…) {items} @else {item}` is
+    // one line. One at either end stays out.
+    let anchors: LynxElement[] = [];
+    for (const node of nodes) {
+      if (node.#flows()) {
+        if (run.length > 0) run.push(...anchors);
+        else plan.push(...anchors);
+        anchors = [];
+        run.push(node);
+      } else if (node.tagName === 'comment' && run.length > 0) {
+        anchors.push(node);
+      } else {
+        endRun();
+        plan.push(...anchors, node);
+        anchors = [];
+      }
+    }
+    endRun();
+    plan.push(...anchors);
+
+    // Make the native children follow the plan, reusing anonymous texts.
+    const used = new Set<LynxElement>();
+    let at = 0;
+    for (const item of plan) {
+      const target = Array.isArray(item) ? this.#textFor(item, used) : item;
+      if (this.#children[at] !== target) {
+        this.#attach(target, this.#children[at] ?? null);
+      }
+      at++;
+      if (!Array.isArray(item)) continue;
+      item.forEach((member, index) => {
+        if (target.#children[index] !== member) {
+          target.#attach(member, target.#children[index] ?? null);
+        }
+      });
+      // Its edges may have moved, when a member left for another line.
+      LynxElement.#enqueueTextNormalization(target);
+      target.#setHidden(
+        item.every((member) =>
+          member.tagName === 'raw-text'
+            ? isBlankText(member.#rawText)
+            : member.tagName === 'comment',
+        ),
+      );
+    }
+    // What's left are anonymous texts the plan has no use for, which every
+    // member has left by now.
+    for (const unused of this.#children.slice(at)) {
+      unused.#destroyed = true;
+      unused.#doRemove();
+    }
+    this.#hasFlow = nodes.some((node) => node.#flows());
+  }
+
+  /**
+   * The anonymous `<text>` for a run: one a member is in already, if it's
+   * this element's and no other run has it, or a new one.
+   */
+  #textFor(run: LynxElement[], used: Set<LynxElement>): LynxElement {
+    for (const member of run) {
+      const parent = member.#jsParent;
+      if (
+        parent &&
+        parent.#anonymous &&
+        parent.#jsParent === this &&
+        !used.has(parent)
+      ) {
+        used.add(parent);
+        return parent;
+      }
+    }
+    const text = LynxElement.#anonymousText();
+    used.add(text);
+    return text;
   }
 
   addClass(name: string): void {
@@ -1248,6 +1552,7 @@ export class LynxElement implements BaseLynxElement {
     const set = new Set(this.#classes.split(/\s+/).filter(Boolean));
     set.add(name);
     this.#classes = [...set].join(' ');
+    this.#rulesChanged();
   }
 
   addScopeClass(name: string): void {
@@ -1266,6 +1571,7 @@ export class LynxElement implements BaseLynxElement {
     const joined = classes.join(' ');
     __SetClasses(this.element, joined);
     this.#classes = joined;
+    this.#rulesChanged();
   }
 
   /**
@@ -1296,9 +1602,7 @@ export class LynxElement implements BaseLynxElement {
       }
       return;
     }
-    // A raw-text in an anonymous <text> leaves with it (see
-    // #putInTextWrapper), and stays in it for when it comes back.
-    LynxElement.#pendingRemovals.add(this.#outermost());
+    LynxElement.#pendingRemovals.add(this);
   }
 
   /**
@@ -1373,6 +1677,37 @@ export class LynxElement implements BaseLynxElement {
    * Called by `processPendingTextNormalization()` from `end()` /
    * `scheduleSettleFlush`, after removals and before the flush.
    */
+  /**
+   * Regroups the loose text of every element whose children or classes
+   * changed this cycle (see #regroup), then gives the HTML text elements
+   * whose classes changed the text styles they inherit. Called by
+   * `processPendingFlow()` from `end()` and the settle flush, after removals
+   * (so emptied anonymous texts go) and before text normalization and the
+   * flush, so the regrouped text is trimmed and drawn in the same pass.
+   */
+  static commitPendingFlow(): void {
+    LynxElement.#regrouping = true;
+    try {
+      const parents = [...LynxElement.#pendingFlow];
+      LynxElement.#pendingFlow.clear();
+      for (const parent of parents) {
+        if (parent.#paintingDead) {
+          // Removed (or released): its native elements are gone, and come
+          // back rebuilt from #children if it's shown again, when it
+          // regroups.
+          parent.#regroupWhenRecreated = true;
+        } else {
+          parent.#regroup();
+        }
+      }
+    } finally {
+      LynxElement.#regrouping = false;
+    }
+    const elements = [...LynxElement.#pendingInheritance];
+    LynxElement.#pendingInheritance.clear();
+    for (const element of elements) element.#applyInheritance();
+  }
+
   static commitPendingTextNormalization(): void {
     if (LynxElement.#pendingTextNormalization.size === 0) return;
     const dirty = [...LynxElement.#pendingTextNormalization];
@@ -1610,6 +1945,12 @@ export class LynxElement implements BaseLynxElement {
       this.#jsParent = null;
     }
     this.#markPaintingDead();
+    // What's left of loose text around it may need regrouping (see #regroup):
+    // an emptied anonymous <text> goes, and runs it split may join.
+    if (jsParent && !LynxElement.#regrouping) {
+      const holder = jsParent.#anonymous ? jsParent.#jsParent : jsParent;
+      if (holder && holder.#hasFlow) LynxElement.#pendingFlow.add(holder);
+    }
     // Removing a run from a surviving text shifts its edges (a middle run can
     // become the new last run), so re-derive the former parent's context. Uses
     // jsParent captured above, before #jsParent was nulled.
@@ -1702,7 +2043,10 @@ export class LynxElement implements BaseLynxElement {
     // registry entry from the stale (destroyed) ref's id to the fresh one so
     // parentNode()/#canonicalFor keep resolving to this canonical wrapper.
     this.deregisterNative();
-    const fresh = createNativeRefByTag(this.tagName, getPageId(), this.#text);
+    // An anchor in a <text> is an empty raw-text (see #anchorFor).
+    const fresh = this.#anchorInText
+      ? __CreateRawText('')
+      : createNativeRefByTag(this.tagName, getPageId(), this.#text);
     this.#nativeRef = fresh;
     LynxElement.#register(__GetElementUniqueID(fresh), this);
 
@@ -1753,6 +2097,11 @@ export class LynxElement implements BaseLynxElement {
       child.#recreateSubtree();
       __AppendElement(fresh, child.element);
     }
+    // Its loose text changed while it was out (see commitPendingFlow).
+    if (this.#regroupWhenRecreated) {
+      this.#regroupWhenRecreated = false;
+      LynxElement.#pendingFlow.add(this);
+    }
   }
   /* v8 ignore stop */
 
@@ -1765,34 +2114,47 @@ export class LynxElement implements BaseLynxElement {
    */
   parentNode(): LynxElement | null {
     if (this._virtualParent) return this._virtualParent;
-    // A raw-text's parent is its anonymous <text>'s, which Angular never sees
-    // (see #putInTextWrapper).
-    const outer = this.#outermost();
-    if (outer !== this) return outer.parentNode();
     const parent = __GetParent(this.element);
     if (!parent) return null;
     // Return the CANONICAL wrapper, not a throwaway: Angular uses this as the
     // insertion parent for embedded-view (@if/@for) content, and adopting that
     // content into a throwaway's #children (instead of the canonical parent's)
     // is exactly what made it vanish on route re-entry (see #byNativeId).
-    return LynxElement.#canonicalFor(parent);
+    const canonical = LynxElement.#canonicalFor(parent);
+    // Loose text's parent is its anonymous <text>'s, which Angular never sees
+    // (see #regroup).
+    return canonical.#anonymous ? canonical.parentNode() : canonical;
   }
 
   nextSibling(): LynxElement | null {
     // If in a virtual tree, use virtual sibling tracking
     if (this._virtualParent) return this._virtualNext;
-    // A raw-text's siblings are its anonymous <text>'s.
-    const outer = this.#outermost();
-    if (outer !== this) return outer.nextSibling();
     const nextSibling = __NextElement(this.element);
-    if (!nextSibling) return null;
-    // Return the canonical wrapper (see #canonicalFor / parentNode). Angular can
-    // hand a nextSibling() result back as a refChild to insertBefore, so it must
-    // be the same wrapper whose #children recreation walks — never a throwaway.
-    const next = LynxElement.#canonicalFor(nextSibling);
-    // An anonymous <text> is the raw-text in it, to Angular.
-    const text = next.#wrappedText;
-    return text && text.#jsParent === next ? text : next;
+    if (nextSibling) {
+      // Return the canonical wrapper (see #canonicalFor / parentNode). Angular
+      // can hand a nextSibling() result back as a refChild to insertBefore, so
+      // it must be the same wrapper whose #children recreation walks — never a
+      // throwaway.
+      return LynxElement.#entering(LynxElement.#canonicalFor(nextSibling));
+    }
+    // The last in an anonymous <text>: what follows the <text> follows it.
+    const parent = __GetParent(this.element);
+    const canonical =
+      parent && LynxElement.#registered(__GetElementUniqueID(parent));
+    return canonical && canonical.#anonymous ? canonical.nextSibling() : null;
+  }
+
+  /**
+   * The node Angular sees at `element`'s place: the first in it, for an
+   * anonymous `<text>` (see #regroup), whose members are its parent's
+   * children to Angular.
+   */
+  static #entering(element: LynxElement): LynxElement | null {
+    if (!element.#anonymous) return element;
+    const first = __FirstElement(element.element);
+    return first
+      ? LynxElement.#entering(LynxElement.#canonicalFor(first))
+      : element.nextSibling();
   }
 
   querySelector(selector: string): LynxElement | null {
@@ -2317,6 +2679,16 @@ export const processPendingAttributeRemovals = (): void => {
  * after removals and before `__FlushElementTree()`, keeping the corrected text in
  * the same flush as the cycle's other mutations. See #pendingTextNormalization.
  */
+/**
+ * Regroups this cycle's loose text and inline tags (see LynxElement's
+ * #regroup) — a free-function wrapper over `LynxElement.commitPendingFlow()`
+ * for `LynxRendererFactory2.end()` and the settle flush, after removals and
+ * before text normalization and `__FlushElementTree()`.
+ */
+export const processPendingFlow = (): void => {
+  LynxElement.commitPendingFlow();
+};
+
 export const processPendingTextNormalization = (): void => {
   LynxElement.commitPendingTextNormalization();
 };
@@ -2367,6 +2739,7 @@ export const scheduleSettleFlush = (): void => {
     // #pendingRemovals / #pendingTextNormalization). List children are driven by
     // their own update-list-info path, so no list handling here.
     LynxElement.commitPendingRemovals();
+    LynxElement.commitPendingFlow();
     LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
     __FlushElementTree();

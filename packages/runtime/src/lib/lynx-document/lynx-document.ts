@@ -17,6 +17,7 @@ import {
 import { createNativeRefByTag } from './create-native-ref';
 import { LynxCanvasElement } from '../canvas/canvas-element';
 import { hostElementOf } from './host-elements';
+import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from './web-tags';
 import {
   createCommentElement,
   createListElement,
@@ -127,6 +128,11 @@ export class LynxDocument implements LynxDocumentBase {
     // another; a Lynx `<image>` with no size is 0 × 0. `auto-size` sizes it to
     // the picture once it loads, and does nothing once CSS sets a size.
     if (name === 'img') el.setAttribute('auto-size', true);
+    // An HTML text tag takes its ancestors' text styles, and an inline one
+    // shares a line with the text beside it (see LynxElement's #regroup).
+    if (tag === 'text' && WEB_TEXT_TAGS.has(name)) {
+      el.markWebText(INLINE_FLOW_TAGS.has(name));
+    }
     return el;
   }
   createText(value: string): LynxElement {

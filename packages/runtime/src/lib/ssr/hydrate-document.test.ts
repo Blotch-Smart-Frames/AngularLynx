@@ -26,7 +26,9 @@ vi.mock('../lynx-element', () => {
     isRootPageElement = false;
     appendChild = vi.fn();
     setInitialText = vi.fn();
-    hydrateTextWrapper = vi.fn();
+    markAnonymousText = vi.fn();
+    hydrateAnchor = vi.fn();
+    markWebText = vi.fn();
     addEventListener = vi.fn(() => () => {});
     addTrailingEventListener = vi.fn(() => () => {});
     updateSafeAreaInsets = vi.fn();
@@ -43,8 +45,8 @@ describe('LynxHydrateDocument', () => {
   beforeEach(() => {
     pageRef = { _page: true } as any;
     vi.clearAllMocks();
-    // A snapshot's raw-texts, unless a test says otherwise.
-    globalThis.__GetTag = vi.fn(() => 'raw-text');
+    // A snapshot without anonymous texts, unless a test says otherwise.
+    globalThis.__GetClasses = vi.fn(() => []);
   });
 
   describe('createRootElement', () => {
@@ -150,30 +152,29 @@ describe('LynxHydrateDocument', () => {
       expect(text.setInitialText).toHaveBeenCalledWith('hello');
     });
 
-    // A raw-text in a <view> was rendered in an anonymous <text>, which the
-    // snapshot lists first (see LynxElement's #putInTextWrapper).
-    it('takes the anonymous <text> before a raw-text with it', () => {
+    // Loose text in a <view> was rendered in an anonymous <text>, which the
+    // snapshot lists first (see LynxElement's #regroup).
+    it('takes the anonymous <text> before loose text, and marks it', () => {
       const wrapperRef = { _wrapper: true } as any as ElementRef;
       const textRef = { _text: true } as any as ElementRef;
-      const viewRef = { _view: true } as any as ElementRef;
-      globalThis.__GetTag = vi.fn((ref: ElementRef) =>
-        ref === wrapperRef ? 'text' : 'raw-text',
+      const spanRef = { _span: true } as any as ElementRef;
+      globalThis.__GetClasses = vi.fn((ref: ElementRef) =>
+        ref === wrapperRef ? ['_ngtext'] : [],
       );
       const doc = new LynxHydrateDocument(pageRef, [
         wrapperRef,
         textRef,
-        viewRef,
+        spanRef,
       ]);
       doc.createRootElement();
 
       const text = doc.createText('hello') as any;
+      // An HTML inline tag in the same <text>: marked as such.
+      const span = doc.createElement('span') as any;
 
       expect(text.element).toBe(textRef);
-      expect(text.hydrateTextWrapper).toHaveBeenCalledWith(
-        expect.objectContaining({ element: wrapperRef }),
-      );
-      // The queue stays in step: the next element is the next one created.
-      expect(doc.createElement('view').element).toBe(viewRef);
+      expect(span.element).toBe(spanRef);
+      expect(span.markWebText).toHaveBeenCalledWith(true);
     });
   });
 

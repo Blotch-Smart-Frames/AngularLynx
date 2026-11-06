@@ -10,6 +10,7 @@ import { RuntimeGlobals } from '@lynx-js/webpack-runtime-globals';
 import type { Chunk, Compilation, Compiler } from '@rspack/core';
 import invariant from 'tiny-invariant';
 import { LAYERS } from './layers.js';
+import { styleIndexOf, styleIndexStatement } from './style-index.js';
 import { createLynxProcessEvalResultRuntimeModule } from './lynx-process-eval-result-runtime-module.js';
 
 // const require = createRequire(import.meta.url);
@@ -283,6 +284,22 @@ class AngularWebpackPlugin {
           },
           () => {
             this.#markMainThreadHotUpdates(compilation, mainThreadChunkSet);
+            // What the runtime needs to know of the app's CSS to draw text
+            // written for the browser (see style-index.ts): read from the
+            // stylesheets the compilation made, once, for the entry's
+            // main-thread chunk, where Angular runs.
+            let styleIndex: string | undefined;
+            const styleIndexFor = (): string =>
+              (styleIndex ??= styleIndexStatement(
+                styleIndexOf(
+                  Object.keys(compilation.assets)
+                    .filter((n) => n.endsWith('.css'))
+                    // Each name is a key of compilation.assets.
+                    .map((n) =>
+                      compilation.getAsset(n)!.source.source().toString(),
+                    ),
+                ),
+              ));
             for (const [name] of Object.entries(compilation.assets).filter(
               ([n]) =>
                 n.endsWith('.js') &&
@@ -294,7 +311,9 @@ class AngularWebpackPlugin {
               const isMainThread =
                 mainThreadChunkSet.has(name) ||
                 compilation.getAsset(name)?.info['lynx:main-thread'] === true;
-              const prefix = `globalThis["__MAIN_THREAD__"]=${isMainThread};`;
+              const prefix =
+                `globalThis["__MAIN_THREAD__"]=${isMainThread};` +
+                (mainThreadChunkSet.has(name) ? styleIndexFor() : '');
               compilation.updateAsset(
                 name,
                 (old) => new ConcatSource(prefix, old),

@@ -12,7 +12,7 @@ For every property and value Lynx accepts, see the [Lynx CSS reference](https://
 | `display: block` by default                   | `display: linear` (a vertical stack) by default. `flex` and `grid` work |
 | `box-sizing: content-box`, collapsing margins | `border-box`, and margins never collapse                                |
 | Text anywhere                                 | Text drawn by a `<text>`                                                |
-| `color` and fonts inherit                     | [Nothing inherits](#inheritance), except into a nested `<text>`         |
+| `color` and fonts inherit                     | [Into HTML text tags and loose text](#inheritance), not a Lynx `<text>` |
 | `1rem` is 16px                                | `1rem` is 14px                                                          |
 | `overflow: auto` scrolls                      | Only `<scroll-view>` and `<list>` scroll                                |
 | `position: fixed` pins to the viewport        | Positions against the `page`. Use `<overlay>` for floating UI           |
@@ -73,7 +73,7 @@ page {
 </text>
 ```
 
-- **Only a [`<text>`](/api/elements/text) draws text.** Text placed directly in a `<view>` gets a plain `<text>` of its own, which none of the `<view>`'s styles reach.
+- **Only a [`<text>`](/api/elements/text) draws text.** Text placed directly in a `<view>` is drawn in a `<text>` of its own, which inherits text styles (see [Inheritance](#inheritance)).
 - **Put text styles on the `<text>`.** A `color`, `font-size` or `line-height` on a `<view>` doesn't reach the text inside it (see [Inheritance](#inheritance)).
 - **`line-height` works only on `<text>`.**
 - **`white-space` is `normal` or `nowrap`.** There's no `pre`, so spaces and line breaks always collapse.
@@ -96,6 +96,7 @@ page {
 ```
 
 - **CSS properties don't inherit by default.** Each element gets only the rules that match it. Inheritance has a performance cost, so Lynx leaves it off.
+- **HTML text tags and loose text do inherit.** A `<p>`, `<span>` or `<h1>`, and text written straight in a `<view>` or `<div>`, take each text property their own rules don't set from their nearest ancestor that sets it, as on the web. The build copies each text declaration in your CSS to a CSS variable (`color: red` also sets `--angular-lynx-color: red`), and those elements read it. Classes and stylesheet rules pass styles down this way; an inline `style` doesn't. The properties are the ones listed below.
 - **A nested `<text>` is the exception.** An inner `<text>` takes its parent `<text>`'s `color` and `font-family`.
 - **CSS variables always inherit**, as on the web. Set them on a parent and use `var()` anywhere below it.
 - **There's no `inherit`, `initial` or `unset` keyword.**

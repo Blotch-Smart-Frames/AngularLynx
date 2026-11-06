@@ -2,6 +2,7 @@ export {
   listenForScrollsFromTheStart,
   LynxElement,
   processPendingAttributeRemovals,
+  processPendingFlow,
   processPendingRemovals,
   processPendingTextNormalization,
   scheduleSettleFlush,

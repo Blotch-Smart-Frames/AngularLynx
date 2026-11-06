@@ -714,6 +714,32 @@ describe('AngularWebpackPlugin', () => {
         );
       });
 
+      // The runtime draws text written for the browser from what the app's
+      // CSS sets (see style-index.ts). Only the entry's main-thread chunk
+      // needs it: Angular runs there.
+      it("prepends the app's style index to the entry's main-thread chunk", () => {
+        const { compiler, triggerCompilation } = createMockCompiler();
+        setupBeforeEncodeHook();
+
+        new AngularWebpackPlugin({ mainThreadChunks: ['main.js'] }).apply(
+          compiler as never,
+        );
+        const compilation = createMockCompilation();
+        compilation.addAsset('main.js', 'code();');
+        compilation.addAsset('bg.js', 'background();');
+        compilation.addAsset('main.css', '.row { display: flex }');
+        triggerCompilation(compilation);
+
+        compilation.triggerProcessAssets(STAGE_ADDITIONS);
+
+        expect(compilation.assets['main.js'].source.source()).toContain(
+          'globalThis["__angularLynxStyleIndex"]={"rules":[[["row"],2048]]};',
+        );
+        expect(compilation.assets['bg.js'].source.source()).not.toContain(
+          '__angularLynxStyleIndex',
+        );
+      });
+
       // A lazy chunk's main-thread half isn't in mainThreadChunks.
       it('prepends __MAIN_THREAD__=true for assets marked as main-thread code', () => {
         const { compiler, triggerCompilation } = createMockCompiler();

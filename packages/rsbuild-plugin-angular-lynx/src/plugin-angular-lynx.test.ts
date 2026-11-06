@@ -12,6 +12,7 @@ vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./safe-area.js', () => ({ applySafeArea: vi.fn() }));
+vi.mock('./text-inheritance.js', () => ({ applyTextInheritance: vi.fn() }));
 vi.mock('./logger/dev-logger.js', () => ({ applyDevLogger: vi.fn() }));
 vi.mock('./split-chunks.js', () => ({ applySplitChunksRule: vi.fn() }));
 vi.mock('./strict-esm.js', () => ({ applyStrictEsm: vi.fn() }));
@@ -32,6 +33,7 @@ import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
+import { applyTextInheritance } from './text-inheritance.js';
 import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
@@ -154,6 +156,13 @@ describe('pluginAngularLynx', () => {
       expect(applySafeArea).toHaveBeenCalledWith(mockApi);
     });
 
+    it('calls applyTextInheritance with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyTextInheritance).toHaveBeenCalledWith(mockApi);
+    });
+
     // entry.ts points the background entries at the files angular.ts writes,
     // so both get the same instance.
     it('creates the background entries for the project root and shares them', () => {
@@ -262,10 +271,14 @@ describe('pluginAngularLynx', () => {
       const splitChunksOrder =
         vi.mocked(applySplitChunksRule).mock.invocationCallOrder[0];
       const loggerOrder = vi.mocked(applyDevLogger).mock.invocationCallOrder[0];
+      const inheritanceOrder =
+        vi.mocked(applyTextInheritance).mock.invocationCallOrder[0];
 
       expect(cssOrder).toBeLessThan(tailwindOrder);
       // After Tailwind, so its PostCSS plugin runs on Tailwind's rules.
       expect(tailwindOrder).toBeLessThan(typeSelectorsOrder);
+      // After Tailwind, so its OnceExit runs after Tailwind 4's lowering.
+      expect(tailwindOrder).toBeLessThan(inheritanceOrder!);
       expect(typeSelectorsOrder).toBeLessThan(entryOrder);
       expect(entryOrder).toBeLessThan(layersOrder);
       expect(layersOrder).toBeLessThan(angularOrder);

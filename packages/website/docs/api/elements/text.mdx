@@ -25,7 +25,7 @@ export class Headline {}
 Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
 :::warning
-Text directly inside a `<view>` is drawn in a plain `<text>` of its own, which none of the `<view>`'s styles reach. Wrap it in a `<text>` to style it.
+Text directly inside a `<view>` is drawn in a `<text>` of its own, which takes the text styles of its ancestors' classes. A `<text>` you write takes none: set its styles on it.
 :::
 
 ## Attributes

@@ -13,6 +13,7 @@ import { applyDevLogger } from './logger/dev-logger.js';
 import { applySplitChunksRule } from './split-chunks.js';
 import { applyStrictEsm } from './strict-esm.js';
 import { applyTailwind } from './tailwind.js';
+import { applyTextInheritance } from './text-inheritance.js';
 import { applyTypeSelectors } from './type-selectors.js';
 import {
   deprecatedOptionsIn,
@@ -51,6 +52,10 @@ export const pluginAngularLynx = (
       // The same: each env(safe-area-inset-*) reads the inset a generated
       // app's shell sends (see safe-area.ts).
       applySafeArea(api);
+      // Copies each inheritable text style to a variable the HTML text tags
+      // read (see text-inheritance.ts). After applyTailwind, so it runs after
+      // Tailwind 4's lowering at OnceExit.
+      applyTextInheritance(api);
       // The app's entry modules, which entry.ts finds and the Angular
       // transform makes take hot updates (see hot-updates.ts).
       const appEntries = new Set<string>();

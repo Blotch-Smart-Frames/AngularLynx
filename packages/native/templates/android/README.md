@@ -47,6 +47,10 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageModule.swift` the Keychain, readable after the first unlock and never moved to another device.
 
+## Clipboard
+
+`NativeModules.AngularLynxClipboard` (`ClipboardModule.kt`, behind the runtime's `LynxClipboard`) copies text to `ClipboardManager` as a plain-text clip and reads the first item back as text, both on the main thread. `setString` calls back once with `{}` or `{ error }`, `getString` with `{ value }`, `""` when the clipboard holds no text. Android 13 and later show the copied text in a panel of their own and have TalkBack say "Text copied", so the runtime's `LynxClipboard.confirmsCopies` tells the app not to confirm it again. Android 10 and later let only the app in front read the clipboard, and Android 12 and later tell the person when it does. iOS's `ClipboardModule.swift` uses `UIPasteboard.general`.
+
 ## Photo picker
 
 `NativeModules.AngularLynxImagePicker.pick(options, callback)` (`ImagePickerModule.kt`, behind the runtime's `LynxImagePicker`) has the activity open the Photo Picker (`ActivityResultContracts.PickVisualMedia`, images only), which needs no permission. `MainActivity` registers the launcher as a property, so it's registered as the activity is created, before it starts, as `ActivityResult` launchers must be; the module gets the activity's `ImagePickerModule.Host` as its param. A manifest entry (`com.google.android.gms.metadata.ModuleDependencies`) lets Google Play services install the picker on Android 10 and older, which otherwise open the document picker.

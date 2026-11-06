@@ -1,0 +1,104 @@
+# Copy Button
+
+A button that copies text to the clipboard, such as an invite code or a link, then says it did.
+
+<Go example="ui-copy-button" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add copy-button
+```
+
+```typescript
+import { UiCopyButton } from '../components/ui/copy-button';
+```
+
+This also adds [Button](/dolan/button), which it draws, and [Icon](/dolan/icon).
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, input } from '@angular/core';
+import { UiCopyButton } from '../components/ui/copy-button';
+
+@Component({
+  selector: 'app-referral-code',
+  imports: [UiCopyButton],
+  template: `
+    <ui-copy-button [value]="code()" variant="outline">
+      Copy invite code
+    </ui-copy-button>
+  `,
+})
+export class ReferralCode {
+  readonly code = input.required<string>();
+}
+```
+
+- **A tap copies `value`** with [`LynxClipboard`](/api/angular-lynx/clipboard).
+- **For two seconds, it says "Copied"** with a check icon, and a screen reader announces it.
+- **Android 13 and later show every copy themselves,** in a panel at the bottom of the screen that TalkBack reads. There the button stays as it is, so the copy isn't announced twice.
+
+### Variants and sizes
+
+It takes [Button](/dolan/button)'s `variant` and `size`:
+
+```angular-html
+<ui-copy-button [value]="link()" variant="secondary" size="sm">
+  Copy link
+</ui-copy-button>
+```
+
+A class places and sizes it, such as `class="w-full"` for a full-width button.
+
+### Icon only
+
+```angular-html
+<ui-copy-button
+  [value]="code()"
+  variant="ghost"
+  size="icon"
+  accessibility-label="Copy invite code"
+/>
+```
+
+With `size="icon"`, it shows only its icon. Give it an `accessibility-label` for a screen reader to say. While the button shows the check, the label says "Copied" instead.
+
+### When it can't copy
+
+```angular-html
+<ui-copy-button [value]="code()" (copyFailed)="showError($event)">
+  Copy code
+</ui-copy-button>
+```
+
+`copyFailed` emits the [`ClipboardError`](/api/angular-lynx/clipboard#clipboarderror), and the button says nothing. [Lynx Explorer](/guide/glossary#lynx-explorer) has no clipboard, so a copy there always fails. Run the app's own build instead (`ng build --platform ios|android`).
+
+## API
+
+| Input                 | Type                                                   | Default     | Description                                                    |
+| --------------------- | ------------------------------------------------------ | ----------- | -------------------------------------------------------------- |
+| `value`               | `string`                                               | required    | The text it copies.                                            |
+| `variant`             | [`ButtonVariant`](/dolan/button#api)                   | `'default'` | Visual style, as Button's.                                     |
+| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'` | `'default'` | Height and padding, as Button's. The icon sizes show the icon. |
+| `disabled`            | `boolean`                                              | `false`     | Dims the button, which then doesn't copy.                      |
+| `copiedLabel`         | `string`                                               | `'Copied'`  | What it says after it copies, and the screen reader announces. |
+| `duration`            | `number`                                               | `2000`      | How long it says so, in milliseconds.                          |
+| `accessibility-label` | `string`                                               | —           | What a screen reader says. Needed for an icon-only button.     |
+| `class`               | `string`                                               | `''`        | Extra Tailwind classes for the box the button fills.           |
+
+| Output       | Type             | Description                                |
+| ------------ | ---------------- | ------------------------------------------ |
+| `copied`     | `string`         | Emits the text once it's on the clipboard. |
+| `copyFailed` | `ClipboardError` | Emits why it couldn't copy.                |
+
+## Accessibility
+
+- **A screen reader reads it as a button,** with its label, or its `accessibility-label`.
+- **After a copy, it announces "Copied"** (`copiedLabel`), except on Android 13 and later, where TalkBack already says "Text copied".
+
+## Related
+
+- [`LynxClipboard`](/api/angular-lynx/clipboard): copy and read text yourself
+- [Button](/dolan/button): the button it draws

@@ -91,6 +91,7 @@ export default defineConfig({
         { sectionHeaderText: 'General' },
         { text: 'Button', link: '/dolan/button' },
         { text: 'Button Group', link: '/dolan/button-group' },
+        { text: 'Copy Button', link: '/dolan/copy-button' },
         { text: 'Icon', link: '/dolan/icon' },
         { text: 'Typography', link: '/dolan/typography' },
         { dividerType: 'solid' },
@@ -292,6 +293,7 @@ export default defineConfig({
             { text: 'LynxSafeArea', link: '/api/angular-lynx/safe-area' },
             { text: 'LynxLocale', link: '/api/angular-lynx/locale' },
             { text: 'LynxSystemInfo', link: '/api/angular-lynx/system-info' },
+            { text: 'LynxClipboard', link: '/api/angular-lynx/clipboard' },
             { text: 'Host Data', link: '/api/angular-lynx/host-data' },
             {
               text: 'LynxNativeModule',

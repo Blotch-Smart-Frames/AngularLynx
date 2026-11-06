@@ -11,6 +11,8 @@ export type {
   AccessibilityTraitStates,
 } from './lib/accessibility/accessibility-traits';
 export { LynxAnimation } from './lib/animation/animation';
+export { ClipboardError, LynxClipboard } from './lib/clipboard';
+export type { ClipboardErrorCode } from './lib/clipboard';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';
 export type { DevToolsStats, LynxTraceOptions } from './lib/devtools';
 export type {

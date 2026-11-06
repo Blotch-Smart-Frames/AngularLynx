@@ -110,6 +110,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
+            // LynxClipboard's text (ClipboardModule.kt).
+            registerModule(ClipboardModule.NAME, ClipboardModule::class.java, null)
             registerModule(ImagePickerModule.NAME, ImagePickerModule::class.java, imagePickerHost)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let

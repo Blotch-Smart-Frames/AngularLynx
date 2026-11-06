@@ -23,12 +23,19 @@ const nativeOutputPattern = (
   return new RegExp(`^${dist}/(?:ios|android)$`);
 };
 
+/**
+ * The plugin's polyfills (polyfills.js), the first module of every bundle's
+ * preEntry. Next to the plugin's bundled index in its dist folder.
+ */
+export const POLYFILLS_ENTRY = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './polyfills',
+);
+
 export const applyAngularConfig = (
   api: RsbuildPluginAPI,
   buildOptions: NormalizedOptions,
 ): void => {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
   api.modifyRsbuildConfig((config) => {
     // output
     config.output = config.output ?? {};
@@ -77,10 +84,11 @@ export const applyAngularConfig = (
     //    the app's polyfills don't load it already, as they do after
     //    `add-i18n`, which puts it there for `ng test` as Angular's own
     //    `ng add @angular/localize` does.
-    // 3. User polyfills from angular.json
+    // 3. User polyfills from angular.json. The `intl` option's module goes
+    //    in before them, in the lynx environment only (intl/apply-intl.ts).
     // 4. Global stylesheets — must load before components so CSS is available
     //    when the first component renders
-    config.source.preEntry.push(path.resolve(__dirname, './polyfills'));
+    config.source.preEntry.push(POLYFILLS_ENTRY);
     const polyfills = buildOptions.polyfills ?? [];
     if (
       buildOptions.i18n.hasDefinedSourceLocale &&

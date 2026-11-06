@@ -2,6 +2,8 @@ export { render, cleanup, waitForUpdate } from './render.js';
 export type { RenderInputs, RenderOptions, RenderResult } from './render.js';
 export type { ComponentRef } from '@angular/core';
 export { fireEvent, eventMap } from './fire-event.js';
+export { openedURLs } from './linking.js';
+export type { OpenedURL } from './linking.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

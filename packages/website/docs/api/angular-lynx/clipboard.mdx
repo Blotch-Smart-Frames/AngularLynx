@@ -1,0 +1,109 @@
+# LynxClipboard
+
+Copies text to the phone's clipboard and reads it back. Lynx has no `navigator.clipboard`. `import { LynxClipboard, ClipboardError, type ClipboardErrorCode } from '@blotch/angular-lynx';`
+
+For a button that copies and says it did, add the [Copy Button](/dolan/copy-button) component.
+
+## Usage
+
+```typescript
+export class ReferralCode {
+  readonly code = input.required<string>();
+  readonly #clipboard = inject(LynxClipboard);
+
+  protected copy(): Promise<void> {
+    return this.#clipboard.setString(`https://example.com/join/${this.code()}`);
+  }
+
+  protected async paste(): Promise<void> {
+    this.code.set(await this.#clipboard.getString());
+  }
+}
+```
+
+## API
+
+### `LynxClipboard`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxClipboard {}
+```
+
+| Platform                                       | Clipboard                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| iOS                                            | `UIPasteboard.general`                                                        |
+| Android                                        | `ClipboardManager`                                                            |
+| [Web preview](/guide/glossary#web-preview)     | The page's Clipboard API, or `document.execCommand('copy')` where it has none |
+| Unit tests with the testing library            | A clipboard in memory, one for each rendered app                              |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | None: both methods reject with `unavailable`                                  |
+
+Only the apps `ng build --platform` makes have the native module behind it, `AngularLynxClipboard`.
+
+### `setString()`
+
+```typescript
+setString(text: string): Promise<void>;
+```
+
+Puts `text` on the clipboard, in place of what it held. Resolves once it's there. Rejects with a [`ClipboardError`](#clipboarderror).
+
+- **In the web preview, call it straight from a tap's handler,** before any `await`. Browsers copy only for something the person just did.
+- **Android 13 and later show every copy themselves,** in a panel at the bottom of the screen, and TalkBack says "Text copied". Check [`confirmsCopies`](#confirmscopies) before showing your own "Copied".
+
+### `getString()`
+
+```typescript
+getString(): Promise<string>;
+```
+
+Resolves with the clipboard's text, or `''` when it holds none, or only something else, such as an image. Rejects with a [`ClipboardError`](#clipboarderror) where there's no clipboard.
+
+Reading asks the person first in some places. Read only when they ask to paste, never on launch:
+
+- **iOS 16 and later** ask "Allow Paste?" before the app reads text another app copied. If they don't allow it, the text reads as `''`.
+- **Android 12 and later** show a "pasted from your clipboard" message. Android 10 and later let only the app on screen read the clipboard.
+- **Browsers** may ask for permission. A refusal reads as `''`.
+
+### `confirmsCopies`
+
+```typescript
+get confirmsCopies(): boolean;
+```
+
+Whether the platform shows that text was copied: `true` on Android 13 and later. Android asks apps not to confirm a copy again, which doubles the message. The [Copy Button](/dolan/copy-button) checks it.
+
+### `ClipboardError`
+
+```typescript
+class ClipboardError extends Error {
+  readonly code: ClipboardErrorCode;
+}
+
+type ClipboardErrorCode = 'unavailable' | 'failed';
+```
+
+| Code          | Meaning                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no clipboard, such as Lynx Explorer. Run the app's own build instead.            |
+| `failed`      | The platform refused, such as a browser that blocked the copy, or text too large for Android. |
+
+## In tests
+
+Under the [testing library](/guide/testing/), `LynxClipboard` keeps the text in memory, so a spec can read back what was copied:
+
+```typescript
+const { componentRef } = await render(ReferralCode, {
+  inputs: { code: 'ABC' },
+});
+fireEvent.tap(screen.getByText('Copy'));
+await waitForUpdate();
+
+const clipboard = componentRef.injector.get(LynxClipboard);
+expect(await clipboard.getString()).toBe('https://example.com/join/ABC');
+```
+
+## Related
+
+- [Copy Button](/dolan/copy-button), a button that copies and says it did
+- [`LynxNativeModule`](/api/angular-lynx/native-module), for the host app's own native code

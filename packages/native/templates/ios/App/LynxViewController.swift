@@ -25,6 +25,9 @@ final class LynxViewController: UIViewController {
     config.register(WebAuthModule.self)
     config.register(LocalStorageModule.self)
     config.register(SecureStorageModule.self)
+    // LynxClipboard's text (ClipboardModule).
+    config.register(ClipboardModule.self)
+    config.register(LinkingModule.self)
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.
@@ -131,7 +134,8 @@ final class LynxViewController: UIViewController {
   }
 
   /// The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
-  /// (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
+  /// (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
+  /// build option's Intl.DateTimeFormat), the accessibility settings
   /// (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
   /// safe-area insets and `edgeToEdge`, which env(safe-area-inset-*) reads.
   /// The Android shell sends the same keys, and Lynx Explorer sends theme and
@@ -168,6 +172,10 @@ final class LynxViewController: UIViewController {
     if let language = Locale.preferredLanguages.first {
       props["appLocale"] = language
     }
+    // The time zone's IANA name, such as "Europe/London". The `intl` build
+    // option's Intl.DateTimeFormat formats in the device's zone by default,
+    // which it reads from the engine's local time, and names it with this.
+    props["appTimeZone"] = TimeZone.current.identifier
     // Without useBoolLiterals, Lynx turns a Bool into 1 or 0.
     return LynxTemplateData(dictionary: props, useBoolLiterals: true)
   }

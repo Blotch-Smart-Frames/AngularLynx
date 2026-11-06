@@ -13,6 +13,11 @@ export type ApplicationBuilderOptions = NativeAppOptions & {
   /** The URL path the app is served under: the web bundle's asset prefix. */
   readonly baseHref?: string;
   /**
+   * The `Intl` APIs @blotch/rsbuild-plugin-angular-lynx adds to the Lynx
+   * bundle, which reads the option from the build options it's passed.
+   */
+  readonly intl?: readonly string[];
+  /**
    * The Angular compiler options `ng new` puts in the build target (browser,
    * tsConfig, polyfills, styles, optimization, ...).
    * @blotch/rsbuild-plugin-angular-lynx and `ng test` read them;

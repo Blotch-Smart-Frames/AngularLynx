@@ -68,6 +68,15 @@ src/
   strict-esm.ts                        # Builds .mjs and "type": "module" .js files as strict ES modules, which Rsbuild's JS rule overrides
   polyfills.js                         # The first preEntry module: browser globals Angular expects (AbortController, Node, document…)
   es-builtins.js                       # ES2021–ES2026 built-ins the engines lack, imported by polyfills.js; a plain script so tests run it in a vm realm
+  vacated-slots.js                     # pop()/shift()/splice() that clear the slots an array gives up, which PrimJS keeps alive; imported by polyfills.js
+  intl/                                # The `intl` option: Intl APIs Lynx lacks, added to the lynx environment's preEntry
+    apis.ts                            # The option's API names, the FormatJS package each loads and the APIs each calls
+    apply-intl.ts                      # Writes the generated module (polyfills + locale data + setup) and adds it after polyfills.js
+    locales.ts                         # The app's locales (i18n) and the FormatJS data file that serves each
+    collation-data.ts                  # Build time: each locale's collation weights, taken from Node's ICU
+    collation-format.ts                # The format collation-data.ts writes and collator.ts reads
+    collator.ts                        # Intl.Collator and localeCompare from those weights
+    runtime.ts                         # Runs after the polyfills on both threads (dist/intl-runtime.js): default locale and time zone, Collator
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules
   split-chunks.ts                      # Chunk splitting config

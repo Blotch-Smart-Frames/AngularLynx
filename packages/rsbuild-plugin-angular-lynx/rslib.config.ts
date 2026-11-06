@@ -18,6 +18,9 @@ export default defineConfig({
     entry: {
       'loaders/ignore-css-loader': './src/loaders/ignore-css-loader.ts',
       polyfills: './src/polyfills.js',
+      // What the `intl` option's generated module runs after FormatJS's
+      // polyfills (see src/intl/apply-intl.ts).
+      'intl-runtime': './src/intl/runtime.ts',
       index: './src/index.ts',
       // The logic of the hot update clients, which entry.ts adds to apps'
       // development bundles (see src/client/). Their wiring is copied below.

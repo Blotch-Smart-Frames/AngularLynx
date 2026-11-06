@@ -231,6 +231,28 @@ test('local and secure storage keep their values after a reload', async ({
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// LynxClipboard copies with the Clipboard API of the page around web-core's
+// main-thread iframe, whose own document never has focus (issue #303;
+// native/clipboard.yaml checks the app's own iOS and Android builds). The
+// storage page's "Clipboard" line copies a line and shows what it reads
+// back, which takes the browser's permission to read.
+test('copies text to the clipboard and reads it back', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Clipboard: tap', { exact: true }).click();
+  await expect(page.getByText('Clipboard: copied by e2e')).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    'copied by e2e',
+  );
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // <canvas> is the browser's in the web preview, with its own WebGL2 (issue
 // #211; native/canvas.yaml checks the app's own iOS and Android builds,
 // where the runtime's context draws through the shell). The canvas page
@@ -271,6 +293,36 @@ test("a prebuilt library's component styles apply", async ({ page }) => {
     'background-color',
     'rgb(240, 200, 40)',
   );
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
+// LynxLinking opens a new tab in the web preview (issue #304;
+// native/linking.yaml checks the browser sheet in the app's own builds).
+// Web-core runs Angular in an iframe sandboxed without `allow-popups`, whose
+// own window.open() opens nothing, so this checks that a tap opens the tab,
+// and that openInApp() resolves once it's closed.
+test('a tap opens a link in a new tab', async ({ page, context }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Open canvas', { exact: true }).click();
+  await page.getByText('Open linking', { exact: true }).click();
+  await expect(page.getByText('Can open: yes/yes')).toBeVisible();
+
+  // The page is never fetched: an offline CI runner still opens the tab.
+  await context.route('https://example.com/**', (route) =>
+    route.fulfill({ body: 'Example' }),
+  );
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    page.getByText('Open sheet', { exact: true }).click(),
+  ]);
+  expect(tab.url()).toBe('https://example.com/');
+  await expect(page.getByText('Sheet: open')).toBeVisible();
+
+  await tab.close();
+  await expect(page.getByText('Sheet: closed')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

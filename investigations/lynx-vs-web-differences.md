@@ -3006,19 +3006,43 @@ Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --plat
 
 ---
 
-## A three.js renderer kept alive by a material keeps its whole screen (issue #299, open)
+## PrimJS keeps what an array held after it shrinks (issue #299)
 
 ### What you'd expect (web)
 
-three.js hangs a `dispose` listener on every material and texture a renderer draws, which keeps the renderer for as long as that material or texture lives. A module-level material, or a model or texture from angular-three's loader cache (kept for the page's life), so keeps every renderer that ever drew it, with its canvas and GL state. Nothing more: the scene and the components around the canvas go.
+Taking a value out of an array lets it go: once `pop()`, `shift()`, `splice()` or a shorter `length` has removed it, the array no longer keeps it alive.
 
 ### What Lynx does
 
-The kept renderer keeps the whole screen too. With a module-level material on an angular-three mesh that has an `*args` child, every visit to a routed screen left the screen's components, angular-three's store and scene, and all of the screen's native UI alive (5 of 5 after 4 visits on the iOS Simulator; 1 of 5 on the web). Without `*args` only the canvas's native view stays, one per visit. The link isn't AngularLynx's canvas or context (a fake canvas with a pure-JS context leaks the same), a `WeakMap` (swapped for one keeping entries as properties: no change), or anything a walk of properties, `Map`s and `Set`s from the renderer reaches, so it runs through a closure. Issue #299 has the measurements.
+PrimJS, which runs the main thread (and Android's background thread), keeps a fast array's elements in a buffer, and its garbage collector marks every slot of the buffer, not just the ones below `length`. Shrinking an array only lowers its length, and leaves what it removed in its slot, alive for as long as the array is, until a later push writes over it. In PrimJS's source, `js_array_pop()` and `set_array_length_gc()` lower the count without clearing the slot, as does deleting an array's last element, and `Visitor::VisitJSValueArray()` marks the buffer by its allocated size. Measured on the iOS Simulator (Lynx 4.1), with a `WeakRef` to an object taken out of a kept array, after allocating enough to make PrimJS collect:
 
-### What to do
+| Taken out with                      | Collected? |
+| ----------------------------------- | ---------- |
+| `pop()`                             | **No**     |
+| `splice()`                          | **No**     |
+| `length = 1`                        | **No**     |
+| Assigning another value to its slot | Yes        |
 
-Give each canvas copies of whatever outlives it: `material.clone()` per mount, and `texture.clone()`, which shares the decoded image. Then nothing outlives the renderer, and the screen goes.
+An array that lives as long as its owner, used as a stack or a list, so keeps the last things it held. That kept whole screens. three.js's renderer pushes each frame's render list and render state onto stacks and pops them when the frame ends; the popped render list still points at the meshes it drew, and through angular-three at their scene, its store, the screen's components and every native view on the screen. three.js keeps every renderer that drew a material that's still in use (it hangs a `dispose` listener on the material), so a module-level material, or a model or texture from angular-three's loader cache, kept every screen its canvas was ever shown on. On the web the same renderer keeps only itself, its canvas and its GL state. In the Blotch app, after 4 round trips to a screen whose canvas drew one module-level material (the one screen left is the one showing):
+
+|        | Screens alive | angular-three stores | Scenes | Renderers | `LynxUI*` |
+| ------ | ------------- | -------------------- | ------ | --------- | --------- |
+| Before | 5 of 5        | 5 of 5               | 5 of 5 | 5 of 5    | 1,395     |
+| After  | 1 of 5        | 1 of 5               | 1 of 5 | 5 of 5    | 324       |
+
+Its real 3D frame, which drew the loader's cached glTF materials and texture, went the same way.
+
+It showed up as a closure because nothing a walk of properties from the renderer reached led to the screen: the stacks hold their render lists only in slots past their length, which no property, `Map` or `Set` walk visits.
+
+### The fix
+
+The build plugin's first preEntry (`packages/rsbuild-plugin-angular-lynx/src/vacated-slots.js`, imported by `polyfills.js`) replaces `pop()`, `shift()` and `splice()` in native builds with versions that call the engine's own, then write `undefined` into the slots the array gave up and put the length back. Each write appends, so the array stays a fast one. The web build keeps the browser's methods.
+
+JavaScript can't hook a shorter `length` or `delete array[array.length - 1]`, so those still keep what they cut off: empty a long-lived array that holds objects with `array.splice(0)` rather than `array.length = 0`. Only PrimJS can fix those: reported as [lynx-family/primjs#484](https://github.com/lynx-family/primjs/issues/484). Once a Lynx release has its fix, `vacated-slots.js` can go.
+
+A material that outlives its canvas still keeps the renderer, with its canvas, native view and GL state, as in a browser: give each canvas copies (`material.clone()`, and `texture.clone()`, which shares the decoded image).
+
+Covered by `packages/rsbuild-plugin-angular-lynx/src/vacated-slots.test.ts` (the methods' writes and results, in Node, whose engine collects what an array gave up either way) and Layer 6's `native/array-slots.yaml` (on a device, where it matters).
 
 ---
 
@@ -3049,7 +3073,7 @@ Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpC
 None of these web APIs exist in Lynx:
 
 - **Drag and drop** — no `DragEvent`, no `draggable` attribute, no `DataTransfer`. Implement custom drag via touch events.
-- **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules.
+- **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules: `LynxClipboard` (issue #303) calls the shells' `AngularLynxClipboard` module. See [the web preview's clipboard needs the page's window](#the-web-previews-clipboard-needs-the-pages-window) for the web side.
 - **File system** — no File API, no `<input type="file">`, no `showOpenFilePicker()`. File access requires native bridge.
 - **Web Workers** — not supported. Lynx already has a dual-thread model (main + background), but you cannot spawn additional threads from JS. Use the built-in background thread instead.
 - **SharedWorker / ServiceWorker** — not supported. No offline caching, no background sync.
@@ -3127,26 +3151,62 @@ The default `position` is **`relative`**. This means `top`/`left`/`right`/`botto
 
 ---
 
-## `Intl` is missing where Angular runs — i18n libraries that need it require polyfills
+## `Intl` is missing where Angular runs, and `localeCompare` and `toLocaleString` ignore the locale
 
 ### What you'd expect (web)
 
-`Intl.NumberFormat`, `Intl.DateTimeFormat`, `Intl.PluralRules`, `Intl.Collator`, etc. are standard globals in all modern browsers and Node.js.
+`Intl.NumberFormat`, `Intl.DateTimeFormat`, `Intl.PluralRules`, `Intl.Collator`, `Intl.DisplayNames` and the rest are standard globals in all modern browsers and Node.js, and the locale-sensitive methods use them: `'é'.localeCompare('z')` is `-1`, `(1234.5).toLocaleString('de')` is `"1.234,5"`, and `String.prototype.normalize` exists.
 
 ### What Lynx does
 
-Measured for issue #68 (2026-10-26, Lynx Explorer 4.1) with `typeof Intl`:
+Measured for issue #306 (2026-11-06, Lynx 4.1) on the iOS Simulator (iOS 27.0) and an Android emulator (API 34), in Lynx Explorer and in the apps `ng build --platform` makes, on both threads:
 
-| Thread                            | iOS                       | Android              |
-| --------------------------------- | ------------------------- | -------------------- |
-| Main (PrimJS, where Angular runs) | `undefined`               | `undefined`          |
-| Background                        | `object` (JavaScriptCore) | `undefined` (PrimJS) |
+| Thread                            | Explorer, iOS | Explorer, Android | Generated app, iOS                          | Generated app, Android |
+| --------------------------------- | ------------- | ----------------- | ------------------------------------------- | ---------------------- |
+| Main (PrimJS, where Angular runs) | no `Intl`     | no `Intl`         | no `Intl`                                   | no `Intl`              |
+| Background                        | no `Intl`     | no `Intl`         | JavaScriptCore, with `Intl` and `normalize` | no `Intl`              |
 
-So any code that runs in a component, service or template handler has no `Intl`, on either platform. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
+`SystemInfo.runtimeType` says which engine the background thread got: `quickjs` (PrimJS) in Explorer on both platforms, `jsc` in the generated iOS app. (Issue #68 saw JavaScriptCore in Explorer on iOS too, so it can change with how the host creates the LynxView.) Where `Intl` is missing, PrimJS also:
 
-- **i18next v24+** requires `Intl.PluralRules` — use v23 with `compatibilityJSON: 'v3'` or polyfill `@formatjs/intl-pluralrules`.
+- **compares UTF-16 code units in `localeCompare`**, ignoring `locales` and `options`, and returns their difference rather than -1, 0 or 1: `'é'.localeCompare('z')` is `111`, `'a'.localeCompare('A')` is `32`, and `['Zoë', 'apple', 'Émile'].sort((a, b) => a.localeCompare(b))` puts `Zoë` first and `Émile` last;
+- **has no `String.prototype.normalize`** at all (`'é'.normalize('NFD')` throws "not a function");
+- **formats dates one fixed way** in `Date.prototype.toLocaleString()` and its siblings, whatever the locale: `01/15/2026, 01:05:09 PM`;
+- **ignores the locale in `toLocaleUpperCase`/`toLocaleLowerCase`** (`'i'.toLocaleUpperCase('tr')` is `I`, not `İ`).
+
+Its `Date` does apply the device's time zone, daylight saving time included (`getTimezoneOffset()` and `getHours()`), and its regular expressions take Unicode property escapes from `new RegExp()`, `\p{Script=Hebrew}` included (but see the next section for regex literals).
+
+So any code that runs in a component, service or template handler has no `Intl`, on either platform, and passes in specs, which run in Node. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
+
+- **i18next v24+** requires `Intl.PluralRules`.
 - **Angular's own pipes don't need it.** `DatePipe`, `DecimalPipe`, `CurrencyPipe`, `PercentPipe` and `I18nPluralPipe` format from the locale data registered with `registerLocaleData()` (`en-US` is built in). `@angular/common` 22 never calls `Intl`.
-- Libraries that do need it: polyfill with `@formatjs/intl-numberformat`, `@formatjs/intl-datetimeformat`, `@formatjs/intl-pluralrules`, etc.
+
+### The fix
+
+The build option `intl` (`"intl": ["DisplayNames", "NumberFormat", "Collator"]` in angular.json, or `pluginAngularLynx({ intl })`) adds the APIs it lists to the Lynx bundle, on both threads, before the app's modules: FormatJS's polyfills (`@formatjs/intl-*`, which the app installs) with the data of `i18n.sourceLocale` and `i18n.locales`, and our own `Intl.Collator`, since FormatJS has none (`packages/rsbuild-plugin-angular-lynx/src/intl/`). The web bundle gets nothing: the browser has `Intl`. On an engine with its own `Intl` (the generated iOS app's background thread) the polyfills install nothing and the setup leaves it alone.
+
+Three things FormatJS leaves to the host are filled in:
+
+- **The default locale** (`new Intl.NumberFormat()`, `n.toLocaleString()`) is the phone's language (`appLocale`) when the app has data for it, else the source locale, as `provideLocale()` picks `LOCALE_ID`. FormatJS would use the first locale whose data loaded.
+- **The default time zone** is the device's: FormatJS's default is UTC and it knows no zone without its 800 kB of zone data. The setup reads the offsets from 1900 to 2100 from the engine's `Date` (weekly samples, each change found to the second; 1 to 4 ms) and adds them as a zone under the IANA name the generated apps send as `appTimeZone` (Explorer sends none, so it's `Etc/Unknown`).
+- **`Intl.Collator` and `localeCompare`**: the build asks Node's ICU how each locale orders the characters of the scripts most apps show and writes the answer down as three weights per character, plus two-letter contractions and letters that sort as two (`intl/collation-data.ts`). The runtime compares with them as the Unicode Collation Algorithm does. On 120 words in 10 locales and 8 option sets, it orders every pair as ICU does.
+
+FormatJS's polyfills ran without a fix on PrimJS: an app compared 58 cases (each API, compact and currency numbers, date styles and ranges, plural categories, region names, sorting) on both threads with FormatJS's own output in Node, and all matched on iOS and Android. They differ from Node's ICU only where FormatJS's CLDR data does (`"… 2026, 1:05 PM"` against ICU's `"… 2026 at 1:05 PM"`, and which spaces they use). The bundle grows by about 1.07 MB per thread for all seven APIs with one locale, and about 0.43 MB per thread for each locale after that; the website's Internationalization guide has the numbers per API. FormatJS's `intl-getcanonicallocales/polyfill.js` is a bundle with its own copy of CLDR's likely subtags, which `intl-locale` imports again from the package's index, so the build installs `Intl.getCanonicalLocales` from the index itself and saves 120 kB per thread.
+
+---
+
+## The build's main-thread bytecode compiler rejects `\p{Script=…}` in a regex literal
+
+### What you'd expect (web)
+
+`/^\p{Script=Hebrew}/u` is valid JavaScript since ES2018, and any engine that runs it compiles it.
+
+### What Lynx does
+
+The Lynx bundle's main-thread script is compiled to bytecode at build time. That compiler takes General_Category escapes (`\p{L}`, `[\p{P}\p{Z}]`) but fails the build on a Script one: `Compile error: main-thread.js exception: SyntaxError: invalid escape sequence in regular expression`. PrimJS on the device runs the same pattern from `new RegExp('^\\p{Script=Hebrew}', 'u')` on both threads (iOS and Android, 2026-11-06), so it's only the build's compiler. FormatJS's ListFormat polyfill has one, for Hebrew's "and".
+
+### The fix
+
+The `intl` option runs FormatJS's polyfills through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`), which writes each escape out as the characters it matches. Other code with a Script escape in a regex literal fails the same way; build the pattern with `new RegExp()` instead.
 
 ---
 
@@ -5298,7 +5358,7 @@ Found when TanStack Charts' SVG output (`stroke-dasharray="none"` on every bar) 
 
 ---
 
-## The main thread lacks newer built-ins: `.at()`, `toSorted()`, `Object.groupBy()`, the Set methods, `Intl`
+## The main thread lacks newer built-ins: `.at()`, `toSorted()`, `Object.groupBy()`, the Set methods
 
 ### What you'd expect (web)
 
@@ -5315,7 +5375,7 @@ Libraries that call them throw "not a function", often at module load, where it 
 
 ### The fix
 
-The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization still load an Intl polyfill.
+The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization use the `intl` build option, whose `NumberFormat` replaces it (see the `Intl` section).
 
 It's written out rather than taken from core-js: `core-js/es` adds about 400 kB, and also replaces `Promise`, `Set` or `RegExp#exec` wherever core-js judges the engine's own lacking. These add about 22 kB minified (7 kB gzipped) to each thread's bundle. The engine-level features above stay missing.
 
@@ -6350,6 +6410,8 @@ CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS
 
 The build plugin's `textInheritanceForLynx` copies each inheritable declaration (Lynx's own `enableCSSInheritance` list) to `--angular-lynx-<property>`, after Tailwind 4's lowering. The elements that stand for HTML's text (HTML text tags and the anonymous `<text>`) read the variable for each property their own rules don't set, in their inline style, ahead of the app's. Which properties an element's rules set comes from the style index the plugin builds from the app's CSS and prepends to the main-thread script (`style-index.ts`). Elements written as Lynx elements read none, so they look as before. Inline styles don't set the variables, so `<div style="color: red">` passes nothing down.
 
+---
+
 ## Lynx for Web resolves a bundle's images against the page, not the bundle
 
 ### What you'd expect (web)
@@ -6364,6 +6426,8 @@ Lynx for Web's `<image>` puts the `src` on an `<img>` in the page's shadow tree,
 
 Angular's `baseHref` build option: `ng build --base-href=/examples/` sets rspeedy's `output.assetPrefix` for the `web` environment, so the web bundle asks for `/examples/static/image/…`. The website builds every example with it and merges each example's `dist/static` into `docs/public/examples/static` (the names carry a content hash, so the merge is safe). The `lynx` bundle is left without a prefix, since native Lynx resolves against the bundle. Fonts never had the problem: the build inlines `@font-face` files as data URLs (see css.ts in the build plugin).
 
+---
+
 ## A `<lynx-view>` scaled with a CSS transform mis-measures itself
 
 ### What you'd expect (web)
@@ -6377,3 +6441,59 @@ Inside a transformed `<lynx-view>`, `getBoundingClientRect()` returns the scaled
 ### The fix
 
 Don't scale a `<lynx-view>` that holds a waterfall list. The home page's phone runs its app unscaled at the screen's own size, with insets scaled to match the chrome drawn over it; the furniture shop's docs page sets `webPreviewMode="responsive"` on its `<Go>`, which fills the pane instead of scaling. The measurement itself is web-elements' to fix (`offsetHeight` would do); upstream report pending.
+
+---
+
+## The web preview's clipboard needs the page's window
+
+### What you'd expect (web)
+
+A click handler calls `navigator.clipboard.writeText(text)` and the text is copied.
+
+### What Lynx does
+
+Web-core runs the main thread, where Angular's handlers run, in a hidden `<iframe sandbox="allow-same-origin allow-scripts">` of the page's origin (`createIFrameRealm` in `@lynx-js/web-core`). That iframe's document never has focus, so Chrome refuses its Clipboard API: `writeText` rejects with "NotAllowedError: Document is not focused", even from a tap (measured in Chromium 1248). The page around `<lynx-view>` has focus while someone taps in it, and its `navigator.clipboard` copies.
+
+Headless Chromium refuses the page's `writeText` too ("Write permission denied") unless the test grants `clipboard-write`, though headed Chromium and WebKit copy from the same tap. `document.execCommand('copy')` from a selection in the page still copies in headless Chromium, and it's the only way in a page without the Clipboard API, such as one served over plain HTTP to a phone on the network.
+
+### How AngularLynx handles it
+
+`LynxClipboard` uses the iframe's `parent` (same origin, so reachable) in the web preview: its `navigator.clipboard`, or `execCommand('copy')` from a hidden textarea where that's missing or refuses. It calls the browser before anything waits, since Safari copies only while the tap's handler runs. A refused read resolves `''`, as a refused paste does on iOS.
+
+On a device, the shells' `AngularLynxClipboard` module copies with `UIPasteboard` and `ClipboardManager`. Android 13 and later confirm every copy themselves, in a panel TalkBack reads ("Text copied", SystemUI's `ClipboardOverlayController`), so `LynxClipboard.confirmsCopies` tells the app not to say it again.
+
+---
+
+## `clearTimeout(undefined)` throws on the main thread
+
+### What you'd expect (web)
+
+`clearTimeout()` and `clearInterval()` ignore a handle that isn't a timer, `undefined` and `null` included, so code clears a timer it may not have started (`clearTimeout(this.#timer)`) before starting one.
+
+### What Lynx does
+
+The main thread's `clearTimeout` and `clearInterval` (`ClearTimeout` and `ClearTimeInterval` in Lynx core's `renderer_functions.cc`) check that their first argument is a Number, and fail with "ClearTimeout param 0 should be Number" otherwise. The statement throws, and anything after it in the same function never runs. Found on the iOS 27 Simulator in an `ng build --platform ios` app: the copy button's `clearTimeout(this.#timer)` ran before its first `setTimeout`, so the timer that puts its label back was never started, and it said "Copied" for good.
+
+### How AngularLynx handles it
+
+`polyfills.ts` puts a wrapper in front of whichever `clearTimeout` and `clearInterval` are installed that returns for `undefined` and `null`, as `cancelAnimationFrame`'s does for a handle that isn't a number. Other handles still reach the native one: Node's timers, which the testing library runs on, hand out objects.
+
+---
+
+## Links can't leave the app, and the web preview's iframe can't open a tab
+
+### What you'd expect (web)
+
+`<a href>`, `window.open()` and `location.assign()` open a page in the browser, and the browser hands `mailto:`, `tel:` and other apps' schemes to the system.
+
+### What Lynx does
+
+None of them exist on Lynx. `<a>` isn't an element, and there's no `window` or `location` on either thread. Lynx itself has no API that opens a URL outside the app: Lynx Explorer's `ExplorerModule.openSchema` opens a Lynx bundle inside Explorer, and `LynxRecorderOpenUrlModule` is part of the devtool. React Lynx has nothing either. So `LynxLinking` (issue #304) calls the shells' own `AngularLynxLinking` module, and rejects with `unavailable` in Lynx Explorer.
+
+In the web preview, web-core runs the main thread, where Angular runs, in an iframe sandboxed with `allow-same-origin allow-scripts` and without `allow-popups`, so the iframe's own `window.open()` opens nothing. Chrome logs "Blocked opening … because the request was made in a sandboxed frame whose 'allow-popups' permission is not set" and returns `null`. The page around the iframe has the same origin, and its `window.open()`, called from a tap handler, opens the tab (checked with Playwright's Chromium).
+
+On the phones, asking whether another app is installed is opt-in: iOS's `canOpenURL` answers `false` for any scheme the app doesn't list in Info.plist's `LSApplicationQueriesSchemes`, and Android 11 and later's `resolveActivity` finds no app the manifest's `<queries>` doesn't name. Opening one needs neither. On the iOS 27 Simulator, `SFSafariViewController` draws its own glass buttons and ignores `preferredBarTintColor` and `preferredControlTintColor`; Android's Custom Tab took the toolbar color.
+
+### How AngularLynx uses it
+
+`LynxLinking` opens tabs through `parent.open()` in the web preview, before anything is awaited, so the tab still counts as part of the tap. angular.json's `canOpenURLSchemes` lists the schemes `canOpenURL()` may ask about, and `ng build --platform` writes them, after `http`, `https`, `mailto`, `tel` and `sms`, into both files.

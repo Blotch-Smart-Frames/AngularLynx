@@ -38,7 +38,12 @@ import {
 } from './cross-thread-transform.js';
 import { transformWorklets } from './worklet-transform.js';
 import { getAngularCliContext } from './angular-cli-context.js';
-import { applyAngularConfig } from './utils/angular/angular-config.js';
+import {
+  applyAngularConfig,
+  POLYFILLS_ENTRY,
+} from './utils/angular/angular-config.js';
+import { parseIntlOption } from './intl/apis.js';
+import { applyIntl } from './intl/apply-intl.js';
 import {
   createAngularCompilation,
   DiagnosticModes,
@@ -120,6 +125,16 @@ export const applyAngularRules = async (
     cli,
   });
   applyAngularConfig(api, buildOptions);
+  // The plugin's own `intl` option wins: plain rspeedy apps whose angular.json
+  // targets Angular's builder can't add the option there.
+  applyIntl(api, {
+    apis: pluginOptions.intl
+      ? parseIntlOption(pluginOptions.intl, 'pluginAngularLynx()')
+      : buildOptions.intl,
+    sourceLocale: buildOptions.i18n.sourceLocale,
+    locales: buildOptions.i18n.locales,
+    polyfillsEntry: POLYFILLS_ENTRY,
+  });
   applyFileReplacements(api, buildOptions.fileReplacements);
   // The compiled size of each component stylesheet, which `transformStylesheet`
   // records on every compile, for `anyComponentStyle` budgets.

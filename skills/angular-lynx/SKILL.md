@@ -94,7 +94,7 @@ Read [threading-model.md](references/threading-model.md)
 
 ## HTTP Requests
 
-`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies. OAuth sign-in through a web page with `LynxWebAuthSession`.
+`provideHttpClient()`, `HttpClient`, `httpResource` and `fetch()` work on the main thread: the runtime relays each request to the background thread's `fetch`. URLs must be absolute, except a file the app bundles in an `ng build --platform` app; no `FormData` bodies. OAuth sign-in through a web page with `LynxWebAuthSession`. Links out of the app (browser, browser sheet, mail, other apps) with `LynxLinking`.
 
 Read [http-requests.md](references/http-requests.md)
 

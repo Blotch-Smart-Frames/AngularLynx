@@ -1,0 +1,16 @@
+# Layer 6, the app's own builds only: LynxClipboard copies text to the
+# system clipboard and reads it back (issue #303). The storage page's
+# "Clipboard" line copies a line through the shells' native module
+# (UIPasteboard on iOS, ClipboardManager on Android) and shows what the
+# clipboard reads back. iOS doesn't ask before an app reads what it copied
+# itself, and Android lets the app in front read it. Lynx Explorer has no
+# clipboard module, so the runtime rejects there.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Clipboard: tap'
+- extendedWaitUntil:
+    visible: 'Clipboard: copied by e2e'
+    timeout: 10000
+- takeScreenshot: clipboard

@@ -1,0 +1,16 @@
+# Layer 6: an object taken out of an array that stays alive is collected
+# (issue #299). PrimJS's collector marks every slot of an array's buffer, so
+# pop(), shift() and splice() left what they removed alive until the build
+# made them clear the slots; Node's V8 collects it either way, so only a
+# device can check it. The storage page (fixtures/storage.ts) takes objects
+# out with pop() and splice() and allocates until PrimJS has collected,
+# then shows "freed", or which of them it kept.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: 'Array slots: tap'
+- extendedWaitUntil:
+    visible: 'Array slots: freed'
+    timeout: 60000
+- takeScreenshot: array-slots

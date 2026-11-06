@@ -36,6 +36,23 @@
       },
       "description": "Only build these rspeedy environments (e.g. lynx). With --platform, only the lynx environment is built."
     },
+    "intl": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Collator",
+          "DateTimeFormat",
+          "DisplayNames",
+          "ListFormat",
+          "NumberFormat",
+          "PluralRules",
+          "RelativeTimeFormat"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "The Intl APIs to add to the Lynx bundle, which Lynx lacks, with data for i18n.sourceLocale and i18n.locales. Needs the FormatJS packages they use installed. The web bundle uses the browser's own."
+    },
     "browser": {
       "type": "string",
       "description": "Angular: the app's entry point. Read by @blotch/rsbuild-plugin-angular-lynx and `ng test`, and rspeedy's `source.entry` unless lynx.config.ts sets one."
@@ -191,6 +208,13 @@
         "type": "string"
       },
       "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]."
+    },
+    "canOpenURLSchemes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Other apps' URL schemes LynxLinking.canOpenURL() can ask about, e.g. [\"whatsapp\"]. iOS and Android 11+ answer only for the schemes an app declares. http, https, mailto, tel and sms are always there."
     },
     "ios": {
       "type": "object",

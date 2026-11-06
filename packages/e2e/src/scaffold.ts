@@ -874,6 +874,7 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
     'gestures.ts',
     'storage.ts',
     'canvas.ts',
+    'linking.ts',
   ]) {
     copyFileSync(
       path.join(FIXTURES_DIR, file),
@@ -909,6 +910,10 @@ export const routes: Routes = [
   {
     path: 'canvas',
     loadComponent: () => import('./canvas').then((m) => m.CanvasRoute),
+  },
+  {
+    path: 'linking',
+    loadComponent: () => import('./linking').then((m) => m.LinkingRoute),
   },
 ];
 `,

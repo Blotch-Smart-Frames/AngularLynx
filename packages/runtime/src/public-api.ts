@@ -11,6 +11,8 @@ export type {
   AccessibilityTraitStates,
 } from './lib/accessibility/accessibility-traits';
 export { LynxAnimation } from './lib/animation/animation';
+export { ClipboardError, LynxClipboard } from './lib/clipboard';
+export type { ClipboardErrorCode } from './lib/clipboard';
 export { LynxDevTools, LynxPerformance } from './lib/devtools';
 export type { DevToolsStats, LynxTraceOptions } from './lib/devtools';
 export type {
@@ -158,6 +160,8 @@ export type {
   WebViewUrlDetail,
 } from './lib/types/element-events';
 export { LynxLogger } from './lib/lynx-logger';
+export { LinkingError, LynxLinking } from './lib/linking';
+export type { LinkingErrorCode, OpenInAppOptions } from './lib/linking';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';
 export type { PortalConfig } from './lib/portal';

@@ -18,6 +18,7 @@ import {
   findAndroidSdk,
   permissionEntries,
   properties,
+  queriesEntries,
   propertyValue,
 } from './project.ts';
 
@@ -95,6 +96,23 @@ describe('deepLinkEntries', () => {
   });
 });
 
+describe('queriesEntries', () => {
+  it('asks about the apps that open each scheme', () => {
+    const entries = queriesEntries(app({ canOpenURLSchemes: ['whatsapp'] }));
+    expect(entries.startsWith('<queries>\n')).toBe(true);
+    expect(entries.endsWith('\n</queries>')).toBe(true);
+    expect(entries).toContain(
+      [
+        '    <intent>',
+        '        <action android:name="android.intent.action.VIEW" />',
+        '        <data android:scheme="whatsapp" />',
+        '    </intent>',
+      ].join('\n'),
+    );
+    expect(entries.match(/<intent>/g)).toHaveLength(6);
+  });
+});
+
 describe('androidGenerator', () => {
   let dir: string;
   beforeEach(() => {
@@ -115,6 +133,11 @@ describe('androidGenerator', () => {
     );
     expect(manifest).toContain('android.permission.CAMERA');
     expect(manifest).toContain('<data android:scheme="myapp" />');
+    // <queries> belongs to <manifest>, not to <application>.
+    expect(manifest.indexOf('<queries>')).toBeLessThan(
+      manifest.indexOf('<application'),
+    );
+    expect(manifest).toContain('<data android:scheme="mailto" />');
     expect(statSync(path.join(dir, 'gradlew')).mode & 0o111).not.toBe(0);
     expect(androidGenerator.bundleDir(dir)).toBe(
       path.join(dir, 'app/src/main/assets'),

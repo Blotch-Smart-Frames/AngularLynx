@@ -89,10 +89,29 @@ export const FLOWS: readonly Flow[] = [
     only: { platform: 'android', host: 'shell' },
   },
   {
+    file: 'array-slots.yaml',
+    description: 'collects what pop() and splice() took out of an array',
+  },
+  {
     file: 'storage.yaml',
     description: 'keeps local and secure storage after a restart',
     // Only the app's own builds have the storage modules. Lynx Explorer keeps
     // the values in memory, which a restart empties.
+    only: { host: 'shell' },
+  },
+  {
+    file: 'clipboard.yaml',
+    description: 'copies text to the clipboard and reads it back',
+    // Only the app's own builds have the clipboard module. Lynx Explorer
+    // rejects the copy.
+    only: { host: 'shell' },
+  },
+  {
+    file: 'linking.yaml',
+    description:
+      'opens a link in a browser sheet and says which apps it can open',
+    // Only the app's own builds have the linking module. In Lynx Explorer,
+    // openInApp() rejects and canOpenURL() says no.
     only: { host: 'shell' },
   },
   {

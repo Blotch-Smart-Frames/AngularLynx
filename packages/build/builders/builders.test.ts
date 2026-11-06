@@ -977,6 +977,7 @@ describe('unit-test builder', () => {
       'device',
       'config',
       'environment',
+      'intl',
       'appName',
       'appId',
       'version',
@@ -986,6 +987,7 @@ describe('unit-test builder', () => {
       'icon',
       'permissions',
       'deepLinkSchemes',
+      'canOpenURLSchemes',
       'ios',
       'android',
     ]);

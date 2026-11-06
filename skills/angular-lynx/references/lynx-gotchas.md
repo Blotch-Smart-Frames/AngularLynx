@@ -162,9 +162,21 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 - **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only `ng build --platform` apps have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.
 - **State shared between pages while the app runs:** `LynxSessionStorage`, which empties when the app quits.
 
+### No `window.open`, `location` or `<a href>`
+
+Open links with `LynxLinking`: `openURL()` for the browser, mail or another app, `openInApp()` for a browser sheet over the app, `canOpenURL()` to check first (declare other apps' schemes in `canOpenURLSchemes`). Only `ng build --platform` apps have its native module; Lynx Explorer rejects with `unavailable`. See [http-requests.md](http-requests.md).
+
 ### HTTP needs absolute URLs
 
 `HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. Files the app bundles are the exception in `ng build --platform` apps. See [http-requests.md](http-requests.md).
+
+### No `navigator.clipboard`
+
+Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and `await clipboard.getString()` (`''` when it holds no text). It uses `UIPasteboard` on iOS, `ClipboardManager` on Android and the page's Clipboard API in the web preview, where you call `setString()` straight from the tap's handler, before any `await`. Only `ng build --platform` apps have the native module: in Lynx Explorer both reject with a `ClipboardError` whose `code` is `unavailable`.
+
+- **Don't read the clipboard on launch.** iOS 16+ asks "Allow Paste?" before the app reads text another app copied (a refusal reads as `''`), and Android 12+ shows a "pasted" message.
+- **Android 13+ confirms every copy itself,** in a panel TalkBack reads. Check `clipboard.confirmsCopies` before showing or announcing your own "Copied".
+- For a ready-made button, `npx @blotch/dolan add copy-button` adds `<ui-copy-button [value]="code()">Copy code</ui-copy-button>`, which does both.
 
 ### Bundled images need `baseHref` on the web
 
@@ -197,6 +209,22 @@ Lynx doesn't scroll or pan to keep a field above the keyboard. `avoid-keyboard="
 ### VoiceOver can't swipe an `adjustable` element
 
 `accessibility-traits="adjustable"` makes VoiceOver announce the element as adjustable, but Lynx's iOS views don't respond to its swipe up and down, and Android ignores the trait. Offer `[accessibility-actions]="['Increase', 'Decrease']"` and handle `(bindaccessibilityaction)`: VoiceOver lists the actions in its Actions rotor, and TalkBack in its actions menu.
+
+### No `Intl`, and `localeCompare` and `toLocaleString` ignore the locale
+
+The main thread has no `Intl`, and neither does the background thread (except the iOS app's, on JavaScriptCore). `new Intl.NumberFormat()` throws on a device while specs pass in Node. `'é'.localeCompare('z')` compares character codes (`111`, so `'é'` sorts after `'z'`), `toLocaleString()` formats numbers the en-US way and dates as `01/15/2026, 01:05:09 PM`, and `String.prototype.normalize` doesn't exist.
+
+List the APIs the code uses in the build target's options, and install the FormatJS packages the build names:
+
+```json
+"intl": ["DisplayNames", "NumberFormat", "Collator"]
+```
+
+- It takes `Collator`, `DateTimeFormat`, `DisplayNames`, `ListFormat`, `NumberFormat`, `PluralRules` and `RelativeTimeFormat`, and adds them to both threads of the Lynx bundle, with the data of `i18n.sourceLocale` and `i18n.locales`. The web preview uses the browser's `Intl`. With plain rspeedy: `pluginAngularLynx({ intl: [...] })`.
+- Without a locale (`n.toLocaleString()`), they use the phone's language (`appLocale`) when the app has its data, else the source locale. Dates are in the phone's time zone; other named zones (`timeZone: 'America/New_York'`) need `@formatjs/intl-datetimeformat/add-golden-tz.js` in `polyfills`.
+- `Collator` (and `localeCompare` with a locale) is AngularLynx's own, from ICU's order of each locale's letters at build time. Han ideographs and Hangul sort by code point, `usage: 'search'` sorts as `'sort'`, and the `collation` option is ignored.
+- Each API costs a few hundred kB of bundle per thread, and more per locale: add only what the code calls.
+- Angular's pipes (`DatePipe`, `CurrencyPipe`, ...) don't use `Intl`: they need `registerLocaleData()`, not this option.
 
 ### `URL` and `URLSearchParams` come from the runtime
 
@@ -325,6 +353,14 @@ Use `rotateX()`/`rotateY()`/`rotateZ()` and `scaleX()`/`scaleY()`/`scaleZ()` sep
 | `position`     | `static`      | `relative`   |
 | `border-style` | `none`        | `solid`      |
 | `font-size`    | `16px`        | `14px`       |
+
+---
+
+## Memory
+
+### A shorter `length` keeps what it cut off
+
+PrimJS, which runs the main thread, keeps the values an array held in the slots past its length until something writes over them, so a long-lived array keeps what it removed for as long as the array lives. The build makes `pop()`, `shift()` and `splice()` clear those slots, but nothing can hook `array.length = 0` or `delete array[array.length - 1]`. Empty a long-lived array that holds objects with `array.splice(0)`.
 
 ---
 

@@ -89,6 +89,11 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
+            // LynxClipboard's text (ClipboardModule.kt).
+            registerModule(ClipboardModule.NAME, ClipboardModule::class.java, null)
+            // Links out of the app (LinkingModule.kt), which it opens from this
+            // activity.
+            registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name).
@@ -230,7 +235,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
 
     /**
      * The global props the runtime reads: `theme` (LynxTheme), `isNotchScreen`
-     * (LynxSafeArea), `appLocale` (LynxLocale), the accessibility settings
+     * (LynxSafeArea), `appLocale` (LynxLocale), `appTimeZone` (the `intl`
+     * build option's Intl.DateTimeFormat), the accessibility settings
      * (LynxAccessibilitySettings) and `osVersion` (LynxSystemInfo), plus the
      * safe-area insets in dp and `edgeToEdge`, which env(safe-area-inset-*)
      * reads. The iOS shell sends the same keys, and Lynx Explorer sends theme
@@ -261,6 +267,10 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         )
         // The user's language as a BCP 47 tag, such as "fr-FR".
         ConfigurationCompat.getLocales(config)[0]?.let { props["appLocale"] = it.toLanguageTag() }
+        // The time zone's IANA name, such as "Europe/London". The `intl` build
+        // option's Intl.DateTimeFormat formats in the device's zone by default,
+        // which it reads from the engine's local time, and names it with this.
+        props["appTimeZone"] = java.util.TimeZone.getDefault().id
         DynamicColors.read(this)?.let { props["dynamicColors"] = it }
         return props
     }

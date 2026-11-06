@@ -55,9 +55,11 @@ There's no `localStorage`. To keep data after the app closes, use [`LynxLocalSto
 
 ## Intl
 
-Lynx has no `Intl` object. Libraries that call `Intl.DateTimeFormat`, `Intl.NumberFormat` or `Intl.PluralRules` throw on Lynx. Add the [FormatJS polyfills](https://formatjs.github.io/docs/polyfills) for the parts you use. [Internationalization](/guide/i18n) shows the setup.
+Lynx has no `Intl` object where your app runs, so `Intl.NumberFormat`, `Intl.DateTimeFormat` and the rest throw. The methods that would use it ignore the locale: `toLocaleString()` formats numbers the `en-US` way and dates as `01/15/2026, 01:05:09 PM`, and `localeCompare()` compares character codes, so `'é'` sorts after `'z'`. There's no `String.prototype.normalize()` either.
 
-Angular's own pipes, such as `DatePipe` and `CurrencyPipe`, use Angular's locale data instead of `Intl`, so they work.
+List the `Intl` APIs your code uses in the build's `intl` option, and the build adds them, with your locales' data. [Use `Intl`](/guide/i18n#use-intl) shows how.
+
+Angular's own pipes, such as `DatePipe` and `CurrencyPipe`, use Angular's locale data instead of `Intl`, so they work without it.
 
 ## URL
 

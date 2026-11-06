@@ -71,6 +71,7 @@ The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`
 
 - **`optimization` picks a production or development build.** There is no `mode` option: as in Angular, a build that optimizes scripts is a production build, and one that doesn't is a development build with dev mode on.
 - **`budgets` are enforced** against the Lynx bundle (each entry's bundle is its own `initial` budget) and each component stylesheet, with `ng build`'s messages. A Lynx bundle holds Angular twice (once per thread), so a new app's bundle is about 1 MB; `ng add` raises `ng new`'s `initial` budget to 2 MB / 5 MB.
+- **`intl`** adds the `Intl` APIs it lists, which Lynx lacks, to the Lynx bundle (`"intl": ["NumberFormat", "Collator"]`), with data for `i18n.sourceLocale` and `i18n.locales`. The app installs the FormatJS packages the build names. See "No `Intl`" in [lynx-gotchas.md](lynx-gotchas.md).
 - **`ng build --watch`** rebuilds the bundle on every change. It can't be combined with `--platform`.
 - **`fileReplacements`** swap files as on the web, in everything the build makes: both threads' code, the web preview and the `--platform` apps. Paths are relative to the workspace and can lead out of it (`../shared/environment.prod.ts`). `ng generate environments` warns that the build target uses a third-party builder; the replacement it adds works.
 

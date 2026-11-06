@@ -202,6 +202,22 @@ Lynx doesn't scroll or pan to keep a field above the keyboard. `avoid-keyboard="
 
 `accessibility-traits="adjustable"` makes VoiceOver announce the element as adjustable, but Lynx's iOS views don't respond to its swipe up and down, and Android ignores the trait. Offer `[accessibility-actions]="['Increase', 'Decrease']"` and handle `(bindaccessibilityaction)`: VoiceOver lists the actions in its Actions rotor, and TalkBack in its actions menu.
 
+### No `Intl`, and `localeCompare` and `toLocaleString` ignore the locale
+
+The main thread has no `Intl`, and neither does the background thread (except the iOS app's, on JavaScriptCore). `new Intl.NumberFormat()` throws on a device while specs pass in Node. `'é'.localeCompare('z')` compares character codes (`111`, so `'é'` sorts after `'z'`), `toLocaleString()` formats numbers the en-US way and dates as `01/15/2026, 01:05:09 PM`, and `String.prototype.normalize` doesn't exist.
+
+List the APIs the code uses in the build target's options, and install the FormatJS packages the build names:
+
+```json
+"intl": ["DisplayNames", "NumberFormat", "Collator"]
+```
+
+- It takes `Collator`, `DateTimeFormat`, `DisplayNames`, `ListFormat`, `NumberFormat`, `PluralRules` and `RelativeTimeFormat`, and adds them to both threads of the Lynx bundle, with the data of `i18n.sourceLocale` and `i18n.locales`. The web preview uses the browser's `Intl`. With plain rspeedy: `pluginAngularLynx({ intl: [...] })`.
+- Without a locale (`n.toLocaleString()`), they use the phone's language (`appLocale`) when the app has its data, else the source locale. Dates are in the phone's time zone; other named zones (`timeZone: 'America/New_York'`) need `@formatjs/intl-datetimeformat/add-golden-tz.js` in `polyfills`.
+- `Collator` (and `localeCompare` with a locale) is AngularLynx's own, from ICU's order of each locale's letters at build time. Han ideographs and Hangul sort by code point, `usage: 'search'` sorts as `'sort'`, and the `collation` option is ignored.
+- Each API costs a few hundred kB of bundle per thread, and more per locale: add only what the code calls.
+- Angular's pipes (`DatePipe`, `CurrencyPipe`, ...) don't use `Intl`: they need `registerLocaleData()`, not this option.
+
 ### `URL` and `URLSearchParams` come from the runtime
 
 PrimJS has neither on the main thread. The runtime installs standards-following versions, because Angular's Router, `HttpClient` and `NgOptimizedImage` loaders call `new URL()`. Use them as on the web.

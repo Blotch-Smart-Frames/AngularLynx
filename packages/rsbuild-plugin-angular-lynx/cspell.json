@@ -1,11 +1,27 @@
 {
   "import": ["../../cspell.json"],
   "words": [
+    "abbrvs",
     "atrule",
+    "CLDR",
     "currentcolor",
+    "datetimeformat",
+    "displaynames",
+    "fullwidth",
+    "getcanonicallocales",
+    "Kolkata",
+    "letterlike",
     "linearrgb",
+    "listformat",
     "longhands",
+    "numberformat",
     "oklab",
-    "oklch"
+    "oklch",
+    "phonebk",
+    "pluralrules",
+    "ponyfills",
+    "relativetimeformat",
+    "subtags",
+    "tailorings"
   ]
 }

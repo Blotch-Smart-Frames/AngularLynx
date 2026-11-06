@@ -45,12 +45,13 @@ They work like Angular's builders:
 
 ### Build options
 
-| Option        | Type                              | Default                  | Description                                                                                                                        |
-| ------------- | --------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `platform`    | `"ios"` \| `"android"` \| `"all"` | —                        | Also build the native apps into `dist/<platform>/`. Builds only the `lynx` environment                                             |
-| `watch`       | `boolean`                         | `false`                  | Rebuild the bundles when a file changes. Can't be combined with `platform`                                                         |
-| `config`      | `string`                          | `lynx.config.ts`, if any | The RSpeedy config file, relative to the project root. `.js`, `.mts` and `.mjs` are found too. See [lynx.config.ts](#lynxconfigts) |
-| `environment` | `string[]`                        | All                      | Only build these RSpeedy environments, e.g. `["lynx"]`. RSpeedy builds `lynx` for iOS and Android, and `web` for the web preview   |
+| Option        | Type                              | Default                  | Description                                                                                                                                                                                                                                                            |
+| ------------- | --------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platform`    | `"ios"` \| `"android"` \| `"all"` | —                        | Also build the native apps into `dist/<platform>/`. Builds only the `lynx` environment                                                                                                                                                                                 |
+| `watch`       | `boolean`                         | `false`                  | Rebuild the bundles when a file changes. Can't be combined with `platform`                                                                                                                                                                                             |
+| `config`      | `string`                          | `lynx.config.ts`, if any | The RSpeedy config file, relative to the project root. `.js`, `.mts` and `.mjs` are found too. See [lynx.config.ts](#lynxconfigts)                                                                                                                                     |
+| `environment` | `string[]`                        | All                      | Only build these RSpeedy environments, e.g. `["lynx"]`. RSpeedy builds `lynx` for iOS and Android, and `web` for the web preview                                                                                                                                       |
+| `intl`        | `string[]`                        | —                        | The `Intl` APIs to add to the iOS and Android bundles, which Lynx lacks, with data for your locales: any of `Collator`, `DateTimeFormat`, `DisplayNames`, `ListFormat`, `NumberFormat`, `PluralRules` and `RelativeTimeFormat`. See [Use `Intl`](/guide/i18n#use-intl) |
 
 ### Angular options
 
@@ -163,6 +164,7 @@ The builders use the plugin you list instead of adding their own. Import from `@
 | Option                      | Type                  | Default | Description                                                                                                                                                           |
 | --------------------------- | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pages`                     | `string[]` \| `'all'` | —       | Build these `angular.json` projects as separate pages, each with its own bundle. `'all'` builds every `application` project. See [Multi-page apps](/guide/multi-page) |
+| `intl`                      | `string[]`            | —       | The same as the [`intl` build option](#build-options), for an app whose `angular.json` build target isn't AngularLynx's. Replaces it when set                         |
 | `enableSSR`                 | `boolean`             | `false` | Support Lynx's snapshot SSR, which renders the first screen ahead of time. See the [SSR example](/examples/ssr)                                                       |
 | `targetSdkVersion`          | `string`              | `'3.2'` | The oldest Lynx engine version the bundle runs on                                                                                                                     |
 | `experimental_isLazyBundle` | `boolean`             | `false` | Experimental. Emit each lazy route and `@defer` block as its own lazy bundle, loaded at runtime. By default, they're built into the main bundle                       |

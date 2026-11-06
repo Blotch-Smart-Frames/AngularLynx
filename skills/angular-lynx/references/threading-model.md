@@ -84,7 +84,7 @@ The `LynxLogger` uses this pattern to relay logs from the main thread, where you
 
 The build pipeline transpiles your code to the appropriate target for each bundle, but be aware that:
 
-- The build adds the newer built-in methods up to ES2026 (`.at()`, `toSorted()`, `Object.groupBy()`, `Promise.withResolvers()`, the Set methods, iterator helpers and the rest) before the app starts, on both threads. Still missing: `structuredClone()`, `Intl`, the RegExp `d`/`v` flags and `Error`'s `cause` option
+- The build adds the newer built-in methods up to ES2026 (`.at()`, `toSorted()`, `Object.groupBy()`, `Promise.withResolvers()`, the Set methods, iterator helpers and the rest) before the app starts, on both threads. Still missing: `structuredClone()`, the RegExp `d`/`v` flags and `Error`'s `cause` option, and `Intl` unless the build's `intl` option adds it (see "No `Intl`" in [lynx-gotchas.md](lynx-gotchas.md))
 - On the main thread, `for await` over a sync iterable of promises yields the promises themselves, not their values: await each one yourself, or use `Promise.all()`
 - `#private` fields in your code (and AngularLynx's) compile to non-enumerable properties named `__private_<n>_<name>`, not to the WeakMaps ES2019 would use: PrimJS never frees objects that reach each other through those WeakMaps while one of them holds a native element. So `#field in obj` throws (`_field.has is not a function`): check with `instanceof` or a public property instead. `Object.getOwnPropertyNames()` lists private fields; `Object.keys()`, `JSON.stringify()` and spreading don't. Other packages' private fields compile as usual
 - `AbortController`/`AbortSignal` are polyfilled by the runtime

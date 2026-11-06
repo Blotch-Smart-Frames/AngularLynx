@@ -52,6 +52,14 @@
   "devDependencies": {
     "@angular-devkit/core": "^22.2.2",
     "@angular/build": "^22.2.5",
+    "@formatjs/intl-datetimeformat": "^8.0.2",
+    "@formatjs/intl-displaynames": "^8.0.1",
+    "@formatjs/intl-getcanonicallocales": "^3.3.0",
+    "@formatjs/intl-listformat": "^9.0.1",
+    "@formatjs/intl-locale": "^5.4.2",
+    "@formatjs/intl-numberformat": "^10.0.2",
+    "@formatjs/intl-pluralrules": "^7.0.2",
+    "@formatjs/intl-relativetimeformat": "^13.0.1",
     "@rsbuild/core": "~2.2.9",
     "@rslib/core": "^1.0.5",
     "@rspack/core": "~2.2.8",
@@ -66,10 +74,42 @@
     "@angular-devkit/core": "^22.2.0",
     "@angular/build": "^22.2.0",
     "@angular/localize": "^22.2.0",
+    "@formatjs/intl-datetimeformat": "^8.0.2",
+    "@formatjs/intl-displaynames": "^8.0.1",
+    "@formatjs/intl-getcanonicallocales": "^3.3.0",
+    "@formatjs/intl-listformat": "^9.0.1",
+    "@formatjs/intl-locale": "^5.4.2",
+    "@formatjs/intl-numberformat": "^10.0.2",
+    "@formatjs/intl-pluralrules": "^7.0.2",
+    "@formatjs/intl-relativetimeformat": "^13.0.1",
     "@lynx-js/rspeedy": "^0.18.0"
   },
   "peerDependenciesMeta": {
     "@angular/localize": {
+      "optional": true
+    },
+    "@formatjs/intl-datetimeformat": {
+      "optional": true
+    },
+    "@formatjs/intl-displaynames": {
+      "optional": true
+    },
+    "@formatjs/intl-getcanonicallocales": {
+      "optional": true
+    },
+    "@formatjs/intl-listformat": {
+      "optional": true
+    },
+    "@formatjs/intl-locale": {
+      "optional": true
+    },
+    "@formatjs/intl-numberformat": {
+      "optional": true
+    },
+    "@formatjs/intl-pluralrules": {
+      "optional": true
+    },
+    "@formatjs/intl-relativetimeformat": {
       "optional": true
     }
   },

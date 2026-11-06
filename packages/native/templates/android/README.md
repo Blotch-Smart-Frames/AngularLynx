@@ -57,6 +57,10 @@ iOS's `LinkingModule.swift` does the same with `UIApplication.open`, `SFSafariVi
 
 iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageModule.swift` the Keychain, readable after the first unlock and never moved to another device.
 
+## Clipboard
+
+`NativeModules.AngularLynxClipboard` (`ClipboardModule.kt`, behind the runtime's `LynxClipboard`) copies text to `ClipboardManager` as a plain-text clip and reads the first item back as text, both on the main thread. `setString` calls back once with `{}` or `{ error }`, `getString` with `{ value }`, `""` when the clipboard holds no text. Android 13 and later show the copied text in a panel of their own and have TalkBack say "Text copied", so the runtime's `LynxClipboard.confirmsCopies` tells the app not to confirm it again. Android 10 and later let only the app in front read the clipboard, and Android 12 and later tell the person when it does. iOS's `ClipboardModule.swift` uses `UIPasteboard.general`.
+
 ## Canvas and WebGL
 
 `<canvas>` (issue #211) is the shell's: `CanvasUI.kt`, a `TextureView` registered as the `canvas` element (`addBehavior(CanvasUI.behavior())`), and `WebGLModule.kt`, the `AngularLynxWebGL` module the runtime's WebGL2 context sends its calls to. `MainActivity` turns on main-thread modules (`setEnableMTSModule(true)`), so the runtime, which runs on Lynx's main thread, calls the module synchronously with `lynx.module(name)`, on the UI thread. Each context (`WebGLContext.kt`) is an EGL context with OpenGL ES 3.0 and an offscreen default framebuffer, which `present` copies into the canvas's surface; `WebGLOps.kt` is generated from the runtime's opcodes (`npm run generate:webgl-ops -w packages/native`). `AssetsModule.kt` (`AngularLynxAssets`) reads a file the app bundles for the main thread's `fetch`, which has no page URL to resolve `/static/...` against.

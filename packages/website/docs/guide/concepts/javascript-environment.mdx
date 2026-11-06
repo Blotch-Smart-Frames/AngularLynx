@@ -21,16 +21,17 @@ It also adds small `document`, `window` and `navigator` objects. They are not a 
 
 ## What's missing, and what to use instead
 
-| Browser API                                                       | On Lynx                                                                                       |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| The DOM: `querySelector`, `createElement`, `innerHTML`            | Use templates, `viewChild()` and signals                                                      |
-| `getComputedStyle()`                                              | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
-| `matchMedia`                                                      | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
-| `navigator.userAgent`, `navigator.language`                       | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
-| `localStorage`, `sessionStorage`                                  | See [Storage](#storage)                                                                       |
-| `WebSocket`                                                       | See [Network requests](#network-requests)                                                     |
-| `Intl`                                                            | See [Intl](#intl)                                                                             |
-| A 2D `<canvas>`, Web Audio, Web Workers, clipboard, drag and drop | Not available                                                                                 |
+| Browser API                                            | On Lynx                                                                                       |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| The DOM: `querySelector`, `createElement`, `innerHTML` | Use templates, `viewChild()` and signals                                                      |
+| `getComputedStyle()`                                   | [Call element methods](/guide/selector-query), or a [main-thread script](/guide/main-thread/) |
+| `matchMedia`                                           | [`LynxSystemInfo`](/api/angular-lynx/system-info) for screen size                             |
+| `navigator.userAgent`, `navigator.language`            | [`LynxSystemInfo`](/api/angular-lynx/system-info), [`LynxLocale`](/api/angular-lynx/locale)   |
+| `localStorage`, `sessionStorage`                       | See [Storage](#storage)                                                                       |
+| `WebSocket`                                            | See [Network requests](#network-requests)                                                     |
+| `Intl`                                                 | See [Intl](#intl)                                                                             |
+| `navigator.clipboard`                                  | [`LynxClipboard`](/api/angular-lynx/clipboard)                                                |
+| A 2D `<canvas>`, Web Audio, Web Workers, drag and drop | Not available                                                                                 |
 
 An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer from its last layout, so they're empty until the element has been laid out. Use `ResizeObserver` to hear when it has, or [element methods](/guide/selector-query) to ask native for the box.
 

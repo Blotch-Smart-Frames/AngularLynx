@@ -3072,7 +3072,7 @@ Nothing: the main thread's `fetch` (and so `Image`, three.js's loaders and HttpC
 None of these web APIs exist in Lynx:
 
 - **Drag and drop** — no `DragEvent`, no `draggable` attribute, no `DataTransfer`. Implement custom drag via touch events.
-- **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules.
+- **Clipboard** — no `navigator.clipboard`. Copy/paste must go through native bridge modules: `LynxClipboard` (issue #303) calls the shells' `AngularLynxClipboard` module. See [the web preview's clipboard needs the page's window](#the-web-previews-clipboard-needs-the-pages-window) for the web side.
 - **File system** — no File API, no `<input type="file">`, no `showOpenFilePicker()`. File access requires native bridge.
 - **Web Workers** — not supported. Lynx already has a dual-thread model (main + background), but you cannot spawn additional threads from JS. Use the built-in background thread instead.
 - **SharedWorker / ServiceWorker** — not supported. No offline caching, no background sync.
@@ -6372,6 +6372,42 @@ CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS
 ### How AngularLynx uses it
 
 The build plugin's `textInheritanceForLynx` copies each inheritable declaration (Lynx's own `enableCSSInheritance` list) to `--angular-lynx-<property>`, after Tailwind 4's lowering. The elements that stand for HTML's text (HTML text tags and the anonymous `<text>`) read the variable for each property their own rules don't set, in their inline style, ahead of the app's. Which properties an element's rules set comes from the style index the plugin builds from the app's CSS and prepends to the main-thread script (`style-index.ts`). Elements written as Lynx elements read none, so they look as before. Inline styles don't set the variables, so `<div style="color: red">` passes nothing down.
+
+---
+
+## The web preview's clipboard needs the page's window
+
+### What you'd expect (web)
+
+A click handler calls `navigator.clipboard.writeText(text)` and the text is copied.
+
+### What Lynx does
+
+Web-core runs the main thread, where Angular's handlers run, in a hidden `<iframe sandbox="allow-same-origin allow-scripts">` of the page's origin (`createIFrameRealm` in `@lynx-js/web-core`). That iframe's document never has focus, so Chrome refuses its Clipboard API: `writeText` rejects with "NotAllowedError: Document is not focused", even from a tap (measured in Chromium 1248). The page around `<lynx-view>` has focus while someone taps in it, and its `navigator.clipboard` copies.
+
+Headless Chromium refuses the page's `writeText` too ("Write permission denied") unless the test grants `clipboard-write`, though headed Chromium and WebKit copy from the same tap. `document.execCommand('copy')` from a selection in the page still copies in headless Chromium, and it's the only way in a page without the Clipboard API, such as one served over plain HTTP to a phone on the network.
+
+### How AngularLynx handles it
+
+`LynxClipboard` uses the iframe's `parent` (same origin, so reachable) in the web preview: its `navigator.clipboard`, or `execCommand('copy')` from a hidden textarea where that's missing or refuses. It calls the browser before anything waits, since Safari copies only while the tap's handler runs. A refused read resolves `''`, as a refused paste does on iOS.
+
+On a device, the shells' `AngularLynxClipboard` module copies with `UIPasteboard` and `ClipboardManager`. Android 13 and later confirm every copy themselves, in a panel TalkBack reads ("Text copied", SystemUI's `ClipboardOverlayController`), so `LynxClipboard.confirmsCopies` tells the app not to say it again.
+
+---
+
+## `clearTimeout(undefined)` throws on the main thread
+
+### What you'd expect (web)
+
+`clearTimeout()` and `clearInterval()` ignore a handle that isn't a timer, `undefined` and `null` included, so code clears a timer it may not have started (`clearTimeout(this.#timer)`) before starting one.
+
+### What Lynx does
+
+The main thread's `clearTimeout` and `clearInterval` (`ClearTimeout` and `ClearTimeInterval` in Lynx core's `renderer_functions.cc`) check that their first argument is a Number, and fail with "ClearTimeout param 0 should be Number" otherwise. The statement throws, and anything after it in the same function never runs. Found on the iOS 27 Simulator in an `ng build --platform ios` app: the copy button's `clearTimeout(this.#timer)` ran before its first `setTimeout`, so the timer that puts its label back was never started, and it said "Copied" for good.
+
+### How AngularLynx handles it
+
+`polyfills.ts` puts a wrapper in front of whichever `clearTimeout` and `clearInterval` are installed that returns for `undefined` and `null`, as `cancelAnimationFrame`'s does for a handle that isn't a number. Other handles still reach the native one: Node's timers, which the testing library runs on, hand out objects.
 
 ---
 

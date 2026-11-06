@@ -91,6 +91,8 @@ To render a component with inputs, pass them to `render()` instead of writing a 
 
 A spec has none of the app's native modules, as in Lynx Explorer: `LynxNativeModule.call()` resolves `undefined`, a native module's methods reject, and `LynxLocalStorage` and `LynxSecureStorage` keep values in memory. `LynxLinking` is the exception: the testing library gives it a module that records each URL, which `openedURLs()` returns (`[{ url, inApp }]`, reset after each test), so `openURL()` and `openInApp()` resolve and `canOpenURL()` resolves `true`. The test environment answers the calls AngularLynx relays to the background thread, but a relayed call that needs a Lynx API the environment lacks, such as `LynxAccessibility.announce()`, rejects, and `runOnBackground()` gets no answer, since `backgroundFn()`s don't run there. Provide fakes for these.
 
+`LynxClipboard` keeps its text in memory under the testing library, one clipboard for each rendered app, so a spec reads back what was copied with `componentRef.injector.get(LynxClipboard).getString()`.
+
 `ng extract-i18n` takes the options of Angular's extract-i18n builder. Angular CLI can't pick an extractor for the Lynx build builder by itself, so the app needs the `extract-i18n` target, which `ng add` writes. `ng generate @blotch/angular-lynx:add-i18n` sets it to write JSON to `src/locale`, the format `loadTranslations()` takes.
 
 ## Config File: `lynx.config.ts` (optional)

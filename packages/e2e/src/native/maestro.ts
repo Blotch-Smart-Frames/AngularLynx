@@ -100,6 +100,13 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'clipboard.yaml',
+    description: 'copies text to the clipboard and reads it back',
+    // Only the app's own builds have the clipboard module. Lynx Explorer
+    // rejects the copy.
+    only: { host: 'shell' },
+  },
+  {
     file: 'linking.yaml',
     description:
       'opens a link in a browser sheet and says which apps it can open',

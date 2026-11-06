@@ -170,6 +170,14 @@ Open links with `LynxLinking`: `openURL()` for the browser, mail or another app,
 
 `HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. Files the app bundles are the exception in `ng build --platform` apps. See [http-requests.md](http-requests.md).
 
+### No `navigator.clipboard`
+
+Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and `await clipboard.getString()` (`''` when it holds no text). It uses `UIPasteboard` on iOS, `ClipboardManager` on Android and the page's Clipboard API in the web preview, where you call `setString()` straight from the tap's handler, before any `await`. Only `ng build --platform` apps have the native module: in Lynx Explorer both reject with a `ClipboardError` whose `code` is `unavailable`.
+
+- **Don't read the clipboard on launch.** iOS 16+ asks "Allow Paste?" before the app reads text another app copied (a refusal reads as `''`), and Android 12+ shows a "pasted" message.
+- **Android 13+ confirms every copy itself,** in a panel TalkBack reads. Check `clipboard.confirmsCopies` before showing or announcing your own "Copied".
+- For a ready-made button, `npx @blotch/dolan add copy-button` adds `<ui-copy-button [value]="code()">Copy code</ui-copy-button>`, which does both.
+
 ### No 2D canvas, and WebGL only in built apps
 
 `<canvas>` has only a WebGL2 context, and only in apps built with `ng build --platform ios|android` and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).

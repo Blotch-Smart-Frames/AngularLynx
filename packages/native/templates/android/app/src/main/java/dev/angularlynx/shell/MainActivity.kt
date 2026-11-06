@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
+            // LynxClipboard's text (ClipboardModule.kt).
+            registerModule(ClipboardModule.NAME, ClipboardModule::class.java, null)
             // Links out of the app (LinkingModule.kt), which it opens from this
             // activity.
             registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)

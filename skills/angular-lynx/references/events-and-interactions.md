@@ -70,6 +70,7 @@ export class Tilt {
 - **`window.innerWidth` / `innerHeight`** are the LynxView's size in CSS pixels; until its first layout, the screen's.
 - **iOS and Android send no mouse events:** `document:mousemove` never runs there, so listen for `pointermove`.
 - **In the web preview** they're the browser's own events inside the `<lynx-view>`, mouse included, and the size is the `<lynx-view>`'s.
+- **A mouse drag that starts on an `<image>` in the web preview** starts the browser's own drag of the image, after which no `mousemove` or `mouseup` arrives: a swiper moved one step and froze. The docs' previews cancel it; a page that embeds a `<lynx-view>` itself should too: `view.addEventListener('dragstart', (e) => e.preventDefault())`. A mouse event's `x` and `y` are relative to the LynxView; its `clientX` and `clientY` are relative to the element under the cursor, so a drag reads `x`.
 
 ## Handlers can change the element tree
 

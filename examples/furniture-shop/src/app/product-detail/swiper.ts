@@ -30,7 +30,9 @@ import { Indicator } from './indicator';
   template: `
     <view class="swiper-wrapper">
       <!-- Touch events on a phone; mouse events in a desktop browser, where
-           a drag sends those instead. -->
+           a drag sends those instead. A mouse event's x is relative to the
+           LynxView; its clientX is relative to the element under the
+           cursor, which moves with the drag. -->
       <view
         #strip
         class="swiper-container"
@@ -130,12 +132,15 @@ export class Swiper {
 
   readonly onMouseDown = (event: MainThread.MouseEvent) => {
     'main thread';
-    this.#begin(event.clientX);
+    this.#begin(event.x);
   };
 
   readonly onMouseMove = (event: MainThread.MouseEvent) => {
     'main thread';
-    this.#drag(event.clientX);
+    // A move with no button down means the button came up outside the
+    // view, where no mouseup reaches the app.
+    if (event.buttons === 0) this.#release();
+    else this.#drag(event.x);
   };
 
   readonly onMouseUp = () => {

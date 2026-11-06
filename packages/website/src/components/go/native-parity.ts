@@ -57,6 +57,12 @@ const NATIVE_PARITY_RULES = [
   // `<overlay>` itself does nothing, since web-elements gives it
   // `display: contents`.
   'x-overlay-ng::part(dialog) { z-index: 2147483647; }',
+  // A finger can't drag an image off a phone's screen, but a mouse drags a
+  // browser's `<img>` out as a file, and once that drag starts the page gets
+  // no more mousemoves and no mouseup: a swiper dragged by its photo moved
+  // one step and froze. Firefox needs the `dragstart` cancelled too (see
+  // `applyNativeParity`).
+  'x-image::part(img) { -webkit-user-drag: none; user-select: none; }',
 ];
 
 const configured = new WeakSet<HTMLElement>();
@@ -254,6 +260,10 @@ export const applyNativeParity = (): void => {
             ...NATIVE_PARITY_RULES,
             ...(this.injectStyleRules ?? []),
           ];
+          // No image is dragged out of the view (see NATIVE_PARITY_RULES).
+          // The `dragstart` is composed, so it reaches the host from the
+          // `<img>` inside web-elements' shadow root.
+          this.addEventListener('dragstart', (event) => event.preventDefault());
         }
         super.connectedCallback();
       }

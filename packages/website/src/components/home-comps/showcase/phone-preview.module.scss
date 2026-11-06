@@ -31,6 +31,12 @@
   transform-origin: top left;
 }
 
+// Or at the screen's own size (see the component's `layout`).
+.stage-fill {
+  position: absolute;
+  inset: 0;
+}
+
 // Over the screen until the app has painted, and in place of it if it can't.
 .curtain {
   position: absolute;

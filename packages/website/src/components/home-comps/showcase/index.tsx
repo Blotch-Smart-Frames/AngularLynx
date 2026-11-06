@@ -42,6 +42,7 @@ const demos: {
   code: string;
   autoGesture?: AutoGestureOptions;
   statusBar?: 'light' | 'dark';
+  layout?: 'iphone' | 'fill';
 }[] = [
   {
     id: 'showcase',
@@ -63,8 +64,10 @@ const demos: {
     hint: 'Tap a picture to open it, then swipe through its photos.',
     // No demonstration: Lynx for Web takes a tap only from a real click, so
     // a synthesized one can't open a product. The gallery scrolls by itself.
+    // Laid out at the screen's size: its waterfall list can't be scaled.
     code: '/examples/furniture-shop',
     statusBar: 'light',
+    layout: 'fill',
   },
   {
     id: 'todo-list',
@@ -182,6 +185,7 @@ export const ShowCase: React.FC = () => {
               fallbackHref={demo.code}
               autoGesture={demo.autoGesture}
               statusBar={demo.statusBar}
+              layout={demo.layout}
             />
           </div>
           <div className={styles['notes']}>

@@ -6362,3 +6362,17 @@ Lynx for Web's `<image>` puts the `src` on an `<img>` in the page's shadow tree,
 ### The fix
 
 Angular's `baseHref` build option: `ng build --base-href=/examples/` sets rspeedy's `output.assetPrefix` for the `web` environment, so the web bundle asks for `/examples/static/image/…`. The website builds every example with it and merges each example's `dist/static` into `docs/public/examples/static` (the names carry a content hash, so the merge is safe). The `lynx` bundle is left without a prefix, since native Lynx resolves against the bundle. Fonts never had the problem: the build inlines `@font-face` files as data URLs (see css.ts in the build plugin).
+
+## A `<lynx-view>` scaled with a CSS transform mis-measures itself
+
+### What you'd expect (web)
+
+A page scaled with `transform: scale()` lays out and measures in its own CSS pixels; only its picture shrinks. The docs' previews scale a `<lynx-view>` laid out at an iPhone's 402px to the pane that way.
+
+### What Lynx does
+
+Inside a transformed `<lynx-view>`, `getBoundingClientRect()` returns the scaled box (so does CSS `zoom`, measured in Chrome 156), while `offsetWidth` and `clientWidth` return the layout size. Two things read the rect: AngularLynx's `innerWidth`/`innerHeight` did, so an app laid out at 402px saw 330px, and a swiper that sized its photos by `innerWidth` left the next photo showing (fixed: `web-source.ts` reads `offsetWidth`/`offsetHeight`). Lynx for Web's waterfall `<list>` (`XListWaterfall.js`, `#layoutListItem`) places each item at the sum of the previous items' `getBoundingClientRect().height`, in CSS px, so under a scale of 0.82 every item starts 18% too high and the columns overlap. `list-type="flow"` and `single` lay out with CSS and aren't affected.
+
+### The fix
+
+Don't scale a `<lynx-view>` that holds a waterfall list. The home page's phone runs its app unscaled at the screen's own size, with insets scaled to match the chrome drawn over it; the furniture shop's docs page sets `webPreviewMode="responsive"` on its `<Go>`, which fills the pane instead of scaling. The measurement itself is web-elements' to fix (`offsetHeight` would do); upstream report pending.

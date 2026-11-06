@@ -346,8 +346,10 @@ describe('polyfills', () => {
 
       expect(globalThis.setTimeout).toBe(lynxTimers.setTimeout);
       expect(globalThis.setInterval).toBe(lynxTimers.setInterval);
-      expect(globalThis.clearTimeout).toBe(lynxTimers.clearTimeout);
-      expect(globalThis.clearInterval).toBe(lynxTimers.clearInterval);
+      globalThis.clearTimeout(4 as unknown as ReturnType<typeof setTimeout>);
+      globalThis.clearInterval(5 as unknown as ReturnType<typeof setInterval>);
+      expect(lynxTimers.clearTimeout).toHaveBeenCalledWith(4);
+      expect(lynxTimers.clearInterval).toHaveBeenCalledWith(5);
       expect((globalThis as any).requestAnimationFrame).toBe(
         lynxTimers.requestAnimationFrame,
       );
@@ -394,7 +396,50 @@ describe('polyfills', () => {
       vi.stubGlobal('setTimeout', undefined);
       vi.stubGlobal('lynx', lynxTimers);
       await importFresh();
-      expect(globalThis.clearInterval).toBe(lynxTimers.clearTimeInterval);
+      globalThis.clearInterval(6 as unknown as ReturnType<typeof setInterval>);
+      expect(lynxTimers.clearTimeInterval).toHaveBeenCalledWith(6);
+    });
+
+    it('ignores clearing an undefined or null timer, as a browser does', async () => {
+      /**
+       * Lynx's own throw for one: a component clears a timer it may not have
+       * started yet before starting one.
+       */
+      const strict = () =>
+        vi.fn((handle: unknown) => {
+          if (typeof handle !== 'number')
+            throw new Error('ClearTimeout param 0 should be Number');
+        });
+      const clearTimeoutSpy = strict();
+      const clearIntervalSpy = strict();
+      vi.stubGlobal('clearTimeout', clearTimeoutSpy);
+      vi.stubGlobal('clearInterval', clearIntervalSpy);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+
+      for (const name of ['clearTimeout', 'clearInterval'] as const) {
+        const clear = (globalThis as any)[name] as (handle?: unknown) => void;
+        expect(() => clear(undefined)).not.toThrow();
+        expect(() => clear(null)).not.toThrow();
+        expect(() => clear()).not.toThrow();
+      }
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+      expect(clearIntervalSpy).not.toHaveBeenCalled();
+      globalThis.clearTimeout(8 as unknown as ReturnType<typeof setTimeout>);
+      globalThis.clearInterval(9 as unknown as ReturnType<typeof setInterval>);
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(8);
+      expect(clearIntervalSpy).toHaveBeenCalledWith(9);
+    });
+
+    it('leaves clearTimeout and clearInterval out where there are none', async () => {
+      vi.stubGlobal('clearTimeout', undefined);
+      vi.stubGlobal('clearInterval', undefined);
+      vi.stubGlobal('setTimeout', () => 0);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+
+      expect(globalThis.clearTimeout).toBeUndefined();
+      expect(globalThis.clearInterval).toBeUndefined();
     });
   });
 

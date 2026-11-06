@@ -115,6 +115,8 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // Links out of the app (LinkingModule.kt), which it opens from this
             // activity.
             registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)
+            // The photo picker behind LynxImagePicker (ImagePickerModule.kt), which
+            // this activity launches.
             registerModule(ImagePickerModule.NAME, ImagePickerModule::class.java, imagePickerHost)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let

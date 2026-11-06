@@ -915,6 +915,8 @@ export const routes: Routes = [
   {
     path: 'linking',
     loadComponent: () => import('./linking').then((m) => m.LinkingRoute),
+  },
+  {
     path: 'photo',
     loadComponent: () => import('./photo').then((m) => m.PhotoRoute),
   },

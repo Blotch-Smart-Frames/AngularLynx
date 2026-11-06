@@ -3,6 +3,7 @@ import { HomeLayout as BaseHomeLayout } from '@rspress/core/theme-original';
 import {
   Banner,
   Compare,
+  FeatureBubbles,
   Features,
   MeteorsBackground,
   ShowCase,
@@ -151,6 +152,8 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
         <Features />
         <ShowCase />
         <Compare />
+        {/* After the case for AngularLynx, everything it comes with. */}
+        <FeatureBubbles />
         <Banner />
       </>
     ),

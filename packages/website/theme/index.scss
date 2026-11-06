@@ -54,6 +54,13 @@ $angular-light-blue: #42a5f5;
   --home-banner-title-color: #060606;
   --home-banner-pixel-color: #{$angular-red};
   --home-banner-pixel-opacity: 0.3;
+
+  // Feature bubbles: ink on the light page, paper on the dark one, so they
+  // carry the same weight in both.
+  --home-bubble-bg: #111113;
+  --home-bubble-color: #fff;
+  --home-bubble-shadow: 0 10px 24px -10px rgba(17, 17, 19, 0.45);
+  --home-bubble-shadow-hover: 0 16px 32px -12px rgba(221, 0, 49, 0.55);
 }
 
 :root.dark {
@@ -75,6 +82,11 @@ $angular-light-blue: #42a5f5;
   --home-banner-title-color: #fff;
   --home-banner-pixel-color: #{color.adjust($angular-red, $lightness: 15%)};
   --home-banner-pixel-opacity: 0.4;
+
+  --home-bubble-bg: #fff;
+  --home-bubble-color: #111113;
+  --home-bubble-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.7);
+  --home-bubble-shadow-hover: 0 16px 32px -12px rgba(0, 0, 0, 0.7);
 }
 
 // ======== Hero text styling =========

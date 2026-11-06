@@ -1,0 +1,190 @@
+.bubbles-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 auto 96px;
+  padding: 0 20px;
+  max-width: 1040px;
+
+  .title {
+    margin: 0 0 12px;
+    color: var(--home-title-color);
+    text-align: center;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 40px;
+  }
+
+  .desc {
+    margin: 0 0 48px;
+    max-width: 560px;
+    color: var(--home-desc-color);
+    text-align: center;
+    text-wrap: balance;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .cloud {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 18px 14px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  // The lean lives on the list item and the hover on the link inside it, so
+  // the pop-in animation (which also runs on the item) and the hover never
+  // fight over one transform.
+  .bubble {
+    transform: rotate(var(--tilt));
+
+    // A bubble grows into its neighbors on hover; as a flex item it takes a
+    // z-index, which lifts it over the later ones that would otherwise paint
+    // on top.
+    &:has(> .link:hover),
+    &:has(> .link:focus-visible) {
+      z-index: 1;
+    }
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55em 1.1em;
+    border-radius: 999px;
+    background: var(--home-bubble-bg);
+    color: var(--home-bubble-color);
+    font-size: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    box-shadow: var(--home-bubble-shadow);
+    transition:
+      transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      background-color 200ms ease-out,
+      color 200ms ease-out,
+      box-shadow 200ms ease-out;
+
+    // The bubble the pointer is on sits up straight and comes forward, in the
+    // page's red.
+    &:hover,
+    &:focus-visible {
+      transform: rotate(calc(var(--tilt) * -1)) scale(1.06);
+      background: var(--rp-c-brand);
+      color: #fff;
+      box-shadow: var(--home-bubble-shadow-hover);
+    }
+
+    &:active {
+      transform: rotate(calc(var(--tilt) * -1)) scale(0.96);
+      transition-duration: 80ms;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--home-title-color);
+      outline-offset: 4px;
+    }
+  }
+
+  .label {
+    display: inline-block;
+  }
+
+  // Below the fold the bubbles wait at nothing. As the reader scrolls to
+  // them they pop up one after another, each label rising in just behind its
+  // bubble, like a menu opening.
+  &.armed .bubble {
+    transform: rotate(var(--tilt)) scale(0);
+  }
+
+  &.armed .label {
+    opacity: 0;
+  }
+
+  &.in .bubble {
+    animation: pop 520ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+    animation-delay: calc(var(--i) * 45ms + var(--jitter));
+  }
+
+  &.in .label {
+    animation: rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i) * 45ms + var(--jitter) + 60ms);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: rotate(var(--tilt)) scale(0);
+  }
+  to {
+    transform: rotate(var(--tilt)) scale(1);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.6em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubbles-frame {
+    &.armed .bubble,
+    &.in .bubble {
+      animation: none;
+      transform: rotate(var(--tilt));
+    }
+
+    &.armed .label,
+    &.in .label {
+      animation: none;
+      opacity: 1;
+    }
+
+    .link {
+      transition: none;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .bubbles-frame {
+    .desc {
+      margin-bottom: 36px;
+    }
+
+    .cloud {
+      gap: 12px 8px;
+    }
+
+    .link {
+      padding: 0.6em 1em;
+    }
+  }
+}
+
+@media (max-width: 500px) {
+  .bubbles-frame {
+    .title {
+      font-size: 8vw;
+      line-height: normal;
+    }
+
+    .desc {
+      font-size: 4vw;
+      line-height: normal;
+    }
+  }
+}

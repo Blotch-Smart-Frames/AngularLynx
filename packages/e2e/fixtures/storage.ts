@@ -2,6 +2,7 @@ import { Component, inject, signal, type OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LYNX_ELEMENTS,
+  LynxClipboard,
   LynxLocalStorage,
   LynxSecureStorage,
 } from '@blotch/angular-lynx';
@@ -94,6 +95,11 @@ const collectedFromArrays = async (): Promise<string> => {
  * which PrimJS always lets go: that one shows a collection has run. Until it
  * goes, the check allocates more garbage and looks again. "freed" means both
  * others went too.
+ *
+ * "Clipboard", on a row of its own, copies a line with LynxClipboard and
+ * shows what the clipboard reads back (issue #303): the shells' native
+ * module on a device, the page's Clipboard API on the web. Lynx Explorer has
+ * no clipboard module, so it shows the rejection instead.
  */
 @Component({
   selector: 'app-storage',
@@ -133,13 +139,20 @@ const collectedFromArrays = async (): Promise<string> => {
         >Array slots: {{ arraySlots() }}</text
       >
     </view>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <text flatten="false" (bindtap)="copy()"
+        >Clipboard: {{ clipboard() }}</text
+      >
+    </view>
   `,
 })
 export class StorageRoute implements OnInit {
   readonly #local = inject(LynxLocalStorage);
   readonly #secure = inject(LynxSecureStorage);
+  readonly #clipboard = inject(LynxClipboard);
   readonly stored = signal('…');
   readonly arraySlots = signal('tap');
+  readonly clipboard = signal('tap');
 
   ngOnInit(): void {
     this.#show(async () => {
@@ -162,6 +175,19 @@ export class StorageRoute implements OnInit {
   checkArraySlots(): void {
     this.arraySlots.set('…');
     void collectedFromArrays().then((result) => this.arraySlots.set(result));
+  }
+
+  copy(): void {
+    this.clipboard.set('…');
+    // Copied from the tap's handler, before anything waits, as the web
+    // preview's browser asks.
+    this.#clipboard
+      .setString('copied by e2e')
+      .then(() => this.#clipboard.getString())
+      .then(
+        (text) => this.clipboard.set(text),
+        (error: Error) => this.clipboard.set(error.message),
+      );
   }
 
   async #read(): Promise<string> {

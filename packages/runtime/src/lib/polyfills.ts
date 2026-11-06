@@ -298,6 +298,27 @@ if (typeof nativeCancelAnimationFrame === 'function') {
   };
 }
 
+// A browser's clearTimeout() and clearInterval() do nothing for `undefined` or
+// `null`, and code leans on that: a component clears the timer it may not
+// have started yet (`clearTimeout(this.#timer)`) before starting one. Lynx's
+// main-thread ones throw for anything but a number ("ClearTimeout param 0
+// should be Number", renderer_functions.cc in Lynx core), so the timer after
+// it was never started (issue #303's copy button stayed on "Copied"). Only
+// those two are skipped: Node's timers, which the testing library runs on,
+// hand out objects, and those still reach its clearTimeout.
+for (const name of ['clearTimeout', 'clearInterval'] as const) {
+  const nativeClear = (globalThis as any)[name] as
+    | ((handle: unknown) => void)
+    | undefined;
+  if (typeof nativeClear === 'function') {
+    (globalThis as any)[name] = (handle?: unknown): void => {
+      if (handle !== undefined && handle !== null) {
+        nativeClear.call(globalThis, handle);
+      }
+    };
+  }
+}
+
 // Angular's `@defer (on idle)` trigger schedules work through its internal
 // RequestIdleCallbackService. On any platform that lacks `requestIdleCallback`
 // Angular falls back to `cb => setTimeout(cb)` and then, inside IdleScheduler,

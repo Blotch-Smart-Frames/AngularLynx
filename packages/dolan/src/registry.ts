@@ -100,6 +100,9 @@ export const registry: RegistryEntry[] = [
   // The context menu is a menu that opens on a long press: it shares the
   // menu's items and its overlay.
   { name: 'context-menu', dependencies: ['menu'] },
+  // A button that copies with the runtime's LynxClipboard, and shows the
+  // icon set's check once it has.
+  { name: 'copy-button', dependencies: ['button', 'icon'] },
   { name: 'dialog', dependencies: [] },
   // Gives icons, glass tints and charts the wallpaper's colors through
   // icon-theme.ts, and follows its color scheme.

@@ -1,0 +1,112 @@
+/*
+ * @blotch/ui default theme — light mode
+ *
+ * CSS custom properties hold COMPLETE rgba() color values (e.g.
+ * `--primary: rgba(24, 24, 27, 1)`), referenced directly via `var(--x)` by the
+ * tailwind plugin. This is the pattern used by the official React Lynx Tailwind
+ * example.
+ *
+ * Why not the shadcn/ui approach (raw HSL channels wrapped in
+ * `hsl(var(--x) / <alpha-value>)`): Lynx's native CSS engine only parses
+ * comma-separated hsl(), but Tailwind emits the modern space-separated form
+ * `hsl(var(--x) / 1)`, which Lynx silently drops (transparent). Storing complete
+ * rgba() values and referencing them directly sidesteps color-function parsing
+ * entirely and renders correctly on Lynx.
+ *
+ * Each opaque color also has its channels in a `-rgb` twin
+ * (`--primary-rgb: 24, 24, 27`) for Tailwind's opacity modifiers:
+ * `bg-primary/50` becomes `rgba(var(--primary-rgb), 0.5)`. Lynx substitutes
+ * var() as text before it parses the color, so the comma-separated list fills
+ * three arguments. Keep each pair the same color when you edit one: plain
+ * classes read `--x` and modifiers read `--x-rgb`.
+ *
+ * Apply to `page` (Lynx root element) or import globally.
+ */
+
+page {
+  --background: rgba(255, 255, 255, 1);
+  --background-rgb: 255, 255, 255;
+  --foreground: rgba(9, 9, 11, 1);
+  --foreground-rgb: 9, 9, 11;
+
+  --card: rgba(255, 255, 255, 1);
+  --card-rgb: 255, 255, 255;
+  --card-foreground: rgba(9, 9, 11, 1);
+  --card-foreground-rgb: 9, 9, 11;
+
+  --primary: rgba(24, 24, 27, 1);
+  --primary-rgb: 24, 24, 27;
+  --primary-foreground: rgba(250, 250, 250, 1);
+  --primary-foreground-rgb: 250, 250, 250;
+
+  --secondary: rgba(244, 244, 245, 1);
+  --secondary-rgb: 244, 244, 245;
+  --secondary-foreground: rgba(24, 24, 27, 1);
+  --secondary-foreground-rgb: 24, 24, 27;
+
+  --muted: rgba(244, 244, 245, 1);
+  --muted-rgb: 244, 244, 245;
+  --muted-foreground: rgba(113, 113, 122, 1);
+  --muted-foreground-rgb: 113, 113, 122;
+
+  --accent: rgba(244, 244, 245, 1);
+  --accent-rgb: 244, 244, 245;
+  --accent-foreground: rgba(24, 24, 27, 1);
+  --accent-foreground-rgb: 24, 24, 27;
+
+  --destructive: rgba(239, 68, 68, 1);
+  --destructive-rgb: 239, 68, 68;
+  --destructive-foreground: rgba(250, 250, 250, 1);
+  --destructive-foreground-rgb: 250, 250, 250;
+  --destructive-subtle: rgba(239, 68, 68, 0.1);
+
+  --border: rgba(228, 228, 231, 1);
+  --border-rgb: 228, 228, 231;
+  --input: rgba(228, 228, 231, 1);
+  --input-rgb: 228, 228, 231;
+  --ring: rgba(24, 24, 27, 1);
+  --ring-rgb: 24, 24, 27;
+  /* Translucent variant of --ring for the soft outer focus ring. Input and
+     textarea set it in an inline box-shadow, where no Tailwind modifier
+     reaches, so it stays a complete color. */
+  --ring-subtle: rgba(24, 24, 27, 0.4);
+
+  /* Series palette for charts (bg-chart-1, and chart-theme.ts in the chart
+     component, which mirrors these values for SVG). */
+  --chart-1: rgba(231, 110, 80, 1);
+  --chart-1-rgb: 231, 110, 80;
+  --chart-2: rgba(42, 157, 144, 1);
+  --chart-2-rgb: 42, 157, 144;
+  --chart-3: rgba(39, 71, 84, 1);
+  --chart-3-rgb: 39, 71, 84;
+  --chart-4: rgba(232, 196, 104, 1);
+  --chart-4-rgb: 232, 196, 104;
+  --chart-5: rgba(244, 164, 98, 1);
+  --chart-5-rgb: 244, 164, 98;
+
+  /* Liquid Glass (the glass component). Glass draws its own material, so
+     these color what sits on it, and tint it:
+     - glass-tint: the color tinted glass takes, such as a prominent glass
+       button's, and glass-tint-foreground what sits on it.
+     - glass-foreground and glass-muted-foreground: text and icons on regular
+       glass. Darker than muted-foreground, since what shows through the
+       glass varies.
+     - glass-clear-foreground: on clear glass, which sits over photos and
+       video, so it's white in both themes.
+     - glass-dim: the dimming layer under clear glass over bright content,
+       black at about a third, as Apple suggests. Already translucent, so it
+       has no channels. */
+  --glass-tint: rgba(24, 24, 27, 1);
+  --glass-tint-rgb: 24, 24, 27;
+  --glass-tint-foreground: rgba(250, 250, 250, 1);
+  --glass-tint-foreground-rgb: 250, 250, 250;
+  --glass-foreground: rgba(9, 9, 11, 1);
+  --glass-foreground-rgb: 9, 9, 11;
+  --glass-muted-foreground: rgba(63, 63, 70, 1);
+  --glass-muted-foreground-rgb: 63, 63, 70;
+  --glass-clear-foreground: rgba(255, 255, 255, 1);
+  --glass-clear-foreground-rgb: 255, 255, 255;
+  --glass-dim: rgba(0, 0, 0, 0.35);
+
+  --radius: 8px;
+}

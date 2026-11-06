@@ -2,6 +2,10 @@
 // `Object.groupBy()`, the Set methods and the rest), before the platform shims
 // below and before any of the app's modules.
 import './es-builtins.js';
+// pop(), shift() and splice() that let go of what they remove, which PrimJS
+// otherwise keeps alive for as long as the array, before any module of the
+// app's or a library's removes anything.
+import './vacated-slots.js';
 
 // Angular Router v21+ uses AbortController in its navigation pipeline
 // (NavigationTransitions.setupNavigations). Lynx's PrimJS runtime lacks

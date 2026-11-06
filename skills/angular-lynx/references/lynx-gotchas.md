@@ -320,6 +320,14 @@ Use `rotateX()`/`rotateY()`/`rotateZ()` and `scaleX()`/`scaleY()`/`scaleZ()` sep
 
 ---
 
+## Memory
+
+### A shorter `length` keeps what it cut off
+
+PrimJS, which runs the main thread, keeps the values an array held in the slots past its length until something writes over them, so a long-lived array keeps what it removed for as long as the array lives. The build makes `pop()`, `shift()` and `splice()` clear those slots, but nothing can hook `array.length = 0` or `delete array[array.length - 1]`. Empty a long-lived array that holds objects with `array.splice(0)`.
+
+---
+
 ## Build
 
 ### A hex color that reads as an exponent is mangled

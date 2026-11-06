@@ -3005,19 +3005,43 @@ Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --plat
 
 ---
 
-## A three.js renderer kept alive by a material keeps its whole screen (issue #299, open)
+## PrimJS keeps what an array held after it shrinks (issue #299)
 
 ### What you'd expect (web)
 
-three.js hangs a `dispose` listener on every material and texture a renderer draws, which keeps the renderer for as long as that material or texture lives. A module-level material, or a model or texture from angular-three's loader cache (kept for the page's life), so keeps every renderer that ever drew it, with its canvas and GL state. Nothing more: the scene and the components around the canvas go.
+Taking a value out of an array lets it go: once `pop()`, `shift()`, `splice()` or a shorter `length` has removed it, the array no longer keeps it alive.
 
 ### What Lynx does
 
-The kept renderer keeps the whole screen too. With a module-level material on an angular-three mesh that has an `*args` child, every visit to a routed screen left the screen's components, angular-three's store and scene, and all of the screen's native UI alive (5 of 5 after 4 visits on the iOS Simulator; 1 of 5 on the web). Without `*args` only the canvas's native view stays, one per visit. The link isn't AngularLynx's canvas or context (a fake canvas with a pure-JS context leaks the same), a `WeakMap` (swapped for one keeping entries as properties: no change), or anything a walk of properties, `Map`s and `Set`s from the renderer reaches, so it runs through a closure. Issue #299 has the measurements.
+PrimJS, which runs the main thread (and Android's background thread), keeps a fast array's elements in a buffer, and its garbage collector marks every slot of the buffer, not just the ones below `length`. Shrinking an array only lowers its length, and leaves what it removed in its slot, alive for as long as the array is, until a later push writes over it. In PrimJS's source, `js_array_pop()` and `set_array_length_gc()` lower the count without clearing the slot, as does deleting an array's last element, and `Visitor::VisitJSValueArray()` marks the buffer by its allocated size. Measured on the iOS Simulator (Lynx 4.1), with a `WeakRef` to an object taken out of a kept array, after allocating enough to make PrimJS collect:
 
-### What to do
+| Taken out with                      | Collected? |
+| ----------------------------------- | ---------- |
+| `pop()`                             | **No**     |
+| `splice()`                          | **No**     |
+| `length = 1`                        | **No**     |
+| Assigning another value to its slot | Yes        |
 
-Give each canvas copies of whatever outlives it: `material.clone()` per mount, and `texture.clone()`, which shares the decoded image. Then nothing outlives the renderer, and the screen goes.
+An array that lives as long as its owner, used as a stack or a list, so keeps the last things it held. That kept whole screens. three.js's renderer pushes each frame's render list and render state onto stacks and pops them when the frame ends; the popped render list still points at the meshes it drew, and through angular-three at their scene, its store, the screen's components and every native view on the screen. three.js keeps every renderer that drew a material that's still in use (it hangs a `dispose` listener on the material), so a module-level material, or a model or texture from angular-three's loader cache, kept every screen its canvas was ever shown on. On the web the same renderer keeps only itself, its canvas and its GL state. In the Blotch app, after 4 round trips to a screen whose canvas drew one module-level material (the one screen left is the one showing):
+
+|        | Screens alive | angular-three stores | Scenes | Renderers | `LynxUI*` |
+| ------ | ------------- | -------------------- | ------ | --------- | --------- |
+| Before | 5 of 5        | 5 of 5               | 5 of 5 | 5 of 5    | 1,395     |
+| After  | 1 of 5        | 1 of 5               | 1 of 5 | 5 of 5    | 324       |
+
+Its real 3D frame, which drew the loader's cached glTF materials and texture, went the same way.
+
+It showed up as a closure because nothing a walk of properties from the renderer reached led to the screen: the stacks hold their render lists only in slots past their length, which no property, `Map` or `Set` walk visits.
+
+### The fix
+
+The build plugin's first preEntry (`packages/rsbuild-plugin-angular-lynx/src/vacated-slots.js`, imported by `polyfills.js`) replaces `pop()`, `shift()` and `splice()` in native builds with versions that call the engine's own, then write `undefined` into the slots the array gave up and put the length back. Each write appends, so the array stays a fast one. The web build keeps the browser's methods.
+
+JavaScript can't hook a shorter `length` or `delete array[array.length - 1]`, so those still keep what they cut off: empty a long-lived array that holds objects with `array.splice(0)` rather than `array.length = 0`. Only PrimJS can fix those: reported as [lynx-family/primjs#484](https://github.com/lynx-family/primjs/issues/484). Once a Lynx release has its fix, `vacated-slots.js` can go.
+
+A material that outlives its canvas still keeps the renderer, with its canvas, native view and GL state, as in a browser: give each canvas copies (`material.clone()`, and `texture.clone()`, which shares the decoded image).
+
+Covered by `packages/rsbuild-plugin-angular-lynx/src/vacated-slots.test.ts` (the methods' writes and results, in Node, whose engine collects what an array gave up either way) and Layer 6's `native/array-slots.yaml` (on a device, where it matters).
 
 ---
 

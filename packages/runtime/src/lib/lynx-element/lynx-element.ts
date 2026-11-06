@@ -1907,7 +1907,12 @@ export class LynxElement implements BaseLynxElement {
       // forces a full reset so the pooled element has no lingering overrides.
       __AddInlineStyle(this.element, 'opacity', null);
       __AddInlineStyle(this.element, 'transform', null);
-      this.#activeAnimations.length = 0;
+      // splice() rather than a shorter length: PrimJS keeps what an array
+      // held past its length alive, and only pop(), shift() and splice()
+      // clear it (see the build plugin's vacated-slots.js). A pooled element
+      // outlives its view, and its animations' callbacks reach the view's
+      // component.
+      this.#activeAnimations.splice(0);
     }
     // Remove the whole subtree in one shot — no "parking" of children elsewhere.
     // This runs ONLY for a genuine destroy: a move (remove-then-reinsert in the

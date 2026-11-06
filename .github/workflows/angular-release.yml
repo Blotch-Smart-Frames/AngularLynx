@@ -1,0 +1,39 @@
+name: Angular release
+
+# Opens an issue when a new Angular minor or major reaches npm, so the
+# repository's own release to that line (its packages are versioned after
+# Angular's major.minor) has somewhere to start. See the script for the rest.
+on:
+  schedule:
+    # Once a day. Angular releases on a Wednesday afternoon, US time, so this
+    # finds a release the next morning in Europe.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print the issue it would open, without opening it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The script reads only the lockfile, and the repository holds ~100
+          # examples it doesn't need.
+          sparse-checkout: |
+            /package-lock.json
+            /.github/scripts/
+          sparse-checkout-cone-mode: false
+      - run: .github/scripts/angular-release-issue.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry-run && '1' || '' }}

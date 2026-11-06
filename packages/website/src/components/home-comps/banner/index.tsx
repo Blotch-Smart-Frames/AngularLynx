@@ -11,8 +11,16 @@ export const Banner: React.FC = () => {
       </p>
       {/* State the project's maturity where people decide to try it. */}
       <p className={styles['banner-desc']}>
-        An early, work-in-progress project for Angular 22. Expect missing
-        pieces, and tell us about them on GitHub.
+        Built for Angular 22, and most of it already works. Find a missing
+        piece? Tell us on{' '}
+        <a
+          href="https://github.com/Blotch-Smart-Frames/AngularLynx/issues"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub
+        </a>
+        .
       </p>
       <a href="/guide/quick-start" className={styles['banner-btn']}>
         Get started

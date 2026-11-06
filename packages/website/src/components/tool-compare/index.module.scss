@@ -158,7 +158,9 @@ $ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 .label {
   display: flex;
   align-items: flex-start;
-  padding: 18px 16px 18px 4px;
+  // As much room on the left as the marks have around them, so the column
+  // doesn't hug the table's edge.
+  padding: 18px 16px 18px 20px;
   color: var(--text);
   font-size: 14px;
   font-weight: 500;
@@ -182,9 +184,11 @@ $ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   border-top: 1px solid var(--line);
 }
 
-// Pointing at a row tints it, so one claim can be read across.
+// Pointing at a row tints it, so one claim can be read across. The whole
+// row, AngularLynx's cell included: tinting the cells around the card left
+// the card's rounded corners cutting a notch out of the band.
 @media (hover: hover) {
-  .row:not(.head):hover > :not(.hero) {
+  .row:not(.head):hover {
     background: var(--row-hover);
   }
 }

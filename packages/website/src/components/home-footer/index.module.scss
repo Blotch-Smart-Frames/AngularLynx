@@ -1,0 +1,100 @@
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px 24px;
+  padding: 28px 24px;
+  border-top: 1px solid var(--rp-c-divider-light);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--rp-c-text-2);
+}
+
+.sponsor {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.sponsored-by {
+  color: var(--rp-c-text-2);
+}
+
+// The logo and "Smart Frames" together make one link, in the page's
+// text color, red when hovered.
+.blotch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rp-c-text-1);
+  text-decoration: none;
+  border-radius: 2px;
+  transition: color 160ms ease-out;
+
+  &:hover {
+    color: var(--rp-c-brand);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rp-c-brand);
+    outline-offset: 4px;
+  }
+}
+
+.logo {
+  display: block;
+  height: 18px;
+  width: auto;
+}
+
+// Tracked capitals pair with the logo's display letters the way a
+// descriptor sits under a logo, rather than reading as a second sentence.
+.smart-frames {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.divider {
+  width: 1px;
+  height: 16px;
+  background: var(--rp-c-divider);
+}
+
+.lynx {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rp-c-text-2);
+  text-decoration: none;
+  border-radius: 2px;
+  transition: color 160ms ease-out;
+
+  i {
+    font-size: 12px;
+  }
+
+  &:hover {
+    color: var(--rp-c-brand);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rp-c-brand);
+    outline-offset: 4px;
+  }
+}
+
+// On a phone the two halves stack, and the divider between them goes.
+@media (max-width: 639px) {
+  .footer {
+    flex-direction: column;
+    padding: 24px 20px;
+  }
+
+  .divider {
+    display: none;
+  }
+}

@@ -55,9 +55,8 @@ export default defineConfig({
         mode: 'link',
       },
     ],
-    footer: {
-      message: `© ${new Date().getFullYear()} Blotch Smart Frames. All Rights Reserved.`,
-    },
+    // No `footer.message`: the home page's footer is the theme's own
+    // HomeFooter component (src/components/home-footer).
     nav: [
       {
         text: 'Guide',

@@ -5714,7 +5714,7 @@ Lynx sizes the element and everything in it to 0×0 (see "`display: none` resize
 
 ### The fix
 
-Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0.
+Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0. The runtime does the same for HTML's `hidden` attribute, which gives an element `display: none; overflow: hidden` (measured on the iOS 27 Simulator, Lynx Explorer 4.1: a hidden `<p>` drew its first letter without the clip).
 
 ---
 

@@ -4,24 +4,37 @@ This page lists everything that changes when you move Angular code from the brow
 
 ## Cheat sheet
 
-| On the web                                              | On Lynx                                                               |
-| ------------------------------------------------------- | --------------------------------------------------------------------- |
-| `<div>`                                                 | `<view>`                                                              |
-| `<span>`, `<p>`, `<h1>`                                 | `<text>`. Text only shows inside `<text>`                             |
-| `<img src>`                                             | `<image src>`, which needs a width and height                         |
-| A scrolling `<div>`                                     | `<scroll-view>`, or `<list>` for long lists                           |
-| `<button (click)>`                                      | `<view (bindtap)>` with a `<text>` inside                             |
-| `<input (input)>`                                       | `<input (bindinput)>`, with the value in `$event.detail.value`        |
-| `(click)`                                               | `(bindtap)`, or `(catchtap)` to stop it bubbling. `(click)` works too |
-| `:root { --x: … }`                                      | `page { --x: … }`                                                     |
-| `display: block`                                        | `display: linear`, the default. `display: block` becomes it           |
-| `:hover`, `@media`                                      | No equivalent. Use signals, and `LynxSystemInfo` for screen size      |
-| `bootstrapApplication` from `@angular/platform-browser` | `bootstrapApplication` from `@blotch/angular-lynx`                    |
-| Zone.js or zoneless                                     | Zoneless only                                                         |
-| `<a routerLink>`                                        | `routerLink` on a `<view>`                                            |
-| `document`, `window`                                    | Not available                                                         |
+| On the web                                              | On Lynx                                                                                 |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `<div>`                                                 | `<view>`. A `<div>` renders as one                                                      |
+| `<span>`, `<p>`, `<h1>`                                 | `<text>`. They render as one. Text only shows inside `<text>`                           |
+| `<img src>`                                             | `<image src>`, which needs a width and height. An `<img>` renders as one, sized to fit  |
+| A scrolling `<div>`                                     | `<scroll-view>`, or `<list>` for long lists                                             |
+| `<button (click)>`                                      | `<view (bindtap)>` with a `<text>` inside. A `<button>` renders as a `<text>` that taps |
+| `<input (input)>`                                       | `<input (bindinput)>`, with the value in `$event.detail.value`. `(input)` works too     |
+| `(click)`                                               | `(bindtap)`, or `(catchtap)` to stop it bubbling. `(click)` works too                   |
+| `:root { --x: … }`                                      | `page { --x: … }`                                                                       |
+| `display: block`                                        | `display: linear`, the default. `display: block` becomes it                             |
+| `:hover`, `@media`                                      | No equivalent. Use signals, and `LynxSystemInfo` for screen size                        |
+| `bootstrapApplication` from `@angular/platform-browser` | `bootstrapApplication` from `@blotch/angular-lynx`                                      |
+| Zone.js or zoneless                                     | Zoneless only                                                                           |
+| `<a routerLink>`                                        | `routerLink` on any element, `<a>` included                                             |
+| `document`, `window`                                    | Not available                                                                           |
 
-Here's one component on each platform:
+## Your web templates render
+
+<Go example="web-tags" defaultFile="src/app/app.ts" />
+
+AngularLynx renders common HTML tags as the Lynx element they stand for, so a template written for the browser shows up on a phone:
+
+- **Block tags render as a `<view>`:** `<div>`, `<section>`, `<ul>`, `<li>` and the like.
+- **Text tags render as a `<text>`:** `<span>`, `<p>`, `<h1>`, `<a>`, `<button>`, `<label>` and the like.
+- **`<img>` renders as an `<image>`** that takes its picture's size until CSS gives it one.
+- **DOM events that Lynx also sends run,** such as `(click)`, `(input)` and `(keyup.enter)`.
+
+It gets ported code on screen, but it isn't a browser. [HTML tags](/guide/elements/#html-tags) lists what carries over and what doesn't. Write Lynx elements in new code: they have every attribute, and typed events.
+
+Here's one component in each:
 
 ```angular-html
 <!-- Web -->
@@ -39,7 +52,7 @@ Here's one component on each platform:
 
 ## Templates
 
-**Lynx elements replace HTML.** A Lynx app has no HTML engine, so `<div>` and `<span>` mean nothing to it. Lynx [elements](/guide/elements/) map to native UI controls instead. [Elements and layout](/guide/elements/) lists them all.
+**Lynx elements replace HTML.** A Lynx app has no HTML engine. Lynx [elements](/guide/elements/) map to native UI controls instead, and AngularLynx renders common HTML tags as the closest one. [Elements and layout](/guide/elements/) lists them all.
 
 **Text must be inside `<text>`.** On the web, text can sit anywhere. On Lynx, text that isn't inside a `<text>` element doesn't render. Nest `<text>` elements to style part of a sentence.
 
@@ -65,6 +78,8 @@ Lynx events start with `bind` or `catch`:
 - `(catchtap)` handles a tap and stops it there.
 
 Event data is in `$event.detail`. A text input's value, for example, is `$event.detail.value`.
+
+DOM event names work where Lynx sends the same event. `(click)` runs on a tap, `(input)` when the text changes, and `(keyup.enter)` when the keyboard's return key is pressed. A text field's value is in `$event.target.value` too, as on the web. Names Lynx has no event for, such as `(mouseover)`, never run.
 
 A handler can do anything it would on the web, such as navigate or open an overlay.
 
@@ -103,9 +118,10 @@ Libraries that touch the DOM, or depend on browser APIs, won't work. That includ
 | Content projection (`<ng-content>`)                                 |   ✅   | [Content projection](/guide/content-projection)                                                                                           |
 | `ViewContainerRef.createComponent()`                                |   ✅   |                                                                                                                                           |
 | Change detection                                                    |   ⚠️   | Zoneless only. Use signals, `toSignal()` or the `async` pipe                                                                              |
-| Event bindings                                                      |   ⚠️   | `bind*`/`catch*` names. [Events](/guide/elements/event-handling)                                                                          |
+| HTML tags                                                           |   ⚠️   | Render as a `<view>`, `<text>` or `<image>`, without the browser's styles. [HTML tags](/guide/elements/#html-tags)                        |
+| Event bindings                                                      |   ⚠️   | `bind*`/`catch*` names, and DOM names Lynx also sends. [Events](/guide/elements/event-handling)                                           |
 | Component styles                                                    |   ✅   | Scoped as on the web. `ShadowDom` falls back to `None`, and stylesheets must be plain CSS. [CSS on Lynx](/guide/styling#component-styles) |
-| Router                                                              |   ⚠️   | No URL bar and no `routerLink`. [Routing](/guide/routing)                                                                                 |
+| Router                                                              |   ⚠️   | No URL bar. `routerLink` works on any element. [Routing](/guide/routing)                                                                  |
 | Lazy routes and `@defer`                                            |   ⚠️   | Code isn't split into separate files. Some `@defer` triggers don't work. [`@defer`](/guide/defer)                                         |
 | Reactive, template-driven and signal forms                          |   ⚠️   | On `<input>` and `<textarea>`. No native checkbox, radio or select. [Forms](/guide/forms)                                                 |
 | `@boundary` error boundaries (Angular 22.2)                         |   ✅   | [Handling errors](/guide/error-handling)                                                                                                  |

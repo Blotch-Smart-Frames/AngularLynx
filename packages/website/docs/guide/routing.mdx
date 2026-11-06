@@ -1,6 +1,6 @@
 # Routing and navigation
 
-Move between screens with Angular's Router, `<router-outlet>` and `routerLink`, as on the web. What differs: the URL lives in memory, a link is any element you tap rather than an `<a>`, and the active link tells screen readers it's selected.
+Move between screens with Angular's Router, `<router-outlet>` and `routerLink`, as on the web. What differs: the URL lives in memory, a link is any element you tap, and the active link tells screen readers it's selected.
 
 ## Set up the router
 
@@ -64,7 +64,7 @@ export class App {}
 ```
 
 - **`routerLink` and `routerLinkActive` are Angular's own,** from `@angular/router`. A tap on the element navigates: `RouterLink` listens for `click`, and AngularLynx hands it the tap, as [Lynx for Web](/guide/glossary#web-preview) does.
-- **Put `routerLink` on any element**, usually the `<view>` around a label. Its inputs work as on the web, such as `queryParams`, `replaceUrl` and `state`. There's no `href` to show, as on any element that isn't an `<a>`.
+- **Put `routerLink` on any element**, usually the `<view>` around a label. An `<a routerLink>` works too: it renders as a `<text>` (see [HTML tags](/guide/elements/#html-tags)). Its inputs work as on the web, such as `queryParams`, `replaceUrl` and `state`. There's no `href` to show.
 - **`routerLinkActive` adds its classes while the link's route is active.** For styling a class can't do, read its state: `#link="routerLinkActive"`, then `link.isActive`.
 - **The active link is selected for screen readers.** While its route is active, `LYNX_ELEMENTS` adds `selected` to the element's `accessibility-traits`, after any traits of its own, and takes it away again after. iOS announces it as selected. Android has no selected trait, so there the element keeps its own traits.
 
@@ -190,7 +190,7 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 | ------------ | ------------------------------------------- | -------------------------------------- |
 | URL          | Shown in the address bar                    | Kept in memory, never shown            |
 | Starting URL | Any URL the browser opens                   | Always `/`                             |
-| Links        | `<a routerLink>`                            | `routerLink` on any element            |
+| Links        | `<a routerLink>`                            | `routerLink` on any element, `<a>` too |
 | Active link  | `aria-current` with `ariaCurrentWhenActive` | The `selected` accessibility trait     |
 | Going back   | Browser back button, `history.back()`       | Android back button, `Location.back()` |
 | Lazy routes  | Separate files, downloaded on demand        | Part of the bundle                     |

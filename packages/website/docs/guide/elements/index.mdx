@@ -30,7 +30,7 @@ export class ProfileCard {}
 - **There's no browser underneath.** iOS and Android each have their own UI toolkit, and Lynx turns each [element](/guide/glossary#element) into a piece of it. HTML tags have no meaning there, so Lynx defines its own small set.
 - **`<view>` is the box, like a `<div>`.** `<text>` holds text and `<image>` shows a picture. The [mapping table](#html-to-lynx-mapping) lists the rest.
 - **Import `LYNX_ELEMENTS`** in every component that uses Lynx elements. The template type checker and `ng test` need it. The build accepts the tags without it.
-- **HTML tags don't work.** A `<div>`, `<span>` or `<button>` becomes a plain, unstyled `<view>`, and AngularLynx only logs a warning.
+- **Common HTML tags render as Lynx elements.** A `<div>` renders as a `<view>`, and a `<p>` as a `<text>`. That gets ported web code on screen. See [HTML tags](#html-tags).
 
 Style elements with CSS classes or `style`, as on the web. Lynx CSS has some gaps, such as no `:hover` and no `@media`. See [CSS on Lynx](/guide/styling).
 
@@ -108,6 +108,42 @@ Every element starts in Lynx's **linear** layout, `display: linear`. Children st
 
 Use [`<overlay>`](/api/elements/overlay) for dialogs, sheets and menus that sit on top of everything. `position: fixed` doesn't pin to the screen on Lynx: it positions against the app's root element, the [`page`](/guide/glossary#page), and scrolls with it. See [Dialogs and overlays](/guide/overlays).
 
+## HTML tags
+
+```angular-html
+<div class="card">
+  <h2>{{ name() }}</h2>
+  <p>Joined <strong>today</strong></p>
+  <img [src]="avatar()" alt="Avatar" class="h-12 w-12" />
+  <button (click)="follow()">Follow</button>
+</div>
+```
+
+A template written for the browser renders: AngularLynx creates the Lynx element each common HTML tag stands for.
+
+- **`<view>`:** `div`, `section`, `article`, `aside`, `header`, `footer`, `main`, `nav`, `ul`, `ol`, `li`, `dl`, `dt`, `dd`, `form`, `fieldset`, `figure`, `figcaption`, `blockquote`, `address`, `hgroup`, `search`, `menu` and `hr`.
+- **`<text>`:** `span`, `p`, `h1`–`h6`, `a`, `button`, `label`, `strong`, `b`, `em`, `i`, `small`, `code`, `s`, `u`, `mark`, `sub`, `sup`, `abbr`, `cite`, `q`, `time`, `del`, `ins`, `kbd`, `samp`, `var` and `dfn`.
+- **`<image auto-size>`:** `img`.
+- **Already Lynx elements:** `input`, `textarea`, `video`, `canvas` and `svg`.
+
+What carries over:
+
+- **Text tags hold text.** Text shows inside them, and a tag inside one runs inline, so `<p>Joined <strong>today</strong></p>` reads as one line.
+- **An `<img>` takes its picture's size,** until CSS gives it one. Its `alt` is what screen readers say.
+- **Type selectors still match.** `p { margin-bottom: 8px; }` styles every `<p>`.
+- **`hidden` hides the element,** as `[hidden]="!open()"` does on the web.
+- **DOM events Lynx also sends run.** `(click)` runs on a tap. See [Handling taps and events](/guide/elements/event-handling).
+
+What doesn't carry over:
+
+- **Text straight inside a block tag doesn't show.** Put `<div>Hello</div>`'s text in a `<p>` or `<span>`.
+- **Each tag is a box.** Two `<span>`s side by side in a `<div>` stack, as any two elements in a `<view>` do. Inside a `<p>`, they run inline.
+- **There are no browser styles.** An `<h1>` is the size of any other text, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
+- **There's no browser behavior.** `<a href>` opens nothing (use `routerLink`), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
+- **Other tags don't work.** A `<table>`, `<select>` or `<br>` renders as a plain `<view>`, and the build warns about it.
+
+Write Lynx elements in new code. They have their own attributes, such as `<image mode>`, and `$event` types with what each event sends.
+
 ## HTML to Lynx mapping
 
 | HTML                             | Lynx                                                          | Notes                                      |
@@ -119,8 +155,8 @@ Use [`<overlay>`](/api/elements/overlay) for dialogs, sheets and menus that sit 
 | `<ul>` / virtual scroll          | [`<list>`](/api/elements/list) + `<list-item>`                | Native virtualization                      |
 | `<input>`                        | [`<input>`](/api/elements/input)                              | Events use `bindinput`                     |
 | `<textarea>`                     | [`<textarea>`](/api/elements/textarea)                        | Events use `bindinput`                     |
-| `<button>`                       | `<view>` + `(bindtap)`                                        | No native button element                   |
-| `<a>`                            | `<view>` + `(bindtap)`                                        | No native link element                     |
+| `<button>`                       | `<view>` + `(bindtap)`                                        | A `<button>` renders as a `<text>`         |
+| `<a>`                            | `<view>` + `routerLink`                                       | An `<a>` renders as a `<text>`             |
 | `<dialog>`, modal                | [`<overlay>`](/api/elements/overlay)                          | Native floating layer                      |
 | Swipeable page carousel          | [`<viewpager>`](/api/elements/viewpager) + `<viewpager-item>` | Native horizontal paging                   |
 | `<iframe>`                       | [`<frame>`](/api/elements/frame)                              | Loads Lynx bundles                         |

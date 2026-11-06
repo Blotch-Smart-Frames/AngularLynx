@@ -79,7 +79,8 @@ export class LynxDocument implements LynxDocumentBase {
   }
   createElement(name: string, value?: string): LynxElement | LynxListElement {
     // A component's host is a view, unless the component registered another
-    // element for it (registerHostElement).
+    // element for it (registerHostElement). An HTML tag is the Lynx element it
+    // renders as: a `div` a view, a `span` a text (see web-tags.ts).
     const tag = hostElementOf(name);
     // `__PROFILE__` is a build-time `define`. In the test config it's `false`
     // (dead-code-eliminated), so the increment is unreachable from Vitest.
@@ -122,6 +123,10 @@ export class LynxDocument implements LynxDocumentBase {
       el.updateBlurMaterial();
     }
     if (tag === 'scroll-view') listenForScrollsFromTheStart(el);
+    // A browser draws an `<img>` at the picture's own size until CSS gives it
+    // another; a Lynx `<image>` with no size is 0 × 0. `auto-size` sizes it to
+    // the picture once it loads, and does nothing once CSS sets a size.
+    if (name === 'img') el.setAttribute('auto-size', true);
     return el;
   }
   createText(value: string): LynxElement {

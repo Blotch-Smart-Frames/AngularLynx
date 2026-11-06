@@ -242,7 +242,7 @@ export class Card {
 
 Lynx's CSS engine can't match attribute selectors, so AngularLynx scopes with classes where the web uses attributes. In the element tree, a component's elements carry a `_ngcontent-<id>` class, and its host element a `_nghost-<id>` class.
 
-Type selectors match the tag the template wrote, as on the web, though a component's host and a web tag such as `<div>` render as a `<view>`:
+Type selectors match the tag the template wrote, as on the web, though a component's host renders as a `<view>`, and an HTML tag as the Lynx element it stands for, such as a `<p>` as a `<text>`:
 
 ```css
 app-chart {

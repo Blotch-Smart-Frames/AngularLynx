@@ -19,6 +19,7 @@ Then work as in any Angular app: `ng serve`, `ng build`, `ng test`, and `ng gene
 ## Features
 
 - Standalone components with signals, `@if`/`@for`/`@switch`, DI, and pipes
+- Templates written for the browser: common HTML tags render as the Lynx element they stand for (`<div>` as `<view>`, `<p>` as `<text>`, `<img>` as `<image>`), and DOM events Lynx also sends, such as `(click)` and `(input)`, run
 - Zoneless change detection — signals as the primary reactivity model
 - Full Angular Router with in-memory navigation for Lynx, including `routerLink` and `routerLinkActive` on any element
 - Gestures — tap, pan, long-press, fling, pinch, rotation with composition

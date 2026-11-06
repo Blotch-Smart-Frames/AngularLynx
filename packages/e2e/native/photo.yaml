@@ -17,10 +17,8 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Photo: canceled'
     timeout: 15000
-# The newest photo comes first in both pickers. An Android emulator has none
-# of its own.
-- addMedia:
-    - ../fixtures/photo.jpg
+# The harness adds photo.jpg to the library first (LIBRARY_PHOTO in
+# src/native/maestro.ts), and the newest photo comes first in both pickers.
 - tapOn: Pick photo
 # iOS labels a photo "Photo, <date>", Android "Photo taken on <date>".
 - tapOn:

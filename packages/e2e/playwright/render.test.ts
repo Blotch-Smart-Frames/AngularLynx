@@ -274,7 +274,7 @@ test('a picked photo comes back as a JPEG Blob that uploads', async ({
   await page.getByText('Pick photo', { exact: true }).click();
   await (
     await chooser
-  ).setFiles(path.join(import.meta.dirname, '../fixtures/photo.jpg'));
+  ).setFiles(path.join(import.meta.dirname, '../native/photo.jpg'));
   await expect(page.getByText('Photo: uploaded as image/jpeg')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);

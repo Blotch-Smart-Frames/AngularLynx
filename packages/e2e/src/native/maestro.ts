@@ -115,6 +115,17 @@ export const FLOWS: readonly Flow[] = [
   },
 ];
 
+/**
+ * The photo native/photo.yaml picks, which the harness adds to the device's
+ * library before the flows run: an Android emulator has none, and Maestro's
+ * own `addMedia` can't find a file when it runs several flows at once ("not
+ * found in workspace", Maestro 2).
+ */
+export const LIBRARY_PHOTO = path.join(
+  REPO_ROOT,
+  'packages/e2e/native/photo.jpg',
+);
+
 /** The flows to run on a platform's host. */
 export const flowsFor = (platform: Platform, host: NativeHost): Flow[] =>
   FLOWS.filter(

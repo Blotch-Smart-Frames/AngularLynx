@@ -3,7 +3,13 @@ import path from 'node:path';
 
 import { check, run, runAllowFailure, start, step, stop } from '../process.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
+import {
+  flowsFor,
+  type NativeHost,
+  judgeFlow,
+  LIBRARY_PHOTO,
+  runFlows,
+} from './maestro.ts';
 
 /** The simulator the E2E tests create and reuse, so a developer's own stays untouched. */
 const DEVICE_NAME = 'AngularLynx E2E';
@@ -177,6 +183,8 @@ export const runOnIosSimulator = async ({
   const processName = host.kind === 'shell' ? host.processName : 'LynxExplorer';
   const udid = await bootSimulator(logFile);
   await simctl(['install', udid, app], logFile);
+  // Newest in the library, so it's the first photo the picker shows.
+  await simctl(['addmedia', udid, LIBRARY_PHOTO], logFile);
 
   // The app's own log, for JavaScript errors and for debugging failures.
   const explorerLog = path.join(artifactsDir, `ios-${host.kind}.log`);

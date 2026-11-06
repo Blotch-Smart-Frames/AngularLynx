@@ -40,7 +40,15 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["Collator", "DateTimeFormat", "DisplayNames", "ListFormat", "NumberFormat", "PluralRules", "RelativeTimeFormat"]
+        "enum": [
+          "Collator",
+          "DateTimeFormat",
+          "DisplayNames",
+          "ListFormat",
+          "NumberFormat",
+          "PluralRules",
+          "RelativeTimeFormat"
+        ]
       },
       "uniqueItems": true,
       "description": "The Intl APIs to add to the Lynx bundle, which Lynx lacks, with data for i18n.sourceLocale and i18n.locales. Needs the FormatJS packages they use installed. The web bundle uses the browser's own."

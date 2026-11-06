@@ -106,6 +106,13 @@ export const FLOWS: readonly Flow[] = [
     // Explorer has neither, and its canvas is an empty view.
     only: { host: 'shell' },
   },
+  {
+    file: 'photo.yaml',
+    description: 'picks a photo and uploads it as a Blob',
+    // Only the app's own builds have the picker module. Lynx Explorer
+    // rejects with unavailable.
+    only: { host: 'shell' },
+  },
 ];
 
 /** The flows to run on a platform's host. */

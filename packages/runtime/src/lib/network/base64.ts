@@ -10,8 +10,6 @@ import { LynxDOMException } from './dom-exception';
 const ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-const VALUES = new Map(Array.from(ALPHABET, (char, index) => [char, index]));
-
 /**
  * Builds the string in slices: one `String.fromCharCode` call per slice keeps
  * the work linear, where adding a character at a time can copy the whole
@@ -49,6 +47,17 @@ export const bytesToBase64 = (bytes: Uint8Array): string => {
 };
 
 /**
+ * Each character code's value in the alphabet, or 0xff for a character
+ * outside it. A table lookup by `charCodeAt` keeps decoding a photo, several
+ * megabytes of base64, fast on PrimJS, which has no JIT: a Map lookup per
+ * character and an array of every value took several times as long.
+ */
+const VALUES = new Uint8Array(256).fill(0xff);
+for (let index = 0; index < ALPHABET.length; index++) {
+  VALUES[ALPHABET.charCodeAt(index)] = index;
+}
+
+/**
  * Decodes standard base64. Padding is optional, and characters outside the
  * alphabet, such as line breaks, are skipped.
  *
@@ -56,23 +65,34 @@ export const bytesToBase64 = (bytes: Uint8Array): string => {
  * @returns The bytes.
  */
 export const base64ToBytes = (base64: string): Uint8Array<ArrayBuffer> => {
-  const values: number[] = [];
-  for (const char of base64) {
-    const value = VALUES.get(char);
-    if (value !== undefined) values.push(value);
-  }
-  const bytes = new Uint8Array(Math.floor((values.length * 3) / 4));
+  // At most this many: every character in the alphabet.
+  const bytes = new Uint8Array(Math.floor((base64.length * 3) / 4));
   let byteIndex = 0;
-  for (let index = 0; index < values.length; index += 4) {
-    const a = values[index] as number;
-    const b = values[index + 1] ?? 0;
-    const c = values[index + 2];
-    const d = values[index + 3];
-    bytes[byteIndex++] = (a << 2) | (b >> 4);
-    if (c !== undefined) bytes[byteIndex++] = ((b & 0xf) << 4) | (c >> 2);
-    if (d !== undefined) bytes[byteIndex++] = ((c! & 0x3) << 6) | d;
+  // The last characters' values, 6 bits each, until there are 4 (3 bytes).
+  let bits = 0;
+  let count = 0;
+  for (let index = 0; index < base64.length; index++) {
+    const code = base64.charCodeAt(index);
+    const value = code < 256 ? (VALUES[code] as number) : 0xff;
+    if (value === 0xff) continue;
+    bits = (bits << 6) | value;
+    if (++count === 4) {
+      bytes[byteIndex++] = bits >> 16;
+      bytes[byteIndex++] = (bits >> 8) & 0xff;
+      bytes[byteIndex++] = bits & 0xff;
+      bits = 0;
+      count = 0;
+    }
   }
-  return bytes;
+  // Text without padding ends with 2 or 3 characters: 1 or 2 more bytes.
+  if (count === 2) {
+    bytes[byteIndex++] = bits >> 4;
+  } else if (count === 3) {
+    bytes[byteIndex++] = bits >> 10;
+    bytes[byteIndex++] = (bits >> 2) & 0xff;
+  }
+  // A body crosses threads as `bytes.buffer`, so it must hold only these.
+  return byteIndex === bytes.length ? bytes : bytes.slice(0, byteIndex);
 };
 
 const invalidCharacter = (method: string, message: string) =>

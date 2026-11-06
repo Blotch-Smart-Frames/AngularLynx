@@ -30,7 +30,7 @@ Lynx has `fetch` only on the background thread, and Angular runs on the main thr
 - **Absolute URLs only.** A Lynx app has no page URL, so `http.get('/api/x')` fails with a `TypeError` ("Failed to parse URL"). Prefix the base URL in a constant or an interceptor. The exception: a `GET` of a file the app bundles, by its path in `dist/` (`/static/image/logo.png`, or a `.glb` copied in with `output.copy` in `lynx.config.ts`), loads in an `ng build --platform` app, which reads it from the app, whether it's given as a string or a `Request` (`new Request('/static/model.glb').url` stays the path). `ng serve` makes imported files' URLs absolute anyway. Any other request for a relative URL rejects with a `TypeError`. There's no loader for `import model from './model.glb'` (the build fails), and `new URL('./model.glb', import.meta.url)` throws on Lynx. `data:` and object URLs (`URL.createObjectURL()`) need no request.
 - **HTTPS.** `ng build --platform` apps block plain `http://` except to the device itself (`localhost`/`127.0.0.1`). Lynx Explorer allows it.
 - **No CORS on device**; it still applies in the web preview.
-- **Bodies:** strings, JSON, `URLSearchParams`, `ArrayBuffer`, typed arrays and `Blob` (the runtime adds `Blob` to the main thread). `FormData` and stream request bodies throw. `responseType: 'blob'` works; `new Response(stream)` reads the stream when its body is read.
+- **Bodies:** strings, JSON, `URLSearchParams`, `ArrayBuffer`, typed arrays and `Blob` (the runtime adds `Blob` to the main thread; the background thread has none). A `Blob` goes with its type as the `Content-Type` unless the request sets one, so Firebase Storage's `uploadBytes` works. `FormData` and stream request bodies throw. `responseType: 'blob'` works; `new Response(stream)` reads the stream when its body is read.
 - **Progress** (`reportProgress`) arrives once, when the body is complete.
 - **Responses arrive whole.** `response.body` is a `ReadableStream`, but it yields the whole body as one chunk once the response has ended. A response that stays open, such as server-sent events, never arrives. Firebase Firestore detects this and switches to long polling by itself.
 - **Failures:** a request that never reaches the server is an `HttpErrorResponse` with status 0. (Lynx's HTTP service reports it as status 499 with no headers; the runtime turns that into a network error.)
@@ -68,3 +68,29 @@ async signIn(): Promise<string | null> {
 - **`ephemeral: true`** signs in without the browser's cookies and keeps none (iOS only; Custom Tabs share Chrome's).
 - **Rejects with `WebAuthSessionError`**, whose `code` is `canceled` (closed, or declined on iOS), `unavailable` or `failed` (couldn't open the page, or a sign-in is already open).
 - **`unavailable` everywhere but `ng build --platform` apps:** Lynx Explorer, the web preview and tests have no native module for it. Your own native app (or an ejected project from before it) registers an `AngularLynxWebAuth` module itself: see the website's "Embed in a Native App" guide.
+
+## Pick a photo to upload
+
+Lynx has no `<input type="file">`. `LynxImagePicker` opens the phone's picker (`PHPickerViewController` on iOS, the Photo Picker on Android; neither needs a permission or a `photos` entry in `angular.json`) and resolves with `{ blob, name, type }`, or `null` when the person closes it:
+
+```typescript
+import { ImagePickerError, LynxImagePicker } from '@blotch/angular-lynx';
+
+readonly #picker = inject(LynxImagePicker);
+readonly photo = signal('');
+
+async change(): Promise<void> {
+  const picked = await this.#picker.pick({ maxDimension: 1024, quality: 0.85 });
+  if (!picked) return;
+  this.photo.set(URL.createObjectURL(picked.blob)); // <image [src]="photo()" />
+  await uploadBytes(storageRef, picked.blob, { contentType: picked.type });
+}
+```
+
+- **Ask for a size.** `maxDimension` and/or `quality` re-encode it natively as an upright JPEG without metadata (transparency becomes white). Without them a JPEG, PNG, GIF or WebP comes back as picked, and anything else (an iPhone's HEIC) becomes a full-size JPEG. The bytes reach the main thread as base64: a full 12 MP photo is ~4 MB and takes a few hundred ms; 1024 px is a few hundred KB.
+- **`<image [src]>` takes the object URL**: the runtime hands `<image>` the `Blob`'s bytes as a `data:` URL, since it can't load `blob:` URLs. That copies the whole photo, so show a scaled-down one.
+- **`name`** is the file's name on iOS and the web, and the library's number on Android (`1000000020.jpg`).
+- **Rejects with `ImagePickerError`**, `code` `unavailable` (Lynx Explorer, specs) or `failed` (couldn't open, already open, couldn't decode); a bad option is a `RangeError`.
+- **Web preview:** an `<input type="file" accept="image/*">` in the page, so call `pick()` straight from a tap handler; browsers open file dialogs only right after a tap.
+- **Specs:** provide a stand-in: `render(Cmp, { providers: [{ provide: LynxImagePicker, useValue: { pick: async () => picked } }] })`.
+- **Your own native app** registers an `AngularLynxImagePicker` module with `pick(options, callback)`, calling back `{ base64, name, type }`, `{ canceled: true }` or `{ error, message }`: see the website's "Embed in a Native App" guide.

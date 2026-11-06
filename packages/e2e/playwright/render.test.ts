@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
 
 /**
@@ -242,6 +244,37 @@ test('a canvas draws with WebGL2', async ({ page }) => {
   await page.getByText('Open storage', { exact: true }).click();
   await page.getByText('Open canvas', { exact: true }).click();
   await expect(page.getByText('WebGL: 0,0,255,255')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
+// LynxImagePicker (issue #305) opens an <input type="file"> in the web
+// preview: in the page's document, since the browser opens a file dialog
+// only for the document the tap was in, and web-core runs Angular in a
+// hidden iframe. The photo page asks for the photo scaled to 64 pixels, which
+// the browser re-encodes as a JPEG, then uploads the Blob with
+// XMLHttpRequest to the echo, which answers with its Content-Type and size
+// (native/photo.yaml does the same through the shells' pickers).
+test('a picked photo comes back as a JPEG Blob that uploads', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Open canvas', { exact: true }).click();
+  await page.getByText('Open photo', { exact: true }).click();
+
+  const canceled = page.waitForEvent('filechooser');
+  await page.getByText('Pick photo', { exact: true }).click();
+  await (await canceled).setFiles([]);
+  await expect(page.getByText('Photo: canceled')).toBeVisible();
+
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByText('Pick photo', { exact: true }).click();
+  await (
+    await chooser
+  ).setFiles(path.join(import.meta.dirname, '../fixtures/photo.jpg'));
+  await expect(page.getByText('Photo: uploaded as image/jpeg')).toBeVisible();
 
   expect(errors, 'the app logged errors while running').toEqual([]);
 });

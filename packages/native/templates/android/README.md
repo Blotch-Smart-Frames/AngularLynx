@@ -47,6 +47,12 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 iOS's `LocalStorageModule.swift` uses a `UserDefaults` suite and `SecureStorageModule.swift` the Keychain, readable after the first unlock and never moved to another device.
 
+## Photo picker
+
+`NativeModules.AngularLynxImagePicker.pick(options, callback)` (`ImagePickerModule.kt`, behind the runtime's `LynxImagePicker`) has the activity open the Photo Picker (`ActivityResultContracts.PickVisualMedia`, images only), which needs no permission. `MainActivity` registers the launcher as a property, so it's registered as the activity is created, before it starts, as `ActivityResult` launchers must be; the module gets the activity's `ImagePickerModule.Host` as its param. A manifest entry (`com.google.android.gms.metadata.ModuleDependencies`) lets Google Play services install the picker on Android 10 and older, which otherwise open the document picker.
+
+The module reads the picked photo on a background thread and calls back once with `{ base64, name, type }`, `{ canceled: true }` or `{ error, message }`. A JPEG, PNG, GIF or WebP goes back as it is unless the app passed `maxDimension` or `quality`; otherwise it's decoded with `BitmapFactory` at the smallest power-of-two reduction that covers the target, scaled, turned upright by its EXIF orientation (AndroidX `ExifInterface`, since `BitmapFactory` ignores it), drawn over white if it has transparency and compressed as a JPEG. iOS's `ImagePickerModule.swift` does the same with `PHPickerViewController` and ImageIO.
+
 ## Canvas and WebGL
 
 `<canvas>` (issue #211) is the shell's: `CanvasUI.kt`, a `TextureView` registered as the `canvas` element (`addBehavior(CanvasUI.behavior())`), and `WebGLModule.kt`, the `AngularLynxWebGL` module the runtime's WebGL2 context sends its calls to. `MainActivity` turns on main-thread modules (`setEnableMTSModule(true)`), so the runtime, which runs on Lynx's main thread, calls the module synchronously with `lynx.module(name)`, on the UI thread. Each context (`WebGLContext.kt`) is an EGL context with OpenGL ES 3.0 and an offscreen default framebuffer, which `present` copies into the canvas's surface; `WebGLOps.kt` is generated from the runtime's opcodes (`npm run generate:webgl-ops -w packages/native`). `AssetsModule.kt` (`AngularLynxAssets`) reads a file the app bundles for the main thread's `fetch`, which has no page URL to resolve `/static/...` against.
@@ -67,6 +73,7 @@ Pinned in `app/build.gradle.kts`, `build.gradle.kts` and `gradle/wrapper/gradle-
 
 - Lynx 4.1.0 and PrimJS 4.1.1 (Maven Central), Fresco 2.3.0 (the version Lynx's image service is built against), OkHttp 4.12.
 - `androidx.browser` 1.8.0, for the Custom Tabs `WebAuthModule` opens sign-in pages in.
+- `androidx.exifinterface` 1.4.2, for the orientation `ImagePickerModule` turns a re-encoded photo by.
 - Lynx's XElement 4.1.0 (`<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>`, `<video>`), without its AnimaX and Markdown modules, which the runtime doesn't support. `MainActivity` registers the elements with `XElementBehaviors`. XElement depends on appcompat and material 1.0.0, whose vectordrawable libraries share a namespace that AGP 9 rejects, so appcompat 1.7.1 and material 1.12.0 are pinned.
 - AGP 9.4.1 with its built-in Kotlin, Gradle 9.6.1 (AGP 9.4's minimum), JDK 17 or newer.
 - `compileSdk` and `targetSdk` 36, `minSdk` 24. Google Play raises its target API requirement every August; bump `targetSdk` with it.

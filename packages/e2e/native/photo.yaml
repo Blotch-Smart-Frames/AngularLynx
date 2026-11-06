@@ -1,0 +1,32 @@
+# Layer 6, the app's own builds only: LynxImagePicker (issue #305). The photo
+# page (fixtures/photo.ts) opens the platform's picker, PHPickerViewController
+# on iOS and the Photo Picker on Android, which Maestro taps through like a
+# person. Closing it shows "canceled". Picking a photo has the shell scale it
+# to 64 pixels and re-encode it as a JPEG, and the page uploads the Blob with
+# XMLHttpRequest to the static server's echo, which answers with the
+# Content-Type and the byte count that arrived: "uploaded as image/jpeg" only
+# if every byte came with the Blob's type. Lynx Explorer has no picker.
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Pick photo
+- tapOn: Cancel
+- extendedWaitUntil:
+    visible: 'Photo: canceled'
+    timeout: 15000
+# The newest photo comes first in both pickers. An Android emulator has none
+# of its own.
+- addMedia:
+    - ../fixtures/photo.jpg
+- tapOn: Pick photo
+# iOS labels a photo "Photo, <date>", Android "Photo taken on <date>".
+- tapOn:
+    text: 'Photo(,| taken on) .*'
+    index: 0
+- extendedWaitUntil:
+    visible: 'Photo: uploaded as image/jpeg'
+    timeout: 30000
+- takeScreenshot: photo

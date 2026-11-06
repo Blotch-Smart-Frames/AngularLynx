@@ -18,7 +18,8 @@ const MIME_TYPES: Record<string, string> = {
 
 /**
  * Answers a request with every `Content-Type` header it arrived with, joined
- * with " + ", as `{ reply }`. It reads the raw headers, since Node's
+ * with " + ", as `{ reply }`, and how many bytes its body had, as `bytes`,
+ * which the photo fixture checks its upload by. It reads the raw headers, since Node's
  * `headers` keeps only the first of two, and Lynx's own fetch used to send
  * a second, `text/plain` one (issue #176).
  */
@@ -44,15 +45,19 @@ const echoContentTypes = (
       types.push(request.rawHeaders[i + 1]!);
     }
   }
+  let bytes = 0;
+  request.on('data', (chunk: Buffer) => {
+    bytes += chunk.length;
+  });
   // Answered once the body is in, so the client sees a complete exchange.
-  request.resume().on('end', () => {
+  request.on('end', () => {
     response
       .writeHead(200, {
         ...cors,
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       })
-      .end(JSON.stringify({ reply: types.join(' + ') || '(no type)' }));
+      .end(JSON.stringify({ reply: types.join(' + ') || '(no type)', bytes }));
   });
 };
 

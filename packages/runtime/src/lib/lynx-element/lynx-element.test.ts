@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { globalEvents } from '../global-events';
+import { createObjectURL, LynxBlob, revokeObjectURL } from '../network/blob';
 import type { ElementRef } from '../types/lynx';
 import { LynxElement } from './lynx-element';
 import { setSafeAreaInsets } from './safe-area-insets';
@@ -553,6 +554,59 @@ describe('LynxElement', () => {
         'alt',
         'Ignored',
       );
+    });
+  });
+
+  describe('an object URL on an image', () => {
+    beforeEach(() => {
+      globalThis.__SetAttribute = vi.fn();
+    });
+
+    it('shows the Blob it names, as a data: URL the native <image> loads', () => {
+      const url = createObjectURL(
+        new LynxBlob([new Uint8Array([0xff, 0xd8])], { type: 'image/jpeg' }),
+      );
+      element = new LynxElement(fakeRef);
+      element.tagName = 'image';
+
+      element.setAttribute('src', url);
+      element.setAttribute('placeholder', url);
+      revokeObjectURL(url);
+
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        fakeRef,
+        'src',
+        'data:image/jpeg;base64,/9g=',
+      );
+      expect(globalThis.__SetAttribute).toHaveBeenCalledWith(
+        fakeRef,
+        'placeholder',
+        'data:image/jpeg;base64,/9g=',
+      );
+    });
+
+    it('leaves other URLs, a revoked one, and other elements alone', () => {
+      const url = createObjectURL(new LynxBlob(['x']));
+      element = new LynxElement(fakeRef);
+      element.tagName = 'image';
+      element.setAttribute('src', 'https://example.com/a.png');
+      element.setAttribute('src', 'blob:lynx/unknown');
+      element.setAttribute('mode', 'aspectFit');
+      const view = new LynxElement(fakeRef);
+      view.tagName = 'view';
+      view.setAttribute('src', url);
+      revokeObjectURL(url);
+
+      expect(
+        (globalThis.__SetAttribute as ReturnType<typeof vi.fn>).mock.calls.map(
+          (call) => call[2],
+        ),
+      ).toEqual([
+        'https://example.com/a.png',
+        'blob:lynx/unknown',
+        'aspectFit',
+        url,
+      ]);
     });
   });
 

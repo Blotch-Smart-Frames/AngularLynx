@@ -1,3 +1,4 @@
+import { LynxBlob } from './blob';
 import { LynxDOMException } from './dom-exception';
 import { LynxHeaders } from './headers';
 
@@ -107,6 +108,9 @@ const bodySize = (body: unknown): number => {
   if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
     return body.byteLength;
   }
+  // A Blob, such as a photo LynxImagePicker picked: upload libraries such as
+  // Firebase Storage report their progress from these events.
+  if (body instanceof LynxBlob) return body.size;
   return 0;
 };
 

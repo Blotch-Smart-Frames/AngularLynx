@@ -1790,6 +1790,30 @@ For data kept after that, `LynxLocalStorage` and `LynxSecureStorage` (issue #178
 
 ---
 
+## There's no `<input type="file">`: a photo comes from a native picker, and reaches the main thread as base64
+
+Found while building `LynxImagePicker` (issue #305), on the iOS 27 Simulator, the Android 14 emulator and Chromium, with a 12-megapixel photo (4032×3024, 4.2 MB as a JPEG, 5.9 MB as HEIC).
+
+### What you'd expect (web)
+
+`<input type="file" accept="image/*">` opens the system's picker, and its `File` is a `Blob` that `fetch`, `XMLHttpRequest` and upload libraries send as it is. `URL.createObjectURL(file)` gives a URL an `<img>` shows.
+
+### What Lynx does
+
+- **No file input, and no picker module.** Lynx's `<input>` is a text field. The shells' `AngularLynxImagePicker` module opens `PHPickerViewController` on iOS and the Photo Picker (`PickVisualMedia`) on Android; neither needs a permission. Lynx Explorer has neither, so `pick()` rejects with `unavailable` there.
+- **No `Blob` on the background thread** (`typeof Blob`, `FormData` and `File` are all `undefined` there, on both platforms), and none of Lynx's own on the main thread. The runtime's `LynxBlob` is the main thread's `Blob`, which is where the picked photo is made, and where Angular, and so Firebase Storage, runs.
+- **The bytes cross two hops that carry only JSON**: the module's callback to the background thread, and the runtime's relay to the main thread. The module sends base64. Measured in the Simulator, for the 4.2 MB JPEG picked as it is: 16 ms to encode natively, 75 ms for the 5.6 MB string to reach the main thread, 215 ms to decode it there (411 ms on the Android emulator). The decoder was a `Map` lookup per character pushed onto an array, several times slower on PrimJS; it's now a table lookup by `charCodeAt` (`network/base64.ts`, about 8× faster in V8). Re-encoding the HEIC as a full-size JPEG took 349 ms natively. With `maxDimension: 1024` the test photo was 60 to 80 KB (a real one is a few hundred) and arrived at once. ImageIO's thumbnail API on iOS, and `BitmapFactory`'s `inSampleSize` on Android, decode it straight to about that size, so the full photo is never in memory.
+- **Uploading it back crosses the same hops the other way.** The main thread's `XMLHttpRequest` sends the `Blob` through the relayed `fetch` (`Content-Type` from the `Blob`'s type), which base64s it for the background thread's `fetch`. The 4.2 MB JPEG uploaded in 0.9 s in the Simulator and 2.5 s on the Android emulator, to a server on the Mac. The upload's `progress` event reported 0 bytes for a `Blob` until `bodySize()` in `xhr.ts` counted them.
+- **`<image>` can't load a `blob:` URL.** Lynx's image loader fetches URLs itself and knows nothing of the main thread's object URLs. `LynxElement` hands an `<image>`'s `src` or `placeholder` that names a live object URL the `Blob`'s bytes as a `data:` URL, which `<image>` shows on both platforms (a 5.6 MB one too).
+- **Orientation and HEIC are the shell's job.** A photo stored sideways with an EXIF orientation tag looks right in the picker, but `BitmapFactory` ignores the tag, and Android and most browsers can't show HEIC. The modules re-encode as an upright JPEG when the app asks for a size or a quality, or when the photo isn't a JPEG, PNG, GIF or WebP.
+- **Android's Photo Picker doesn't share the file's name.** Its URI's `DISPLAY_NAME` is the media ID, such as `1000000020.jpg`.
+
+### Lynx for Web
+
+Web-core runs the main thread in a hidden iframe (`sandbox="allow-same-origin allow-scripts"`), while the elements, and the person's taps, are in the page. A browser opens a file dialog only with a recent user activation in that document, so the runtime puts the `<input>` in the iframe's `frameElement.ownerDocument`. Its `File` then belongs to the page's realm, and `instanceof Blob` in Angular's realm is false (Firebase Storage checks it), so the runtime copies it into a `Blob` of the iframe's realm. Chromium fires `cancel` when the dialog closes without a file.
+
+---
+
 ## Inline `<svg>` elements are partially supported; SVG as image source is not
 
 ### What you'd expect (web)

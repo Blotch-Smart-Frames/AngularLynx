@@ -1,0 +1,148 @@
+# Pick a Photo
+
+Lynx has no `<input type="file">`, so a web app's way of choosing a photo doesn't work in a Lynx app. `LynxImagePicker` opens the phone's own photo picker instead, and hands back the photo as a `Blob`, which the upload libraries you already use, such as Firebase Storage, can send as it is.
+
+## Let someone pick a photo
+
+```typescript title="src/app/profile-picture.ts"
+import { Component, inject, signal } from '@angular/core';
+import {
+  ImagePickerError,
+  LYNX_ELEMENTS,
+  LynxImagePicker,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-profile-picture',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @if (photo()) {
+      <image [src]="photo()" mode="aspectFill" class="h-24 w-24 rounded-full" />
+    }
+    <view (bindtap)="change()">
+      <text>Change picture</text>
+    </view>
+  `,
+})
+export class ProfilePicture {
+  readonly #picker = inject(LynxImagePicker);
+  readonly photo = signal('');
+
+  async change(): Promise<void> {
+    try {
+      const picked = await this.#picker.pick({
+        maxDimension: 1024,
+        quality: 0.85,
+      });
+      if (!picked) return; // They closed the picker.
+      URL.revokeObjectURL(this.photo());
+      this.photo.set(URL.createObjectURL(picked.blob));
+    } catch (error) {
+      if (error instanceof ImagePickerError) {
+        // Show a message: see "When it doesn't return a photo" below.
+      }
+    }
+  }
+}
+```
+
+`pick()` resolves with `{ blob, name, type }`, such as `IMG_0042.jpg` and `image/jpeg`, or with `null` when the person closes the picker without choosing.
+
+To show the photo, give an `<image>` its object URL, as you'd give an `<img>` one on the web. The `<image>` element can't load a `blob:` URL itself, so AngularLynx hands it the photo's bytes as a `data:` URL instead. That copies the whole photo, so pick it scaled down, as above, when you only show it.
+
+## Upload it
+
+The `Blob` goes straight into an upload. With Firebase Storage:
+
+```typescript
+import { ref, uploadBytes } from 'firebase/storage';
+
+const picked = await picker.pick({ maxDimension: 1024, quality: 0.85 });
+if (picked) {
+  await uploadBytes(
+    ref(storage, `users/${uid}/profile-picture.jpg`),
+    picked.blob,
+    {
+      contentType: picked.type,
+    },
+  );
+}
+```
+
+Or with `HttpClient`, which sends the `Blob`'s type as the `Content-Type`:
+
+```typescript
+await firstValueFrom(http.put(uploadUrl, picked.blob));
+```
+
+Both send the bytes through AngularLynx's `fetch` and `XMLHttpRequest`, which pass them to the background thread to send (see [HTTP Requests](/guide/http#how-requests-reach-the-network)).
+
+## Choose the size and format
+
+| Option         | What it does                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------- |
+| `maxDimension` | Scales the photo down, if it's larger, so its longest side has at most this many pixels. It's never scaled up |
+| `quality`      | The JPEG quality, from 0 to 1. Defaults to 0.9 when the photo is re-encoded                                   |
+
+- **With either option, the photo comes back as a JPEG.** It's upright, whatever way the camera stored it, and it leaves out the original's metadata, such as where it was taken. A transparent image gets a white background, since a JPEG has no transparency.
+- **Without options, a JPEG, PNG, GIF or WebP comes back as it was picked.** Anything else, such as the HEIC photos iPhones take, is re-encoded as a JPEG at full size, since browsers and Android phones can't all show it.
+- **Ask for the size you need.** A photo straight from a 12-megapixel camera is several megabytes, and it crosses from native code to the background thread and then to your app as text. Scaled to 1024 pixels, it's a few hundred kilobytes and arrives at once.
+
+## What people see
+
+- **On iOS,** the system photo picker (`PHPickerViewController`). It runs outside your app and gives it only the photo picked, so your app needs no photo library permission and no `photos` entry in angular.json.
+- **On Android,** the Photo Picker, which needs no permission either. Phones on Android 10 and older without it get it from Google Play services, or else the system's file picker.
+- **In the [web preview](/guide/glossary#web-preview),** the browser's file dialog, from an `<input type="file" accept="image/*">`. Browsers open it only in answer to a tap, so call `pick()` from a tap handler, not after waiting for something else.
+
+## When it doesn't return a photo
+
+Closing the picker isn't an error: `pick()` resolves with `null`. It rejects with an `ImagePickerError`, whose `code` says why:
+
+| `code`        | When                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no photo picker: only the apps `ng build --platform` makes and the web preview do  |
+| `failed`      | The picker couldn't open, one was already open, or the picked photo couldn't be read or decoded |
+
+:::info Lynx Explorer
+Lynx Explorer has no photo picker, so there `pick()` rejects with `unavailable`. Try it on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#let-someone-pick-a-photo).
+:::
+
+## Test it
+
+In a spec there's no picker to tap through, so provide a stand-in that resolves with the photo the test needs:
+
+```typescript title="src/app/profile-picture.test.ts"
+import { LynxImagePicker } from '@blotch/angular-lynx';
+import {
+  fireEvent,
+  render,
+  screen,
+} from '@blotch/angular-lynx-testing-library';
+import { ProfilePicture } from './profile-picture';
+
+it('shows the picked photo', async () => {
+  const picked = {
+    blob: new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
+      type: 'image/jpeg',
+    }),
+    name: 'me.jpg',
+    type: 'image/jpeg',
+  };
+  await render(ProfilePicture, {
+    providers: [
+      { provide: LynxImagePicker, useValue: { pick: async () => picked } },
+    ],
+  });
+
+  fireEvent.tap(screen.getByText('Change picture'));
+  // ...
+});
+```
+
+Return `null` from the stand-in to test what happens when the person closes the picker. Without a stand-in, `pick()` rejects with `unavailable`, as in Lynx Explorer.
+
+## Related
+
+- [`LynxImagePicker` reference](/api/angular-lynx/image-picker)
+- [HTTP Requests](/guide/http)
+- [Run on iOS and Android](/guide/native-apps)

@@ -161,6 +161,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'en-US',
       hasDefinedSourceLocale: false,
+      locales: [],
     });
   });
 
@@ -170,6 +171,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'en-US',
       hasDefinedSourceLocale: false,
+      locales: [],
     });
   });
 
@@ -179,6 +181,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'fr',
       hasDefinedSourceLocale: true,
+      locales: [],
     });
   });
 
@@ -190,6 +193,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'de-AT',
       hasDefinedSourceLocale: true,
+      locales: [],
     });
   });
 
@@ -199,6 +203,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'en-US',
       hasDefinedSourceLocale: false,
+      locales: ['fr'],
     });
   });
 
@@ -208,6 +213,7 @@ describe('normalizeI18nOptions', () => {
     expect(result).toEqual({
       sourceLocale: 'en-US',
       hasDefinedSourceLocale: false,
+      locales: [],
     });
   });
 });
@@ -349,6 +355,7 @@ describe('readBuildOptions', () => {
     expect(result.i18n).toEqual({
       sourceLocale: 'en-US',
       hasDefinedSourceLocale: false,
+      locales: [],
     });
   });
 
@@ -481,7 +488,29 @@ describe('readBuildOptions', () => {
     expect(result.i18n).toEqual({
       sourceLocale: 'fr',
       hasDefinedSourceLocale: true,
+      locales: [],
     });
+  });
+
+  it('reads the intl option, and has none by default', async () => {
+    const withIntl = await readBuildOptions(
+      makeProject({
+        options: baseOptions({ intl: ['NumberFormat', 'Collator'] }),
+      }),
+      basePath,
+    );
+    expect(withIntl.intl).toEqual(['NumberFormat', 'Collator']);
+    const without = await readBuildOptions(
+      makeProject({ options: baseOptions() }),
+      basePath,
+    );
+    expect(without.intl).toEqual([]);
+    await expect(
+      readBuildOptions(
+        makeProject({ options: baseOptions({ intl: ['Segmenter'] }) }),
+        basePath,
+      ),
+    ).rejects.toThrow(/angular.json: `intl` lists "Segmenter"/);
   });
 
   it('reads budgets, and has none by default', async () => {

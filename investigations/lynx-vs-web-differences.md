@@ -3174,26 +3174,62 @@ The default `position` is **`relative`**. This means `top`/`left`/`right`/`botto
 
 ---
 
-## `Intl` is missing where Angular runs — i18n libraries that need it require polyfills
+## `Intl` is missing where Angular runs, and `localeCompare` and `toLocaleString` ignore the locale
 
 ### What you'd expect (web)
 
-`Intl.NumberFormat`, `Intl.DateTimeFormat`, `Intl.PluralRules`, `Intl.Collator`, etc. are standard globals in all modern browsers and Node.js.
+`Intl.NumberFormat`, `Intl.DateTimeFormat`, `Intl.PluralRules`, `Intl.Collator`, `Intl.DisplayNames` and the rest are standard globals in all modern browsers and Node.js, and the locale-sensitive methods use them: `'é'.localeCompare('z')` is `-1`, `(1234.5).toLocaleString('de')` is `"1.234,5"`, and `String.prototype.normalize` exists.
 
 ### What Lynx does
 
-Measured for issue #68 (2026-10-26, Lynx Explorer 4.1) with `typeof Intl`:
+Measured for issue #306 (2026-11-06, Lynx 4.1) on the iOS Simulator (iOS 27.0) and an Android emulator (API 34), in Lynx Explorer and in the apps `ng build --platform` makes, on both threads:
 
-| Thread                            | iOS                       | Android              |
-| --------------------------------- | ------------------------- | -------------------- |
-| Main (PrimJS, where Angular runs) | `undefined`               | `undefined`          |
-| Background                        | `object` (JavaScriptCore) | `undefined` (PrimJS) |
+| Thread                            | Explorer, iOS | Explorer, Android | Generated app, iOS                          | Generated app, Android |
+| --------------------------------- | ------------- | ----------------- | ------------------------------------------- | ---------------------- |
+| Main (PrimJS, where Angular runs) | no `Intl`     | no `Intl`         | no `Intl`                                   | no `Intl`              |
+| Background                        | no `Intl`     | no `Intl`         | JavaScriptCore, with `Intl` and `normalize` | no `Intl`              |
 
-So any code that runs in a component, service or template handler has no `Intl`, on either platform. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
+`SystemInfo.runtimeType` says which engine the background thread got: `quickjs` (PrimJS) in Explorer on both platforms, `jsc` in the generated iOS app. (Issue #68 saw JavaScriptCore in Explorer on iOS too, so it can change with how the host creates the LynxView.) Where `Intl` is missing, PrimJS also:
 
-- **i18next v24+** requires `Intl.PluralRules` — use v23 with `compatibilityJSON: 'v3'` or polyfill `@formatjs/intl-pluralrules`.
+- **compares UTF-16 code units in `localeCompare`**, ignoring `locales` and `options`, and returns their difference rather than -1, 0 or 1: `'é'.localeCompare('z')` is `111`, `'a'.localeCompare('A')` is `32`, and `['Zoë', 'apple', 'Émile'].sort((a, b) => a.localeCompare(b))` puts `Zoë` first and `Émile` last;
+- **has no `String.prototype.normalize`** at all (`'é'.normalize('NFD')` throws "not a function");
+- **formats dates one fixed way** in `Date.prototype.toLocaleString()` and its siblings, whatever the locale: `01/15/2026, 01:05:09 PM`;
+- **ignores the locale in `toLocaleUpperCase`/`toLocaleLowerCase`** (`'i'.toLocaleUpperCase('tr')` is `I`, not `İ`).
+
+Its `Date` does apply the device's time zone, daylight saving time included (`getTimezoneOffset()` and `getHours()`), and its regular expressions take Unicode property escapes from `new RegExp()`, `\p{Script=Hebrew}` included (but see the next section for regex literals).
+
+So any code that runs in a component, service or template handler has no `Intl`, on either platform, and passes in specs, which run in Node. Lynx's `enableICU` page config binds ICU into the JS context, but only through a host-provided service (`LynxServiceI18nProtocol` on iOS, `ICURegister` on Android) that Lynx Explorer and our shells don't have.
+
+- **i18next v24+** requires `Intl.PluralRules`.
 - **Angular's own pipes don't need it.** `DatePipe`, `DecimalPipe`, `CurrencyPipe`, `PercentPipe` and `I18nPluralPipe` format from the locale data registered with `registerLocaleData()` (`en-US` is built in). `@angular/common` 22 never calls `Intl`.
-- Libraries that do need it: polyfill with `@formatjs/intl-numberformat`, `@formatjs/intl-datetimeformat`, `@formatjs/intl-pluralrules`, etc.
+
+### The fix
+
+The build option `intl` (`"intl": ["DisplayNames", "NumberFormat", "Collator"]` in angular.json, or `pluginAngularLynx({ intl })`) adds the APIs it lists to the Lynx bundle, on both threads, before the app's modules: FormatJS's polyfills (`@formatjs/intl-*`, which the app installs) with the data of `i18n.sourceLocale` and `i18n.locales`, and our own `Intl.Collator`, since FormatJS has none (`packages/rsbuild-plugin-angular-lynx/src/intl/`). The web bundle gets nothing: the browser has `Intl`. On an engine with its own `Intl` (the generated iOS app's background thread) the polyfills install nothing and the setup leaves it alone.
+
+Three things FormatJS leaves to the host are filled in:
+
+- **The default locale** (`new Intl.NumberFormat()`, `n.toLocaleString()`) is the phone's language (`appLocale`) when the app has data for it, else the source locale, as `provideLocale()` picks `LOCALE_ID`. FormatJS would use the first locale whose data loaded.
+- **The default time zone** is the device's: FormatJS's default is UTC and it knows no zone without its 800 kB of zone data. The setup reads the offsets from 1900 to 2100 from the engine's `Date` (weekly samples, each change found to the second; 1 to 4 ms) and adds them as a zone under the IANA name the generated apps send as `appTimeZone` (Explorer sends none, so it's `Etc/Unknown`).
+- **`Intl.Collator` and `localeCompare`**: the build asks Node's ICU how each locale orders the characters of the scripts most apps show and writes the answer down as three weights per character, plus two-letter contractions and letters that sort as two (`intl/collation-data.ts`). The runtime compares with them as the Unicode Collation Algorithm does. On 120 words in 10 locales and 8 option sets, it orders every pair as ICU does.
+
+FormatJS's polyfills ran without a fix on PrimJS: an app compared 58 cases (each API, compact and currency numbers, date styles and ranges, plural categories, region names, sorting) on both threads with FormatJS's own output in Node, and all matched on iOS and Android. They differ from Node's ICU only where FormatJS's CLDR data does (`"… 2026, 1:05 PM"` against ICU's `"… 2026 at 1:05 PM"`, and which spaces they use). The bundle grows by about 1.07 MB per thread for all seven APIs with one locale, and about 0.43 MB per thread for each locale after that; the website's Internationalization guide has the numbers per API. FormatJS's `intl-getcanonicallocales/polyfill.js` is a bundle with its own copy of CLDR's likely subtags, which `intl-locale` imports again from the package's index, so the build installs `Intl.getCanonicalLocales` from the index itself and saves 120 kB per thread.
+
+---
+
+## The build's main-thread bytecode compiler rejects `\p{Script=…}` in a regex literal
+
+### What you'd expect (web)
+
+`/^\p{Script=Hebrew}/u` is valid JavaScript since ES2018, and any engine that runs it compiles it.
+
+### What Lynx does
+
+The Lynx bundle's main-thread script is compiled to bytecode at build time. That compiler takes General_Category escapes (`\p{L}`, `[\p{P}\p{Z}]`) but fails the build on a Script one: `Compile error: main-thread.js exception: SyntaxError: invalid escape sequence in regular expression`. PrimJS on the device runs the same pattern from `new RegExp('^\\p{Script=Hebrew}', 'u')` on both threads (iOS and Android, 2026-11-06), so it's only the build's compiler. FormatJS's ListFormat polyfill has one, for Hebrew's "and".
+
+### The fix
+
+The `intl` option runs FormatJS's polyfills through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`), which writes each escape out as the characters it matches. Other code with a Script escape in a regex literal fails the same way; build the pattern with `new RegExp()` instead.
 
 ---
 
@@ -5345,7 +5381,7 @@ Found when TanStack Charts' SVG output (`stroke-dasharray="none"` on every bar) 
 
 ---
 
-## The main thread lacks newer built-ins: `.at()`, `toSorted()`, `Object.groupBy()`, the Set methods, `Intl`
+## The main thread lacks newer built-ins: `.at()`, `toSorted()`, `Object.groupBy()`, the Set methods
 
 ### What you'd expect (web)
 
@@ -5362,7 +5398,7 @@ Libraries that call them throw "not a function", often at module load, where it 
 
 ### The fix
 
-The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization still load an Intl polyfill.
+The build's preEntry (`packages/rsbuild-plugin-angular-lynx/src/polyfills.js`) imports `es-builtins.js`, which defines every built-in up to ES2026 that JavaScript can define next to the engine's own, on both threads, before any of the app's modules. Each is added only where it's missing, non-enumerable, as a method (so it has the spec's name and length and isn't a constructor). Only when `Intl` is missing, it also replaces `Number.prototype.toLocaleString` with one that formats like en-US by default (grouping, up to three decimals, `minimumFractionDigits` / `maximumFractionDigits` / `useGrouping`); apps that need real localization use the `intl` build option, whose `NumberFormat` replaces it (see the `Intl` section).
 
 It's written out rather than taken from core-js: `core-js/es` adds about 400 kB, and also replaces `Promise`, `Set` or `RegExp#exec` wherever core-js judges the engine's own lacking. These add about 22 kB minified (7 kB gzipped) to each thread's bundle. The engine-level features above stay missing.
 

@@ -2,6 +2,7 @@ import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
 import type { workspaces } from '@angular-devkit/core';
 import type { TargetDefinition } from '@angular-devkit/core/src/workspace/definitions';
+import { type IntlApi, parseIntlOption } from '../../intl/apis.js';
 import {
   type NormalizedCachedOptions,
   normalizeCacheOptions,
@@ -94,6 +95,8 @@ export const normalizeOptimization = (
 export type NormalizedI18nOptions = {
   sourceLocale: string;
   hasDefinedSourceLocale: boolean;
+  /** The keys of `i18n.locales`: the locales the app is translated into. */
+  locales: string[];
 };
 
 /**
@@ -184,6 +187,8 @@ export type NormalizedOptions = {
   i18n: NormalizedI18nOptions;
   i18nMissingTranslation: 'error' | 'warning' | 'ignore';
   budgets: readonly Budget[];
+  /** The `Intl` APIs the build adds to the Lynx bundle (intl/apply-intl.ts). */
+  intl: IntlApi[];
 };
 type Replacement = {
   with: string;
@@ -405,6 +410,7 @@ export const normalizeBuildOptions = async (
     i18n,
     i18nMissingTranslation,
     budgets: (buildOptions.budgets as Budget[] | undefined) ?? [],
+    intl: parseIntlOption(buildOptions.intl, 'angular.json'),
   };
   return normalizedOptions;
 };
@@ -416,7 +422,11 @@ export const normalizeBuildOptions = async (
  */
 export const normalizeI18nOptions = (raw: unknown): NormalizedI18nOptions => {
   if (!raw || typeof raw !== 'object') {
-    return { sourceLocale: 'en-US', hasDefinedSourceLocale: false };
+    return {
+      sourceLocale: 'en-US',
+      hasDefinedSourceLocale: false,
+      locales: [],
+    };
   }
   const i18nConfig = raw as Record<string, unknown>;
   let sourceLocale = 'en-US';
@@ -436,5 +446,12 @@ export const normalizeI18nOptions = (raw: unknown): NormalizedI18nOptions => {
     hasDefinedSourceLocale = true;
   }
 
-  return { sourceLocale, hasDefinedSourceLocale };
+  // Each value is a translation file (or files) for the extractor; only the
+  // locales matter here.
+  const locales =
+    i18nConfig.locales && typeof i18nConfig.locales === 'object'
+      ? Object.keys(i18nConfig.locales)
+      : [];
+
+  return { sourceLocale, hasDefinedSourceLocale, locales };
 };

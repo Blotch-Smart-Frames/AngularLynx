@@ -1,3 +1,5 @@
+import type { IntlApi } from '../intl/apis.js';
+
 export type PluginAngularLynxOptions = {
   customCSSInheritanceList?: string[] | undefined;
   debugInfoOutside?: boolean;
@@ -28,6 +30,15 @@ export type PluginAngularLynxOptions = {
   enableParallelElement?: boolean;
   enableRemoveCSSScope?: boolean;
   enableSSR?: boolean;
+  /**
+   * The `Intl` APIs to add to the Lynx bundle, with data for angular.json's
+   * `i18n.sourceLocale` and `i18n.locales`: any of `Collator`,
+   * `DateTimeFormat`, `DisplayNames`, `ListFormat`, `NumberFormat`,
+   * `PluralRules` and `RelativeTimeFormat`. Lynx has no `Intl`. The same as
+   * the `intl` build option in angular.json, which this replaces when set.
+   * The FormatJS packages they use must be installed.
+   */
+  intl?: IntlApi[] | undefined;
   /**
    * Build multiple angular.json projects as separate Lynx pages.
    * Each project's `browser` field becomes a named entry producing its own .lynx.bundle.
@@ -116,6 +127,8 @@ export const normalizeOptions = (
     defaultDisplayLinear: true,
     enableRemoveCSSScope: false,
     enableSSR: false,
+    //@ts-expect-error
+    intl: undefined,
     //@ts-expect-error
     pages: undefined,
     targetSdkVersion: '3.2',

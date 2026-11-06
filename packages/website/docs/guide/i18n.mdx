@@ -8,7 +8,7 @@ Translate your app with Angular's `@angular/localize`. Mark text with `i18n` or 
 
 - **Translations load at runtime.** Angular's build-time translation, with one build per language, isn't supported. Your app calls `loadTranslations()` before it starts.
 - **The language comes from the host app.** AngularLynx reads `appLocale` from the [host app](/guide/glossary#host-app)'s [GlobalData](/guide/glossary#globaldata). The iOS and Android apps that [`ng build --platform`](/guide/native-apps) generates send the phone's language as a tag such as `'fr-FR'`. Lynx Explorer sends none, so there your app uses the `sourceLocale` from angular.json.
-- **There's no `Intl`.** `$localize` and Angular's pipes don't need it. Code that calls `Intl` directly needs a [polyfill](#add-an-intl-polyfill).
+- **Lynx has no `Intl`.** `$localize` and Angular's pipes don't need it. For code that calls `Intl`, the build can [add the APIs it uses](#use-intl).
 - **Switching language means restarting the app**, for most text. Template `i18n` text and `LOCALE_ID` don't change after they're first used. Some strings [can switch live](#switch-language-while-the-app-runs).
 
 ## Set up
@@ -205,27 +205,115 @@ export class LanguagePicker {
 
 Template `i18n` text, `$localize` strings outside a `computed()`, and `LOCALE_ID` keep the language the app started with. To change those, the app has to start again with the new `appLocale`.
 
-## Add an Intl polyfill
+{/* cspell:ignore displaynames phonebk */}
 
-AngularLynx doesn't include an `Intl` polyfill. Without one, `Number.prototype.toLocaleString()` formats numbers the `en-US` way for every locale, and `Intl.*` calls throw.
+## Use `Intl`
 
-If your code or a library needs `Intl`, install [FormatJS's polyfills](https://formatjs.github.io/docs/polyfills) and list them in the build's `polyfills`, in this order:
+Lynx has no `Intl` where your app runs. `new Intl.DisplayNames()` throws on a phone, while your tests, which run in Node, pass. The methods that would use `Intl` ignore the locale: `toLocaleString()` formats numbers the `en-US` way and dates as `01/15/2026, 01:05:09 PM`, and `localeCompare()` compares character codes, so `'é'` sorts after `'z'`.
+
+List the `Intl` APIs your code uses in the build's `intl` option:
 
 ```json title="angular.json"
-"polyfills": [
-  "@angular/localize/init",
-  "@formatjs/intl-getcanonicallocales/polyfill.js",
-  "@formatjs/intl-locale/polyfill.js",
-  "@formatjs/intl-pluralrules/polyfill.js",
-  "@formatjs/intl-pluralrules/locale-data/en.js",
-  "@formatjs/intl-numberformat/polyfill.js",
-  "@formatjs/intl-numberformat/locale-data/en.js",
-  "@formatjs/intl-datetimeformat/polyfill.js",
-  "@formatjs/intl-datetimeformat/locale-data/en.js"
-]
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "intl": ["DisplayNames", "NumberFormat", "Collator"]
+  }
+}
 ```
 
-Add the `locale-data` files for each language you support. The build runs these files before your app on both threads. Check them on a device, because Lynx's JavaScript engine is older than a browser's (see [The JavaScript environment](/guide/concepts/javascript-environment#intl)).
+Then install the [FormatJS polyfills](https://formatjs.github.io/docs/polyfills) they use. The build stops and lists the ones that are missing. For the three above:
+
+```bash
+npm install @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames @formatjs/intl-numberformat @formatjs/intl-pluralrules
+```
+
+The build adds them to the bundle for iOS and Android, before your code, on both [threads](/guide/concepts/threads). The web preview uses the browser's own `Intl`, so its bundle doesn't change. Code you share with a web app then works as it is:
+
+```typescript title="src/app/countries.ts"
+export const regionName = (code: string, locale: string): string =>
+  new Intl.DisplayNames([locale], { type: 'region', fallback: 'none' }).of(
+    code,
+  ) ?? code;
+
+export const sortedCountries = (codes: string[], locale: string) =>
+  codes
+    .map((code) => ({ code, name: regionName(code, locale) }))
+    .sort((a, b) => a.name.localeCompare(b.name, locale));
+```
+
+| `intl` entry         | Adds                                                                                                    | Package                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `Collator`           | `Intl.Collator`, and `localeCompare()` with locales and options                                         | None: AngularLynx's own (see below) |
+| `DateTimeFormat`     | `Intl.DateTimeFormat`, and `toLocaleString()`, `toLocaleDateString()`, `toLocaleTimeString()` on dates  | `@formatjs/intl-datetimeformat`     |
+| `DisplayNames`       | `Intl.DisplayNames`: the names of regions, languages, scripts and currencies                            | `@formatjs/intl-displaynames`       |
+| `ListFormat`         | `Intl.ListFormat`                                                                                       | `@formatjs/intl-listformat`         |
+| `NumberFormat`       | `Intl.NumberFormat`, with compact, currency, percent and unit styles, and `toLocaleString()` on numbers | `@formatjs/intl-numberformat`       |
+| `PluralRules`        | `Intl.PluralRules`                                                                                      | `@formatjs/intl-pluralrules`        |
+| `RelativeTimeFormat` | `Intl.RelativeTimeFormat` ("in 3 days")                                                                 | `@formatjs/intl-relativetimeformat` |
+
+Every entry also needs `@formatjs/intl-getcanonicallocales` and `@formatjs/intl-locale`, which add `Intl.getCanonicalLocales()` and `Intl.Locale`. Some need others too, which the build adds for you: `NumberFormat` uses `PluralRules`, and `DateTimeFormat` and `RelativeTimeFormat` use `NumberFormat`.
+
+### Locales
+
+- **The build adds the data of your app's locales:** `i18n.sourceLocale` and each locale in `i18n.locales` in angular.json. One bundle serves every language, so it holds them all. A locale FormatJS has no data for gets a warning, and formats in your source locale.
+- **Without a locale,** as in `new Intl.NumberFormat()` or `n.toLocaleString()`, they use the phone's language (`appLocale`) when it's one of your locales, and your source locale otherwise. That's how [`provideLocale()`](#set-up) picks Angular's `LOCALE_ID`. Lynx Explorer sends no `appLocale`, so there it's always your source locale.
+
+### Time zones
+
+Dates format in the phone's time zone, as in a browser. The build reads the zone's offsets from the device's clock, summer time included. The apps `ng build --platform` makes also send the zone's name as `appTimeZone`, so `resolvedOptions().timeZone` is, for example, `'Europe/Paris'`, and `timeZoneName: 'long'` gives `Central European Summer Time`. Lynx Explorer sends no name, so there the zone is `'Etc/Unknown'`, and its name shows as an offset, such as `GMT+02:00`.
+
+`timeZone: 'UTC'` and offsets such as `timeZone: '+05:30'` work as they are. Other zones, such as `timeZone: 'America/New_York'`, need FormatJS's time zone data. Add it to `polyfills`:
+
+```json title="angular.json"
+"polyfills": ["@formatjs/intl-datetimeformat/add-golden-tz.js"]
+```
+
+It adds about 1.6 MB to the bundle, and to the web preview's too, where it does nothing.
+
+### Sorting
+
+FormatJS has no `Intl.Collator`, so the `Collator` entry is AngularLynx's own. When you build, it asks Node, which has the full ICU library browsers sort with, how each of your locales orders the letters of Latin, Greek, Cyrillic, Armenian, Hebrew, Arabic, Devanagari, Thai and Japanese kana, the punctuation and symbols, and their accents and cases. Then it sorts with that, as the [Unicode Collation Algorithm](https://www.unicode.org/reports/tr10/) does: by letter, then accent, then case. That includes each language's own letters, such as Swedish `ä` after `z`, Spanish `ñ` after `n` and Czech `ch` after `h`, and the `numeric`, `sensitivity`, `caseFirst` and `ignorePunctuation` options. On every pair of 120 test words in 10 languages, it orders them as Node does.
+
+What's approximate:
+
+- **Chinese, Japanese and Korean ideographs and syllables** sort after the other scripts, by Unicode code point. There's no pinyin or stroke order.
+- **Contractions of three letters or more,** such as Hungarian `dzs`, sort as their letters. So do Thai's vowels that come before a consonant.
+- **Text written as a letter plus a separate accent** (`a` + U+0308) sorts as the letter, in a language that makes the accented letter one of its own, as Swedish does `ä`. A phone's keyboard types an accented letter as one character, so this is rare.
+- **`usage: 'search'`** compares as `'sort'` does, and the `collation` option (`'phonebk'`, `'pinyin'`) is ignored: `resolvedOptions().collation` is always `'default'`.
+
+### Bundle size
+
+`Intl` data is large, so add only what your code uses. Each API's code and data go into both threads' halves of the bundle, so they count twice in its size. Measured as what each adds to the iOS and Android bundle:
+
+| `intl` entry                               | Adds, with one locale | Adds for each more locale                                                        |
+| ------------------------------------------ | --------------------- | -------------------------------------------------------------------------------- |
+| `Collator`                                 | 630 kB                | Up to 40 kB, for a language that orders its letters its own way, such as Swedish |
+| `ListFormat`                               | 637 kB                | 3 kB                                                                             |
+| `PluralRules`                              | 663 kB                | 3 kB                                                                             |
+| `DisplayNames`                             | 781 kB                | 136 kB                                                                           |
+| `NumberFormat` (with `PluralRules`)        | 933 kB                | 170 kB                                                                           |
+| `RelativeTimeFormat` (with `NumberFormat`) | 982 kB                | 186 kB                                                                           |
+| `DateTimeFormat` (with `NumberFormat`)     | 1.79 MB               | 722 kB                                                                           |
+| All seven                                  | 2.15 MB               | About 850 kB                                                                     |
+
+About 550 kB of each is the same code, `Intl.Locale` and `Intl.getCanonicalLocales` with their data, so two entries add less than their sum. If the bundle outgrows the `initial` [budget](/guide/building-for-production#budgets) in angular.json, raise it.
+
+### Angular's pipes
+
+Angular's `DatePipe`, `DecimalPipe`, `CurrencyPipe`, `PercentPipe` and `I18nPluralPipe` don't use `Intl`. They format with the locale data you register with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData), for the `LOCALE_ID` that [`provideLocale()`](#set-up) sets. So they work without the `intl` option, and the option doesn't change them. For a locale, register Angular's data for the pipes, and list the locale in `i18n.locales` for code that calls `Intl`. Both follow the phone's language the same way.
+
+### Without the Angular CLI
+
+If you run RSpeedy yourself, or your build target in angular.json isn't AngularLynx's, pass the same list to the plugin in `lynx.config.ts`:
+
+```typescript title="lynx.config.ts"
+import { defineConfig, pluginAngularLynx } from '@blotch/angular-lynx-build';
+
+export default defineConfig({
+  plugins: [pluginAngularLynx({ intl: ['DisplayNames', 'NumberFormat'] })],
+});
+```
 
 ## Related
 

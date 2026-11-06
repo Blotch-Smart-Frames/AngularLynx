@@ -948,6 +948,7 @@ describe('unit-test builder', () => {
       'device',
       'config',
       'environment',
+      'intl',
       'appName',
       'appId',
       'version',

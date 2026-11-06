@@ -37,6 +37,7 @@ export default defineConfig({
 - Registers `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts Lynx elements (`<view>`, `<text>`, etc.)
 - Enforces the build target's `budgets` with `ng build`'s units and messages: a warning is printed, an error fails the build
 - Applies the build target's `fileReplacements`, as Angular's builders do: both threads' bundles are built from each `with` file instead of its `replace` file, and a watch build rebuilds when it changes
+- Adds the `Intl` APIs the `intl` option lists, which Lynx lacks, to the Lynx bundle (see [Intl](#intl))
 
 ## Budgets
 
@@ -51,6 +52,22 @@ Budgets in angular.json are checked against the `lynx` environment, the bundles 
 | `anyComponentStyle` | Each component stylesheet, compiled                                |
 
 Media and fonts aren't counted. Under plain `rspeedy dev` budgets are skipped: the plugin then reads angular.json's default configuration, usually production, whose budgets don't fit a development build. `ng serve` checks them when the configuration it serves has them, as Angular's dev server does.
+
+## Intl
+
+Lynx has no `Intl` on the main thread, where Angular runs, nor on the background thread except where it runs on JavaScriptCore. The `intl` build option in angular.json, or `pluginAngularLynx({ intl })` when the build target isn't AngularLynx's, adds the APIs it lists to the Lynx bundle, on both threads, before the app's code:
+
+```json
+"intl": ["DisplayNames", "NumberFormat", "Collator"]
+```
+
+- `DateTimeFormat`, `DisplayNames`, `ListFormat`, `NumberFormat`, `PluralRules` and `RelativeTimeFormat` are [FormatJS's polyfills](https://formatjs.github.io/docs/polyfills), which the app installs (`@formatjs/intl-*`, with `@formatjs/intl-getcanonicallocales` and `@formatjs/intl-locale`; the build names the missing ones). They're optional peer dependencies here, because each package holds every locale's data.
+- The build adds the data of angular.json's `i18n.sourceLocale` and `i18n.locales`, and the APIs each one calls (`NumberFormat` needs `PluralRules`; `DateTimeFormat` and `RelativeTimeFormat` need `NumberFormat`).
+- `Collator` is the plugin's own, with `localeCompare()`: FormatJS has none. The build takes each locale's order of letters from Node's ICU (`src/intl/collation-data.ts`).
+- With no locale, they use the phone's language (`appLocale`) when the app has its data, and dates are in the phone's time zone, named by `appTimeZone`.
+- The web bundle gets none of it: the browser has `Intl`.
+
+See [Internationalization](https://angularlynx.js.org/guide/i18n#use-intl) for what's approximate and what it adds to the bundle.
 
 ## Documentation
 

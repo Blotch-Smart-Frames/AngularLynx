@@ -89,6 +89,10 @@ export const FLOWS: readonly Flow[] = [
     only: { platform: 'android', host: 'shell' },
   },
   {
+    file: 'array-slots.yaml',
+    description: 'collects what pop() and splice() took out of an array',
+  },
+  {
     file: 'storage.yaml',
     description: 'keeps local and secure storage after a restart',
     // Only the app's own builds have the storage modules. Lynx Explorer keeps

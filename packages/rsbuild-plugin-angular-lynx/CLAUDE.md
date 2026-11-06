@@ -68,6 +68,7 @@ src/
   strict-esm.ts                        # Builds .mjs and "type": "module" .js files as strict ES modules, which Rsbuild's JS rule overrides
   polyfills.js                         # The first preEntry module: browser globals Angular expects (AbortController, Node, document…)
   es-builtins.js                       # ES2021–ES2026 built-ins the engines lack, imported by polyfills.js; a plain script so tests run it in a vm realm
+  vacated-slots.js                     # pop()/shift()/splice() that clear the slots an array gives up, which PrimJS keeps alive; imported by polyfills.js
   css.ts                               # CSS handling
   generator.ts                         # Output filename rules
   split-chunks.ts                      # Chunk splitting config

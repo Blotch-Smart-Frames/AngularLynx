@@ -858,6 +858,22 @@ See `packages/runtime/src/lib/runtime.ts` lines 129-145.
 
 ---
 
+## `cancelAnimationFrame()` throws for a handle that isn't a number
+
+### What you'd expect (web)
+
+`cancelAnimationFrame(handle)` does nothing for a handle it doesn't know, `null` and `undefined` included. Code leans on that: three.js stops a renderer's animation loop with `cancelAnimationFrame(requestId)` whether or not the loop ever started, so with `null` when it didn't.
+
+### What Lynx does
+
+Lynx's native `cancelAnimationFrame` throws for anything but a number: `error code: 111101 error message: CancelAnimationFrame param 0 should be Number`. `renderer.dispose()` ends that way, so every angular-three canvas logged `[NGT] Errors while destroying Canvas Root` as it went, and a component disposing its own renderer threw from `ngOnDestroy`.
+
+### The fix
+
+`packages/runtime/src/lib/polyfills.ts` wraps whichever `cancelAnimationFrame` is installed, so only a number reaches it.
+
+---
+
 ## No browser navigation/location APIs (`window.location`, `history`, `URL`)
 
 ### What you'd expect (web)
@@ -2985,7 +3001,23 @@ Open-source Lynx has no canvas on iOS or Android (lynx-family/lynx has no WebGL;
 
 ### What to do
 
-Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, `HTMLElement` and `HTMLCanvasElement` classes nothing is an instance of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+Use `<canvas>` with `getContext('webgl2')` in an app built with `ng build --platform ios|android`, or in the web preview. three.js and angular-three need the DOM globals the runtime adds on the main thread (`canvas/dom-globals.ts`): `performance.now()`, `crypto.randomUUID()` (from `Math.random()`, so not for secrets), `self`, `ProgressEvent`, an `HTMLElement` class a template's elements are instances of (angular-three takes its pointer listeners off the element its events connect to only if it's an `HTMLElement`, so without one they stayed on every canvas's host after the canvas had gone), an `HTMLCanvasElement` class nothing is an instance of, `Image`, `ImageBitmap`, `createImageBitmap()`, `Blob`, object URLs, `devicePixelRatio`, `getComputedStyle()` and `ResizeObserver`.
+
+---
+
+## A three.js renderer kept alive by a material keeps its whole screen (issue #299, open)
+
+### What you'd expect (web)
+
+three.js hangs a `dispose` listener on every material and texture a renderer draws, which keeps the renderer for as long as that material or texture lives. A module-level material, or a model or texture from angular-three's loader cache (kept for the page's life), so keeps every renderer that ever drew it, with its canvas and GL state. Nothing more: the scene and the components around the canvas go.
+
+### What Lynx does
+
+The kept renderer keeps the whole screen too. With a module-level material on an angular-three mesh that has an `*args` child, every visit to a routed screen left the screen's components, angular-three's store and scene, and all of the screen's native UI alive (5 of 5 after 4 visits on the iOS Simulator; 1 of 5 on the web). Without `*args` only the canvas's native view stays, one per visit. The link isn't AngularLynx's canvas or context (a fake canvas with a pure-JS context leaks the same), a `WeakMap` (swapped for one keeping entries as properties: no change), or anything a walk of properties, `Map`s and `Set`s from the renderer reaches, so it runs through a closure. Issue #299 has the measurements.
+
+### What to do
+
+Give each canvas copies of whatever outlives it: `material.clone()` per mount, and `texture.clone()`, which shares the decoded image. Then nothing outlives the renderer, and the screen goes.
 
 ---
 

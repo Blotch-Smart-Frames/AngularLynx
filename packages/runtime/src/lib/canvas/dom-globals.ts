@@ -34,9 +34,14 @@ const isLynxElement = (value: unknown): value is LayoutElement =>
  *   weak one.
  * - `self`: three.js's glTF loader reads `self.URL`.
  * - `ProgressEvent`: three.js's FileLoader fires one per chunk it reads.
- * - `HTMLElement`, `HTMLCanvasElement`: classes nothing is an instance of,
- *   for the `instanceof` checks angular-three and ngxtension make without
- *   checking the class exists.
+ * - `HTMLElement`: a template's elements are instances of it, as a page's are
+ *   of the browser's, for the `instanceof` checks angular-three and
+ *   ngxtension make before using an element as one. angular-three takes its
+ *   pointer listeners off the element its events connect to only if it's an
+ *   `HTMLElement`, so with no instances they stayed on every canvas's host,
+ *   holding its scene, after the canvas had gone.
+ * - `HTMLCanvasElement`: a class nothing is an instance of, for the checks
+ *   that only need the class to exist.
  * - `Image`, `HTMLImageElement`, `ImageBitmap`, `createImageBitmap()`, and
  *   `document.createElement('img')`: see image.ts.
  * - `devicePixelRatio`: from Lynx's SystemInfo, so a 3D scene renders at the
@@ -150,11 +155,11 @@ class LynxProgressEvent {
 }
 
 /**
- * No element is one: Lynx elements are LynxElements.
+ * A template's element is one (see installCanvasGlobals).
  */
 class LynxHTMLElement {
-  static [Symbol.hasInstance](): boolean {
-    return false;
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return isLynxElement(value);
   }
 }
 

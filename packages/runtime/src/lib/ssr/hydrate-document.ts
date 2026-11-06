@@ -94,7 +94,16 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     if (!this.#isHydrating()) {
       return this.#getFallback().createText(value);
     }
-    const el = this.#nextElement();
+    // A raw-text whose parent draws no text, such as a <view>, was rendered in
+    // an anonymous <text> (see LynxElement's #putInTextWrapper), which comes
+    // before it in the snapshot.
+    let wrapper: LynxElement | null = this.#nextElement();
+    let el = wrapper;
+    if (__GetTag(wrapper.element) === 'text') {
+      el = this.#nextElement();
+    } else {
+      wrapper = null;
+    }
     el.tagName = 'raw-text';
     // Seed the same recreation/normalization cache a freshly-created raw-text
     // gets (see LynxDocument.createText). Without this, #rawText stays
@@ -102,6 +111,7 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // pass (e.g. a sibling run inside the same <text> changes), it would read
     // back '' and blank this correctly-hydrated text.
     el.setInitialText(value);
+    if (wrapper) el.hydrateTextWrapper(wrapper);
     return el;
   }
 

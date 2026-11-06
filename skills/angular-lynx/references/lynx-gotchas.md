@@ -91,9 +91,9 @@ Content projected into a `<text>` host follows `<text>`'s rules: raw text, and n
 
 ## Text
 
-### Raw text in `<view>` doesn't render
+### Raw text in `<view>` gets a plain `<text>`
 
-All visible text must be inside `<text>`. No text nodes in `<view>`.
+Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` of its own. Angular never sees it: `parentNode()` of the text is the `<view>`. But no class or style reaches it, as nothing inherits from a `<view>`, and each run of text is a box of its own: `<view>Hi <text>there</text></view>` stacks "Hi" above "there". While the text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. Put text you style, or text that runs on with tags, inside a `<text>`.
 
 ### Default `font-size` is 14px (not 16px)
 

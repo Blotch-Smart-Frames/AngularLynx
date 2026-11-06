@@ -35,7 +35,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 ## Element Rules
 
-- **All visible text must be in `<text>`** — raw text in `<view>` does not render
+- **Put visible text in `<text>`** — raw text straight in a `<view>` is drawn in an anonymous `<text>` of its own, unstyled (see "Raw text in `<view>` gets a plain `<text>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **Common HTML tags render as Lynx elements** (see [HTML tags](#html-tags)). Other unknown tags become `<view>` with a console warning (invisible on device). So does a component's host, unless the component calls `registerHostElement()` (see "A component's host is a real `<view>`" in [lynx-gotchas.md](lynx-gotchas.md))
 - **`<page>` is implicit** — one per app, created by the runtime as the root element
 - **Images default to `scaleToFill`** (stretched, like the web's `object-fit: fill`). Set `mode` for `aspectFit` or `aspectFill`: CSS `object-fit` doesn't work
@@ -53,7 +53,7 @@ A template written for the browser renders: the runtime creates the Lynx element
 | `img`                                                                                                                                                                                                              | `<image auto-size>` |
 
 - **Text tags are a `<text>`:** text inside one shows, and a tag nested in one runs inline (`<p>Hi <strong>there</strong></p>` is one line). A `<view>` or `<image>` inside one is laid out inline.
-- **Text straight inside a block tag doesn't show**, as in a `<view>`: `<div>Hello</div>` needs a `<p>` or `<span>` around the text.
+- **Text straight inside a block tag is plain**, as in a `<view>`: `<div class="text-sm">Hello</div>` shows in an anonymous `<text>` at the default size and color, and `<div>Hi <b>there</b></div>` puts "Hi" and "there" on lines of their own. Put it in a `<p>` or `<span>` to style it or keep it on one line.
 - **An `<img>` sizes to its picture** until CSS gives it a size (`auto-size`), and its `alt` becomes `accessibility-label`.
 - **HTML's `hidden`** (`hidden`, `[hidden]="!open()"`) hides any element with `display: none; overflow: hidden`, ahead of the element's own inline style.
 - **The element's `tagName` is the Lynx element** (`'text'` for a `<p>`). Type selectors still match the HTML tag (`p { … }`, see [styling-and-css.md](styling-and-css.md)). `RouterLink` treats an `<a>` as a plain element, so `<a routerLink>` navigates on a tap.

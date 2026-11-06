@@ -24,7 +24,7 @@ These prevent crashes and silent failures. Violating any will break your app on-
 
 1. **Bind Lynx event names.** A tap is `(bindtap)` (or `(catchtap)` to stop it bubbling). `(click)` also runs on a tap, which is what makes Angular's `routerLink` work, and pointer events (`(pointerdown)`, `(pointermove)`…) come from touches. DOM names Lynx also sends (`(input)`, `(focus)`, `(blur)`, `(scroll)`, `(load)`, `(error)`, touch, animation and transition events) listen as `bind` does, and `(keyup.enter)` runs on the return key; any other DOM event name, such as `(mouseover)` or `(keydown)`, is silently ignored. Handlers can do anything they would on the web, navigation included: no `setTimeout` needed.
 
-2. **All visible text must be inside `<text>`.** Raw text inside `<view>` does not render. Lynx has no text nodes — only `<text>` elements display characters. HTML text tags (`<p>`, `<span>`, `<h1>`, `<a>`, `<button>`, `<label>`…) render as `<text>`, so text in them shows; a `<div>` is a `<view>`.
+2. **Put visible text inside `<text>`.** Lynx has no text nodes — only `<text>` elements display characters. Raw text straight in a `<view>` (or a `<div>`, `<li>` or component host) is drawn in an anonymous `<text>` of its own, which gets none of the `<view>`'s text styles (no inheritance) and takes its own line, so style text on a `<text>`. HTML text tags (`<p>`, `<span>`, `<h1>`, `<a>`, `<button>`, `<label>`…) render as `<text>`.
 
 3. **`scroll-view` requires an explicit height.** Without `height: 100vh` or a flex constraint, scroll-view expands to fit content and never scrolls.
 

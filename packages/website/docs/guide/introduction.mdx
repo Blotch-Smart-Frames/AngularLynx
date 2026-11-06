@@ -47,7 +47,7 @@ Several tools let web developers build mobile apps. Here’s what each one gives
 
 Most of your Angular knowledge carries over. Four things change:
 
-1. **Lynx elements, not HTML.** Use `<view>` instead of `<div>` and `<text>` instead of `<span>`. Text only shows inside `<text>`. Common HTML tags render as their Lynx element, which helps when porting code.
+1. **Lynx elements, not HTML.** Use `<view>` instead of `<div>` and `<text>` instead of `<span>`. Only a `<text>` draws text. Common HTML tags render as their Lynx element, which helps when porting code.
 2. **Different events.** `(bindtap)` replaces `(click)`, though `(click)` and other DOM events Lynx also sends work too.
 3. **A different CSS engine.** Most layout CSS works, but some features don't, such as `:hover` and `@media`.
 4. **No browser.** There's no `document`, `window` or DOM API, so libraries that touch the DOM don't work.

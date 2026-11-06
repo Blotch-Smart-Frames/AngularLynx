@@ -36,6 +36,9 @@ afterEach(() => {
       <input class="name" (input)="name.set($any($event.target).value)" />
       <span class="badge" [hidden]="!badge()">New</span>
       <button class="toggle" (click)="badge.set(!badge())">Toggle</button>
+      <ul>
+        <li class="perk">No account needed</li>
+      </ul>
     </div>
   `,
 })
@@ -89,6 +92,14 @@ describe('web tags', () => {
     expect(container.querySelector('text._ngtag-p')!.textContent).toBe(
       'Hello, Ada!',
     );
+  });
+
+  it('draws text straight inside a block tag, in a <text> of its own', async () => {
+    const { container } = await render(WebCard);
+
+    const perk = screen.getByText('No account needed');
+    expect(perk.tagName.toLowerCase()).toBe('text');
+    expect(perk.parentElement).toBe(container.querySelector('view.perk'));
   });
 
   it('sizes an <img> to its picture, and reads its alt', async () => {

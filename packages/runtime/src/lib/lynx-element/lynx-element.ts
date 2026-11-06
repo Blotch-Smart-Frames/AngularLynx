@@ -308,6 +308,42 @@ const insertHidesBlurView = (
 const isTextish = (el: LynxElement): boolean =>
   el.tagName === 'text' || el.tagName === 'raw-text';
 
+/**
+ * The elements a raw-text goes into as it is: a `<text>` (or an
+ * `<inline-truncation>` in one), which draws it; elements that draw no
+ * children's text, such as an `<input>` or an `<image>`, where the web shows
+ * none either; and the flattened wrappers (`<block>`, `<if>`, `<for>`), which
+ * may well be inside a `<text>`. Every other element, a `<view>`, a `<div>`'s
+ * view or a component's host, gets the raw-text inside an anonymous `<text>`
+ * (see LynxElement.#putInTextWrapper).
+ */
+/**
+ * Whether a raw-text's text draws nothing: empty, or a space, which is what
+ * the renderer collapses whitespace to (see collapseWhitespace in
+ * renderer.ts). A browser gives such text no box; Lynx gives a `<text>` that
+ * holds it a line of height, so its anonymous `<text>` is hidden. A
+ * non-breaking space is text.
+ */
+const isBlankText = (text: string | undefined): boolean =>
+  !text || /^[ \t\n\r\f\v]*$/.test(text);
+
+const TAKES_RAW_TEXT: ReadonlySet<string> = new Set([
+  'text',
+  'raw-text',
+  'inline-truncation',
+  'block',
+  'if',
+  'for',
+  'input',
+  'textarea',
+  'image',
+  'svg',
+  'video',
+  'canvas',
+  'webview',
+  'frame',
+]);
+
 export class LynxElement implements BaseLynxElement {
   /**
    * The native element ref this wrapper currently drives.
@@ -391,7 +427,8 @@ export class LynxElement implements BaseLynxElement {
   /**
    * Set by the HTML `hidden` attribute, which Lynx doesn't have: the element
    * gets HIDDEN_STYLE ahead of the app's own inline style, which wins over
-   * it, as an author's style wins over a browser's `[hidden]` rule.
+   * it, as an author's style wins over a browser's `[hidden]` rule. Also set
+   * on an anonymous `<text>` while its text is blank (see isBlankText).
    */
   #hidden = false;
   /**
@@ -466,6 +503,15 @@ export class LynxElement implements BaseLynxElement {
   #children: LynxElement[] = [];
   /** Back-pointer to the JS parent, for O(1) detach from its #children. */
   #jsParent: LynxElement | null = null;
+  /**
+   * On a raw-text: the anonymous `<text>` it's drawn in while its parent is
+   * an element that doesn't draw text, such as a `<view>` (see
+   * #putInTextWrapper). Kept once made, so the raw-text goes back into the
+   * same one.
+   */
+  #textWrapper: LynxElement | null = null;
+  /** On an anonymous `<text>`: the raw-text it was made for. */
+  #wrappedText: LynxElement | null = null;
   /**
    * True once this element's native painting node has been destroyed by a
    * genuine (non-move) removal. The next appendChild/insertBefore rebuilds it.
@@ -630,7 +676,14 @@ export class LynxElement implements BaseLynxElement {
    * global-events/native-source.ts), which names the element by its id.
    */
   static byUniqueId(uniqueId: number): LynxElement | undefined {
-    return LynxElement.#registered(uniqueId);
+    const element = LynxElement.#registered(uniqueId);
+    // A touch on loose text is its element's, as a text node's is in a
+    // browser: the anonymous <text> around it isn't one of the app's, and
+    // out of the tree it has no element to stand for.
+    if (element && element.#wrappedText) {
+      return element.parentNode() ?? undefined;
+    }
+    return element;
   }
 
   constructor(element: ElementRef) {
@@ -678,6 +731,9 @@ export class LynxElement implements BaseLynxElement {
     if (this.isRootPageElement) return;
     this.#destroyed = true;
     LynxElement.#pendingReleases.add(this);
+    // A raw-text's anonymous <text> is Angular's text node as much as the
+    // raw-text is: it goes with it, and releases it (see #release).
+    this.#textWrapper?.markDestroyed();
     // A view destroyed outside change detection (a detached route view the
     // reuse strategy drops) has no end() to commit it.
     scheduleSettleFlush();
@@ -813,6 +869,8 @@ export class LynxElement implements BaseLynxElement {
         this.#text = text;
         this.#rawText = text;
         LynxElement.#enqueueTextNormalization(this);
+        const wrapper = this.#textWrapper;
+        if (wrapper) wrapper.#setHidden(isBlankText(text));
       }
       if (this.tagName === 'blur-view' && BLUR_MATERIAL_ATTRIBUTES.has(name)) {
         this.updateBlurMaterial();
@@ -990,6 +1048,10 @@ export class LynxElement implements BaseLynxElement {
 
   insertBefore(newChild: LynxElement, refChild: LynxElement | null): void {
     if (newChild.isRootPageElement) return;
+    // A raw-text in an anonymous <text> is in this element through it, so the
+    // <text> is what goes before.
+    if (refChild) refChild = refChild.#outermost();
+    if (newChild.#putInTextWrapper(this, refChild)) return;
     // A queued removal immediately followed by a re-insert is an Angular MOVE —
     // cancel the removal so the element keeps its children. It is still natively
     // attached to its old parent, so __InsertElementBefore auto-reparents the
@@ -1047,6 +1109,7 @@ export class LynxElement implements BaseLynxElement {
 
   appendChild(newChild: LynxElement): void {
     if (newChild.isRootPageElement) return;
+    if (newChild.#putInTextWrapper(this, null)) return;
     // See insertBefore: cancel a pending removal so a move keeps its subtree,
     // then rebuild the child if its painting node was destroyed in a prior cycle.
     newChild.#cancelPendingRemoval();
@@ -1097,6 +1160,85 @@ export class LynxElement implements BaseLynxElement {
     } else {
       this.#children.push(newChild);
     }
+  }
+
+  /**
+   * Puts this raw-text in an anonymous `<text>`, and that in `parent`, when
+   * `parent` doesn't draw text: Lynx draws text only inside a `<text>`, so
+   * `<div>Hello</div>` or `<view>{{ count() }}</view>` showed nothing, where
+   * a browser shows the text. Returns whether it did; a raw-text going into
+   * a `<text>` leaves its anonymous one instead, and is inserted as it is.
+   *
+   * The anonymous `<text>` is invisible to Angular: it never sees it from
+   * parentNode() or nextSibling(), and the raw-text stands for it as a
+   * refChild (see #outermost) and in remove(). Each raw-text gets its own, so
+   * text beside another element in a `<view>` stacks with it, as any two
+   * children of a `<view>` do. It's made once and kept, so a raw-text that
+   * moves keeps it, and one shown again (an `@if`) is rebuilt in it with the
+   * rest of the subtree (see #recreateSubtree). While the text is blank, as
+   * an empty `{{ name() }}` is, it's hidden, so it takes no room.
+   */
+  #putInTextWrapper(
+    parent: LynxElement,
+    refChild: LynxElement | null,
+  ): boolean {
+    if (this.tagName !== 'raw-text') return false;
+    const wrapper = this.#textWrapper;
+    if (TAKES_RAW_TEXT.has(parent.tagName)) {
+      // Into a <text>: out of the anonymous one, which goes, empty.
+      if (wrapper && this.#jsParent === wrapper) {
+        LynxElement.#pendingRemovals.add(wrapper);
+      }
+      return false;
+    }
+    if (wrapper) {
+      if (this.#jsParent === wrapper) {
+        // Already in it, so the wrapper is what moves (or comes back): the
+        // raw-text's own removal or release, if Angular asked for one, is
+        // the wrapper's (see remove() and markDestroyed()).
+        this.#cancelPendingRemoval();
+        this.#keepIfDestroyed();
+      } else {
+        wrapper.appendChild(this);
+      }
+    } else {
+      const made = new LynxElement(createNativeRefByTag('text', getPageId()));
+      made.tagName = 'text';
+      made.#wrappedText = this;
+      this.#textWrapper = made;
+      made.appendChild(this);
+    }
+    const outer = this.#textWrapper!;
+    // Blank text takes no room, as in a browser (see isBlankText).
+    outer.#setHidden(isBlankText(this.#rawText));
+    if (refChild) {
+      parent.insertBefore(outer, refChild);
+    } else {
+      parent.appendChild(outer);
+    }
+    return true;
+  }
+
+  /**
+   * This element, or the anonymous `<text>` it's in (see #putInTextWrapper):
+   * the node its parent holds.
+   */
+  #outermost(): LynxElement {
+    const wrapper = this.#textWrapper;
+    return wrapper && this.#jsParent === wrapper ? wrapper : this;
+  }
+
+  /**
+   * @internal Hydration: `wrapper` is the anonymous `<text>` this raw-text
+   * was drawn in when the snapshot was rendered (see #putInTextWrapper).
+   * The snapshot's tree has them together already, so this only records it.
+   */
+  hydrateTextWrapper(wrapper: LynxElement): void {
+    wrapper.tagName = 'text';
+    wrapper.#wrappedText = this;
+    this.#textWrapper = wrapper;
+    wrapper.#children = [this];
+    this.#jsParent = wrapper;
   }
 
   addClass(name: string): void {
@@ -1154,7 +1296,9 @@ export class LynxElement implements BaseLynxElement {
       }
       return;
     }
-    LynxElement.#pendingRemovals.add(this);
+    // A raw-text in an anonymous <text> leaves with it (see
+    // #putInTextWrapper), and stays in it for when it comes back.
+    LynxElement.#pendingRemovals.add(this.#outermost());
   }
 
   /**
@@ -1621,6 +1765,10 @@ export class LynxElement implements BaseLynxElement {
    */
   parentNode(): LynxElement | null {
     if (this._virtualParent) return this._virtualParent;
+    // A raw-text's parent is its anonymous <text>'s, which Angular never sees
+    // (see #putInTextWrapper).
+    const outer = this.#outermost();
+    if (outer !== this) return outer.parentNode();
     const parent = __GetParent(this.element);
     if (!parent) return null;
     // Return the CANONICAL wrapper, not a throwaway: Angular uses this as the
@@ -1633,12 +1781,18 @@ export class LynxElement implements BaseLynxElement {
   nextSibling(): LynxElement | null {
     // If in a virtual tree, use virtual sibling tracking
     if (this._virtualParent) return this._virtualNext;
+    // A raw-text's siblings are its anonymous <text>'s.
+    const outer = this.#outermost();
+    if (outer !== this) return outer.nextSibling();
     const nextSibling = __NextElement(this.element);
     if (!nextSibling) return null;
     // Return the canonical wrapper (see #canonicalFor / parentNode). Angular can
     // hand a nextSibling() result back as a refChild to insertBefore, so it must
     // be the same wrapper whose #children recreation walks — never a throwaway.
-    return LynxElement.#canonicalFor(nextSibling);
+    const next = LynxElement.#canonicalFor(nextSibling);
+    // An anonymous <text> is the raw-text in it, to Angular.
+    const text = next.#wrappedText;
+    return text && text.#jsParent === next ? text : next;
   }
 
   querySelector(selector: string): LynxElement | null {

@@ -11,7 +11,7 @@ For every property and value Lynx accepts, see the [Lynx CSS reference](https://
 | `:root`, `html`, `body`                       | [`page`](#the-root-is-page)                                             |
 | `display: block` by default                   | `display: linear` (a vertical stack) by default. `flex` and `grid` work |
 | `box-sizing: content-box`, collapsing margins | `border-box`, and margins never collapse                                |
-| Text anywhere                                 | Text only inside `<text>`                                               |
+| Text anywhere                                 | Text drawn by a `<text>`                                                |
 | `color` and fonts inherit                     | [Nothing inherits](#inheritance), except into a nested `<text>`         |
 | `1rem` is 16px                                | `1rem` is 14px                                                          |
 | `overflow: auto` scrolls                      | Only `<scroll-view>` and `<list>` scroll                                |
@@ -73,7 +73,7 @@ page {
 </text>
 ```
 
-- **Text renders only inside [`<text>`](/api/elements/text).** Text placed directly in a `<view>` doesn't show.
+- **Only a [`<text>`](/api/elements/text) draws text.** Text placed directly in a `<view>` gets a plain `<text>` of its own, which none of the `<view>`'s styles reach.
 - **Put text styles on the `<text>`.** A `color`, `font-size` or `line-height` on a `<view>` doesn't reach the text inside it (see [Inheritance](#inheritance)).
 - **`line-height` works only on `<text>`.**
 - **`white-space` is `normal` or `nowrap`.** There's no `pre`, so spaces and line breaks always collapse.

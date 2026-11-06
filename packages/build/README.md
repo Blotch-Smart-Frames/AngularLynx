@@ -55,6 +55,7 @@ They behave like Angular's own builders:
 - **Budgets are enforced.** The `budgets` in the build target are checked against the Lynx bundle and the component stylesheets, with Angular's messages; `ng add` sizes the `initial` budget for a Lynx bundle. See the plugin's [README](../rsbuild-plugin-angular-lynx/README.md#budgets).
 - **`intl` adds the `Intl` APIs Lynx lacks.** `"intl": ["NumberFormat", "Collator"]` puts them in the Lynx bundle, with data for `i18n.sourceLocale` and `i18n.locales`; the web preview uses the browser's. See the plugin's [README](../rsbuild-plugin-angular-lynx/README.md#intl).
 - **`--watch` rebuilds only the bundle.** It can't be combined with `--platform`: use `ng serve` while developing, and `ng build --platform` for the app.
+- **`baseHref` prefixes the web bundle's asset URLs.** Lynx for Web resolves a bundle's images against the page that shows the bundle, not against the bundle, so a web bundle served under a path (`/shop/`) needs `ng build --base-href=/shop/`, which sets rspeedy's `output.assetPrefix` for the `web` environment. The Lynx bundle resolves its assets against itself and is left alone.
 
 The options are in [`builders/application/schema.json`](builders/application/schema.json), [`builders/dev-server/schema.json`](builders/dev-server/schema.json), [`builders/unit-test/schema.json`](builders/unit-test/schema.json) and [`builders/extract-i18n/schema.json`](builders/extract-i18n/schema.json).
 

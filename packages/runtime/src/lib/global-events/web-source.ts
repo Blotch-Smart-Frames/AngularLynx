@@ -61,9 +61,21 @@ export class WebScreenSource implements ScreenSource {
     }
   }
 
+  /**
+   * The `<lynx-view>`'s layout size, in its own CSS pixels. `offsetWidth`
+   * and `offsetHeight`, not `getBoundingClientRect()`: a docs preview scales
+   * the view with a CSS transform, and the rect is the scaled box, which
+   * made `innerWidth` smaller than the width the app lays out in. The rect
+   * is the fallback where there's no offset size (a test's stand-in).
+   */
   viewport(): ViewportSize | null {
-    const rect = this.#scope()?.box.getBoundingClientRect();
-    return rect ? { width: rect.width, height: rect.height } : null;
+    const box = this.#scope()?.box as HTMLElement | undefined;
+    if (!box) return null;
+    if (box.offsetWidth || box.offsetHeight) {
+      return { width: box.offsetWidth, height: box.offsetHeight };
+    }
+    const rect = box.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
   }
 
   /**

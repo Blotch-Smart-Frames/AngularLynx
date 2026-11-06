@@ -178,6 +178,14 @@ Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and 
 - **Android 13+ confirms every copy itself,** in a panel TalkBack reads. Check `clipboard.confirmsCopies` before showing or announcing your own "Copied".
 - For a ready-made button, `npx @blotch/dolan add copy-button` adds `<ui-copy-button [value]="code()">Copy code</ui-copy-button>`, which does both.
 
+### Bundled images need `baseHref` on the web
+
+An imported image (`import logo from './logo.png'`, typed through `/// <reference types="@blotch/angular-lynx-build/client" />`) becomes `static/image/logo.<hash>.png` next to the bundle. On iOS and Android, Lynx resolves it against the bundle, wherever that is. Lynx for Web puts it on an `<img>` in the page, so the browser resolves it against the page that shows the `<lynx-view>`: a bundle at `/apps/shop/main.web.bundle` on a page at `/` asks for `/static/image/…` and gets nothing. Build with `ng build --base-href=/apps/shop/`, which makes the web bundle ask for `/apps/shop/static/image/…` (see [build-configuration.md](build-configuration.md)). `ng serve` needs nothing: its page and bundle share a root. Fonts never have the problem: the build inlines `@font-face` files as data URLs.
+
+### Don't scale a `<lynx-view>` with a CSS transform on the web
+
+Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` returns the scaled box. Lynx for Web's waterfall `<list>` places its items by those measurements, so in a view scaled to 0.8 the items overlap by a fifth. Size the view at the width you want and let it lay out at that size. `innerWidth` and `innerHeight` read the view's layout size, so they're right either way.
+
 ### No 2D canvas, and WebGL only in built apps
 
 `<canvas>` has only a WebGL2 context, and only in apps built with `ng build --platform ios|android` and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).

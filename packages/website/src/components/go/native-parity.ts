@@ -12,6 +12,16 @@ export const DEVICE_WIDTH = 402;
 export const DEVICE_HEIGHT = 778;
 
 /**
+ * The same phone's whole screen, and the parts of it the status bar (with
+ * the Dynamic Island) and the home indicator cover. The home page's phone
+ * runs an app over the whole screen, as an app built with `ng build
+ * --platform ios` does, and sends it these insets.
+ */
+export const SCREEN_HEIGHT = 874;
+export const SAFE_AREA_TOP = 62;
+export const SAFE_AREA_BOTTOM = 34;
+
+/**
  * Lynx's default font: the system font on iOS (and Roboto on Android, which
  * `system-ui` picks there). Without it, text inside `<lynx-view>` inherits the
  * docs site's Inter, or Times in a bare page.
@@ -47,6 +57,12 @@ const NATIVE_PARITY_RULES = [
   // `<overlay>` itself does nothing, since web-elements gives it
   // `display: contents`.
   'x-overlay-ng::part(dialog) { z-index: 2147483647; }',
+  // A finger can't drag an image off a phone's screen, but a mouse drags a
+  // browser's `<img>` out as a file, and once that drag starts the page gets
+  // no more mouse-move events and no mouse-up: a swiper dragged by its photo
+  // moved one step and froze. Firefox needs the drag's start event canceled
+  // too (see `applyNativeParity`).
+  'x-image::part(img) { -webkit-user-drag: none; user-select: none; }',
 ];
 
 const configured = new WeakSet<HTMLElement>();
@@ -244,6 +260,10 @@ export const applyNativeParity = (): void => {
             ...NATIVE_PARITY_RULES,
             ...(this.injectStyleRules ?? []),
           ];
+          // No image is dragged out of the view (see NATIVE_PARITY_RULES).
+          // The `dragstart` is composed, so it reaches the host from the
+          // `<img>` inside web-elements' shadow root.
+          this.addEventListener('dragstart', (event) => event.preventDefault());
         }
         super.connectedCallback();
       }

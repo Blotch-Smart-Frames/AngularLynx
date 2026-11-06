@@ -1143,6 +1143,7 @@ Like the press events above, the touch events never fire from a mouse on web, so
 - **A mouse event targets whatever is under the cursor.** A fast drag leaves a thin handle strip within a frame or two, and its `mousemove`s stop reaching it.
 - **A moved mouse drag still ends in a click.** The browser fires `click` on the nearest element under both the `mousedown` and the `mouseup`, which web-core maps to `tap`. Release the drag over the backdrop and the backdrop's tap fires. A moved touch fires no tap.
 - **A release outside the Lynx view is lost.** The `mouseup` targets the page around the view (past the edge of a docs preview, or outside the browser window), and web-core only listens inside the view. Only `keydown`/`keyup` are document-level in web-core.
+- **An `<image>` under the cursor starts the browser's own drag.** A `mousedown` and a move on web-elements' `<img>` begin a drag of the image as a file, after which the page gets no more `mousemove`s and no `mouseup`: the furniture shop's swiper, dragged by its photo, moved one step and froze (2026-11-06). The docs' `applyNativeParity` cancels every `dragstart` in a `<lynx-view>` and sets `-webkit-user-drag: none` on `x-image::part(img)`; a page that embeds a `<lynx-view>` itself needs the same.
 - **`mouseleave` doesn't arrive in Chrome.** web-core listens with capture listeners on the `<lynx-view>`'s shadow root. Chrome skips `mouseenter`/`mouseleave` dispatch unless some element in the document has a listener for them, and a shadow-root listener doesn't count. So `bindmouseleave` only fires if something else on the page happens to listen for `mouseleave`. Checked on Chromium with a bare page: a capture listener on a shadow root got nothing, and adding a listener on an element in that root made both fire. The press-feedback `(bindmouseleave)` above is affected the same way.
 
 ### The fix
@@ -6408,6 +6409,38 @@ CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS
 ### How AngularLynx uses it
 
 The build plugin's `textInheritanceForLynx` copies each inheritable declaration (Lynx's own `enableCSSInheritance` list) to `--angular-lynx-<property>`, after Tailwind 4's lowering. The elements that stand for HTML's text (HTML text tags and the anonymous `<text>`) read the variable for each property their own rules don't set, in their inline style, ahead of the app's. Which properties an element's rules set comes from the style index the plugin builds from the app's CSS and prepends to the main-thread script (`style-index.ts`). Elements written as Lynx elements read none, so they look as before. Inline styles don't set the variables, so `<div style="color: red">` passes nothing down.
+
+---
+
+## Lynx for Web resolves a bundle's images against the page, not the bundle
+
+### What you'd expect (web)
+
+A page's relative URLs resolve against the page, and a script's against the script. A bundle built with rspeedy's default (no `output.assetPrefix`) refers to its images as `static/image/<name>.<hash>.png`, and on iOS and Android Lynx resolves that against the bundle's own URL, so the bundle and its `static/` folder can live anywhere together.
+
+### What Lynx does
+
+Lynx for Web's `<image>` puts the `src` on an `<img>` in the page's shadow tree, so the browser resolves it against the page that shows the `<lynx-view>`. A bundle at `/examples/kitchen-sink-app/dist/main.web.bundle` shown on `/` asked for `/static/image/lynx-logo.<hash>.png`, which doesn't exist, and the docs' web previews drew no bundled image (measured on angularlynx.js.org on 2026-11-06). web-core knows the bundle's URL (`LynxViewInstance.templateUrl`) but doesn't give it to the app, so the app can't resolve the URLs itself.
+
+### The fix
+
+Angular's `baseHref` build option: `ng build --base-href=/examples/` sets rspeedy's `output.assetPrefix` for the `web` environment, so the web bundle asks for `/examples/static/image/…`. The website builds every example with it and merges each example's `dist/static` into `docs/public/examples/static` (the names carry a content hash, so the merge is safe). The `lynx` bundle is left without a prefix, since native Lynx resolves against the bundle. Fonts never had the problem: the build inlines `@font-face` files as data URLs (see css.ts in the build plugin).
+
+---
+
+## A `<lynx-view>` scaled with a CSS transform mis-measures itself
+
+### What you'd expect (web)
+
+A page scaled with `transform: scale()` lays out and measures in its own CSS pixels; only its picture shrinks. The docs' previews scale a `<lynx-view>` laid out at an iPhone's 402px to the pane that way.
+
+### What Lynx does
+
+Inside a transformed `<lynx-view>`, `getBoundingClientRect()` returns the scaled box (so does CSS `zoom`, measured in Chrome 156), while `offsetWidth` and `clientWidth` return the layout size. Two things read the rect: AngularLynx's `innerWidth`/`innerHeight` did, so an app laid out at 402px saw 330px, and a swiper that sized its photos by `innerWidth` left the next photo showing (fixed: `web-source.ts` reads `offsetWidth`/`offsetHeight`). Lynx for Web's waterfall `<list>` (`XListWaterfall.js`, `#layoutListItem`) places each item at the sum of the previous items' `getBoundingClientRect().height`, in CSS px, so under a scale of 0.82 every item starts 18% too high and the columns overlap. `list-type="flow"` and `single` lay out with CSS and aren't affected.
+
+### The fix
+
+Don't scale a `<lynx-view>` that holds a waterfall list. The home page's phone runs its app unscaled at the screen's own size, with insets scaled to match the chrome drawn over it; the furniture shop's docs page sets `webPreviewMode="responsive"` on its `<Go>`, which fills the pane instead of scaling. The measurement itself is web-elements' to fix (`offsetHeight` would do); upstream report pending.
 
 ---
 

@@ -6,18 +6,18 @@
   box-sizing: border-box;
   width: 100%;
   padding: 12px;
-  border-radius: 48px;
+  border-radius: 56px;
   background: var(--home-phone-bezel);
   box-shadow: var(--home-phone-shadow);
 }
 
 // The screen clips the app to the bezel's inner corners. Its aspect ratio is
-// the phone's, so the frame's height follows its width.
+// the phone's whole screen, so the frame's height follows its width.
 .screen {
   position: relative;
   overflow: hidden;
-  aspect-ratio: 402 / 778;
-  border-radius: 36px;
+  aspect-ratio: 402 / 874;
+  border-radius: 44px;
   background: #0c0c0e;
 }
 
@@ -27,8 +27,14 @@
   top: 0;
   left: 0;
   width: 402px;
-  height: 778px;
+  height: 874px;
   transform-origin: top left;
+}
+
+// Or at the screen's own size (see the component's `layout`).
+.stage-fill {
+  position: absolute;
+  inset: 0;
 }
 
 // Over the screen until the app has painted, and in place of it if it can't.
@@ -57,4 +63,87 @@
     text-decoration: underline;
     text-underline-offset: 3px;
   }
+}
+
+// The phone's own parts, drawn over the app at the same scale as the app
+// and never in the way of a touch.
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 402px;
+  height: 874px;
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.chrome {
+  position: absolute;
+  inset: 0;
+}
+
+// The status bar and the home indicator in the color the app asks for:
+// white over a dark app, black over a light one.
+.light {
+  --phone-chrome-color: #fff;
+}
+
+.dark {
+  --phone-chrome-color: #000;
+}
+
+// The status bar: the time in the left ear, the indicators in the right one,
+// each centered on the island's height.
+.status-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 59px;
+  padding: 0 32px 0 46px;
+  color: var(--phone-chrome-color);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+
+.time {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.indicators {
+  display: flex;
+  gap: 7px;
+  font-size: 15px;
+
+  i {
+    line-height: 1;
+  }
+}
+
+// The Dynamic Island, in the screen's black whatever the app draws.
+.island {
+  position: absolute;
+  top: 11px;
+  left: 50%;
+  width: 126px;
+  height: 37px;
+  margin-left: -63px;
+  border-radius: 20px;
+  background: #000;
+}
+
+.home-indicator {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 140px;
+  height: 5px;
+  margin-left: -70px;
+  border-radius: 3px;
+  background: var(--phone-chrome-color);
 }

@@ -41,6 +41,7 @@ export const ANGULAR_BUILD_OPTIONS: readonly string[] = [
   'outputPath',
   'index',
   'watch',
+  'baseHref',
 ];
 
 /**

@@ -1,0 +1,16 @@
+/*
+ * The two Lynx tutorials this app is built from set their colors in plain
+ * CSS, and so does this one: no theme, no Tailwind. Each component keeps its
+ * own styles; this file holds only what every screen shares.
+ */
+
+/* A screen fills the column below the previous one; `.screen` is the host of
+   each routed page. Lynx has no `display: block`, so the host is told to be
+   a column. */
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  background-color: #000;
+}

@@ -169,6 +169,26 @@ describe('WebScreenSource', () => {
     source.sync(null, new Set());
   });
 
+  // A docs preview scales the <lynx-view> with a CSS transform, which
+  // shrinks its client rect but not the size it lays out at.
+  it("measures the <lynx-view>'s layout size, not its transformed rect", () => {
+    const node = pageInLynxView();
+    const view = lynxViewOf(node) as HTMLElement;
+    view.getBoundingClientRect = () => ({ width: 330, height: 717 }) as DOMRect;
+    Object.defineProperty(view, 'offsetWidth', { value: 402 });
+    Object.defineProperty(view, 'offsetHeight', { value: 874 });
+    const events = new GlobalEvents({}, (hub) => new WebScreenSource(hub));
+    events.attach(
+      {
+        element: node,
+        addEventListener: vi.fn(),
+        addTrailingEventListener: vi.fn(),
+      },
+      () => undefined,
+    );
+    expect(events.viewport).toEqual({ width: 402, height: 874 });
+  });
+
   // The main thread's iframe is in the <lynx-view>'s shadow root, before
   // the page is laid out in it.
   it("finds the <lynx-view> from the main thread's iframe", () => {

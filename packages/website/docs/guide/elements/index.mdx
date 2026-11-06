@@ -47,10 +47,10 @@ Style elements with CSS classes or `style`, as on the web. Lynx CSS has some gap
 </view>
 ```
 
-- **Only a `<text>` draws text.** A word placed straight in a `<view>` still shows: AngularLynx draws it in a plain `<text>` of its own. That `<text>` gets none of the `<view>`'s text styles, and each run of text takes its own line, so put text you style in a `<text>`.
+- **Only a `<text>` draws text.** A word placed straight in a `<view>` still shows: AngularLynx draws it in a `<text>` of its own, which takes the text styles of its ancestors' classes, as the [HTML tags](#html-tags) do.
 - **Nest `<text>` for inline styles.** A `<text>` inside another `<text>` flows inline, like a `<span>`, and picks up text styles such as color from the outer one.
 - **Write text across lines naturally.** AngularLynx trims the leading and trailing spaces that template indentation leaves, so the text above renders flush.
-- **Styles don't inherit, except in text.** A `color` or `font-size` on a `<view>` doesn't reach the `<text>` inside it. Set text styles on the `<text>` element.
+- **A `<text>` you write inherits nothing, except in text.** A `color` or `font-size` on a `<view>` doesn't reach the `<text>` inside it. Set text styles on the `<text>` element.
 
 <Go example="element-text" defaultFile="src/app/app.ts" />
 
@@ -129,6 +129,8 @@ A template written for the browser renders: AngularLynx creates the Lynx element
 What carries over:
 
 - **Text tags hold text.** Text shows inside them, and a tag inside one runs inline, so `<p>Joined <strong>today</strong></p>` reads as one line.
+- **Text and inline tags share a line.** In a block tag or a `<view>`, text and the inline tags beside it (`span`, `a`, `strong` and the like, not `p` or `button`) run on as one line: `<div>Hi <b>there</b>, <a>friend</a></div>`. In a flex or grid container, each is an item of its own, as on the web.
+- **Text styles inherit.** A `color`, `font-size`, `font-weight`, `line-height` or `text-align` that an ancestor's class or stylesheet rule sets reaches the text tags and the loose text inside it, as on the web. A `<text>` you write as a Lynx element doesn't inherit, as before.
 - **An `<img>` takes its picture's size,** until CSS gives it one. Its `alt` is what screen readers say.
 - **Type selectors still match.** `p { margin-bottom: 8px; }` styles every `<p>`.
 - **`hidden` hides the element,** as `[hidden]="!open()"` does on the web.
@@ -136,8 +138,8 @@ What carries over:
 
 What doesn't carry over:
 
-- **Text straight inside a block tag is plain.** `<div class="text-sm">Hello</div>` shows "Hello" in a `<text>` of its own, at the default size and color: text styles don't reach it from the `<div>`. Text beside a tag, as in `<div>Hi <b>there</b></div>`, takes a line of its own. Put the text in a `<p>` to style it and keep it on one line.
-- **Each tag is a box.** Two `<span>`s side by side in a `<div>` stack, as any two elements in a `<view>` do. Inside a `<p>`, they run inline.
+- **Inline styles don't inherit.** Only classes and stylesheet rules pass text styles down: `<div style="color: red">` colors no text but its own.
+- **An inline tag in a line draws no box.** On iOS and Android, a `<span>` or `<code>` in the middle of a line shows its background behind its letters, without padding, borders or rounded corners. A badge on a line of its own keeps them.
 - **There are no browser styles.** An `<h1>` is the size of any other text, and a `<button>` has no border, as with Tailwind's Preflight reset. Style them yourself.
 - **There's no browser behavior.** `<a href>` opens nothing (use `routerLink`), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other tags don't work.** A `<table>`, `<select>` or `<br>` renders as a plain `<view>`, and the build warns about it.

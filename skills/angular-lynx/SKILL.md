@@ -24,7 +24,7 @@ These prevent crashes and silent failures. Violating any will break your app on-
 
 1. **Bind Lynx event names.** A tap is `(bindtap)` (or `(catchtap)` to stop it bubbling). `(click)` also runs on a tap, which is what makes Angular's `routerLink` work, and pointer events (`(pointerdown)`, `(pointermove)`…) come from touches. DOM names Lynx also sends (`(input)`, `(focus)`, `(blur)`, `(scroll)`, `(load)`, `(error)`, touch, animation and transition events) listen as `bind` does, and `(keyup.enter)` runs on the return key; any other DOM event name, such as `(mouseover)` or `(keydown)`, is silently ignored. Handlers can do anything they would on the web, navigation included: no `setTimeout` needed.
 
-2. **Put visible text inside `<text>`.** Lynx has no text nodes — only `<text>` elements display characters. Raw text straight in a `<view>` (or a `<div>`, `<li>` or component host) is drawn in an anonymous `<text>` of its own, which gets none of the `<view>`'s text styles (no inheritance) and takes its own line, so style text on a `<text>`. HTML text tags (`<p>`, `<span>`, `<h1>`, `<a>`, `<button>`, `<label>`…) render as `<text>`.
+2. **Put visible text inside `<text>`.** Lynx has no text nodes — only `<text>` elements display characters. Raw text straight in a `<view>` (or a `<div>`, `<li>` or component host) is drawn in an anonymous `<text>`, with the HTML inline tags beside it on one line, and inherits text styles through CSS variables the build adds. HTML text tags (`<p>`, `<span>`, `<h1>`, `<a>`, `<button>`, `<label>`…) render as `<text>` and inherit too. A `<text>` written as a Lynx element inherits nothing: set its text styles on it.
 
 3. **`scroll-view` requires an explicit height.** Without `height: 100vh` or a flex constraint, scroll-view expands to fit content and never scrolls.
 
@@ -52,7 +52,7 @@ Read [events-and-interactions.md](references/events-and-interactions.md)
 
 ## Styling & CSS
 
-Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`), and `display: block` becomes `linear`. No CSS inheritance (except nested `<text>`, and CSS variables). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Component styles are scoped as in Angular (`ViewEncapsulation.Emulated`), and type selectors match component hosts (`app-card { … }`). CSS variables from `[style.--x]` bindings, and dark mode and Android's wallpaper colors with `LynxTheme`. Safe-area padding with `env(safe-area-inset-*)`, and the edge-to-edge layout of the apps `ng build --platform` makes.
+Lynx uses a subset of CSS with different defaults. Default display is `linear` (not `block`), and `display: block` becomes `linear`. No CSS inheritance (except nested `<text>`, CSS variables, and HTML text tags and loose text, which inherit through variables the build adds). No `@media` queries, `::before`/`::after`, `:hover`, or `:focus`. The `rpx` responsive unit. Component styles are scoped as in Angular (`ViewEncapsulation.Emulated`), and type selectors match component hosts (`app-card { … }`). CSS variables from `[style.--x]` bindings, and dark mode and Android's wallpaper colors with `LynxTheme`. Safe-area padding with `env(safe-area-inset-*)`, and the edge-to-edge layout of the apps `ng build --platform` makes.
 
 Read [styling-and-css.md](references/styling-and-css.md)
 

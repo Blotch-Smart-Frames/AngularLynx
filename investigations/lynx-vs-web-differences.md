@@ -725,7 +725,7 @@ Text nodes can live directly inside any block element (`<div>`, `<section>`, etc
 
 Text must be wrapped in a `<text>` element (`<x-text>` in AngularLynx). Raw text nodes inside a `<view>` are unsupported and will not render. This applies to all text content — even a single word.
 
-AngularLynx draws such text in an anonymous `<text>` of its own (`LynxElement`'s `#putInTextWrapper`), which Angular never sees, so `<view>Hello</view>` and `<div>Hello</div>` show "Hello" (measured on the iOS 27 Simulator and Android API 34 emulator with Lynx Explorer 4.1, and in the web preview, including `@if` toggles and `@for` reorders of the text). The anonymous `<text>` has no class, and nothing inherits from the `<view>`, so the text draws at the default size and color; and each run is a box of its own, stacking with the elements beside it.
+AngularLynx draws such text in an anonymous `<text>` of its own (`LynxElement`'s `#putInTextWrapper`), which Angular never sees, so `<view>Hello</view>` and `<div>Hello</div>` show "Hello" (measured on the iOS 27 Simulator and Android API 34 emulator with Lynx Explorer 4.1, and in the web preview, including `@if` toggles and `@for` reorders of the text). In a parent that lays out as a block, a run of loose text and HTML inline tags (`span`, `a`, `b`…) shares one anonymous `<text>`, so `<div>Hi <b>there</b></div>` is one line; in a flex or grid container each is an item of its own, as on the web (`LynxElement.#regroup`, settled at the end of each change detection). The anonymous `<text>` and the HTML text tags read the text styles their ancestors set through CSS variables the build copies each inheritable declaration to (see "Text styles reach HTML text tags through CSS variables" below).
 
 A `<text>` holding an empty raw-text takes a line of height, where a `<text>` with no children takes none and a browser gives empty or whitespace-only text no box (measured the same way, on iOS and Android). So the anonymous `<text>` is hidden (`display: none; overflow: hidden`) while its text is blank, as an empty `{{ name() }}` is, and an empty interpolation in a `<view>` takes no room, as it didn't before it was wrapped.
 
@@ -6280,3 +6280,39 @@ A list opens at its top, whatever its last item spans.
 ### What Lynx does
 
 Measured once (2026-11-05, iOS 27 Simulator, Lynx 4.4): a `<list list-type="flow" span-count="2">` of forty items whose last `<list-item>` had `full-span="true"` (a footnote across both columns) opened scrolled to its end, with that footnote and the last four items on screen; scrolling up reached the rest. The web preview opened the same list at the top. With the footnote moved out of the list (into the header), the list opens at the top on iOS too. Not yet narrowed down (the footnote's span, its being last, or the flow layout) and not checked on Android.
+
+---
+
+## A hidden view inside a `<text>` leaves a gap on iOS
+
+### What you'd expect (web)
+
+An element with `display: none` inside a line of text takes no room.
+
+### What Lynx does
+
+On iOS (Lynx Explorer 4.1, iOS 27 Simulator), a `display: none` `<view>` inside a `<text>` still takes room in the line ("A ⎵⎵⎵ and B"), and adds an empty line above the text. Android and the web preview draw "A and B". Angular's anchors for `@if`, `@for` and the like are such views (see `createCommentElement`), so `<text>Hi @if (x) {…}</text>` showed the gap.
+
+An empty raw-text in the same place draws nothing on all three, first, last or between runs (measured the same way, with `Renderer2.createText('')`).
+
+### The fix
+
+`LynxElement.#anchorFor` makes an anchor going into a `<text>` an empty raw-text, and a hidden view again when it leaves. The anchor's wrapper and its place in Angular's tree stay the same; only the native element is swapped, which has no attributes, children or handlers.
+
+---
+
+## Text styles reach HTML text tags through CSS variables
+
+### What you'd expect (web)
+
+`color`, `font-size` and the other text properties inherit: a `<span>` in a `<div class="text-gray-500 text-sm">` is gray and small.
+
+### What Lynx does
+
+Nothing inherits (see "CSS inheritance is NOT enabled by default"). A nested `<text>` takes its parent `<text>`'s `color` and `font-family` only: measured on iOS and Android, a nested `<text>` in a 22px bold `<text>` drew at 14px, normal weight. The web preview inherits everything, through the DOM.
+
+CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS, Android and the web. A `var()` in an inline style reads them; one no ancestor sets leaves the property as it would be without the declaration. A variable holding `rgba(var(--rgb), 0.5)` resolves where it's read. All measured with Lynx Explorer 4.1 on the iOS 27 Simulator and the Android API 34 emulator, and in the web preview.
+
+### How AngularLynx uses it
+
+The build plugin's `textInheritanceForLynx` copies each inheritable declaration (Lynx's own `enableCSSInheritance` list) to `--angular-lynx-<property>`, after Tailwind 4's lowering. The elements that stand for HTML's text (HTML text tags and the anonymous `<text>`) read the variable for each property their own rules don't set, in their inline style, ahead of the app's. Which properties an element's rules set comes from the style index the plugin builds from the app's CSS and prepends to the main-thread script (`style-index.ts`). Elements written as Lynx elements read none, so they look as before. Inline styles don't set the variables, so `<div style="color: red">` passes nothing down.

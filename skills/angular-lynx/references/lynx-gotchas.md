@@ -60,7 +60,11 @@ Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>
 
 ### No CSS inheritance
 
-Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from parent `<text>`, and CSS variables (`--x`) inherit.
+Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from parent `<text>`, CSS variables (`--x`) inherit, and HTML text tags (`<p>`, `<span>`…) and loose text take the text styles their ancestors' classes set, through variables the build adds (see [lynx-elements.md](lynx-elements.md)).
+
+### A hidden view in a `<text>` leaves a gap on iOS
+
+On iOS, a `display: none` `<view>` inside a `<text>` still takes room in the line, and adds an empty line above it. Angular's `@if`/`@for` anchors are such views, so `<text>Hi @if (x) {…}</text>` used to show a gap. The runtime makes an anchor in a `<text>` an empty raw-text, which draws nothing, and a hidden view again when it leaves.
 
 ### `flex-shrink` can shrink below min-content
 
@@ -91,9 +95,9 @@ Content projected into a `<text>` host follows `<text>`'s rules: raw text, and n
 
 ## Text
 
-### Raw text in `<view>` gets a plain `<text>`
+### Raw text in `<view>` gets an anonymous `<text>`
 
-Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` of its own. Angular never sees it: `parentNode()` of the text is the `<view>`. But no class or style reaches it, as nothing inherits from a `<view>`, and each run of text is a box of its own: `<view>Hi <text>there</text></view>` stacks "Hi" above "there". While the text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. Put text you style, or text that runs on with tags, inside a `<text>`.
+Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` (class `_ngtext`), with the HTML inline tags beside it when the parent lays out as a block. Angular never sees it: `parentNode()` of the text is the `<view>`. It reads the text styles its ancestors' classes set (see [lynx-elements.md](lynx-elements.md)). A Lynx element beside it (`<view>Hi <text>there</text></view>`) still ends the line: "Hi" stacks above "there". While its text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. The grouping is settled at the end of each change detection, before the flush.
 
 ### Default `font-size` is 14px (not 16px)
 

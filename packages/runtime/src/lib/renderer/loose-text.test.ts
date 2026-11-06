@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 //
 // Loose text: a raw-text whose parent doesn't draw text, such as `<view>Hi</view>`
-// or `<div>Hi</div>`, is drawn in an anonymous <text> (see LynxElement's
-// #putInTextWrapper), which Angular never sees. Drives the REAL main-thread
-// renderer against inline-text.test.ts's fake of the native tree, so Angular's
-// own create, insert, move and remove sequence runs against it.
+// or `<div>Hi <b>there</b></div>`, is drawn in an anonymous <text> with the
+// inline tags beside it (see LynxElement's #regroup), which Angular never sees.
+// Drives the REAL main-thread renderer against inline-text.test.ts's fake of
+// the native tree, so Angular's own create, insert, move and remove sequence
+// runs against it.
 import '@angular/compiler';
 import {
   Component,
@@ -19,11 +20,21 @@ import {
   BrowserTestingModule,
   platformBrowserTesting,
 } from '@angular/platform-browser/testing';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { LynxDocument } from '../lynx-document';
 import { setPageElementRef } from '../lynx-document/page-ref';
+import { resetStyleIndex } from '../lynx-element/text-flow';
 import {
   LynxElement,
+  processPendingFlow,
   processPendingRemovals,
   processPendingTextNormalization,
 } from '../lynx-element';
@@ -231,6 +242,103 @@ class MixedHost {}
 class InTextHost {}
 
 @Component({
+  selector: 'inline-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="card">Hi <b>there</b>, <a>friend</a>!</div>`,
+})
+class InlineHost {}
+
+@Component({
+  selector: 'spans-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="pair"><span>A</span><span>B</span></div>`,
+})
+class SpansHost {}
+
+@Component({
+  selector: 'lone-span-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="solo"><span class="badge">3</span></div>`,
+})
+class LoneSpanHost {}
+
+@Component({
+  selector: 'paragraph-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="doc">
+    Intro
+    <p>Para</p>
+    outro
+  </div>`,
+})
+class ParagraphHost {}
+
+@Component({
+  selector: 'flex-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="box" [class.flex]="row()">Hi <b>there</b></div>`,
+})
+class FlexHost {
+  readonly row = signal(false);
+}
+
+@Component({
+  selector: 'inline-style-flex-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="box" style="display: flex">Hi <b>there</b></div>`,
+})
+class InlineStyleFlexHost {}
+
+@Component({
+  selector: 'plural-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="box">
+    {{ n() }}
+    @if (n() !== 1) {
+      items
+    } @else {
+      item
+    }
+  </div>`,
+})
+class PluralHost {
+  readonly n = signal(3);
+}
+
+@Component({
+  selector: 'anchors-host',
+  encapsulation: ViewEncapsulation.None,
+  template: `<div class="box">
+    @if (a()) {
+      A
+    }
+    and
+    @if (b()) {
+      B
+    }
+  </div>`,
+})
+class AnchorsHost {
+  readonly a = signal(true);
+  readonly b = signal(true);
+}
+
+@Component({
+  selector: 'text-anchor-host',
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<text class="t"
+    >Hi
+    @if (loud()) {
+      <text>!</text>
+    }
+  </text>`,
+})
+class TextAnchorHost {
+  readonly loud = signal(true);
+}
+
+@Component({
   selector: 'toggle-loose-host',
   encapsulation: ViewEncapsulation.None,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -277,11 +385,16 @@ class WrapView {}
 class ProjectedHost {}
 
 @Component({
-  selector: 'web-div-host',
+  selector: 'inherit-host',
   encapsulation: ViewEncapsulation.None,
-  template: `<div class="card">Hello from a div</div>`,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<div class="box">
+    <p class="plain">Plain</p>
+    <p class="title">Title</p>
+    <text class="lynx">Lynx</text>
+  </div>`,
 })
-class WebDivHost {}
+class InheritHost {}
 
 /**
  * The live element with `cls`.
@@ -295,18 +408,27 @@ const byClass = (cls: string): FakeEl => {
 };
 
 /**
- * What `el`'s live children draw: a raw-text's text, a <text>'s text in
- * quotes (one anonymous text per run of loose text), or another element's
- * tag and class.
+ * Whether an element is hidden by its inline style.
+ */
+const hidden = (el: FakeEl): boolean =>
+  el.attrs.get('display') === 'none' ||
+  String(el.attrs.get('style') ?? '').startsWith('display: none');
+
+/**
+ * What `el`'s visible children draw: an anonymous <text>'s line in quotes,
+ * another <text> as its classes and its text, a raw-text as it is, and
+ * another element as its tag and classes.
  */
 const shape = (el: FakeEl): string[] =>
   el.children
-    .filter((c) => c.hasPaintingNode && c.attrs.get('display') !== 'none')
+    .filter((c) => c.hasPaintingNode && !hidden(c))
     .map((c) => {
+      const classes = [...c.classes].sort().join('.');
+      const line = rawTextLeaves(c).map(leafText).join('');
       if (c.tag === 'raw-text') return `raw:${leafText(c)}`;
-      if (c.tag === 'text')
-        return `"${rawTextLeaves(c).map(leafText).join('')}"`;
-      return `${c.tag}.${[...c.classes].join('.')}`;
+      if (c.tag === 'text' && c.classes.has('_ngtext')) return `"${line}"`;
+      if (c.tag === 'text') return `text.${classes}"${line}"`;
+      return `${c.tag}.${classes}`;
     });
 
 describe('loose text', () => {
@@ -317,6 +439,7 @@ describe('loose text', () => {
   beforeEach(() => {
     vi.stubGlobal('__MAIN_THREAD__', true);
     installNativeFakes();
+    resetStyleIndex();
     markFirstRenderComplete();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -327,6 +450,12 @@ describe('loose text', () => {
         { provide: RendererFactory2, useExisting: LynxRendererFactory2 },
       ],
     });
+  });
+
+  afterEach(() => {
+    delete (globalThis as { __angularLynxStyleIndex?: unknown })
+      .__angularLynxStyleIndex;
+    resetStyleIndex();
   });
 
   it('draws text in a <view> in a <text> of its own', () => {
@@ -342,39 +471,133 @@ describe('loose text', () => {
   it('hides the <text> while its text is blank, as a browser gives it no box', () => {
     const fixture = TestBed.createComponent(BlankHost);
     fixture.detectChanges();
-    const style = (): unknown => byClass('box').children[0]!.attrs.get('style');
-    expect(style()).toBe('display: none; overflow: hidden');
+    expect(byClass('box').children.map(hidden)).toEqual([true]);
 
     fixture.componentInstance.label.set('Ada');
     fixture.detectChanges();
-    expect(style()).toBeNull();
     expect(shape(byClass('box'))).toEqual(['"Ada"']);
 
     // Whitespace alone is blank too; a non-breaking space is text.
     fixture.componentInstance.label.set('  ');
     fixture.detectChanges();
-    expect(style()).toBe('display: none; overflow: hidden');
-    fixture.componentInstance.label.set('\u00a0');
+    expect(shape(byClass('box'))).toEqual([]);
+    fixture.componentInstance.label.set(' ');
     fixture.detectChanges();
-    expect(style()).toBeNull();
+    expect(shape(byClass('box'))).toEqual(['" "']);
   });
 
-  it('gives each run its own <text>, in order around the elements', () => {
-    const fixture = TestBed.createComponent(MixedHost);
+  it('runs text and inline tags in a block on as one line', () => {
+    const fixture = TestBed.createComponent(InlineHost);
+    fixture.detectChanges();
+    expect(shape(byClass('card'))).toEqual(['"Hi there, friend!"']);
+  });
+
+  it('runs inline tags beside each other on as one line', () => {
+    const fixture = TestBed.createComponent(SpansHost);
+    fixture.detectChanges();
+    expect(shape(byClass('pair'))).toEqual(['"AB"']);
+  });
+
+  it('leaves a lone inline tag as it is', () => {
+    const fixture = TestBed.createComponent(LoneSpanHost);
+    fixture.detectChanges();
+    expect(shape(byClass('solo'))).toEqual(['text._ngtag-span.badge"3"']);
+  });
+
+  it('starts a new line at a block, as a <p> or a <view>', () => {
+    let fixture = TestBed.createComponent(ParagraphHost);
+    fixture.detectChanges();
+    expect(shape(byClass('doc'))).toEqual([
+      '"Intro"',
+      'text._ngtag-p"Para"',
+      '"outro"',
+    ]);
+
+    fixture = TestBed.createComponent(MixedHost);
     fixture.detectChanges();
     expect(shape(byClass('row'))).toEqual(['"Hi"', 'view.dot', '"there"']);
+  });
+
+  it('makes each a flex item of its own in a flex container, and regroups when that changes', () => {
+    const fixture = TestBed.createComponent(FlexHost);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"Hi there"']);
+
+    fixture.componentInstance.row.set(true);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"Hi"', 'text._ngtag-b"there"']);
+
+    fixture.componentInstance.row.set(false);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"Hi there"']);
+  });
+
+  it('reads a flex container from an inline display too', () => {
+    const fixture = TestBed.createComponent(InlineStyleFlexHost);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"Hi"', 'text._ngtag-b"there"']);
+  });
+
+  it('reads a flex container from the build’s style index', () => {
+    // As the build plugin writes it: `.row { display: flex }`.
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = { rules: [[['box'], 1 << 11]] };
+    const fixture = TestBed.createComponent(InlineHost);
+    fixture.detectChanges();
+    expect(shape(byClass('card'))).toEqual(['"Hi there, friend!"']);
+
+    const flex = TestBed.createComponent(FlexHost);
+    flex.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"Hi"', 'text._ngtag-b"there"']);
+  });
+
+  it('runs @if text on with the text before it', () => {
+    const fixture = TestBed.createComponent(PluralHost);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"3 items"']);
+
+    fixture.componentInstance.n.set(1);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"1 item"']);
+  });
+
+  it('keeps an @if anchor between text in the line, as an empty raw-text', () => {
+    const fixture = TestBed.createComponent(AnchorsHost);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"A and B"']);
+    // On iOS a hidden view in a <text> draws a gap: the anchor isn't one.
+    const line = byClass('box').children.find((c) => c.tag === 'text')!;
+    expect(line.children.map((c) => c.tag)).toEqual([
+      'raw-text',
+      'raw-text',
+      'raw-text',
+      'raw-text',
+    ]);
+
+    fixture.componentInstance.a.set(false);
+    fixture.detectChanges();
+    expect(shape(byClass('box'))).toEqual(['"and B"']);
+  });
+
+  it('makes an anchor in a Lynx <text> an empty raw-text, which draws no gap', () => {
+    const fixture = TestBed.createComponent(TextAnchorHost);
+    fixture.detectChanges();
+    const tags = (): string[] => byClass('t').children.map((c) => c.tag);
+    expect(tags()).toEqual(['raw-text', 'text', 'raw-text']);
+
+    fixture.componentInstance.loud.set(false);
+    fixture.detectChanges();
+    expect(tags()).toEqual(['raw-text', 'raw-text']);
+    fixture.componentInstance.loud.set(true);
+    fixture.detectChanges();
+    expect(tags()).toEqual(['raw-text', 'text', 'raw-text']);
   });
 
   it('leaves text in a <text> as it is', () => {
     const fixture = TestBed.createComponent(InTextHost);
     fixture.detectChanges();
     expect(shape(byClass('t'))).toEqual(['raw:Hello']);
-  });
-
-  it('draws text in a <div>, which is a <view>', () => {
-    const fixture = TestBed.createComponent(WebDivHost);
-    fixture.detectChanges();
-    expect(shape(byClass('card'))).toEqual(['"Hello from a div"']);
   });
 
   it('draws text projected into a <view>', () => {
@@ -399,20 +622,42 @@ describe('loose text', () => {
     expect(shape(byClass('box'))).toEqual(['"Shown"', 'view.end']);
   });
 
-  it('moves and removes runs with @for', async () => {
+  it('moves and removes runs with @for, on one line', async () => {
     const fixture = TestBed.createComponent(ForLooseHost);
     fixture.detectChanges();
-    expect(shape(byClass('list'))).toEqual(['"a"', '"b"', '"c"']);
+    expect(shape(byClass('list'))).toEqual(['"a b c"']);
 
     fixture.componentInstance.items.set(['c', 'a', 'b']);
     fixture.detectChanges();
     await flush();
-    expect(shape(byClass('list'))).toEqual(['"c"', '"a"', '"b"']);
+    expect(shape(byClass('list'))).toEqual(['"c a b"']);
 
     fixture.componentInstance.items.set(['a', 'd']);
     fixture.detectChanges();
     await flush();
-    expect(shape(byClass('list'))).toEqual(['"a"', '"d"']);
+    expect(shape(byClass('list'))).toEqual(['"a d"']);
+  });
+
+  it('gives HTML text tags the text styles their own rules don’t set', () => {
+    // As the build plugin writes it: `.title { color: … }`, bit 0.
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = { rules: [[['title'], 1]] };
+    const fixture = TestBed.createComponent(InheritHost);
+    fixture.detectChanges();
+    const style = (cls: string): string =>
+      String(byClass(cls).attrs.get('style') ?? '');
+
+    expect(style('plain')).toContain('color: var(--angular-lynx-color)');
+    expect(style('plain')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    expect(style('title')).not.toContain('color: var(--angular-lynx-color)');
+    expect(style('title')).toContain(
+      'font-size: var(--angular-lynx-font-size)',
+    );
+    // An element written as a Lynx <text> looks as it always has.
+    expect(style('lynx')).toBe('');
   });
 });
 
@@ -426,10 +671,11 @@ describe('loose text, element by element', () => {
   const native = (el: LynxElement): FakeEl => el.element as unknown as FakeEl;
 
   /**
-   * Commits removals and text trims, as the end of a cycle does.
+   * Commits removals, regrouping and text trims, as the end of a cycle does.
    */
   const commit = (): void => {
     processPendingRemovals();
+    processPendingFlow();
     processPendingTextNormalization();
     (globalThis as unknown as FakeNativeGlobal<FakeEl>).__FlushElementTree();
   };
@@ -437,6 +683,7 @@ describe('loose text, element by element', () => {
   beforeEach(() => {
     vi.stubGlobal('__MAIN_THREAD__', true);
     installNativeFakes();
+    resetStyleIndex();
     doc = new LynxDocument();
     page = doc.createRootElement();
   });
@@ -445,52 +692,123 @@ describe('loose text, element by element', () => {
     const view = doc.createElement('view');
     page.appendChild(view);
     const before = doc.createElement('view');
-    const hello = doc.createText('Hello');
+    const hello = doc.createText('Hello ');
+    const bold = doc.createElement('b');
     const after = doc.createElement('view');
     view.appendChild(before);
     view.appendChild(hello);
+    view.appendChild(bold);
     view.appendChild(after);
+    commit();
 
     const wrapper = native(hello).parent!;
     expect(wrapper.tag).toBe('text');
     expect(wrapper.parent).toBe(native(view));
+    expect(native(bold).parent).toBe(wrapper);
     expect(hello.parentNode()).toBe(view);
-    expect(hello.nextSibling()).toBe(after);
+    expect(bold.parentNode()).toBe(view);
     expect(before.nextSibling()).toBe(hello);
+    expect(hello.nextSibling()).toBe(bold);
+    expect(bold.nextSibling()).toBe(after);
   });
 
-  it('puts an element before a raw-text, before its <text>', () => {
+  it('puts an element before loose text, before its <text>', () => {
     const view = doc.createElement('view');
     page.appendChild(view);
     const hello = doc.createText('Hello');
     view.appendChild(hello);
+    commit();
     const first = doc.createElement('image');
 
     view.insertBefore(first, hello);
+    commit();
 
     expect(native(view).children.map((c) => c.tag)).toEqual(['image', 'text']);
   });
 
-  it('takes a raw-text out of its <text> into a <text>, and back', () => {
+  it('splits a line where an element goes in the middle of it', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    const a = doc.createText('a');
+    const b = doc.createText('b');
+    view.appendChild(a);
+    view.appendChild(b);
+    commit();
+    expect(native(view).children.map((c) => c.tag)).toEqual(['text']);
+
+    const block = doc.createElement('view');
+    view.insertBefore(block, b);
+    // In the native tree at once, with each half in a <text> of its own.
+    expect(native(block).parent).toBe(native(view));
+    commit();
+
+    expect(native(view).children.map((c) => c.tag)).toEqual([
+      'text',
+      'view',
+      'text',
+    ]);
+    expect(a.nextSibling()).toBe(block);
+    expect(block.nextSibling()).toBe(b);
+  });
+
+  it('joins two lines when the element between them goes', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    const a = doc.createText('a ');
+    const block = doc.createElement('view');
+    const b = doc.createText('b');
+    view.appendChild(a);
+    view.appendChild(block);
+    view.appendChild(b);
+    commit();
+    expect(native(view).children.map((c) => c.tag)).toEqual([
+      'text',
+      'view',
+      'text',
+    ]);
+
+    block.remove();
+    commit();
+
+    expect(native(view).children.map((c) => c.tag)).toEqual(['text']);
+    expect(rawTextLeaves(native(view)).map(leafText)).toEqual(['a ', 'b']);
+  });
+
+  it('takes loose text out of its <text> into a <text>, and back', () => {
     const view = doc.createElement('view');
     const text = doc.createElement('text');
     page.appendChild(view);
     page.appendChild(text);
     const hello = doc.createText('Hello');
     view.appendChild(hello);
+    commit();
 
     text.appendChild(hello);
     commit();
     expect(native(hello).parent).toBe(native(text));
     expect(native(view).children).toEqual([]);
 
-    // Back in a view, it's drawn in a <text> again: the same wrapper,
-    // rebuilt, since its native element went at the commit.
     view.appendChild(hello);
     commit();
     expect(native(view).children.map((c) => c.tag)).toEqual(['text']);
     expect(native(hello).parent).toBe(native(view).children[0]);
     expect(hello.parentNode()).toBe(view);
+  });
+
+  it('turns an anchor back into a hidden view when it leaves a <text>', () => {
+    const text = doc.createElement('text');
+    const view = doc.createElement('view');
+    page.appendChild(text);
+    page.appendChild(view);
+    const anchor = doc.createComment();
+
+    text.appendChild(anchor);
+    expect(native(anchor).tag).toBe('raw-text');
+    view.appendChild(anchor);
+    expect(native(anchor).tag).toBe('view');
+    expect(native(anchor).parent).toBe(native(view));
+    expect(native(text).children).toEqual([]);
+    expect(anchor.parentNode()).toBe(view);
   });
 
   it('leaves a raw-text in an element that draws no text as it is', () => {
@@ -499,6 +817,7 @@ describe('loose text, element by element', () => {
     const hello = doc.createText('Hello');
 
     input.appendChild(hello);
+    commit();
 
     expect(native(hello).parent).toBe(native(input));
   });
@@ -508,6 +827,7 @@ describe('loose text, element by element', () => {
     page.appendChild(view);
     const hello = doc.createText('Hello');
     view.appendChild(hello);
+    commit();
 
     const wrapperId = native(hello).parent!.id;
     expect(LynxElement.byUniqueId(wrapperId)).toBe(view);
@@ -519,11 +839,12 @@ describe('loose text, element by element', () => {
     expect(LynxElement.byUniqueId(wrapperId)).toBeUndefined();
   });
 
-  it('removes and releases the <text> with a destroyed raw-text', () => {
+  it('removes and releases the <text> with the last of its text', () => {
     const view = doc.createElement('view');
     page.appendChild(view);
     const hello = doc.createText('Hello');
     view.appendChild(hello);
+    commit();
     const wrapperId = native(hello).parent!.id;
 
     hello.remove();
@@ -534,13 +855,14 @@ describe('loose text, element by element', () => {
     expect(LynxElement.byUniqueId(wrapperId)).toBeUndefined();
   });
 
-  it('keeps a raw-text that comes back before the removal commits', () => {
+  it('keeps loose text that comes back before the removal commits', () => {
     const view = doc.createElement('view');
     const other = doc.createElement('view');
     page.appendChild(view);
     page.appendChild(other);
     const hello = doc.createText('Hello');
     view.appendChild(hello);
+    commit();
 
     // An Angular move: removed, then inserted elsewhere in the same cycle.
     hello.remove();
@@ -552,10 +874,28 @@ describe('loose text, element by element', () => {
     expect(rawTextLeaves(native(other)).map(leafText)).toEqual(['Hello']);
   });
 
-  it('takes a hydrated raw-text and its <text> as one', () => {
+  it('regroups a removed element’s loose text when it comes back', async () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    commit();
+    // Text goes in, and the view goes out, in the same cycle.
+    const hello = doc.createText('Hello');
+    view.appendChild(hello);
+    view.remove();
+    commit();
+    expect(native(view).hasPaintingNode).toBe(false);
+
+    page.appendChild(view);
+    commit();
+
+    const fresh = native(view);
+    expect(fresh.children.map((c) => c.tag)).toEqual(['text']);
+    expect(native(hello).parent!.parent).toBe(fresh);
+  });
+
+  it('takes the anonymous <text> of a server render as one', () => {
     // A snapshot's tree: the view holds the anonymous <text>, which holds
-    // the raw-text, and hydration wraps each as it comes (see
-    // LynxHydrateDocument.createText).
+    // the raw-text (see LynxHydrateDocument).
     const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
     const viewRef = g.__CreateView();
     const wrapperRef = g.__CreateText();
@@ -564,14 +904,135 @@ describe('loose text, element by element', () => {
     g.__AppendElement(viewRef, wrapperRef);
     g.__AppendElement(wrapperRef, textRef);
     const view = new LynxElement(viewRef as never);
+    new LynxElement(wrapperRef as never).markAnonymousText();
     const hello = new LynxElement(textRef as never);
     hello.tagName = 'raw-text';
 
-    hello.hydrateTextWrapper(new LynxElement(wrapperRef as never));
-
     expect(hello.parentNode()).toBe(view);
-    hello.remove();
+    expect(LynxElement.byUniqueId(wrapperRef.id)).toBe(view);
+  });
+
+  /**
+   * The shapes of `el`'s native children: tag, and the line of a <text>.
+   */
+  const lines = (el: LynxElement): string[] =>
+    native(el)
+      .children.filter((c) => !hidden(c))
+      .map((c) =>
+        c.tag === 'text'
+          ? `"${rawTextLeaves(c).map(leafText).join('')}"`
+          : c.tag,
+      );
+
+  it('keeps each run in a <text> of its own in a scroll-view', () => {
+    const scroll = doc.createElement('scroll-view');
+    page.appendChild(scroll);
+    scroll.appendChild(doc.createText('a '));
+    scroll.appendChild(doc.createText('b'));
     commit();
-    expect(viewRef.children).toEqual([]);
+
+    expect(lines(scroll)).toEqual(['"a"', '"b"']);
+  });
+
+  it('reads a row from an inline linear-orientation, and regroups when it goes', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.setStyle('linear-orientation', 'horizontal');
+    view.appendChild(doc.createText('a '));
+    view.appendChild(doc.createText('b'));
+    commit();
+    expect(lines(view)).toEqual(['"a"', '"b"']);
+
+    view.removeStyle('linear-orientation');
+    commit();
+    expect(lines(view)).toEqual(['"a b"']);
+
+    view.setInlineStyles('linear-direction: row');
+    commit();
+    expect(lines(view)).toEqual(['"a"', '"b"']);
+  });
+
+  it('reads a flex container by its id from the style index', () => {
+    (
+      globalThis as { __angularLynxStyleIndex?: unknown }
+    ).__angularLynxStyleIndex = { rules: [[['#bar'], 1 << 11]] };
+    resetStyleIndex();
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    view.appendChild(doc.createText('a '));
+    view.appendChild(doc.createText('b'));
+    commit();
+    expect(lines(view)).toEqual(['"a b"']);
+
+    view.setAttribute('id', 'bar');
+    commit();
+    expect(lines(view)).toEqual(['"a"', '"b"']);
+    delete (globalThis as { __angularLynxStyleIndex?: unknown })
+      .__angularLynxStyleIndex;
+    resetStyleIndex();
+  });
+
+  it('gives an HTML text tag removed this cycle its inherited styles when it comes back', () => {
+    const view = doc.createElement('view');
+    page.appendChild(view);
+    commit();
+    const p = doc.createElement('p');
+    view.appendChild(p);
+    p.remove();
+    commit();
+    expect(native(p).hasPaintingNode).toBe(false);
+
+    view.appendChild(p);
+    commit();
+
+    expect(String(native(p).attrs.get('style'))).toContain(
+      'color: var(--angular-lynx-color)',
+    );
+  });
+
+  it('skips an emptied anonymous <text> in nextSibling()', () => {
+    // A server render's anonymous <text> whose text has gone (see
+    // LynxHydrateDocument): empty, still in the tree.
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const beforeRef = g.__CreateView();
+    const wrapperRef = g.__CreateText();
+    const afterRef = g.__CreateView();
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(viewRef, beforeRef);
+    g.__AppendElement(viewRef, wrapperRef);
+    g.__AppendElement(viewRef, afterRef);
+    const before = new LynxElement(beforeRef as never);
+    new LynxElement(wrapperRef as never).markAnonymousText();
+    const after = new LynxElement(afterRef as never);
+
+    expect(before.nextSibling()).toBe(after);
+  });
+
+  it('knows a server render’s anchor in a <text> for the raw-text it is', () => {
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const viewRef = g.__CreateView();
+    const textRef = g.__CreateText();
+    const anchorRef = g.__CreateRawText('');
+    g.__AppendElement(native(page), viewRef);
+    g.__AppendElement(native(page), textRef);
+    g.__AppendElement(textRef, anchorRef);
+    const view = new LynxElement(viewRef as never);
+    const anchor = new LynxElement(anchorRef as never);
+    anchor.tagName = 'comment';
+    anchor.hydrateAnchor();
+
+    view.appendChild(anchor);
+
+    expect(native(anchor).tag).toBe('view');
+    expect(native(anchor).parent).toBe(viewRef);
+  });
+
+  it('gives a touch on an anonymous <text> out of the tree no element', () => {
+    const g = globalThis as unknown as FakeNativeGlobal<FakeEl>;
+    const wrapperRef = g.__CreateText();
+    new LynxElement(wrapperRef as never).markAnonymousText();
+
+    expect(LynxElement.byUniqueId(wrapperRef.id)).toBeUndefined();
   });
 });

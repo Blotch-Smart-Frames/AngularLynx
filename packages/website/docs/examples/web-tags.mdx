@@ -10,7 +10,7 @@ A sign-up card written as it would be for the browser: HTML tags, DOM events and
 - **Type selectors** — `h1 { … }` and `button { … }` in the component's styles match those tags, as on the web. See [CSS on Lynx](/guide/styling).
 - **DOM events** — `(input)` reads `$event.target.value`, `(keyup.enter)` runs on the keyboard's return key, and `(click)` on a tap. See [DOM event names](/guide/elements/event-handling#dom-event-names).
 - **`[hidden]`** — the welcome line stays hidden until you join.
-- **Loose text** — the text straight inside each `<li>` is drawn in a plain `<text>` of its own.
+- **Loose text and inheritance** — the text straight inside each `<li>` is drawn in a `<text>` that takes the list's color and size, and the terms line runs its link on with its text.
 
 ## Related
 

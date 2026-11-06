@@ -2,6 +2,8 @@ import { LynxElement } from '../lynx-element';
 import { LynxDocument, type LynxDocumentBase } from '../lynx-document';
 import { globalEvents } from '../global-events';
 import { hostElementOf } from '../lynx-document/host-elements';
+import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from '../lynx-document/web-tags';
+import { ANONYMOUS_TEXT_CLASS } from '../lynx-element/text-flow';
 import { followSafeAreaInsets } from '../lynx-document/page-safe-area';
 import type { ElementRef } from '../types/lynx';
 
@@ -54,7 +56,18 @@ export class LynxHydrateDocument implements LynxDocumentBase {
         'Hydration queue exhausted during initial render — snapshot/template mismatch',
       );
     }
-    const ref = this.#queue[this.#cursor++]!;
+    let ref = this.#queue[this.#cursor++]!;
+    // Loose text that the server render drew in an anonymous <text> (see
+    // LynxElement's #regroup) has the <text> just before it in the snapshot.
+    // Angular never asks for it, so it's taken here, and marked for what it
+    // is. It's always followed by what it holds.
+    while (
+      __GetClasses(ref).includes(ANONYMOUS_TEXT_CLASS) &&
+      this.#cursor < this.#queue.length
+    ) {
+      new LynxElement(ref).markAnonymousText();
+      ref = this.#queue[this.#cursor++]!;
+    }
     return new LynxElement(ref);
   }
 
@@ -87,6 +100,11 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // The snapshot holds the element the host registered (registerHostElement),
     // or the one an HTML tag renders as, so the wrapper takes its tag too.
     el.tagName = hostElementOf(tag);
+    // As LynxDocument does: an HTML text tag inherits text styles, and an
+    // inline one shares a line with the text beside it.
+    if (el.tagName === 'text' && WEB_TEXT_TAGS.has(tag)) {
+      el.markWebText(INLINE_FLOW_TAGS.has(tag));
+    }
     return el;
   }
 
@@ -94,16 +112,7 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     if (!this.#isHydrating()) {
       return this.#getFallback().createText(value);
     }
-    // A raw-text whose parent draws no text, such as a <view>, was rendered in
-    // an anonymous <text> (see LynxElement's #putInTextWrapper), which comes
-    // before it in the snapshot.
-    let wrapper: LynxElement | null = this.#nextElement();
-    let el = wrapper;
-    if (__GetTag(wrapper.element) === 'text') {
-      el = this.#nextElement();
-    } else {
-      wrapper = null;
-    }
+    const el = this.#nextElement();
     el.tagName = 'raw-text';
     // Seed the same recreation/normalization cache a freshly-created raw-text
     // gets (see LynxDocument.createText). Without this, #rawText stays
@@ -111,7 +120,6 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     // pass (e.g. a sibling run inside the same <text> changes), it would read
     // back '' and blank this correctly-hydrated text.
     el.setInitialText(value);
-    if (wrapper) el.hydrateTextWrapper(wrapper);
     return el;
   }
 
@@ -121,6 +129,7 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     }
     const el = this.#nextElement();
     el.tagName = 'comment';
+    el.hydrateAnchor();
     return el;
   }
 

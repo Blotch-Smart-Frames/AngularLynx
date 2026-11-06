@@ -6,7 +6,8 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
  * DOM events and type selectors. Each tag renders as the Lynx element it maps
  * to: the `<main>`, `<div>`, `<ul>` and `<li>` are views, the `<h1>`, `<p>`,
  * `<label>` and `<button>` are texts, and the `<img>` is an image. The text
- * straight inside each `<li>` is drawn in a `<text>` of its own.
+ * straight inside each `<li>` is drawn in a `<text>` that takes the list's
+ * color, and the terms line runs its link on with its text, as on the web.
  */
 @Component({
   selector: 'app-root',
@@ -37,6 +38,9 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
           <li>No account needed</li>
           <li>Leave any time</li>
         </ul>
+        <div class="terms">
+          By joining, you agree to the <a>terms</a> and <a>privacy policy</a>.
+        </div>
       </div>
     </main>
   `,
@@ -97,10 +101,22 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
     }
     ul {
       margin-top: 16px;
+      font-size: 14px;
+      color: #3f3f46;
     }
     li {
       padding: 8px 0;
       border-top: 1px solid #e4e4e7;
+    }
+    .terms {
+      margin-top: 12px;
+      font-size: 12px;
+      text-align: center;
+      color: #71717a;
+    }
+    a {
+      text-decoration: underline;
+      color: #4f46e5;
     }
     .welcome {
       margin-top: 16px;

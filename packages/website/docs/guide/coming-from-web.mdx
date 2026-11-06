@@ -7,7 +7,7 @@ This page lists everything that changes when you move Angular code from the brow
 | On the web                                              | On Lynx                                                                                 |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `<div>`                                                 | `<view>`. A `<div>` renders as one                                                      |
-| `<span>`, `<p>`, `<h1>`                                 | `<text>`. They render as one. Style text on the `<text>` that holds it                  |
+| `<span>`, `<p>`, `<h1>`                                 | `<text>`. They render as one, and inherit text styles                                   |
 | `<img src>`                                             | `<image src>`, which needs a width and height. An `<img>` renders as one, sized to fit  |
 | A scrolling `<div>`                                     | `<scroll-view>`, or `<list>` for long lists                                             |
 | `<button (click)>`                                      | `<view (bindtap)>` with a `<text>` inside. A `<button>` renders as a `<text>` that taps |
@@ -30,7 +30,7 @@ AngularLynx renders common HTML tags as the Lynx element they stand for, so a te
 - **Block tags render as a `<view>`:** `<div>`, `<section>`, `<ul>`, `<li>` and the like.
 - **Text tags render as a `<text>`:** `<span>`, `<p>`, `<h1>`, `<a>`, `<button>`, `<label>` and the like.
 - **`<img>` renders as an `<image>`** that takes its picture's size until CSS gives it one.
-- **Text straight inside a block tag shows,** in a plain `<text>` of its own.
+- **Text flows and inherits.** Text and inline tags beside each other share a line, and take their ancestors' text styles.
 - **DOM events that Lynx also sends run,** such as `(click)`, `(input)` and `(keyup.enter)`.
 
 It gets ported code on screen, but it isn't a browser. [HTML tags](/guide/elements/#html-tags) lists what carries over and what doesn't. Write Lynx elements in new code: they have every attribute, and typed events.
@@ -55,7 +55,7 @@ Here's one component in each:
 
 **Lynx elements replace HTML.** A Lynx app has no HTML engine. Lynx [elements](/guide/elements/) map to native UI controls instead, and AngularLynx renders common HTML tags as the closest one. [Elements and layout](/guide/elements/) lists them all.
 
-**Text belongs in `<text>`.** On the web, text can sit anywhere. On Lynx, only a `<text>` draws it. Text written straight in a `<view>` or `<div>` still shows, because AngularLynx draws it in a plain `<text>` of its own. But the `<view>`'s text styles don't reach it, and it takes a line of its own. Put text you style in a `<text>`, and nest `<text>` elements to style part of a sentence.
+**Text belongs in `<text>`.** On the web, text can sit anywhere. On Lynx, only a `<text>` draws it. Text written straight in a `<view>` or `<div>` still shows: AngularLynx draws it, and the inline tags beside it, in a `<text>`, which takes the text styles its ancestors' classes set. A `<text>` you write yourself inherits nothing, so set its styles on it, and nest `<text>` elements to style part of a sentence.
 
 **Import `LYNX_ELEMENTS`.** Add it to every component that uses Lynx elements, as `ng generate component` does. It gives you type checking in your editor and makes `ng test` compile.
 

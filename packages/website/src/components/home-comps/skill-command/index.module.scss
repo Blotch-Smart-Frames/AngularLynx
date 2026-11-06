@@ -1,0 +1,163 @@
+.skill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 72px;
+  padding: 0 20px;
+}
+
+// The same pill as the hero's badge, since it sits in the same column, with a
+// leading tint badge and a trailing receipt added.
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  height: 44px;
+  padding: 0 16px 0 6px;
+  border: var(--home-blog-btn-border);
+  border-radius: 999px;
+  background: var(--home-blog-btn-bg);
+  backdrop-filter: blur(24px);
+  color: var(--home-title-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease-out,
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out;
+
+  &:hover {
+    border-color: rgba(221, 0, 49, 0.4);
+    box-shadow: 0 6px 20px -10px rgba(221, 0, 49, 0.35);
+
+    .copy {
+      color: var(--rp-c-brand);
+    }
+  }
+
+  &:active {
+    background-color: var(--rp-c-brand-tint);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rp-c-brand);
+    outline-offset: 3px;
+  }
+
+  &.copied .copy {
+    color: var(--rp-c-brand);
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--rp-c-brand-tint);
+  color: var(--rp-c-brand);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+
+  i {
+    font-size: 13px;
+  }
+}
+
+.command {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--rp-font-family-mono);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  // Wide enough for "Copied", so the pill doesn't shift when it appears.
+  min-width: 58px;
+  color: var(--home-features-item-desc-color);
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 160ms ease-out;
+}
+
+.caption {
+  margin: 0;
+  color: var(--home-features-item-desc-color);
+  text-align: center;
+  font-size: 13px;
+  line-height: 20px;
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--rp-c-brand);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    i {
+      font-size: 11px;
+    }
+  }
+}
+
+// Spoken, never seen.
+.status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// On a phone the pill opens into a card: badge and receipt on the first
+// line, the command wrapping beneath them in full.
+@media (max-width: 719px) {
+  .button {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    width: 100%;
+    height: auto;
+    padding: 6px 12px 12px 6px;
+    border-radius: 22px;
+  }
+
+  .copy {
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  .command {
+    flex-basis: 100%;
+    padding: 0 6px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
+
+@media (max-width: 500px) {
+  .skill {
+    margin-bottom: 56px;
+  }
+}

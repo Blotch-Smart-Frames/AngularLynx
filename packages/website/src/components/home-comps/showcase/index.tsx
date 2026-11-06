@@ -1,35 +1,65 @@
 import React, { useId, useState } from 'react';
-import { Go } from '../../go/go';
+import type { AutoGestureOptions } from '@lynx-js/go-web';
+import { PhonePreview } from './phone-preview';
 import styles from './index.module.scss';
+
+/**
+ * A slow drag across the dial, twice, so the stone turns before anyone
+ * touches it: the first thing Facet shows is the one thing a screenshot
+ * can't. Positions are fractions of the screen; the dial fills its upper
+ * half. Kept at module level so its identity never changes, since a new
+ * object would restart the app.
+ */
+const turnTheStone: AutoGestureOptions = {
+  startDelayMs: 900,
+  loop: false,
+  steps: [
+    {
+      path: [
+        { x: 0.3, y: 0.34 },
+        { x: 0.72, y: 0.34 },
+      ],
+      durationMs: 1400,
+      restMs: 600,
+      iterations: 2,
+    },
+  ],
+};
 
 /**
  * The apps the landing page runs live. The showcase comes first: it's the
  * one that makes the case; the other two are there for anyone who wants the
- * simplest app and the widest one.
+ * simplest app and the widest one. `code` is the docs page with the app's
+ * source beside it.
  */
 const demos = [
   {
     id: 'showcase',
     label: 'Facet',
-    example: 'showcase',
-    defaultFile: 'src/app/atlas/atlas.ts',
+    tagline: 'A jeweler’s gem atlas',
     blurb:
-      'A jeweler’s gem atlas: a stone drawn on the GPU, Liquid Glass, charts, gestures and a virtualized list. Drag the dial to turn the stone; tap another stone to recolor the app.',
+      'A stone drawn on the GPU, Liquid Glass, charts, gestures and a virtualized list, in one real app.',
+    hint: 'Drag the dial to turn the stone. Tap another stone to recolor the app.',
+    code: '/examples/showcase',
+    autoGesture: turnTheStone,
   },
   {
     id: 'todo-list',
     label: 'Todo list',
-    example: 'todo-list',
-    defaultFile: 'src/app/app.ts',
-    blurb: 'The app the tutorial builds. Add a todo to try it.',
+    tagline: 'The app the tutorial builds',
+    blurb:
+      'The smallest app: a list, an input and a signal, written with Lynx elements and Tailwind.',
+    hint: 'Add a todo to try it.',
+    code: '/examples/todo-list',
   },
   {
-    id: 'kitchen-sink',
+    id: 'kitchen-sink-app',
     label: 'Kitchen sink',
-    example: 'kitchen-sink-app',
-    defaultFile: 'src/app/app.ts',
+    tagline: 'Every element and API',
     blurb:
       'Every element, component and platform API, one screen each, behind a navigation drawer.',
+    hint: 'Open the drawer to pick a screen.',
+    code: '/examples/',
   },
 ];
 
@@ -60,12 +90,17 @@ export const ShowCase: React.FC = () => {
   const demo = demos[selected]!;
 
   /**
-   * Left and right arrows move between tabs, as a native tab list does, and
-   * focus follows the selection.
+   * The arrow keys move between the apps, as in a native tab list, and
+   * focus follows the selection. Up and down for the stacked list on a
+   * desktop, left and right for the row of pills on a phone.
    */
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const step =
-      event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
     if (!step) return;
     event.preventDefault();
     const next = (selected + step + demos.length) % demos.length;
@@ -82,46 +117,60 @@ export const ShowCase: React.FC = () => {
       <div className={styles['show-case-frame']}>
         <div className={styles['title']}>Try it right here</div>
         <div className={styles['desc']}>
-          Real AngularLynx apps, running in your browser on Lynx's web renderer,
-          next to their code.
+          Real AngularLynx apps, running in your browser on Lynx's web renderer.
         </div>
-        <div
-          className={styles['tabs']}
-          role="tablist"
-          aria-label="Example apps"
-          onKeyDown={onKeyDown}
-        >
-          {demos.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`${baseId}-tab-${item.id}`}
-              aria-selected={index === selected}
-              aria-controls={`${baseId}-panel`}
-              tabIndex={index === selected ? 0 : -1}
-              className={styles['tab']}
-              onClick={() => setSelected(index)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <p className={styles['blurb']}>{demo.blurb}</p>
-        {/* The same live preview the docs use, so the landing page shows the
-            product itself rather than a screenshot of it. Keyed by example so
-            switching tabs starts the next app fresh. */}
-        <div
-          className={styles['demo']}
-          role="tabpanel"
-          id={`${baseId}-panel`}
-          aria-labelledby={`${baseId}-tab-${demo.id}`}
-        >
-          <Go
-            key={demo.example}
-            example={demo.example}
-            defaultFile={demo.defaultFile}
-          />
+        {/* The phone with the apps beside it on a desktop; on a phone the
+            apps go above it as a row of pills, and the notes below. */}
+        <div className={styles['stage']}>
+          <div
+            className={styles['apps']}
+            role="tablist"
+            aria-label="Example apps"
+            onKeyDown={onKeyDown}
+          >
+            {demos.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                id={`${baseId}-tab-${item.id}`}
+                aria-selected={index === selected}
+                aria-controls={`${baseId}-panel`}
+                tabIndex={index === selected ? 0 : -1}
+                className={styles['app']}
+                onClick={() => setSelected(index)}
+              >
+                <span className={styles['app-label']}>{item.label}</span>
+                <span className={styles['app-tagline']}>{item.tagline}</span>
+              </button>
+            ))}
+          </div>
+          {/* Keyed by app, so switching starts the next one fresh. */}
+          <div
+            className={styles['phone-column']}
+            role="tabpanel"
+            id={`${baseId}-panel`}
+            aria-labelledby={`${baseId}-tab-${demo.id}`}
+          >
+            <PhonePreview
+              key={demo.id}
+              example={demo.id}
+              label={demo.label}
+              fallbackHref={demo.code}
+              autoGesture={demo.autoGesture}
+            />
+          </div>
+          <div className={styles['notes']}>
+            <p className={styles['blurb']}>{demo.blurb}</p>
+            <p className={styles['hint']}>
+              <i className="fa-light fa-hand-pointer" aria-hidden="true" />
+              {demo.hint}
+            </p>
+            <a href={demo.code} className={styles['code-link']}>
+              See the code{' '}
+              <i className="fa-light fa-arrow-right" aria-hidden="true" />
+            </a>
+          </div>
         </div>
       </div>
 

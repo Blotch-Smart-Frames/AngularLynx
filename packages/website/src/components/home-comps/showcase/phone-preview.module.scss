@@ -1,0 +1,60 @@
+// The frame: a bezel around the screen, in ink. Its beam sits between the
+// bezel's background and the screen, as the feature cards' does.
+.phone {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  border-radius: 48px;
+  background: var(--home-phone-bezel);
+  box-shadow: var(--home-phone-shadow);
+}
+
+// The screen clips the app to the bezel's inner corners. Its aspect ratio is
+// the phone's, so the frame's height follows its width.
+.screen {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 402 / 778;
+  border-radius: 36px;
+  background: #0c0c0e;
+}
+
+// The app, at the phone's size, scaled down from the top-left corner.
+.stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 402px;
+  height: 778px;
+  transform-origin: top left;
+}
+
+// Over the screen until the app has painted, and in place of it if it can't.
+.curtain {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: #0c0c0e;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: center;
+
+  i {
+    font-size: 22px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  a {
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}

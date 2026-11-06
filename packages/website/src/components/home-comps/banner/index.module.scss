@@ -115,3 +115,13 @@
     background-position: -200% 50%;
   }
 }
+
+// The GitHub link in the banner's line about missing pieces.
+.banner-frame .banner-desc a {
+  color: var(--rp-c-brand);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

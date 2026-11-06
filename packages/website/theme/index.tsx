@@ -7,6 +7,7 @@ import {
   Features,
   MeteorsBackground,
   ShowCase,
+  SkillCommand,
 } from '../src/components/home-comps';
 
 import './index.scss';
@@ -149,6 +150,9 @@ const HomeLayout = (props: Parameters<typeof BaseHomeLayout>[0]) => {
   const {
     afterHero = (
       <>
+        {/* Right under the hero: the one command for a reader's AI agent,
+            after the one for the reader. */}
+        <SkillCommand />
         <Features />
         <ShowCase />
         <Compare />

@@ -144,6 +144,16 @@ These are the commands you'll use most. Prefix them with `npx` (`npx ng build`),
 | `ng build`                     | Builds the app's bundle into `dist/`                        |
 | `ng build --platform ios`      | Builds an iOS app ([details](/guide/native-apps))           |
 
+## Teach your AI coding agent
+
+If an AI coding agent writes code with you, give it the AngularLynx [skill](https://www.skills.sh/blotch-smart-frames/angularlynx/angular-lynx): Lynx's elements, events and CSS differences, and the Angular CLI commands, in the form agents read.
+
+```bash
+npx skills add https://github.com/blotch-smart-frames/angularlynx --skill angular-lynx
+```
+
+The command finds the agents installed on your machine, such as Claude Code, Cursor and Codex, and asks which to install it into.
+
 ## Next steps
 
 - [Tutorial: Build a todo app](/guide/tutorial): learn elements, styling, events and signals step by step.

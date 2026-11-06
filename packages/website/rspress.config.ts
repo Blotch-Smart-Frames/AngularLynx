@@ -218,6 +218,7 @@ export default defineConfig({
         { text: 'Routing', link: '/guide/routing' },
         { text: 'HTTP Requests', link: '/guide/http' },
         { text: 'Sign In with a Web Page', link: '/guide/web-sign-in' },
+        { text: 'Open Links Outside the App', link: '/guide/open-links' },
         {
           text: 'Keep Data After the App Closes',
           link: '/guide/persistent-storage',
@@ -303,6 +304,7 @@ export default defineConfig({
               text: 'LynxWebAuthSession',
               link: '/api/angular-lynx/web-auth-session',
             },
+            { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
             {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
@@ -464,6 +466,7 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Platform' },
         { text: 'Defer Blocks', link: '/examples/defer' },
+        { text: 'Linking', link: '/examples/linking' },
         { text: 'Error Boundary', link: '/examples/error-boundary' },
         { text: 'Error Handling', link: '/examples/error-handling' },
         { text: 'Internationalization', link: '/examples/i18n' },

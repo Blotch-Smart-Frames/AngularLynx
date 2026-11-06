@@ -30,6 +30,14 @@ export type NativeAppOptions = {
   readonly permissions?: Partial<Record<Permission, string>>;
   /** Custom URL schemes that open the app, e.g. `["myapp"]`. */
   readonly deepLinkSchemes?: readonly string[];
+  /**
+   * Other apps' URL schemes `LynxLinking.canOpenURL()` can ask about, e.g.
+   * `["whatsapp", "instagram"]`. iOS answers only for the schemes in
+   * Info.plist's LSApplicationQueriesSchemes, and Android 11 and later only
+   * for the apps the manifest's `<queries>` asks about. `http`, `https`,
+   * `mailto`, `tel` and `sms` are always there.
+   */
+  readonly canOpenURLSchemes?: readonly string[];
   /** A 1024×1024 PNG without transparency, relative to the project root. */
   readonly icon?: string;
   readonly ios?: IosOptions;
@@ -84,6 +92,11 @@ export type ResolvedApp = {
   readonly edgeToEdge: boolean;
   readonly permissions: Partial<Record<Permission, string>>;
   readonly deepLinkSchemes: readonly string[];
+  /**
+   * {@link NativeAppOptions.canOpenURLSchemes} after
+   * {@link ALWAYS_QUERIED_SCHEMES}, in lowercase, each once.
+   */
+  readonly canOpenURLSchemes: readonly string[];
   readonly icon?: string;
   /** `MyApp`: the iOS product (and so .app/.ipa) name. */
   readonly productName: string;
@@ -106,6 +119,19 @@ const VERSION = /^\d+(\.\d+){0,2}$/;
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
 /** Google Play's maximum versionCode. */
 const MAX_BUILD_NUMBER = 2_100_000_000;
+/**
+ * The schemes `LynxLinking.canOpenURL()` can always ask about: the web, mail,
+ * the phone and messages, which most apps link to.
+ */
+export const ALWAYS_QUERIED_SCHEMES: readonly string[] = [
+  'http',
+  'https',
+  'mailto',
+  'tel',
+  'sms',
+];
+/** The most schemes iOS reads from LSApplicationQueriesSchemes. */
+const MAX_QUERIED_SCHEMES = 50;
 const PERMISSIONS: readonly Permission[] = [
   'camera',
   'microphone',
@@ -186,6 +212,28 @@ export const resolveAppOptions = (
     }
   }
 
+  const userQueriedSchemes = options.canOpenURLSchemes ?? [];
+  for (const scheme of userQueriedSchemes) {
+    if (!SCHEME.test(scheme)) {
+      throw new NativeConfigError(
+        `canOpenURLSchemes entry "${scheme}" is not a valid URL scheme. Give the scheme alone, without "://", e.g. "whatsapp".`,
+      );
+    }
+  }
+  // Schemes are case-insensitive, so "WhatsApp" and "whatsapp" are one.
+  const canOpenURLSchemes = [
+    ...new Set(
+      [...ALWAYS_QUERIED_SCHEMES, ...userQueriedSchemes].map((scheme) =>
+        scheme.toLowerCase(),
+      ),
+    ),
+  ];
+  if (canOpenURLSchemes.length > MAX_QUERIED_SCHEMES) {
+    throw new NativeConfigError(
+      `canOpenURLSchemes lists ${canOpenURLSchemes.length} schemes with the ${ALWAYS_QUERIED_SCHEMES.length} always there (${ALWAYS_QUERIED_SCHEMES.join(', ')}). iOS reads no more than ${MAX_QUERIED_SCHEMES}.`,
+    );
+  }
+
   const productName = name.replace(/[^A-Za-z0-9]/g, '') || 'App';
   const artifactName =
     name
@@ -202,6 +250,7 @@ export const resolveAppOptions = (
     edgeToEdge: options.edgeToEdge ?? true,
     permissions,
     deepLinkSchemes,
+    canOpenURLSchemes,
     icon: options.icon,
     productName,
     artifactName,

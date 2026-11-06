@@ -15,6 +15,7 @@ describe('resolveAppOptions', () => {
       edgeToEdge: true,
       permissions: {},
       deepLinkSchemes: [],
+      canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
       icon: undefined,
       productName: 'myapp',
       artifactName: 'my-app',
@@ -92,6 +93,45 @@ describe('resolveAppOptions', () => {
     expect(() =>
       resolveAppOptions({ permissions: { camera: ' ' } }, defaults),
     ).toThrow(/permissions.camera/);
+  });
+
+  it('adds the schemes canOpenURL asks about after the ones always there, each once', () => {
+    expect(
+      resolveAppOptions(
+        { canOpenURLSchemes: ['WhatsApp', 'whatsapp', 'HTTPS', 'instagram'] },
+        defaults,
+      ).canOpenURLSchemes,
+    ).toEqual([
+      'http',
+      'https',
+      'mailto',
+      'tel',
+      'sms',
+      'whatsapp',
+      'instagram',
+    ]);
+  });
+
+  it('rejects a canOpenURL scheme that is not a scheme', () => {
+    expect(() =>
+      resolveAppOptions({ canOpenURLSchemes: ['whatsapp://'] }, defaults),
+    ).toThrow(
+      'canOpenURLSchemes entry "whatsapp://" is not a valid URL scheme. Give the scheme alone, without "://", e.g. "whatsapp".',
+    );
+  });
+
+  it('rejects more canOpenURL schemes than iOS reads', () => {
+    const schemes = (count: number) =>
+      Array.from({ length: count }, (_, index) => `app${index}`);
+    expect(
+      resolveAppOptions({ canOpenURLSchemes: schemes(45) }, defaults)
+        .canOpenURLSchemes,
+    ).toHaveLength(50);
+    expect(() =>
+      resolveAppOptions({ canOpenURLSchemes: schemes(46) }, defaults),
+    ).toThrow(
+      'canOpenURLSchemes lists 51 schemes with the 5 always there (http, https, mailto, tel, sms). iOS reads no more than 50.',
+    );
   });
 
   it('rejects invalid URL schemes', () => {

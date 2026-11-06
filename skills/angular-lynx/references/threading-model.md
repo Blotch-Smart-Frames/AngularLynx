@@ -108,3 +108,4 @@ These do not exist in Lynx and are shimmed by the runtime:
 | `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`)                                                  |
 | `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |
 | `navigator.clipboard`                      | `LynxClipboard`                                                                                                  |
+| `window.open` / `location.href = url`      | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                    |

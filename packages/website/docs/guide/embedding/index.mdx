@@ -156,6 +156,17 @@ The apps `ng build --platform` makes have one you can copy: `WebAuthModule.swift
 
 The apps `ng build --platform` makes have them to copy, in AngularLynx's `packages/native/templates`: `LocalStorageModule.swift` and `LocalStorageModule.kt` use `UserDefaults` and `SharedPreferences`, `SecureStorageModule.swift` uses the Keychain, and `SecureStorageModule.kt` encrypts each value with a key the Android Keystore holds. Without the modules, both services keep values in memory, which lasts until the app closes.
 
+## Open links outside the app
+
+[`LynxLinking`](/guide/open-links) calls a native module named `AngularLynxLinking`. To use it in your own app, register one with these methods:
+
+- **`openURL(url, callback)`** opens `url` where the system opens it, and calls back with `{}` once it's handed over.
+- **`openInApp(url, options, callback)`** shows an `http` or `https` `url` in a browser sheet over the app, and calls back with `{}` once the person is back. `options` may hold `toolbarColor` and `controlsColor`, each a `#` and eight hex digits: red, green, blue and alpha.
+- **`canOpenURL(url, callback)`** calls back with `{ value }`, `true` when something on the device opens `url`.
+- **On failure,** any of them calls back with `{ error: 'failed', message }`. Call the callback once per call.
+
+The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift`, which uses `UIApplication.open` and `SFSafariViewController`, and `LinkingModule.kt`, which sends an `ACTION_VIEW` intent and opens a Custom Tab, given the activity as its param. Both are in AngularLynx's `packages/native/templates`. List the schemes `canOpenURL` asks about in your Info.plist's `LSApplicationQueriesSchemes` and your manifest's `<queries>`. Without the module, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`.
+
 ## Let someone pick a photo
 
 [`LynxImagePicker`](/guide/image-picker) calls a native module named `AngularLynxImagePicker`. To use it in your own app, register one with a `pick(options, callback)` method:

@@ -122,7 +122,8 @@ android {
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.core:core-ktx:1.16.0")
-    // Custom Tabs, which WebAuthModule opens sign-in pages in.
+    // Custom Tabs, which WebAuthModule opens sign-in pages in, and
+    // LinkingModule the pages of openInApp().
     implementation("androidx.browser:browser:1.8.0")
     // EXIF orientation, which ImagePickerModule applies to a photo it
     // re-encodes, since BitmapFactory ignores it. The AndroidX one reads it

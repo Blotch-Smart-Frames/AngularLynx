@@ -17,8 +17,9 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
 
 /**
  * Writes the app options into the Android template: identity goes in
- * angular-lynx.properties (which app/build.gradle.kts reads), and permissions
- * and deep links go between the manifest's `angular-lynx:*` markers.
+ * angular-lynx.properties (which app/build.gradle.kts reads), and permissions,
+ * deep links and the apps canOpenURL can see go between the manifest's
+ * `angular-lynx:*` markers.
  */
 export const androidGenerator: PlatformGenerator = {
   configure: (dir, app) => {
@@ -31,6 +32,7 @@ export const androidGenerator: PlatformGenerator = {
     let manifest = readFileSync(manifestPath, 'utf8');
     manifest = replaceMarker(manifest, 'permissions', permissionEntries(app));
     manifest = replaceMarker(manifest, 'deep-links', deepLinkEntries(app));
+    manifest = replaceMarker(manifest, 'queries', queriesEntries(app));
     writeFileSync(manifestPath, manifest);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
@@ -96,6 +98,23 @@ export const deepLinkEntries = (app: ResolvedApp): string =>
         ),
         '</intent-filter>',
       ].join('\n');
+
+/**
+ * The apps LinkingModule's canOpenURL can see from Android 11: those that
+ * open a URL with one of the schemes. resolveActivity() finds no other app,
+ * though startActivity() still opens one.
+ */
+export const queriesEntries = (app: ResolvedApp): string =>
+  [
+    '<queries>',
+    ...app.canOpenURLSchemes.flatMap((scheme) => [
+      '    <intent>',
+      '        <action android:name="android.intent.action.VIEW" />',
+      `        <data android:scheme="${escapeXml(scheme)}" />`,
+      '    </intent>',
+    ]),
+    '</queries>',
+  ].join('\n');
 
 /** The Android SDK, from the environment or the Android Studio default. */
 export const findAndroidSdk = (

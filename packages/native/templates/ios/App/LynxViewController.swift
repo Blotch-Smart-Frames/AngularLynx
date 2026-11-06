@@ -27,6 +27,7 @@ final class LynxViewController: UIViewController {
     config.register(SecureStorageModule.self)
     // LynxClipboard's text (ClipboardModule).
     config.register(ClipboardModule.self)
+    config.register(LinkingModule.self)
     // The photo picker behind LynxImagePicker (ImagePickerModule).
     config.register(ImagePickerModule.self)
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from

@@ -69,6 +69,41 @@ async signIn(): Promise<string | null> {
 - **Rejects with `WebAuthSessionError`**, whose `code` is `canceled` (closed, or declined on iOS), `unavailable` or `failed` (couldn't open the page, or a sign-in is already open).
 - **`unavailable` everywhere but `ng build --platform` apps:** Lynx Explorer, the web preview and tests have no native module for it. Your own native app (or an ejected project from before it) registers an `AngularLynxWebAuth` module itself: see the website's "Embed in a Native App" guide.
 
+## Open links outside the app
+
+Lynx has no `<a href>`, `window.open` or `location`, so a link can't leave the app by itself. `LynxLinking` hands it to the phone:
+
+```typescript
+import { inject } from '@angular/core';
+import { LinkingError, LynxLinking } from '@blotch/angular-lynx';
+
+readonly #linking = inject(LynxLinking);
+
+async openHelp(): Promise<void> {
+  // A browser sheet over the app; resolves once the person is back.
+  await this.#linking.openInApp('https://example.com/help', { toolbarColor: '#18181b' });
+  // Refresh anything the page may have changed here.
+}
+
+async emailSupport(): Promise<void> {
+  try {
+    await this.#linking.openURL('mailto:support@example.com');
+  } catch (error) {
+    if (error instanceof LinkingError && error.code === 'failed') {
+      // No mail app on this phone.
+    }
+  }
+}
+```
+
+- **`openURL(url)`** opens the URL where the phone opens it: `https` in the browser (or the app that claims the link), `mailto:` in the mail app, `tel:` in the phone app, another app's scheme in that app. Resolves once handed over; rejects with `LinkingError` `failed` when nothing opens it.
+- **`openInApp(url, { toolbarColor?, controlsColor? })`** shows an `http`/`https` page in `SFSafariViewController` (iOS) or a Custom Tab (Android). It resolves when the sheet closes on iOS, and when the app comes back to the front on Android (Android doesn't report a Custom Tab closing). Any other scheme rejects with a `TypeError`. Colors are hex or comma `rgb()`/`rgba()`; `controlsColor` is iOS only. Not for sign-in: use `LynxWebAuthSession`, which returns the redirect.
+- **`canOpenURL(url)`** resolves whether something on the phone opens the URL. iOS and Android 11+ answer only for schemes the app declares: list them in `canOpenURLSchemes` in the `build` target's options (`["whatsapp"]`, scheme alone, at most 50 with the built-in ones), which `ng build --platform` writes into `LSApplicationQueriesSchemes` and the manifest's `<queries>`. `http`, `https`, `mailto`, `tel` and `sms` are always declared. `openURL()` needs no declaration.
+- **Relative URLs throw a `TypeError`**: give the scheme.
+- **Web preview:** both open a new tab (call them from a tap handler, before any `await`, or the browser blocks the tab); `openInApp()` resolves when the tab closes or the app's tab is shown again; `canOpenURL()` resolves `true`.
+- **Lynx Explorer:** no native module, so `openURL()`/`openInApp()` reject with `LinkingError` `unavailable`, and `canOpenURL()` resolves `false`. Your own native app registers an `AngularLynxLinking` module itself (website's "Embed in a Native App" guide).
+- **Specs:** the testing library records each URL instead of opening it: `openedURLs()` returns `[{ url, inApp }]` for the current test, and `canOpenURL()` resolves `true`.
+
 ## Pick a photo to upload
 
 Lynx has no `<input type="file">`. `LynxImagePicker` opens the phone's picker (`PHPickerViewController` on iOS, the Photo Picker on Android; neither needs a permission or a `photos` entry in `angular.json`) and resolves with `{ blob, name, type }`, or `null` when the person closes it:

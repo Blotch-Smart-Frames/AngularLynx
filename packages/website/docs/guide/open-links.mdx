@@ -1,0 +1,110 @@
+# Open links outside the app
+
+Lynx has no `<a href>`, `window.open` or `location`, so a link can't leave your app on its own. `LynxLinking` hands it to the phone: to the browser, to the mail app, to another app, or to a browser sheet that opens over your app and brings the person back when they close it.
+
+<Go example="linking" defaultFile="src/app/app.ts" />
+
+## Open a page in a browser sheet
+
+For help pages, terms and privacy pages, or a hosted page such as a payment provider's onboarding, open it with `openInApp()`. The page opens over your app, and the person comes straight back to where they were:
+
+```typescript title="src/app/account.ts"
+import { Component, inject } from '@angular/core';
+import { LYNX_ELEMENTS, LynxLinking } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-account',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="openTerms()">
+      <text>Terms of service</text>
+    </view>
+  `,
+})
+export class Account {
+  readonly #linking = inject(LynxLinking);
+
+  async openTerms(): Promise<void> {
+    await this.#linking.openInApp('https://example.com/terms');
+    // The person is back in the app.
+  }
+}
+```
+
+The sheet is `SFSafariViewController` on iOS and a Custom Tab on Android. `openInApp()` resolves once the person is back:
+
+- **On iOS,** when they close the sheet.
+- **On Android,** when your app comes back to the front. Android doesn't say when a Custom Tab closes, so this is as close as it can tell, and it also happens when the person switches back to your app another way.
+
+That makes it the place to refresh what the page may have changed, such as the payout status after a payment provider's onboarding, whose result reaches your app through your backend.
+
+`openInApp()` opens `http` and `https` URLs only. Pass `toolbarColor` to match the sheet's toolbar to your app, and `controlsColor` for its buttons on iOS:
+
+```typescript
+await this.#linking.openInApp(url, { toolbarColor: '#18181b' });
+```
+
+The sheet isn't for signing in: it shares no sign-ins with Safari on iOS, and can't hand a result back. For a sign-in page, use [`LynxWebAuthSession`](/guide/web-sign-in).
+
+## Open a link in the browser or another app
+
+`openURL()` opens a URL where the phone would open it if the person tapped it anywhere else: `https` in the default browser, `mailto:` in the mail app, `tel:` in the phone app, and another app's own scheme in that app. A link to a site whose app is installed, such as a shop with its own app, opens the app.
+
+```typescript
+await this.#linking.openURL('mailto:support@example.com?subject=Payouts');
+```
+
+It resolves once the phone has handed the URL over, and rejects with a `LinkingError` whose `code` is `failed` when nothing on the phone opens it, such as a `mailto:` link on a phone without a mail app.
+
+## Check before you link
+
+`canOpenURL()` says whether something on the phone opens a URL, so you can leave out a link to an app that isn't installed:
+
+```typescript
+const hasWhatsApp = await this.#linking.canOpenURL('whatsapp://send');
+```
+
+iOS answers only for the schemes your app declares, and Android 11 and later only for the apps it says it looks for. For any other scheme, the answer is `false`. `http`, `https`, `mailto`, `tel` and `sms` are always declared. Add the others to `canOpenURLSchemes` in angular.json, and `ng build --platform` writes them into Info.plist's `LSApplicationQueriesSchemes` and the Android manifest's `<queries>`:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "canOpenURLSchemes": ["whatsapp", "instagram"]
+  }
+}
+```
+
+Give the scheme alone, without `://`. iOS reads no more than 50, the five always declared included. `openURL()` needs none of this: it opens any scheme.
+
+## In the web preview, Lynx Explorer and tests
+
+- **In the [web preview](/guide/glossary#web-preview),** `openURL()` and `openInApp()` open a new tab, and `canOpenURL()` resolves `true`, since a browser can't tell. `openInApp()` resolves when the person closes the tab or comes back to your app's tab. Browsers block a new tab that doesn't come from a tap, so call them from a tap handler, before anything is awaited.
+- **In Lynx Explorer,** which doesn't have your app's native modules, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`. Try links on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use them in your own native app, see [Embed in a Native App](/guide/embedding/#open-links-outside-the-app).
+- **In unit tests,** the [testing library](/api/testing-library/#openedurls) records each URL instead of opening it, so a spec can check where a tap leads:
+
+```typescript title="src/app/account.test.ts"
+import {
+  fireEvent,
+  openedURLs,
+  render,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+it('opens the terms in a browser sheet', async () => {
+  await render(Account);
+  fireEvent.tap(screen.getByText('Terms of service'));
+  await waitForUpdate();
+
+  expect(openedURLs()).toEqual([
+    { url: 'https://example.com/terms', inApp: true },
+  ]);
+});
+```
+
+## Related
+
+- [`LynxLinking` reference](/api/angular-lynx/linking)
+- [Sign in with a web page](/guide/web-sign-in)
+- [Run on iOS and Android](/guide/native-apps)

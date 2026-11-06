@@ -40,6 +40,40 @@ const simctl = async (args: string[], logFile: string) =>
   ).output;
 
 /**
+ * Adds the photo photo.yaml picks, newest in the library, so it's the first
+ * the picker shows. Right after a boot, the simulator's photo library isn't
+ * always ready: on a GitHub runner `simctl addmedia` hung for a minute and
+ * then crashed (exit 133) on a run where the same step had passed before. So
+ * it gets a few tries, a few seconds apart, before the run fails.
+ */
+const addLibraryPhoto = async (udid: string, logFile: string) => {
+  const tries = 4;
+  for (let attempt = 1; ; attempt++) {
+    const { code } = await runAllowFailure(
+      'xcrun',
+      ['simctl', 'addmedia', udid, LIBRARY_PHOTO],
+      {
+        cwd: process.cwd(),
+        logFile,
+        echo: false,
+        timeout: { ms: 90_000 },
+      },
+    );
+    if (code === 0) {
+      return;
+    }
+    check(
+      attempt < tries,
+      `\`xcrun simctl addmedia\` failed ${tries} times (last exit code ${code}).`,
+    );
+    console.log(
+      `simctl addmedia exited with code ${code}; trying again (${attempt + 1} of ${tries}).`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+};
+
+/**
  * Boots the E2E simulator, creating it on the newest iOS runtime that runs a
  * plain iPhone Pro first. On GitHub's runners a simulator sometimes fails to
  * boot ("Data Migration Failed"); like Lynx's own CI
@@ -183,8 +217,10 @@ export const runOnIosSimulator = async ({
   const processName = host.kind === 'shell' ? host.processName : 'LynxExplorer';
   const udid = await bootSimulator(logFile);
   await simctl(['install', udid, app], logFile);
-  // Newest in the library, so it's the first photo the picker shows.
-  await simctl(['addmedia', udid, LIBRARY_PHOTO], logFile);
+  // Only the shell runs photo.yaml, which picks this photo.
+  if (host.kind === 'shell') {
+    await addLibraryPhoto(udid, logFile);
+  }
 
   // The app's own log, for JavaScript errors and for debugging failures.
   const explorerLog = path.join(artifactsDir, `ios-${host.kind}.log`);

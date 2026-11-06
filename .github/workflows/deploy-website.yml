@@ -18,6 +18,7 @@ on:
       - packages/native/**
       - packages/dolan/**
       - packages/ui/**
+      - package.json
       - package-lock.json
       - .github/workflows/deploy-website.yml
   # For deploying by hand, e.g. after a change the paths above miss.
@@ -53,24 +54,27 @@ jobs:
         uses: actions/cache@v6
         with:
           path: examples/*/dist
-          key: examples-${{ hashFiles('examples/**/src/**', 'examples/**/package.json', 'examples/**/angular.json', 'examples/**/lynx.config.ts', 'packages/runtime/src/**', 'packages/build/builders/**', 'packages/rsbuild-plugin-angular-lynx/src/**') }}
+          # The recipe (package.json's build:examples) and this file are part
+          # of the key: when how the examples build changes, such as the base
+          # href below, they have to build again, or the deploy ships the builds
+          # the previous recipe made.
+          key: examples-${{ hashFiles('examples/**/src/**', 'examples/**/package.json', 'examples/**/angular.json', 'examples/**/lynx.config.ts', 'packages/runtime/src/**', 'packages/build/builders/**', 'packages/rsbuild-plugin-angular-lynx/src/**', 'package.json', '.github/workflows/deploy-website.yml') }}
           restore-keys: examples-
-
-      - name: Build runtime and builders
-        if: steps.cache-examples.outputs.cache-hit != 'true'
-        # The examples build with `ng build`, so they need the builders, which
-        # turbo builds after the rsbuild plugin and the native builder they
-        # depend on.
-        run: npx turbo run build --filter=./packages/runtime --filter=./packages/build
 
       - name: Build examples
         if: steps.cache-examples.outputs.cache-hit != 'true'
-        # Bound parallelism to avoid OOM: turbo defaults to 10 concurrent
-        # example builds, each running rspack (lynx + web) with 2 Angular
-        # workers. On a memory-limited CI runner that spikes past available
-        # RAM and a build gets killed with a bare "exited (1)". Cap concurrency
-        # and worker count to keep peak memory bounded.
-        run: NG_BUILD_MAX_WORKERS=2 npx turbo run build --filter='@angular-lynx-example/*' --concurrency=4
+        # The recipe the website's own build uses: the examples' dependencies
+        # first (the builders, which turbo builds after the rsbuild plugin and
+        # the native builder), then every example with `--base-href=/examples/`,
+        # 4 at a time with 2 Angular workers each. The base href is what makes
+        # a web bundle's images load on the site: Lynx for Web resolves them
+        # against the page, not the bundle, and prepare-examples puts them
+        # under /examples/static/. A plain `turbo run build` here passed and
+        # shipped the furniture shop with no pictures. The parallelism is
+        # bounded because turbo's default of 10 concurrent rspack builds, each
+        # with 2 Angular workers, got killed on the runner with a bare
+        # "exited (1)".
+        run: npm run build:examples
 
       - name: Build and deploy
         # `vercel build` reads project settings from a local .vercel/ dir, which

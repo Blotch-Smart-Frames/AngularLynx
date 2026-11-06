@@ -153,7 +153,14 @@ jobs:
             console.log(mine.map((n) => "--filter=./examples/" + n).join(" "));
           ')
           echo "Shard ${SHARD}/${SHARD_TOTAL} building: ${FILTERS}"
-          npx turbo run build ${FILTERS} --concurrency=4
+          # The examples' dependencies first (cache hits from build-packages),
+          # then this shard's examples with the base href the website builds
+          # them with (package.json's build:examples). The argument after --
+          # is part of turbo's task hash, so build-website replays this
+          # shard's examples only when it's the same; without it, build-website
+          # built every example again itself (14 minutes instead of 1).
+          npx turbo run build --filter='@angular-lynx-example/*^...'
+          npx turbo run build ${FILTERS} --only --concurrency=4 -- --base-href=/examples/
         env:
           SHARD: ${{ matrix.shard }}
           NG_BUILD_MAX_WORKERS: 2

@@ -12,6 +12,16 @@ export const DEVICE_WIDTH = 402;
 export const DEVICE_HEIGHT = 778;
 
 /**
+ * The same phone's whole screen, and the parts of it the status bar (with
+ * the Dynamic Island) and the home indicator cover. The home page's phone
+ * runs an app over the whole screen, as an app built with `ng build
+ * --platform ios` does, and sends it these insets.
+ */
+export const SCREEN_HEIGHT = 874;
+export const SAFE_AREA_TOP = 62;
+export const SAFE_AREA_BOTTOM = 34;
+
+/**
  * Lynx's default font: the system font on iOS (and Roboto on Android, which
  * `system-ui` picks there). Without it, text inside `<lynx-view>` inherits the
  * docs site's Inter, or Times in a bare page.

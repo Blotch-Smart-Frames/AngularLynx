@@ -16,6 +16,16 @@ const EXAMPLES_SRC = path.resolve(REPO_ROOT, 'examples');
 const EXAMPLES_DEST = path.resolve(__dirname, '../docs/public/examples');
 const EXAMPLE_GIT_BASE_URL =
   'https://github.com/Blotch-Smart-Frames/AngularLynx/tree/master/examples';
+/**
+ * The `baseHref` every example is built with (see build-examples in
+ * package.json): Lynx for Web resolves a bundle's images against the page
+ * that shows the bundle, so the web bundles ask for them under this path,
+ * and each example's `dist/static` is merged into `docs/public/examples/static`
+ * below. The file names carry a content hash, so two examples' copies of a
+ * file are the same file.
+ */
+const EXAMPLES_BASE_HREF = '/examples/';
+const STATIC_DEST = path.join(EXAMPLES_DEST, 'static');
 
 const BINARY_EXTENSIONS = new Set([
   '.png',
@@ -211,6 +221,11 @@ const processExample = (exampleName) => {
   if (fs.existsSync(distSrcDir)) {
     copyDirRecursive(distSrcDir, path.join(destDir, 'dist'));
   }
+  // The bundled images, where the web bundle asks for them (EXAMPLES_BASE_HREF).
+  const staticSrcDir = path.join(distSrcDir, 'static');
+  if (fs.existsSync(staticSrcDir)) {
+    copyDirRecursive(staticSrcDir, STATIC_DEST);
+  }
 
   // Note: Do NOT nullify empty styleInfo ({}) — it must remain truthy.
   // The decode worker awaits WASM before processing styleInfo, which
@@ -280,7 +295,10 @@ if (needsBuild) {
     if (!fs.existsSync(distDir)) {
       console.info(`Building example: ${example} (no dist/ found)`);
       try {
-        execSync('npm run build', { cwd: exampleDir, stdio: 'inherit' });
+        execSync(`npm run build -- --base-href=${EXAMPLES_BASE_HREF}`, {
+          cwd: exampleDir,
+          stdio: 'inherit',
+        });
       } catch (err) {
         console.error(`  Failed to build ${example}:`, err.message);
       }

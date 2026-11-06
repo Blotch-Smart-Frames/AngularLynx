@@ -28,11 +28,21 @@ const turnTheStone: AutoGestureOptions = {
 
 /**
  * The apps the landing page runs live. The showcase comes first: it's the
- * one that makes the case; the other two are there for anyone who wants the
- * simplest app and the widest one. `code` is the docs page with the app's
- * source beside it.
+ * one that makes the case. The furniture shop is the Lynx tutorials' app,
+ * for a reader who knows the ReactLynx original; the other two are there for
+ * anyone who wants the simplest app and the widest one. `code` is the docs
+ * page with the app's source beside it.
  */
-const demos = [
+const demos: {
+  id: string;
+  label: string;
+  tagline: string;
+  blurb: string;
+  hint: string;
+  code: string;
+  autoGesture?: AutoGestureOptions;
+  statusBar?: 'light' | 'dark';
+}[] = [
   {
     id: 'showcase',
     label: 'Facet',
@@ -42,6 +52,19 @@ const demos = [
     hint: 'Drag the dial to turn the stone. Tap another stone to recolor the app.',
     code: '/examples/showcase',
     autoGesture: turnTheStone,
+    statusBar: 'light',
+  },
+  {
+    id: 'furniture-shop',
+    label: 'Furniture shop',
+    tagline: 'The Lynx tutorials, as one app',
+    blurb:
+      'The gallery and the product page the official Lynx tutorials build, in Angular: a waterfall list that scrolls itself, and a swiper driven by main-thread scripts.',
+    hint: 'Tap a picture to open it, then swipe through its photos.',
+    // No demonstration: Lynx for Web takes a tap only from a real click, so
+    // a synthesized one can't open a product. The gallery scrolls by itself.
+    code: '/examples/furniture-shop',
+    statusBar: 'light',
   },
   {
     id: 'todo-list',
@@ -158,6 +181,7 @@ export const ShowCase: React.FC = () => {
               label={demo.label}
               fallbackHref={demo.code}
               autoGesture={demo.autoGesture}
+              statusBar={demo.statusBar}
             />
           </div>
           <div className={styles['notes']}>

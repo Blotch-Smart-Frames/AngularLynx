@@ -6348,3 +6348,17 @@ CSS variables do inherit, and follow class changes (`[class.x]` toggles), on iOS
 ### How AngularLynx uses it
 
 The build plugin's `textInheritanceForLynx` copies each inheritable declaration (Lynx's own `enableCSSInheritance` list) to `--angular-lynx-<property>`, after Tailwind 4's lowering. The elements that stand for HTML's text (HTML text tags and the anonymous `<text>`) read the variable for each property their own rules don't set, in their inline style, ahead of the app's. Which properties an element's rules set comes from the style index the plugin builds from the app's CSS and prepends to the main-thread script (`style-index.ts`). Elements written as Lynx elements read none, so they look as before. Inline styles don't set the variables, so `<div style="color: red">` passes nothing down.
+
+## Lynx for Web resolves a bundle's images against the page, not the bundle
+
+### What you'd expect (web)
+
+A page's relative URLs resolve against the page, and a script's against the script. A bundle built with rspeedy's default (no `output.assetPrefix`) refers to its images as `static/image/<name>.<hash>.png`, and on iOS and Android Lynx resolves that against the bundle's own URL, so the bundle and its `static/` folder can live anywhere together.
+
+### What Lynx does
+
+Lynx for Web's `<image>` puts the `src` on an `<img>` in the page's shadow tree, so the browser resolves it against the page that shows the `<lynx-view>`. A bundle at `/examples/kitchen-sink-app/dist/main.web.bundle` shown on `/` asked for `/static/image/lynx-logo.<hash>.png`, which doesn't exist, and the docs' web previews drew no bundled image (measured on angularlynx.js.org on 2026-11-06). web-core knows the bundle's URL (`LynxViewInstance.templateUrl`) but doesn't give it to the app, so the app can't resolve the URLs itself.
+
+### The fix
+
+Angular's `baseHref` build option: `ng build --base-href=/examples/` sets rspeedy's `output.assetPrefix` for the `web` environment, so the web bundle asks for `/examples/static/image/…`. The website builds every example with it and merges each example's `dist/static` into `docs/public/examples/static` (the names carry a content hash, so the merge is safe). The `lynx` bundle is left without a prefix, since native Lynx resolves against the bundle. Fonts never had the problem: the build inlines `@font-face` files as data URLs (see css.ts in the build plugin).

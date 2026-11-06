@@ -1,0 +1,31 @@
+# Furniture shop: the Lynx tutorial app
+
+The two apps the official Lynx tutorials build, [Product Gallery](https://lynxjs.org/learn/gallery) and [Product Detail](https://lynxjs.org/learn/product-detail), as one Angular app. Tap a picture in the gallery to open its product page, and swipe through the photos.
+
+<Go example="furniture-shop" defaultFile="src/app/gallery/gallery.ts" />
+
+The pictures, colors and copy are the tutorials'. Set it next to the [ReactLynx original](https://lynxjs.org/learn/gallery) to compare the two.
+
+## What it shows
+
+- **A waterfall `<list>`** — `list-type="waterfall"` lays the pictures into two columns, and `estimated-main-axis-size-px` tells the list each picture's height before it loads. See [`<list>`](/api/elements/list).
+- **An element method** — `autoScroll` scrolls the gallery by itself. The page calls it with `invoke()` once the list has rendered. See [Call element methods](/guide/selector-query).
+- **A main-thread scroll handler** — `[mainThreadBindscroll]` moves the glowing scrollbar on every scroll event, with no change detection in between. See [Main-thread scripts](/guide/main-thread/).
+- **A swiper from touch events** — `src/app/product-detail/swiper.ts` drags the photo strip with `[mainThreadBindtouchmove]` and snaps it with a `requestAnimationFrame` tween. Mouse events are bound too, so it drags in a desktop browser.
+- **Two routes** — the gallery and the product page are lazy routes, and the product page reads its `:index` through `withComponentInputBinding()`. See [Routing](/guide/routing).
+- **Bundled images** — the pictures are `import`ed, so the build hashes and copies them. See [`<image>`](/api/elements/image).
+- **Safe areas** — the nav bar and the Order button pad themselves with `env(safe-area-inset-*)`, so on a phone they clear the status bar and the home indicator. See [Safe area](/guide/safe-area).
+
+## Where the tutorials differ
+
+Angular runs on the main thread, where the elements are, so the parts of the ReactLynx tutorials that cross threads fall away:
+
+- The swiper's touch handlers are class properties with the `'main thread'` directive. They read the component's fields and write its `current` signal directly; there's no `runOnBackground()` to reach state on another thread.
+- A tap on a dot calls the same code the handlers use, without `runOnMainThread()`.
+- The snap's easing is a plain function passed as an input, not a `main-thread:` prop.
+
+## Related
+
+- [Main-thread scripts](/guide/main-thread/)
+- [Facet: a gem atlas](/examples/showcase)
+- [Tutorial: Product Gallery on lynxjs.org](https://lynxjs.org/learn/gallery)

@@ -8,7 +8,12 @@ type Todo = { id: number; text: string; done: boolean };
   imports: [LYNX_ELEMENTS],
   template: `
     <scroll-view class="h-screen bg-zinc-50" scroll-orientation="vertical">
-      <view class="p-6">
+      <!-- The page runs under the status bar on a phone; the inset keeps
+           the title clear of it. -->
+      <view
+        class="p-6"
+        style="padding-top: calc(1.5rem + env(safe-area-inset-top))"
+      >
         <text class="mb-1 text-[28px] font-bold text-zinc-900">Todos</text>
         <text class="mb-5 text-[13px] text-zinc-500">
           {{ remaining() }} remaining

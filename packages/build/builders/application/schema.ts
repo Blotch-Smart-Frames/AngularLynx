@@ -10,6 +10,8 @@ export type ApplicationBuilderOptions = NativeAppOptions & {
   readonly watch?: boolean;
   readonly config?: string;
   readonly environment?: string[];
+  /** The URL path the app is served under: the web bundle's asset prefix. */
+  readonly baseHref?: string;
   /**
    * The Angular compiler options `ng new` puts in the build target (browser,
    * tsConfig, polyfills, styles, optimization, ...).

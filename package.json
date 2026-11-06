@@ -20,7 +20,7 @@
   "main": "index.js",
   "scripts": {
     "build": "turbo run build --filter=./packages/* --filter=!@blotch/angular-lynx-website",
-    "build:examples": "NG_BUILD_MAX_WORKERS=2 turbo run build --filter=./examples/* --concurrency=4",
+    "build:examples": "NG_BUILD_MAX_WORKERS=2 turbo run build --filter=./examples/* --concurrency=4 -- --base-href=/examples/",
     "build:all": "turbo run build --filter=./packages/*",
     "clean:caches": "node packages/release/src/prune-caches.ts",
     "test": "turbo run test",

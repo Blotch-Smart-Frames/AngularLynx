@@ -278,7 +278,10 @@ Replace the outer `<view>` with a `<scroll-view>`, and wrap the content in a `<v
 
 ```angular-html
 <scroll-view class="h-screen bg-zinc-50" scroll-orientation="vertical">
-  <view class="p-6">
+  <view
+    class="p-6"
+    style="padding-top: calc(1.5rem + env(safe-area-inset-top))"
+  >
     <!-- the title, count, input row and @for list, unchanged -->
   </view>
 </scroll-view>
@@ -287,6 +290,7 @@ Replace the outer `<view>` with a `<scroll-view>`, and wrap the content in a `<v
 - **Only `<scroll-view>` and `<list>` scroll.** Lynx draws each element as a native UI control. On iOS and Android, only dedicated scroll controls scroll, and a `<view>` isn't one. That's why `overflow: scroll` does nothing.
 - **A `<scroll-view>` needs a fixed height**, here `h-screen`. Without one, it grows to fit its content and has nothing to scroll.
 - `scroll-orientation="vertical"` sets the direction.
+- **`env(safe-area-inset-top)`** is the height of the status bar and the notch. The app draws under them on a phone, as a web page with `viewport-fit=cover` does, so the title moves down by that much and scrolls under them. It's 0 in the web preview. See [Safe area](/guide/safe-area).
 
 For hundreds of rows, use [`<list>`](/api/elements/list) instead. It reuses rows as they scroll out of view. See [`<scroll-view>`](/api/elements/scroll-view) for its other attributes.
 

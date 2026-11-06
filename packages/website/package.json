@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "clean-example-caches": "find ../../examples -maxdepth 3 -path '*/node_modules/.cache' -type d -exec rm -rf {} + 2>/dev/null; exit 0",
-    "build-examples": "npm run clean-example-caches && NG_BUILD_MAX_WORKERS=2 turbo run build --filter='@angular-lynx-example/*' --concurrency=4",
+    "build-examples": "npm run clean-example-caches && NG_BUILD_MAX_WORKERS=2 turbo run build --filter='@angular-lynx-example/*' --concurrency=4 -- --base-href=/examples/",
     "prepare-examples": "node scripts/prepare-examples.mjs",
     "dev:no-cache": "npm run build-examples && npm run prepare-examples && rspress dev",
     "dev": "rspress dev",

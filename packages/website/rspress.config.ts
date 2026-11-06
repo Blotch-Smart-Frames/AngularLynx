@@ -411,6 +411,10 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Showcase' },
         { text: 'Facet: a gem atlas', link: '/examples/showcase' },
+        {
+          text: 'Furniture shop: the Lynx tutorial app',
+          link: '/examples/furniture-shop',
+        },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Getting Started' },
         { text: 'Hello World', link: '/examples/hello-world' },

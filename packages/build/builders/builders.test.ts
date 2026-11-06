@@ -262,6 +262,35 @@ describe('application builder', () => {
     });
   });
 
+  it("makes baseHref the web environment's asset prefix, and leaves the lynx one alone", async () => {
+    const { passedConfig, rspeedy } = fakeRspeedy();
+    await firstOutput(
+      build({ browser: 'src/main.ts', baseHref: '/shop/' }, rspeedy),
+    );
+    expect(passedConfig()).toMatchObject({
+      environments: { lynx: {}, web: { output: { assetPrefix: '/shop/' } } },
+    });
+    expect(passedConfig().environments!['lynx']).toEqual({});
+  });
+
+  it('keeps the asset prefix lynx.config.ts sets over baseHref, and adds none to an app without a web environment', async () => {
+    const configured = fakeRspeedy({
+      environments: { lynx: {}, web: { output: { assetPrefix: '/cdn/' } } },
+    });
+    await firstOutput(
+      build({ browser: 'src/main.ts', baseHref: '/shop/' }, configured.rspeedy),
+    );
+    expect(configured.passedConfig()).toMatchObject({
+      environments: { web: { output: { assetPrefix: '/cdn/' } } },
+    });
+
+    const lynxOnly = fakeRspeedy({ environments: { lynx: {} } });
+    await firstOutput(
+      build({ browser: 'src/main.ts', baseHref: '/shop/' }, lynxOnly.rspeedy),
+    );
+    expect(lynxOnly.passedConfig().environments).toEqual({ lynx: {} });
+  });
+
   it('loads the config file the `config` option names, which rspeedy requires to exist', async () => {
     const { rspeedy } = fakeRspeedy();
     await firstOutput(build({ config: 'lynx.prod.ts' }, rspeedy));

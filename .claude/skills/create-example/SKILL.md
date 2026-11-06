@@ -262,8 +262,9 @@ Add an entry in `packages/website/rspress.config.ts` in the `/examples/` sidebar
 # From repo root — install deps for the new example
 npm install
 
-# Build the example
-cd examples/<name> && npm run build && cd ../..
+# Build the example, as the website does: the base href puts the site's
+# path on the web bundle's image URLs (see the note below)
+cd examples/<name> && npm run build -- --base-href=/examples/ && cd ../..
 
 # Run prepare-examples to generate metadata
 cd packages/website && node scripts/prepare-examples.mjs
@@ -286,5 +287,6 @@ cd packages/website && npm run dev
 ## Notes
 
 - The `prepare-examples.mjs` script takes entry names from `entry` in `lynx.config.ts`, or else from the `dist/<name>.lynx.bundle` files the build wrote — each entry produces a `dist/<name>.lynx.bundle` and `dist/<name>.web.bundle`
+- **Bundled images** (`import pic from './pic.png'`, with `/// <reference types="@blotch/angular-lynx-build/client" />` in a `src/*.d.ts`): Lynx for Web resolves a bundle's image URLs against the page, not the bundle, so the website builds every example with `--base-href=/examples/` (`build-examples` in the website's package.json) and `prepare-examples.mjs` merges each example's `dist/static` into `docs/public/examples/static`. An example built without the base href shows no images in the docs' web preview
 - Preview images: place a `preview-image.png` at the example root for a static preview fallback
 - The `<Go>` component props: `example` (folder name), `defaultFile` (initial file to show), `defaultTab` (`'web'`/`'preview'`/`'qrcode'`), `img` (static preview path)

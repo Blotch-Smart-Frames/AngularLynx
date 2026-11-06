@@ -163,6 +163,32 @@ const loadProjectConfig = async (
 };
 
 /**
+ * Angular's `baseHref`, the URL path the app is served under, becomes the web
+ * bundle's asset prefix (rspeedy's `output.assetPrefix` for the `web`
+ * environment). Lynx for Web resolves a bundle's images against the page
+ * that shows the bundle, not against the bundle, so a bundle served under a
+ * path needs the path in its asset URLs, as a web app deployed under one
+ * does. The `lynx` bundle is left alone: Lynx resolves its assets against the
+ * bundle itself, wherever it's served from. A prefix lynx.config.ts sets for
+ * the environment wins, and an app whose lynx.config.ts leaves the `web`
+ * environment out gets none added.
+ */
+const applyBaseHref = (
+  content: Record<string, unknown>,
+  baseHref: unknown,
+): void => {
+  if (typeof baseHref !== 'string' || baseHref === '') return;
+  const environments = content['environments'] as Record<
+    string,
+    { output?: { assetPrefix?: unknown } } | undefined
+  >;
+  const web = environments['web'];
+  if (!web) return;
+  const output = (web.output ??= {});
+  output.assetPrefix ??= baseHref;
+};
+
+/**
  * Creates an rspeedy instance the way `rspeedy build` and `rspeedy dev` do:
  * load lynx.config.ts, then apply the command-line overrides, which here come
  * from the builder options.
@@ -231,6 +257,7 @@ export const createRspeedy = async ({
   }
   content.mode = mode;
   content['environments'] ??= { lynx: {}, web: {} };
+  applyBaseHref(content, angularCli.buildOptions['baseHref']);
   const browser = angularCli.buildOptions['browser'];
   const source = (content['source'] ??= {}) as { entry?: unknown };
   if (source.entry === undefined && typeof browser === 'string') {

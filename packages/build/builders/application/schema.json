@@ -120,6 +120,10 @@
       "type": ["string", "object"],
       "description": "Angular: the output folder. Defaults to rspeedy's dist/."
     },
+    "baseHref": {
+      "type": "string",
+      "description": "Angular: the URL path the app is served under, e.g. /shop/. The web bundle's images are requested under it (rspeedy's output.assetPrefix for the web environment), since Lynx for Web resolves them against the page that shows the bundle. The Lynx bundle resolves them against itself and doesn't need it."
+    },
     "index": {
       "type": ["boolean", "string", "object"],
       "description": "Angular: accepted for compatibility; Lynx apps have no index.html."

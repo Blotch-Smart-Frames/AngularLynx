@@ -66,6 +66,7 @@ A few work differently on Lynx:
 | `optimization`             | Also picks a production build (scripts optimized, the default) or a development build                                               |
 | `budgets`                  | Checked against each entry's bundle (each is its own `initial` budget) and each component stylesheet. The web preview isn't checked |
 | `outputPath`               | Defaults to `dist/`                                                                                                                 |
+| `baseHref`                 | The web bundle asks for its images under this path (RSpeedy's `output.assetPrefix` for the `web` environment): Lynx for Web resolves them against the page that shows the bundle, so a bundle served under `/shop/` needs `--base-href=/shop/`. The Lynx bundle resolves them against itself and ignores it |
 | `assets`, `scripts`        | Only `ng test` uses them. Bundles load assets through `import`s                                                                     |
 | `index`, `extractLicenses` | Accepted so `ng new`'s config stays valid. They do nothing                                                                          |
 

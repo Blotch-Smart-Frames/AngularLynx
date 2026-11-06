@@ -46,7 +46,7 @@ import { REPO_ROOT } from './packages.ts';
  * a machine that works on this repository through Claude Code prunes itself.
  * `--quiet` does the work at most once a day, and in a detached process,
  * since walking both caches takes up to half a minute and a session start
- * shouldn't wait for it. That process logs what it removed to
+ * shouldn't wait for it. That process logs what it did, with the time, to
  * ~/.cache/angular-lynx/prune-caches.log.
  */
 const TURBO_MAX_AGE_DAYS = 14;

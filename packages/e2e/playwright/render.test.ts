@@ -1,3 +1,4 @@
+// cspell:words filechooser
 import path from 'node:path';
 
 import { expect, test, type Page } from '@playwright/test';

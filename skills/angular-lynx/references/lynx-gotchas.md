@@ -153,6 +153,10 @@ Use DOM ordering (earlier siblings = lower z-order, later = higher).
 
 Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` string. The phone draws it either way, but the web preview shows `content` as an SVG image, which a browser leaves blank without the namespace. SVG copied from an HTML page often leaves it out. `<ui-icon [svg]>` adds it for you.
 
+### No `<input type="file">`
+
+Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload).
+
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
 Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.

@@ -3,7 +3,13 @@ import path from 'node:path';
 import { run, runAllowFailure, start, step, stop } from '../process.ts';
 import { HTTP_DATA } from '../static-server.ts';
 import { EXPLORER, getExplorer } from './explorer.ts';
-import { flowsFor, type NativeHost, judgeFlow, runFlows } from './maestro.ts';
+import {
+  flowsFor,
+  type NativeHost,
+  judgeFlow,
+  LIBRARY_PHOTO,
+  runFlows,
+} from './maestro.ts';
 
 /**
  * Layer 6 on Android: installs the app's own APK, or Lynx Explorer, on the
@@ -34,6 +40,19 @@ export const runOnAndroidEmulator = async ({
     run('adb', args, { cwd: process.cwd(), logFile, echo: false });
   await adb(['wait-for-device']);
   await adb(['install', '-r', apk]);
+  // The emulator's library is empty. MediaProvider indexes a file pushed to
+  // shared storage when it's written; the broadcast covers older Androids.
+  const photo = '/sdcard/Pictures/angular-lynx-e2e.jpg';
+  await adb(['push', LIBRARY_PHOTO, photo]);
+  await adb([
+    'shell',
+    'am',
+    'broadcast',
+    '-a',
+    'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+    '-d',
+    `file://${photo}`,
+  ]);
   for (const reversed of new Set([port, HTTP_DATA.port])) {
     await adb(['reverse', `tcp:${reversed}`, `tcp:${reversed}`]);
   }

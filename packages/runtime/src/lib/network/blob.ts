@@ -1,3 +1,4 @@
+import { bytesToBase64 } from './base64';
 import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
 import { LynxReadableStream } from './readable-stream';
 
@@ -107,6 +108,19 @@ export const revokeObjectURL = (url: string): void => {
 /** The blob an object URL names, or undefined once it's revoked. */
 export const blobForURL = (url: string): LynxBlob | undefined =>
   objectURLs.get(url);
+
+/**
+ * The `data:` URL of the blob an object URL names, for an `<image>`'s `src`,
+ * or undefined for any other URL. Lynx's `<image>` loads its own URLs, so a
+ * `blob:` URL only this thread knows would show nothing; a data: URL holds
+ * the bytes themselves. It's what lets `URL.createObjectURL(picked.blob)`
+ * show a photo LynxImagePicker picked, as it would in a browser.
+ */
+export const dataURLForObjectURL = (url: string): string | undefined => {
+  const blob = url.startsWith('blob:') ? objectURLs.get(url) : undefined;
+  if (!blob) return undefined;
+  return `data:${blob.type || 'application/octet-stream'};base64,${bytesToBase64(blob.bytesSync())}`;
+};
 
 /**
  * A `data:` URL's bytes and type, for `fetch` and `Image`: Lynx's own fetch

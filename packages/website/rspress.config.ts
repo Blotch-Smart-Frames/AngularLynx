@@ -223,6 +223,7 @@ export default defineConfig({
           text: 'Keep Data After the App Closes',
           link: '/guide/persistent-storage',
         },
+        { text: 'Pick a Photo', link: '/guide/image-picker' },
         { text: '@defer', link: '/guide/defer' },
         { text: 'Visibility Detection', link: '/guide/exposure' },
         { text: 'Internationalization', link: '/guide/i18n' },
@@ -304,6 +305,10 @@ export default defineConfig({
               link: '/api/angular-lynx/web-auth-session',
             },
             { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
+            {
+              text: 'LynxImagePicker',
+              link: '/api/angular-lynx/image-picker',
+            },
           ],
         },
         {

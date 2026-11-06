@@ -167,6 +167,15 @@ The apps `ng build --platform` makes have them to copy, in AngularLynx's `packag
 
 The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift`, which uses `UIApplication.open` and `SFSafariViewController`, and `LinkingModule.kt`, which sends an `ACTION_VIEW` intent and opens a Custom Tab, given the activity as its param. Both are in AngularLynx's `packages/native/templates`. List the schemes `canOpenURL` asks about in your Info.plist's `LSApplicationQueriesSchemes` and your manifest's `<queries>`. Without the module, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`.
 
+## Let someone pick a photo
+
+[`LynxImagePicker`](/guide/image-picker) calls a native module named `AngularLynxImagePicker`. To use it in your own app, register one with a `pick(options, callback)` method:
+
+- **`options`** holds `maxDimension` and `quality` when the app passes them. With either, re-encode the photo as a JPEG, upright and scaled down to `maxDimension`.
+- **`callback`** takes one map: `{ base64, name, type }`, the photo's bytes as base64 with a file name and a MIME type, `{ canceled: true }` when the person closed the picker, or `{ error: "failed", message }`. Call it once per `pick()`.
+
+The apps `ng build --platform` makes have one you can copy: `ImagePickerModule.swift`, which uses `PHPickerViewController` and ImageIO, and `ImagePickerModule.kt`, which has the activity open the Photo Picker. Both are in AngularLynx's `packages/native/templates`. Without the module, `pick()` rejects with `unavailable`.
+
 ## Pass data from your app
 
 Your native app can send values into Angular, such as a signed-in user's ID or the app's theme. See [Pass data from your native app](/guide/embedding/host-data).

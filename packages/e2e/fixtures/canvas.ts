@@ -45,8 +45,8 @@ void main() {
  * WebGL (Lynx Explorer) show "WebGL: none".
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
- * the counter page has no room for, and "Open linking", which opens
- * linking.ts.
+ * the counter page has no room for, and "Open linking" and "Open photo",
+ * which open linking.ts and photo.ts.
  */
 @Component({
   selector: 'app-canvas',
@@ -66,15 +66,27 @@ void main() {
       >
     </view>
     <e2e-library-frame />
-    <view
-      [flatten]="false"
-      [accessibility-element]="true"
-      accessibility-label="Open linking"
-      accessibility-traits="button"
-      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
-      routerLink="/linking"
-    >
-      <text>Open linking</text>
+    <view style="display: flex; flex-direction: row; margin-top: 8px;">
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open linking"
+        accessibility-traits="button"
+        style="padding: 12px; background-color: #e0e0e0;"
+        routerLink="/linking"
+      >
+        <text>Open linking</text>
+      </view>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open photo"
+        accessibility-traits="button"
+        style="padding: 12px; background-color: #e0e0e0; margin-left: 8px;"
+        routerLink="/photo"
+      >
+        <text>Open photo</text>
+      </view>
     </view>
   `,
 })

@@ -26,10 +26,12 @@ import { LynxTextDecoder, LynxTextEncoder } from './text-codec';
  * message per call. So `response.body` yields one chunk, and a download
  * reports its progress once, when it's done.
  *
- * Bodies can be strings, `URLSearchParams`, `ArrayBuffer`s and typed arrays.
- * A `Blob`, `FormData` or `ReadableStream` body throws a TypeError: Lynx has
- * no `Blob` or `FormData` and its `fetch` doesn't take them, and a stream
- * can't cross threads.
+ * Bodies can be strings, `URLSearchParams`, `ArrayBuffer`s, typed arrays and
+ * `Blob`s (blob.ts's, which is the main thread's `Blob`), sent with the
+ * Blob's type as their `Content-Type` unless the request sets one. A
+ * `FormData` or `ReadableStream` body throws a TypeError: Lynx has no
+ * `FormData` and its `fetch` doesn't take one, and a stream can't cross
+ * threads.
  */
 
 /** What a body holds: text, bytes, or nothing. */
@@ -64,7 +66,7 @@ const toBytes = (source: BodySource): Uint8Array =>
 
 const unsupportedBody = (kind: string) =>
   new TypeError(
-    `${kind} request bodies aren't supported on Lynx. Send a string, URLSearchParams, an ArrayBuffer or a typed array.`,
+    `${kind} request bodies aren't supported on Lynx. Send a string, URLSearchParams, an ArrayBuffer, a typed array or a Blob.`,
   );
 
 /**

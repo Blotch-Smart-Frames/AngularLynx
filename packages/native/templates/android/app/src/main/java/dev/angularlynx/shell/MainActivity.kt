@@ -17,6 +17,8 @@ import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.graphics.Insets
@@ -73,6 +75,25 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
     }
     private var webAuthSession: WebAuthSession? = null
 
+    // The Photo Picker (see ImagePickerModule), and who to tell what was
+    // picked. An activity registers for results as it's created, before it
+    // starts, so a result that arrives after Android recreated it still
+    // finds the launcher; the property initializer runs then.
+    private var imagePicked: ((Uri?) -> Unit)? = null
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val done = imagePicked ?: return@registerForActivityResult
+        imagePicked = null
+        done(uri)
+    }
+    private val imagePickerHost = object : ImagePickerModule.Host {
+        override fun pickImage(done: (Uri?) -> Unit): Boolean {
+            if (imagePicked != null) return false
+            imagePicked = done
+            imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            return true
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Android 15+ always draws apps edge to edge; opting in on older
         // versions too keeps the layout the same everywhere.
@@ -94,6 +115,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // Links out of the app (LinkingModule.kt), which it opens from this
             // activity.
             registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)
+            // The photo picker behind LynxImagePicker (ImagePickerModule.kt), which
+            // this activity launches.
+            registerModule(ImagePickerModule.NAME, ImagePickerModule::class.java, imagePickerHost)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name).

@@ -125,6 +125,11 @@ dependencies {
     // Custom Tabs, which WebAuthModule opens sign-in pages in, and
     // LinkingModule the pages of openInApp().
     implementation("androidx.browser:browser:1.8.0")
+    // EXIF orientation, which ImagePickerModule applies to a photo it
+    // re-encodes, since BitmapFactory ignores it. The AndroidX one reads it
+    // from every format the Photo Picker hands back, the same way on every
+    // Android version.
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
 
     // The Lynx engine, its JavaScript runtime (PrimJS) and its JS SDK.
     implementation("org.lynxsdk.lynx:lynx:$lynxVersion")

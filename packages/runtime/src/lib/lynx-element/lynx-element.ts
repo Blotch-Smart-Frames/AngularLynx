@@ -28,6 +28,7 @@ import {
   safeAreaInsetsStyle,
   withSafeAreaInsets,
 } from './safe-area-insets';
+import { dataURLForObjectURL } from '../network/blob';
 import { sanitizeSvgContent } from './svg-content';
 import {
   ALL_TEXT_PROPERTIES,
@@ -878,6 +879,17 @@ export class LynxElement implements BaseLynxElement {
         typeof value === 'string'
       ) {
         value = sanitizeSvgContent(value);
+      }
+      // An object URL (`URL.createObjectURL(blob)`) names a Blob that only
+      // this thread holds (network/blob.ts), which the native <image> can't
+      // load: it gets the Blob's bytes as a data: URL instead. The web
+      // preview's object URLs are the browser's own, and stay as they are.
+      if (
+        this.tagName === 'image' &&
+        (name === 'src' || name === 'placeholder') &&
+        typeof value === 'string'
+      ) {
+        value = dataURLForObjectURL(value) ?? value;
       }
       if (name === 'accessibility-traits') {
         this.#ownTraits = value ?? null;

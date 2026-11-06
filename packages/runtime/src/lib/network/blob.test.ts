@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   blobForURL,
   createObjectURL,
+  dataURLForObjectURL,
   decodeDataURL,
   LynxBlob,
   revokeObjectURL,
@@ -80,5 +81,24 @@ describe('decodeDataURL', () => {
       'text/plain;charset=US-ASCII',
     );
     expect(decodeDataURL('data:no-comma')).toBeNull();
+  });
+});
+
+describe('dataURLForObjectURL', () => {
+  it('holds the bytes of the blob an object URL names, with its type', () => {
+    const typed = createObjectURL(new LynxBlob(['hi'], { type: 'text/x' }));
+    const untyped = createObjectURL(new LynxBlob(['hi']));
+    expect(dataURLForObjectURL(typed)).toBe('data:text/x;base64,aGk=');
+    expect(dataURLForObjectURL(untyped)).toBe(
+      'data:application/octet-stream;base64,aGk=',
+    );
+    revokeObjectURL(typed);
+    expect(dataURLForObjectURL(typed)).toBeUndefined();
+    revokeObjectURL(untyped);
+  });
+
+  it('is undefined for a URL that isn’t an object URL', () => {
+    expect(dataURLForObjectURL('https://example.com/a.png')).toBeUndefined();
+    expect(dataURLForObjectURL('data:text/plain,hi')).toBeUndefined();
   });
 });

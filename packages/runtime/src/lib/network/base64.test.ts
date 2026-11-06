@@ -33,6 +33,8 @@ describe('base64ToBytes', () => {
     expect(base64ToBytes('aGk')).toEqual(bytes(104, 105));
     expect(base64ToBytes('aA')).toEqual(bytes(104));
     expect(base64ToBytes('aG\nk=')).toEqual(bytes(104, 105));
+    // Beyond Latin-1 too, where the lookup table ends.
+    expect(base64ToBytes('a✓Gk')).toEqual(bytes(104, 105));
   });
 
   it('ignores a dangling character, which encodes no whole byte', () => {

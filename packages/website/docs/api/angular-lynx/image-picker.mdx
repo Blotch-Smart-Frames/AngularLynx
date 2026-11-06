@@ -1,0 +1,82 @@
+# LynxImagePicker
+
+Lets someone pick a photo with the phone's photo picker and hands it back as a `Blob`. `import { LynxImagePicker, ImagePickerError, type ImagePickerOptions, type ImagePickerErrorCode, type PickedImage } from '@blotch/angular-lynx';`
+
+[Pick a Photo](/guide/image-picker) shows it in use.
+
+## Usage
+
+```typescript
+const picker = inject(LynxImagePicker);
+
+const picked = await picker.pick({ maxDimension: 1024, quality: 0.85 });
+if (picked) {
+  await uploadBytes(storageRef, picked.blob, { contentType: picked.type });
+}
+```
+
+## API
+
+### `LynxImagePicker`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxImagePicker {}
+```
+
+Uses `PHPickerViewController` on iOS, the Photo Picker on Android, and an `<input type="file" accept="image/*">` in the web preview. Only the apps `ng build --platform` makes have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `pick()` rejects with `unavailable`.
+
+### `LynxImagePicker.pick()`
+
+```typescript
+pick(options?: ImagePickerOptions): Promise<PickedImage | null>;
+```
+
+Opens the picker and resolves with the photo picked, or with `null` when the person closes the picker without choosing. Rejects with an [`ImagePickerError`](#imagepickererror), or with a `RangeError` for an option out of range. One picker can be open at a time: on iOS and Android, picking again while one is open rejects with `failed`; in the web preview, it resolves the open pick with `null`.
+
+### `ImagePickerOptions`
+
+```typescript
+type ImagePickerOptions = {
+  readonly maxDimension?: number;
+  readonly quality?: number;
+};
+```
+
+| Option         | Description                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `maxDimension` | Scales the photo down, if it's larger, so its longest side has at most this many pixels, at least 1. It's never scaled up |
+| `quality`      | The JPEG quality of the re-encoded photo, from 0 to 1. Defaults to 0.9                                                    |
+
+Either option re-encodes the photo as a JPEG: upright, whichever way the camera stored it, without the original's metadata, and with a white background where it was transparent. Without them, a JPEG, PNG, GIF or WebP comes back as it was picked, and any other format, such as HEIC, is re-encoded as a JPEG at full size.
+
+### `PickedImage`
+
+```typescript
+type PickedImage = {
+  readonly blob: Blob;
+  readonly name: string;
+  readonly type: string;
+};
+```
+
+| Property | Description                                                                                                                                                                                                 |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blob`   | The photo's bytes                                                                                                                                                                                           |
+| `name`   | A file name for it, such as `IMG_0042.jpg`, whose extension matches `type`. On Android it's the photo's number in the library, such as `1000000020.jpg`: the Photo Picker doesn't share the file's own name |
+| `type`   | Its MIME type, such as `image/jpeg`: the same as `blob.type`                                                                                                                                                |
+
+### `ImagePickerError`
+
+```typescript
+class ImagePickerError extends Error {
+  readonly code: ImagePickerErrorCode;
+}
+
+type ImagePickerErrorCode = 'unavailable' | 'failed';
+```
+
+| `code`        | When                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no photo picker                                                                    |
+| `failed`      | The picker couldn't open, one was already open, or the picked photo couldn't be read or decoded |

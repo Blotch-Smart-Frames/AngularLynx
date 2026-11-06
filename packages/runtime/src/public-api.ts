@@ -36,6 +36,12 @@ export type {
   ObserverFrameRateOptions,
 } from './lib/exposure';
 export { LynxFont } from './lib/font';
+export { ImagePickerError, LynxImagePicker } from './lib/image-picker';
+export type {
+  ImagePickerErrorCode,
+  ImagePickerOptions,
+  PickedImage,
+} from './lib/image-picker';
 export { loadLazyBundle } from './lib/lazy-bundle';
 // Called by code the build plugin adds to each component's module in a
 // development build (see the file).

@@ -1,12 +1,14 @@
 {
   "import": ["../../cspell.json"],
   "words": [
+    "addmedia",
     "bootstatus",
     "devicetypes",
     "htpasswd",
     "logcat",
     "noasan",
     "screencap",
+    "sdcard",
     "serialno",
     "simctl",
     "taskkill",

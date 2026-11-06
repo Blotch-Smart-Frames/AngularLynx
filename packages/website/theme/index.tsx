@@ -206,4 +206,8 @@ export {
   IconWrapped,
 } from './icons';
 
+// The home page's footer, in place of Rspress's one-line message, by the
+// same rule: Rspress's home layout imports `HomeFooter` from the theme.
+export { HomeFooter } from '../src/components/home-footer';
+
 export * from '@rspress/core/theme-original';

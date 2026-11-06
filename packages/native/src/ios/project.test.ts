@@ -70,6 +70,14 @@ describe('infoPlistEntries', () => {
         '</array>',
         '<key>AngularLynxEdgeToEdge</key>',
         '<true/>',
+        '<key>LSApplicationQueriesSchemes</key>',
+        '<array>',
+        '\t<string>http</string>',
+        '\t<string>https</string>',
+        '\t<string>mailto</string>',
+        '\t<string>tel</string>',
+        '\t<string>sms</string>',
+        '</array>',
       ].join('\n'),
     );
   });
@@ -78,6 +86,12 @@ describe('infoPlistEntries', () => {
     expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
       '<key>AngularLynxEdgeToEdge</key>\n<false/>',
     );
+  });
+
+  it('lists the schemes canOpenURL asks about', () => {
+    expect(
+      infoPlistEntries(app({ canOpenURLSchemes: ['whatsapp'] })),
+    ).toContain('<string>sms</string>\n\t<string>whatsapp</string>\n</array>');
   });
 
   it('adds usage descriptions and URL schemes', () => {
@@ -116,6 +130,7 @@ describe('iosGenerator', () => {
     expect(plist).toContain('<key>NSCameraUsageDescription</key>');
     expect(plist).toContain('UIInterfaceOrientationLandscapeLeft');
     expect(plist.match(/UISupportedInterfaceOrientations/g)).toHaveLength(1);
+    expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
   });
 

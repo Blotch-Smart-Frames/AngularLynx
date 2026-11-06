@@ -126,6 +126,25 @@ const eventMap: Record<string, { defaultInit: { bubbles?: boolean } }>;
 
 The events that `fireEvent` has a method for, keyed by event name. `defaultInit.bubbles` is `true` for the events that go up to the page.
 
+### `openedURLs()`
+
+```typescript
+function openedURLs(): readonly OpenedURL[];
+
+type OpenedURL = { readonly url: string; readonly inApp: boolean };
+```
+
+The links the app opened with [`LynxLinking`](/api/angular-lynx/linking) in this test, oldest first, so a spec can check where a tap leads. `inApp` is `true` for `openInApp()` and `false` for `openURL()`. Under the testing library, both resolve without opening anything, and `canOpenURL()` resolves `true`. Each test starts with none.
+
+```typescript
+fireEvent.tap(screen.getByText('Help'));
+await waitForUpdate();
+
+expect(openedURLs()).toEqual([
+  { url: 'https://example.com/help', inApp: true },
+]);
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

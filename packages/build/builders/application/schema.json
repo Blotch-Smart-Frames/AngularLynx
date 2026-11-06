@@ -188,6 +188,13 @@
       },
       "description": "Custom URL schemes that open the app, e.g. [\"myapp\"]."
     },
+    "canOpenURLSchemes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Other apps' URL schemes LynxLinking.canOpenURL() can ask about, e.g. [\"whatsapp\"]. iOS and Android 11+ answer only for the schemes an app declares. http, https, mailto, tel and sms are always there."
+    },
     "ios": {
       "type": "object",
       "additionalProperties": false,

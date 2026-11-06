@@ -162,6 +162,10 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 - **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only `ng build --platform` apps have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.
 - **State shared between pages while the app runs:** `LynxSessionStorage`, which empties when the app quits.
 
+### No `window.open`, `location` or `<a href>`
+
+Open links with `LynxLinking`: `openURL()` for the browser, mail or another app, `openInApp()` for a browser sheet over the app, `canOpenURL()` to check first (declare other apps' schemes in `canOpenURLSchemes`). Only `ng build --platform` apps have its native module; Lynx Explorer rejects with `unavailable`. See [http-requests.md](http-requests.md).
+
 ### HTTP needs absolute URLs
 
 `HttpClient` and `fetch()` work on the main thread (the runtime relays them to the background thread), but there's no page URL to resolve `/api/x` against. Files the app bundles are the exception in `ng build --platform` apps. See [http-requests.md](http-requests.md).

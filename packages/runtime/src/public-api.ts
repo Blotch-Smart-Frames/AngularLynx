@@ -158,6 +158,8 @@ export type {
   WebViewUrlDetail,
 } from './lib/types/element-events';
 export { LynxLogger } from './lib/lynx-logger';
+export { LinkingError, LynxLinking } from './lib/linking';
+export type { LinkingErrorCode, OpenInAppOptions } from './lib/linking';
 export { LynxNativeModule } from './lib/native-module';
 export { LynxPortal, PortalRef } from './lib/portal';
 export type { PortalConfig } from './lib/portal';

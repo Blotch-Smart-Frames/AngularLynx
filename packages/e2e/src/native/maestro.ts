@@ -100,6 +100,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'linking.yaml',
+    description:
+      'opens a link in a browser sheet and says which apps it can open',
+    // Only the app's own builds have the linking module. In Lynx Explorer,
+    // openInApp() rejects and canOpenURL() says no.
+    only: { host: 'shell' },
+  },
+  {
     file: 'canvas.yaml',
     description: 'draws a texture with WebGL2 and reads it back',
     // Only the app's own builds have <canvas> and its WebGL module. Lynx

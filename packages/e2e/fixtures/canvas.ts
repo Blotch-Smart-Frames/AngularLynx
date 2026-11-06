@@ -5,6 +5,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LYNX_ELEMENTS, type LynxCanvasElement } from '@blotch/angular-lynx';
 import { LibraryFrame } from 'e2e-prebuilt-library';
 
@@ -44,11 +45,12 @@ void main() {
  * WebGL (Lynx Explorer) show "WebGL: none".
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
- * the counter page has no room for.
+ * the counter page has no room for, and "Open linking", which opens
+ * linking.ts.
  */
 @Component({
   selector: 'app-canvas',
-  imports: [LYNX_ELEMENTS, LibraryFrame],
+  imports: [LYNX_ELEMENTS, LibraryFrame, RouterLink],
   template: `
     <view
       style="display: flex; flex-direction: row; align-items: center; margin-top: 16px;"
@@ -64,6 +66,16 @@ void main() {
       >
     </view>
     <e2e-library-frame />
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Open linking"
+      accessibility-traits="button"
+      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0;"
+      routerLink="/linking"
+    >
+      <text>Open linking</text>
+    </view>
   `,
 })
 export class CanvasRoute {

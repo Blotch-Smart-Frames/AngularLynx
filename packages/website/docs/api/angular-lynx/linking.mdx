@@ -1,0 +1,95 @@
+# LynxLinking
+
+Opens links outside the app: in the browser, in another app, or in a browser sheet over the app. `import { LynxLinking, LinkingError, type OpenInAppOptions, type LinkingErrorCode } from '@blotch/angular-lynx';`
+
+[Open links outside the app](/guide/open-links) shows it in use.
+
+## Usage
+
+```typescript
+const linking = inject(LynxLinking);
+
+await linking.openInApp('https://example.com/help');
+await linking.openURL('mailto:support@example.com');
+const hasWhatsApp = await linking.canOpenURL('whatsapp://send');
+```
+
+## API
+
+### `LynxLinking`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxLinking {}
+```
+
+| Host                                                             | `openURL()`                | `openInApp()`              | `canOpenURL()`             |
+| ---------------------------------------------------------------- | -------------------------- | -------------------------- | -------------------------- |
+| iOS (`ng build --platform ios`)                                  | `UIApplication.open`       | `SFSafariViewController`   | `UIApplication.canOpenURL` |
+| Android (`ng build --platform android`)                          | An `ACTION_VIEW` intent    | A Custom Tab               | `resolveActivity`          |
+| Web preview                                                      | A new tab                  | A new tab                  | `true`                     |
+| Lynx Explorer                                                    | Rejects with `unavailable` | Rejects with `unavailable` | `false`                    |
+| Unit tests ([testing library](/api/testing-library/#openedurls)) | Records the URL            | Records the URL            | `true`                     |
+
+### `LynxLinking.openURL()`
+
+```typescript
+openURL(url: string): Promise<void>;
+```
+
+Opens `url` where the system opens it: the default browser for `http` and `https`, the mail app for `mailto:`, the phone for `tel:`, and another app for its own scheme. An http(s) link that an installed app claims, through a universal link on iOS or an App Link on Android, opens that app. Resolves once the URL is handed over. Rejects with a [`LinkingError`](#linkingerror) when nothing on the device opens it, and with a `TypeError` when `url` isn't absolute.
+
+### `LynxLinking.openInApp()`
+
+```typescript
+openInApp(url: string, options?: OpenInAppOptions): Promise<void>;
+```
+
+Opens an `http` or `https` `url` in a browser sheet over the app, so the person comes straight back to where they were. Resolves once they're back in the app:
+
+- **iOS:** when they close the sheet.
+- **Android:** when the app comes back to the front. Android doesn't say when a Custom Tab closes, so this is the closest it can tell: the person closed the tab, or switched back to the app another way, which leaves the tab behind it.
+- **Web:** when they close the tab or come back to the app's tab.
+
+Rejects with a `TypeError` for any other scheme, which the sheets can't show (use `openURL()` for those), and with a [`LinkingError`](#linkingerror) when the sheet can't open, such as while another is open.
+
+The sheet keeps its own cookies on iOS, apart from Safari's. On Android it shares the browser's. To sign in through a page and get a result back, use [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session) instead.
+
+### `LynxLinking.canOpenURL()`
+
+```typescript
+canOpenURL(url: string): Promise<boolean>;
+```
+
+Resolves whether something on the device opens `url`. iOS answers only for the schemes the app declares, and Android 11 and later only for the apps the app says it looks for, so list the schemes you ask about in [`canOpenURLSchemes`](/api/build/#native-app-options) in angular.json. `http`, `https`, `mailto`, `tel` and `sms` are always declared. For any other scheme, the answer is `false`.
+
+### `OpenInAppOptions`
+
+```typescript
+type OpenInAppOptions = {
+  readonly toolbarColor?: string;
+  readonly controlsColor?: string;
+};
+```
+
+| Option          | Description                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| `toolbarColor`  | The color of the sheet's toolbar. On Android, the tab picks its icons' color to contrast with it |
+| `controlsColor` | The color of the sheet's buttons. iOS only                                                       |
+
+Colors are hex (`#1e3a8a`, `#1e3a8a80`, `#fff`) or `rgb()`/`rgba()` with commas. Anything else rejects with a `TypeError`. iOS 27 draws Safari's own glass buttons over the page and leaves both colors out; earlier versions use them.
+
+### `LinkingError`
+
+```typescript
+class LinkingError extends Error {
+  readonly code: LinkingErrorCode;
+}
+
+type LinkingErrorCode = 'unavailable' | 'failed';
+```
+
+| `code`        | When                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The host can't open links. Only the apps `ng build --platform` makes can                                  |
+| `failed`      | Nothing on the device opens the URL, a browser sheet was already open, or the browser blocked the new tab |

@@ -23,6 +23,7 @@
 import '@angular/compiler';
 import '@testing-library/jest-dom/vitest';
 import { LynxTestingEnv } from '@lynx-js/testing-environment';
+import { installLinkingModule } from './linking.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -82,7 +83,11 @@ const returnOnWarnings = (threadGlobals: any): void => {
   };
 };
 (globalThis as any).onInjectMainThreadGlobals = returnOnWarnings;
-(globalThis as any).onInjectBackgroundThreadGlobals = returnOnWarnings;
+(globalThis as any).onInjectBackgroundThreadGlobals = (threadGlobals: any) => {
+  returnOnWarnings(threadGlobals);
+  // LynxLinking records the URLs it opens (see linking.ts).
+  installLinkingModule(threadGlobals);
+};
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────
 

@@ -107,3 +107,4 @@ These do not exist in Lynx and are shimmed by the runtime:
 | `DOMException`                             | Both threads, with `name`, `message` and the legacy `code`                                                       |
 | `URL` constructor                          | Not available (manual string parsing in `LynxPlatformLocation`)                                                  |
 | `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |
+| `window.open` / `location.href = url`      | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                    |

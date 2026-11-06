@@ -89,6 +89,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             registerModule(WebAuthModule.NAME, WebAuthModule::class.java, this@MainActivity)
             registerModule(LocalStorageModule.NAME, LocalStorageModule::class.java, null)
             registerModule(SecureStorageModule.NAME, SecureStorageModule::class.java, null)
+            // Links out of the app (LinkingModule.kt), which it opens from this
+            // activity.
+            registerModule(LinkingModule.NAME, LinkingModule::class.java, this@MainActivity)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name).

@@ -1,0 +1,18 @@
+# Linking
+
+A help screen whose rows leave the app: docs in a browser sheet over it, a website in the browser, a support email in the mail app, and a WhatsApp row shown only when WhatsApp is installed. In the preview, each opens a new tab.
+
+<Go example="linking" defaultFile="src/app/app.ts" />
+
+## What it shows
+
+- **`openInApp()`** — opens the docs in a browser sheet, `SFSafariViewController` on iOS and a Custom Tab on Android, and resolves once the person is back. See [Open links outside the app](/guide/open-links).
+- **`openURL()`** — hands a URL to the phone, which opens `https` in the browser and `mailto:` in the mail app. It rejects when nothing opens it, as on a simulator without a mail app.
+- **`canOpenURL()`** — asked once at start, so the rows match the apps on the phone. WhatsApp's scheme is in `canOpenURLSchemes` in the example's angular.json: without it, iOS and Android always say no.
+
+In Lynx Explorer, which doesn't have the app's native modules, the links reject with `unavailable`. Run it with `ng build --platform ios --run` or `--platform android --run` to open them.
+
+## Related
+
+- [Persistent Storage](/examples/persistent-storage)
+- [`LynxLinking` API](/api/angular-lynx/linking)

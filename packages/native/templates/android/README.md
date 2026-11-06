@@ -38,6 +38,16 @@ Back is off by default, so it leaves the app like any root screen. The runtime t
 
 `NativeModules.AngularLynxWebAuth.start(request, callback)` (`WebAuthModule.kt`, behind the runtime's `LynxWebAuthSession`) opens `request.url` in a Custom Tab (`androidx.browser`). The page's redirect to `request.callbackScheme` comes back as a deep link: the activity is `singleTask`, so the intent reaches the open one in `onNewIntent`, which hands the URL to the callback, and starting it closes the Custom Tab above it. That's why the scheme has to be in the app's `deepLinkSchemes`. Android says nothing when a Custom Tab is closed, so the activity resuming with a session still open, after having gone behind the tab, means the person canceled. iOS's `WebAuthModule.swift` reports the same results through `ASWebAuthenticationSession`.
 
+## Links
+
+`NativeModules.AngularLynxLinking` (`LinkingModule.kt`, behind the runtime's `LynxLinking`) opens links outside the app. `MainActivity` registers it with itself as the param, since the module starts activities from it and watches its lifecycle.
+
+- **`openURL(url, callback)`** starts an `ACTION_VIEW` intent, which the browser, the mail app or the app that claims the URL opens, and calls back with `{}`, or with `{ error, message }` when nothing does.
+- **`openInApp(url, options, callback)`** opens an http(s) URL in a Custom Tab, with `options.toolbarColor` as its toolbar color. Android says nothing when a Custom Tab closes, so the module watches the activity's lifecycle and calls back when it resumes after pausing for the tab: the person closed the tab or came back to the app another way. It doesn't touch `WebAuthModule`'s session, which `MainActivity` tracks on its own.
+- **`canOpenURL(url, callback)`** asks `resolveActivity`, which from Android 11 sees only the apps the manifest's `<queries>` names: one `VIEW` intent per scheme, which the generator writes between the `angular-lynx:queries` markers from angular.json's `canOpenURLSchemes`, after `http`, `https`, `mailto`, `tel` and `sms`. Starting an activity needs no `<queries>`.
+
+iOS's `LinkingModule.swift` does the same with `UIApplication.open`, `SFSafariViewController` and `UIApplication.canOpenURL`, which answers only for the schemes in Info.plist's `LSApplicationQueriesSchemes`.
+
 ## Storage
 
 `NativeModules.AngularLynxLocalStorage` and `NativeModules.AngularLynxSecureStorage` (`LocalStorageModule.kt` and `SecureStorageModule.kt`, behind the runtime's `LynxLocalStorage` and `LynxSecureStorage`) keep string values, which the runtime stores as JSON, each in a `SharedPreferences` file of its own. Each method calls back once with `{ value }`, `{}` or `{ error }`.
@@ -66,7 +76,7 @@ Android's GLES has no 2D uploads from a `PIXEL_UNPACK_BUFFER` and no `glGetVerte
 Pinned in `app/build.gradle.kts`, `build.gradle.kts` and `gradle/wrapper/gradle-wrapper.properties`:
 
 - Lynx 4.1.0 and PrimJS 4.1.1 (Maven Central), Fresco 2.3.0 (the version Lynx's image service is built against), OkHttp 4.12.
-- `androidx.browser` 1.8.0, for the Custom Tabs `WebAuthModule` opens sign-in pages in.
+- `androidx.browser` 1.8.0, for the Custom Tabs `WebAuthModule` opens sign-in pages in and `LinkingModule` opens `openInApp()`'s pages in.
 - Lynx's XElement 4.1.0 (`<input>`, `<textarea>`, `<overlay>`, `<svg>`, `<blur-view>`, `<viewpager>`, `<refresh>`, the `<scroll-coordinator>` family, `<webview>`, `<video>`), without its AnimaX and Markdown modules, which the runtime doesn't support. `MainActivity` registers the elements with `XElementBehaviors`. XElement depends on appcompat and material 1.0.0, whose vectordrawable libraries share a namespace that AGP 9 rejects, so appcompat 1.7.1 and material 1.12.0 are pinned.
 - AGP 9.4.1 with its built-in Kotlin, Gradle 9.6.1 (AGP 9.4's minimum), JDK 17 or newer.
 - `compileSdk` and `targetSdk` 36, `minSdk` 24. Google Play raises its target API requirement every August; bump `targetSdk` with it.

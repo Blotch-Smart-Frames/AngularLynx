@@ -29,7 +29,9 @@
  *
  * JavaScript can't hook a shorter `length` or a `delete`, so those still keep
  * what they cut off: empty a long-lived array with `splice(0)` rather than
- * `length = 0`. Only arrays get the writes (`Array.isArray`), and only
+ * `length = 0`. Only the engine can fix those, reported upstream at
+ * https://github.com/lynx-family/primjs/issues/484; once a Lynx release has
+ * its fix, this can go. Only arrays get the writes (`Array.isArray`), and only
  * extensible ones, as a non-extensible array refuses them; an array-like
  * passed in with `call()` is left to the engine. An array behind a `Proxy`
  * sees the writes through its traps.

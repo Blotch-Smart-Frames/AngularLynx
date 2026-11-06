@@ -3037,7 +3037,7 @@ It showed up as a closure because nothing a walk of properties from the renderer
 
 The build plugin's first preEntry (`packages/rsbuild-plugin-angular-lynx/src/vacated-slots.js`, imported by `polyfills.js`) replaces `pop()`, `shift()` and `splice()` in native builds with versions that call the engine's own, then write `undefined` into the slots the array gave up and put the length back. Each write appends, so the array stays a fast one. The web build keeps the browser's methods.
 
-JavaScript can't hook a shorter `length` or `delete array[array.length - 1]`, so those still keep what they cut off: empty a long-lived array that holds objects with `array.splice(0)` rather than `array.length = 0`.
+JavaScript can't hook a shorter `length` or `delete array[array.length - 1]`, so those still keep what they cut off: empty a long-lived array that holds objects with `array.splice(0)` rather than `array.length = 0`. Only PrimJS can fix those: reported as [lynx-family/primjs#484](https://github.com/lynx-family/primjs/issues/484). Once a Lynx release has its fix, `vacated-slots.js` can go.
 
 A material that outlives its canvas still keeps the renderer, with its canvas, native view and GL state, as in a browser: give each canvas copies (`material.clone()`, and `texture.clone()`, which shares the decoded image).
 

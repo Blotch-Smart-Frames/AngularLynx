@@ -278,7 +278,7 @@ export const ToolCompare: FC = () => {
             reads as one column standing out of the table. */}
         <div ref={pillarRef} className={styles['pillar']} aria-hidden="true">
           {inView && !reducedMotion && (
-            <BorderBeam size={3} duration={6} radius={20} />
+            <BorderBeam size={1.5} duration={6} radius={20} />
           )}
         </div>
         {/* Each row names its grid line. Auto-placed, a row spanning every

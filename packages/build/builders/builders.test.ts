@@ -957,6 +957,7 @@ describe('unit-test builder', () => {
       'icon',
       'permissions',
       'deepLinkSchemes',
+      'canOpenURLSchemes',
       'ios',
       'android',
     ]);

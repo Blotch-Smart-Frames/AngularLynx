@@ -101,6 +101,10 @@ export const infoPlistEntries = (app: ResolvedApp): string => {
     }
   }
 
+  // The schemes LinkingModule's canOpenURL can ask about: iOS answers false
+  // for any other. UIApplication.open needs none of them.
+  array('LSApplicationQueriesSchemes', app.canOpenURLSchemes);
+
   if (app.deepLinkSchemes.length > 0) {
     lines.push(
       '<key>CFBundleURLTypes</key>',

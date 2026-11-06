@@ -59,7 +59,7 @@ A template written for the browser renders: the runtime creates the Lynx element
 - **An `<img>` sizes to its picture** until CSS gives it a size (`auto-size`), and its `alt` becomes `accessibility-label`.
 - **HTML's `hidden`** (`hidden`, `[hidden]="!open()"`) hides any element with `display: none; overflow: hidden`, ahead of the element's own inline style.
 - **The element's `tagName` is the Lynx element** (`'text'` for a `<p>`). Type selectors still match the HTML tag (`p { … }`, see [styling-and-css.md](styling-and-css.md)). `RouterLink` treats an `<a>` as a plain element, so `<a routerLink>` navigates on a tap.
-- **No browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing, a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
+- **No browser styles or behavior:** an `<h1>` is the size of any text, a `<button>` has no border, `<a href>` opens nothing (open links with `LynxLinking`, see [http-requests.md](http-requests.md)), a `<form>` doesn't submit, and `disabled` doesn't stop a `<button>`'s taps.
 - **Other HTML tags** (`table`, `tr`, `td`, `select`, `option`, `br`, `pre`, `details`, `iframe`, `audio`…) render as a plain `<view>`, and the build warns about each.
 - **Lynx elements are still the better choice** in new code: `LYNX_ELEMENTS` types their attributes (`<image mode>`) and their events' `$event`, while an HTML tag's `$event` is typed as the DOM's.
 

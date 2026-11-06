@@ -297,6 +297,36 @@ test("a prebuilt library's component styles apply", async ({ page }) => {
   expect(errors, 'the app logged errors while running').toEqual([]);
 });
 
+// LynxLinking opens a new tab in the web preview (issue #304;
+// native/linking.yaml checks the browser sheet in the app's own builds).
+// Web-core runs Angular in an iframe sandboxed without `allow-popups`, whose
+// own window.open() opens nothing, so this checks that a tap opens the tab,
+// and that openInApp() resolves once it's closed.
+test('a tap opens a link in a new tab', async ({ page, context }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByText('Open storage', { exact: true }).click();
+  await page.getByText('Open canvas', { exact: true }).click();
+  await page.getByText('Open linking', { exact: true }).click();
+  await expect(page.getByText('Can open: yes/yes')).toBeVisible();
+
+  // The page is never fetched: an offline CI runner still opens the tab.
+  await context.route('https://example.com/**', (route) =>
+    route.fulfill({ body: 'Example' }),
+  );
+  const [tab] = await Promise.all([
+    context.waitForEvent('page'),
+    page.getByText('Open sheet', { exact: true }).click(),
+  ]);
+  expect(tab.url()).toBe('https://example.com/');
+  await expect(page.getByText('Sheet: open')).toBeVisible();
+
+  await tab.close();
+  await expect(page.getByText('Sheet: closed')).toBeVisible();
+
+  expect(errors, 'the app logged errors while running').toEqual([]);
+});
+
 // The build handed Tailwind the modules it bundled in place of `content`, and
 // Angular's compiler reads an `.html` template without importing it, so classes
 // used only in one got no CSS (issue #52).

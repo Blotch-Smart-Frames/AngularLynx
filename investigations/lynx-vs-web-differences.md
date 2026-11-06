@@ -6408,3 +6408,23 @@ The main thread's `clearTimeout` and `clearInterval` (`ClearTimeout` and `ClearT
 ### How AngularLynx handles it
 
 `polyfills.ts` puts a wrapper in front of whichever `clearTimeout` and `clearInterval` are installed that returns for `undefined` and `null`, as `cancelAnimationFrame`'s does for a handle that isn't a number. Other handles still reach the native one: Node's timers, which the testing library runs on, hand out objects.
+
+---
+
+## Links can't leave the app, and the web preview's iframe can't open a tab
+
+### What you'd expect (web)
+
+`<a href>`, `window.open()` and `location.assign()` open a page in the browser, and the browser hands `mailto:`, `tel:` and other apps' schemes to the system.
+
+### What Lynx does
+
+None of them exist on Lynx. `<a>` isn't an element, and there's no `window` or `location` on either thread. Lynx itself has no API that opens a URL outside the app: Lynx Explorer's `ExplorerModule.openSchema` opens a Lynx bundle inside Explorer, and `LynxRecorderOpenUrlModule` is part of the devtool. React Lynx has nothing either. So `LynxLinking` (issue #304) calls the shells' own `AngularLynxLinking` module, and rejects with `unavailable` in Lynx Explorer.
+
+In the web preview, web-core runs the main thread, where Angular runs, in an iframe sandboxed with `allow-same-origin allow-scripts` and without `allow-popups`, so the iframe's own `window.open()` opens nothing. Chrome logs "Blocked opening … because the request was made in a sandboxed frame whose 'allow-popups' permission is not set" and returns `null`. The page around the iframe has the same origin, and its `window.open()`, called from a tap handler, opens the tab (checked with Playwright's Chromium).
+
+On the phones, asking whether another app is installed is opt-in: iOS's `canOpenURL` answers `false` for any scheme the app doesn't list in Info.plist's `LSApplicationQueriesSchemes`, and Android 11 and later's `resolveActivity` finds no app the manifest's `<queries>` doesn't name. Opening one needs neither. On the iOS 27 Simulator, `SFSafariViewController` draws its own glass buttons and ignores `preferredBarTintColor` and `preferredControlTintColor`; Android's Custom Tab took the toolbar color.
+
+### How AngularLynx uses it
+
+`LynxLinking` opens tabs through `parent.open()` in the web preview, before anything is awaited, so the tab still counts as part of the tap. angular.json's `canOpenURLSchemes` lists the schemes `canOpenURL()` may ask about, and `ng build --platform` writes them, after `http`, `https`, `mailto`, `tel` and `sms`, into both files.

@@ -7,6 +7,12 @@
     <!-- angular-lynx:permissions -->
 
     <!--
+      The apps LynxLinking.canOpenURL() can see from Android 11: those that
+      open angular.json's canOpenURLSchemes (LinkingModule).
+    -->
+    <!-- angular-lynx:queries -->
+
+    <!--
       Auto Backup leaves out LynxSecureStorage's file (SecureStorageModule):
       dataExtractionRules from Android 12, fullBackupContent before.
     -->

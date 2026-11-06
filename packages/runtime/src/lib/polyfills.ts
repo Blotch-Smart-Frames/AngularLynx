@@ -280,6 +280,24 @@ if (
   }
 }
 
+// A browser's cancelAnimationFrame() ignores a handle it doesn't know, and
+// code leans on that: three.js stops a renderer's animation loop with
+// `cancelAnimationFrame(requestId)` whether or not the loop ever started, so
+// with `null` when it didn't, which is every `renderer.dispose()` angular-three
+// makes as a canvas goes. Lynx's native cancelAnimationFrame throws on anything
+// but a number ("param 0 should be Number"), so every canvas's teardown failed
+// part way. Only a number reaches it here, whichever one is installed.
+const nativeCancelAnimationFrame = (globalThis as any).cancelAnimationFrame as
+  | ((handle: number) => void)
+  | undefined;
+if (typeof nativeCancelAnimationFrame === 'function') {
+  (globalThis as any).cancelAnimationFrame = (handle: unknown): void => {
+    if (typeof handle === 'number') {
+      nativeCancelAnimationFrame.call(globalThis, handle);
+    }
+  };
+}
+
 // Angular's `@defer (on idle)` trigger schedules work through its internal
 // RequestIdleCallbackService. On any platform that lacks `requestIdleCallback`
 // Angular falls back to `cb => setTimeout(cb)` and then, inside IdleScheduler,

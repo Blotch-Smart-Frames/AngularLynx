@@ -351,9 +351,37 @@ describe('polyfills', () => {
       expect((globalThis as any).requestAnimationFrame).toBe(
         lynxTimers.requestAnimationFrame,
       );
-      expect((globalThis as any).cancelAnimationFrame).toBe(
-        lynxTimers.cancelAnimationFrame,
-      );
+      (globalThis as any).cancelAnimationFrame(7);
+      expect(lynxTimers.cancelAnimationFrame).toHaveBeenCalledWith(7);
+    });
+
+    it('ignores a cancelAnimationFrame handle that isn’t a number, as a browser does', async () => {
+      // Lynx's own throws for one: three.js stops a loop that never started
+      // with `null` each time a renderer is disposed.
+      const cancel = vi.fn((handle: unknown) => {
+        if (typeof handle !== 'number')
+          throw new Error('param 0 should be Number');
+      });
+      vi.stubGlobal('cancelAnimationFrame', cancel);
+      await importFresh();
+
+      expect(() =>
+        (globalThis as any).cancelAnimationFrame(null),
+      ).not.toThrow();
+      expect(() =>
+        (globalThis as any).cancelAnimationFrame(undefined),
+      ).not.toThrow();
+      expect(cancel).not.toHaveBeenCalled();
+      (globalThis as any).cancelAnimationFrame(3);
+      expect(cancel).toHaveBeenCalledWith(3);
+    });
+
+    it('leaves cancelAnimationFrame out where there is none', async () => {
+      vi.stubGlobal('cancelAnimationFrame', undefined);
+      vi.stubGlobal('lynx', undefined);
+      await importFresh();
+
+      expect((globalThis as any).cancelAnimationFrame).toBeUndefined();
     });
 
     it('falls back to lynx.clearTimeInterval when clearInterval is absent', async () => {

@@ -54,10 +54,12 @@ describe('installCanvasGlobals', () => {
     );
   });
 
-  it('makes classes nothing is an instance of, for instanceof checks', () => {
+  it('makes a template’s elements HTMLElements, and nothing an HTMLCanvasElement', () => {
     const target: Record<string, any> = {};
     installCanvasGlobals(target);
+    expect(element() instanceof target['HTMLElement']).toBe(true);
     expect({} instanceof target['HTMLElement']).toBe(false);
+    expect(null instanceof target['HTMLElement']).toBe(false);
     expect(element() instanceof target['HTMLCanvasElement']).toBe(false);
   });
 

@@ -2,11 +2,12 @@ import { Component, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { DURATION } from '../../utils/animate';
 import { UiGlass } from '../glass/glass';
 import { UiPopover, UiPopoverContent, UiPopoverTrigger } from './popover';
 
@@ -131,29 +132,69 @@ const renderPopover = async (
 
 type Rendered = Awaited<ReturnType<typeof renderPopover>>;
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the popover's
+// timers late, and a test gave up waiting for it to open or close.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * How long the popover takes to open: 32ms for it to lay out, 16ms at its
+ * start frame, and the updates around them.
+ */
+const OPENED = 60;
+/** How long the popover takes to close: its animation, then 20ms more. */
+const CLOSED = DURATION.normal + 30;
+
 /**
  * Waits until the popover has grown to its frame, its content shown.
  */
 const waitForOpen = async ({ container }: Rendered) => {
-  await vi.waitFor(() =>
-    expect(
-      (container.querySelector('.shrink-0') as HTMLElement | null)?.style
-        .opacity,
-    ).toBe('1'),
-  );
+  await after(OPENED);
+  expect(
+    (container.querySelector('.shrink-0') as HTMLElement | null)?.style.opacity,
+  ).toBe('1');
+};
+
+/**
+ * Waits until the popover has closed and its animation has finished.
+ */
+const waitForClose = async ({ host }: Rendered) => {
+  await after(CLOSED);
+  expect(host.closed).toHaveBeenCalledTimes(1);
 };
 
 /**
  * Lets Lynx's timers run: the touch check waits for the next one.
  */
-const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 5));
+const nextTimer = () => vi.advanceTimersByTimeAsync(1);
 
 // The renderer warns that <ui-popover> and its parts aren't Lynx elements.
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -172,8 +213,7 @@ describe('UiPopover', () => {
 
     fireEvent.tap(trigger());
     expect(host.open()).toBe(false);
-    await vi.waitFor(() => expect(host.closed).toHaveBeenCalledTimes(1));
-    await waitForUpdate();
+    await waitForClose(rendered);
     expect(rendered.panel()).toBeNull();
   });
 
@@ -214,8 +254,7 @@ describe('UiPopover', () => {
     expect(rendered.trigger().style.visibility).toBe('hidden');
 
     rendered.host.open.set(false);
-    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await waitForClose(rendered);
     expect(rendered.trigger().style.visibility).toBe('');
     // A trigger that isn't glass has no glass to hand over.
     expect(rendered.trigger().hasAttribute('glass-effect-id')).toBe(false);
@@ -237,8 +276,7 @@ describe('UiPopover', () => {
     expect(rendered.trigger().style.visibility).toBe('hidden');
 
     rendered.host.open.set(false);
-    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await waitForClose(rendered);
     expect(rendered.panel()).toBeNull();
     expect(rendered.trigger().style.visibility).toBe('');
 

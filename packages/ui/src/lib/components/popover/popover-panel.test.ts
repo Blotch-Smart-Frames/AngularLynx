@@ -5,10 +5,14 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
+import {
+  render,
+  waitForUpdate as nextUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { DURATION } from '../../utils/animate';
 import { type MenuPlacement, type MenuRect } from '../menu/menu-placement';
 import {
   ARROW_HEIGHT,
@@ -194,13 +198,47 @@ const toMeasuring = async (rendered: Rendered) => {
   expect(rendered.host.panel().phase()).toBe('measuring');
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the panel's
+// timers late, and a test gave up waiting for it to open or close.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * How long the panel takes to show and be measured: 32ms to lay out, and
+ * the updates around it. It's then at its start frame.
+ */
+const MEASURED = 40;
+/** How long the panel takes to open: MEASURED, then 16ms at its start frame. */
+const OPENED = 60;
+/** How long the panel takes to close: its animation, then 20ms more. */
+const CLOSED = DURATION.normal + 30;
+
 /**
  * Opens the panel and waits until it has grown to its frame.
  */
 const openPanel = async (rendered: Rendered) => {
   rendered.host.open.set(true);
-  await vi.waitFor(() => expect(rendered.host.panel().phase()).toBe('open'));
-  await waitForUpdate();
+  await after(OPENED);
+  expect(rendered.host.panel().phase()).toBe('open');
 };
 
 /**
@@ -208,8 +246,8 @@ const openPanel = async (rendered: Rendered) => {
  */
 const closePanel = async (rendered: Rendered) => {
   rendered.host.open.set(false);
-  await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
-  await waitForUpdate();
+  await after(CLOSED);
+  expect(rendered.host.closed).toHaveBeenCalled();
 };
 
 /**
@@ -222,23 +260,27 @@ const settle = async () => {
 /**
  * Waits until the panel has asked for the measurements `held` keeps back, so
  * that `release()` has them to answer. Waiting for the panel to appear isn't
- * enough: it appears first, and measures itself only after LAYOUT_DELAY, a
- * real timer, which a busy CI runner can fire well after that.
+ * enough: it appears first, and measures itself only after its 32ms to lay
+ * out.
  */
-const waitForHeld = (rendered: Rendered) =>
-  vi.waitFor(() => expect(rendered.pendingCount()).toBeGreaterThan(0));
+const waitForHeld = async (rendered: Rendered) => {
+  await after(MEASURED);
+  expect(rendered.pendingCount()).toBeGreaterThan(0);
+};
 
 /**
  * Lets Lynx's timers run: the touch check waits for the next one.
  */
-const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 5));
+const nextTimer = () => vi.advanceTimersByTimeAsync(1);
 
 // The renderer warns that <ui-popover-panel> isn't a Lynx element.
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   settings.reduceMotion.set(false);
@@ -360,7 +402,8 @@ describe('UiPopoverPanel', () => {
     const rendered = await renderPanel();
     rendered.held.rest = true;
     rendered.host.open.set(true);
-    await vi.waitFor(() => expect(rendered.panel()).not.toBeNull());
+    await waitForUpdate();
+    expect(rendered.panel()).not.toBeNull();
     expect(style(rendered.content(), 'max-width')).toBe('');
 
     fireLynxEvent(rendered.area(), 'layoutchange', {
@@ -659,7 +702,7 @@ describe('UiPopoverPanel', () => {
       rendered.host.open.set(true);
       await openPanel(rendered);
       // The interrupted close never reported, and its timer gave way.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await vi.advanceTimersByTimeAsync(300);
       expect(rendered.host.closed).not.toHaveBeenCalled();
       expect(rendered.host.panel().phase()).toBe('open');
     });
@@ -668,7 +711,7 @@ describe('UiPopoverPanel', () => {
       const rendered = await renderPanel();
       await toMeasuring(rendered);
       rendered.unmount();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(100);
       expect(rendered.host.closed).not.toHaveBeenCalled();
     });
   });

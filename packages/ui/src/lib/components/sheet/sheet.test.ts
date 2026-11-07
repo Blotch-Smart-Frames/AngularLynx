@@ -2,10 +2,11 @@ import { Component, type WritableSignal, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DURATION } from '../../utils/animate';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SheetDetent, UiSheetSource } from '../bottom-sheet/bottom-sheet';
 import { UiGlass } from '../glass/glass';
 import {
@@ -69,6 +70,43 @@ const renderSheet = async () => {
   };
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the sheet's
+// close timers late, and a test looked before they had.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * How long the sheet takes to close: a zero-delay step, then its slide out
+ * and 20ms more.
+ */
+const CLOSED = DURATION.normal + 30;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /**
  * Opens the sheet and waits out its open sequence: the overlay shows on one
  * tick, and the panel slides in on the next.
@@ -128,8 +166,7 @@ describe('UiSheet', () => {
     fireEvent.tap(backdrop);
     expect(host.open()).toBe(false);
     // Once the panel has slid out, the overlay hides and `closed` fires.
-    await vi.waitFor(() => expect(host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await after(CLOSED);
     expect(overlay.getAttribute('visible')).toBe('false');
     expect(host.closed).toHaveBeenCalledOnce();
   });

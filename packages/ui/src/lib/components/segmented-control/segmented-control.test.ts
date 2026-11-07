@@ -3,7 +3,7 @@ import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
@@ -121,20 +121,35 @@ const WIDTHS: Readonly<Record<string, number>> = {
   Month: 100,
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the lens's
+// timers late or several at once, and a test looked at the wrong moment.
+
 /**
- * Waits `ms` of real time, then lets the update it led to apply.
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then lets the update it led to apply.
  */
 const after = async (ms: number) => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await vi.advanceTimersByTimeAsync(ms);
   await waitForUpdate();
 };
 
 /**
- * Long enough for the lens to settle after a tap (the slide, 350ms, then
- * its shrink, 150ms). Chained timers can each fire a clock tick late on
- * Windows, so it leaves room.
+ * How long the lens takes to settle after a tap: the slide, 350ms, then its
+ * shrink, 150ms.
  */
-const SETTLED = 700;
+const SETTLED = 500;
 
 /**
  * Renders the control on a platform (none gives Material), in a light or a
@@ -242,12 +257,14 @@ const renderControl = async (
 };
 
 beforeEach(() => {
+  vi.useFakeTimers();
   // The indicator's selector isn't a Lynx element, so the renderer falls
   // back to a <view> for it and warns.
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   settings.reduceMotion.set(false);

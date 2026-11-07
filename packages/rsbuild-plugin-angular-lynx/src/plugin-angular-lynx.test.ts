@@ -10,6 +10,7 @@ vi.mock('./display.js', () => ({ applyDisplay: vi.fn() }));
 vi.mock('./entry.js', () => ({ applyEntry: vi.fn() }));
 vi.mock('./generator.js', () => ({ applyGenerator: vi.fn() }));
 vi.mock('./layers.js', () => ({ applyLayers: vi.fn() }));
+vi.mock('./nested-calc.js', () => ({ applyNestedCalc: vi.fn() }));
 vi.mock('./resolve.js', () => ({ applyResolve: vi.fn() }));
 vi.mock('./safe-area.js', () => ({ applySafeArea: vi.fn() }));
 vi.mock('./text-inheritance.js', () => ({ applyTextInheritance: vi.fn() }));
@@ -31,6 +32,7 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
 import { applyTextInheritance } from './text-inheritance.js';
@@ -156,6 +158,13 @@ describe('pluginAngularLynx', () => {
       expect(applySafeArea).toHaveBeenCalledWith(mockApi);
     });
 
+    it('calls applyNestedCalc with api', () => {
+      const plugin = pluginAngularLynx();
+      plugin.setup(mockApi);
+
+      expect(applyNestedCalc).toHaveBeenCalledWith(mockApi);
+    });
+
     it('calls applyTextInheritance with api', () => {
       const plugin = pluginAngularLynx();
       plugin.setup(mockApi);
@@ -273,12 +282,15 @@ describe('pluginAngularLynx', () => {
       const loggerOrder = vi.mocked(applyDevLogger).mock.invocationCallOrder[0];
       const inheritanceOrder =
         vi.mocked(applyTextInheritance).mock.invocationCallOrder[0];
+      const nestedCalcOrder =
+        vi.mocked(applyNestedCalc).mock.invocationCallOrder[0];
 
       expect(cssOrder).toBeLessThan(tailwindOrder);
       // After Tailwind, so its PostCSS plugin runs on Tailwind's rules.
       expect(tailwindOrder).toBeLessThan(typeSelectorsOrder);
       // After Tailwind, so its OnceExit runs after Tailwind 4's lowering.
       expect(tailwindOrder).toBeLessThan(inheritanceOrder!);
+      expect(tailwindOrder).toBeLessThan(nestedCalcOrder!);
       expect(typeSelectorsOrder).toBeLessThan(entryOrder);
       expect(entryOrder).toBeLessThan(layersOrder);
       expect(layersOrder).toBeLessThan(angularOrder);

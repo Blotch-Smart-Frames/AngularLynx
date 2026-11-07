@@ -208,6 +208,20 @@ describe('LynxElement', () => {
         [fakeRef, 'opacity', 0.5],
       ]);
     });
+
+    it('writes a calc() inside another as a group, which Lynx reads', () => {
+      // Lynx drops a nested calc() (see nested-calc.ts).
+      globalThis.__AddInlineStyle = vi.fn();
+      element = new LynxElement(fakeRef);
+
+      element.setStyle('width', 'calc(calc(100% - 16px) / 2)');
+
+      expect(globalThis.__AddInlineStyle).toHaveBeenCalledWith(
+        fakeRef,
+        'width',
+        'calc((100% - 16px) / 2)',
+      );
+    });
   });
 
   describe('removeStyle', () => {
@@ -263,6 +277,20 @@ describe('LynxElement', () => {
       expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(
         fakeRef,
         'top: 62px; --gap: calc(62px + 8px)',
+      );
+    });
+
+    it('writes a calc() inside another as a group, which Lynx reads', () => {
+      globalThis.__SetInlineStyles = vi.fn();
+      element = new LynxElement(fakeRef);
+
+      element.setInlineStyles(
+        'width: calc(calc(100% - 16px) / 2); height: calc(8px + 4px)',
+      );
+
+      expect(globalThis.__SetInlineStyles).toHaveBeenCalledWith(
+        fakeRef,
+        'width: calc((100% - 16px) / 2); height: calc(8px + 4px)',
       );
     });
 

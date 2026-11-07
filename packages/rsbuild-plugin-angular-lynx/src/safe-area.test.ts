@@ -144,7 +144,9 @@ describe('safeAreaForLynx', () => {
       });
       expect(Object.fromEntries(padding)).toEqual({
         // The lowering keeps the spacing's var(), which Lynx resolves in an
-        // ordinary property's calc().
+        // ordinary property's calc(). The calc() Tailwind wrote for the
+        // spacing, which Lynx can't read inside another, is
+        // nestedCalcForLynx's to flatten (see nested-calc.test.ts).
         '.pb-safe-24': `calc(calc(var(--spacing) * 24) + ${BOTTOM})`,
         '.pt-safe': TOP,
       });

@@ -2549,7 +2549,7 @@ These global keywords are **not supported** in Lynx. Many individual property do
 
 ### What Lynx does
 
-- **`calc()`** — supported with basic arithmetic (`+`, `-`, `*`, `/`, parentheses). Works with CSS variables via `var()` in a stylesheet, but not in an inline style (see "`var()` inside `calc()` in an inline style is never substituted" below).
+- **`calc()`** — supported with basic arithmetic (`+`, `-`, `*`, `/`, parentheses). Works with CSS variables via `var()` in a stylesheet, but not in an inline style (see "`var()` inside `calc()` in an inline style is never substituted" below). A `calc()` inside another `calc()` isn't: the whole value is dropped (see "A `calc()` inside another `calc()` drops the value" below).
 - **`min()`, `max()`, `clamp()`** — not supported. Calculate responsive bounds in JavaScript and set them via signals or inline styles.
 - **`env()`** — **supported** for safe area insets: `env(safe-area-inset-top|right|bottom|left)` parses as a length, and it also works **inside `calc()`** (e.g. `padding-bottom: calc(1rem + env(safe-area-inset-bottom))`). Verified in the Lynx core CSS engine ([`lynx/core/renderer/css/css_style_utils.cc`](https://github.com/lynx-family/lynx/blob/develop/core/renderer/css/css_style_utils.cc) — `GetEnvValue`, and the `calc` parser accepts `env()` tokens).
   - **A fallback isn't read:** `GetEnvValue` looks the whole text between the parentheses up as the name, so `env(safe-area-inset-bottom, 0px)` isn't a length at all and the declaration is dropped. The build and runtime rewrite below drop the fallback, so it works in an app.
@@ -2558,11 +2558,29 @@ These global keywords are **not supported** in Lynx. Many individual property do
     - On Android nothing sets them, so `env()` is always 0. `liblynx.so` doesn't export them either, so a host can't set them through JNI.
     - **Nothing on screen follows a change.** An element resolves `env()` when its style is set; `DynamicCSSStylesManager::GetValueFlags` gives the `ENV` pattern no update flag (`// TODO:`), so a rotation, or setting the statics again, leaves every element with the value it read.
     - **The generated apps (issue #281) don't use Lynx's `env()`.** They draw the page edge to edge and send `edgeToEdge` with the insets as global props. The build plugin (`safe-area.ts`) writes each `env(safe-area-inset-*)` in a stylesheet as `var(--angular-lynx-safe-area-inset-*, env(safe-area-inset-*))`, and the page sets the variables, which restyle every element that reads them when they change. Inline styles can't use a variable inside `calc()` (below), so the runtime writes the inset into them in px and writes them again when it changes (`lynx-element/safe-area-insets.ts`). Elsewhere, as in Lynx Explorer, nothing sets the variables and the `var()` falls back to Lynx's `env()`. A custom property defined in a stylesheet keeps Lynx's `env()`, as a `var()` inside a function in one never resolves.
-    - Measured on the iOS 27 simulator (iPhone 18 Pro, 62/34pt) and the Android emulator (Pixel 6 API 34, 48.76/24dp), November 2026: stylesheet `env()` and `calc(10px + env())`, Tailwind 4's `calc(calc(var(--spacing) * 2) + env())`, inline strings and `[style.height]` bindings all gave the insets, followed rotation, and on Android dropped the bottom inset to 0 while the keyboard was open. In Lynx Explorer the same bundle gave Explorer's own insets through the fallback; the web preview gave 0.
+    - Measured on the iOS 27 simulator (iPhone 18 Pro, 62/34pt) and the Android emulator (Pixel 6 API 34, 48.76/24dp), November 2026: stylesheet `env()` and `calc(10px + env())`, Tailwind 4's `calc(calc(var(--spacing) * 2) + env())` (only where a production build's minifier had flattened it: a development build dropped it until issue #327, see "A `calc()` inside another `calc()` drops the value"), inline strings and `[style.height]` bindings all gave the insets, followed rotation, and on Android dropped the bottom inset to 0 while the keyboard was open. In Lynx Explorer the same bundle gave Explorer's own insets through the fallback; the web preview gave 0.
     - Lynx Explorer creates its views later and gets the real insets (top 62, bottom 34 on the iPhone 18 Pro simulator), though its page already sits below the status bar.
     - Except when a `lynx://open` link starts Explorer: a bundle opened while Explorer isn't running yet reads 0 for every inset, even with `?fullscreen=true` (seen on the iOS 27 simulator, October 2026). To check a layout that pads for the insets, such as a tab bar above the home indicator, launch Explorer first, then open the link.
     - For JavaScript, the generated apps and Lynx Explorer send the insets (`safeAreaTop` and so on) and `isNotchScreen` as global props (issue #58). Inject `LynxSafeArea` for `isNotchScreen()`.
   - The `@blotch/ui` Tailwind plugin ships `*-safe` / `*-safe-<n>` padding utilities built on this (see `packages/ui/src/lib/theme/tailwind-plugin.ts`).
+
+---
+
+## A `calc()` inside another `calc()` drops the value
+
+### What you'd expect (web)
+
+`padding-top: calc(calc(var(--spacing) * 3) + env(safe-area-inset-top))` is the same as `calc(var(--spacing) * 3 + env(safe-area-inset-top))`: a nested `calc()` is just a group.
+
+### What Lynx does
+
+The whole declaration is dropped, as if the property weren't set: the element gets no padding at all, not even the spacing. It doesn't matter what's inside: `calc(calc(4px * 3) + 100px)` fails as `calc(calc(var(--x) * 3) + var(--y))` does, in a stylesheet and in an inline style, on either side of the operator. Plain parentheses work: `calc((4px * 3) + 100px)`.
+
+- **Why:** `TryMakeCalcNLength` (core/renderer/css/css_style_utils.cc) skips the leading `calc` and reads the rest character by character, treating `(` and `)` as grouping operators and everything between operators as a length. An inner `calc` is read as a length named `calc`, which `LengthHandler::Process` rejects, so the evaluator gives up on the whole value.
+- **Where it comes from:** Tailwind 4 writes `--spacing(3)` as `calc(var(--spacing) * 3)`, so any utility that adds to a spacing value nests one, such as the `@blotch/ui` theme's `pt-safe-3` (`calc(--spacing(3) + env(safe-area-inset-top))`). A production build hides it, because the CSS minifier flattens nested `calc()`s; a development build (`-c development`, `ng serve`) keeps them, which is how issue #327 looked like an Android-only safe-area bug: its Android app was a development build and its iOS app a production one.
+- **What AngularLynx does:** the build plugin writes each `calc()` nested in another as parentheses in every stylesheet, at `OnceExit` so it sees what Tailwind 4's lowering writes too (`packages/rsbuild-plugin-angular-lynx/src/nested-calc.ts`), and the runtime does the same to inline styles (`lynx-element/nested-calc.ts`). A `calc()` that only nests once Lynx substitutes a variable, such as `width: calc(var(--a) * 2)` with `--a: calc(1px + 2px)`, is still dropped: nothing sees it nested before Lynx does. Keep `calc()` out of a variable that a `calc()` reads, or put the arithmetic in the property.
+
+Probe (2026-11-07): stripes in a development build on the Android emulator (Pixel 6 API 34), each padded by a nested or flat `calc()`, in a stylesheet and inline. Every nested one got no padding; the flat and parenthesized ones did. The evaluator is in Lynx's shared core; iOS wasn't run.
 
 ---
 

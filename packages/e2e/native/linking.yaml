@@ -3,10 +3,18 @@
 # scheme nobody declares: "yes/no" means the shell's AngularLynxLinking
 # module answered, and the generator wrote https into Info.plist's
 # LSApplicationQueriesSchemes and the manifest's <queries>, without which iOS
-# and Android 11+ answer no. "Open sheet" opens example.com with openInApp(),
-# in SFSafariViewController on iOS and a Custom Tab on Android, and the page
-# shows "Sheet: closed" once the app is back in front. Lynx Explorer has no
-# module: canOpenURL() says "no/no" there, and openInApp() rejects.
+# and Android 11+ answer no. On Android, "Open sheet" opens example.com with
+# openInApp() in a Custom Tab, and the page shows "Sheet: closed" once the app
+# is back in front. Lynx Explorer has no module: canOpenURL() says "no/no"
+# there, and openInApp() rejects.
+#
+# iOS doesn't open the sheet here. After SFSafariViewController closed,
+# Maestro's iOS driver kept reading the sheet's process ("Application
+# com.apple.SafariViewService is not running") instead of the app: in 2 of 6
+# CI runs either this flow's wait for "Sheet: closed" hung while the app showed
+# it, or the next flow couldn't see "Count: 0" on the relaunched app's screen.
+# The iOS sheet was checked by hand when LynxLinking landed (#309), and the
+# Playwright test opens openInApp()'s tab on the web.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
@@ -16,28 +24,19 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Can open: yes/no'
     timeout: 15000
-- tapOn: Open sheet
-# The sheet covers the page, so its "Sheet: open" line disappears.
-- extendedWaitUntil:
-    notVisible: 'Sheet: open'
-    timeout: 15000
-- takeScreenshot: linking-sheet
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      # SFSafariViewController's close button: "Done" before iOS 26, an X
-      # labeled "Close" since.
-      - tapOn:
-          text: (Done|Close)
-          retryTapIfNoChange: false
 - runFlow:
     when:
       platform: Android
     commands:
+      - tapOn: Open sheet
+      # The tab covers the page, so its "Sheet: open" line disappears.
+      - extendedWaitUntil:
+          notVisible: 'Sheet: open'
+          timeout: 15000
+      - takeScreenshot: linking-sheet
       # Back closes the Custom Tab, or Chrome's first-run screen in front of
       # it on a fresh emulator: either way the app comes back to the front.
       - back
-- extendedWaitUntil:
-    visible: 'Sheet: closed'
-    timeout: 15000
+      - extendedWaitUntil:
+          visible: 'Sheet: closed'
+          timeout: 15000

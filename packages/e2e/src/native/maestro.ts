@@ -109,7 +109,7 @@ export const FLOWS: readonly Flow[] = [
   {
     file: 'linking.yaml',
     description:
-      'opens a link in a browser sheet and says which apps it can open',
+      'says which apps it can open, and on Android opens a link in a browser tab',
     // Only the app's own builds have the linking module. In Lynx Explorer,
     // openInApp() rejects and canOpenURL() says no.
     only: { host: 'shell' },

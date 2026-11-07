@@ -42,14 +42,14 @@ const simctl = async (args: string[], logFile: string) =>
 /**
  * Adds the photo photo.yaml picks, newest in the library, so it's the first
  * the picker shows. On a freshly booted GitHub runner simulator, `simctl
- * addmedia` takes 60 to 90 seconds when it works (85s and 67s measured), and
- * it has also crashed after a minute (exit 133). A 90-second limit stopped tries that were nearly done, and
- * each retry started over: all four of one run's tries hit it. So each try gets
- * three minutes, and three tries stay inside the step's 30-minute limit with
+ * addmedia` is slow: 67 to 174 seconds when it worked, and it has also crashed
+ * after a minute (exit 133). A try stopped at its limit starts over, so a short
+ * limit only adds tries that can't finish: four 90-second tries all failed in
+ * one run. Two five-minute tries stay inside the step's 30-minute limit with
  * the flows (about 4 minutes for the shell and 4.5 for Explorer).
  */
 const addLibraryPhoto = async (udid: string, logFile: string) => {
-  const tries = 3;
+  const tries = 2;
   for (let attempt = 1; ; attempt++) {
     const { code } = await runAllowFailure(
       'xcrun',
@@ -58,7 +58,7 @@ const addLibraryPhoto = async (udid: string, logFile: string) => {
         cwd: process.cwd(),
         logFile,
         echo: false,
-        timeout: { ms: 180_000 },
+        timeout: { ms: 300_000 },
       },
     );
     if (code === 0) {

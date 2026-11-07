@@ -2,7 +2,7 @@ import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import {
@@ -123,23 +123,48 @@ const renderDrawer = async () => {
   };
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the open and
+// close sequences' timers late, and a test looked before they had.
+
 /**
- * Waits for the drawer's open or close sequence, which runs on timers, then
- * renders what it changed.
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, for the drawer's open or close sequence,
+ * which runs on timers, then renders what it changed.
  */
 const after = async (ms: number) => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await vi.advanceTimersByTimeAsync(ms);
   await waitForUpdate();
 };
 
 /**
- * Long enough for the open sequence. The sequence is chained timers, and on
- * Windows each can fire up to a clock tick (about 16ms) late, so 50ms was too
- * short for the dialogs' sequences on CI's Windows runner.
+ * How long the open sequence takes: two zero-delay steps, which the fake
+ * clock runs a millisecond apart.
  */
-const OPENED = 150;
-/** Long enough for the close animation and the hide after it, as above. */
-const CLOSED = DURATION.normal + 150;
+const OPENED = 10;
+/**
+ * How long the close sequence takes: a zero-delay step, then the close
+ * animation and 20ms more.
+ */
+const CLOSED = DURATION.normal + 30;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 /** `__ElementAnimate`'s first argument for starting an animation. */
 const START = 0;

@@ -195,6 +195,34 @@ const processExample = (exampleName) => {
     return entry;
   });
 
+  // A web bundle names its images and other emitted files by the public path
+  // it was built with, and Lynx for Web resolves that against the page that
+  // shows the <lynx-view>, not against the bundle. The site serves them under
+  // EXAMPLES_BASE_HREF (the merge into STATIC_DEST below), so an example that
+  // emits any has to be built with `--base-href=/examples/`, which the root's
+  // `npm run build:examples` passes. A build without it looks fine here and
+  // ships previews with no pictures, which the deploy once did when its
+  // workflow ran a plain `turbo run build`.
+  const staticSrcDir = path.join(srcDir, 'dist', 'static');
+  if (fs.existsSync(staticSrcDir) && walkDir(staticSrcDir).length > 0) {
+    const publicPaths = templateFiles
+      .filter(({ webFile }) => webFile)
+      .map(
+        (entry) =>
+          // latin1 keeps every byte a character, so the match can't be thrown
+          // off by binary sections of the bundle.
+          fs
+            .readFileSync(path.join(srcDir, entry.webFile), 'latin1')
+            .match(/\.p=\\?"([^"\\]*)\\?"/)?.[1],
+      );
+    if (!publicPaths.includes(EXAMPLES_BASE_HREF)) {
+      throw new Error(
+        `${exampleName}'s web bundle was built with the public path ${JSON.stringify(publicPaths[0])}, not ${EXAMPLES_BASE_HREF}: ` +
+          `the files under its dist/static would 404 on the site. Build the examples with \`npm run build:examples\` from the repo root.`,
+      );
+    }
+  }
+
   const metadata = {
     name: exampleName,
     files: textFiles.filter((f) => !isPreviewImage(f)),
@@ -222,7 +250,6 @@ const processExample = (exampleName) => {
     copyDirRecursive(distSrcDir, path.join(destDir, 'dist'));
   }
   // The bundled images, where the web bundle asks for them (EXAMPLES_BASE_HREF).
-  const staticSrcDir = path.join(distSrcDir, 'static');
   if (fs.existsSync(staticSrcDir)) {
     copyDirRecursive(staticSrcDir, STATIC_DEST);
   }

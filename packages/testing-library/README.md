@@ -122,6 +122,8 @@ await waitForUpdate();
 
 Call this after any signal mutation that happens outside an event handler (e.g. direct `.set()` in test code).
 
+Under `vi.useFakeTimers()`, change detection waits for the fake clock as well, so nothing renders on the real clock. `waitForUpdate()` waits on a zero-delay `setTimeout` then: start it, move the clock (`await vi.advanceTimersByTimeAsync(1)`), and await it.
+
 ### `fireEvent`
 
 Fires Lynx events at JSDOM elements. Use the named helpers for standard Lynx events:

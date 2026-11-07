@@ -87,6 +87,19 @@ fireEvent.load(image, { detail: { width: 240, height: 340 } });
 await waitForUpdate(); // the handler ran; this lets Angular render its result
 ```
 
+To test a component's timers, use `vi.useFakeTimers()` after `render()`. Then nothing runs on the real clock: change detection waits for the fake clock too. `waitForUpdate()` waits on a zero-delay timer, so start it, move the clock, and await it. The fake clock runs a zero-delay timer set inside another timer a millisecond later, as Node does, so move it 1 ms:
+
+```typescript
+const waitForUpdate = async () => {
+  const update = nextUpdate(); // the library's waitForUpdate, imported as nextUpdate
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+fireEvent.tap(button);
+await vi.advanceTimersByTimeAsync(300); // the component's own 300 ms timer
+await waitForUpdate();
+```
+
 For an event without a method, fire one whose type is the handler's kind and the event name: `fireEvent(pager, new CustomEvent('bindEvent:change', { detail }))` runs `(bindchange)` with that `detail`.
 
 To render a component with inputs, pass them to `render()` instead of writing a host component: `await render(Greeting, { inputs: { name: 'Lynx' } })`. They're set before the first change detection, as a parent template binds them, so a required input has its value and `ngOnInit` sees it. Key each by the name a template binds (an aliased input takes its alias, such as `class`). `await rerender({ inputs: { name: 'Angular' } })` changes them and keeps the component, but only inputs `render()` set: a component whose inputs are bound takes no other inputs, nor `componentRef.setInput()`. So give `render()` a starting value for any input the test changes later.

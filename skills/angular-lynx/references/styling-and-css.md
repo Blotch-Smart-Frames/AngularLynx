@@ -83,6 +83,7 @@ Pad for the notch, the status bar and the home indicator with `env(safe-area-ins
 ```
 
 - **Apps from `ng build --platform` draw edge to edge**, under the status bar and the home indicator, as Safari does with `viewport-fit=cover`, and `env()` gives the window's insets on iOS and Android, following rotation. Pad the content, not the screen, so it scrolls under the bars. On Android the keyboard pushes the page up, and the bottom inset is 0 while it's open.
+- **An `<overlay>` covers the whole screen too**, under the bars, so a bottom sheet or a dialog reaches the screen's edges on iOS and Android. Pad what sits at its edges with `env()`, as dolan's bottom sheet does with `pb-safe`.
 - **`"edgeToEdge": false`** in the build target's options keeps the page inside the safe area instead; `env()` is then 0.
 - **Lynx Explorer** gives the window's insets, though its page sits below its own nav bar unless the URL has `?fullscreen=true`. The **web preview** gives 0, and so does your own Android host app unless it sends the insets as the generated apps do (`edgeToEdge: true` with `safeAreaTop`, `safeAreaRight`, `safeAreaBottom` and `safeAreaLeft` global props).
 - **Don't define a CSS variable from an inset in a stylesheet.** In `--gap: calc(env(safe-area-inset-top) + 8px)` the build leaves `env()` to Lynx, which is 0 in the generated apps. Write `env()` where the value is used, or set the variable inline (`[style.--gap]`).

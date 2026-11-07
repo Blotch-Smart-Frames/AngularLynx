@@ -128,6 +128,8 @@ A template written for the browser renders: the runtime creates the Lynx element
 </overlay>
 ```
 
+In the apps `ng build --platform` makes, an overlay covers the whole screen, under the status bar and the home indicator or navigation bar: pad its content with `env(safe-area-inset-*)` (see the Safe Area section of [styling-and-css.md](styling-and-css.md)).
+
 ### Blur and Liquid Glass
 
 `<blur-view>` blurs what's drawn behind it, in place of CSS `backdrop-filter`:

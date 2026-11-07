@@ -161,6 +161,9 @@ dependencies {
         exclude(group = "org.lynxsdk.lynx", module = "xelement-animax")
         exclude(group = "org.lynxsdk.lynx", module = "xelement-markdown")
     }
+    // The umbrella declares its modules for runtime only. EdgeToEdgeOverlay
+    // extends <overlay>'s classes, so that module is compiled against too.
+    implementation("org.lynxsdk.lynx:xelement-overlay:$lynxVersion")
     // XElement's modules depend on appcompat and material 1.0.0, which bring
     // vectordrawable 1.0.0 and vectordrawable-animated 1.0.0. Those two share
     // the namespace androidx.vectordrawable, and AGP 9's manifest merger

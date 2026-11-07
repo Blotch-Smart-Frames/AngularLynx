@@ -45,6 +45,8 @@ They draw the page over the whole screen, under the status bar and the home indi
 </scroll-view>
 ```
 
+An [`<overlay>`](/api/elements/overlay), and so a [bottom sheet](/dolan/bottom-sheet) or a dialog, covers the whole screen the same way, down to its bottom edge: pad its content too, as the bottom sheet does with `pb-safe`.
+
 `env()` follows the insets when they change: when the phone rotates, and on Android when the keyboard opens. The keyboard pushes the page up so the input you type into stays above it, and the bottom inset is 0 while it's open, because the page then ends above the navigation bar.
 
 To keep the page inside the safe area instead, set `edgeToEdge` to `false` in the build target's options in `angular.json`. The page then starts below the status bar and ends above the home indicator, and `env()` is 0 on every side:

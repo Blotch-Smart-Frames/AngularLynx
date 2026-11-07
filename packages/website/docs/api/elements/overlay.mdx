@@ -42,6 +42,8 @@ export class Confirm {
 
 Import `LYNX_ELEMENTS` in your component (see [Elements](/api/angular-lynx/elements)).
 
+In the apps `ng build --platform` makes, an overlay covers the whole screen, under the status bar and the navigation bar or home indicator, as the page does: pad its content with `env(safe-area-inset-*)` (see [Safe area](/guide/safe-area)). In your own Android app that draws edge to edge, XElement's overlay still stops above the navigation bar unless it sets `android-adapt-edge-to-edge`, which only Android 15 and later read.
+
 :::warning
 Needs [XElement](/guide/glossary#xelement) in custom native apps (see [Embedding](/guide/embedding/)).
 :::

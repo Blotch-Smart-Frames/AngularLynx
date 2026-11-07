@@ -129,6 +129,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // these come from XElement (see app/build.gradle.kts). Lynx
             // Explorer registers them the same way.
             addBehaviors(XElementBehaviors().create())
+            // In an edge-to-edge app an <overlay>'s window fills the screen as
+            // the page does, under the navigation bar too (EdgeToEdgeOverlay.kt).
+            if (edgeToEdge) addBehavior(EdgeToEdgeOverlay.behavior())
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
         }.build(this)

@@ -226,6 +226,26 @@ Don't use `<overlay>` for non-modal content at all. `<overlay>`'s bespoke hit-te
 
 ---
 
+## On Android an `<overlay>`'s window stops above the navigation bar, though its content runs to the screen's bottom
+
+### What you'd expect (web)
+
+A `position: fixed; inset: 0` layer covers the whole viewport, as the page does. In an edge-to-edge page (`viewport-fit=cover`) that includes the area under the home indicator.
+
+### What Lynx does
+
+On iOS an overlay covers the screen. On Android, XElement's overlay is a `Dialog` with its own window (`LynxOverlayDialog`), and that window ends above the navigation bar even when the activity draws edge to edge. Its content doesn't: `LynxUIOverlayShadowNode` sizes the first child to the real screen's full height. So the window cuts the content off at the navigation bar, and the page shows undimmed in the strip beneath it. A bottom sheet docked with `bottom: 0` loses its bottom padding, and the dock under it shows through (issue #328).
+
+- **Why:** `LynxOverlayView` lets the window under the status bar (`translucentStatusBar`: `FLAG_LAYOUT_IN_SCREEN` and `SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN`), but nothing removes the navigation bar from the insets the window fits. Its one switch, the `android-adapt-edge-to-edge` attribute, calls `WindowCompat.setDecorFitsSystemWindows(window, !adapt)` only on Android 15 (API 35) and later, and the view's `init` calls it with `false`, which opts the window out of edge to edge there. Below 15 nothing changes it. (Lynx 4.1.0, `lynx_xelement_overlay`.)
+- **What AngularLynx does:** in an edge-to-edge app the Android shell registers its own `overlay` behavior after XElement's (`EdgeToEdgeOverlay.kt`; the last behavior added for a tag wins, and logcat says `Duplicated Behavior For Name: overlay`). It subclasses XElement's overlay UI and calls `WindowCompat.setDecorFitsSystemWindows(window, false)` on the dialog's window on every version, with the cutout mode `enableEdgeToEdge()` gives the activity, and keeps XElement's shadow node. The overlay then covers the screen as on iOS, and its content pads itself with `env(safe-area-inset-*)`, which reads the page's variables there too (dolan's bottom sheet pads with `pb-safe`). The navigation bar stays transparent over it: XElement copies the activity's navigation bar color into the dialog's window when it opens.
+- **To build against it:** the `xelement` umbrella declares its modules with `runtime` scope, so the shell adds `org.lynxsdk.lynx:xelement-overlay` itself to compile a subclass.
+- **Your own Android host** that draws edge to edge has the same gap. Set `android-adapt-edge-to-edge` on the overlay for Android 15 and later, or register a subclass as the shell does.
+- The keyboard behaves the same with and without the fix: a focused `<input>` near the bottom of a sheet ends up partly under the keyboard on Android either way.
+
+Probe (2026-11-07): a `ui-bottom-sheet` over a page with a blue bar at the bottom, on the Android emulator (Pixel 6, API 34, gesture navigation). Before, the sheet's last row ended the navigation bar's height above the bottom, over the undimmed blue bar. With `EdgeToEdgeOverlay` the sheet runs to the screen's bottom edge, with its `pb-safe` padding (24dp) under the gesture handle. Android 15 and later weren't run (no image installed).
+
+---
+
 ## A move is remove-then-reinsert — it must not "park" the element's children
 
 ### What you'd expect (web)

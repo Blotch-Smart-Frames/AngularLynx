@@ -2,6 +2,7 @@ import {
   type ElementRef,
   Component,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
   inject,
@@ -19,20 +20,22 @@ import {
 } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 
+/**
+ * The group and each item are their host elements, styled through `host`.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-radio-group> or <ui-radio-group-item> lands on the
+ * host whatever the component does: with a styled view inside as well, a gap
+ * or padding applied twice.
+ */
 @Component({
   selector: 'ui-radio-group',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiRadioGroup {
   readonly value = model<string>('');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly changed = output<string>();
@@ -50,22 +53,23 @@ export class UiRadioGroup {
 
 @Component({
   selector: 'ui-radio-group-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  host: {
+    '[class]': 'itemClass()',
+    '(bindtap)': 'select()',
+  },
   template: `
-    <view [class]="itemClass()" (bindtap)="select()">
-      <view [class]="circleClass()">
-        <view
-          #dot
-          [class]="dotClass()"
-          [style]="
-            isSelected() ? 'opacity: 1;' : 'opacity: 0; transform: scale(0.6);'
-          "
-        />
-      </view>
-      <text [class]="labelClass()"><ng-content /></text>
+    <view [class]="circleClass()">
+      <view
+        #dot
+        [class]="dotClass()"
+        [style]="
+          isSelected() ? 'opacity: 1;' : 'opacity: 0; transform: scale(0.6);'
+        "
+      />
     </view>
+    <text [class]="labelClass()"><ng-content /></text>
   `,
 })
 export class UiRadioGroupItem {
@@ -74,32 +78,36 @@ export class UiRadioGroupItem {
   readonly itemValue = input.required<string>({ alias: 'value' });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly dotRef = viewChild<ElementRef>('dot');
+  readonly dotRef = viewChild.required<ElementRef>('dot');
   #dotAnim?: AnimationHandle;
-  #previousSelected?: boolean;
+  #mounted = false;
 
   protected readonly isSelected = computed(
     () => this.#group.value() === this.itemValue(),
   );
 
-  constructor() {
-    // Same guard pattern as UiCheckbox: `#previousSelected === undefined` skips
-    // the first run so a pre-selected item doesn't animate in on mount.
-    // The equality guard prevents duplicate animations if the effect re-runs.
-    effect(() => {
-      const selected = this.isSelected();
-      const el = this.dotRef()?.nativeElement;
-      if (!el || this.#previousSelected === undefined) {
-        this.#previousSelected = selected;
-        return;
-      }
-      if (selected === this.#previousSelected) return;
-      this.#previousSelected = selected;
+  /**
+   * Pops the dot in when the item is selected and out when it's deselected.
+   * A field rather than a constructor: Angular's test build keeps a function
+   * for a constructor that nothing calls, which an app's coverage report
+   * would show as uncovered.
+   *
+   * The first run is the mount, skipped so a pre-selected item doesn't
+   * animate in. Every later run is a change of selection: `isSelected` is a
+   * computed, which only notifies when its value changes, and the dot is
+   * always in the template, so its query never changes.
+   */
+  protected readonly dotAnimation = effect(() => {
+    const selected = this.isSelected();
+    const el = this.dotRef().nativeElement;
+    if (!this.#mounted) {
+      this.#mounted = true;
+      return;
+    }
 
-      this.#dotAnim?.cancel();
-      this.#dotAnim = selected ? popIn(el) : popOut(el);
-    });
-  }
+    this.#dotAnim?.cancel();
+    this.#dotAnim = selected ? popIn(el) : popOut(el);
+  });
 
   protected readonly itemClass = computed(() =>
     cn(

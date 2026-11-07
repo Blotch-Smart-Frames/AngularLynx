@@ -1,7 +1,9 @@
 import {
-  type ElementRef,
+  type OnDestroy,
   Component,
+  ElementRef,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChildren,
   effect,
@@ -34,6 +36,14 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
   selector: 'ui-nav-drawer',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The drawer's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-nav-drawer>, and
+  // the host sits in the page's layout where the drawer is written, so a
+  // `class="p-8"` padded the page there too. The host drops it. The parts
+  // below are their host elements for the same reason: a class on a part
+  // lands on its host anyway, so a view inside it styled with the same class
+  // applied it twice.
+  host: { '[attr.class]': 'null' },
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <!-- bg-black/50 dims the content behind the drawer. The fadeIn/fadeOut in
@@ -61,7 +71,7 @@ import { UI_ICON_COLOR } from '../icon/icon-theme';
     </overlay>
   `,
 })
-export class UiNavDrawer {
+export class UiNavDrawer implements OnDestroy {
   readonly open = model(false);
   readonly side = input<'left' | 'right'>('left');
   readonly userClass = input<string>('', { alias: 'class' });
@@ -81,27 +91,38 @@ export class UiNavDrawer {
       : 'position: fixed; overflow: visible; width: 100vw; height: 100vh; top: 0; left: 0; z-index: 999; display: none;',
   );
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay hides with
+  // display:none rather than leaving the tree), and the sequences only read
+  // them from timers that start after the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
+  // The open and close sequences' pending timers, so ngOnDestroy can stop
+  // them.
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // first run would call #doClose() and emit `closed` before the drawer
-    // has ever been opened.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Plays the open or close sequence whenever `open` changes. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * first run would call #doClose() and emit `closed` before the drawer
+   * has ever been opened.
+   */
+  protected readonly openAndClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   protected readonly panelClass = computed(() =>
     cn(
@@ -137,15 +158,37 @@ export class UiNavDrawer {
   }
 
   /**
+   * The drawer can be destroyed while its open or close sequence is still
+   * running, for example by an `@if` around it or a route change right after
+   * closing it. The rest of the sequence then ran on the destroyed component:
+   * it animated detached elements and emitted `closed` from a destroyed
+   * output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    for (const timer of this.#timers) clearTimeout(timer);
+  }
+
+  /**
+   * `setTimeout`, tracked so that ngOnDestroy can cancel it.
+   */
+  #later(callback: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      callback();
+    }, ms);
+    this.#timers.add(timer);
+  }
+
+  /**
    * Two-phase open: first make the overlay visible (so native elements exist),
    * then animate in on the next frame. Without the nested setTimeout, the
    * animate() call would target elements that haven't been flushed to native
    * yet — Lynx element.animate() requires the element to be in the tree.
    */
   #doOpen(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.overlayVisible.set(true);
-      setTimeout(() => this.#animateIn(), 0);
+      this.#later(() => this.#animateIn(), 0);
     }, 0);
   }
 
@@ -156,9 +199,9 @@ export class UiNavDrawer {
    * cause a visual glitch (elements disappear before fade completes).
    */
   #doClose(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.#animateOut();
-      setTimeout(() => {
+      this.#later(() => {
         this.overlayVisible.set(false);
         this.closed.emit();
       }, DURATION.normal + 20);
@@ -166,9 +209,8 @@ export class UiNavDrawer {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -187,9 +229,8 @@ export class UiNavDrawer {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -205,13 +246,9 @@ export class UiNavDrawer {
 
 @Component({
   selector: 'ui-nav-drawer-header',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiNavDrawerHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -231,6 +268,13 @@ export class UiNavDrawerHeader {
     ),
   );
 }
+
+/**
+ * `UiNavDrawerItem`, for `contentChildren()`. A call rather than the class
+ * itself: for a class, Angular's test build keeps an arrow function that
+ * nothing calls, which an app's coverage report would show as uncovered.
+ */
+const navDrawerItem = () => UiNavDrawerItem;
 
 @Component({
   selector: 'ui-nav-drawer-content',
@@ -259,9 +303,11 @@ export class UiNavDrawerHeader {
   // makes the host lay the scroll-view out vertically to fill that height. The
   // panel's flex-col stretches the host to full width by default (Lynx
   // align-items: stretch), so no width class is needed on the host.
-  host: {
-    class: 'flex-1 flex-col flex',
-  },
+  //
+  // The app's class goes on the host too, rather than on the scroll-view:
+  // Angular gives the host every static attribute written on it anyway, so
+  // with the scroll-view styled as well, a padding applied twice.
+  host: { '[class]': 'hostClass()' },
   // With the host now a definite height, the scroll-view fills it with `h-full`
   // (the explicit height Lynx requires to actually scroll) and `w-full` to span
   // the host width. This is the bound the scroll-view was missing above.
@@ -273,7 +319,7 @@ export class UiNavDrawerHeader {
   template: `
     <scroll-view
       scroll-orientation="vertical"
-      [class]="contentClass()"
+      class="h-full w-full"
       (bindcontentsizechanged)="onContentLayout()"
     >
       <ng-content />
@@ -288,27 +334,29 @@ export class UiNavDrawerContent {
   // Every nav item projected into this section (Home + each group item). Used to
   // find the active one when the drawer opens. `descendants: true` reaches items
   // nested inside the @for group wrappers, not just the direct content children.
-  readonly items = contentChildren(UiNavDrawerItem, { descendants: true });
+  readonly items = contentChildren(navDrawerItem(), { descendants: true });
 
-  protected readonly contentClass = computed(() =>
-    cn('h-full w-full', this.userClass()),
+  protected readonly hostClass = computed(() =>
+    cn('flex-1 flex-col flex', this.userClass()),
   );
 
-  constructor() {
-    // When the drawer opens, land the user on their current route instead of the
-    // top of a potentially long nav list. The <overlay> is display:none until
-    // open, so the scroll-view has no laid-out child frames until it's shown —
-    // defer a tick so the just-shown content is measured before we read it.
-    //
-    // This open-driven path is the fallback: it covers the web preview (where
-    // contentsizechanged isn't emitted) and re-opens that don't trigger a
-    // relayout. On device, onContentLayout() below is the precise trigger. Both
-    // call the same instant scroll, so firing twice is a harmless no-op.
-    effect(() => {
-      if (!this.#drawer.open()) return;
-      setTimeout(() => this.#scrollActiveIntoView(), 0);
-    });
-  }
+  /**
+   * When the drawer opens, land the user on their current route instead of the
+   * top of a potentially long nav list.
+   *
+   * The <overlay> is display:none until open, so the scroll-view has no
+   * laid-out child frames until it's shown — defer a tick so the just-shown
+   * content is measured before we read it.
+   *
+   * This open-driven path is the fallback: it covers the web preview (where
+   * contentsizechanged isn't emitted) and re-opens that don't trigger a
+   * relayout. On device, onContentLayout() below is the precise trigger. Both
+   * call the same instant scroll, so firing twice is a harmless no-op.
+   */
+  protected readonly revealActiveOnOpen = effect(() => {
+    if (!this.#drawer.open()) return;
+    setTimeout(() => this.#scrollActiveIntoView(), 0);
+  });
 
   /**
    * Fired by the scroll-view once its content finishes layout. Gated on the
@@ -321,57 +369,53 @@ export class UiNavDrawerContent {
 
   #scrollActiveIntoView(): void {
     this.items()
-      /* v8 ignore start -- .find predicate unreachable when no content-projected items */
       .find((item) => item.active())
-      /* v8 ignore stop */
       ?.scrollIntoView();
   }
 }
 
+/**
+ * The color icons inside an item draw with: the destructive color in a
+ * destructive item. A function of its own rather than written inline in
+ * `providers`: Angular's test build keeps a second copy of an inline factory
+ * that nothing calls, which an app's coverage report would show as uncovered.
+ */
+const itemIconColor = () => {
+  const item = inject(UiNavDrawerItem);
+  return computed(() =>
+    item.variant() === 'destructive' ? 'var(--destructive)' : undefined,
+  );
+};
+
 @Component({
   selector: 'ui-nav-drawer-item',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Icons projected into the item (see the variant below) inject this through
   // the item's element injector, which content projection keeps them under.
-  providers: [
-    {
-      provide: UI_ICON_COLOR,
-      useFactory: () => {
-        const item = inject(UiNavDrawerItem);
-        return computed(() =>
-          item.variant() === 'destructive' ? 'var(--destructive)' : undefined,
-        );
-      },
-    },
-  ],
-  template: `
-    <view
-      #container
-      [class]="containerClass()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <ng-content />
-    </view>
-  `,
+  providers: [{ provide: UI_ICON_COLOR, useFactory: itemIconColor }],
+  host: {
+    '[class]': 'containerClass()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ng-content />',
 })
 export class UiNavDrawerItem {
   readonly #drawer = inject(UiNavDrawer);
 
   readonly variant = input<'default' | 'destructive'>('default');
-  readonly active = input(false);
-  readonly autoClose = input(true);
+  readonly active = input(false, { transform: booleanAttribute });
+  readonly autoClose = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   // `destructive` recolors the item's content, which the item doesn't render
@@ -392,20 +436,17 @@ export class UiNavDrawerItem {
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(
-      this.containerRef()?.nativeElement,
-      SCALE.pressDownLight,
-    );
+    this.#pressAnim = pressDown(this.#host, SCALE.pressDownLight);
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {
@@ -435,7 +476,7 @@ export class UiNavDrawerItem {
     //  - Native Lynx (iOS/Android) reads params.scrollIntoViewOptions.
     //  - Web maps invoke() onto the DOM element.scrollIntoView(params), which
     //    reads top-level ScrollIntoViewOptions (block/behavior).
-    this.containerRef()?.nativeElement.invoke('scrollIntoView', {
+    this.#host.invoke('scrollIntoView', {
       scrollIntoViewOptions: { block: 'center', behavior: 'auto' },
       block: 'center',
       behavior: 'auto',
@@ -445,13 +486,9 @@ export class UiNavDrawerItem {
 
 @Component({
   selector: 'ui-nav-drawer-footer',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiNavDrawerFooter {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -472,28 +509,26 @@ export class UiNavDrawerFooter {
 
 @Component({
   selector: 'ui-nav-drawer-trigger',
-  imports: [LYNX_ELEMENTS, UiIcon],
+  imports: [UiIcon],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <!-- The trigger is only an icon, so it carries the words a screen reader
-         says for it. -->
-    <view
-      #container
-      [class]="containerClass()"
-      [accessibility-element]="true"
-      accessibility-traits="button"
-      [accessibility-label]="label()"
-      (bindtouchstart)="onPressStart()"
-      (bindtouchend)="onPressEnd()"
-      (bindtouchcancel)="onPressCancel()"
-      (bindmousedown)="onPressStart()"
-      (bindmouseup)="onPressEnd()"
-      (bindmouseleave)="onPressCancel()"
-      (bindtap)="onTap()"
-    >
-      <ui-icon name="menu" size="md" />
-    </view>
-  `,
+  // The trigger is only an icon, so it carries the words a screen reader
+  // says for it. The label is an attribute binding: a property binding on a
+  // component's host is checked against the DOM schema, which has no
+  // `accessibility-label`.
+  host: {
+    '[class]': 'containerClass()',
+    'accessibility-element': 'true',
+    'accessibility-traits': 'button',
+    '[attr.accessibility-label]': 'label()',
+    '(bindtouchstart)': 'onPressStart()',
+    '(bindtouchend)': 'onPressEnd()',
+    '(bindtouchcancel)': 'onPressCancel()',
+    '(bindmousedown)': 'onPressStart()',
+    '(bindmouseup)': 'onPressEnd()',
+    '(bindmouseleave)': 'onPressCancel()',
+    '(bindtap)': 'onTap()',
+  },
+  template: '<ui-icon name="menu" size="md" />',
 })
 export class UiNavDrawerTrigger {
   /** What a screen reader says for the trigger. */
@@ -502,7 +537,7 @@ export class UiNavDrawerTrigger {
 
   readonly pressed = output<void>();
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
@@ -514,17 +549,17 @@ export class UiNavDrawerTrigger {
 
   protected onPressStart(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressDown(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressDown(this.#host);
   }
 
   protected onPressEnd(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onPressCancel(): void {
     this.#pressAnim?.cancel();
-    this.#pressAnim = pressRelease(this.containerRef()?.nativeElement);
+    this.#pressAnim = pressRelease(this.#host);
   }
 
   protected onTap(): void {

@@ -17,12 +17,11 @@ const routes = [
 
 /**
  * The drawer item labeled `label`: the item's host, which carries its
- * routerLink, around the view that draws its highlight.
+ * routerLink and draws its highlight around the label.
  */
 const drawerItem = (container: HTMLElement, label: string) => {
-  const highlight =
-    getQueriesForElement(container).getByText(label).parentElement!;
-  return { host: highlight.parentElement!, highlight };
+  const host = getQueriesForElement(container).getByText(label).parentElement!;
+  return { host, highlight: host };
 };
 
 /**

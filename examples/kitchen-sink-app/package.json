@@ -24,6 +24,8 @@
     "@blotch/angular-lynx": "*",
     "@blotch/dolan": "*",
     "@tanstack/charts": "^1.2.0",
+    "@types/d3-shape": "^3.2.0",
+    "class-variance-authority": "^0.7.1",
     "d3-shape": "^3.2.0"
   },
   "devDependencies": {

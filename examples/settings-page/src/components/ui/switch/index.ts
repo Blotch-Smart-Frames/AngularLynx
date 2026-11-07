@@ -1,1 +1,1 @@
-export { UiSwitch } from './switch';
+export { UiSwitch, type SwitchVariant } from './switch';

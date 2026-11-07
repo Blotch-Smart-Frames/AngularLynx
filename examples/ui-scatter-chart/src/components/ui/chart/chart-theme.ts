@@ -79,6 +79,12 @@ export const CHART_LIGHT_COLORS: ChartColorTokens = {
   'chart-3': 'rgba(39, 71, 84, 1)',
   'chart-4': 'rgba(232, 196, 104, 1)',
   'chart-5': 'rgba(244, 164, 98, 1)',
+  'glass-tint': 'rgba(24, 24, 27, 1)',
+  'glass-tint-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-foreground': 'rgba(9, 9, 11, 1)',
+  'glass-muted-foreground': 'rgba(63, 63, 70, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 export const CHART_DARK_COLORS: ChartColorTokens = {
@@ -106,6 +112,12 @@ export const CHART_DARK_COLORS: ChartColorTokens = {
   'chart-3': 'rgba(232, 140, 48, 1)',
   'chart-4': 'rgba(175, 87, 219, 1)',
   'chart-5': 'rgba(226, 54, 112, 1)',
+  'glass-tint': 'rgba(250, 250, 250, 1)',
+  'glass-tint-foreground': 'rgba(24, 24, 27, 1)',
+  'glass-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-muted-foreground': 'rgba(212, 212, 216, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 /**

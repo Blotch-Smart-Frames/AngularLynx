@@ -23,7 +23,9 @@ import { LynxTheme } from '@blotch/angular-lynx';
  *
  * The tables mirror `default.css` and `dark.css` (a test in the theme folder
  * keeps them in step). If you change a color there, change it here too, or pass
- * your own with {@link provideIconTheme}.
+ * your own with {@link provideIconTheme}. Colors set at runtime, such as
+ * Android's wallpaper colors, come from an element above instead (see
+ * {@link UI_THEME_COLORS}).
  */
 
 /** Theme token name (without `--`) to a complete CSS color. */
@@ -80,6 +82,12 @@ export const ICON_LIGHT_COLORS: IconColorTokens = {
   'chart-3': 'rgba(39, 71, 84, 1)',
   'chart-4': 'rgba(232, 196, 104, 1)',
   'chart-5': 'rgba(244, 164, 98, 1)',
+  'glass-tint': 'rgba(24, 24, 27, 1)',
+  'glass-tint-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-foreground': 'rgba(9, 9, 11, 1)',
+  'glass-muted-foreground': 'rgba(63, 63, 70, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 export const ICON_DARK_COLORS: IconColorTokens = {
@@ -107,6 +115,12 @@ export const ICON_DARK_COLORS: IconColorTokens = {
   'chart-3': 'rgba(232, 140, 48, 1)',
   'chart-4': 'rgba(175, 87, 219, 1)',
   'chart-5': 'rgba(226, 54, 112, 1)',
+  'glass-tint': 'rgba(250, 250, 250, 1)',
+  'glass-tint-foreground': 'rgba(24, 24, 27, 1)',
+  'glass-foreground': 'rgba(250, 250, 250, 1)',
+  'glass-muted-foreground': 'rgba(212, 212, 216, 1)',
+  'glass-clear-foreground': 'rgba(255, 255, 255, 1)',
+  'glass-dim': 'rgba(0, 0, 0, 0.35)',
 };
 
 export const UI_ICON_THEME = new InjectionToken<UiIconTheme>('UI_ICON_THEME', {
@@ -176,28 +190,68 @@ export const resolveIconColor = (
 };
 
 /**
+ * The color scheme the app's theme is in, as {@link provideIconTheme} sets it
+ * (`'light'` unless it says otherwise). For what has to match the app's CSS
+ * theme but can't read it: icons pick their color table with it, and glass
+ * picks a light or dark material.
+ */
+export const injectColorScheme = (): Signal<IconColorScheme> => {
+  const option = inject(UI_ICON_THEME).colorScheme ?? 'light';
+  const appearance = inject(LynxTheme);
+  return computed(() =>
+    option === 'system'
+      ? appearance.isDarkMode()
+        ? 'dark'
+        : 'light'
+      : typeof option === 'function'
+        ? option()
+        : option,
+  );
+};
+
+/** Theme colors for each scheme, each a complete CSS color, as in the tables. */
+export type ThemeColors = {
+  readonly light?: IconColorTokens;
+  readonly dark?: IconColorTokens;
+};
+
+/**
+ * Theme colors that replace the tables' for everything inside an element,
+ * as a signal: an element that sets the theme's CSS variables at runtime
+ * provides the values it sets, since SVGs and native attributes can't read
+ * them. `UiDynamicColor` provides Android's wallpaper colors this way. Icons,
+ * glass tints and charts inside it resolve their tokens against them.
+ */
+export const UI_THEME_COLORS = new InjectionToken<Signal<ThemeColors>>(
+  'UI_THEME_COLORS',
+);
+
+/**
+ * The color table for the app's color scheme, for a component's constructor:
+ * the theme's copy, with what an element above sets in its place (see
+ * {@link UI_THEME_COLORS}). A signal, so it follows scheme and theme changes.
+ */
+export const injectThemeColors = (): Signal<IconColorTokens> => {
+  const theme = inject(UI_ICON_THEME);
+  const scheme = injectColorScheme();
+  const replaced = inject(UI_THEME_COLORS, { optional: true });
+
+  return computed(() => {
+    const active = scheme();
+    const colors = replaced?.()[active];
+    return colors ? { ...theme[active], ...colors } : theme[active];
+  });
+};
+
+/**
  * For an SVG component's constructor: a function that resolves its `color`
  * input (or, without one, the surrounding {@link UI_ICON_COLOR}, then the
  * foreground) against the active color table. It reads signals, so a
  * `computed()` calling it follows scheme and theme changes.
  */
 export const injectIconColor = (): ((color: string | undefined) => string) => {
-  const theme = inject(UI_ICON_THEME);
-  const appearance = inject(LynxTheme);
+  const tokens = injectThemeColors();
   const inherited = inject(UI_ICON_COLOR, { optional: true });
-
-  const tokens = computed(() => {
-    const option = theme.colorScheme ?? 'light';
-    const scheme =
-      option === 'system'
-        ? appearance.isDarkMode()
-          ? 'dark'
-          : 'light'
-        : typeof option === 'function'
-          ? option()
-          : option;
-    return scheme === 'dark' ? theme.dark : theme.light;
-  });
 
   return (color) =>
     resolveIconColor(color ?? inherited?.() ?? DEFAULT_ICON_COLOR, tokens());

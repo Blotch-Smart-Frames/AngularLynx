@@ -1,5 +1,6 @@
 import {
   type ElementRef,
+  type OnDestroy,
   Component,
   ViewEncapsulation,
   computed,
@@ -10,7 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, registerHostElement } from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -28,6 +29,11 @@ import { cn } from '@blotch/dolan/utils/cn';
   selector: 'ui-dialog',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The dialog's class is its panel's, inside the overlay. Angular also gives
+  // the host every static attribute the app writes on <ui-dialog>, and the
+  // host sits in the page's layout where the dialog is written, so a
+  // `class="p-8"` padded the page there too. The host drops it.
+  host: { '[attr.class]': 'null' },
   template: `
     <overlay [attr.visible]="overlayVisible()" [style]="overlayStyle()">
       <view #backdrop [class]="backdropClass()" (bindtap)="onBackdropTap()">
@@ -43,7 +49,7 @@ import { cn } from '@blotch/dolan/utils/cn';
     </overlay>
   `,
 })
-export class UiDialog {
+export class UiDialog implements OnDestroy {
   readonly open = model(false);
   readonly userClass = input<string>('', { alias: 'class' });
 
@@ -51,27 +57,38 @@ export class UiDialog {
 
   protected readonly overlayVisible = signal(false);
 
-  readonly backdropRef = viewChild<ElementRef>('backdrop');
-  readonly panelRef = viewChild<ElementRef>('panel');
+  // Required: both are always in the template (the overlay hides with
+  // display:none rather than leaving the tree), and the sequences only read
+  // them from timers that start after the first render.
+  readonly backdropRef = viewChild.required<ElementRef>('backdrop');
+  readonly panelRef = viewChild.required<ElementRef>('panel');
   #backdropAnim?: AnimationHandle;
   #panelAnim?: AnimationHandle;
   #hasBeenOpen = false;
+  // The open and close sequences' pending timers, so ngOnDestroy can stop
+  // them.
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
 
-  constructor() {
-    // `#hasBeenOpen` prevents the close animation from running on the initial
-    // effect evaluation when `open` starts as false. Without this guard, the
-    // very first run would call #doClose() immediately, resulting in a no-op
-    // animation that still hides the overlay and emits `closed` unexpectedly.
-    effect(() => {
-      const isOpen = this.open();
-      if (isOpen) {
-        this.#hasBeenOpen = true;
-        this.#doOpen();
-      } else if (this.#hasBeenOpen) {
-        this.#doClose();
-      }
-    });
-  }
+  /**
+   * Plays the open or close sequence whenever `open` changes. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   *
+   * `#hasBeenOpen` prevents the close animation from running on the initial
+   * effect evaluation when `open` starts as false. Without this guard, the
+   * very first run would call #doClose() immediately, resulting in a no-op
+   * animation that still hides the overlay and emits `closed` unexpectedly.
+   */
+  protected readonly openAndClose = effect(() => {
+    const isOpen = this.open();
+    if (isOpen) {
+      this.#hasBeenOpen = true;
+      this.#doOpen();
+    } else if (this.#hasBeenOpen) {
+      this.#doClose();
+    }
+  });
 
   /**
    * Hide the overlay with `display:none` on web where `visible` attr has no
@@ -87,12 +104,12 @@ export class UiDialog {
   );
 
   protected readonly backdropClass = computed(() =>
-    // bg-black/50 dims the backdrop; backdrop-blur-sm applies frosted-glass blur
-    // on web. Lynx does not support backdrop-filter, so the blur is web-only.
-    cn(
-      'h-full w-full items-center flex justify-center',
-      'backdrop-blur-sm bg-black/50',
-    ),
+    // bg-black/50 dims the backdrop. It doesn't blur: a backdrop-blur-sm here
+    // blurred nothing on any platform. Lynx has no backdrop-filter, so iOS and
+    // Android drop it, the Lynx Tailwind 3 preset doesn't generate the class,
+    // and the build drops it from Tailwind 4's CSS for the web preview too
+    // (see investigations/lynx-vs-web-differences.md). A <blur-view> blurs.
+    cn('h-full w-full items-center flex justify-center', 'bg-black/50'),
   );
 
   protected readonly panelClass = computed(() =>
@@ -115,14 +132,36 @@ export class UiDialog {
   protected onPanelTap(): void {}
 
   /**
+   * The dialog can be destroyed while its open or close sequence is still
+   * running, for example by an `@if` around it or a route change right after
+   * closing it. The rest of the sequence then ran on the destroyed component:
+   * it animated detached elements and emitted `closed` from a destroyed
+   * output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    for (const timer of this.#timers) clearTimeout(timer);
+  }
+
+  /**
+   * `setTimeout`, tracked so that ngOnDestroy can cancel it.
+   */
+  #later(callback: () => void, ms: number): void {
+    const timer = setTimeout(() => {
+      this.#timers.delete(timer);
+      callback();
+    }, ms);
+    this.#timers.add(timer);
+  }
+
+  /**
    * Two-phase open: make overlay visible first (so native elements exist in
    * the tree), then animate on the next frame. See nav-drawer for the same
    * pattern — Lynx animate() requires elements to be mounted before use.
    */
   #doOpen(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.overlayVisible.set(true);
-      setTimeout(() => this.#animateIn(), 0);
+      this.#later(() => this.#animateIn(), 0);
     }, 0);
   }
 
@@ -131,9 +170,9 @@ export class UiDialog {
    * causing elements to disappear before the animation finishes.
    */
   #doClose(): void {
-    setTimeout(() => {
+    this.#later(() => {
       this.#animateOut();
-      setTimeout(() => {
+      this.#later(() => {
         this.overlayVisible.set(false);
         this.closed.emit();
       }, DURATION.normal + 20);
@@ -141,9 +180,8 @@ export class UiDialog {
   }
 
   #animateIn(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -157,7 +195,7 @@ export class UiDialog {
     panel.invoke?.('requestAccessibilityFocus');
 
     // Panel scales in with gentle spring (staggered 30ms after backdrop)
-    setTimeout(() => {
+    this.#later(() => {
       this.#panelAnim = scaleIn(panel, {
         duration: DURATION.slow,
         easing: EASING.springSubtle,
@@ -168,9 +206,8 @@ export class UiDialog {
   }
 
   #animateOut(): void {
-    const backdrop = this.backdropRef()?.nativeElement;
-    const panel = this.panelRef()?.nativeElement;
-    if (!backdrop || !panel) return;
+    const backdrop = this.backdropRef().nativeElement;
+    const panel = this.panelRef().nativeElement;
 
     this.#backdropAnim?.cancel();
     this.#panelAnim?.cancel();
@@ -188,15 +225,17 @@ export class UiDialog {
   }
 }
 
+/**
+ * The parts are their host elements, styled through `host`: a class the app
+ * writes on a part lands on its host anyway (see UiDialog), so a view or text
+ * inside it styled with the same class applied it twice. The title and
+ * description are text, so their hosts are `<text>` elements.
+ */
 @Component({
   selector: 'ui-dialog-header',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogHeader {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -208,9 +247,9 @@ export class UiDialogHeader {
 
 @Component({
   selector: 'ui-dialog-title',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogTitle {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -220,11 +259,13 @@ export class UiDialogTitle {
   );
 }
 
+registerHostElement(UiDialogTitle, 'text');
+
 @Component({
   selector: 'ui-dialog-description',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<text [class]="textClass()"><ng-content /></text>`,
+  host: { '[class]': 'textClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogDescription {
   readonly userClass = input<string>('', { alias: 'class' });
@@ -234,15 +275,13 @@ export class UiDialogDescription {
   );
 }
 
+registerHostElement(UiDialogDescription, 'text');
+
 @Component({
   selector: 'ui-dialog-footer',
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view [class]="containerClass()">
-      <ng-content />
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: '<ng-content />',
 })
 export class UiDialogFooter {
   readonly userClass = input<string>('', { alias: 'class' });

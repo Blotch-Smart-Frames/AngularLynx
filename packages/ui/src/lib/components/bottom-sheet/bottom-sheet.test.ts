@@ -1173,16 +1173,15 @@ const renderSource = async (
     /**
      * Waits until the sheet measures its control, and answers. The sheet
      * then shows at the control's frame for a frame, which the test sees
-     * right after the update. `asked: false` answers a measuring if there
-     * is one, for a sequence that may have asked already.
+     * right after the update.
      */
-    measureSource: async ({ asked = true } = {}) => {
+    measureSource: async () => {
       // A millisecond at a time, so that it answers the first measuring
       // before the sequence goes on to another.
       for (let i = 0; i < STEPS && answers.length === 0; i++) {
         await vi.advanceTimersByTimeAsync(1);
       }
-      if (asked) expect(answers.length).toBeGreaterThan(0);
+      expect(answers.length).toBeGreaterThan(0);
       for (const answer of answers.splice(0)) answer();
       await waitForUpdate();
     },
@@ -1396,10 +1395,9 @@ describe('UiBottomSheet grown out of its control', () => {
     sheet.host.open.set(true);
     await waitForUpdate();
     // It measures its control to shrink into it, then again to grow out of
-    // it. The second may have asked by the time the first is answered, in
-    // which case both are answered together.
+    // it.
     await sheet.measureSource();
-    await sheet.measureSource({ asked: false });
+    await sheet.measureSource();
     await grown();
     expect(sheet.overlay.getAttribute('visible')).toBe('true');
     expect(frameOf(sheet.panel)).toEqual(MEDIUM_FRAME);

@@ -257,7 +257,7 @@ npm run dolan:update:force
 
 This **rebuilds `@blotch/dolan`** (so it re-copies `packages/ui` into `dist/ui` and picks up your new registry entry), then overwrites every example's tracked component copies with the upstream version and writes correct lock hashes.
 
-> **`--force` discards example edits you haven't ported upstream.** It overwrites example copies from upstream and does not reconcile local drift. Always make component changes in `packages/ui/` first, then run this — an edit made only in an example vanishes on the next sync. (`examples/forms` is hand-maintained and skipped by dolan; port to/from it by hand.)
+> **`--force` discards example edits you haven't ported upstream.** It overwrites example copies from upstream and does not reconcile local drift. Always make component changes in `packages/ui/` first, then run this — an edit made only in an example vanishes on the next sync. Every example, `examples/forms` included, installs its components through dolan, and CLAUDE.md asks for the example copies in the same PR as the change.
 
 ---
 

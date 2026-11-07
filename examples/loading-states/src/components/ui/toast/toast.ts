@@ -1,4 +1,5 @@
 import {
+  type OnDestroy,
   type OnInit,
   Component,
   ElementRef,
@@ -18,7 +19,12 @@ import {
   EASING,
 } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
-import { type ToastData, dismissToast, toasts } from './toast-state';
+import {
+  type ToastAction,
+  type ToastData,
+  dismissToast,
+  toasts,
+} from './toast-state';
 
 // --- Drag-to-dismiss tuning (front toast only) ---
 // Minimum downward travel (px) before releasing dismisses the toast instead of
@@ -57,7 +63,6 @@ const stackTransform = (depth: number): string =>
  */
 @Component({
   selector: 'ui-toast-item',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // Styling + interaction live on the HOST element (a plain `view`, since the
@@ -84,13 +89,13 @@ const stackTransform = (depth: number): string =>
       }
     </view>
     @if (data().action; as action) {
-      <view [class]="actionClass()" (catchtap)="onAction()">
+      <view [class]="actionClass()" (catchtap)="onAction(action)">
         <text [class]="actionTextClass()">{{ action.label }}</text>
       </view>
     }
   `,
 })
-export class UiToastItem implements OnInit {
+export class UiToastItem implements OnInit, OnDestroy {
   readonly data = input.required<ToastData>();
   // 0 = front (newest, interactive); higher = further back in the stack.
   readonly depth = input.required<number>();
@@ -100,6 +105,8 @@ export class UiToastItem implements OnInit {
   readonly #host = inject(ElementRef);
   #anim?: AnimationHandle;
   #dismissTimer: ReturnType<typeof setTimeout> | null = null;
+  // The one that emits `dismissed` once the exit animation has played.
+  #exitTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Hidden until the entrance animation runs, so the toast doesn't flash at its
   // resting position for a frame before sliding/fading in.
@@ -113,23 +120,25 @@ export class UiToastItem implements OnInit {
   // unspecified order, and the timer can race both.
   #isDismissing = false;
 
-  constructor() {
-    // Restack: when a toast in front is dismissed (or a new one is pushed) this
-    // toast's depth changes — animate it to its new slot. `effect` runs after
-    // inputs are set, so the first run just records the starting depth.
-    let prevDepth: number | null = null;
-    effect(() => {
-      const d = this.depth();
-      if (prevDepth === null) {
-        prevDepth = d;
-        return;
-      }
-      if (d === prevDepth) return;
-      const from = prevDepth;
-      prevDepth = d;
-      this.#animateRestack(from, d);
-    });
-  }
+  // The depth the restack effect last saw, so it knows where to animate from.
+  #stackedDepth: number | null = null;
+
+  /**
+   * Restack: when a toast in front is dismissed (or a new one is pushed) this
+   * toast's depth changes — animate it to its new slot. A field rather than a
+   * constructor: Angular's test build keeps a function for a constructor that
+   * nothing calls, which an app's coverage report would show as uncovered.
+   */
+  protected readonly restacking = effect(() => {
+    const depth = this.depth();
+    const from = this.#stackedDepth;
+    this.#stackedDepth = depth;
+    // `effect` runs after inputs are set, so the first run just records the
+    // starting depth. After that it only re-runs once the depth changes; the
+    // second check is a safeguard.
+    if (from === null || from === depth) return;
+    this.#animateRestack(from, depth);
+  });
 
   ngOnInit(): void {
     // Start the auto-dismiss countdown when the toast mounts — i.e. when it is
@@ -227,8 +236,12 @@ export class UiToastItem implements OnInit {
     this.dismiss();
   }
 
-  protected onAction(): void {
-    this.data().action?.onAction();
+  /**
+   * Runs the toast's action, then dismisses it. The action button only
+   * renders for a toast that has an action, which it passes in.
+   */
+  protected onAction(action: ToastAction): void {
+    action.onAction();
     this.dismiss();
   }
 
@@ -294,12 +307,26 @@ export class UiToastItem implements OnInit {
       this.#dismissTimer = null;
     }
     this.#animateOut();
-    setTimeout(() => this.dismissed.emit(), DURATION.fast + 20);
+    this.#exitTimer = setTimeout(
+      () => this.dismissed.emit(),
+      DURATION.fast + 20,
+    );
+  }
+
+  /**
+   * A toast can be destroyed before its timers fire: `dismissToast(id)` drops
+   * it from the queue straight away, and the toaster itself can be removed.
+   * Without this, the auto-dismiss timer later ran `dismiss()` on the destroyed
+   * component: it animated a detached element and emitted `dismissed` from a
+   * destroyed output, which Angular warns about in dev builds (NG0953).
+   */
+  ngOnDestroy(): void {
+    if (this.#dismissTimer) clearTimeout(this.#dismissTimer);
+    if (this.#exitTimer) clearTimeout(this.#exitTimer);
   }
 
   #animateIn(): void {
     const el = this.#host.nativeElement;
-    if (!el) return;
     this.#anim?.cancel();
     // Reveal now that the animation owns opacity (0 → 1 below); afterwards the
     // host style keeps it at 1. Without this the resting-position frame before
@@ -348,7 +375,6 @@ export class UiToastItem implements OnInit {
     // restack it back into view — let the exit win instead.
     if (this.#isDismissing) return;
     const el = this.#host.nativeElement;
-    if (!el) return;
     this.#anim?.cancel();
     this.#anim = el.animate(
       [{ transform: stackTransform(from) }, { transform: stackTransform(to) }],
@@ -358,7 +384,6 @@ export class UiToastItem implements OnInit {
 
   #animateOut(): void {
     const el = this.#host.nativeElement;
-    if (!el) return;
     this.#anim?.cancel();
 
     const d = this.depth();
@@ -406,15 +431,13 @@ export class UiToastItem implements OnInit {
   #snapBack(fromOffset: number): void {
     const el = this.#host.nativeElement;
     this.#anim?.cancel();
-    if (el) {
-      this.#anim = el.animate(
-        [
-          { transform: `translateY(${fromOffset}px) scale(1)` },
-          { transform: 'translateY(0px) scale(1)' },
-        ],
-        { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
-      );
-    }
+    this.#anim = el.animate(
+      [
+        { transform: `translateY(${fromOffset}px) scale(1)` },
+        { transform: 'translateY(0px) scale(1)' },
+      ],
+      { duration: DURATION.fast, easing: EASING.spring, fill: 'forwards' },
+    );
     // Match the inline transform to the animation's resting state so the two
     // agree once fill:'forwards' hands control back to the style binding.
     this.dragOffset.set(0);
@@ -436,7 +459,6 @@ export class UiToastItem implements OnInit {
  */
 @Component({
   selector: 'ui-toaster',
-  standalone: true,
   imports: [LYNX_ELEMENTS, UiToastItem],
   encapsulation: ViewEncapsulation.None,
   template: `

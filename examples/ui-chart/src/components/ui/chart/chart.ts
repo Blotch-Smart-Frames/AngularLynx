@@ -4,6 +4,7 @@ import {
   Directive,
   TemplateRef,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   contentChild,
   effect,
@@ -46,6 +47,7 @@ import type {
 } from '@tanstack/charts/types';
 
 import { cn } from '@blotch/dolan/utils/cn';
+import { UI_THEME_COLORS } from '../icon/icon-theme';
 import { adjacentFocusPoint, createChartFocusModel } from './chart-focus';
 import {
   type ChartLabel,
@@ -131,6 +133,13 @@ export class UiChartTooltip {
   }
 }
 
+/**
+ * `UiChartTooltip`, for `contentChild()`. A call rather than the class itself:
+ * for a class, Angular's test build keeps an arrow function that nothing calls,
+ * which an app's coverage report would show as uncovered.
+ */
+const tooltipDirectiveType = () => UiChartTooltip;
+
 /** Default height, like the browser's 150px replaced-element default, but roomier. */
 const DEFAULT_HEIGHT = 200;
 /** A touch that moves less than this is a tap, not a drag. */
@@ -202,10 +211,21 @@ type TouchPoint = {
   selector: 'ui-chart',
   imports: [LYNX_ELEMENTS, LynxGestureDetector, NgTemplateOutlet],
   encapsulation: ViewEncapsulation.None,
+  // The host is the chart's box, sized by its classes and `width`/`height`,
+  // and the root view fills it. Angular gives a component's host every
+  // static attribute the app writes on it, so a class on <ui-chart> lands on
+  // the host whatever the component does with its `class` input: on the root
+  // view as well, a margin or padding applied twice. The root stays a view of
+  // its own for the pan gesture and the accessibility element, which bind to
+  // it. `flex-1`, not `h-full`: a percentage height doesn't reliably resolve
+  // on a flex item in Lynx.
+  host: {
+    '[class]': 'rootClass()',
+    '[style]': 'rootStyle()',
+  },
   template: `
     <view
-      [class]="rootClass()"
-      [style]="rootStyle()"
+      class="flex-1 relative"
       [lynxGesture]="zoomable() ? panGesture : noGesture"
       [accessibility-element]="true"
       [accessibility-label]="label()"
@@ -335,9 +355,9 @@ export class UiChart {
    * light unless the app says otherwise; see `ChartColorSchemeOption`.
    */
   readonly colorScheme = input<Exclude<ChartColorSchemeOption, Function>>();
-  readonly zoomable = input(false);
+  readonly zoomable = input(false, { transform: booleanAttribute });
   readonly zoomAxes = input<ChartZoomAxes>('xy');
-  readonly showZoomControls = input(true);
+  readonly showZoomControls = input(true, { transform: booleanAttribute });
   readonly minZoom = input(1);
   readonly maxZoom = input(8);
   /** Factor each zoom button press zooms by. */
@@ -352,10 +372,11 @@ export class UiChart {
   /** The point a tap landed on, or `null` for a tap on empty space. */
   readonly pointSelect = output<ChartPoint | null>();
 
-  protected readonly tooltipTemplate = contentChild(UiChartTooltip);
+  protected readonly tooltipTemplate = contentChild(tooltipDirectiveType());
 
   readonly #theme = inject(UI_CHART_THEME);
   readonly #appearance = inject(LynxTheme);
+  readonly #replacedColors = inject(UI_THEME_COLORS, { optional: true });
   readonly #idPrefix = `chart${nextChartId++}`;
   readonly #runtime = createChartRuntime({ defaultTheme: this.#theme.chart });
   readonly #measureText = lynxTextMeasurer();
@@ -375,7 +396,7 @@ export class UiChart {
   #touchStart: TouchPoint | null = null;
 
   protected readonly rootClass = computed(() =>
-    cn('h-[200px] w-full flex-shrink-0 relative', this.userClass()),
+    cn('h-[200px] w-full flex-shrink-0 flex-col flex', this.userClass()),
   );
 
   protected readonly rootStyle = computed(() => {
@@ -405,6 +426,15 @@ export class UiChart {
     });
   });
 
+  /**
+   * The scene, for what the template draws inside `@if (scene())`: those
+   * bindings, and the values below derived for them, are only read while there
+   * is one, so they need no fallback for a chart without a size.
+   */
+  #drawnScene(): ChartScene<any, any, any> {
+    return this.scene()!;
+  }
+
   readonly #focusModel = computed(() => {
     const scene = this.scene();
     return scene ? createChartFocusModel(scene, this.definition()) : null;
@@ -424,24 +454,23 @@ export class UiChart {
   });
 
   /** The scene with mark states (e.g. dim the unfocused bars) resolved. */
-  readonly #presented = computed(() => {
-    const scene = this.scene();
-    return scene
-      ? resolveMarkStateScene(scene, this.#focusState(), this.#pointer()).scene
-      : null;
-  });
+  readonly #presented = computed(
+    () =>
+      resolveMarkStateScene(
+        this.#drawnScene(),
+        this.#focusState(),
+        this.#pointer(),
+      ).scene,
+  );
 
-  readonly #focusPresentation = computed(() => {
-    const scene = this.#presented();
-    return scene
-      ? resolveFocusPresentation(
-          scene,
-          this.#focusState(),
-          this.#pointer(),
-          null,
-        )
-      : { under: [], over: [] };
-  });
+  readonly #focusPresentation = computed(() =>
+    resolveFocusPresentation(
+      this.#presented(),
+      this.#focusState(),
+      this.#pointer(),
+      null,
+    ),
+  );
 
   readonly #colors = computed(() => {
     const option = this.colorScheme() ?? this.#theme.colorScheme ?? 'light';
@@ -453,16 +482,24 @@ export class UiChart {
         : typeof option === 'function'
           ? option()
           : option;
-    return scheme === 'dark' ? this.#theme.dark : this.#theme.light;
+    // Colors set at runtime above the chart, such as Android's wallpaper
+    // colors, take the place of the theme's (see UI_THEME_COLORS). Not
+    // `this.#replacedColors?.()[scheme]`: the Lynx build compiles that chain
+    // with the index outside the short-circuit (`(undefined)[scheme]`), which
+    // throws in any app that doesn't provide the token.
+    const replacedColors = this.#replacedColors;
+    const replaced = replacedColors ? replacedColors()[scheme] : undefined;
+    const colors = scheme === 'dark' ? this.#theme.dark : this.#theme.light;
+    return replaced ? { ...colors, ...replaced } : colors;
   });
 
   readonly #svgOptions = computed(() => {
-    const scene = this.scene();
+    const scene = this.#drawnScene();
     const colors = this.#colors();
     return {
-      width: scene?.width ?? 0,
-      height: scene?.height ?? 0,
-      gradients: scene?.gradients,
+      width: scene.width,
+      height: scene.height,
+      gradients: scene.gradients,
       idPrefix: this.#idPrefix,
       resolvePaint: (paint: string) => resolveChartPaint(paint, colors),
     };
@@ -475,8 +512,7 @@ export class UiChart {
   );
   protected readonly marksSvg = computed(
     () =>
-      renderChartSvg(this.#presented()?.nodes ?? [], this.#svgOptions()) ||
-      EMPTY_SVG,
+      renderChartSvg(this.#presented().nodes, this.#svgOptions()) || EMPTY_SVG,
   );
   protected readonly overSvg = computed(
     () =>
@@ -485,18 +521,14 @@ export class UiChart {
   );
 
   protected readonly layerStyle = computed(() => {
-    const scene = this.scene();
-    return `position: absolute; left: 0px; top: 0px; width: ${scene?.width ?? 0}px; height: ${scene?.height ?? 0}px;`;
+    const scene = this.#drawnScene();
+    return `position: absolute; left: 0px; top: 0px; width: ${scene.width}px; height: ${scene.height}px;`;
   });
 
   readonly #labels = computed<readonly ChartLabel[]>(() => {
     const presentation = this.#focusPresentation();
     return collectChartLabels(
-      [
-        ...presentation.under,
-        ...(this.#presented()?.nodes ?? []),
-        ...presentation.over,
-      ],
+      [...presentation.under, ...this.#presented().nodes, ...presentation.over],
       {
         defaultColor: this.#theme.chart.foreground ?? 'var(--foreground)',
         focus: this.#focusState(),
@@ -600,18 +632,21 @@ export class UiChart {
   protected readonly zoomButtonClass =
     'flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card';
 
-  constructor() {
-    // A new scene (data, size or zoom changed) has new point objects. Keep the
-    // focus on the same datum when it's still there, as TanStack's hosts do.
-    effect(() => {
-      const model = this.#focusModel();
-      const previous = untracked(this.#focused);
-      if (!model || previous.length === 0) return;
-      const restored = model.restore(previous[0]!);
-      this.#focused.set(restored ? model.group(restored) : EMPTY_POINTS);
-      if (!restored) this.#pinned.set(false);
-    });
-  }
+  /**
+   * Keeps the focus on the same datum when a new scene (data, size or zoom
+   * changed) brings new point objects, as TanStack's hosts do. A field rather
+   * than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly restoringFocus = effect(() => {
+    const model = this.#focusModel();
+    const previous = untracked(this.#focused);
+    if (!model || previous.length === 0) return;
+    const restored = model.restore(previous[0]!);
+    this.#focused.set(restored ? model.group(restored) : EMPTY_POINTS);
+    if (!restored) this.#pinned.set(false);
+  });
 
   /**
    * ---------------------------------------------------------------------------

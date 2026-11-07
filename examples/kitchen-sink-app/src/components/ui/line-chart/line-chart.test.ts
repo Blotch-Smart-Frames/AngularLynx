@@ -1,7 +1,14 @@
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { createChartRuntime } from '@tanstack/charts/runtime';
 import type { ChartDefinition, SceneNode } from '@tanstack/charts/types';
 import { describe, expect, it } from 'vitest';
-import { lineChartDefinition } from './line-chart';
+import type { XYDatum } from '../chart/chart-presets';
+import { UiLineChart, lineChartDefinition } from './line-chart';
 
 const data = [
   { x: 0, y: 10 },
@@ -73,5 +80,73 @@ describe('lineChartDefinition', () => {
   it('includes the tooltip unless turned off', () => {
     expect(lineChartDefinition({ data }).tooltip).toBeTruthy();
     expect(lineChartDefinition({ data, tooltip: false }).tooltip).toBe(false);
+  });
+});
+
+@Component({
+  imports: [UiLineChart],
+  template: `
+    <ui-line-chart
+      [data]="data"
+      [width]="300"
+      [showDots]="showDots()"
+      color="red"
+      yAxisLabel="Revenue"
+      (pointTap)="tapped.push($event)"
+    />
+  `,
+})
+class LineChartHost {
+  readonly data = data;
+  readonly showDots = signal(true);
+  /** Every `pointTap`, in order. */
+  readonly tapped: XYDatum[] = [];
+}
+
+/**
+ * The SVG the chart's marks layer draws.
+ */
+const marksSvg = (container: Element) =>
+  container.querySelectorAll('svg')[1]!.getAttribute('content')!;
+
+/**
+ * Where the chart drew each dot.
+ */
+const dotsDrawn = (container: Element) =>
+  [
+    ...marksSvg(container).matchAll(/<circle cx="([\d.-]+)" cy="([\d.-]+)"/g),
+  ].map(([, x, y]) => ({ x: Number(x), y: Number(y) }));
+
+/**
+ * Touches a spot of the chart and lifts the finger right there: a tap.
+ */
+const tap = async (container: Element, at: { x: number; y: number }) => {
+  const root = container.querySelector('[accessibility-label]')!;
+  fireEvent.touchstart(root, { touches: [at] });
+  fireEvent.touchend(root, { touches: [at] });
+  await waitForUpdate();
+};
+
+describe('UiLineChart', () => {
+  it('draws its data with its inputs', async () => {
+    const { componentRef, container, getByText } = await render(LineChartHost);
+    expect(marksSvg(container)).toContain('stroke="red"');
+    expect(dotsDrawn(container)).toHaveLength(3);
+    expect(getByText('Revenue')).toBeTruthy();
+
+    (componentRef.instance as LineChartHost).showDots.set(false);
+    await waitForUpdate();
+    expect(dotsDrawn(container)).toHaveLength(0);
+  });
+
+  it("emits a tapped point's datum, and nothing for a tap off the points", async () => {
+    const { componentRef, container } = await render(LineChartHost);
+    const host = componentRef.instance as LineChartHost;
+    const middle = dotsDrawn(container)[1]!;
+    await tap(container, { x: middle.x + 1, y: middle.y + 1 });
+    expect(host.tapped).toEqual([data[1]]);
+
+    await tap(container, { x: -100, y: -100 });
+    expect(host.tapped).toEqual([data[1]]);
   });
 });

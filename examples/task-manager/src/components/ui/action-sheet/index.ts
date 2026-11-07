@@ -1,5 +1,6 @@
 export {
   UiActionSheet,
+  UiActionSheetAnchor,
   UiActionSheetTitle,
   UiActionSheetItem,
   UiActionSheetCancel,

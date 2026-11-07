@@ -1,3 +1,9 @@
+import { Component, signal } from '@angular/core';
+import {
+  fireEvent,
+  render,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
 import { createChartRuntime } from '@tanstack/charts/runtime';
 import type {
   ChartDefinition,
@@ -5,7 +11,7 @@ import type {
   SceneRect,
 } from '@tanstack/charts/types';
 import { describe, expect, it } from 'vitest';
-import { barChartDefinition } from './bar-chart';
+import { type BarDatum, UiBarChart, barChartDefinition } from './bar-chart';
 
 /**
  * Every bar in a definition's scene.
@@ -93,5 +99,80 @@ describe('barChartDefinition', () => {
       }),
     );
     expect(found.map((bar) => bar.style?.fill)).toEqual(['red', 'blue', 'red']);
+  });
+});
+
+@Component({
+  imports: [UiBarChart],
+  template: `
+    <ui-bar-chart
+      [data]="data"
+      [width]="300"
+      [color]="color()"
+      [radius]="4"
+      (barTap)="tapped.push($event)"
+    />
+  `,
+})
+class BarChartHost {
+  readonly data: readonly BarDatum[] = [
+    { x: 'Mon', y: 5 },
+    { x: 'Tue', y: 8 },
+  ];
+  readonly color = signal('red');
+  /** Every `barTap`, in order. */
+  readonly tapped: BarDatum[] = [];
+}
+
+/**
+ * The SVG the chart's marks layer draws.
+ */
+const marksSvg = (container: Element) =>
+  container.querySelectorAll('svg')[1]!.getAttribute('content')!;
+
+/**
+ * The middle of each bar the chart drew.
+ */
+const barsDrawn = (container: Element) =>
+  [
+    ...marksSvg(container).matchAll(
+      /<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"[^>]*fill=/g,
+    ),
+  ].map(([, x, y, width, height]) => ({
+    x: Number(x) + Number(width) / 2,
+    y: Number(y) + Number(height) / 2,
+  }));
+
+/**
+ * Touches a spot of the chart and lifts the finger right there: a tap.
+ */
+const tap = async (container: Element, at: { x: number; y: number }) => {
+  const root = container.querySelector('[accessibility-label]')!;
+  fireEvent.touchstart(root, { touches: [at] });
+  fireEvent.touchend(root, { touches: [at] });
+  await waitForUpdate();
+};
+
+describe('UiBarChart', () => {
+  it('draws a bar per datum with its inputs', async () => {
+    const { componentRef, container, getByText } = await render(BarChartHost);
+    expect(barsDrawn(container)).toHaveLength(2);
+    expect(marksSvg(container)).toContain('fill="red"');
+    expect(marksSvg(container)).toContain('rx="4"');
+    expect(getByText('Mon')).toBeTruthy();
+
+    (componentRef.instance as BarChartHost).color.set('blue');
+    await waitForUpdate();
+    expect(marksSvg(container)).toContain('fill="blue"');
+  });
+
+  it("emits a tapped bar's datum, and nothing for a tap off the bars", async () => {
+    const { componentRef, container } = await render(BarChartHost);
+    const host = componentRef.instance as BarChartHost;
+    await tap(container, barsDrawn(container)[1]!);
+    expect(host.tapped).toEqual([host.data[1]]);
+
+    await tap(container, { x: -100, y: -100 });
+    expect(host.tapped).toEqual([host.data[1]]);
   });
 });

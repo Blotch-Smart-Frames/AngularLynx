@@ -1,11 +1,12 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
+  booleanAttribute,
   computed,
   effect,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { cva, type VariantProps } from 'class-variance-authority';
@@ -52,35 +53,40 @@ export type BadgeVariant = NonNullable<
   VariantProps<typeof badgeVariants>['variant']
 >;
 
+/**
+ * The badge's pill is its host, styled through `host`, with its label inside.
+ * Angular gives a component's host every static attribute the app writes on
+ * it, so a class on <ui-badge> lands on the host whatever the component does:
+ * with a styled pill inside as well, a margin applied twice.
+ */
 @Component({
   selector: 'ui-badge',
-  standalone: true,
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    <view #container [class]="containerClass()">
-      <text [class]="labelClass()"><ng-content /></text>
-    </view>
-  `,
+  host: { '[class]': 'containerClass()' },
+  template: `<text [class]="labelClass()"><ng-content /></text>`,
 })
 export class UiBadge {
   readonly variant = input<BadgeVariant>('default');
   /**
    * When true, badge pops in with a spring animation on first render
    */
-  readonly animated = input(true);
+  readonly animated = input(true, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly containerRef = viewChild<ElementRef>('container');
+  readonly #host = inject(ElementRef).nativeElement;
 
-  constructor() {
-    effect(() => {
-      const el = this.containerRef()?.nativeElement;
-      if (el && this.animated()) {
-        popIn(el, { duration: 200 });
-      }
-    });
-  }
+  /**
+   * Pops the badge in on first render, unless `animated` is off. A field
+   * rather than a constructor: Angular's test build keeps a function for a
+   * constructor that nothing calls, which an app's coverage report would show
+   * as uncovered.
+   */
+  protected readonly entrance = effect(() => {
+    if (this.animated()) {
+      popIn(this.#host, { duration: 200 });
+    }
+  });
 
   protected readonly containerClass = computed(() =>
     cn(badgeVariants({ variant: this.variant() }), this.userClass()),

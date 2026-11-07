@@ -141,13 +141,19 @@ const iconSvg = (icon: IconName, color: string): string =>
   selector: 'ui-search-field',
   imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiGlass, UiGlassGroup],
   encapsulation: ViewEncapsulation.None,
-  host: { '[class]': 'hostClass()' },
+  // Angular gives a component's host every static attribute the app writes on
+  // it. The placeholder belongs to the <input>, so the host drops its copy: a
+  // second element with it is a second match for getByPlaceholderText.
+  host: {
+    '[class]': 'hostClass()',
+    '[attr.placeholder]': 'null',
+  },
   template: `
     <ng-template #field>
       @if (showsBack()) {
         <!-- Material's search icon turns into a back arrow, which cancels. -->
         <view
-          class="items-center flex justify-center"
+          class="shrink-0 items-center flex justify-center"
           accessibility-element="true"
           accessibility-traits="button"
           [attr.accessibility-label]="cancelLabel()"
@@ -157,7 +163,11 @@ const iconSvg = (icon: IconName, color: string): string =>
           <svg [attr.content]="backIcon()" [style]="iconStyle()" />
         </view>
       } @else {
-        <svg [attr.content]="searchIcon()" [style]="iconStyle()" />
+        <svg
+          class="shrink-0"
+          [attr.content]="searchIcon()"
+          [style]="iconStyle()"
+        />
       }
       <!-- [value], not [attr.value]: only the setValue UI method changes a
            native input's text (see LynxInput). The placeholder goes while
@@ -182,7 +192,7 @@ const iconSvg = (icon: IconName, color: string): string =>
       />
       @if (value() && !disabled()) {
         <view
-          class="items-center flex justify-center"
+          class="shrink-0 items-center flex justify-center"
           accessibility-element="true"
           accessibility-traits="button"
           [attr.accessibility-label]="clearLabel()"
@@ -272,7 +282,7 @@ export class UiSearchField implements FormValueControl<string> {
   readonly value = model<string>('');
   /** What the field searches, shown while it's empty. */
   readonly placeholder = input('Search');
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
   /**
    * Shows a Cancel button while the field is in use (focused, or holding
    * text): the glass circle with an x of iOS 26, UISearchBar's Cancel before
@@ -410,10 +420,16 @@ export class UiSearchField implements FormValueControl<string> {
     };
   });
 
-  /** On glass, the text takes the glass's foreground, as `ui-glass` sets it. */
+  /**
+   * On glass, the text takes the glass's foreground, as `ui-glass` sets it.
+   * The text gives up its width first as the field shrinks for its Cancel,
+   * and the icons keep theirs: `w-0` with `flex-1` grows it from nothing.
+   * (Not `min-w-0`: Lynx for Web's `<x-input>` passes its width on to the
+   * input inside, but not its min-width.)
+   */
   protected readonly inputClass = computed(() =>
     cn(
-      'h-full flex-1',
+      'h-full w-0 flex-1',
       this.design() === 'glass' ? 'text-glass-foreground' : 'text-foreground',
       this.disabled() && 'opacity-50',
     ),

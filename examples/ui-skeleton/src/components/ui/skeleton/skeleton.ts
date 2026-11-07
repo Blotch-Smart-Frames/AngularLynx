@@ -1,39 +1,42 @@
 import {
-  type ElementRef,
   Component,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
+  inject,
   input,
-  viewChild,
 } from '@angular/core';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-import { type AnimationHandle, pulse } from '@blotch/dolan/utils/animate';
+import { pulse } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 
+/**
+ * The skeleton is its host, styled through `host`. Angular gives a
+ * component's host every static attribute the app writes on it, so a class on
+ * <ui-skeleton> lands on the host whatever the component does: with a styled
+ * view inside as well, a margin applied twice, and the placeholder's size had
+ * to be set on both.
+ */
 @Component({
   selector: 'ui-skeleton',
-  standalone: true,
-  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
-  template: `<view #skeleton [class]="skeletonClass()" />`,
+  host: { '[class]': 'skeletonClass()' },
+  template: '',
 })
 export class UiSkeleton {
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly skeletonRef = viewChild<ElementRef>('skeleton');
-  #pulseAnim?: AnimationHandle;
+  readonly #host = inject(ElementRef).nativeElement;
 
-  constructor() {
-    // Start the pulse animation once the element is available
-    effect(() => {
-      const el = this.skeletonRef()?.nativeElement;
-      if (!el) return;
-      this.#pulseAnim?.cancel();
-      this.#pulseAnim = pulse(el);
-    });
-  }
+  /**
+   * Pulses the skeleton. A field rather than a constructor: Angular's test
+   * build keeps a function for a constructor that nothing calls, which an
+   * app's coverage report would show as uncovered.
+   */
+  protected readonly pulsing = effect(() => {
+    pulse(this.#host);
+  });
 
   protected readonly skeletonClass = computed(() =>
     cn('rounded-md bg-muted', this.userClass()),

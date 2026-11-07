@@ -286,6 +286,10 @@ A gradient `mask-image` works on a `<view>` everywhere, but on a `<scroll-view>`
 
 `style="height: calc(10px + var(--h))"`, or the same value in a `[style.height]` binding, gives the element no height: Lynx takes any inline `calc()` as a length without substituting the `var()` in it. The same declaration works in a stylesheet, and so does a bare `var()` inline. Compute the value in TypeScript, or move the `calc()` to a class. `env(safe-area-inset-*)` inside an inline `calc()` is fine: the runtime fills in the inset itself.
 
+### A `calc()` a variable brings into another `calc()` is dropped
+
+Lynx drops a value with a `calc()` inside another `calc()`, and the element gets none of it. The build and the runtime write each nested `calc()` they can see as parentheses, so `calc(calc(100% - 16px) / 2)` works in stylesheets, inline styles and `[style.x]` bindings, and so does Tailwind 4's `calc(--spacing(3) + env(safe-area-inset-top))`. They can't see one a variable brings in: with `--sixty: calc(50px + 10px)`, `padding-top: calc(var(--sixty) + 40px)` gives no padding. Keep `calc()` out of a variable that a `calc()` reads: give the variable a plain length, or do the arithmetic in the property.
+
 ### `box-shadow: inset` not supported
 
 Only outer shadows.

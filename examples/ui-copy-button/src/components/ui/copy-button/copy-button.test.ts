@@ -44,9 +44,15 @@ const CHECK_PATH = 'M20 6 9 17l-5-5';
 
 /**
  * Waits until the clipboard's promises have settled and the view caught up.
+ * Under fake timers it fires the zero-delay timer each update waits on
+ * itself, which moves the fake clock no further.
  */
 const settle = async () => {
-  for (let i = 0; i < 5; i++) await waitForUpdate();
+  for (let i = 0; i < 5; i++) {
+    const update = waitForUpdate();
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+    await update;
+  }
 };
 
 const renderCopyButton = async (providers: Provider[] = []) => {
@@ -81,19 +87,35 @@ describe('UiCopyButton', () => {
       await renderCopyButton();
     expect(icon().getAttribute('content')).not.toContain(CHECK_PATH);
 
-    host.duration.set(20);
+    host.duration.set(500);
     await update();
-    fireEvent.tap(button());
-    await settle();
+    // A fake clock, so the moment lasts until the test moves it on: with a
+    // real one, a machine busy running many spec files could let it end
+    // before the test looked for "Copied" (#317).
+    vi.useFakeTimers();
+    try {
+      fireEvent.tap(button());
+      await settle();
 
-    await expect(clipboard.getString()).resolves.toBe('ABC-123');
-    expect(host.copies()).toEqual(['ABC-123']);
-    expect(getByText('Copied')).toBeTruthy();
-    expect(icon().getAttribute('content')).toContain(CHECK_PATH);
-    expect(announce).toHaveBeenCalledWith('Copied');
+      await expect(clipboard.getString()).resolves.toBe('ABC-123');
+      expect(host.copies()).toEqual(['ABC-123']);
+      expect(getByText('Copied')).toBeTruthy();
+      expect(icon().getAttribute('content')).toContain(CHECK_PATH);
+      expect(announce).toHaveBeenCalledWith('Copied');
 
-    await vi.waitFor(() => expect(getByText('Copy code')).toBeTruthy());
-    expect(icon().getAttribute('content')).not.toContain(CHECK_PATH);
+      // Still copied until its last millisecond.
+      vi.advanceTimersByTime(499);
+      await settle();
+      expect(getByText('Copied')).toBeTruthy();
+
+      vi.advanceTimersByTime(1);
+      await settle();
+      expect(getByText('Copy code')).toBeTruthy();
+      expect(icon().getAttribute('content')).not.toContain(CHECK_PATH);
+    } finally {
+      // So the testing library's cleanup and the next test have real ones.
+      vi.useRealTimers();
+    }
   });
 
   it('copies the value it has when tapped, and starts the moment again', async () => {

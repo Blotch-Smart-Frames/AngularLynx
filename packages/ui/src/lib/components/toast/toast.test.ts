@@ -1,7 +1,7 @@
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import {
   type MockInstance,
@@ -20,15 +20,35 @@ import { DURATION } from '../../utils/animate';
 import { UiToaster } from './toast';
 import { type ToastOptions, dismissToast, toast, toasts } from './toast-state';
 
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired a toast's
+// timers late or several at once, and a test looked at the wrong moment.
+
+/**
+ * Lets `ms` pass on the fake clock, firing each timer due meanwhile.
+ */
+const sleep = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer (such as a toast's entrance,
+ * started a tick after it mounts) a millisecond later too, so this lets one
+ * pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
 
 /**
  * Waits out a toast's exit animation, after which the toaster drops it from
  * the queue, and renders that.
  */
 const waitForExit = async () => {
-  await sleep(DURATION.fast + 40);
+  // The toaster's own wait for the exit animation to end.
+  await sleep(DURATION.fast + 20);
   await waitForUpdate();
 };
 
@@ -69,6 +89,13 @@ const SECOND = 'translateY(-14px) scale(0.95)';
 describe('UiToaster', () => {
   // The queue is module state, so each test starts it empty.
   beforeEach(() => toasts.set([]));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   // Watched per test: the testing library resets the main thread after each.
   let animate: MockInstance<LynxMainThread['__ElementAnimate']>;
@@ -150,11 +177,12 @@ describe('UiToaster', () => {
     });
 
     it('stays hidden until it slides up into view', async () => {
-      const { card, styleOf } = await renderToaster();
+      const { card, styleOf, componentRef } = await renderToaster();
       toast({ title: 'Saved' });
       // Mounted, but its entrance waits a macrotask: until then it's hidden,
-      // or it would flash at its resting place first.
-      await waitForUpdate();
+      // or it would flash at its resting place first. Mounted by hand, since
+      // the fake clock fires that macrotask along with the update's own.
+      componentRef.changeDetectorRef.detectChanges();
       expect(styleOf('Saved', 'opacity')).toBe('0');
       expect(keyframesOn(card('Saved'))).toEqual([]);
 

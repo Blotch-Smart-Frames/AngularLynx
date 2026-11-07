@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import {
@@ -74,6 +74,50 @@ const renderSheet = async () => {
   };
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the sheet's
+// timers late, and a test looked before they had.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * Enough for the zero-delay steps of the open or close sequence, which the
+ * fake clock runs a millisecond apart.
+ */
+const STEPS = 5;
+/** The frame the sheet waits between some of its steps. */
+const FRAME = 16;
+/**
+ * How long the sheet takes to close: its steps, then its slide out, or a
+ * frame and its shrink into its control, and 20ms more.
+ */
+const CLOSED = STEPS + FRAME + DURATION.normal + 20;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /**
  * Opens the sheet and waits out its open sequence: the overlay shows on one
  * tick, and the panel slides in on the next.
@@ -85,12 +129,11 @@ const openSheet = async (host: BottomSheetHost) => {
 
 /**
  * Waits for the close sequence to finish: the panel slides out, then the
- * overlay hides and `closed` fires. Polled rather than timed, since the
- * sequence only starts on the update after `open` changes.
+ * overlay hides and `closed` fires.
  */
-const waitForClose = async (host: BottomSheetHost) => {
-  await vi.waitFor(() => expect(host.closed).toHaveBeenCalled());
-  await waitForUpdate();
+const waitForClose = async (host: { readonly closed: () => void }) => {
+  await after(CLOSED);
+  expect(host.closed).toHaveBeenCalled();
 };
 
 /**
@@ -234,7 +277,7 @@ describe('UiBottomSheet', () => {
     // would do. Its close timer (DURATION.normal + 20) used to fire anyway
     // and emit `closed` from the destroyed output.
     unmount();
-    await new Promise((resolve) => setTimeout(resolve, DURATION.normal + 50));
+    await vi.advanceTimersByTimeAsync(CLOSED);
     const warnings = warn.mock.calls.map(([message]) => String(message));
     warn.mockRestore();
     expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
@@ -541,8 +584,8 @@ const style = (element: Element, property: string) =>
  * Waits for a settle at a detent to finish.
  */
 const settled = async () => {
-  await new Promise((resolve) => setTimeout(resolve, DURATION.slow + 40));
-  await waitForUpdate();
+  // The settle's transition, and 20ms more.
+  await after(DURATION.slow + 20);
 };
 
 /**
@@ -691,7 +734,7 @@ describe('UiBottomSheet detents and glass variant', () => {
 
       await drag(sheet, MEDIUM, MEDIUM + 150);
       expect(sheet.host.open()).toBe(false);
-      await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+      await waitForClose(sheet.host);
       // Past the screen's height, and without fading the glass.
       expect(animate).toHaveBeenCalledWith(sheet.panel, [
         START,
@@ -732,7 +775,7 @@ describe('UiBottomSheet detents and glass variant', () => {
       await openSheet(sheet.host);
 
       fireEvent.tap(sheet.backdrop);
-      await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+      await waitForClose(sheet.host);
       expect(animate).toHaveBeenCalledWith(sheet.panel, [
         START,
         expect.any(String),
@@ -818,9 +861,8 @@ describe('UiBottomSheet detents and glass variant', () => {
       // pins it for a frame first.
       await tapGrabber(sheet);
       expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
-      await vi.waitFor(() =>
-        expect(style(sheet.panel, 'height')).toBe(`${LARGE}px`),
-      );
+      await after(FRAME);
+      expect(style(sheet.panel, 'height')).toBe(`${LARGE}px`);
       await settled();
       // A layout at the large detent's height isn't its content's.
       fireEvent.layoutchange(sheet.panel, { detail: { height: LARGE } });
@@ -852,7 +894,7 @@ describe('UiBottomSheet detents and glass variant', () => {
 
       await tapGrabber(sheet);
       fireEvent.touchstart(sheet.handle, touchAt(500));
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await vi.advanceTimersByTimeAsync(40);
       await waitForUpdate();
       expect(style(sheet.panel, 'transition')).toBe('');
       expect(style(sheet.panel, 'height')).toBe(`${FIT}px`);
@@ -865,18 +907,18 @@ describe('UiBottomSheet detents and glass variant', () => {
       expect(style(sheet.panel, 'transform')).toBe('translateY(110%)');
 
       await layOut(sheet);
-      await vi.waitFor(() =>
-        expect(style(sheet.panel, 'height')).toBe(`${MEDIUM - 8}px`),
-      );
+      // It tries again a frame later.
+      await after(FRAME);
+      expect(style(sheet.panel, 'height')).toBe(`${MEDIUM - 8}px`);
       expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
     });
 
     it('opens at its content height if the screen is never laid out', async () => {
       const sheet = await renderDetents();
       sheet.host.open.set(true);
-      await vi.waitFor(() =>
-        expect(style(sheet.panel, 'transform')).toBe('translateY(0px)'),
-      );
+      // Ten tries, a frame apart.
+      await after(STEPS + 10 * FRAME);
+      expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       expect(style(sheet.panel, 'height')).toBe('');
       // Partial until it knows the screen.
       expect(style(sheet.panel, 'left')).toBe('8px');
@@ -922,7 +964,7 @@ describe('UiBottomSheet detents and glass variant', () => {
       await drag(sheet, MEDIUM, MEDIUM + 40);
       expect(style(sheet.panel, 'transform')).toBe('translateY(0px)');
       fireEvent.tap(sheet.backdrop);
-      await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+      await waitForClose(sheet.host);
       expect(animated()).toEqual([]);
     });
   });
@@ -960,7 +1002,7 @@ describe('UiBottomSheet detents and glass variant', () => {
       await layOut(sheet);
       await openSheet(sheet.host);
       fireEvent.tap(sheet.backdrop);
-      await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+      await waitForClose(sheet.host);
 
       const panelStarts = animate.mock.calls.filter(
         ([element, [kind]]) => element === sheet.panel && kind === START,
@@ -998,7 +1040,7 @@ describe('UiBottomSheet detents and glass variant', () => {
       await openSheet(sheet.host);
 
       await drag(sheet, MEDIUM, MEDIUM + 200);
-      await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+      await waitForClose(sheet.host);
       expect(animate).toHaveBeenCalledWith(sheet.panel, [
         START,
         expect.any(String),
@@ -1131,10 +1173,16 @@ const renderSource = async (
     /**
      * Waits until the sheet measures its control, and answers. The sheet
      * then shows at the control's frame for a frame, which the test sees
-     * right after the update.
+     * right after the update. `asked: false` answers a measuring if there
+     * is one, for a sequence that may have asked already.
      */
-    measureSource: async () => {
-      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
+    measureSource: async ({ asked = true } = {}) => {
+      // A millisecond at a time, so that it answers the first measuring
+      // before the sequence goes on to another.
+      for (let i = 0; i < STEPS && answers.length === 0; i++) {
+        await vi.advanceTimersByTimeAsync(1);
+      }
+      if (asked) expect(answers.length).toBeGreaterThan(0);
       for (const answer of answers.splice(0)) answer();
       await waitForUpdate();
     },
@@ -1175,8 +1223,8 @@ const MEDIUM_FRAME = {
  * takes longer than a settle between detents.
  */
 const grown = async () => {
-  await new Promise((resolve) => setTimeout(resolve, DURATION.slow + 140));
-  await waitForUpdate();
+  // A frame at the control's place, then the grow, and 120ms more.
+  await after(FRAME + DURATION.slow + 120);
 };
 
 describe('UiBottomSheet grown out of its control', () => {
@@ -1216,7 +1264,8 @@ describe('UiBottomSheet grown out of its control', () => {
     expect(style(sheet.backdrop, 'transition')).toContain('background-color');
 
     // On to its detent, on the sheet's curve, its content fading in.
-    await vi.waitFor(() => expect(style(sheet.panel, 'left')).toBe('8px'));
+    await after(FRAME);
+    expect(style(sheet.panel, 'left')).toBe('8px');
     expect(frameOf(sheet.panel)).toEqual(MEDIUM_FRAME);
     expect(style(sheet.panel, 'transition')).toContain(
       `height ${DURATION.slow + 100}ms cubic-bezier(0.32, 0.72, 0, 1)`,
@@ -1240,7 +1289,8 @@ describe('UiBottomSheet grown out of its control', () => {
     sheet.host.open.set(false);
     await sheet.measureSource();
     // Its height pinned for a frame, then into the control.
-    await vi.waitFor(() => expect(frameOf(sheet.panel)).toEqual(SOURCE_FRAME));
+    await after(FRAME);
+    expect(frameOf(sheet.panel)).toEqual(SOURCE_FRAME);
     expect(style(sheet.panel, 'transition')).toContain(
       `height ${DURATION.normal}ms`,
     );
@@ -1249,8 +1299,7 @@ describe('UiBottomSheet grown out of its control', () => {
     expect(sheet.backdrop.getAttribute('style')).toContain('rgba(0, 0, 0, 0)');
 
     // The control shows in the update that hides the sheet's glass.
-    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await waitForClose(sheet.host);
     expect(sheet.overlay.getAttribute('visible')).toBe('false');
     expect(style(sheet.source(), 'visibility')).toBe('');
     expect(style(sheet.glass(), 'visibility')).toBe('hidden');
@@ -1260,27 +1309,25 @@ describe('UiBottomSheet grown out of its control', () => {
     const sheet = await renderSource(IOS_26, { measurable: false });
     sheet.host.open.set(true);
     await sheet.measureSource();
-    await vi.waitFor(() =>
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-        expect.anything(),
-      ]),
-    );
+    await after(STEPS);
+    expect(animate).toHaveBeenCalledWith(sheet.panel, [
+      START,
+      expect.any(String),
+      [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
+      expect.anything(),
+    ]);
     expect(style(sheet.panel, 'left')).toBe('8px');
 
     sheet.host.open.set(false);
     await sheet.measureSource();
-    await vi.waitFor(() =>
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
-        expect.anything(),
-      ]),
-    );
-    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+    await after(STEPS);
+    expect(animate).toHaveBeenCalledWith(sheet.panel, [
+      START,
+      expect.any(String),
+      [{ transform: 'translateY(0%)' }, { transform: 'translateY(110%)' }],
+      expect.anything(),
+    ]);
+    await waitForClose(sheet.host);
   });
 
   it('goes on down from the finger when dragged closed', async () => {
@@ -1294,7 +1341,7 @@ describe('UiBottomSheet grown out of its control', () => {
     fireEvent.touchmove(handle, touchAt(MEDIUM + 200));
     await waitForUpdate();
     fireEvent.touchend(handle, { eventType: 'catchEvent' });
-    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
+    await waitForClose(sheet.host);
     expect(animate).toHaveBeenCalledWith(sheet.panel, [
       START,
       expect.any(String),
@@ -1313,7 +1360,8 @@ describe('UiBottomSheet grown out of its control', () => {
     sheet.host.detents.set(['medium', 'large']);
     sheet.host.open.set(true);
     await atSource(sheet);
-    await vi.waitFor(() => expect(style(sheet.panel, 'left')).toBe('8px'));
+    await after(FRAME);
+    expect(style(sheet.panel, 'left')).toBe('8px');
 
     const handle = sheet.panel.querySelector('.rounded-full')!.parentElement!;
     fireEvent.touchstart(handle, touchAt(MEDIUM));
@@ -1330,14 +1378,12 @@ describe('UiBottomSheet grown out of its control', () => {
     const sheet = await renderSource();
     // Closed while it measures its control: it never shows.
     sheet.host.open.set(true);
-    await vi.waitFor(() =>
-      expect(sheet.overlay.getAttribute('visible')).toBe('true'),
-    );
+    await after(STEPS);
+    expect(sheet.overlay.getAttribute('visible')).toBe('true');
     sheet.host.open.set(false);
     await waitForUpdate();
     await sheet.measureSource();
-    await vi.waitFor(() => expect(sheet.host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await waitForClose(sheet.host);
     expect(style(sheet.source(), 'visibility')).toBe('');
 
     // Opened again while it measures its control to shrink into it: it
@@ -1349,8 +1395,11 @@ describe('UiBottomSheet grown out of its control', () => {
     await waitForUpdate();
     sheet.host.open.set(true);
     await waitForUpdate();
+    // It measures its control to shrink into it, then again to grow out of
+    // it. The second may have asked by the time the first is answered, in
+    // which case both are answered together.
     await sheet.measureSource();
-    await sheet.measureSource();
+    await sheet.measureSource({ asked: false });
     await grown();
     expect(sheet.overlay.getAttribute('visible')).toBe('true');
     expect(frameOf(sheet.panel)).toEqual(MEDIUM_FRAME);
@@ -1381,13 +1430,12 @@ describe('UiBottomSheet grown out of its control', () => {
     sheet.host.withSource.set(false);
     await waitForUpdate();
     await openSheet(sheet.host);
-    await vi.waitFor(() =>
-      expect(animate).toHaveBeenCalledWith(sheet.panel, [
-        START,
-        expect.any(String),
-        [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
-        expect.anything(),
-      ]),
-    );
+    await after(STEPS);
+    expect(animate).toHaveBeenCalledWith(sheet.panel, [
+      START,
+      expect.any(String),
+      [{ transform: 'translateY(110%)' }, { transform: 'translateY(0%)' }],
+      expect.anything(),
+    ]);
   });
 });

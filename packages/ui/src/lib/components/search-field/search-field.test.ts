@@ -2,10 +2,10 @@ import { Component, type Provider, signal, viewChild } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import {
@@ -170,7 +170,9 @@ const renderOn = async (
   };
   const keyboard = async (height: number) => {
     fireLynxEvent(field(), 'keyboardheightchange', { detail: { height } });
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
+    // Measured on the main thread, then risen by what it measured.
+    await waitForUpdate();
+    expect(invoke).toHaveBeenCalled();
     await waitForUpdate();
   };
   return {
@@ -199,7 +201,28 @@ const methodsCalled = (rendered: {
   invoke: { mock: { calls: unknown[][] } };
 }) => rendered.invoke.mock.calls.map(([, method]) => method);
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine answered the field's
+// measurements late, and a test looked before they had.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   settings.reduceMotion.set(false);

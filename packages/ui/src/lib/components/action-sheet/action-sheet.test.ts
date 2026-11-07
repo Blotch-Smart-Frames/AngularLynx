@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import {
@@ -165,6 +165,49 @@ const renderSheet = async () => {
   };
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the open and
+// close sequences' timers late, and a test looked before they had.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * How long a sheet takes to close: a zero-delay step, then its slide out and
+ * 20ms more. The popover it grows out of its control as takes its animation
+ * and 20ms more too.
+ */
+const CLOSED = DURATION.normal + 30;
+/**
+ * How long the popover takes to open from its control: 32ms for it to lay
+ * out, 16ms at its start frame, and the updates around them.
+ */
+const OPENED = 60;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /**
  * Opens the action sheet and waits out its open sequence: the overlay shows
  * on one tick, and the panel slides in on the next.
@@ -176,12 +219,11 @@ const openSheet = async (host: ActionSheetHost) => {
 
 /**
  * Waits for the close sequence to finish: the panel slides out, then the
- * overlay hides and `closed` fires. Polled rather than timed, since the
- * sequence only starts on the update after `open` changes.
+ * overlay hides and `closed` fires.
  */
-const waitForClose = async (host: ActionSheetHost) => {
-  await vi.waitFor(() => expect(host.closed).toHaveBeenCalled());
-  await waitForUpdate();
+const waitForClose = async (host: { readonly closed: () => void }) => {
+  await after(CLOSED);
+  expect(host.closed).toHaveBeenCalled();
 };
 
 /**
@@ -355,7 +397,7 @@ describe('UiActionSheet', () => {
     // sheet would do. Its close timer (DURATION.normal + 20) used to fire
     // anyway and emit `closed` from the destroyed output.
     unmount();
-    await new Promise((resolve) => setTimeout(resolve, DURATION.normal + 50));
+    await vi.advanceTimersByTimeAsync(CLOSED);
     const warnings = warn.mock.calls.map(([message]) => String(message));
     warn.mockRestore();
     expect(warnings.filter((message) => message.includes('NG0953'))).toEqual(
@@ -503,13 +545,14 @@ type Anchored = Awaited<ReturnType<typeof renderAnchored>>;
  */
 const openAnchored = async (rendered: Anchored) => {
   fireEvent.tap(rendered.anchor());
-  await vi.waitFor(() => expect(rendered.content().style.opacity).toBe('1'));
+  await after(OPENED);
+  expect(rendered.content().style.opacity).toBe('1');
 };
 
 /**
  * Lets Lynx's timers run: the touch check waits for the next one.
  */
-const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 5));
+const nextTimer = () => vi.advanceTimersByTimeAsync(1);
 
 describe('UiActionSheet opened from its control', () => {
   beforeEach(() => {
@@ -565,7 +608,7 @@ describe('UiActionSheet opened from its control', () => {
 
     // A control that goes takes its glass with it.
     rendered.host.open.set(false);
-    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+    await waitForClose(rendered.host);
     rendered.host.glassAnchor.set(false);
     await waitForUpdate();
     expect(rendered.anchor().tagName.toLowerCase()).toBe('view');
@@ -578,8 +621,7 @@ describe('UiActionSheet opened from its control', () => {
     fireEvent.tap(rendered.button('Delete Draft'));
     expect(rendered.host.deleted).toHaveBeenCalledTimes(1);
     expect(rendered.host.open()).toBe(false);
-    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
-    await waitForUpdate();
+    await waitForClose(rendered.host);
     expect(rendered.popover()).toBeNull();
     expect(rendered.anchor().style.visibility).toBe('');
     expect(rendered.host.closed).toHaveBeenCalledTimes(1);
@@ -698,12 +740,12 @@ describe('UiActionSheet opened from its control', () => {
     rendered.host.open.set(true);
     for (let i = 0; i < 3; i++) await waitForUpdate();
     rendered.host.open.set(false);
-    await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
+    await waitForClose(rendered.host);
 
     // ...then given its control back, closed.
     rendered.host.anchored.set(true);
     await waitForUpdate();
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await vi.advanceTimersByTimeAsync(300);
     expect(rendered.host.closed).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,11 +2,12 @@ import { Component, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
   within,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DURATION } from '../../utils/animate';
 import { UiSelect, UiSelectItem } from './select';
 
 @Component({
@@ -51,6 +52,35 @@ const renderSelect = async () => {
   };
 };
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the sheet's
+// close timers late, and a test looked before they had.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * How long the sheet takes to close: a zero-delay step, then its slide out
+ * and 20ms more.
+ */
+const CLOSED = DURATION.normal + 30;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /**
  * Waits out the sheet's open sequence: the overlay shows on one tick, and the
  * panel slides in on the next.
@@ -61,11 +91,13 @@ const waitForOpen = async () => {
 
 /**
  * Waits for the sheet's close sequence to finish: the panel slides out, then
- * the overlay hides. Polled rather than timed, since the sequence only starts
- * on the update after the sheet is told to close.
+ * the overlay hides.
  */
-const waitForClose = (overlay: Element) =>
-  vi.waitFor(() => expect(overlay.getAttribute('visible')).toBe('false'));
+const waitForClose = async (overlay: Element) => {
+  await vi.advanceTimersByTimeAsync(CLOSED);
+  await waitForUpdate();
+  expect(overlay.getAttribute('visible')).toBe('false');
+};
 
 describe('UiSelect', () => {
   it('shows the placeholder, muted, until a value is chosen', async () => {

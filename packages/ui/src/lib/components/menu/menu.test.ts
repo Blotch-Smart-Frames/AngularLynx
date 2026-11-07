@@ -2,12 +2,13 @@ import { Component, signal } from '@angular/core';
 import {
   fireEvent,
   render,
-  waitForUpdate,
+  waitForUpdate as nextUpdate,
   within,
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { DURATION } from '../../utils/animate';
 import { UiGlass } from '../glass/glass';
 import {
   UiMenu,
@@ -166,15 +167,47 @@ const renderMenu = async (
 
 type Rendered = Awaited<ReturnType<typeof renderMenu>>;
 
+// Every test runs on a fake clock (see the beforeEach below), so the test
+// decides when time passes. On real time, a busy machine fired the menu's
+// timers late, and a test gave up waiting for it to open or close.
+
+/**
+ * The testing library's waitForUpdate on the fake clock. It waits on a
+ * zero-delay timer, which Node runs a millisecond later; the fake clock puts
+ * a zero-delay timer set by another timer a millisecond later too, so this
+ * lets one pass.
+ */
+const waitForUpdate = async () => {
+  const update = nextUpdate();
+  await vi.advanceTimersByTimeAsync(1);
+  await update;
+};
+
+/**
+ * Lets `ms` pass on the fake clock, then renders what it changed.
+ */
+const after = async (ms: number) => {
+  await vi.advanceTimersByTimeAsync(ms);
+  await waitForUpdate();
+};
+
+/**
+ * How long the menu takes to open: 32ms for its overlay to lay out, 16ms at
+ * its start frame, and the updates around them.
+ */
+const OPENED = 60;
+/** How long the menu takes to close: its animation, then 20ms more. */
+const CLOSED = DURATION.normal + 30;
+
 /**
  * Waits until the menu has opened.
  */
-const waitForOpen = (rendered: Rendered) =>
-  vi.waitFor(() =>
-    expect(rendered.panel().getAttribute('accessibility-exclusive-focus')).toBe(
-      'true',
-    ),
+const waitForOpen = async (rendered: Rendered) => {
+  await after(OPENED);
+  expect(rendered.panel().getAttribute('accessibility-exclusive-focus')).toBe(
+    'true',
   );
+};
 
 /**
  * Renders the menu and opens it: a screen reader, and the queries, reach
@@ -199,8 +232,8 @@ const precedes = (first: Node, second: Node) =>
  * Waits until the menu has closed and its animation has finished.
  */
 const waitForClose = async (rendered: Rendered) => {
-  await vi.waitFor(() => expect(rendered.host.closed).toHaveBeenCalled());
-  await waitForUpdate();
+  await after(CLOSED);
+  expect(rendered.host.closed).toHaveBeenCalled();
 };
 
 const style = (element: Element, name: string) =>
@@ -214,10 +247,12 @@ const row = (rendered: Rendered, name: string | RegExp) =>
 
 // The renderer warns that the components' selectors aren't Lynx elements.
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });

@@ -46,13 +46,39 @@ export class App {
 ### With a label
 
 ```angular-html
+<ui-select
+  label="Country"
+  placeholder="Choose your country"
+  [(value)]="country"
+>
+  …
+</ui-select>
+```
+
+`label` is shown above the field and names it for screen readers. A label of your own beside the field, such as a [Label](/dolan/label), isn't tied to it, so give the select an `accessibility-label` with the same text:
+
+```angular-html
 <view class="flex flex-col gap-2">
   <ui-label>Country</ui-label>
-  <ui-select [(value)]="country">…</ui-select>
+  <ui-select accessibility-label="Country" [(value)]="country">…</ui-select>
 </view>
 ```
 
-See [Label](/dolan/label).
+### Accessibility
+
+- The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`), with the chosen item's label, or the placeholder, as its value: VoiceOver says "Country, Germany, button". Without either, the field's name is the text it shows.
+- A disabled field is dimmed to VoiceOver as well.
+- Each item is a button named by its `label`, and the chosen one is `selected`, as its check mark shows.
+
+So a spec finds them by role:
+
+```typescript
+fireEvent.tap(screen.getByRole('button', { name: 'Country' }));
+fireEvent.tap(await screen.findByRole('button', { name: 'Germany' }));
+expect(
+  screen.getByRole('button', { name: 'Germany', selected: true }),
+).toBeTruthy();
+```
 
 ### Disabled
 
@@ -73,12 +99,14 @@ A disabled select dims and doesn't open.
 
 ### UiSelect
 
-| Input         | Type      | Default       | Description                                      |
-| ------------- | --------- | ------------- | ------------------------------------------------ |
-| `value`       | `string`  | `''`          | The selected item's value. Supports `[(value)]`. |
-| `placeholder` | `string`  | `'Select...'` | Shown in the field while nothing is selected.    |
-| `disabled`    | `boolean` | `false`       | Dims the field and stops it from opening.        |
-| `class`       | `string`  | `''`          | Extra Tailwind classes for the field.            |
+| Input                 | Type      | Default       | Description                                                               |
+| --------------------- | --------- | ------------- | ------------------------------------------------------------------------- |
+| `value`               | `string`  | `''`          | The selected item's value. Supports `[(value)]`.                          |
+| `label`               | `string`  | `''`          | Shown above the field, and read by screen readers as its name.            |
+| `placeholder`         | `string`  | `'Select...'` | Shown in the field while nothing is selected.                             |
+| `accessibility-label` | `string`  | `''`          | The field's name for screen readers when it has no `label`.               |
+| `disabled`            | `boolean` | `false`       | Dims the field and stops it from opening.                                 |
+| `class`               | `string`  | `''`          | Extra Tailwind classes for the column that holds the label and the field. |
 
 | Output        | Type     | Description                                  |
 | ------------- | -------- | -------------------------------------------- |

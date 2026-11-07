@@ -1,14 +1,6 @@
 {
   "version": 1,
   "components": {
-    "progress": {
-      "index.ts": {
-        "hash": "a01d8fee82f9e540"
-      },
-      "progress.ts": {
-        "hash": "ea2cc17d4cde96cf"
-      }
-    },
     "toggle": {
       "index.ts": {
         "hash": "6bcd715ba5359b93"
@@ -110,6 +102,14 @@
       },
       "segmented-control.ts": {
         "hash": "d022aa117e6de7eb"
+      }
+    },
+    "slider": {
+      "index.ts": {
+        "hash": "5d6ecb516a720195"
+      },
+      "slider.ts": {
+        "hash": "5fab5e841556d587"
       }
     }
   },

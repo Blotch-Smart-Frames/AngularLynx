@@ -1,1 +1,0 @@
-export { UiProgress } from './progress';

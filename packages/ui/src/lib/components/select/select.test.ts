@@ -41,7 +41,8 @@ const renderSelect = async () => {
     ...result,
     host: result.componentRef.instance as SelectHost,
     overlay,
-    // The field is the host; the row inside it takes the taps.
+    // The host is the field's column; the row inside the field takes the taps.
+    column: container.querySelector('.border-input')!.parentElement!,
     field: container.querySelector('.border-input')!,
     trigger: container.querySelector('.border-input')!.firstElementChild!,
     triggerText: () => container.querySelector('.border-input text')!,
@@ -68,29 +69,41 @@ const waitForClose = (overlay: Element) =>
 
 describe('UiSelect', () => {
   it('shows the placeholder, muted, until a value is chosen', async () => {
-    const { triggerText, field } = await renderSelect();
+    const { triggerText, column } = await renderSelect();
     expect(triggerText().textContent).toBe('Pick a fruit');
     expect(triggerText().classList).toContain('text-muted-foreground');
-    expect(field.classList).toContain('w-48');
+    expect(column.classList).toContain('w-48');
   });
 
   // Static attributes land on a component's host too (issue #181): the
-  // width applies once, to the field, and the placeholder is only shown.
+  // width applies once, to the column, the placeholder is only shown, and
+  // the accessibility label is only the trigger's.
   it('puts its class on one element, and its placeholder only in its text', async () => {
     @Component({
       imports: [UiSelect, UiSelectItem],
       template: `
-        <ui-select placeholder="Pick a fruit" class="w-48">
+        <ui-select
+          placeholder="Pick a fruit"
+          accessibility-label="Fruit"
+          class="w-48"
+        >
           <ui-select-item value="apple" label="Apple" class="font-bold" />
         </ui-select>
       `,
     })
     class StaticAttributesHost {}
 
-    const { container, getByText, queryAllByPlaceholderText } =
-      await render(StaticAttributesHost);
+    const {
+      container,
+      getByText,
+      getAllByAccessibilityLabel,
+      queryAllByPlaceholderText,
+    } = await render(StaticAttributesHost);
     expect([...container.querySelectorAll('.w-48')]).toEqual([
-      container.querySelector('.border-input'),
+      container.querySelector('.border-input')!.parentElement,
+    ]);
+    expect(getAllByAccessibilityLabel('Fruit')).toEqual([
+      container.querySelector('.border-input')!.firstElementChild,
     ]);
     expect(queryAllByPlaceholderText('Pick a fruit')).toEqual([]);
     expect(getByText('Pick a fruit')).toBeTruthy();
@@ -190,5 +203,106 @@ describe('UiSelectItem', () => {
     const { item } = await renderSelect();
     expect(item('Pear').classList).toContain('font-bold');
     expect(item('Pear').classList).toContain('px-4');
+  });
+});
+
+describe('UiSelect accessibility', () => {
+  @Component({
+    imports: [UiSelect, UiSelectItem],
+    template: `
+      <ui-select
+        label="Country"
+        placeholder="Choose your country"
+        [disabled]="disabled()"
+        [(value)]="country"
+      >
+        <ui-select-item value="de" label="Germany" />
+        <ui-select-item value="jp" label="Japan" />
+      </ui-select>
+    `,
+  })
+  class LabeledHost {
+    readonly country = signal('');
+    readonly disabled = signal(false);
+  }
+
+  it('shows its label above the field, and names the trigger with it', async () => {
+    const { container, getByRole, getByText } = await render(LabeledHost);
+    const label = getByText('Country');
+    // Above the field, in its column, and hidden: the trigger reads it.
+    const field = container.querySelector('.border-input')!;
+    expect(label.parentElement).toBe(field.parentElement);
+    expect(
+      label.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(label.getAttribute('accessibility-elements-hidden')).toBe('true');
+
+    const trigger = getByRole('button', { name: 'Country' });
+    expect(trigger.getAttribute('accessibility-element')).toBe('true');
+    expect(trigger.getAttribute('accessibility-value')).toBe(
+      'Choose your country',
+    );
+  });
+
+  it('opens from the trigger, and marks the chosen item selected', async () => {
+    const { componentRef, getByRole, findByRole, queryByRole } =
+      await render(LabeledHost);
+    expect(queryByRole('button', { selected: true })).toBeNull();
+
+    fireEvent.tap(getByRole('button', { name: 'Country' }));
+    await waitForOpen();
+    fireEvent.tap(await findByRole('button', { name: 'Germany' }));
+    await waitForUpdate();
+
+    expect((componentRef.instance as LabeledHost).country()).toBe('de');
+    expect(
+      getByRole('button', { name: 'Germany', selected: true }),
+    ).toBeTruthy();
+    expect(
+      getByRole('button', { name: 'Japan', selected: false }),
+    ).toBeTruthy();
+    expect(
+      getByRole('button', { name: 'Country' }).getAttribute(
+        'accessibility-value',
+      ),
+    ).toBe('Germany');
+  });
+
+  it('is dimmed to screen readers while disabled', async () => {
+    const { componentRef, getByRole } = await render(LabeledHost);
+    const trigger = getByRole('button', { name: 'Country' });
+    expect(trigger.getAttribute('accessibility-traits')).toBe('button');
+
+    (componentRef.instance as LabeledHost).disabled.set(true);
+    await waitForUpdate();
+    expect(trigger.getAttribute('accessibility-traits')).toBe(
+      'button,disabled',
+    );
+  });
+
+  it('takes its name from accessibility-label when shown without a label', async () => {
+    @Component({
+      imports: [UiSelect, UiSelectItem],
+      template: `
+        <ui-select accessibility-label="Fruit" value="apple">
+          <ui-select-item value="apple" label="Apple" />
+        </ui-select>
+      `,
+    })
+    class UnlabeledHost {}
+
+    const { getByRole, queryByText } = await render(UnlabeledHost);
+    expect(queryByText('Fruit')).toBeNull();
+    expect(
+      getByRole('button', { name: 'Fruit' }).getAttribute(
+        'accessibility-value',
+      ),
+    ).toBe('Apple');
+  });
+
+  it('is named by what it shows without either, with no value read twice', async () => {
+    const { getByRole } = await renderSelect();
+    const trigger = getByRole('button', { name: 'Pick a fruit' });
+    expect(trigger.hasAttribute('accessibility-value')).toBe(false);
   });
 });

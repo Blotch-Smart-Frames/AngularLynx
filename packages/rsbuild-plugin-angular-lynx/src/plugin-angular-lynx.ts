@@ -7,6 +7,7 @@ import { applyDisplay } from './display.js';
 import { applyEntry } from './entry.js';
 import { applyGenerator } from './generator.js';
 import { applyLayers } from './layers.js';
+import { applyNestedCalc } from './nested-calc.js';
 import { applyResolve } from './resolve.js';
 import { applySafeArea } from './safe-area.js';
 import { applyDevLogger } from './logger/dev-logger.js';
@@ -52,6 +53,10 @@ export const pluginAngularLynx = (
       // The same: each env(safe-area-inset-*) reads the inset a generated
       // app's shell sends (see safe-area.ts).
       applySafeArea(api);
+      // Writes each calc() nested in another as parentheses, which Lynx reads
+      // (see nested-calc.ts). After applyTailwind, so it runs after Tailwind
+      // 4's lowering at OnceExit.
+      applyNestedCalc(api);
       // Copies each inheritable text style to a variable the HTML text tags
       // read (see text-inheritance.ts). After applyTailwind, so it runs after
       // Tailwind 4's lowering at OnceExit.

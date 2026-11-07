@@ -23,6 +23,7 @@ import {
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { toLynxDisplay, withLynxDisplay } from './display';
+import { withFlatCalc } from './nested-calc';
 import {
   readsSafeAreaInsets,
   safeAreaInsetsStyle,
@@ -122,6 +123,15 @@ const parseEventName = (
  * draws its text on iOS" in investigations/lynx-vs-web-differences.md).
  */
 const HIDDEN_STYLE = 'display: none; overflow: hidden';
+
+/**
+ * An inline style, or one declaration's value, as Lynx gets it: with the
+ * safe-area insets the shell sent in place of env(safe-area-inset-*) (see
+ * safe-area-insets.ts), and each calc() inside another written as a group,
+ * which Lynx reads where it drops a nested calc() (see nested-calc.ts). The
+ * element keeps the value as the app wrote it, to write it again.
+ */
+const forNative = <T>(value: T): T => withFlatCalc(withSafeAreaInsets(value));
 
 /**
  * The inline styles that decide whether an element lays out lines.
@@ -1014,7 +1024,7 @@ export class LynxElement implements BaseLynxElement {
     // gets the inset the shell sends (see safe-area-insets.ts), and is kept
     // as written to get the next one.
     if (readsSafeAreaInsets(value)) this.#readsSafeArea = true;
-    __AddInlineStyle(this.element, key, withSafeAreaInsets(value));
+    __AddInlineStyle(this.element, key, forNative(value));
     this.#inlineStyleKeys.set(key, value);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
   }
@@ -1170,7 +1180,7 @@ export class LynxElement implements BaseLynxElement {
    * #withRuntimeStyle), with the safe-area insets filled in.
    */
   #inlineStyleFor(inlineStyle: string | null): string | null {
-    return withSafeAreaInsets(this.#withRuntimeStyle(inlineStyle));
+    return forNative(this.#withRuntimeStyle(inlineStyle));
   }
 
   #setRuntimeStyle(style: string): void {
@@ -1196,7 +1206,7 @@ export class LynxElement implements BaseLynxElement {
     // __SetInlineStyles replaces every inline style, including the [style.x]
     // ones __AddInlineStyle set, which the app didn't ask to drop.
     for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(this.element, key, withSafeAreaInsets(value));
+      __AddInlineStyle(this.element, key, forNative(value));
     }
   }
 
@@ -2098,7 +2108,7 @@ export class LynxElement implements BaseLynxElement {
       __SetInlineStyles(fresh, inlineStyle);
     }
     for (const [key, value] of this.#inlineStyleKeys) {
-      __AddInlineStyle(fresh, key, withSafeAreaInsets(value));
+      __AddInlineStyle(fresh, key, forNative(value));
     }
     for (const {
       eventType,

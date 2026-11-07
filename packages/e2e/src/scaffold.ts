@@ -145,6 +145,7 @@ export const scaffoldApp = async (
   // replaces the generated hello component, and a lazy route proves chunk
   // loading. Done after the tests, which expect hello's generated template.
   applyFixtures(appDir, options.tailwind && (options.tailwindVersion ?? '4'));
+  await addIntl(appDir, pm, exec);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1088,6 +1089,64 @@ const addEnvironments = (appDir: string) => {
     "angular.json's build target has no production configuration; the project `ng new` generates has changed shape. Update addEnvironments() in packages/e2e/src/scaffold.ts.",
   );
   production['fileReplacements'] = [E2E_ENVIRONMENT];
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * The packages the `intl` option needs for `Collator`: FormatJS's two that
+ * every API reads locales with. Collator itself is ours, so it needs no more.
+ */
+const INTL_PACKAGES = [
+  '@formatjs/intl-getcanonicallocales',
+  '@formatjs/intl-locale',
+] as const;
+
+/**
+ * Turns the `intl` build option on, for the dev server and the production
+ * build, and installs what it needs, at the ranges the build plugin's peer
+ * dependencies allow. `Collator` needs the fewest packages, and the runtime
+ * it sets up is the module every `intl` list imports. Only an app that
+ * installed the build plugin builds that module from `node_modules`, where
+ * nothing else in the build spells out its Unicode property escapes, which
+ * the main thread's bytecode compiler rejects (issue #316). The repository's
+ * examples load it from the workspace, so they can't catch it.
+ */
+const addIntl = async (
+  appDir: string,
+  pm: PackageManagerCommands,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+) => {
+  step("Layer 2: turn the intl option on, with FormatJS's base packages");
+  const { peerDependencies = {} } = readJson<{
+    peerDependencies?: Record<string, string>;
+  }>(path.join(REPO_ROOT, 'packages/rsbuild-plugin-angular-lynx/package.json'));
+  await exec(
+    ...pm.add(
+      INTL_PACKAGES.map((name) => {
+        const range = peerDependencies[name];
+        check(
+          range !== undefined,
+          `The build plugin has no peer dependency on ${name}, which the intl option's Collator needs. Update INTL_PACKAGES in packages/e2e/src/scaffold.ts.`,
+        );
+        return `${name}@${range}`;
+      }),
+    ),
+  );
+
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addIntl() in packages/e2e/src/scaffold.ts.",
+  );
+  options['intl'] = ['Collator'];
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

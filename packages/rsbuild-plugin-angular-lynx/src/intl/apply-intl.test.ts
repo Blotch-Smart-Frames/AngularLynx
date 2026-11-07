@@ -175,7 +175,7 @@ describe('applyIntl', () => {
               const rule: Record<string, any> = { name: ruleName };
               rules.push(rule);
               const builder = {
-                test: (test: RegExp) => ((rule['test'] = test), builder),
+                test: (test: unknown) => ((rule['test'] = test), builder),
                 enforce: (enforce: string) => (
                   (rule['enforce'] = enforce),
                   builder
@@ -261,19 +261,24 @@ describe('applyIntl', () => {
     expect(written).toBeGreaterThan(0);
   });
 
-  it("spells out FormatJS's Unicode property escapes for PrimJS, in the lynx environment only", async () => {
+  it("spells out FormatJS's and our runtime's Unicode property escapes for PrimJS, in the lynx environment only", async () => {
     const { api, chain } = createApi();
+    const runtimePath = '/app/node_modules/@blotch/plugin/dist/intl-runtime.js';
     applyIntl(api as never, {
       apis: ['ListFormat'],
       sourceLocale: 'en',
       locales: [],
       polyfillsEntry: '/polyfills',
+      runtimePath,
     });
     expect(chain('web')).toEqual([]);
     expect(chain('lynx')).toEqual([
       {
         name: 'intl-unicode-property-regex',
-        test: FORMATJS_POLYFILL,
+        // The runtime too, which every `intl` list imports: rspeedy's own
+        // compile, which spells the escapes out, skips `node_modules`, where
+        // it is in an app (#316).
+        test: [FORMATJS_POLYFILL, runtimePath],
         enforce: 'pre',
         use: [
           {
@@ -297,6 +302,23 @@ describe('applyIntl', () => {
     expect(code).not.toMatch(/\\p\{/);
     // Hebrew's letters, written out.
     expect(code).toContain('u05D0-');
+
+    // Nor what it makes of our Collator's, punctuation and spaces among them.
+    const collator = fs.readFileSync(
+      path.join(import.meta.dirname, 'collator.ts'),
+      'utf8',
+    );
+    expect(collator).toMatch(/\\p\{/);
+    const { code: collatorCode } = await rspack.experiments.swc.transform(
+      collator,
+      {
+        ...UNICODE_PROPERTY_REGEX_SWC_OPTIONS,
+        jsc: { parser: { syntax: 'typescript' } },
+      },
+    );
+    expect(collatorCode).not.toMatch(/\\p\{/);
+    // U+3000, the ideographic space, written out.
+    expect(collatorCode).toContain('u3000');
   });
 
   it('warns about locales without data', () => {

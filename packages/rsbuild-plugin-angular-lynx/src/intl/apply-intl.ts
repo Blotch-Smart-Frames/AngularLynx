@@ -178,7 +178,8 @@ const writeIfChanged = (file: string, contents: string): void => {
 
 /**
  * FormatJS's polyfills, which may hold regular expressions with Unicode
- * property escapes the Lynx build's bytecode compiler rejects.
+ * property escapes the Lynx build's bytecode compiler rejects. Our runtime
+ * (`runtimePath`) has some too, so the rule takes it as well.
  */
 export const FORMATJS_POLYFILL = /[\\/]@formatjs[\\/][^\\/]+[\\/]polyfill\.js$/;
 
@@ -212,11 +213,8 @@ export const applyIntl = (
 ): void => {
   if (options.apis.length === 0) return;
   const rootPath = api.context.rootPath;
-  const module = renderIntlModule({
-    ...options,
-    rootPath,
-    runtimePath: options.runtimePath ?? RUNTIME_PATH,
-  });
+  const runtimePath = options.runtimePath ?? RUNTIME_PATH;
+  const module = renderIntlModule({ ...options, rootPath, runtimePath });
   for (const [intlApi, tags] of module.missingLocales) {
     api.logger.warn(
       `Intl.${intlApi}: FormatJS has no data for ${tags.join(', ')}, so it formats ${tags.length === 1 ? 'it' : 'them'} in the source locale.`,
@@ -235,16 +233,22 @@ export const applyIntl = (
     module.canonicalLocalesSource,
   );
   writeIfChanged(file, module.source);
-  // The bytecode compiler the build runs on the main thread's script takes
-  // `\p{L}` but not `\p{Script=Hebrew}`, which FormatJS's ListFormat has,
-  // and fails the build ("invalid escape sequence in regular expression"),
-  // though PrimJS on the device runs it (from `new RegExp()`). SWC spells it
-  // out first.
+  // The bytecode compiler the build runs on the main thread's script fails
+  // the build on any Unicode property escape in a regex literal ("invalid
+  // escape sequence in regular expression"), `\p{L}` as much as
+  // `\p{Script=Hebrew}`, though PrimJS on the device runs them (from
+  // `new RegExp()`). FormatJS's ListFormat has one, and so does our
+  // Collator, in the runtime every `intl` list imports (issue #316). SWC
+  // spells them out first. The rest of the build doesn't: the main thread's
+  // ES2019 target keeps them, and rspeedy's own SWC rule, which runs
+  // `transform-unicode-property-regex`, skips JavaScript in `node_modules`,
+  // where both are in an app. (In this repository the runtime isn't, which
+  // is how #316 got past the examples.)
   api.modifyBundlerChain((chain, { environment }) => {
     if (environment.name !== 'lynx') return;
     chain.module
       .rule('intl-unicode-property-regex')
-      .test(FORMATJS_POLYFILL)
+      .test([FORMATJS_POLYFILL, runtimePath])
       .enforce('pre')
       .use('swc')
       .loader('builtin:swc-loader')

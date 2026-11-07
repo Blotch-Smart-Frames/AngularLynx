@@ -3218,7 +3218,7 @@ FormatJS's polyfills ran without a fix on PrimJS: an app compared 58 cases (each
 
 ---
 
-## The build's main-thread bytecode compiler rejects `\p{Script=…}` in a regex literal
+## The build's main-thread bytecode compiler rejects `\p{…}` in a regex literal
 
 ### What you'd expect (web)
 
@@ -3226,11 +3226,13 @@ FormatJS's polyfills ran without a fix on PrimJS: an app compared 58 cases (each
 
 ### What Lynx does
 
-The Lynx bundle's main-thread script is compiled to bytecode at build time. That compiler takes General_Category escapes (`\p{L}`, `[\p{P}\p{Z}]`) but fails the build on a Script one: `Compile error: main-thread.js exception: SyntaxError: invalid escape sequence in regular expression`. PrimJS on the device runs the same pattern from `new RegExp('^\\p{Script=Hebrew}', 'u')` on both threads (iOS and Android, 2026-11-06), so it's only the build's compiler. FormatJS's ListFormat polyfill has one, for Hebrew's "and".
+The Lynx bundle's main-thread script is compiled to bytecode at build time. That compiler fails the build on any Unicode property escape in a regex literal, General_Category ones (`/^\p{L}$/u`, `/^\p{P}$/u`, `/^[\p{P}\p{Z}]$/u`) as much as Script ones (`/\p{Script=Latin}/u`): `Compile error: main-thread.js exception: SyntaxError: invalid escape sequence in regular expression`. A code point escape with the same flag (`/\u{1F600}/u`) compiles. PrimJS on the device runs the same patterns from `new RegExp('^\\p{Script=Hebrew}', 'u')` on both threads (iOS and Android, 2026-11-06), so it's only the build's compiler. FormatJS's ListFormat polyfill has one, for Hebrew's "and", and the build plugin's own `Intl.Collator` has `/^[\p{P}\p{Z}]$/u`, for `ignorePunctuation`.
+
+Most code never meets it. rspeedy's own SWC rule runs `transform-unicode-property-regex`, which writes each escape out as the characters it matches, so an app's own code compiles. That rule skips JavaScript in `node_modules`, and the main thread's ES2019 target leaves the escapes alone, so a package's regex literal reaches the compiler as it is. It hides in this repository: a workspace package's files aren't in `node_modules` once their symlink is resolved, so the examples build what an installed app can't (issue #316: an earlier version of this note, measured that way, said the compiler took General_Category escapes). Build from a real copy of the package in `node_modules`, as the E2E tests' app does, to see what an app sees.
 
 ### The fix
 
-The `intl` option runs FormatJS's polyfills through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`), which writes each escape out as the characters it matches. Other code with a Script escape in a regex literal fails the same way; build the pattern with `new RegExp()` instead.
+The `intl` option runs FormatJS's polyfills and its own runtime (`dist/intl-runtime.js`) through SWC's `transform-unicode-property-regex` first, in the lynx environment (`applyIntl` in `intl/apply-intl.ts`). A package with a `\p{…}` literal on the main thread fails the same way; build the pattern with `new RegExp()` instead.
 
 ---
 

@@ -20,6 +20,10 @@ Angular Router v21+ and the zoneless scheduler use these internally. Without pol
 
 `setTimeout`/`setInterval`/`requestAnimationFrame` live on the `lynx` object, not `globalThis`. Without polyfills, Angular's scheduler never fires. **Fix:** Runtime polyfills these automatically.
 
+### A package's `\p{…}` regex fails the Lynx build
+
+The build compiles the main thread's script to bytecode, and that compiler rejects every Unicode property escape in a regex literal (`/\p{L}/u`, `/[\p{P}\p{Z}]/u`, `/\p{Script=Latin}/u`): `Compile error: main-thread.js exception: SyntaxError: invalid escape sequence in regular expression`. The app's own code is fine, because the build writes its escapes out as the characters they match, but it doesn't do that for JavaScript in `node_modules`. So a package with such a literal fails `ng build`, though its tests pass in Node. **Fix:** in your own code either form works. For a package, ask for `new RegExp('\\p{L}', 'u')`, which the device runs, or use another package.
+
 ---
 
 ## Layout

@@ -82,9 +82,33 @@ const returnOnWarnings = (threadGlobals: any): void => {
     reportError(error, options);
   };
 };
-(globalThis as any).onInjectMainThreadGlobals = returnOnWarnings;
+/**
+ * Makes each thread's `requestAnimationFrame` wait on whichever `setTimeout`
+ * is installed when it's called, so `vi.useFakeTimers()` controls it too.
+ *
+ * The testing environment sets each thread's `requestAnimationFrame` to
+ * `setTimeout` itself, captured when the environment is created, before any
+ * test fakes the timers, and puts it back on the global at every thread
+ * switch. Angular schedules change detection with a race between a timer and
+ * an animation frame, so under fake timers a change detection still ran on
+ * the real clock whenever real time passed, wherever the fake clock was: a
+ * spec that moved the clock itself saw an update at an unpredictable moment.
+ * Like the environment's, a frame here waits for the next turn of the timers.
+ */
+const frameOnInstalledTimers = (threadGlobals: any): void => {
+  threadGlobals.requestAnimationFrame = (callback: () => void) =>
+    setTimeout(callback);
+  threadGlobals.cancelAnimationFrame = (id: ReturnType<typeof setTimeout>) =>
+    clearTimeout(id);
+};
+
+(globalThis as any).onInjectMainThreadGlobals = (threadGlobals: any) => {
+  returnOnWarnings(threadGlobals);
+  frameOnInstalledTimers(threadGlobals);
+};
 (globalThis as any).onInjectBackgroundThreadGlobals = (threadGlobals: any) => {
   returnOnWarnings(threadGlobals);
+  frameOnInstalledTimers(threadGlobals);
   // LynxLinking records the URLs it opens (see linking.ts).
   installLinkingModule(threadGlobals);
 };

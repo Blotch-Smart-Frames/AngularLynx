@@ -156,6 +156,7 @@ export class App {}
 - **On Android, it moves as Android's activities do:** the new screen slides in a little way and fades in. A drag shrinks the screen with rounded corners, as Android's predictive back does.
 - **Swipe back from the left edge, or from anywhere on the screen,** as on iOS 26. Inside something that scrolls sideways itself (a horizontal `<scroll-view>`, a `<list>`, a `<viewpager>`), only the edge swipes, so the scroller keeps its own swipes. A screen goes back if you let go past the middle or flick it.
 - **Screens under the top one stay alive,** as a navigation controller's do. Back finds a screen as you left it, scrolled where you left it, with its state. To pause work while a screen is covered, inject `LynxStackPage` and read its `active()` signal.
+- **Only the corners in the screen's corners round.** A screen rounds its corners as it moves to look like the screen it fills, so an outlet under an app bar or over a tab bar moves its screens with square corners where the bar meets them, as iOS and Android do. The outlet's box is measured against the LynxView, which an app fills the screen with.
 - **Each screen is drawn on the theme's background** (`var(--background)`, white without the `@blotch/ui` theme), so the one under it doesn't show through. Give `pageClass` a class with another background for something else: `<lynx-stack-outlet pageClass="bg-card" />`.
 
 ### Which way a screen moves

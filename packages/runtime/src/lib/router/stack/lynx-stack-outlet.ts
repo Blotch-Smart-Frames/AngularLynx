@@ -37,15 +37,21 @@ import { LynxLocationStrategy } from '../lynx-location-strategy';
 import { type LiveRoute, liveRoute } from './live-route';
 import { type StackNavigationInfo, changeFor } from './stack-change';
 import {
+  type Corners,
   type PageLook,
+  type ScreenSize,
   type StackAnimation,
   type StackMotion,
   AT_REST,
   FADE_MOTION,
   IOS_MOTION,
   MATERIAL_MOTION,
+  SQUARE,
+  cornerStyle,
   lookStyles,
   mixLooks,
+  screenCorners,
+  shrunkCorners,
 } from './stack-motion';
 import { LynxStackPage, setActive } from './stack-page';
 import { SwipeTracker } from './swipe-tracker';
@@ -63,11 +69,17 @@ type FrameElement = {
 };
 
 /**
- * The outlet's own element, whose box a swipe measures: LynxElement keeps it
- * from the element's layouts (see lynx-element/layout.ts).
+ * The outlet's own element, whose box a swipe measures, and the moving
+ * page's corners: LynxElement keeps it from the element's layouts (see
+ * lynx-element/layout.ts), relative to the LynxView.
  */
 type HostElement = FrameElement & {
-  getBoundingClientRect(): { left: number; top: number; width: number };
+  getBoundingClientRect(): {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
 };
 
 /** The router's input binder (`withComponentInputBinding()`), as RouterOutlet keeps it. */
@@ -127,6 +139,10 @@ type Swipe = {
   readonly under: Page;
   /** Whether the pages are following the finger yet. */
   dragging: boolean;
+  /** The top page's corners at rest, from when it started following. */
+  corners: Corners;
+  /** Its `border-radius` now, so a move sets it only when it changes. */
+  radius: string | null;
 };
 
 /** A touch, as Lynx and the DOM both report one. */
@@ -194,6 +210,10 @@ class PageInjector {
  * Android, pages slide and fade as Android's activities do. A finger dragging
  * a page from the left edge, or anywhere on it that doesn't scroll sideways,
  * takes it back, and the page follows the finger.
+ *
+ * A moving page rounds only the corners that are in a corner of the screen,
+ * as iOS and Android do: an outlet under an app bar moves its pages with
+ * square corners at the top, where the bar meets them.
  *
  * Use it in place of `<router-outlet>`; it's one, with the same inputs and
  * outputs. The pages under the top one stay alive, as a navigation
@@ -629,7 +649,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       moving,
       under,
       motion,
-      motion.roundsAnimated,
+      motion.roundsAnimated ? this.#cornersFor(motion) : SQUARE,
       from,
       to,
       motion.duration,
@@ -641,13 +661,13 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   /**
    * Animates the top page and the one under it, and the scrim between them,
    * from one set of looks to another, then leaves them at rest: the top page
-   * shown, the one under it hidden.
+   * shown, the one under it hidden. The top page has `corners` as it moves.
    */
   #run(
     top: Page,
     under: Page,
     motion: StackMotion,
-    rounded: boolean,
+    corners: Corners,
     from: { top: PageLook; under: PageLook; scrim: number },
     to: { top: PageLook; under: PageLook; scrim: number },
     duration: number,
@@ -656,7 +676,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   ): void {
     const width = this.#width;
     this.#uncover(under);
-    this.#raise(top, motion, rounded);
+    this.#raise(top, motion, corners);
     const scrim = this.#placeScrim(top);
     const moves: Move[] = [
       {
@@ -750,18 +770,35 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   /**
+   * The corners of a page moving in the outlet, where it is now: round only
+   * in the screen's corners (see screenCorners).
+   */
+  #cornersFor(motion: StackMotion): Corners {
+    return screenCorners(
+      this.#host.getBoundingClientRect(),
+      screenSize(),
+      motion.radius,
+    );
+  }
+
+  /**
    * Rounds and shadows a page that moves.
    */
-  #raise(page: Page, motion: StackMotion, rounded: boolean): void {
-    if (rounded && motion.radius > 0) {
-      this.#renderer.setStyle(
-        page.frame,
-        'border-radius',
-        `${motion.radius}px`,
-      );
-    }
+  #raise(page: Page, motion: StackMotion, corners: Corners): void {
+    this.#round(page, cornerStyle(corners));
     if (motion.shadow) {
       this.#renderer.setStyle(page.frame, 'box-shadow', motion.shadow);
+    }
+  }
+
+  /**
+   * Gives a page's frame a `border-radius`, or takes it away for null.
+   */
+  #round(page: Page, radius: string | null): void {
+    if (radius) {
+      this.#renderer.setStyle(page.frame, 'border-radius', radius);
+    } else {
+      this.#renderer.removeStyle(page.frame, 'border-radius');
     }
   }
 
@@ -910,7 +947,15 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       !this.#inHorizontalScroller(target),
     );
     if (tracker.state === 'ignored') return;
-    this.#swipe = { tracker, touch, top, under, dragging: false };
+    this.#swipe = {
+      tracker,
+      touch,
+      top,
+      under,
+      dragging: false,
+      corners: SQUARE,
+      radius: null,
+    };
   }
 
   #move(x: number, y: number): void {
@@ -924,8 +969,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     if (state !== 'dragging') return;
     if (!swipe.dragging) {
       swipe.dragging = true;
+      swipe.corners = this.#cornersFor(this.#motion);
+      swipe.radius = cornerStyle(swipe.corners);
       this.#uncover(swipe.under);
-      this.#raise(swipe.top, this.#motion, true);
+      this.#raise(swipe.top, this.#motion, swipe.corners);
       this.#placeScrim(swipe.top);
       this.#shield(true);
     }
@@ -949,6 +996,21 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#setStyles(this.#scrim, {
       opacity: String(motion.dim * (1 - progress)),
     });
+    const radius = cornerStyle(this.#dragCorners(swipe, progress));
+    if (radius !== swipe.radius) {
+      swipe.radius = radius;
+      this.#round(swipe.top, radius);
+    }
+  }
+
+  /**
+   * The top page's corners with a finger `progress` of the way across.
+   */
+  #dragCorners(swipe: Swipe, progress: number): Corners {
+    const motion = this.#motion;
+    return motion.roundsShrinking
+      ? shrunkCorners(swipe.corners, motion.radius, progress)
+      : swipe.corners;
   }
 
   /**
@@ -987,7 +1049,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       top,
       under,
       motion,
-      true,
+      // Lynx can't animate a border-radius, so the page keeps the corners
+      // the finger left it with.
+      this.#dragCorners(swipe, progress),
       at,
       to,
       duration,
@@ -1110,4 +1174,13 @@ const elementOf = (target: unknown): TargetElement | null => {
 const parentOf = (element: TargetElement): TargetElement | null => {
   const parent = element.parentNode;
   return typeof parent === 'function' ? parent.call(element) : (parent ?? null);
+};
+
+/**
+ * The screen's size: the LynxView's, which `innerWidth` and `innerHeight` are
+ * on Lynx (see global-events/window.ts), the screen's until its first layout.
+ */
+const screenSize = (): ScreenSize => {
+  const view = globalThis as { innerWidth?: number; innerHeight?: number };
+  return { width: view.innerWidth ?? 0, height: view.innerHeight ?? 0 };
 };

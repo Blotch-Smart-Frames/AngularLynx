@@ -4,11 +4,11 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxStackPage } from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
-import { UiBarScroll, UiBarState } from './bar-scroll';
+import { injectBarState, UiBarScroll, UiBarState } from './bar-scroll';
 
 @Component({
   imports: [LYNX_ELEMENTS, UiBarScroll],
@@ -115,6 +115,65 @@ const maskStops = (element: HTMLElement): [number, string][] =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+/**
+ * A bar of its own, which takes the bar state of its screen.
+ */
+@Component({ template: '' })
+class BarProbe {
+  readonly state = injectBarState();
+}
+
+/**
+ * A component that holds a screen of its own, as a sheet does.
+ */
+@Component({ template: '', providers: [UiBarState] })
+class OwnBarProbe {
+  readonly state = injectBarState();
+}
+
+describe('injectBarState', () => {
+  it("is the root's off a stack page", async () => {
+    const { componentRef } = await render(BarProbe);
+    expect(componentRef.instance.state).toBe(
+      componentRef.injector.get(UiBarState),
+    );
+  });
+
+  it("is each stack page's own on one, the same for all of the page's", async () => {
+    const page = new LynxStackPage();
+    const first = await render(BarProbe, {
+      providers: [{ provide: LynxStackPage, useValue: page }],
+    });
+    const root = first.componentRef.injector.get(UiBarState);
+    const own = first.componentRef.instance.state;
+    expect(own).not.toBe(root);
+    first.unmount();
+
+    const again = await render(BarProbe, {
+      providers: [{ provide: LynxStackPage, useValue: page }],
+    });
+    expect(again.componentRef.instance.state).toBe(own);
+    again.unmount();
+
+    const other = await render(BarProbe, {
+      providers: [{ provide: LynxStackPage, useValue: new LynxStackPage() }],
+    });
+    expect(other.componentRef.instance.state).not.toBe(own);
+  });
+
+  it("is a component's own when it provides one, on a stack page too", async () => {
+    const { componentRef } = await render(OwnBarProbe, {
+      providers: [{ provide: LynxStackPage, useValue: new LynxStackPage() }],
+    });
+    expect(componentRef.instance.state).toBe(
+      componentRef.injector.get(UiBarState),
+    );
+    expect(componentRef.instance.state).not.toBe(
+      componentRef.injector.get(UiBarState, null, { skipSelf: true }),
+    );
+  });
 });
 
 describe('UiBarScroll', () => {

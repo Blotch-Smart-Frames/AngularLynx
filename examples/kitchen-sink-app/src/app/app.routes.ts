@@ -193,6 +193,29 @@ export const routes: Routes = [
       ),
   },
   {
+    // The demo's own stack outlet moves between these child routes.
+    path: 'stack-demo',
+    loadComponent: () =>
+      import('./stack-demo/stack-demo').then((m) => m.StackDemo),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./stack-demo/stack-demo').then((m) => m.StackDemoFolders),
+      },
+      {
+        path: ':folder',
+        loadComponent: () =>
+          import('./stack-demo/stack-demo').then((m) => m.StackDemoFolder),
+      },
+      {
+        path: ':folder/:message',
+        loadComponent: () =>
+          import('./stack-demo/stack-demo').then((m) => m.StackDemoMessage),
+      },
+    ],
+  },
+  {
     path: 'transition-demo',
     loadComponent: () =>
       import('./transition-demo/transition-demo').then((m) => m.TransitionDemo),

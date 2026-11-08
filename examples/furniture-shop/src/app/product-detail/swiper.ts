@@ -32,16 +32,18 @@ import { Indicator } from './indicator';
       <!-- Touch events on a phone; mouse events in a desktop browser, where
            a drag sends those instead. A mouse event's x is relative to the
            LynxView; its clientX is relative to the element under the
-           cursor, which moves with the drag. -->
+           cursor, which moves with the drag. The handlers catch the events,
+           so a drag here stays the swiper's: the stack outlet the screen is
+           in would otherwise take a drag to the right as a swipe back. -->
       <view
         #strip
         class="swiper-container"
-        [mainThreadBindtouchstart]="onTouchStart"
-        [mainThreadBindtouchmove]="onTouchMove"
-        [mainThreadBindtouchend]="onTouchEnd"
-        [mainThreadBindmousedown]="onMouseDown"
-        [mainThreadBindmousemove]="onMouseMove"
-        [mainThreadBindmouseup]="onMouseUp"
+        [mainThreadCatchtouchstart]="onTouchStart"
+        [mainThreadCatchtouchmove]="onTouchMove"
+        [mainThreadCatchtouchend]="onTouchEnd"
+        [mainThreadCatchmousedown]="onMouseDown"
+        [mainThreadCatchmousemove]="onMouseMove"
+        [mainThreadCatchmouseup]="onMouseUp"
       >
         @for (picture of pictures(); track $index) {
           <view class="swiper-item" [style.width.px]="itemWidth">

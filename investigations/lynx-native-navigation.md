@@ -135,6 +135,15 @@ This is what every mobile navigation framework does internally (React Navigation
 
 **React Lynx does the same amount here: nothing.** Neither React Lynx, React Router, nor TanStack Router provide navigation transitions on Lynx. This is an unsolved layer in the entire Lynx ecosystem, not a gap specific to AngularLynx.
 
+### What AngularLynx does now: `<lynx-stack-outlet>`
+
+`LynxStackOutlet` (`packages/runtime/src/lib/router/stack/`, November 2026) is a `RouterOutlet` subclass, as Ionic's `ion-router-outlet` and NativeScript's `page-router-outlet` are. It keeps the pages under the top one alive, each in a frame of its own, and moves the frames with `element.animate()` (UIKit's push and pop, measured from the iOS 27 Simulator's Settings app, or Android's activity transition) and with inline styles while a finger drags the top page back. Choices that differ from the conceptual plan above:
+
+- **Touch events, not `PanGesture`.** Bubbling `touchstart`/`touchmove` on the outlet keep arriving through a sideways drag over a vertical `<scroll-view>` on iOS (no `touchcancel`), as `PanGesture` does, and a control that catches its own touches (`catchtouchmove`, as a slider's) keeps them. Lynx's arena gave no edge over them: a pan on the outlet also activated during a vertical scroll.
+- **The router commits the swipe.** Letting go past the middle slides the page away, then goes back through the history (`historyGo` to the entry before the page's), so guards run; a refused navigation slides the page back.
+- **The stack follows the URL** (`stack-change.ts`): deeper pushes, a URL in the stack pops, a same-depth URL starts a new stack at once (tabs). The navigation's `info` overrides it.
+- **No `@lynx-js/motion`.** `element.animate()` runs natively once the element has been flushed; a release continues at the finger's speed by picking the duration.
+
 ---
 
 ## Files Reference

@@ -457,6 +457,7 @@ export default defineConfig({
         { sectionHeaderText: 'Animation' },
         { text: 'Animations', link: '/examples/animations' },
         { text: 'Enter and Leave Transitions', link: '/examples/transitions' },
+        { text: 'Stack Navigation', link: '/examples/stack-navigation' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Styling' },
         { text: 'CSS Modules', link: '/examples/css-modules' },

@@ -125,10 +125,11 @@ It reads the scroll view's events itself rather than through a template listener
 
 ### UiBarScroll and UiBarState
 
-| Name          | Kind                                    | Description                                                                                                                                                                |
-| ------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UiBarScroll` | Component, `scroll-view[ui-bar-scroll]` | Makes room for the bars, draws the large title, fades content under glass bars and tells the bars where the content is.                                                    |
-| `UiBarState`  | Root service                            | What the bars and the scroll view tell each other. Provide one on a component to give its bars their own (see [Two bars at once](/dolan/navigation-bar#two-bars-at-once)). |
+| Name               | Kind                                    | Description                                                                                                                                                                |
+| ------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UiBarScroll`      | Component, `scroll-view[ui-bar-scroll]` | Makes room for the bars, draws the large title, fades content under glass bars and tells the bars where the content is.                                                    |
+| `UiBarState`       | Root service                            | What the bars and the scroll view tell each other. Provide one on a component to give its bars their own (see [Two bars at once](/dolan/navigation-bar#two-bars-at-once)). |
+| `injectBarState()` | Function                                | The `UiBarState` of the screen a bar is on: a component's own, a stack screen's, or the root's. For a bar of your own.                                                     |
 
 ## Accessibility
 

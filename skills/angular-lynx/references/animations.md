@@ -156,6 +156,7 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 
 - **`element.animate()` is main-thread only** — it works because Lynx renders the animation natively
 - **Call it straight from an event handler** — no `setTimeout` needed
+- **Not on an element created in the same turn:** native Lynx drops an animation on an element it hasn't flushed yet (the web preview plays it). Set the element's starting look as an inline style when you create it, and start the animation on the next turn (`setTimeout(…, 0)`). For screens sliding in and out, use `<lynx-stack-outlet>` (see [routing.md](routing.md))
 - **`animation-iteration-count: 0`** still fires lifecycle events (unlike web where it's a no-op)
 - **Lynx-specific `frames(n)` easing** is available (like `steps()` with different semantics)
 - **Performance tip:** Set `overflow: hidden` on animated elements to reduce redraw region

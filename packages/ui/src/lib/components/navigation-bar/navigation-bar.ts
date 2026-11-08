@@ -23,7 +23,11 @@ import { DURATION, EASING } from '../../utils/animate';
 import { cn } from '../../utils/cn';
 import { UiGlass } from '../glass/glass';
 import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
-import { edgeFadeOverlay, platformOf, UiBarState } from '../toolbar/bar-scroll';
+import {
+  edgeFadeOverlay,
+  injectBarState,
+  platformOf,
+} from '../toolbar/bar-scroll';
 import { UiToolbarItem } from '../toolbar/toolbar';
 
 /**
@@ -222,7 +226,7 @@ export class UiNavigationBar {
   readonly backButtonHidden = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly #state = inject(UiBarState);
+  readonly #state = injectBarState();
   readonly #settings = inject(LynxAccessibilitySettings);
   readonly #injector = inject(Injector);
   readonly #history = historyOf(this.#injector);

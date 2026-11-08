@@ -7,6 +7,7 @@ export {
 export {
   UiBarScroll,
   UiBarState,
+  injectBarState,
   type UiBottomBar,
   type UiTopBar,
 } from './bar-scroll';

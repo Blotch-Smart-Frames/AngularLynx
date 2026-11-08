@@ -185,7 +185,7 @@ Runs on `bindblur`. Marks the control as touched.
 writeValue(value: string): void;
 ```
 
-Shows the form value in the field through the element's `setValue` [UI method](/guide/glossary#ui-method). Lynx ignores changes to the `value` attribute after the user has typed, so `form.reset()` and `setValue()` need this.
+Shows the form value in the field, as a `[value]` binding does: from the field's first render, and after `form.reset()` and `setValue()`. On iOS and Android a Lynx field has no `value` attribute, so the element sets its text with the `setValue` [UI method](/guide/glossary#ui-method) instead.
 
 ### `registerOnChange()` and `registerOnTouched()`
 
@@ -238,7 +238,7 @@ readonly option = viewChild.required<ElementRef<BaseLynxElement>>('option');
 ```
 
 - **`animate()`** starts an animation. See [Animation](/api/angular-lynx/animation).
-- **`invoke()`** calls one of the element's [UI methods](/guide/glossary#ui-method), such as `scrollTo`.
+- **`invoke()`** calls one of the element's [UI methods](/guide/glossary#ui-method), such as `scrollTo`. Called before the element is on screen, such as from `ngAfterViewInit()`, it waits until it is.
 - **`setAccessibilityTrait()`** adds a trait to the element's own `accessibility-traits`, or takes it away, as [`LynxAccessibilityTraits`](/api/angular-lynx/accessibility#lynxaccessibilitytraits) does from a template.
 
 ## Related

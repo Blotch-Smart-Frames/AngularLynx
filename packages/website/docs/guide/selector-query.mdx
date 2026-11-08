@@ -36,6 +36,7 @@ export class App {
 
 - **`viewChild(…, { read: ElementRef })`** gives you the element. **`nativeElement.invoke(method, params)`** calls a UI method on it.
 - **It's fire-and-forget.** `invoke()` returns nothing, and a failed call isn't reported.
+- **It waits for the element to be on screen.** Native makes an element's UI when the element tree is next flushed, after change detection. Called before that, from `ngAfterViewInit()` or `afterNextRender()` on the first screen, `invoke()` calls the method again once it has.
 
 Each element's methods and their parameters are on its API page, such as [`<video>`](/api/elements/video). Lynx's [element reference](https://lynxjs.org/api/elements/built-in/scroll-view.html) lists more, such as `<scroll-view>`'s `scrollTo` and `autoScroll`.
 

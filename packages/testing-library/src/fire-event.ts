@@ -262,6 +262,29 @@ const keepDetail = (event: Event): Event => {
   return event;
 };
 
+/**
+ * Puts the text an `input` event reports in its field, where a device's field
+ * has it as it sends the event: the user typed it there. So `input.value`
+ * reads it after, as the bound value does, and the runtime, which doesn't set
+ * a field to the text it shows already (see LynxElement's setProperty),
+ * leaves it there when the binding hands it back.
+ */
+const typeInto = (
+  elem: Element,
+  name: string,
+  init: Record<string, unknown>,
+): void => {
+  const value = (init['detail'] as { value?: unknown } | undefined)?.value;
+  if (
+    name === 'input' &&
+    typeof value === 'string' &&
+    // A missing element is reported by the delivery that follows.
+    /^(input|textarea)$/i.test(String(elem?.tagName))
+  ) {
+    (elem as HTMLInputElement | HTMLTextAreaElement).value = value;
+  }
+};
+
 export const fireEvent: FireEvent = ((elem: Element, event: Event) => {
   return domFireEvent(elem, keepDetail(event));
 }) as FireEvent;
@@ -269,6 +292,7 @@ export const fireEvent: FireEvent = ((elem: Element, event: Event) => {
 for (const key of Object.keys(eventMap) as EventName[]) {
   fireEvent[key] = (elem: Element, init?: Record<string, unknown>): boolean => {
     const { eventType, ...rest } = init ?? {};
+    typeInto(elem, key, rest);
     if (eventType === undefined) {
       const eventInit = { ...eventMap[key].defaultInit, ...rest };
       // Run through Testing Library's eventWrapper, as its fireEvent runs a

@@ -264,6 +264,18 @@ const installNativeFakes = (): void => {
     pendingRemovedSinceFlush.clear();
   };
   g.__ElementAnimate = () => {};
+  // A field's setValue lands on its UI, as on device, while it has one.
+  lists.__InvokeUIMethod = (
+    el: FakeEl,
+    method: string,
+    params: { value?: string },
+    callback: (result: { code: number }) => void,
+  ) => {
+    if (method === 'setValue' && el.hasPaintingNode) {
+      el.attrs.set('text', params.value);
+    }
+    callback({ code: 0 });
+  };
 
   setPageElementRef(pageRoot as unknown as never);
 };
@@ -586,6 +598,23 @@ class ReprojEventHost {
   ></reproj-slot>`,
 })
 class ReprojAttrHost {}
+
+/**
+ * A projected text field bound one way, inside a wrapping @if. A field's text
+ * isn't an attribute (see LynxElement's setProperty), so it's not in the
+ * attributes replayed on remount, yet the rebuilt field must show it.
+ */
+@Component({
+  selector: 'reproj-field-host',
+  standalone: true,
+  imports: [ReprojSlot],
+  encapsulation: ViewEncapsulation.None,
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<reproj-slot><input class="field" [value]="name" /></reproj-slot>`,
+})
+class ReprojFieldHost {
+  name = 'Ada';
+}
 
 /**
  * Projected content whose ROOT is a layout-only <block> (backed by
@@ -1236,6 +1265,34 @@ describe('renderer teardown', () => {
     expect(styled[0].classes.has('styled')).toBe(true);
     expect(styled[0].attrs.get('aria-label')).toBe('hi');
     expect(styled[0].styles.get('color')).toBe('rgb(1, 2, 3)');
+  });
+
+  it('gives a remounted projected field the text it had, the text the user typed', async () => {
+    const fixture = TestBed.createComponent(ReprojFieldHost);
+    fixture.detectChanges();
+    await flush();
+    const slot = lastSlot;
+    const [first] = findRenderedByClass('field');
+    expect(first.attrs.get('default-value')).toBe('Ada');
+
+    // The user types; the one-way binding keeps 'Ada'.
+    const input = first.events.get('input') as {
+      value: (event: unknown) => void;
+    };
+    input.value({ detail: { value: 'Ada Lovelace' } });
+
+    slot.open.set(false);
+    fixture.detectChanges();
+    await flush();
+    slot.open.set(true);
+    fixture.detectChanges();
+    await flush();
+
+    // A fresh native field, made with what the old one showed, not with the
+    // binding's stale 'Ada'.
+    const [rebuilt] = findRenderedByClass('field');
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.attrs.get('default-value')).toBe('Ada Lovelace');
   });
 
   it('rebuilds a projected layout-only <block> root and relinks its child on remount', async () => {

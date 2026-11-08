@@ -186,7 +186,7 @@ export class EmailField {
 
 `setValue()`, `reset()` and `[(ngModel)]` all update what the field shows, and so does binding `[value]` on an `<input>` or `<textarea>`.
 
-Don't bind `[attr.value]`. Lynx reads the `value` attribute only until the user first types, and ignores it after that. The form APIs and `[value]` call the field's `setValue` method instead.
+Don't bind `[attr.value]`. On iOS and Android a Lynx field has no `value` attribute, so it never shows. The form APIs and `[value]` set the field's text with its `setValue` method instead, and a field that renders with a value shows it from its first frame.
 
 ## On-screen keyboard
 

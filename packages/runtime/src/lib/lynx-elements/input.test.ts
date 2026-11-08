@@ -35,7 +35,7 @@ describe.each([
   let fakeEl: {
     setAttribute: ReturnType<typeof vi.fn>;
     removeAttribute: ReturnType<typeof vi.fn>;
-    invoke: ReturnType<typeof vi.fn>;
+    setProperty: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -43,34 +43,37 @@ describe.each([
     fakeEl = {
       setAttribute: vi.fn(),
       removeAttribute: vi.fn(),
-      invoke: vi.fn(),
+      setProperty: vi.fn(),
     };
     TestBed.configureTestingModule({
       providers: [{ provide: ElementRef, useValue: { nativeElement: fakeEl } }],
     });
   });
 
-  it('routes a value-only change through invoke(setValue) and skips base setAttribute', () => {
+  it("sets a value-only change as the field's value property, not an attribute", () => {
     const dir = TestBed.runInInjectionContext(() => new Cls());
     const changes: SimpleChanges = { value: change('hello') };
 
     dir.ngOnChanges(changes);
 
-    expect(fakeEl.invoke).toHaveBeenCalledWith('setValue', { value: 'hello' });
+    // The element turns it into the field's text (see LynxElement's
+    // setProperty): Lynx fields have no attribute for it.
+    expect(fakeEl.setProperty).toHaveBeenCalledWith('value', 'hello');
     expect(fakeEl.setAttribute).not.toHaveBeenCalled();
     expect(fakeEl.removeAttribute).not.toHaveBeenCalled();
   });
 
-  it('defaults a null currentValue to empty string via ?? for the invoke call', () => {
+  it('passes a null value on for the element to turn into no text', () => {
     const dir = TestBed.runInInjectionContext(() => new Cls());
     const changes: SimpleChanges = { value: change(null) };
 
     dir.ngOnChanges(changes);
 
-    expect(fakeEl.invoke).toHaveBeenCalledWith('setValue', { value: '' });
+    expect(fakeEl.setProperty).toHaveBeenCalledWith('value', null);
+    expect(fakeEl.removeAttribute).not.toHaveBeenCalled();
   });
 
-  it('forwards other keys to the base class while still invoking setValue for value', () => {
+  it('forwards other keys to the base class while still setting the value', () => {
     const dir = TestBed.runInInjectionContext(() => new Cls());
     const changes: SimpleChanges = {
       value: change('hi'),
@@ -79,7 +82,7 @@ describe.each([
 
     dir.ngOnChanges(changes);
 
-    expect(fakeEl.invoke).toHaveBeenCalledWith('setValue', { value: 'hi' });
+    expect(fakeEl.setProperty).toHaveBeenCalledWith('value', 'hi');
     expect(fakeEl.setAttribute).toHaveBeenCalledWith(
       'placeholder',
       'type here',
@@ -100,7 +103,7 @@ describe.each([
 
     dir.ngOnChanges(changes);
 
-    expect(fakeEl.invoke).not.toHaveBeenCalled();
+    expect(fakeEl.setProperty).not.toHaveBeenCalled();
     expect(fakeEl.setAttribute).toHaveBeenCalledWith('disabled', true);
     expect(fakeEl.removeAttribute).toHaveBeenCalledWith('readonly');
   });

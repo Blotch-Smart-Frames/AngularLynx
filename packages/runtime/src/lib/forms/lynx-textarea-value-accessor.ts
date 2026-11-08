@@ -52,12 +52,11 @@ export class LynxTextareaValueAccessor implements ControlValueAccessor {
   }
 
   writeValue(value: string): void {
-    // Same root cause as LynxInputValueAccessor: LynxUIBaseInput (the shared
-    // native base class for both input and textarea on Android/iOS) has no
-    // @LynxProp handler for "value", so __SetAttribute is silently ignored
-    // after the user has typed. invoke() calls __InvokeUIMethod("setValue")
-    // which is the correct path for programmatic text updates.
-    this.#el.nativeElement.invoke('setValue', { value: value ?? '' });
+    // The text the field shows, set as Angular's DefaultValueAccessor sets
+    // a DOM field's. A Lynx field has no attribute for it (see LynxElement's
+    // setProperty), and a form's first value comes as the field is created,
+    // before native has made its UI.
+    this.#renderer.setProperty(this.#el.nativeElement, 'value', value ?? '');
   }
 
   registerOnChange(fn: (value: string) => void): void {

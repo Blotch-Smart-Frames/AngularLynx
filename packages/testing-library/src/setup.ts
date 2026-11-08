@@ -272,18 +272,43 @@ for (const tag of ['block', 'for', 'frame', 'if']) {
 (globalThis as any).__SetConfig = () => {};
 
 /**
- * Invokes a native UI method by name (e.g. the `setValue` UIMethod that Lynx
- * inputs/textareas require for programmatic text updates — see
- * LynxElement.invoke() in the runtime). LynxElement.invoke() always passes an
- * empty result callback, so a no-op that still calls back (matching the real
- * host's async {code, data} contract) is sufficient here.
+ * Whether `element` is a text field: an `<input>` or `<textarea>`, which the
+ * testing environment makes a JSDOM input or textarea.
+ */
+const isTextField = (
+  element: unknown,
+): element is HTMLInputElement | HTMLTextAreaElement =>
+  /^(input|textarea)$/i.test((element as Element | null)?.tagName ?? '');
+
+/**
+ * Invokes a native UI method by name. A text field's `setValue` puts the
+ * text in the JSDOM field's `value`, where a test reads it (`input.value`,
+ * `toHaveValue`), and `getValue` reads it back: the runtime shows a bound
+ * value with setValue (see LynxElement's setProperty), so a field shows on
+ * screen what it reads here. Other methods do nothing. Each answers at once
+ * that it ran, as a device answers for an element whose UI it has made.
  */
 (globalThis as any).__InvokeUIMethod = (
-  _element: unknown,
-  _methodName: string,
-  _params: unknown,
+  element: unknown,
+  methodName: string,
+  params: { value?: unknown } | undefined,
   callback?: (result: { code: number; data?: unknown }) => void,
 ): void => {
+  if (isTextField(element) && methodName === 'setValue') {
+    element.value = String(params?.value ?? '');
+  }
+  if (isTextField(element) && methodName === 'getValue') {
+    callback?.({
+      code: 0,
+      data: {
+        value: element.value,
+        selectionStart: -1,
+        selectionEnd: -1,
+        isComposing: false,
+      },
+    });
+    return;
+  }
   callback?.({ code: 0 });
 };
 

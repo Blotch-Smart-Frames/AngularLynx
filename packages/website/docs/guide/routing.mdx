@@ -171,7 +171,7 @@ The stack follows the URL, as a navigation controller follows the screens of an 
 | A URL at the same depth, `/settings` from `/home`            | Swaps to it at once, as a tab bar does       |
 | Any URL with `replaceUrl: true`                              | Swaps the top screen at once                 |
 
-So a back button made of a `routerLink` to the screen it came from slides back, and a tab bar beside the outlet switches tabs without a slide. When a screen should move otherwise, say so in the navigation's `info`, which Angular keeps for that navigation alone:
+So a back button made of a `routerLink` to the screen it came from slides back, and a tab bar beside the outlet switches tabs without a slide. A link that pops back takes the history back too, as Back does, so Back, Android's back button or a swipe then goes to the screen under it, not to the one the link popped. When a screen should move otherwise, say so in the navigation's `info`, which Angular keeps for that navigation alone:
 
 ```html
 <!-- A same-depth link that should still slide in -->

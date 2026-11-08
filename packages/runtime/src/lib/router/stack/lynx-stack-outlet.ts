@@ -36,7 +36,7 @@ import { LynxAccessibilitySettings } from '../../accessibility/accessibility-set
 import { isAndroid } from '../../lynx-document/android-blur-capture';
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { pointerIdOf } from '../../lynx-element/pointer-events';
-import { LynxLocationStrategy } from '../lynx-location-strategy';
+import { LynxLocationStrategy, rewindHistory } from '../lynx-location-strategy';
 import { type LiveRoute, liveRoute } from './live-route';
 import {
   type BarState,
@@ -275,7 +275,9 @@ class PageInjector {
  *
  * Going back goes through the router: Back (`Location.back()`), the Android
  * back button and a swipe all navigate, so guards and resolvers run, and a
- * guard that refuses brings a swiped page back.
+ * guard that refuses brings a swiped page back. A link that pops back to a
+ * page takes the history back with the stack, as Back would have, so going
+ * back from the page then goes to the one under it, not to a page it popped.
  *
  * A page pushed over the stack's first one takes the app's bottom bar (a
  * tab bar or a dock outside the outlet) away, and the bar comes back as the
@@ -527,10 +529,11 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const navigation = this.#router.currentNavigation();
     const top = this.#stack.at(-1);
     const historyIndex = this.#historyIndex();
+    const popstate = navigation?.trigger === 'popstate';
     const change = changeFor({
       stack: this.#stack.map((page) => urlOf(page.route)),
       url: urlOf(route),
-      popstate: navigation?.trigger === 'popstate',
+      popstate,
       forward: top !== undefined && historyIndex > top.historyIndex,
       replaceUrl: navigation?.extras.replaceUrl === true,
       hint: (navigation?.extras.info as StackNavigationInfo | undefined)?.stack,
@@ -546,7 +549,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       page.route = route;
       page.live.follow(route);
       this.#childContexts.onOutletReAttached(page.contexts);
-      page.historyIndex = historyIndex;
+      // Back, Android's back button and a swipe went back in the history to
+      // the page already; a link to it went forward, and the history goes
+      // back to the page's entry with the stack.
+      page.historyIndex = popstate ? historyIndex : this.#rewindTo(page);
       this.#activate(page);
       if (swiped || !this.#animates) {
         this.#rest(page);
@@ -735,6 +741,24 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     return this.#strategy instanceof LynxLocationStrategy
       ? this.#strategy.historyIndex
       : 0;
+  }
+
+  /**
+   * Takes the history back to `page`'s entry, as a link that pops the stack
+   * back to the page goes forward in it (see rewindHistory): the entries of
+   * the pages it popped go, so going back from the page goes to the page
+   * under it, not to the page that went. Returns where the history is then.
+   *
+   * Only the Lynx history can be rewritten. With another strategy (a
+   * browser's), Back goes back through the entries the link left, as a web
+   * app's does.
+   */
+  #rewindTo(page: Page): number {
+    const strategy = this.#strategy;
+    if (strategy instanceof LynxLocationStrategy) {
+      rewindHistory(strategy, page.historyIndex);
+    }
+    return this.#historyIndex();
   }
 
   /**

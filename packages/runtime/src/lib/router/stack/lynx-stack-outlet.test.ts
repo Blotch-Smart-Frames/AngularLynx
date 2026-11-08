@@ -440,6 +440,43 @@ describe('LynxStackOutlet', () => {
       expect(made.map((page) => page.destroyed)).toEqual([false, true, true]);
     });
 
+    it('goes back in the history to a page a link pops back to', async () => {
+      const { go, router, location, frames, settle } = await setup();
+      await go('/notes/1');
+      await go('/notes/1/edit');
+      await settle();
+      // A back button made of a link to the page under: the stack pops, and
+      // the history goes back with it rather than gaining an entry, so Back
+      // goes on to the page under that one, not to the page that went.
+      await go('/notes/1');
+      await settle();
+      location.back();
+      await settle();
+      expect(router.url).toBe('/notes');
+      expect(frames()).toHaveLength(1);
+    });
+
+    it("leaves a browser's history to the browser when a link pops back", async () => {
+      const { go, router, location, frames, settle } = await setup(
+        [],
+        '/notes',
+        [
+          provideAngularRouter(ROUTES),
+          { provide: LocationStrategy, useClass: MockLocationStrategy },
+        ],
+      );
+      await go('/notes/1');
+      await go('/notes/1/edit');
+      await settle();
+      await go('/notes/1');
+      await settle();
+      expect(frames()).toHaveLength(2);
+      // Back goes through the entries the link left, as a web app's does.
+      location.back();
+      await settle();
+      expect(router.url).toBe('/notes/1/edit');
+    });
+
     it('starts a new stack at once for a page at the same depth', async () => {
       const { go, frames, settle } = await setup();
       await go('/notes/1');
@@ -975,6 +1012,25 @@ describe('LynxStackOutlet', () => {
       await harness.settle();
       expect(back).toHaveBeenCalled();
       expect(harness.frames()).toHaveLength(1);
+    });
+
+    it('swipes back twice after a link popped the stack, to the first page', async () => {
+      const { go, router, frames, settle } = await pushed();
+      await go('/notes/1/edit');
+      await settle();
+      // Back to the page under by a link, then on to another page from it.
+      await go('/notes/1');
+      await settle();
+      await go('/notes/1/share');
+      await settle();
+      for (const url of ['/notes/1', '/notes']) {
+        const top = frames().at(-1)!;
+        await drag(top.firstElementChild!, 100, 320, 100);
+        touch(top.firstElementChild!, 'touchend', 320);
+        await settle();
+        expect(router.url).toBe(url);
+      }
+      expect(frames()).toHaveLength(1);
     });
 
     it('swipes back over a stack of three, leaving the bottom page hidden', async () => {

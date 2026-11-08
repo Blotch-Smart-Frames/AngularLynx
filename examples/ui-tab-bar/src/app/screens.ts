@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxStackOutlet } from '@blotch/angular-lynx';
 import { Inbox } from './inbox';
 
 /**
@@ -45,6 +45,11 @@ export class Screen {
         The Inbox tab's badge counts the unread messages. Open one, or mark them
         all as read, and it goes down.
       </text>
+      <text class="text-sm text-muted-foreground">
+        A message slides in over the Inbox and takes the tab bar away, as iOS
+        and Android apps do. Going back, or swiping the message to the right,
+        brings it back.
+      </text>
     </app-screen>
   `,
 })
@@ -62,6 +67,18 @@ export class HomeScreen {}
 })
 export class SearchScreen {}
 
+/**
+ * The Inbox tab: a stack of its own, in a `<lynx-stack-outlet>`. A message
+ * opens over the list and takes the tab bar away until you go back.
+ */
+@Component({
+  selector: 'app-inbox-stack',
+  imports: [LYNX_ELEMENTS, LynxStackOutlet],
+  host: SCREEN_HOST,
+  template: `<lynx-stack-outlet />`,
+})
+export class InboxStack {}
+
 @Component({
   selector: 'app-inbox-screen',
   imports: [LYNX_ELEMENTS, RouterLink, Screen],
@@ -69,8 +86,8 @@ export class SearchScreen {}
   template: `
     <app-screen heading="Inbox">
       @for (message of inbox.messages(); track message.id) {
-        <!-- A message opens at /inbox/:id, under the Inbox tab, which stays
-             selected there. -->
+        <!-- A message opens at /inbox/:id, which pushes it over the list,
+             under the Inbox tab, which stays selected there. -->
         <view
           class="flex-row items-center gap-3 rounded-lg border border-border p-3 flex"
           [routerLink]="['/inbox', message.id]"
@@ -125,6 +142,7 @@ export class InboxScreen {
         >From {{ message()?.from }}</text
       >
       <text class="text-base text-foreground">{{ message()?.body }}</text>
+      <!-- A link to the Inbox, which is in the stack, goes back to it. -->
       <view
         class="items-center rounded-md bg-secondary px-4 py-2 flex justify-center"
         routerLink="/inbox"

@@ -103,6 +103,18 @@ inject(UiDockState).minimized.set(false);
 
 `ui-dock-scroll` reads the scroll view's events itself rather than through a template listener, which would run change detection on every event, about every frame while content moves. It updates the dock only when it changes. Your template handlers already run on Lynx's main thread, beside the native scroll, so it needs no [main-thread script](/guide/main-thread/).
 
+### Away on a pushed screen
+
+Give a tab a [`<lynx-stack-outlet>`](/guide/routing#the-tab-bar-or-dock-goes-away-on-a-pushed-screen), and a screen it pushes over the tab's first screen takes the dock away, as iOS and Material do with the screens they drill down to. The example's Library is one: open an album.
+
+- **Where screens move as iOS's do,** the dock stays with the screen underneath: it moves a little left with it, and the pushed screen covers it.
+- **Where they move as Android's do,** it slides down off the screen.
+- **Back, Android's back button or a swipe brings it back,** following the finger while it drags. While it's away, screen readers skip it and it takes no taps.
+- **`ui-dock-scroll` on a pushed screen leaves the dock alone,** so the screen under it gets the dock back as it left it.
+- **A screen that pads its end for the dock** can drop the padding while the dock is away: `inject(LynxStackPage, { optional: true })?.bottomBarHidden()`.
+
+A route keeps the dock with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says, and to make a bar of your own follow it.
+
 ### The action
 
 `<ui-dock-action>` is the button beside the bar. Like an item, it navigates to a `route` and is selected while the route is active. Without a route, handle `(pressed)`:
@@ -241,10 +253,10 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 
 ### UiDockAccessory and UiDockScroll
 
-| Directive         | Selector                                              | Description                                         |
-| ----------------- | ----------------------------------------------------- | --------------------------------------------------- |
-| `UiDockAccessory` | `[ui-dock-accessory]`                                 | Marks the content of the accessory above the dock.  |
-| `UiDockScroll`    | `scroll-view[ui-dock-scroll]`, `list[ui-dock-scroll]` | Minimizes the dock as the scroll view scrolls down. |
+| Directive         | Selector                                              | Description                                                                                      |
+| ----------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `UiDockAccessory` | `[ui-dock-accessory]`                                 | Marks the content of the accessory above the dock.                                               |
+| `UiDockScroll`    | `scroll-view[ui-dock-scroll]`, `list[ui-dock-scroll]` | Minimizes the dock as the scroll view scrolls down, except on a screen that takes the dock away. |
 
 `UiDockState` is a root service the dock and your screens share, with two signals: `minimized`, which `ui-dock-scroll` sets, and `searching`, whether the search an action without a route opens is open.
 
@@ -252,6 +264,7 @@ The icons draw with the light theme's colors until you say otherwise, and the gl
 
 - **Each item is one button,** named by its `label` and then its badge: "Inbox, 3". The selected item has the `selected` trait, so iOS VoiceOver announces it.
 - **On iOS, the row of items has the `tabbar` trait,** as a native tab bar does.
+- **Away on a pushed screen,** the dock is hidden from screen readers and takes no taps.
 - **The minimized dock is one button,** "Show tab bar", with the selected item's label as its value. The hidden items are hidden from screen readers too. While the glass dock searches, the same button goes back, with the last item's label as its value.
 - **The search field is a search field** to screen readers, and its Cancel a button (see [Search Field](/dolan/search-field#accessibility)). The action it opened from is hidden while it's open.
 - **Reduce Motion:** the capsule, the minimizing, the indicator and the search opening change at once instead of sliding, shrinking, growing or fading.

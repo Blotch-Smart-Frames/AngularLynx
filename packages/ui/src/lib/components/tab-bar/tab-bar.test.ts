@@ -5,7 +5,12 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, provideRouter } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxStackChrome,
+  type StackBarMotion,
+  provideRouter,
+} from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { UiTabBar, UiTabBarItem } from './tab-bar';
@@ -302,5 +307,92 @@ describe('UiTabBar', () => {
     expect([...container.querySelectorAll('.pt-4')]).toEqual([
       container.querySelector('[accessibility-label="Home"]'),
     ]);
+  });
+});
+
+describe('UiTabBar in a stack', () => {
+  /**
+   * What a `<lynx-stack-outlet>` says through LynxStackChrome, as a test
+   * sets it.
+   */
+  const chrome = {
+    bottomBarHidden: signal(false),
+    bottomBarProgress: signal(0),
+    bottomBarMotion: signal<StackBarMotion>({
+      animation: 'ios',
+      duration: 0,
+      easing: 'linear',
+      coveredX: -0.3,
+    }),
+  };
+  const IOS_PUSH: StackBarMotion = {
+    animation: 'ios',
+    duration: 350,
+    easing: 'cubic-bezier(0.32, 0.68, 0.12, 1)',
+    coveredX: -0.3,
+  };
+  const moveTo = async (
+    progress: number,
+    motion: Partial<StackBarMotion> = {},
+    hidden = progress > 0,
+  ) => {
+    chrome.bottomBarHidden.set(hidden);
+    chrome.bottomBarProgress.set(progress);
+    chrome.bottomBarMotion.set({ ...IOS_PUSH, duration: 0, ...motion });
+    await waitForUpdate();
+  };
+  const renderBar = async () => {
+    const { container } = await render(UiTabBar, {
+      providers: [{ provide: LynxStackChrome, useValue: chrome }],
+    });
+    // Rendered on its own, the bar's host is the root the test renders into.
+    return {
+      bar: container as HTMLElement,
+      tabs: container.firstElementChild as HTMLElement,
+    };
+  };
+  const style = (element: HTMLElement, name: string) =>
+    element.style.getPropertyValue(name);
+
+  afterEach(() => moveTo(0));
+
+  it('stays under the outlet while nothing takes it away', async () => {
+    const { bar, tabs } = await renderBar();
+    expect(bar.classList).not.toContain('absolute');
+    expect(bar.classList).not.toContain('overflow-hidden');
+    expect(style(bar, 'transform')).toBe('translateX(0%)');
+    expect(tabs.getAttribute('user-interaction-enabled')).toBe('true');
+  });
+
+  it('lies over the bottom of the screen and stays with the page under a pushed one', async () => {
+    const { bar, tabs } = await renderBar();
+    await moveTo(1, IOS_PUSH);
+    expect(bar.classList).toContain('absolute');
+    expect(bar.classList).toContain('bottom-0');
+    expect(bar.classList).toContain('overflow-hidden');
+    expect(style(bar, 'transform')).toBe('translateX(-100%)');
+    expect(style(tabs, 'transform')).toBe('translateX(70%)');
+    expect(style(bar, 'transition')).toBe(
+      'transform 350ms cubic-bezier(0.32, 0.68, 0.12, 1)',
+    );
+    expect(bar.getAttribute('accessibility-elements-hidden')).toBe('true');
+    expect(tabs.getAttribute('user-interaction-enabled')).toBe('false');
+
+    // Back under the outlet once it's back and still.
+    await moveTo(0, IOS_PUSH);
+    expect(bar.classList).toContain('absolute');
+    await moveTo(0);
+    expect(bar.classList).not.toContain('absolute');
+  });
+
+  it('slides down off the screen as Android pages move', async () => {
+    const { bar, tabs } = await renderBar();
+    await moveTo(0.4, { animation: 'material' }, true);
+    expect(style(bar, 'transform')).toBe('translateY(40%)');
+    expect(style(tabs, 'transform')).toBe('translateX(0%)');
+    expect(bar.classList).toContain('absolute');
+    expect(bar.classList).not.toContain('overflow-hidden');
+    await moveTo(1, { animation: 'fade', duration: 250 });
+    expect(style(bar, 'transition')).toBe('');
   });
 });

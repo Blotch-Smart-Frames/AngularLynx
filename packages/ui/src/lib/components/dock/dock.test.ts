@@ -8,7 +8,9 @@ import {
 import {
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  LynxStackChrome,
   LynxSystemInfo,
+  type StackBarMotion,
   provideRouter,
 } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -203,7 +205,11 @@ const renderDock = async (
   /**
    * The dock's host, the group's parent.
    */
-  const dock = () => stage().parentElement!;
+  /**
+   * The view around the group, which moves the shapes with the stack.
+   */
+  const travel = () => stage().parentElement!;
+  const dock = () => travel().parentElement!;
   const shapes = () =>
     Array.from(stage().children).filter((child) =>
       child.hasAttribute('ui-glass'),
@@ -251,6 +257,7 @@ const renderDock = async (
     host,
     router,
     state,
+    travel,
     item,
     isSelected,
     dock,
@@ -634,6 +641,102 @@ describe('UiDock on Android', () => {
   });
 });
 
+describe('UiDock in a stack', () => {
+  /**
+   * What a `<lynx-stack-outlet>` says through LynxStackChrome, as a test
+   * sets it.
+   */
+  const chrome = {
+    bottomBarHidden: signal(false),
+    bottomBarProgress: signal(0),
+    bottomBarMotion: signal<StackBarMotion>({
+      animation: 'ios',
+      duration: 0,
+      easing: 'linear',
+      coveredX: -0.3,
+    }),
+  };
+  const stack = { provide: LynxStackChrome, useValue: chrome };
+  const IOS_PUSH: StackBarMotion = {
+    animation: 'ios',
+    duration: 350,
+    easing: 'cubic-bezier(0.32, 0.68, 0.12, 1)',
+    coveredX: -0.3,
+  };
+  /**
+   * Sets what the stack says, and lets the dock follow.
+   */
+  const moveTo = async (
+    progress: number,
+    motion: Partial<StackBarMotion> = {},
+    hidden = progress > 0,
+  ) => {
+    chrome.bottomBarHidden.set(hidden);
+    chrome.bottomBarProgress.set(progress);
+    chrome.bottomBarMotion.set({ ...IOS_PUSH, duration: 0, ...motion });
+    await waitForUpdate();
+  };
+
+  afterEach(() => moveTo(0));
+
+  it('stays with the page under a pushed one, which covers it', async () => {
+    const { dock, travel } = await renderDock(IOS_26, [stack]);
+    fireEvent.layoutchange(dock(), { detail: { width: 400, height: 140 } });
+    expect(style(dock(), 'transform')).toBe('translateX(0%)');
+    expect(dock().classList).not.toContain('overflow-hidden');
+    expect(dock().hasAttribute('accessibility-elements-hidden')).toBe(false);
+    expect(travel().getAttribute('user-interaction-enabled')).toBe('true');
+
+    await moveTo(1, IOS_PUSH);
+    // The host moves the whole way left, with the pushed page's edge, and
+    // clips the shapes, which move back right all but the covered page's
+    // third.
+    expect(style(dock(), 'transform')).toBe('translateX(-100%)');
+    expect(style(travel(), 'transform')).toBe('translateX(280px)');
+    expect(style(dock(), 'transition')).toBe(
+      'transform 350ms cubic-bezier(0.32, 0.68, 0.12, 1)',
+    );
+    expect(style(travel(), 'transition')).toBe(style(dock(), 'transition'));
+    expect(dock().classList).toContain('overflow-hidden');
+    expect(dock().getAttribute('accessibility-elements-hidden')).toBe('true');
+    expect(travel().getAttribute('user-interaction-enabled')).toBe('false');
+
+    // A finger drags the page half way back: the dock follows at once.
+    await moveTo(0.5, {}, true);
+    expect(style(dock(), 'transform')).toBe('translateX(-50%)');
+    expect(style(travel(), 'transform')).toBe('translateX(140px)');
+    expect(style(dock(), 'transition')).toBe('');
+
+    await moveTo(0, IOS_PUSH);
+    expect(dock().classList).toContain('overflow-hidden');
+    await moveTo(0);
+    expect(dock().classList).not.toContain('overflow-hidden');
+    expect(travel().getAttribute('user-interaction-enabled')).toBe('true');
+  });
+
+  it('slides down off the screen as Android pages move', async () => {
+    const { dock, travel } = await renderDock(ANDROID, [stack]);
+    await moveTo(1, {
+      animation: 'material',
+      duration: 450,
+      easing: 'cubic-bezier(0.2, 0, 0, 1)',
+    });
+    expect(style(dock(), 'transform')).toBe('translateY(100%)');
+    expect(style(travel(), 'transform')).toBe('translateX(0px)');
+    expect(style(dock(), 'transition')).toBe(
+      'transform 450ms cubic-bezier(0.2, 0, 0, 1)',
+    );
+    expect(dock().classList).not.toContain('overflow-hidden');
+  });
+
+  it('goes at once while the pages cross-fade under Reduce Motion', async () => {
+    const { dock } = await renderDock(IOS_26, [stack]);
+    await moveTo(1, { animation: 'fade', duration: 250 });
+    expect(style(dock(), 'transform')).toBe('translateY(100%)');
+    expect(style(dock(), 'transition')).toBe('');
+  });
+});
+
 describe('UiDockItem', () => {
   it("navigates with the item's RouterLink options", async () => {
     const { router, item, isSelected } = await renderDock(IOS_26);
@@ -761,7 +864,8 @@ describe('UiDockAction', () => {
       ],
     });
     fireEvent.layoutchange(
-      container.querySelector('[ui-glass-group]')!.previousElementSibling!,
+      container.querySelector('[ui-glass-group]')!.parentElement!
+        .previousElementSibling!,
       { detail: { width: WIDTH, height: 0 } },
     );
     componentRef.injector.get(UiDockState).minimized.set(true);

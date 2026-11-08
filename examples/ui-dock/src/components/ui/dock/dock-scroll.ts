@@ -7,6 +7,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { LynxStackPage } from '@blotch/angular-lynx';
 
 /**
  * Whether the dock is minimized, shared by the dock and the scroll views that
@@ -81,12 +82,17 @@ type LayoutDetail = { height: number };
  *
  * Leaving the screen expands the dock again, so the next screen starts with
  * it whole.
+ *
+ * On a page that a `<lynx-stack-outlet>` pushed, which takes the dock away
+ * (see `LynxStackPage.bottomBarHidden`), it leaves the dock alone: the page
+ * under it gets the dock back as it left it.
  */
 @Directive({ selector: 'scroll-view[ui-dock-scroll], list[ui-dock-scroll]' })
 export class UiDockScroll {
   readonly #state = inject(UiDockState);
   readonly #renderer = inject(Renderer2);
   readonly #element = inject(ElementRef).nativeElement;
+  readonly #page = inject(LynxStackPage, { optional: true });
 
   /** The last scroll position, to tell which way content moved. */
   #lastTop = 0;
@@ -112,10 +118,18 @@ export class UiDockScroll {
 
   protected readonly cleanup = inject(DestroyRef).onDestroy(() => {
     for (const remove of this.listeners) remove();
-    this.#state.minimized.set(false);
+    if (!this.#dockAway()) this.#state.minimized.set(false);
   });
 
+  /**
+   * Whether the page the scroll view is on has taken the dock away.
+   */
+  #dockAway(): boolean {
+    return this.#page?.bottomBarHidden() ?? false;
+  }
+
   #scrolled({ scrollTop, scrollHeight }: ScrollDetail): void {
+    if (this.#dockAway()) return;
     const delta = scrollTop - this.#lastTop;
     this.#lastTop = scrollTop;
 

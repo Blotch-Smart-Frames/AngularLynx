@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  Renderer2,
   ViewEncapsulation,
   computed,
   inject,
@@ -9,7 +10,11 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { LYNX_ELEMENTS, LynxRouterLinkActive } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxRouterLinkActive,
+  LynxStackChrome,
+} from '@blotch/angular-lynx';
 
 import {
   type AnimationHandle,
@@ -24,9 +29,20 @@ import { type IconName, ICONS } from '../icon/icons';
  * The bar along the bottom of the screen that switches between an app's
  * top-level screens. Put a `<ui-tab-bar-item>` in it for each screen, and
  * place it under the `<router-outlet>`.
+ *
+ * A page that a `<lynx-stack-outlet>` pushes over its first page takes the
+ * bar away, as iOS's `hidesBottomBarWhenPushed` and Material's navigation
+ * bar do, and the bar comes back as the page goes (see `LynxStackChrome`).
+ * While it's away, it lies over the bottom of the screen rather than under
+ * the outlet, so the pushed page runs to the bottom edge. Where the pages
+ * move as iOS's do, it stays with the page underneath: its tabs move a little
+ * left with it, and the pushed page covers them. Where they move as
+ * Android's do, it slides down off the screen. It follows a finger dragging
+ * a page back, and it leaves screen readers and taps alone while it's away.
  */
 @Component({
   selector: 'ui-tab-bar',
+  imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
   // The bar and each item are their host elements, styled through `host`,
   // rather than a view inside the host. Angular gives a component's host
@@ -44,22 +60,113 @@ import { type IconName, ICONS } from '../icon/icons';
   // native tab bar's container has: it tells VoiceOver that the buttons in it
   // are tabs. Android reads a single trait and has no tab bar trait, so there
   // the row stays a plain container.
+  //
+  // The tabs sit in a row of their own inside the bar, which moves them with
+  // the page under a pushed one (see stackLook), and stops their taps while
+  // the bar is away.
   host: {
     'accessibility-traits': 'tabbar',
     '[class]': 'barClass()',
+    '[style.transform]': 'stackLook().bar',
+    '[style.transition]': 'stackLook().transition',
+    '[attr.accessibility-elements-hidden]': 'stackHidden() || null',
   },
-  template: '<ng-content />',
+  template: `<view
+    class="flex-1 flex-row flex"
+    [flatten]="false"
+    [user-interaction-enabled]="!stackHidden()"
+    [style.transform]="stackLook().tabs"
+    [style.transition]="stackLook().transition"
+  >
+    <ng-content />
+  </view>`,
 })
 export class UiTabBar {
   readonly userClass = input<string>('', { alias: 'class' });
 
+  readonly #chrome = inject(LynxStackChrome);
+
+  /**
+   * Whether a page of the stack that's showing has taken the bar away (see
+   * LynxStackChrome).
+   */
+  protected readonly stackHidden = computed(() =>
+    this.#chrome.bottomBarHidden(),
+  );
+
+  /**
+   * Where the stack has the bar, as its pages move.
+   *
+   * Where they move as iOS's do, the bar stays with the page under a pushed
+   * one, as iOS's tab bar does: its tabs move left with it, by its share of
+   * the width (`coveredX`), and the pushed page covers them. The pushed page
+   * can't draw over the bar, which is outside the stack, so the bar covers
+   * itself: it moves left the whole way, its right edge with the pushed
+   * page's left one, and clips its tabs, which move back right by the rest.
+   * Its background and top border look the same either way.
+   *
+   * Otherwise it slides down off the screen, as Material's navigation bar
+   * leaves a screen it drills down to.
+   *
+   * It moves as long as the pages do, on their curve, and at once as a
+   * finger drags them. Under Reduce Motion, while the pages cross-fade, it
+   * goes and comes at once.
+   */
+  protected readonly stackLook = computed(() => {
+    const progress = this.#chrome.bottomBarProgress();
+    const motion = this.#chrome.bottomBarMotion();
+    const moving = motion.duration > 0;
+    // While it's away or on its way, it lies over the outlet's bottom rather
+    // than under it, so the outlet, and the pushed page, run to the screen's
+    // bottom edge from the start.
+    const lifted = this.stackHidden() || progress > 0 || moving;
+    const transition =
+      moving && motion.animation !== 'fade'
+        ? `transform ${motion.duration}ms ${motion.easing}`
+        : null;
+    if (motion.animation === 'ios') {
+      // The tabs' row is as wide as the bar, so a share of its own width is
+      // a share of the bar's.
+      const back = progress * (1 + motion.coveredX);
+      return {
+        bar: `translateX(${round(-progress * 100)}%)`,
+        tabs: `translateX(${round(back * 100)}%)`,
+        lifted,
+        clip: lifted,
+        transition,
+      };
+    }
+    return {
+      bar: `translateY(${round(progress * 100)}%)`,
+      tabs: 'translateX(0%)',
+      lifted,
+      clip: false,
+      transition,
+    };
+  });
+
   protected readonly barClass = computed(() =>
     cn(
       'flex-row border-t border-border bg-background flex pb-safe',
+      this.stackLook().lifted && 'absolute bottom-0 left-0 right-0',
+      this.stackLook().clip && 'overflow-hidden',
       this.userClass(),
     ),
   );
+
+  // A native view of its own on Android, where a flattened view's transition
+  // doesn't move it.
+  protected readonly ownView = inject(Renderer2).setAttribute(
+    inject(ElementRef).nativeElement,
+    'flatten',
+    'false',
+  );
 }
+
+/**
+ * A number to two places, for a style that changes with a finger.
+ */
+const round = (value: number): number => Math.round(value * 100) / 100;
 
 /**
  * One tab: an icon over a label that navigates to its `route` on a tap.

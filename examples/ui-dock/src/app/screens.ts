@@ -1,11 +1,17 @@
+import { Location } from '@angular/common';
 import { Component, computed, inject, input } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   LYNX_ELEMENTS,
   LynxAccessibilitySettings,
+  LynxStackOutlet,
+  LynxStackPage,
   LynxSystemInfo,
 } from '@blotch/angular-lynx';
 import { UiDockScroll } from '../components/ui/dock';
 import { injectGlassDesign } from '../components/ui/glass';
+import { UiIcon } from '../components/ui/icon';
 import { ALBUMS, Player } from './player';
 
 /**
@@ -19,10 +25,14 @@ const SCREEN_HOST = { class: 'flex-1 flex-col flex' };
  * Each screen's frame: a title clear of the status bar over content that
  * scrolls beneath the dock. `ui-dock-scroll` minimizes the dock as it scrolls
  * down, and the bottom padding lets the last row scroll clear of it.
+ *
+ * A screen the Library's stack pushes has a Back button, and the dock goes
+ * away while it's on top: `LynxStackPage.bottomBarHidden()` says so, and the
+ * screen drops the padding it keeps for the dock.
  */
 @Component({
   selector: 'app-screen',
-  imports: [LYNX_ELEMENTS, UiDockScroll],
+  imports: [LYNX_ELEMENTS, UiDockScroll, UiIcon],
   host: SCREEN_HOST,
   template: `
     <scroll-view
@@ -30,7 +40,19 @@ const SCREEN_HOST = { class: 'flex-1 flex-col flex' };
       scroll-orientation="vertical"
       class="h-full w-full"
     >
-      <view class="flex-col gap-4 px-5 flex pt-safe-6 pb-safe-40">
+      <view [class]="contentClass()">
+        @if (back(); as label) {
+          <view
+            class="flex-row items-center gap-1 flex"
+            [accessibility-element]="true"
+            accessibility-traits="button"
+            [accessibility-label]="'Back to ' + label"
+            (bindtap)="location.back()"
+          >
+            <ui-icon name="chevron-left" size="sm" />
+            <text class="text-base text-primary">{{ label }}</text>
+          </view>
+        }
         <text class="text-3xl font-bold text-foreground">{{ heading() }}</text>
         <ng-content />
       </view>
@@ -39,6 +61,17 @@ const SCREEN_HOST = { class: 'flex-1 flex-col flex' };
 })
 export class Screen {
   readonly heading = input.required<string>();
+  /** The title of the screen Back goes to, on a screen a stack pushed. */
+  readonly back = input<string>();
+
+  protected readonly location = inject(Location);
+  readonly #page = inject(LynxStackPage, { optional: true });
+
+  protected readonly contentClass = computed(() =>
+    this.#page?.bottomBarHidden()
+      ? 'flex-col gap-4 px-5 flex pt-safe-6 pb-safe-6'
+      : 'flex-col gap-4 px-5 flex pt-safe-6 pb-safe-40',
+  );
 }
 
 /**
@@ -149,19 +182,37 @@ export class BrowseScreen {
   ];
 }
 
+/**
+ * The Library tab: a stack of its own, in a `<lynx-stack-outlet>`. An album
+ * opens over the list, as in a music app, and takes the dock away until you
+ * go back with Back, Android's back button or a swipe, which brings the dock
+ * back with the list.
+ */
+@Component({
+  selector: 'app-library-stack',
+  imports: [LYNX_ELEMENTS, LynxStackOutlet],
+  host: SCREEN_HOST,
+  template: `<lynx-stack-outlet />`,
+})
+export class LibraryStack {}
+
 @Component({
   selector: 'app-library-screen',
-  imports: [LYNX_ELEMENTS, Screen],
+  imports: [LYNX_ELEMENTS, RouterLink, Screen],
   host: SCREEN_HOST,
   template: `
     <app-screen heading="Library">
+      <text class="text-sm text-muted-foreground">
+        Open an album: it slides in over the list and takes the dock away. Back,
+        or a swipe to the right, brings the dock back.
+      </text>
       @for (album of albums; track album.id) {
         <view
           class="flex-row items-center gap-3 flex"
           [accessibility-element]="true"
           accessibility-traits="button"
           [accessibility-label]="album.title + ', ' + album.artist"
-          (bindtap)="player.play(album)"
+          [routerLink]="['/library', album.id]"
         >
           <view
             class="h-14 w-14 rounded-lg"
@@ -182,7 +233,88 @@ export class BrowseScreen {
 })
 export class LibraryScreen {
   protected readonly albums = ALBUMS;
+}
+
+/**
+ * An album, pushed over the Library: no dock here, so its last track scrolls
+ * to the bottom of the screen.
+ */
+@Component({
+  selector: 'app-album-screen',
+  imports: [LYNX_ELEMENTS, RouterLink, Screen],
+  host: SCREEN_HOST,
+  template: `
+    <app-screen [heading]="album().title" back="Library">
+      <view
+        class="h-[240px] rounded-2xl"
+        [style.background-image]="album().cover"
+      ></view>
+      <view class="flex-row items-center flex justify-between">
+        <text class="text-base text-muted-foreground">{{
+          album().artist
+        }}</text>
+        <view
+          class="rounded-full bg-primary px-5 py-2"
+          [accessibility-element]="true"
+          accessibility-traits="button"
+          accessibility-label="Play"
+          (bindtap)="player.play(album())"
+        >
+          <text class="text-sm font-semibold text-primary-foreground"
+            >Play</text
+          >
+        </view>
+      </view>
+      @for (track of tracks; track track; let i = $index) {
+        <view
+          class="flex-row items-center gap-3 border-b border-border py-3 flex"
+        >
+          <text class="w-6 text-sm text-muted-foreground">{{ i + 1 }}</text>
+          <text class="flex-1 text-base text-foreground">{{ track }}</text>
+        </view>
+      }
+      <!-- Another tab, from a pushed screen: the Library's stack leaves with
+           its tab, and the dock comes back on Search at once. -->
+      <view
+        class="items-center rounded-full bg-secondary px-4 py-3 flex"
+        [accessibility-element]="true"
+        accessibility-traits="button"
+        [accessibility-label]="'More by ' + album().artist"
+        routerLink="/search"
+      >
+        <text class="text-sm font-medium text-secondary-foreground"
+          >More by {{ album().artist }}</text
+        >
+      </view>
+    </app-screen>
+  `,
+})
+export class AlbumScreen {
   protected readonly player = inject(Player);
+  protected readonly tracks = [
+    'Overture',
+    'Shoreline',
+    'Paper Moon',
+    'Undertow',
+    'Glass House',
+    'Slow Bloom',
+    'Northbound',
+    'Afterglow',
+    'Static',
+    'Harbor',
+    'Late Train',
+    'Coda',
+  ];
+
+  readonly #id = toSignal(inject(ActivatedRoute).paramMap, {
+    requireSync: true,
+  });
+
+  protected readonly album = computed(
+    () =>
+      ALBUMS.find((album) => album.id === Number(this.#id().get('album'))) ??
+      ALBUMS[0],
+  );
 }
 
 @Component({

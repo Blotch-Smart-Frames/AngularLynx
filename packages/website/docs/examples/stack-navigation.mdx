@@ -13,8 +13,13 @@ Screens that slide in and out as iOS and Android apps do, with a swipe back: a s
 - **`LynxStackPage`** — a section's clock reads `active()` and stops while another screen covers it.
 - **The motion** — the first screen switches the outlet's `animation` between the platform's own, iOS's, Material's and none, so you can compare them on any device.
 
+## With a tab bar or a dock
+
+Put a stack in each tab, and a screen pushed over a tab's first screen takes the app's [Tab Bar](/dolan/tab-bar) or [Dock](/dolan/dock) away, as iOS and Material do: on iOS it stays with the screen underneath, which the pushed screen covers, and on Android it slides down off the screen. It comes back with Back, Android's back button or a swipe, following the finger. The examples on those pages each have a tab with a stack. See [The tab bar or dock goes away on a pushed screen](/guide/routing#the-tab-bar-or-dock-goes-away-on-a-pushed-screen).
+
 ## Related
 
 - [Routing and navigation](/guide/routing)
 - [Routing API](/api/angular-lynx/routing#lynxstackoutlet)
 - [Furniture shop](/examples/furniture-shop): the Lynx tutorial app, with its product page in a stack
+- [Dock](/dolan/dock) and [Tab Bar](/dolan/tab-bar): bars that go away on a pushed screen

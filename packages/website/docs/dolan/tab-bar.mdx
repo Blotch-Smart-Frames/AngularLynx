@@ -66,6 +66,17 @@ Give each routed screen's host `flex-1` so it fills the space above the bar, or 
 export class Home {}
 ```
 
+### Away on a pushed screen
+
+Give a tab a [`<lynx-stack-outlet>`](/guide/routing#the-tab-bar-or-dock-goes-away-on-a-pushed-screen), and a screen it pushes over the tab's first screen takes the bar away, as iOS's `hidesBottomBarWhenPushed` and Material's navigation bar do. The example's Inbox is one: open a message.
+
+- **While it's away,** the bar lies over the bottom of the screen rather than under the outlet, so the pushed screen runs to the bottom edge.
+- **Where screens move as iOS's do,** the bar stays with the screen underneath: its tabs move a little left with it, and the pushed screen covers them.
+- **Where they move as Android's do,** it slides down off the screen.
+- **Back, Android's back button or a swipe brings it back,** following the finger while it drags. While it's away, screen readers skip it and it takes no taps.
+
+A route keeps the bar with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says.
+
 ### Badges
 
 `[badge]` shows a count or a short text over the tab's icon, such as unread messages:
@@ -157,6 +168,7 @@ The icons draw with the light theme's colors until you say otherwise, as every i
 - **Each tab is one button,** named by its `label` and then its badge: "Inbox, 3".
 - **The selected tab has the `selected` trait,** so iOS VoiceOver announces it as selected. Android has no selected trait, so TalkBack doesn't say which tab is selected.
 - **On iOS, the bar has the `tabbar` trait,** as a native tab bar does, which tells VoiceOver that its buttons are tabs.
+- **Away on a pushed screen,** the bar is hidden from screen readers and takes no taps.
 
 ## Related
 

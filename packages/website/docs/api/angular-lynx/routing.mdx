@@ -1,6 +1,6 @@
 # Routing
 
-Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
+Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -58,22 +58,26 @@ class LynxStackOutlet extends RouterOutlet {
   readonly animation: InputSignal<StackAnimation | undefined>;
   readonly swipeBack: InputSignalWithTransform<boolean, unknown>;
   readonly pageClass: InputSignal<string>;
+  readonly hideBottomBar: InputSignal<StackBottomBarDefault>;
 }
 
 type StackAnimation = 'ios' | 'material' | 'none';
+type StackBottomBarDefault = 'pushed' | 'never';
 ```
 
 A `RouterOutlet` that keeps a stack of screens and moves between them as iOS and Android apps do, with a swipe back. Use it in place of `<router-outlet>`: it has the same inputs, outputs and API, and the screens under the top one stay alive. See [Slide screens in and out](/guide/routing#slide-screens-in-and-out-as-a-native-app-does) for what it does, and which way each navigation moves.
 
-| Input       | Default                                    | What it does                                                                                                                       |
-| ----------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `animation` | `'material'` on Android, `'ios'` elsewhere | How screens move. `'none'` swaps them at once and turns the swipe off.                                                             |
-| `swipeBack` | `true`                                     | Whether a finger dragging the top screen to the right takes it back: from the left edge, or anywhere that doesn't scroll sideways. |
-| `pageClass` | `''`                                       | Classes for each screen's frame. Without them a screen is drawn on `var(--background, #ffffff)`.                                   |
+| Input           | Default                                    | What it does                                                                                                                       |
+| --------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `animation`     | `'material'` on Android, `'ios'` elsewhere | How screens move. `'none'` swaps them at once and turns the swipe off.                                                             |
+| `swipeBack`     | `true`                                     | Whether a finger dragging the top screen to the right takes it back: from the left edge, or anywhere that doesn't scroll sideways. |
+| `pageClass`     | `''`                                       | Classes for each screen's frame. Without them a screen is drawn on `var(--background, #ffffff)`.                                   |
+| `hideBottomBar` | `'pushed'`                                 | Which screens take the app's tab bar or dock away when their route doesn't say: every screen pushed over the first, or `'never'`.  |
 
 - **It fills its parent** (`flex: 1`) and clips the screens in it. Each screen sits in a frame of its own, absolutely placed over the others.
 - **While Reduce Motion is on,** a push or a pop cross-fades.
 - **A swipe goes back through the history,** to the entry before the top screen's, however many it added since. A guard that refuses brings the screen back.
+- **A screen pushed over the first takes the bottom bar away,** and says so through [`LynxStackChrome`](#lynxstackchrome). A route's `data: { bottomBar: 'visible' | 'hidden' }` says otherwise for its screen.
 
 ### `StackNavigationInfo`
 
@@ -96,10 +100,67 @@ What a navigation does to a `LynxStackOutlet`'s stack, when the URL doesn't say 
 ```typescript
 class LynxStackPage {
   readonly active: Signal<boolean>;
+  readonly bottomBarHidden: Signal<boolean>;
 }
 ```
 
 The screen of a `LynxStackOutlet` that a component is on, which any component on it can inject (`inject(LynxStackPage, { optional: true })`, null off a stack). `active()` is `true` while the screen is on top, and `false` while another covers it or it's on its way out: a covered screen's components keep running, so pause what only matters while it shows. It also identifies the screen, for state kept per screen.
+
+`bottomBarHidden()` is `true` when the screen takes the bottom bar away while it's on top (see [`LynxStackChrome`](#lynxstackchrome)). It doesn't change while the screen is covered, so a screen can drop the room it keeps at its end for the bar without moving its content under a screen on top.
+
+### `LynxStackChrome`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxStackChrome {
+  readonly bottomBarHidden: Signal<boolean>;
+  readonly bottomBarProgress: Signal<number>;
+  readonly bottomBarMotion: Signal<StackBarMotion>;
+}
+
+type StackBarMotion = {
+  readonly animation: 'ios' | 'material' | 'fade' | 'none';
+  readonly duration: number;
+  readonly easing: string;
+  readonly coveredX: number;
+};
+
+type StackBottomBar = 'visible' | 'hidden';
+```
+
+What the stack that's showing does, for a bar outside it: a tab bar or a dock beside the `<router-outlet>` whose tabs hold `<lynx-stack-outlet>`s. The [Tab Bar](/dolan/tab-bar) and the [Dock](/dolan/dock) follow it; a bar of your own reads it the same way.
+
+| Signal              | What it says                                                                                                                                                                                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bottomBarHidden`   | Whether the bar should be away: the screen on top takes it away. It changes as a push or a pop starts, and when the router goes back after a swipe, not while a finger drags. Hide the bar from screen readers and taps while it's `true`.                                                                |
+| `bottomBarProgress` | How far the bar is away, `0` (shown) to `1` (gone). It follows a finger dragging a screen back move by move. A push or a pop sets it to where the bar ends up as the screens start to move.                                                                                                               |
+| `bottomBarMotion`   | How the bar gets there: the screens' `animation` (`'fade'` while Reduce Motion cross-fades them), and the `duration` (ms) and `easing` of the push or pop, `0` while a finger drags or nothing moves. `coveredX` is how far the screen under a pushed one moves, as a share of the width (`-0.3` on iOS). |
+
+```typescript
+@Component({
+  selector: 'app-player-bar',
+  host: {
+    '[style.transform]': 'transform()',
+    '[style.transition]': 'transition()',
+  },
+  template: `…`,
+})
+export class PlayerBar {
+  readonly #chrome = inject(LynxStackChrome);
+  protected readonly transform = computed(
+    () => `translateY(${this.#chrome.bottomBarProgress() * 100}%)`,
+  );
+  protected readonly transition = computed(() => {
+    const { duration, easing } = this.#chrome.bottomBarMotion();
+    return duration > 0 ? `transform ${duration}ms ${easing}` : 'none';
+  });
+}
+```
+
+- **Which screens take the bar away:** every screen pushed over a stack's first one, unless its outlet's `hideBottomBar` is `'never'`. A route says otherwise in its data: `{ path: 'results', component: Results, data: { bottomBar: 'visible' } }` keeps it, and `bottomBar: 'hidden'` takes it away even from a stack's first screen.
+- **Only a stack the app shows counts:** one with a screen the router has active, on screens that are on top of their own stacks. A tab the router has left doesn't hide the bar on another tab, nor does a stack on a covered screen.
+- **Stacks inside stacks:** the innermost decides. A screen that doesn't say (a stack's first, or a pushed one under `hideBottomBar="never"`) leaves the bar as the stacks around it have it.
+- **On a stack's screen, it follows only the stacks on that screen.** A bar inside a screen moves with the screen, so the stack that moves the screen doesn't move the bar too.
 
 ### `LynxRouterLinkActive`
 

@@ -854,7 +854,7 @@ const useHelloInApp = (appDir: string) => {
 
 /**
  * Replaces the generated hello component with the counter fixture and adds
- * three lazy-loaded routes, for the checks in Layers 3 and 6.
+ * lazy-loaded routes, for the checks in Layers 3 and 6.
  */
 const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
   if (tailwind) {
@@ -877,6 +877,7 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
     'canvas.ts',
     'linking.ts',
     'photo.ts',
+    'webview.ts',
   ]) {
     copyFileSync(
       path.join(FIXTURES_DIR, file),
@@ -920,6 +921,10 @@ export const routes: Routes = [
   {
     path: 'photo',
     loadComponent: () => import('./photo').then((m) => m.PhotoRoute),
+  },
+  {
+    path: 'webview',
+    loadComponent: () => import('./webview').then((m) => m.WebViewRoute),
   },
 ];
 `,

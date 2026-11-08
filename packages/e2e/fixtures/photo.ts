@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import {
   ImagePickerError,
   LYNX_ELEMENTS,
@@ -37,20 +38,38 @@ const upload = (blob: Blob): Promise<{ reply: string; bytes: number }> =>
  *
  * Closing the picker shows "Photo: canceled". Lynx Explorer has no picker,
  * and shows "Photo: unavailable".
+ *
+ * "Open web view", beside "Pick photo", opens webview.ts. On CI's 320x640
+ * Android emulator, the canvas page's row of links is the last thing on the
+ * screen, so there's no room for another there.
  */
 @Component({
   selector: 'app-photo',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, RouterLink],
   template: `
     <view
-      [flatten]="false"
-      [accessibility-element]="true"
-      accessibility-label="Pick photo"
-      accessibility-traits="button"
-      style="margin-top: 16px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
-      (bindtap)="pick()"
+      style="display: flex; flex-direction: row; margin-top: 16px; align-self: flex-start;"
     >
-      <text>Pick photo</text>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Pick photo"
+        accessibility-traits="button"
+        style="padding: 12px; background-color: #e0e0e0;"
+        (bindtap)="pick()"
+      >
+        <text>Pick photo</text>
+      </view>
+      <view
+        [flatten]="false"
+        [accessibility-element]="true"
+        accessibility-label="Open web view"
+        accessibility-traits="button"
+        style="margin-left: 8px; padding: 12px; background-color: #e0e0e0;"
+        routerLink="/webview"
+      >
+        <text>Open web view</text>
+      </view>
     </view>
     <text flatten="false" style="margin-top: 8px;">Photo: {{ status() }}</text>
   `,

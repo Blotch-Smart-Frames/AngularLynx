@@ -5097,6 +5097,31 @@ Nothing to fix in the renderer: the element is created correctly and `src` reach
 
 ---
 
+## A `<webview>` stays empty for a moment before its first page draws
+
+### What you'd expect (web)
+
+An `<iframe>` in a page that's already open shows its document as soon as it has loaded it, which for `srcdoc` is at once: the browser's engine is already running.
+
+### What Lynx does
+
+`<webview>` is the platform's web view (WKWebView, `android.webkit.WebView`), which starts processes of its own before it draws anything. On iOS, WebKit launches a `com.apple.WebKit.WebContent` process for each web view, and for the first one in an app a GPU and a Networking process too. It hides the web view's content until that process draws its first frame, so the box shows only what's behind it until then, even for an `html` page with nothing to download. Android's WebView starts its renderer process the same way.
+
+On the iOS 27 Simulator, the first page drew 1 to 3 seconds after the web view went on screen, and 8 to 13 seconds while the Mac was busy building other apps, when WebKit logged its WebContent processes as unresponsive. Issue #338 took that wait for web views that never draw, in apps from `ng build --platform ios`. The simulator's log still had the runs it came from, and every web view in them loaded its page (`WebPageProxy::didFinishLoadForFrame`), had Lynx send `load` (`SendCustomEvent event name:load`) and drew (`hideContentUntilPendingUpdate completed`), 1.4 to 13 seconds after it went on screen. Lynx Explorer and the Android shell showed the same pages the same way.
+
+### How to work with it
+
+Wait for `bindload` before reading or checking a web view's page, rather than a fixed time: it fires once the page has loaded, and in the logs above the page had drawn by then or drew within a few tenths of a second. To see the timing on the iOS Simulator:
+
+```sh
+xcrun simctl spawn booted log show --last 5m --style compact \
+  --predicate 'process == "<app executable>" AND (eventMessage CONTAINS "_endLiveResize" OR eventMessage CONTAINS "hideContentUntilPendingUpdate" OR eventMessage CONTAINS "event name:load")'
+```
+
+`-[WKWebView _endLiveResize]` marks the web view going on screen, and `hideContentUntilPendingUpdate completed` its first frame. The E2E tests check that a web view loads and draws in the app's own builds (`packages/e2e/native/webview.yaml`).
+
+---
+
 ## Text that is exactly `false` disappears on Lynx for Web (any attribute set to `"false"` is removed)
 
 ### What you'd expect (web / native parity)

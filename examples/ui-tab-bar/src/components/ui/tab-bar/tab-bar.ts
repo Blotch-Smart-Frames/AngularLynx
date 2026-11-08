@@ -13,7 +13,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   LYNX_ELEMENTS,
   LynxRouterLinkActive,
-  LynxStackChrome,
+  LynxStackBottomBar,
 } from '@blotch/angular-lynx';
 
 import {
@@ -35,14 +35,17 @@ import { type IconName, ICONS } from '../icon/icons';
  * bar do, and the bar comes back as the page goes (see `LynxStackChrome`).
  * While it's away, it lies over the bottom of the screen rather than under
  * the outlet, so the pushed page runs to the bottom edge. Where the pages
- * move as iOS's do, it stays with the page underneath: its tabs move a little
- * left with it, and the pushed page covers them. Where they move as
+ * move as iOS's do, the page underneath carries it (see
+ * `LynxStackBottomBar`): it moves a little left with the page, and the pushed
+ * page covers it, rounded corner, shadow and all. Where they move as
  * Android's do, it slides down off the screen. It follows a finger dragging
  * a page back, and it leaves screen readers and taps alone while it's away.
  */
 @Component({
   selector: 'ui-tab-bar',
   imports: [LYNX_ELEMENTS],
+  // A page the stack moves carries the bar, under the page moving over it.
+  hostDirectives: [LynxStackBottomBar],
   encapsulation: ViewEncapsulation.None,
   // The bar and each item are their host elements, styled through `host`,
   // rather than a view inside the host. Angular gives a component's host
@@ -61,22 +64,18 @@ import { type IconName, ICONS } from '../icon/icons';
   // are tabs. Android reads a single trait and has no tab bar trait, so there
   // the row stays a plain container.
   //
-  // The tabs sit in a row of their own inside the bar, which moves them with
-  // the page under a pushed one (see stackLook), and stops their taps while
-  // the bar is away.
+  // The tabs sit in a row of their own inside the bar, which stops their
+  // taps while the bar is away.
   host: {
     'accessibility-traits': 'tabbar',
     '[class]': 'barClass()',
-    '[style.transform]': 'stackLook().bar',
+    '[style.transform]': 'stackLook().transform',
     '[style.transition]': 'stackLook().transition',
     '[attr.accessibility-elements-hidden]': 'stackHidden() || null',
   },
   template: `<view
     class="flex-1 flex-row flex"
-    [flatten]="false"
     [user-interaction-enabled]="!stackHidden()"
-    [style.transform]="stackLook().tabs"
-    [style.transition]="stackLook().transition"
   >
     <ng-content />
   </view>`,
@@ -84,64 +83,45 @@ import { type IconName, ICONS } from '../icon/icons';
 export class UiTabBar {
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly #chrome = inject(LynxStackChrome);
+  readonly #bar = inject(LynxStackBottomBar);
 
   /**
    * Whether a page of the stack that's showing has taken the bar away (see
    * LynxStackChrome).
    */
-  protected readonly stackHidden = computed(() =>
-    this.#chrome.bottomBarHidden(),
-  );
+  protected readonly stackHidden = computed(() => this.#bar.hidden());
 
   /**
    * Where the stack has the bar, as its pages move.
    *
-   * Where they move as iOS's do, the bar stays with the page under a pushed
-   * one, as iOS's tab bar does: its tabs move left with it, by its share of
-   * the width (`coveredX`), and the pushed page covers them. The pushed page
-   * can't draw over the bar, which is outside the stack, so the bar covers
-   * itself: it moves left the whole way, its right edge with the pushed
-   * page's left one, and clips its tabs, which move back right by the rest.
-   * Its background and top border look the same either way.
+   * Where they move as iOS's do, the page under a pushed one carries the
+   * bar, as UIKit's carries its tab bar (see LynxStackBottomBar): the bar
+   * moves left with it, and the pushed page covers it, rounded corner and
+   * shadow and all. The bar stays as it is, at rest in the page.
    *
    * Otherwise it slides down off the screen, as Material's navigation bar
-   * leaves a screen it drills down to.
+   * leaves a screen it drills down to. So does a bar no page can carry, such
+   * as one going away with a page that's popped.
    *
    * It moves as long as the pages do, on their curve, and at once as a
    * finger drags them. Under Reduce Motion, while the pages cross-fade, it
    * goes and comes at once.
    */
   protected readonly stackLook = computed(() => {
-    const progress = this.#chrome.bottomBarProgress();
-    const motion = this.#chrome.bottomBarMotion();
+    const progress = this.#bar.progress();
+    const motion = this.#bar.motion();
     const moving = motion.duration > 0;
-    // While it's away or on its way, it lies over the outlet's bottom rather
-    // than under it, so the outlet, and the pushed page, run to the screen's
-    // bottom edge from the start.
-    const lifted = this.stackHidden() || progress > 0 || moving;
-    const transition =
-      moving && motion.animation !== 'fade'
-        ? `transform ${motion.duration}ms ${motion.easing}`
-        : null;
-    if (motion.animation === 'ios') {
-      // The tabs' row is as wide as the bar, so a share of its own width is
-      // a share of the bar's.
-      const back = progress * (1 + motion.coveredX);
-      return {
-        bar: `translateX(${round(-progress * 100)}%)`,
-        tabs: `translateX(${round(back * 100)}%)`,
-        lifted,
-        clip: lifted,
-        transition,
-      };
-    }
     return {
-      bar: `translateY(${round(progress * 100)}%)`,
-      tabs: 'translateX(0%)',
-      lifted,
-      clip: false,
-      transition,
+      transform: `translateY(${round(progress * 100)}%)`,
+      // While it's away or on its way, it lies over the outlet's bottom
+      // rather than under it, so the outlet, and the pushed page, run to the
+      // screen's bottom edge from the start. (A page carrying it puts it
+      // there itself.)
+      lifted: this.stackHidden() || progress > 0 || moving,
+      transition:
+        moving && motion.animation !== 'fade'
+          ? `transform ${motion.duration}ms ${motion.easing}`
+          : null,
     };
   });
 
@@ -149,7 +129,6 @@ export class UiTabBar {
     cn(
       'flex-row border-t border-border bg-background flex pb-safe',
       this.stackLook().lifted && 'absolute bottom-0 left-0 right-0',
-      this.stackLook().clip && 'overflow-hidden',
       this.userClass(),
     ),
   );

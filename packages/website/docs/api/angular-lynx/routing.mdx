@@ -1,6 +1,6 @@
 # Routing
 
-Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
+Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxStackBottomBar, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -128,7 +128,7 @@ type StackBarMotion = {
 type StackBottomBar = 'visible' | 'hidden';
 ```
 
-What the stack that's showing does, for a bar outside it: a tab bar or a dock beside the `<router-outlet>` whose tabs hold `<lynx-stack-outlet>`s. The [Tab Bar](/dolan/tab-bar) and the [Dock](/dolan/dock) follow it; a bar of your own reads it the same way.
+What the stack that's showing does, for a bar outside it: a tab bar or a dock beside the `<router-outlet>` whose tabs hold `<lynx-stack-outlet>`s. The [Tab Bar](/dolan/tab-bar) and the [Dock](/dolan/dock) follow it through [`LynxStackBottomBar`](#lynxstackbottombar), which also has the screen underneath carry the bar on iOS. A bar of your own can do the same, or read the chrome directly and slide away on its own, as below.
 
 | Signal              | What it says                                                                                                                                                                                                                                                                                              |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -161,6 +161,56 @@ export class PlayerBar {
 - **Only a stack the app shows counts:** one with a screen the router has active, on screens that are on top of their own stacks. A tab the router has left doesn't hide the bar on another tab, nor does a stack on a covered screen.
 - **Stacks inside stacks:** the innermost decides. A screen that doesn't say (a stack's first, or a pushed one under `hideBottomBar="never"`) leaves the bar as the stacks around it have it.
 - **On a stack's screen, it follows only the stacks on that screen.** A bar inside a screen moves with the screen, so the stack that moves the screen doesn't move the bar too.
+
+### `LynxStackBottomBar`
+
+```typescript
+@Directive({ selector: '[lynxStackBottomBar]', exportAs: 'lynxStackBottomBar' })
+class LynxStackBottomBar {
+  readonly carried: Signal<boolean>;
+  readonly hidden: Signal<boolean>;
+  readonly progress: Signal<number>;
+  readonly motion: Signal<StackBarMotion>;
+}
+```
+
+Makes a bottom bar part of the screen that has it while a stack's screens move as iOS's do, as UIKit puts its tab bar in the view of the screen that has it while a navigation controller moves. The screen pushed over it then covers the bar as it covers the screen underneath, with its rounded corner and its shadow, the dark over the screen underneath dims the bar too, and the bar moves with that screen under a finger. A bar outside the stack would lie over both screens, so the best it could do is cut itself off along the pushed screen's edge. The [Tab Bar](/dolan/tab-bar) and the [Dock](/dolan/dock) put it on their hosts.
+
+Put it on your bar's host, and move the bar with its signals rather than [`LynxStackChrome`](#lynxstackchrome)'s:
+
+```typescript
+@Component({
+  selector: 'app-player-bar',
+  hostDirectives: [LynxStackBottomBar],
+  host: {
+    '[style.transform]': 'transform()',
+    '[style.transition]': 'transition()',
+  },
+  template: `…`,
+})
+export class PlayerBar {
+  readonly #bar = inject(LynxStackBottomBar);
+  protected readonly transform = computed(
+    () => `translateY(${this.#bar.progress() * 100}%)`,
+  );
+  protected readonly transition = computed(() => {
+    const { duration, easing } = this.#bar.motion();
+    return duration > 0 ? `transform ${duration}ms ${easing}` : 'none';
+  });
+}
+```
+
+| Signal     | What it says                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `carried`  | Whether a screen carries the bar now: the bar is in that screen, along its bottom, at rest, and moves with it.      |
+| `hidden`   | The chrome's `bottomBarHidden`. Hide the bar from screen readers and taps while it's `true`.                        |
+| `progress` | The chrome's `bottomBarProgress`, or `0` while a screen carries the bar, which should then look as it does at rest. |
+| `motion`   | The chrome's `bottomBarMotion`, with a `duration` of `0` while a screen carries the bar.                            |
+
+- **Which screen carries it:** the one that shows the bar, as another screen moves over it or off it. A push carries it in the screen underneath, and a pop or a swipe back carries it back in. That screen keeps it while it's covered, and the bar goes back to its own place once that screen is on top again, or the router leaves the stack (another tab).
+- **Where it doesn't:** a screen that's popped, or one a finger drags (which may go), doesn't carry a bar it shows: the bar slides away on its own. Neither does Android's motion, nor the cross-fade under Reduce Motion: `progress` and `motion` are then the chrome's.
+- **Where it sits:** absolutely, along the bottom and across the width of the screen carrying it, which fills the stack. So the stack should run to the bottom of the screen, as it does beside a floating dock, or once a tab bar is out of the layout (the Tab Bar lies over the stack while it's away or on its way).
+- **Its place:** a comment holds the bar's place in its parent meanwhile, as with CDK's `DomPortal`.
 
 ### `LynxRouterLinkActive`
 

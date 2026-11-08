@@ -107,13 +107,13 @@ inject(UiDockState).minimized.set(false);
 
 Give a tab a [`<lynx-stack-outlet>`](/guide/routing#the-tab-bar-or-dock-goes-away-on-a-pushed-screen), and a screen it pushes over the tab's first screen takes the dock away, as iOS and Material do with the screens they drill down to. The example's Library is one: open an album.
 
-- **Where screens move as iOS's do,** the dock stays with the screen underneath: it moves a little left with it, and the pushed screen covers it.
+- **Where screens move as iOS's do,** the screen underneath carries the dock: it moves a little left with that screen, and the pushed screen slides over it, rounded corner and shadow and all.
 - **Where they move as Android's do,** it slides down off the screen.
 - **Back, Android's back button or a swipe brings it back,** following the finger while it drags. While it's away, screen readers skip it and it takes no taps.
 - **`ui-dock-scroll` on a pushed screen leaves the dock alone,** so the screen under it gets the dock back as it left it.
 - **A screen that pads its end for the dock** can drop the padding while the dock is away: `inject(LynxStackPage, { optional: true })?.bottomBarHidden()`.
 
-A route keeps the dock with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says, and to make a bar of your own follow it.
+A route keeps the dock with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says, and [`LynxStackBottomBar`](/api/angular-lynx/routing#lynxstackbottombar) to have a screen carry a bar of your own.
 
 ### The action
 

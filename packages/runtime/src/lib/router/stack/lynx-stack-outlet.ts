@@ -40,6 +40,7 @@ import { LynxLocationStrategy } from '../lynx-location-strategy';
 import { type LiveRoute, liveRoute } from './live-route';
 import {
   type BarState,
+  type CarriedBar,
   type ChromeClaim,
   type PageBar,
   type StackBarMotion,
@@ -47,6 +48,8 @@ import {
   LynxStackChrome,
   STILL,
   awayOf,
+  awayWith,
+  barsOf,
   chromeOn,
   follow,
   own,
@@ -55,6 +58,7 @@ import { type StackNavigationInfo, changeFor } from './stack-change';
 import {
   type Corners,
   type PageLook,
+  type ScreenBox,
   type ScreenSize,
   type StackAnimation,
   type StackMotion,
@@ -62,6 +66,7 @@ import {
   FADE_MOTION,
   IOS_MOTION,
   MATERIAL_MOTION,
+  ON_EDGE,
   SQUARE,
   cornerStyle,
   lookStyles,
@@ -145,7 +150,16 @@ type Move = {
  * The bottom bar moving with a transition: from what one page says about it
  * to what another says, `at` of the way once the transition ends.
  */
-type BarMove = { readonly from: Page; readonly to: Page; readonly at: number };
+type BarMove = {
+  readonly from: Page;
+  readonly to: Page;
+  readonly at: number;
+  /**
+   * The pages that can carry a bar that goes away or comes back (see
+   * #carryBars): those still in the stack when the pages stop.
+   */
+  readonly carriers: readonly Page[];
+};
 
 /**
  * A transition running: `finish()` jumps it to its end, as a navigation
@@ -332,6 +346,13 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #stack: Page[] = [];
   /** The page the router has active: the top one, or null between routes. */
   #active: Page | null = null;
+  /** Every page's frame, for the bars they carry (see #homeBars). */
+  readonly #frames = new WeakSet<FrameElement>();
+  /**
+   * The frames that carried bars when the router last left the outlet, until
+   * it comes back in the same pass (see #lendBars).
+   */
+  readonly #lent = new Map<CarriedBar, FrameElement>();
   /** Each component's page, for a component the reuse strategy hands back. */
   readonly #liveRoutes = new WeakMap<ComponentRef<unknown>, LiveRoute>();
   #transition: Transition | null = null;
@@ -386,6 +407,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   override ngOnDestroy(): void {
     this.#destroyed = true;
     this.#transition?.stop();
+    // Before the pages go, and their views are released.
+    this.#homeBars();
     this.#unfollow();
     super.ngOnDestroy();
   }
@@ -439,10 +462,12 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#active = null;
     setActive(page.stackPage, false);
     this.#leaveBar();
+    this.#lendBars();
     this.deactivateEvents.emit(page.ref.instance);
     // The router activates the next route straight after, in the same
     // pass. If it doesn't, this outlet shows nothing now.
     queueMicrotask(() => {
+      this.#lent.clear();
       if (!this.#active && !this.#destroyed) this.#clear();
     });
   }
@@ -460,6 +485,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#active = null;
     setActive(page.stackPage, false);
     this.#leaveBar();
+    this.#homeBars();
     this.detachEvents.emit(page.ref.instance);
     return page.ref;
   }
@@ -482,8 +508,22 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     route: ActivatedRoute,
     create: (injector: Injector) => ComponentRef<unknown>,
   ): void {
+    try {
+      this.#change(route, create);
+    } finally {
+      // Where the pages end up, unless they're moving: a transition leaves
+      // the bars where it wants them until it's over.
+      this.#settleBars();
+    }
+  }
+
+  #change(
+    route: ActivatedRoute,
+    create: (injector: Injector) => ComponentRef<unknown>,
+  ): void {
     this.#transition?.finish();
     this.#cancelSwipe();
+    this.#takeBackBars();
     const navigation = this.#router.currentNavigation();
     const top = this.#stack.at(-1);
     const historyIndex = this.#historyIndex();
@@ -597,6 +637,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const remembered = this.#liveRoutes.get(ref);
     remembered?.follow(route);
     const frame = this.#renderer.createElement('view') as FrameElement;
+    this.#frames.add(frame);
     this.#ownView(frame);
     this.#styleFrame(frame, this.pageClass());
     this.#setStyles(frame, {
@@ -659,6 +700,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * Takes a page off the screen and destroys it.
    */
   #removePage(page: Page, destroy = true): void {
+    // A bar the page carries goes back to its place first: it isn't the
+    // page's, and goes on without it.
+    this.#homeBars(page);
     if (destroy) page.ref.destroy();
     this.#renderer.removeChild(this.#host, page.frame);
   }
@@ -761,6 +805,104 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   /**
+   * --- Bars a page carries ----------------------------------------------------
+   */
+
+  /**
+   * As the pages move from `from` on top to `to`, puts each bar that goes
+   * away or comes back (see LynxStackBottomBar) in the page that has it, if
+   * that page is one of `carriers`, as UIKit puts its tab bar in the view of
+   * the screen that has it while its navigation controller moves: the page
+   * pushed over it, or popped off it, covers the bar as it covers the page,
+   * with its rounded corners and its shadow, and the scrim dims it. A bar
+   * outside the stack would lie over both pages.
+   *
+   * Only iOS's motion slides one page over another. Material's slides the
+   * bar away on its own, and the cross-fade under Reduce Motion swaps it at
+   * once. A popped page, and a top page a finger drags, which may go, carry
+   * nothing: the bar would go with it. The bar slides away on its own then.
+   */
+  #carryBars(
+    from: Page,
+    to: Page,
+    motion: StackMotion,
+    carriers: readonly Page[],
+  ): void {
+    if (motion.animation !== 'ios') return;
+    for (const bar of barsOf(this.#chrome)) {
+      const start = this.#awayOn(bar, from);
+      // The bar follows this outlet whichever page is on top, or it doesn't.
+      if (start === null || start === this.#awayOn(bar, to)) continue;
+      const page = start === 0 ? from : to;
+      if (carriers.includes(page)) bar.carry(page.frame);
+    }
+  }
+
+  /**
+   * How far away the bar is with `page` on top: 0 (shown) or 1 (gone), or
+   * null if the bar doesn't follow this outlet.
+   */
+  #awayOn(bar: CarriedBar, page: Page): number | null {
+    return awayWith(bar.chrome, this.#claim, page.bar());
+  }
+
+  /**
+   * With the pages at rest, puts each bar a page of this outlet carries back
+   * in its place, unless it's away and the page carrying it is still covered:
+   * there the page keeps it, under the one on top, for when it comes back.
+   */
+  #settleBars(): void {
+    if (this.#transition) return;
+    const top = this.#stack.at(-1)?.frame;
+    for (const bar of barsOf(this.#chrome)) {
+      const frame = bar.frame() as FrameElement;
+      if (!this.#frames.has(frame)) continue;
+      if (frame === top || !bar.chrome.bottomBarHidden()) bar.home();
+    }
+  }
+
+  /**
+   * Gives each bar a page carries back to the app as the router leaves the
+   * outlet, as it does when it leaves the stack (a tab), remembering which
+   * page had it: a navigation in the stack leaves the outlet too, and comes
+   * straight back (see #takeBackBars).
+   */
+  #lendBars(): void {
+    for (const bar of barsOf(this.#chrome)) {
+      const frame = bar.frame() as FrameElement;
+      if (!this.#frames.has(frame)) continue;
+      this.#lent.set(bar, frame);
+      bar.home();
+    }
+  }
+
+  /**
+   * As the router comes back to the outlet in the same pass, has the pages
+   * that carried bars carry them again, as if it had never left: a page
+   * pushed over a page that hides the bar too leaves it with the page that
+   * has it, for when it comes back.
+   */
+  #takeBackBars(): void {
+    // The pages are as the router left them: finishing a transition takes
+    // away only a page that doesn't carry a bar (see #carryBars), and a bar
+    // destroyed meanwhile, out of the tree, stays out of it.
+    for (const [bar, frame] of this.#lent) bar.carry(frame);
+    this.#lent.clear();
+  }
+
+  /**
+   * Puts each bar a page of this outlet carries back in its place, or only
+   * the bar `page` carries. A page taken out of the stack, on its way off
+   * the screen, still counts.
+   */
+  #homeBars(page?: Page): void {
+    for (const bar of barsOf(this.#chrome)) {
+      const frame = bar.frame() as FrameElement;
+      if (page ? frame === page.frame : this.#frames.has(frame)) bar.home();
+    }
+  }
+
+  /**
    * --- Motion -----------------------------------------------------------------
    */
 
@@ -803,15 +945,16 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       moving,
       under,
       motion,
-      motion.roundsAnimated ? this.#cornersFor(motion) : SQUARE,
+      () => (motion.roundsAnimated ? this.#cornersFor(motion) : SQUARE),
       from,
       to,
       motion.duration,
       motion.easing,
-      // The bar goes where the page that ends up on top has it.
+      // The bar goes where the page that ends up on top has it. A popped
+      // page goes, so it doesn't carry a bar.
       direction === 'in'
-        ? { from: under, to: moving, at: 1 }
-        : { from: moving, to: under, at: 1 },
+        ? { from: under, to: moving, at: 1, carriers: [moving, under] }
+        : { from: moving, to: under, at: 1, carriers: [under] },
       done,
     );
   }
@@ -820,13 +963,14 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * Animates the top page and the one under it, and the scrim between them,
    * from one set of looks to another, then leaves them at rest: the top page
    * shown, the one under it hidden. The top page has `corners` as it moves,
-   * and the bottom bar moves as `bar` says, with them.
+   * worked out once a page carries the bottom bar, which moves as `bar`
+   * says, with them.
    */
   #run(
     top: Page,
     under: Page,
     motion: StackMotion,
-    corners: Corners,
+    corners: () => Corners,
     from: { top: PageLook; under: PageLook; scrim: number },
     to: { top: PageLook; under: PageLook; scrim: number },
     duration: number,
@@ -835,8 +979,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     done: () => void,
   ): void {
     const width = this.#width;
+    this.#carryBars(bar.from, bar.to, motion, bar.carriers);
     this.#uncover(under);
-    this.#raise(top, motion, corners);
+    this.#raise(top, motion, corners());
     const scrim = this.#placeScrim(top);
     const moves: Move[] = [
       {
@@ -902,6 +1047,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       this.#shield(false);
       this.#settleBar();
       done();
+      this.#settleBars();
     };
     const stop = (): void => {
       end();
@@ -943,11 +1089,30 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * in the screen's corners (see screenCorners).
    */
   #cornersFor(motion: StackMotion): Corners {
-    return screenCorners(
-      this.#host.getBoundingClientRect(),
-      screenSize(),
-      motion.radius,
-    );
+    return screenCorners(this.#box(), screenSize(), motion.radius);
+  }
+
+  /**
+   * The outlet's box, and the room under it of a bar a page of its carries
+   * out of the layout: a tab bar under the outlet, which then runs to the
+   * bar's bottom edge, the screen's, once Lynx lays it out again. A push
+   * that carries the bar works out the pushed page's corners before then.
+   */
+  #box(): ScreenBox {
+    const box = this.#host.getBoundingClientRect();
+    let bottom = box.top + box.height;
+    for (const bar of barsOf(this.#chrome)) {
+      if (!this.#frames.has(bar.frame() as FrameElement)) continue;
+      const room = bar.box();
+      if (Math.abs(room.top - bottom) <= ON_EDGE)
+        bottom = room.top + room.height;
+    }
+    return {
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: bottom - box.top,
+    };
   }
 
   /**
@@ -1138,6 +1303,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     if (state !== 'dragging') return;
     if (!swipe.dragging) {
       swipe.dragging = true;
+      // The top page may go: only the page under it carries a bar.
+      this.#carryBars(swipe.top, swipe.under, this.#motion, [swipe.under]);
       swipe.corners = this.#cornersFor(this.#motion);
       swipe.radius = cornerStyle(swipe.corners);
       this.#uncover(swipe.under);
@@ -1222,12 +1389,12 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       motion,
       // Lynx can't animate a border-radius, so the page keeps the corners
       // the finger left it with.
-      this.#dragCorners(swipe, progress),
+      () => this.#dragCorners(swipe, progress),
       at,
       to,
       duration,
       IOS_MOTION.easing,
-      { from: top, to: under, at: completes ? 1 : 0 },
+      { from: top, to: under, at: completes ? 1 : 0, carriers: [under] },
       () => {
         if (completes) {
           // Hidden where it went, off the screen, not put back in place: a

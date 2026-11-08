@@ -202,6 +202,10 @@ Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` 
 
 The web preview plays `<video>` in the browser's own HTML video. `invoke('play')` and `invoke('pause')` work, and `(bindplaying)`, `(bindtimeupdate)`, `(bindended)` and `(binderror)` fire with the same `detail` as on the phone. `(bindfirstframe)`, `(bindpaused)` and `(bindstopped)` never fire there, and `stop` and `seek` do nothing, so don't rely on them to keep the UI's state.
 
+### A `<webview>` is empty until its first page draws
+
+`<webview>` is the platform's web view, which starts a process of its own to draw the page (WebKit's web content process on iOS, the WebView's renderer on Android). Until the page draws, its box shows what's behind it, even for an `html` page: 1 to 3 seconds on the iOS Simulator, and over 10 on a busy Mac. Wait for `(bindload)`, not a fixed time, before checking the page or taking a screenshot of it.
+
 ### `getBoundingClientRect()` is the last layout's
 
 An element's `getBoundingClientRect()`, `clientWidth` and `clientHeight` answer synchronously from its last `layoutchange`, so they're empty until it's laid out. `ResizeObserver` works on Lynx elements. For a box native measures now, use `SelectorQuery`'s `boundingClientRect`.

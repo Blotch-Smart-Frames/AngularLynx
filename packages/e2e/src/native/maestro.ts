@@ -122,6 +122,10 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'webview.yaml',
+    description: "loads and draws a page in XElement's web view",
+  },
+  {
     file: 'photo.yaml',
     description: 'picks a photo and uploads it as a Blob',
     // Only the app's own builds have the picker module. Lynx Explorer

@@ -45,8 +45,10 @@ void main() {
  * WebGL (Lynx Explorer) show "WebGL: none".
  *
  * Below it, the prebuilt library fixture (fixtures/prebuilt-library), which
- * the counter page has no room for, and "Open linking" and "Open photo",
- * which open linking.ts and photo.ts.
+ * the counter page has no room for, and "Open linking", "Open photo" and
+ * "Open web view", which open linking.ts, photo.ts and webview.ts. The last
+ * has a row of its own: a third button doesn't fit beside the others on CI's
+ * 320-pixel-wide Android emulator.
  */
 @Component({
   selector: 'app-canvas',
@@ -87,6 +89,16 @@ void main() {
       >
         <text>Open photo</text>
       </view>
+    </view>
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Open web view"
+      accessibility-traits="button"
+      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
+      routerLink="/webview"
+    >
+      <text>Open web view</text>
     </view>
   `,
 })

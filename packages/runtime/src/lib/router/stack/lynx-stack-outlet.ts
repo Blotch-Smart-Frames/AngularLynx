@@ -6,15 +6,18 @@ import {
   type Injector,
   type OnDestroy,
   type ProviderToken,
+  type WritableSignal,
   ChangeDetectorRef,
   Component,
   ElementRef,
   Renderer2,
   ViewContainerRef,
   booleanAttribute,
+  computed,
   effect,
   inject,
   input,
+  signal,
 } from '@angular/core';
 import {
   type Data,
@@ -35,6 +38,19 @@ import { LynxElement } from '../../lynx-element/lynx-element';
 import { pointerIdOf } from '../../lynx-element/pointer-events';
 import { LynxLocationStrategy } from '../lynx-location-strategy';
 import { type LiveRoute, liveRoute } from './live-route';
+import {
+  type BarState,
+  type ChromeClaim,
+  type PageBar,
+  type StackBarMotion,
+  type StackBottomBarDefault,
+  LynxStackChrome,
+  STILL,
+  awayOf,
+  chromeOn,
+  follow,
+  own,
+} from './stack-chrome';
 import { type StackNavigationInfo, changeFor } from './stack-change';
 import {
   type Corners,
@@ -53,7 +69,7 @@ import {
   screenCorners,
   shrunkCorners,
 } from './stack-motion';
-import { LynxStackPage, setActive } from './stack-page';
+import { LynxStackPage, setActive, setBottomBarHidden } from './stack-page';
 import { SwipeTracker } from './swipe-tracker';
 
 /**
@@ -114,6 +130,8 @@ type Page = {
   contexts: Map<string, OutletContext>;
   /** What the page's components inject to know about it. */
   readonly stackPage: LynxStackPage;
+  /** What it says about the bottom bar (see LynxStackChrome). */
+  readonly bar: WritableSignal<PageBar>;
 };
 
 /** One element moving from one look to another. */
@@ -122,6 +140,12 @@ type Move = {
   readonly from: Record<string, string>;
   readonly to: Record<string, string>;
 };
+
+/**
+ * The bottom bar moving with a transition: from what one page says about it
+ * to what another says, `at` of the way once the transition ends.
+ */
+type BarMove = { readonly from: Page; readonly to: Page; readonly at: number };
 
 /**
  * A transition running: `finish()` jumps it to its end, as a navigation
@@ -186,6 +210,7 @@ class PageInjector {
     readonly parent: Injector,
     readonly outletData: unknown,
     readonly stackPage: LynxStackPage,
+    readonly chrome: LynxStackChrome,
   ) {}
 
   get<T>(
@@ -198,6 +223,11 @@ class PageInjector {
     if (key === ChildrenOutletContexts) return this.childContexts as T;
     if (key === ROUTER_OUTLET_DATA) return this.outletData as T;
     if (key === LynxStackPage) return this.stackPage as T;
+    // A bar on the page follows only the outlets on the page: the outlet
+    // moving the page moves the bar with it.
+    if (key === LynxStackChrome) {
+      return chromeOn(this.chrome, this.stackPage) as T;
+    }
     return this.parent.get(token, notFoundValue as T, options);
   }
 }
@@ -232,6 +262,14 @@ class PageInjector {
  * Going back goes through the router: Back (`Location.back()`), the Android
  * back button and a swipe all navigate, so guards and resolvers run, and a
  * guard that refuses brings a swiped page back.
+ *
+ * A page pushed over the stack's first one takes the app's bottom bar (a
+ * tab bar or a dock outside the outlet) away, and the bar comes back as the
+ * page goes, with the pages and with a finger dragging them: the outlet says
+ * so through {@link LynxStackChrome}, which `@blotch/ui`'s dock and tab bar
+ * follow. A route's `data: { bottomBar: 'visible' }` keeps the bar on its
+ * page, and `hideBottomBar="never"` keeps it on every page whose route
+ * doesn't say.
  */
 @Component({
   selector: 'lynx-stack-outlet',
@@ -268,6 +306,14 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    */
   readonly pageClass = input('');
 
+  /**
+   * Which pages take the app's bottom bar away when their route's data
+   * doesn't say (its `bottomBar`): `'pushed'`, every page over the stack's
+   * first one, as Material does, or `'never'`, as iOS keeps its tab bar
+   * unless a screen hides it.
+   */
+  readonly hideBottomBar = input<StackBottomBarDefault>('pushed');
+
   readonly #renderer = inject(Renderer2);
   readonly #host = inject(ElementRef).nativeElement as HostElement;
   readonly #pages = inject(ViewContainerRef);
@@ -277,6 +323,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   readonly #location = inject(Location);
   readonly #strategy = inject(LocationStrategy);
   readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #chrome = inject(LynxStackChrome);
+  /** The stack page the outlet is on, inside another outlet, if it is. */
+  readonly #outerPage = inject(LynxStackPage, { optional: true });
   readonly #android = isAndroid();
 
   /** The pages, the bottom one first. */
@@ -294,6 +343,21 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   /** Takes the touches meant for pages while they move (see #shield). */
   readonly #shieldElement = this.#overlay({});
   #destroyed = false;
+
+  /** Where the outlet has the bottom bar (see LynxStackChrome). */
+  readonly #bar = signal<BarState>({
+    from: 'root',
+    to: 'root',
+    at: 1,
+    active: null,
+    motion: STILL,
+  });
+  readonly #claim: ChromeClaim = {
+    page: this.#outerPage,
+    state: this.#bar.asReadonly(),
+    hidesPushed: computed(() => this.hideBottomBar() === 'pushed'),
+  };
+  readonly #unfollow = follow(this.#chrome, this.#claim);
 
   constructor() {
     super();
@@ -322,6 +386,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   override ngOnDestroy(): void {
     this.#destroyed = true;
     this.#transition?.stop();
+    this.#unfollow();
     super.ngOnDestroy();
   }
 
@@ -373,6 +438,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     page.contexts = this.#childContexts.onOutletDeactivated();
     this.#active = null;
     setActive(page.stackPage, false);
+    this.#leaveBar();
     this.deactivateEvents.emit(page.ref.instance);
     // The router activates the next route straight after, in the same
     // pass. If it doesn't, this outlet shows nothing now.
@@ -393,6 +459,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#removePage(page, false);
     this.#active = null;
     setActive(page.stackPage, false);
+    this.#leaveBar();
     this.detachEvents.emit(page.ref.instance);
     return page.ref;
   }
@@ -497,6 +564,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #activate(page: Page): void {
     this.#active = page;
     setActive(page.stackPage, true);
+    // Where it is in the stack, and its route, decide what it says about the
+    // bar, and both can have changed since it was last on top.
+    page.bar.set(this.#barOf(page));
+    this.#restBar(page);
     this.#changes.markForCheck();
     this.#binder?.bindActivatedRouteToOutletComponent(
       this,
@@ -518,6 +589,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       this.#pages.injector,
       this.routerOutletData,
       stackPage,
+      this.#chrome,
     ) as unknown as Injector;
     const ref = create(injector);
     // A component the reuse strategy hands back has the route of the page it
@@ -541,6 +613,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     // The view container puts the component's host beside the outlet; it
     // belongs in its frame.
     this.#renderer.appendChild(frame, ref.location.nativeElement);
+    const bar = signal<PageBar>('root');
     const page: Page = {
       ref,
       live: remembered ?? live,
@@ -549,8 +622,22 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       historyIndex,
       contexts: new Map(),
       stackPage,
+      bar,
     };
     this.#liveRoutes.set(ref, page.live);
+    own(this.#chrome, stackPage, this.#claim);
+    // The page's own answer, or the answer of the page it's in.
+    setBottomBarHidden(
+      stackPage,
+      computed(
+        () =>
+          awayOf(
+            bar(),
+            this.#claim.hidesPushed(),
+            this.#outerPage?.bottomBarHidden() ? 1 : 0,
+          ) === 1,
+      ),
+    );
     return page;
   }
 
@@ -607,6 +694,73 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   /**
+   * --- Bottom bar -------------------------------------------------------------
+   */
+
+  /**
+   * What a page says about the bottom bar: its route's `bottomBar`, or else
+   * whether it's pushed over the stack's first page.
+   */
+  #barOf(page: Page): PageBar {
+    const said: unknown = page.route.snapshot.data['bottomBar'];
+    if (said === 'visible' || said === 'hidden') return said;
+    return this.#stack.indexOf(page) > 0 ? 'pushed' : 'root';
+  }
+
+  /**
+   * Has the bar moving from where `from` has it to where `to` does, `at` of
+   * the way, as `motion` says.
+   */
+  #moveBar(from: Page, to: Page, at: number, motion: StackBarMotion): void {
+    this.#bar.set({
+      from: from.bar(),
+      to: to.bar(),
+      at,
+      active: this.#active?.bar() ?? null,
+      motion,
+    });
+  }
+
+  /**
+   * Leaves the bar where `page`, on top, has it, with nothing moving.
+   */
+  #restBar(page: Page): void {
+    this.#moveBar(page, page, 1, this.#stillMotion());
+  }
+
+  /**
+   * The router left the outlet without a page: it doesn't say anything about
+   * the bar until it has one again.
+   */
+  #leaveBar(): void {
+    this.#bar.update((state) => ({ ...state, active: null }));
+  }
+
+  /**
+   * The pages stopped moving where the bar was going.
+   */
+  #settleBar(): void {
+    this.#bar.update((state) => ({
+      ...state,
+      motion: { ...state.motion, duration: 0 },
+    }));
+  }
+
+  /**
+   * The motion of a bar that follows the pages at once: at rest, or under a
+   * finger.
+   */
+  #stillMotion(): StackBarMotion {
+    const motion = this.#motion;
+    return {
+      animation: this.#animates ? motion.animation : 'none',
+      duration: 0,
+      easing: 'linear',
+      coveredX: motion.covered.x,
+    };
+  }
+
+  /**
    * --- Motion -----------------------------------------------------------------
    */
 
@@ -654,6 +808,10 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       to,
       motion.duration,
       motion.easing,
+      // The bar goes where the page that ends up on top has it.
+      direction === 'in'
+        ? { from: under, to: moving, at: 1 }
+        : { from: moving, to: under, at: 1 },
       done,
     );
   }
@@ -661,7 +819,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   /**
    * Animates the top page and the one under it, and the scrim between them,
    * from one set of looks to another, then leaves them at rest: the top page
-   * shown, the one under it hidden. The top page has `corners` as it moves.
+   * shown, the one under it hidden. The top page has `corners` as it moves,
+   * and the bottom bar moves as `bar` says, with them.
    */
   #run(
     top: Page,
@@ -672,6 +831,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     to: { top: PageLook; under: PageLook; scrim: number },
     duration: number,
     easing: string,
+    bar: BarMove,
     done: () => void,
   ): void {
     const width = this.#width;
@@ -698,6 +858,14 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#shield(true);
     // Each element starts where the transition does, from this update on.
     for (const move of moves) this.#setStyles(move.element, move.from);
+    // The bar outside the stack goes where the transition ends, as long as
+    // the pages take and on their curve, for it to move there with them.
+    this.#moveBar(bar.from, bar.to, bar.at, {
+      animation: motion.animation,
+      duration,
+      easing,
+      coveredX: motion.covered.x,
+    });
     let animations: ({ cancel(): void } | undefined)[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
     // The animations start on the next turn, once this update has been
@@ -732,6 +900,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       this.#dropScrim();
       this.#lower(top);
       this.#shield(false);
+      this.#settleBar();
       done();
     };
     const stop = (): void => {
@@ -1001,6 +1170,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       swipe.radius = radius;
       this.#round(swipe.top, radius);
     }
+    // The bar follows the finger toward where the page under has it.
+    this.#moveBar(swipe.top, swipe.under, progress, this.#stillMotion());
   }
 
   /**
@@ -1056,6 +1227,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       to,
       duration,
       IOS_MOTION.easing,
+      { from: top, to: under, at: completes ? 1 : 0 },
       () => {
         if (completes) {
           // Hidden where it went, off the screen, not put back in place: a
@@ -1083,6 +1255,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#hide(swipe.under);
     this.#dropScrim();
     this.#shield(false);
+    this.#restBar(swipe.top);
   }
 
   /**

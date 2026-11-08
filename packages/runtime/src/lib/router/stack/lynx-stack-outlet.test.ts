@@ -44,6 +44,7 @@ import { LynxAccessibilitySettings } from '../../accessibility/accessibility-set
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { provideRouter } from '../lynx-router';
 import { LynxStackOutlet } from './lynx-stack-outlet';
+import { LynxStackChrome, STILL } from './stack-chrome';
 import { LynxStackPage } from './stack-page';
 
 /** Every page made, so a test can find a page's instance and its fate. */
@@ -54,6 +55,8 @@ class Page implements OnDestroy {
   readonly route = inject(ActivatedRoute);
   readonly outletData = inject(ROUTER_OUTLET_DATA);
   readonly stackPage = inject(LynxStackPage);
+  /** The chrome for a bar on the page. */
+  readonly chrome = inject(LynxStackChrome);
   destroyed = false;
   readonly params: Params[] = [];
   readonly queryParams: Params[] = [];
@@ -91,6 +94,25 @@ class InputPage {
 })
 class ParentPage {}
 
+/**
+ * A page with a stack of its own, inside the outer one.
+ */
+@Component({
+  selector: 'test-nest-page',
+  template: '<lynx-stack-outlet />',
+  imports: [LynxStackOutlet],
+})
+class NestPage {
+  readonly chrome = inject(LynxStackChrome);
+
+  constructor() {
+    nests.push(this);
+  }
+}
+
+/** Every page with a stack of its own made. */
+const nests: NestPage[] = [];
+
 @Component({
   selector: 'test-host',
   template: `
@@ -111,7 +133,27 @@ const ROUTES: Routes = [
   { path: 'notes', component: Page },
   { path: 'notes/:id', component: Page },
   { path: 'notes/:id/edit', component: Page },
+  // A page that keeps the bottom bar, pushed as it is.
+  {
+    path: 'notes/:id/share',
+    component: Page,
+    data: { bottomBar: 'visible' },
+  },
+  // A stack inside a page of the outer one.
+  {
+    path: 'notes/:id/nest',
+    component: NestPage,
+    children: [
+      { path: '', component: Page },
+      { path: 'kept', component: Page, data: { bottomBar: 'visible' } },
+      { path: ':item', component: Page },
+    ],
+  },
+  // Deeper than the page with the stack inside it: the outer stack pushes it.
+  { path: 'notes/:id/nest/:item/info', component: Page },
   { path: 'settings', component: Page },
+  // A first page without the bottom bar.
+  { path: 'player', component: Page, data: { bottomBar: 'hidden' } },
   { path: 'input/:id', component: InputPage },
   {
     path: 'guarded/:id',
@@ -140,6 +182,7 @@ describe('LynxStackOutlet', () => {
 
   beforeEach(() => {
     made.length = 0;
+    nests.length = 0;
     canLeave = true;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     animate = vi.fn(() => ({ cancel: vi.fn() }));
@@ -204,6 +247,46 @@ describe('LynxStackOutlet', () => {
       frames,
       shown,
     };
+  };
+
+  /**
+   * Two pages, the outlet laid out 400 wide.
+   */
+  const pushed = async (providers: Provider[] = []) => {
+    const harness = await setup(providers);
+    layOut(harness.host);
+    await harness.go('/notes/1');
+    await harness.settle();
+    animate.mockClear();
+    return harness;
+  };
+
+  const touch = (
+    target: Element,
+    type: string,
+    x: number,
+    y = 300,
+    identifier = 0,
+  ) => {
+    const event = new Event(`bind${type}`, { bubbles: true });
+    const point = { identifier, pageX: x, pageY: y };
+    Object.assign(event, {
+      touches: type === 'touchend' || type === 'touchcancel' ? [] : [point],
+      changedTouches: [point],
+    });
+    target.dispatchEvent(event);
+  };
+
+  /**
+   * A drag from `from` to `to`, `ms` apart per 10px.
+   */
+  const drag = async (target: Element, from: number, to: number, ms = 16) => {
+    touch(target, 'touchstart', from);
+    const step = to > from ? 10 : -10;
+    for (let x = from + step; step > 0 ? x <= to : x >= to; x += step) {
+      await vi.advanceTimersByTimeAsync(ms);
+      touch(target, 'touchmove', x);
+    }
   };
 
   describe('the stack', () => {
@@ -644,46 +727,6 @@ describe('LynxStackOutlet', () => {
   });
 
   describe('swipe back', () => {
-    /**
-     * Two pages, the outlet laid out 400 wide.
-     */
-    const pushed = async (providers: Provider[] = []) => {
-      const harness = await setup(providers);
-      layOut(harness.host);
-      await harness.go('/notes/1');
-      await harness.settle();
-      animate.mockClear();
-      return harness;
-    };
-
-    const touch = (
-      target: Element,
-      type: string,
-      x: number,
-      y = 300,
-      identifier = 0,
-    ) => {
-      const event = new Event(`bind${type}`, { bubbles: true });
-      const point = { identifier, pageX: x, pageY: y };
-      Object.assign(event, {
-        touches: type === 'touchend' || type === 'touchcancel' ? [] : [point],
-        changedTouches: [point],
-      });
-      target.dispatchEvent(event);
-    };
-
-    /**
-     * A drag from `from` to `to`, `ms` apart per 10px.
-     */
-    const drag = async (target: Element, from: number, to: number, ms = 16) => {
-      touch(target, 'touchstart', from);
-      const step = to > from ? 10 : -10;
-      for (let x = from + step; step > 0 ? x <= to : x >= to; x += step) {
-        await vi.advanceTimersByTimeAsync(ms);
-        touch(target, 'touchmove', x);
-      }
-    };
-
     it('drags the top page with the finger over the page under it', async () => {
       const { frames, shown } = await pushed();
       const [under, top] = frames();
@@ -998,6 +1041,261 @@ describe('LynxStackOutlet', () => {
       const top = harness.frames()[1]!;
       await drag(top.firstElementChild!, 100, 300);
       expect(top.style.borderRadius).toBe('0px 0px 62px 62px');
+    });
+  });
+
+  describe('bottom bar', () => {
+    const chrome = () => TestBed.inject(LynxStackChrome);
+    /**
+     * What the chrome says, all at once.
+     */
+    const bar = () => ({
+      hidden: chrome().bottomBarHidden(),
+      progress: chrome().bottomBarProgress(),
+      motion: chrome().bottomBarMotion(),
+    });
+    const resting = (animation = 'ios') =>
+      expect.objectContaining({ animation, duration: 0 });
+
+    it('takes the bar away as a page is pushed, and brings it back as it goes', async () => {
+      const { go, host, location, settle } = await setup();
+      layOut(host);
+      expect(bar()).toEqual({
+        hidden: false,
+        progress: 0,
+        motion: resting(),
+      });
+      await go('/notes/1');
+      // Where the bar ends up, as long as the pages take to get there.
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 1,
+        motion: {
+          animation: 'ios',
+          duration: 350,
+          easing: 'cubic-bezier(0.32, 0.68, 0.12, 1)',
+          coveredX: -0.3,
+        },
+      });
+      expect(made.map((page) => page.stackPage.bottomBarHidden())).toEqual([
+        false,
+        true,
+      ]);
+      await settle();
+      expect(bar().motion).toEqual(resting());
+      location.back();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(bar()).toEqual({
+        hidden: false,
+        progress: 0,
+        motion: expect.objectContaining({ duration: 350 }),
+      });
+      await settle();
+      expect(bar().motion).toEqual(resting());
+    });
+
+    it('follows what a route says', async () => {
+      const { go, settle } = await setup();
+      await go('/notes/1/share');
+      expect(bar().hidden).toBe(false);
+      await go('/player');
+      await settle();
+      // A first page that hides it.
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 1,
+        motion: resting(),
+      });
+    });
+
+    it("keeps the bar on pushed pages with hideBottomBar 'never'", async () => {
+      const { fixture, go, settle } = await setup();
+      setInput(outletOf(fixture), 'hideBottomBar', 'never');
+      await go('/notes/1');
+      await settle();
+      expect(bar().hidden).toBe(false);
+      expect(made[1]!.stackPage.bottomBarHidden()).toBe(false);
+    });
+
+    it('moves the bar with a finger dragging a page back', async () => {
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!.firstElementChild!;
+      await drag(top, 100, 300, 50);
+      // Half way across: the bar is half way back, but still away until the
+      // router goes back.
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 0.5,
+        motion: resting(),
+      });
+      touch(top, 'touchend', 300);
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 0,
+        motion: expect.objectContaining({ animation: 'ios', duration: 350 }),
+      });
+      await settle();
+      expect(bar()).toEqual({
+        hidden: false,
+        progress: 0,
+        motion: resting(),
+      });
+    });
+
+    it('puts the bar back away when a drag comes back', async () => {
+      const { frames, settle, go } = await pushed();
+      const top = frames()[1]!.firstElementChild!;
+      await drag(top, 100, 160, 100);
+      touch(top, 'touchcancel', 160);
+      expect(bar().progress).toBe(1);
+      expect(bar().motion.duration).toBeGreaterThan(0);
+      await settle();
+      expect(bar().motion).toEqual(resting());
+      // And when a navigation comes mid-drag.
+      await drag(top, 100, 200);
+      expect(bar().progress).toBe(0.75);
+      await go('/notes/1/edit');
+      await settle();
+      expect(bar().progress).toBe(1);
+    });
+
+    it('brings the bar back away when a guard keeps the app on the page', async () => {
+      const { go, host, settle, frames } = await setup();
+      layOut(host);
+      await go('/guarded/1');
+      await settle();
+      canLeave = false;
+      const top = frames()[1]!.firstElementChild!;
+      await drag(top, 100, 320, 100);
+      touch(top, 'touchend', 320);
+      expect(bar().progress).toBe(0);
+      // The router stays: the page slides back in, and the bar away.
+      await vi.advanceTimersByTimeAsync(400);
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 1,
+        motion: expect.objectContaining({ duration: 350 }),
+      });
+      await settle();
+      expect(bar().motion).toEqual(resting());
+    });
+
+    it('moves the bar as the pages move on Android, under Reduce Motion, or not at all', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const android = await setup();
+      await android.go('/notes/1');
+      expect(bar().motion).toEqual(
+        expect.objectContaining({ animation: 'material', duration: 450 }),
+      );
+      await android.settle();
+      expect(bar().motion).toEqual(resting('material'));
+      TestBed.resetTestingModule();
+      vi.unstubAllGlobals();
+
+      const reduced = await setup([
+        {
+          provide: LynxAccessibilitySettings,
+          useValue: { reduceMotion: () => true },
+        },
+      ]);
+      await reduced.go('/notes/1');
+      expect(bar().motion).toEqual(
+        expect.objectContaining({
+          animation: 'fade',
+          duration: 250,
+          coveredX: 0,
+        }),
+      );
+      TestBed.resetTestingModule();
+
+      const still = await setup();
+      setInput(outletOf(still.fixture), 'animation', 'none');
+      await still.go('/notes/1');
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 1,
+        motion: resting('none'),
+      });
+    });
+
+    it('counts only an outlet with a page', async () => {
+      const { go, settle, fixture } = await setup();
+      // The side outlet's page says nothing; leaving it empty leaves the
+      // main one to say.
+      await go('/notes/1(side:aside)');
+      await settle();
+      expect(bar().hidden).toBe(true);
+      await go('/notes/1');
+      await settle();
+      expect(bar().hidden).toBe(true);
+      // Gone with its host.
+      fixture.destroy();
+      expect(bar()).toEqual({ hidden: false, progress: 0, motion: STILL });
+    });
+
+    it("doesn't count a page a reuse strategy took", async () => {
+      class KeepNotes extends BaseRouteReuseStrategy {
+        handle: DetachedRouteHandle | null = null;
+        override shouldDetach(route: ActivatedRouteSnapshot): boolean {
+          return route.routeConfig?.path === 'notes/:id';
+        }
+        override store(
+          _route: ActivatedRouteSnapshot,
+          handle: DetachedRouteHandle | null,
+        ): void {
+          this.handle = handle;
+        }
+      }
+      const { go, settle } = await setup([
+        { provide: RouteReuseStrategy, useClass: KeepNotes },
+      ]);
+      await go('/notes/1');
+      await settle();
+      expect(bar().hidden).toBe(true);
+      await go('/settings');
+      await settle();
+      expect(bar().hidden).toBe(false);
+    });
+
+    it('lets a stack inside a page decide, on what the outer page says', async () => {
+      const { go, settle } = await setup();
+      await go('/notes/1/nest');
+      await settle();
+      const nest = nests.at(-1)!;
+      // The outer stack pushed the page, and the inner stack's first page
+      // says nothing, so the bar stays away.
+      expect(bar().hidden).toBe(true);
+      expect(made.at(-1)!.stackPage.bottomBarHidden()).toBe(true);
+      // A bar on the page itself moves with it, and follows only the inner
+      // stack.
+      expect(nest.chrome.bottomBarHidden()).toBe(false);
+      await go('/notes/1/nest/2');
+      expect(bar()).toEqual({
+        hidden: true,
+        progress: 1,
+        motion: expect.objectContaining({ duration: 350 }),
+      });
+      expect(nest.chrome.bottomBarHidden()).toBe(true);
+      await settle();
+      // The inner stack's page keeps the bar.
+      await go('/notes/1/nest/kept');
+      await settle();
+      expect(bar().hidden).toBe(false);
+      // Covered by a page the outer stack pushes, the inner stack doesn't
+      // count any more.
+      await go('/notes/1/nest/kept/info');
+      expect(bar().hidden).toBe(true);
+      expect(nest.chrome.bottomBarHidden()).toBe(false);
+    });
+
+    it('gives a bar on a page the chrome of the outlets on it', async () => {
+      const { go, settle } = await setup();
+      await go('/notes/1');
+      await settle();
+      // The outer stack moves the page, and a bar on it with it.
+      expect(chrome().bottomBarHidden()).toBe(true);
+      expect(made[1]!.chrome.bottomBarHidden()).toBe(false);
+      expect(made[1]!.chrome).not.toBe(chrome());
     });
   });
 });

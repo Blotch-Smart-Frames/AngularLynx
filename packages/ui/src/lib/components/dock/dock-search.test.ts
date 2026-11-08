@@ -173,7 +173,11 @@ const renderDock = async (
   const state = result.componentRef.injector.get(UiDockState);
 
   const stage = () => container.querySelector<HTMLElement>('[ui-glass-group]')!;
-  const dock = () => stage().parentElement!;
+  /**
+   * The view around the group, which moves the shapes with the stack.
+   */
+  const travel = () => stage().parentElement!;
+  const dock = () => travel().parentElement!;
   const shapes = () =>
     Array.from(stage().children).filter((child) =>
       child.hasAttribute('ui-glass'),

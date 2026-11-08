@@ -58,7 +58,7 @@ Read [styling-and-css.md](references/styling-and-css.md)
 
 ## Routing
 
-In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy`. Leaving a route destroys it, as on the web; `LynxRouteReuseStrategy` is an opt-in that keeps route views alive. `<lynx-stack-outlet>` replaces `<router-outlet>` to slide screens in and out as iOS and Android do, with a swipe back, keeping the screens under the top one alive. Lazy-loaded routes with `loadComponent`. Angular's own `routerLink` and `routerLinkActive` work on any element, and the active link gets the `selected` accessibility trait.
+In-memory routing (no browser History API). `provideRouter(routes)` sets up `LynxLocationStrategy`. Leaving a route destroys it, as on the web; `LynxRouteReuseStrategy` is an opt-in that keeps route views alive. `<lynx-stack-outlet>` replaces `<router-outlet>` to slide screens in and out as iOS and Android do, with a swipe back, keeping the screens under the top one alive, and takes the tab bar or dock away from pushed screens (`LynxStackChrome`). Lazy-loaded routes with `loadComponent`. Angular's own `routerLink` and `routerLinkActive` work on any element, and the active link gets the `selected` accessibility trait.
 
 Read [routing.md](references/routing.md)
 

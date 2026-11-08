@@ -190,6 +190,40 @@ router.navigate(['/home'], { info: { stack: 'root' } }); // a new stack, no slid
 
 While Reduce Motion is on, a push or a pop cross-fades instead of sliding, as iOS's does. A drag still moves the screen with the finger.
 
+### The tab bar or dock goes away on a pushed screen
+
+Put a `<lynx-stack-outlet>` in each tab, beside the app's [Tab Bar](/dolan/tab-bar) or [Dock](/dolan/dock), and a screen pushed over a tab's first screen takes the bar away, as iOS and Material do with the screens they drill down to. Back, Android's back button or a swipe brings it back with the screen under it. Nothing changes in the templates:
+
+```typescript title="src/app/app.routes.ts"
+export const routes: Routes = [
+  { path: 'home', loadComponent: () => import('./home').then((m) => m.Home) },
+  {
+    // The tab's own stack: an album pushes over the list.
+    path: 'library',
+    loadComponent: () => import('./library').then((m) => m.LibraryStack), // template: <lynx-stack-outlet />
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./library').then((m) => m.Library),
+      },
+      {
+        path: ':album',
+        loadComponent: () => import('./library').then((m) => m.Album),
+      },
+    ],
+  },
+];
+```
+
+- **On iOS, the bar stays with the screen underneath:** it moves a little left with it, and the pushed screen covers it. A finger dragging the screen back uncovers it.
+- **On Android, it slides down off the screen,** on the screens' own curve, and back up as the screen goes.
+- **While it's away,** screen readers skip it and it takes no taps. The Tab Bar lies over the bottom of the screen rather than under the outlet, so the pushed screen runs to the bottom edge.
+- **A route says otherwise in its data:** `data: { bottomBar: 'visible' }` keeps the bar on a pushed screen, and `bottomBar: 'hidden'` takes it away from a first one. `<lynx-stack-outlet hideBottomBar="never" />` keeps it on every screen whose route doesn't say, as iOS does by default.
+- **A screen that keeps room at its end for the dock can drop it while the dock is away:** read `inject(LynxStackPage, { optional: true })?.bottomBarHidden()`.
+- **A bar of your own** follows [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome), which says whether the bar should be away and how far it has got, move by move under a finger.
+
+The examples on the [Dock](/dolan/dock) and [Tab Bar](/dolan/tab-bar) pages each have a tab with a stack: open an album in the Library, or a message in the Inbox.
+
 ### Good to know
 
 - **A screen's own route stays its own.** Coming back to a screen, the router activates its route again. The screen's `ActivatedRoute` follows it, and its observables emit only what changed.

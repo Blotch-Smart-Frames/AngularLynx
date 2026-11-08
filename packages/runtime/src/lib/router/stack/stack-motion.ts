@@ -26,6 +26,11 @@ export type PageLook = {
  * `dismissed` or brings it back to rest.
  */
 export type StackMotion = {
+  /**
+   * Which motion it is, for a bar outside the stack that moves with the
+   * pages (see LynxStackChrome).
+   */
+  readonly animation: 'ios' | 'material' | 'fade';
   /** How long a push or a pop takes, in ms. */
   readonly duration: number;
   /** The timing function of a push or a pop. */
@@ -85,6 +90,7 @@ const IOS_DISPLAY_RADIUS = 62;
  * - A drag moves the page with the finger, one to one.
  */
 export const IOS_MOTION: StackMotion = {
+  animation: 'ios',
   duration: 350,
   easing: 'cubic-bezier(0.32, 0.68, 0.12, 1)',
   covered: { x: -0.3, scale: 1, opacity: 1 },
@@ -113,6 +119,7 @@ export const IOS_MOTION: StackMotion = {
  *   rounded corners, over the page under it, and letting it go fades it out.
  */
 export const MATERIAL_MOTION: StackMotion = {
+  animation: 'material',
   duration: 450,
   easing: 'cubic-bezier(0.2, 0, 0, 1)',
   covered: { x: -0.1, scale: 1, opacity: 1 },
@@ -141,6 +148,7 @@ export const MATERIAL_MOTION: StackMotion = {
  */
 export const FADE_MOTION: StackMotion = {
   ...IOS_MOTION,
+  animation: 'fade',
   duration: 250,
   easing: 'ease-in-out',
   covered: AT_REST,

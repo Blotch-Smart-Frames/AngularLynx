@@ -1,10 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, type Provider, signal } from '@angular/core';
 import {
   fireEvent,
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxStackPage } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
 import { UiDockScroll, UiDockState } from './dock-scroll';
 
@@ -22,8 +22,8 @@ class ScrollHost {
   readonly shown = signal(true);
 }
 
-const renderScroll = async () => {
-  const result = await render(ScrollHost);
+const renderScroll = async (providers: Provider[] = []) => {
+  const result = await render(ScrollHost, { providers });
   const host = result.componentRef.instance as ScrollHost;
   const state = result.componentRef.injector.get(UiDockState);
   const scrollView = () => result.container.querySelector('scroll-view')!;
@@ -126,5 +126,21 @@ describe('UiDockScroll', () => {
       detail: { scrollTop: 600, scrollHeight: 2000 },
     });
     expect(state.minimized()).toBe(false);
+  });
+
+  it('leaves the dock alone on a page that takes it away', async () => {
+    // A page a stack pushed, as LynxStackPage says.
+    const page = { bottomBarHidden: signal(true) };
+    const { host, state, scrollTo } = await renderScroll([
+      { provide: LynxStackPage, useValue: page },
+    ]);
+    // The page under it minimized the dock.
+    state.minimized.set(true);
+    scrollTo(5);
+    expect(state.minimized()).toBe(true);
+    // Popped, it leaves the dock as the page under it had it.
+    host.shown.set(false);
+    await waitForUpdate();
+    expect(state.minimized()).toBe(true);
   });
 });

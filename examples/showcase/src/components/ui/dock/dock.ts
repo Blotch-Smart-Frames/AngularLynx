@@ -25,6 +25,7 @@ import {
   LynxAccessibilitySettings,
   type LynxEvent,
   LynxRouterLinkActive,
+  LynxStackChrome,
 } from '@blotch/angular-lynx';
 
 import {
@@ -213,6 +214,11 @@ const ACCESSORY_ICON_COLOR = signal('var(--glass-foreground)').asReadonly();
 const px = (value: number): string => `${value}px`;
 
 /**
+ * A number to two places, for a style that changes with a finger.
+ */
+const round = (value: number): number => Math.round(value * 100) / 100;
+
+/**
  * `value` px above the home indicator. The frosted bar runs to the screen's
  * bottom edge and pads itself by the inset (`pb-safe`), so what sits above
  * it counts the inset too.
@@ -321,6 +327,15 @@ export class UiDockAccessory {}
  * search bar and the toolbar slides away; the field's back arrow returns.
  * Before iOS 26, the field opens in a bar above the tab bar. The field rises
  * with the dock above the keyboard.
+ *
+ * A page that a `<lynx-stack-outlet>` pushes over its first page takes the
+ * dock away, as iOS and Material take their tab bars away from the screens
+ * they drill down to, and the dock comes back as the page goes (see
+ * `LynxStackChrome`). Where the pages move as iOS's do, the dock stays with
+ * the page underneath: it moves a little left with it, and the pushed page
+ * covers it. Where they move as Android's do, it slides down off the screen.
+ * It follows a finger dragging a page back, and it leaves screen readers and
+ * taps alone while it's away.
  */
 @Component({
   selector: 'ui-dock',
@@ -336,7 +351,11 @@ export class UiDockAccessory {}
     '[class]': 'hostClass()',
     // Above the keyboard while the search field has it.
     '[style.padding-bottom]': 'keyboardPadding()',
-    '[style.transition]': 'keyboardTransition()',
+    '[style.transition]': 'hostTransition()',
+    // Away with the stack's first page (see stackLook).
+    '[style.transform]': 'stackLook().host',
+    '[attr.accessibility-elements-hidden]': 'stackHidden() || null',
+    '(bindlayoutchange)': 'measureHost($event)',
   },
   // The shapes are direct children of the glass group, so they merge on iOS
   // and the web. Each one keeps its element as the dock minimizes and
@@ -349,140 +368,156 @@ export class UiDockAccessory {}
   //
   // The dock measures its width with an empty view rather than on the
   // group: Lynx for Web sends no layoutchange for a blur-view.
-
+  //
+  // The view around the group moves the shapes with the page under a pushed
+  // one (see stackLook). It's a view of its own, rather than the group,
+  // whose own transition moves its frame as the dock minimizes. It has a
+  // native view on Android, where a flattened view's transition doesn't move
+  // it.
   template: `
     <view class="h-0 w-full" (bindlayoutchange)="measure($event)"></view>
-    <blur-view
-      ui-glass-group
-      class="relative"
-      [spacing]="spacing"
-      [style]="stageStyle()"
+    <view
+      class="flex flex-col"
+      [flatten]="false"
+      [user-interaction-enabled]="!stackHidden()"
+      [style.transform]="stackLook().content"
+      [style.transition]="stackLook().transition"
     >
-      @if (accessory()) {
-        <blur-view
-          ui-glass
-          interactive
-          material="chrome"
-          class="absolute flex flex-row overflow-hidden"
-          [shape]="look().accessoryShape"
-          [radius]="accessoryRadius()"
-          [style]="frames().accessory"
-        >
-          <ng-content select="[ui-dock-accessory]" />
-        </blur-view>
-      }
       <blur-view
-        ui-glass
-        interactive
-        material="chrome"
-        [class]="barClass()"
-        [shape]="look().barShape"
-        [radius]="look().radius"
-        [style]="frames().bar"
+        ui-glass-group
+        class="relative"
+        [spacing]="spacing"
+        [style]="stageStyle()"
       >
-        @if (design() === 'frosted') {
-          <view
-            class="absolute top-0 right-0 left-0 h-[0.5px] bg-border"
-          ></view>
-        }
-        <view
-          accessibility-traits="tabbar"
-          [class]="rowClass()"
-          [style]="rowStyle()"
-          [attr.accessibility-elements-hidden]="rowHidden() || null"
-        >
-          <view
-            class="absolute top-0 bottom-0 left-0 rounded-full bg-glass-foreground"
-            [style]="capsuleStyle()"
-          ></view>
-          <ng-content />
-        </view>
-        @if (barCollapsed()) {
-          <!-- Minimized, the bar is one button that brings the dock back,
-               showing the selected item's icon. While the glass dock
-               searches, it's the button that goes back to the last item. -->
-          <view
-            #restore
-            class="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
-            accessibility-element="true"
-            accessibility-traits="button"
-            [attr.accessibility-label]="expandLabel()"
-            [attr.accessibility-value]="restoreItem()?.label()"
-            (bindtap)="onRestore()"
+        @if (accessory()) {
+          <blur-view
+            ui-glass
+            interactive
+            material="chrome"
+            class="absolute flex flex-row overflow-hidden"
+            [shape]="look().accessoryShape"
+            [radius]="accessoryRadius()"
+            [style]="frames().accessory"
           >
-            <svg
-              [attr.content]="minimizedIcon()"
-              style="width: 24px; height: 24px;"
-            />
-          </view>
+            <ng-content select="[ui-dock-accessory]" />
+          </blur-view>
         }
-      </blur-view>
-      @if (action()) {
         <blur-view
           ui-glass
           interactive
           material="chrome"
-          [class]="actionClass()"
-          [shape]="look().actionShape"
+          [class]="barClass()"
+          [shape]="look().barShape"
           [radius]="look().radius"
-          [tint]="actionTint()"
-          [style]="frames().action"
-          [attr.accessibility-elements-hidden]="actionHidden() || null"
+          [style]="frames().bar"
         >
           @if (design() === 'frosted') {
             <view
               class="absolute top-0 right-0 left-0 h-[0.5px] bg-border"
             ></view>
           }
-          <ng-content select="ui-dock-action" />
+          <view
+            accessibility-traits="tabbar"
+            [class]="rowClass()"
+            [style]="rowStyle()"
+            [attr.accessibility-elements-hidden]="rowHidden() || null"
+          >
+            <view
+              class="absolute top-0 bottom-0 left-0 rounded-full bg-glass-foreground"
+              [style]="capsuleStyle()"
+            ></view>
+            <ng-content />
+          </view>
+          @if (barCollapsed()) {
+            <!-- Minimized, the bar is one button that brings the dock back,
+                 showing the selected item's icon. While the glass dock
+                 searches, it's the button that goes back to the last item. -->
+            <view
+              #restore
+              class="absolute top-0 right-0 bottom-0 left-0 flex items-center justify-center"
+              accessibility-element="true"
+              accessibility-traits="button"
+              [attr.accessibility-label]="expandLabel()"
+              [attr.accessibility-value]="restoreItem()?.label()"
+              (bindtap)="onRestore()"
+            >
+              <svg
+                [attr.content]="minimizedIcon()"
+                style="width: 24px; height: 24px;"
+              />
+            </view>
+          }
         </blur-view>
-        @if (searchField(); as field) {
-          <!-- The search field's own shape, after the action so it draws
-               over it: it grows out of the action as the search opens, and
-               shrinks back into it as it closes. -->
+        @if (action()) {
           <blur-view
             ui-glass
             interactive
             material="chrome"
-            class="absolute flex flex-row overflow-hidden"
-            [shape]="searchShape()"
-            [radius]="0"
-            [style]="frames().search"
+            [class]="actionClass()"
+            [shape]="look().actionShape"
+            [radius]="look().radius"
+            [tint]="actionTint()"
+            [style]="frames().action"
+            [attr.accessibility-elements-hidden]="actionHidden() || null"
           >
             @if (design() === 'frosted') {
               <view
                 class="absolute top-0 right-0 left-0 h-[0.5px] bg-border"
               ></view>
             }
-            <view
-              [class]="searchContentClass()"
-              [style]="searchContentStyle()"
-              [attr.accessibility-elements-hidden]="!searching() || null"
-            >
-              <ng-content select="ui-search-field" />
-            </view>
+            <ng-content select="ui-dock-action" />
           </blur-view>
-          @if (design() === 'glass' && field.cancelable()) {
-            <!-- iOS 26's cancel beside the field: a glass circle that grows
-                 out of the field's end while it's in use. -->
+          @if (searchField(); as field) {
+            <!-- The search field's own shape, after the action so it draws
+                 over it: it grows out of the action as the search opens, and
+                 shrinks back into it as it closes. -->
             <blur-view
               ui-glass
               interactive
-              shape="circle"
-              class="absolute flex items-center justify-center overflow-hidden"
-              accessibility-element="true"
-              accessibility-traits="button"
-              [attr.accessibility-label]="field.cancelLabel()"
-              [attr.accessibility-elements-hidden]="!cancelShown() || null"
-              [style]="frames().cancel"
-              (bindtap)="field.cancel()"
+              material="chrome"
+              class="absolute flex flex-row overflow-hidden"
+              [shape]="searchShape()"
+              [radius]="0"
+              [style]="frames().search"
             >
-              <svg [attr.content]="cancelIcon()" [style]="cancelIconStyle()" />
+              @if (design() === 'frosted') {
+                <view
+                  class="absolute top-0 right-0 left-0 h-[0.5px] bg-border"
+                ></view>
+              }
+              <view
+                [class]="searchContentClass()"
+                [style]="searchContentStyle()"
+                [attr.accessibility-elements-hidden]="!searching() || null"
+              >
+                <ng-content select="ui-search-field" />
+              </view>
             </blur-view>
+            @if (design() === 'glass' && field.cancelable()) {
+              <!-- iOS 26's cancel beside the field: a glass circle that grows
+                   out of the field's end while it's in use. -->
+              <blur-view
+                ui-glass
+                interactive
+                shape="circle"
+                class="absolute flex items-center justify-center overflow-hidden"
+                accessibility-element="true"
+                accessibility-traits="button"
+                [attr.accessibility-label]="field.cancelLabel()"
+                [attr.accessibility-elements-hidden]="!cancelShown() || null"
+                [style]="frames().cancel"
+                (bindtap)="field.cancel()"
+              >
+                <svg
+                  [attr.content]="cancelIcon()"
+                  [style]="cancelIconStyle()"
+                />
+              </blur-view>
+            }
           }
         }
-      }
-    </blur-view>
+      </blur-view>
+    </view>
   `,
 })
 export class UiDock implements SearchFieldContainer {
@@ -499,6 +534,15 @@ export class UiDock implements SearchFieldContainer {
   readonly #injector = inject(Injector);
   readonly #renderer = inject(Renderer2);
   readonly #host = inject(ElementRef);
+  readonly #chrome = inject(LynxStackChrome);
+
+  // A native view of its own on Android, where a flattened view's transition
+  // doesn't move it (see stackLook).
+  protected readonly ownView = this.#renderer.setAttribute(
+    this.#host.nativeElement,
+    'flatten',
+    'false',
+  );
 
   /** The design on this platform (see GlassDesign), which the items follow. */
   readonly design = injectGlassDesign();
@@ -517,6 +561,12 @@ export class UiDock implements SearchFieldContainer {
    * the dock minimizes.
    */
   protected readonly width = signal(0);
+
+  /**
+   * The host's width, margins and all: as wide as the screen, which a page
+   * pushed over the stack's first one crosses.
+   */
+  protected readonly hostWidth = signal(0);
 
   /** The item whose route is active, if any. */
   readonly selectedItem = computed(() =>
@@ -614,8 +664,69 @@ export class UiDock implements SearchFieldContainer {
     cn(
       'absolute right-0 bottom-0 left-0 flex flex-col',
       this.design() !== 'frosted' && 'px-4 pb-safe-2',
+      this.stackLook().clip && 'overflow-hidden',
       this.userClass(),
     ),
+  );
+
+  /**
+   * Whether a page of the stack that's showing has taken the dock away (see
+   * LynxStackChrome).
+   */
+  protected readonly stackHidden = computed(() =>
+    this.#chrome.bottomBarHidden(),
+  );
+
+  /**
+   * Where the stack has the dock, as its pages move.
+   *
+   * Where they move as iOS's do, the dock stays with the page under a pushed
+   * one, as iOS's tab bar does: the shapes move left with it, by its share
+   * of the width (`coveredX`), and the pushed page covers them. The pushed
+   * page can't draw over the dock, which is outside the stack, so the host
+   * covers it instead: it moves left the whole way, its right edge with the
+   * pushed page's left one, and clips the shapes, which move back right by
+   * the rest.
+   *
+   * Otherwise it slides down off the screen, as Material's navigation bar
+   * leaves a screen it drills down to, and as the dock's own toolbar does
+   * when it minimizes.
+   *
+   * It moves as long as the pages do, on their curve, and at once as a
+   * finger drags them. Under Reduce Motion, while the pages cross-fade, it
+   * goes and comes at once, as the dock's own transitions do.
+   */
+  protected readonly stackLook = computed(() => {
+    const progress = this.#chrome.bottomBarProgress();
+    const motion = this.#chrome.bottomBarMotion();
+    const moving = motion.duration > 0;
+    const transition =
+      moving && motion.animation !== 'fade'
+        ? `transform ${motion.duration}ms ${motion.easing}`
+        : null;
+    if (motion.animation === 'ios') {
+      const back = progress * (1 + motion.coveredX) * this.hostWidth();
+      return {
+        host: `translateX(${round(-progress * 100)}%)`,
+        content: `translateX(${round(back)}px)`,
+        clip: progress > 0 || moving,
+        transition,
+      };
+    }
+    return {
+      host: `translateY(${round(progress * 100)}%)`,
+      content: 'translateX(0px)',
+      clip: false,
+      transition,
+    };
+  });
+
+  /** The keyboard's transition and the stack's, which move the host. */
+  protected readonly hostTransition = computed(
+    () =>
+      [this.keyboardTransition(), this.stackLook().transition]
+        .filter(Boolean)
+        .join(', ') || null,
   );
 
   /**
@@ -1015,6 +1126,10 @@ export class UiDock implements SearchFieldContainer {
 
   protected measure({ detail }: LynxEvent<LayoutChangeDetail>): void {
     this.width.set(detail.width);
+  }
+
+  protected measureHost({ detail }: LynxEvent<LayoutChangeDetail>): void {
+    this.hostWidth.set(detail.width);
   }
 
   /**

@@ -231,6 +231,12 @@ export { LynxStackOutlet } from './lib/router/stack/lynx-stack-outlet';
 export { LynxStackPage } from './lib/router/stack/stack-page';
 export type { StackNavigationInfo } from './lib/router/stack/stack-change';
 export type { StackAnimation } from './lib/router/stack/stack-motion';
+export { LynxStackChrome } from './lib/router/stack/stack-chrome';
+export type {
+  StackBarMotion,
+  StackBottomBar,
+  StackBottomBarDefault,
+} from './lib/router/stack/stack-chrome';
 export { bootstrapApplication, ɵstartBackgroundThread } from './lib/runtime';
 import './lib/types/runtime-types';
 import './lib/types/lynx';

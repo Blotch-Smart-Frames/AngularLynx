@@ -11,8 +11,19 @@ export const routes: Routes = [
     loadComponent: () => import('./screens').then((m) => m.BrowseScreen),
   },
   {
+    // A stack of its own: an album pushes over the list (see LibraryStack).
     path: 'library',
-    loadComponent: () => import('./screens').then((m) => m.LibraryScreen),
+    loadComponent: () => import('./screens').then((m) => m.LibraryStack),
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./screens').then((m) => m.LibraryScreen),
+      },
+      {
+        path: ':album',
+        loadComponent: () => import('./screens').then((m) => m.AlbumScreen),
+      },
+    ],
   },
   {
     path: 'search',

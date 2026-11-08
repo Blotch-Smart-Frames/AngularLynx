@@ -85,6 +85,16 @@ export class LynxLocationStrategy extends LocationStrategy {
    */
   readonly canGoBack = this.#canGoBack.asReadonly();
 
+  /**
+   * Where the current entry is in the history, counting from 0 for the
+   * first. `<lynx-stack-outlet>` keeps each page's, so its swipe back goes
+   * back through the history to the entry before the page's, however many
+   * entries the page added since.
+   */
+  get historyIndex(): number {
+    return this.#historyIndex;
+  }
+
   override path(): string {
     return this.#path;
   }

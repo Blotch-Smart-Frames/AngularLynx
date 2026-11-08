@@ -169,6 +169,11 @@ export class App {
       items: [
         { path: 'motion-demo', label: 'Motion', icon: 'zap' },
         {
+          path: 'stack-demo',
+          label: 'Stack Navigation',
+          icon: 'chevron-right',
+        },
+        {
           path: 'transition-demo',
           label: 'Transitions',
           icon: 'chevrons-right',

@@ -1,6 +1,6 @@
 # Furniture shop: the Lynx tutorial app
 
-The two apps the official Lynx tutorials build, [Product Gallery](https://lynxjs.org/learn/gallery) and [Product Detail](https://lynxjs.org/learn/product-detail), as one Angular app. Tap a picture in the gallery to open its product page, and swipe through the photos.
+The two apps the official Lynx tutorials build, [Product Gallery](https://lynxjs.org/learn/gallery) and [Product Detail](https://lynxjs.org/learn/product-detail), as one Angular app. Tap a picture in the gallery to open its product page, swipe through the photos, and drag the page to the right to go back to the gallery.
 
 <Go
   example="furniture-shop"
@@ -15,8 +15,8 @@ The pictures, colors and copy are the tutorials'. Set it next to the [ReactLynx 
 - **A waterfall `<list>`** — `list-type="waterfall"` lays the pictures into two columns, and `estimated-main-axis-size-px` tells the list each picture's height before it loads. See [`<list>`](/api/elements/list).
 - **An element method** — `autoScroll` scrolls the gallery by itself. The page calls it with `invoke()` once the list has rendered. See [Call element methods](/guide/selector-query).
 - **A main-thread scroll handler** — `[mainThreadBindscroll]` moves the glowing scrollbar on every scroll event, with no change detection in between. See [Main-thread scripts](/guide/main-thread/).
-- **A swiper from touch events** — `src/app/product-detail/swiper.ts` drags the photo strip with `[mainThreadBindtouchmove]` and snaps it with a `requestAnimationFrame` tween. Mouse events are bound too, so it drags in a desktop browser.
-- **Two routes** — the gallery and the product page are lazy routes, and the product page reads its `:index` through `withComponentInputBinding()`. See [Routing](/guide/routing).
+- **A swiper from touch events** — `src/app/product-detail/swiper.ts` drags the photo strip with `[mainThreadCatchtouchmove]` and snaps it with a `requestAnimationFrame` tween. Mouse events are caught too, so it drags in a desktop browser. Catching them, rather than binding, keeps a drag on the photos from reaching the stack outlet, which would take a drag to the right as a swipe back.
+- **Two routes in a stack** — the gallery and the product page are lazy routes, and the product page reads its `:index` through `withComponentInputBinding()`. `<lynx-stack-outlet>` slides the product page in over the gallery, and the back chevron, Android's back button or a drag to the right slides it away, back to the gallery as you left it. See [Slide screens in and out](/guide/routing#slide-screens-in-and-out-as-a-native-app-does).
 - **Bundled images** — the pictures are `import`ed, so the build hashes and copies them. See [`<image>`](/api/elements/image).
 - **Safe areas** — the nav bar and the Order button pad themselves with `env(safe-area-inset-*)`, so on a phone they clear the status bar and the home indicator. See [Safe area](/guide/safe-area).
 

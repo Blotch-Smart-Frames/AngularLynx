@@ -388,12 +388,45 @@ The `<list>` path already guarded this exact case (`LynxListElement.#scheduleUpd
 
 ### The fix
 
-`scheduleSettleFlush()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) schedules ONE coalesced `queueMicrotask` flush whenever native work happens outside a CD cycle. Two call sites arm it:
+`scheduleSettleFlush()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) schedules ONE coalesced `queueMicrotask` flush whenever native work happens outside a CD cycle. These call sites arm it:
 
 - `LynxDocument`'s element creators — for content _created_ out of cycle (first navigation to a lazy route, a dynamic `createComponent()`).
 - `LynxElement.#recreateIfDead()` — recreate-on-remount builds fresh refs via `createNativeRefByTag` directly (bypassing `LynxDocument.createElement`), and a route re-attach runs out of cycle, so the rebuilt subtree needs its own flush.
+- `LynxElement`'s style, class and attribute setters, and `animate()` with its animation's `cancel()`, `pause()` and `play()`. A transition's last frame, set from a `setTimeout` (Lynx tells a script nothing when an animation ends), stayed unflushed on iOS and Android until something else ran change detection: `<lynx-stack-outlet>`'s covered page stayed at its animated offset and in the accessibility tree, with its glass Back button over the page above. The web preview hid it, because web-core applies a style to the DOM at once. Found in November 2026 while building the stack outlet, on the iOS 27 Simulator.
 
 `LynxRendererFactory2.begin()`/`end()` maintain the in-cycle flag (`setInsideChangeDetection`, `packages/runtime/src/lib/lynx-render-lifecycle.ts`), so in-cycle rendering stays a no-op — its `end()` already flushes. It uses `queueMicrotask`, never `setTimeout` (a macrotask flush crashes the native engine), stands down if a real CD cycle starts first, and is skipped while the first render is pending (native flushes after `renderPage`). Covered by `packages/runtime/src/lib/lynx-element/settle-flush.test.ts`.
+
+---
+
+## `element.animate()` on an element native hasn't been flushed yet does nothing
+
+### What you'd expect (web)
+
+`element.animate()` on an element you just created and inserted plays from its first keyframe: the browser has the element as soon as it's in the DOM.
+
+### What Lynx does
+
+Native Lynx drops the animation: the element is in the fiber tree but not yet in the UI tree, which only a flush builds. On the iOS 27 Simulator, a page `<lynx-stack-outlet>` created and animated in the same turn appeared at its end position at once, with no slide. web-core animates it, so the web preview hides the problem.
+
+### What to do
+
+Give the element its starting look as an inline style in the turn that creates it, and start the animation on a later turn (a `setTimeout(…, 0)`), after the flush: `<lynx-stack-outlet>` does this for every transition, and `ui-bottom-sheet` waits a turn before it slides its panel in for the same reason.
+
+---
+
+## Lynx Explorer takes swipes from the left edge for its own Back
+
+### What you'd expect (web)
+
+A drag that starts at the left edge of a page reaches the page, which can use it to go back.
+
+### What Lynx does
+
+In Lynx Explorer on iOS, a drag from the left edge never reached the app's touch listeners (a drag from x = 6pt did nothing, while the same drag from x = 60pt did): Explorer's navigation controller has an edge pan of its own for leaving the page. The apps `ng build --platform ios` makes have no such gesture, and the same drag from x = 4pt reached the app there. Measured on the iOS 27 Simulator, November 2026.
+
+### What to do
+
+Swipe from inside a page when trying a swipe back in Explorer. `<lynx-stack-outlet>` takes a swipe from anywhere on a page, as iOS 26 does, so this only matters for the edge.
 
 ---
 

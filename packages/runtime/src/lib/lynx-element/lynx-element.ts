@@ -913,6 +913,9 @@ export class LynxElement implements BaseLynxElement {
       } else {
         this.#removedAttributes.delete(name);
         __SetAttribute(this.element, name, value);
+        // Set outside change detection (from a timer, a promise, a gesture),
+        // it reaches native only with a flush (see scheduleSettleFlush).
+        scheduleSettleFlush();
       }
       // Mirror for recreation. removeAttribute() funnels here with value=null,
       // so drop the key then rather than replaying a cleared attribute. raw-text
@@ -1027,6 +1030,9 @@ export class LynxElement implements BaseLynxElement {
     __AddInlineStyle(this.element, key, forNative(value));
     this.#inlineStyleKeys.set(key, value);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
+    // A style set outside change detection, as a transition's last frame is
+    // from a timer, reaches native only with a flush (see scheduleSettleFlush).
+    scheduleSettleFlush();
   }
   removeStyle(key: string): void {
     if (isCustomProperty(key)) {
@@ -1036,6 +1042,7 @@ export class LynxElement implements BaseLynxElement {
     __AddInlineStyle(this.element, key, null);
     this.#inlineStyleKeys.delete(key);
     if (LAYOUT_STYLES.has(key)) this.#layoutChanged();
+    scheduleSettleFlush();
   }
   setInlineStyles(inlineStyle: string): void {
     // A `style="display: block"` lays out as Lynx's `linear`, as a
@@ -1049,6 +1056,7 @@ export class LynxElement implements BaseLynxElement {
     __SetInlineStyles(this.element, this.#inlineStyleFor(inlineStyle));
     this.#inlineStyleWhole = inlineStyle;
     this.#layoutChanged();
+    scheduleSettleFlush();
   }
 
   /**
@@ -1575,6 +1583,7 @@ export class LynxElement implements BaseLynxElement {
     set.add(name);
     this.#classes = [...set].join(' ');
     this.#rulesChanged();
+    scheduleSettleFlush();
   }
 
   addScopeClass(name: string): void {
@@ -1594,6 +1603,7 @@ export class LynxElement implements BaseLynxElement {
     __SetClasses(this.element, joined);
     this.#classes = joined;
     this.#rulesChanged();
+    scheduleSettleFlush();
   }
 
   /**
@@ -2229,6 +2239,18 @@ export class LynxElement implements BaseLynxElement {
     // returns to the native pool. Without this, the pool slot retains
     // stale animation state (e.g. opacity stuck at the FROM keyframe).
     this.#activeAnimations.push(anim);
+    // Starting, pausing, playing and canceling an animation all reach native
+    // with the next flush, like a style: one started or canceled from a
+    // timer, outside change detection, needs a flush of its own (see
+    // scheduleSettleFlush).
+    scheduleSettleFlush();
+    for (const method of ['cancel', 'pause', 'play'] as const) {
+      const run = anim[method].bind(anim);
+      anim[method] = () => {
+        run();
+        scheduleSettleFlush();
+      };
+    }
     return anim;
   }
 
@@ -2735,9 +2757,15 @@ let settleFlushScheduled = false;
  * flush.) This mirrors the `<list>` path's own guard for the exact same case —
  * see `LynxListElement.#scheduleUpdate`.
  *
- * Called from `LynxDocument`'s element creators, which only run on the main
- * thread (Angular doesn't run on the background thread), so no thread guard is
- * needed here. It schedules ONE
+ * The same goes for a style, class, attribute or animation an element gets
+ * outside a cycle: a transition's last frame set from a timer, or a gesture's
+ * from a native callback, stayed unflushed on iOS and Android (the web
+ * preview applies them at once, so it didn't show there), and a pushed page's
+ * covered page stayed half visible under it (see LynxStackOutlet).
+ *
+ * Called from `LynxDocument`'s element creators and those `LynxElement`
+ * mutations, which only run on the main thread (Angular doesn't run on the
+ * background thread), so no thread guard is needed here. It schedules ONE
  * coalesced microtask (matching the list guard's `queueMicrotask`, not
  * `setTimeout` — flushing from a macrotask crashes the native engine), and is a
  * no-op while:

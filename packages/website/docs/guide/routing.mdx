@@ -128,6 +128,74 @@ export class Details {
 - **The Android back button goes back a screen** in an app built with `ng build --platform android`. The router handles it like the browser's back button on the web, so guards such as `canDeactivate` still run. On the first screen, it leaves the app.
 - **For a Back button in a top bar**, use the [Navigation Bar](/dolan/navigation-bar): it shows its Back button only while there's a screen to go back to, and calls `Location.back()`.
 
+## Slide screens in and out, as a native app does
+
+`<router-outlet>` swaps screens at once. Put `<lynx-stack-outlet>` in its place to move between them as iOS and Android apps do: a screen you open slides in over the last one, Back slides it away, and a finger can drag it back.
+
+<Go example="stack-navigation" defaultFile="src/app/app.ts" />
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS, LynxStackOutlet } from '@blotch/angular-lynx'; // [!code highlight]
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxStackOutlet], // [!code highlight]
+  template: `
+    <view class="flex h-full flex-col bg-background">
+      <lynx-stack-outlet />
+      <!-- [!code highlight] -->
+    </view>
+  `,
+})
+export class App {}
+```
+
+- **It's a router outlet.** It takes `<router-outlet>`'s inputs and outputs (`name`, `routerOutletData`, `(activate)`, `(deactivate)`), works with child routes, guards, resolvers, lazy routes and `withComponentInputBinding()`, and goes back through the router, so `canDeactivate` runs on a swipe too.
+- **On iOS, it moves as UIKit's navigation controller does on iOS 26 and later:** the new screen slides in from the right with the display's rounded corners, over the last one, which slides a third of the way left and dims. The timing is fitted to iOS 27's own.
+- **On Android, it moves as Android's activities do:** the new screen slides in a little way and fades in. A drag shrinks the screen with rounded corners, as Android's predictive back does.
+- **Swipe back from the left edge, or from anywhere on the screen,** as on iOS 26. Inside something that scrolls sideways itself (a horizontal `<scroll-view>`, a `<list>`, a `<viewpager>`), only the edge swipes, so the scroller keeps its own swipes. A screen goes back if you let go past the middle or flick it.
+- **Screens under the top one stay alive,** as a navigation controller's do. Back finds a screen as you left it, scrolled where you left it, with its state. To pause work while a screen is covered, inject `LynxStackPage` and read its `active()` signal.
+- **Each screen is drawn on the theme's background** (`var(--background)`, white without the `@blotch/ui` theme), so the one under it doesn't show through. Give `pageClass` a class with another background for something else: `<lynx-stack-outlet pageClass="bg-card" />`.
+
+### Which way a screen moves
+
+The stack follows the URL, as a navigation controller follows the screens of an app:
+
+| You go to                                                    | The stack                                    |
+| ------------------------------------------------------------ | -------------------------------------------- |
+| A deeper URL, `/notes/3` from `/notes`                       | Pushes it: it slides in from the right       |
+| A URL in the stack, by Back, a swipe or a `routerLink` to it | Pops back to it: the screens above slide off |
+| A URL the top one's is under, `/notes` from `/notes/3`       | Slides it in from behind, as a pop           |
+| A URL at the same depth, `/settings` from `/home`            | Swaps to it at once, as a tab bar does       |
+| Any URL with `replaceUrl: true`                              | Swaps the top screen at once                 |
+
+So a back button made of a `routerLink` to the screen it came from slides back, and a tab bar beside the outlet switches tabs without a slide. When a screen should move otherwise, say so in the navigation's `info`, which Angular keeps for that navigation alone:
+
+```html
+<!-- A same-depth link that should still slide in -->
+<view routerLink="/post/5" [info]="{ stack: 'push' }"><text>Post</text></view>
+```
+
+```typescript
+router.navigate(['/home'], { info: { stack: 'root' } }); // a new stack, no slide
+```
+
+`'push'` slides a screen in, `'pop'` slides back to it, and `'root'` starts a new stack without a slide. The type is `StackNavigationInfo`.
+
+### Choose the motion
+
+`animation` picks it: `'ios'`, `'material'`, or `'none'`, which swaps screens at once and turns the swipe off. By default it's Material on Android and iOS everywhere else, the [web preview](/guide/glossary#web-preview) included. Turn only the swipe off with `[swipeBack]="false"`.
+
+While Reduce Motion is on, a push or a pop cross-fades instead of sliding, as iOS's does. A drag still moves the screen with the finger.
+
+### Good to know
+
+- **A screen's own route stays its own.** Coming back to a screen, the router activates its route again. The screen's `ActivatedRoute` follows it, and its observables emit only what changed.
+- **Angular reuses a component when only the params change,** as on the web: `/notes/1` to `/notes/2` updates the note in place rather than pushing a screen. Read params reactively (see [Read route parameters](#read-route-parameters)).
+- **The [Navigation Bar](/dolan/navigation-bar) and the [Toolbar](/dolan/toolbar) keep their state per screen,** so each screen in the stack has its own large title and scroll edge. A bar of your own does the same with `injectBarState()`.
+- **In Lynx Explorer, the left edge is Explorer's:** its own back gesture takes swipes from the edge. Swipe from inside the screen there. Apps built with `ng build --platform` have no such gesture.
+
 ## Read route parameters
 
 Turn on `withComponentInputBinding()` to receive route parameters as inputs:
@@ -193,11 +261,12 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 | Links        | `<a routerLink>`                            | `routerLink` on any element, `<a>` too |
 | Active link  | `aria-current` with `ariaCurrentWhenActive` | The `selected` accessibility trait     |
 | Going back   | Browser back button, `history.back()`       | Android back button, `Location.back()` |
+| Transitions  | `withViewTransitions()`                     | `<lynx-stack-outlet>`, with swipe back |
 | Lazy routes  | Separate files, downloaded on demand        | Part of the bundle                     |
 
 ## Good to know
 
-Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and its state is gone when you come back. To keep route views alive instead, provide [`LynxRouteReuseStrategy`](/api/angular-lynx/routing#lynxroutereusestrategy). Its views stay in memory, with their timers and subscriptions running, until the app closes.
+Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and its state is gone when you come back. `<lynx-stack-outlet>` keeps the screens under the top one alive until you go back past them. To keep every route view alive instead, provide [`LynxRouteReuseStrategy`](/api/angular-lynx/routing#lynxroutereusestrategy). Its views stay in memory, with their timers and subscriptions running, until the app closes.
 
 ## Related
 
@@ -207,4 +276,5 @@ Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and
 - [Tab Bar](/dolan/tab-bar): a ready-made bottom tab bar that navigates between routes
 - [Dock](/dolan/dock): the same as a floating Liquid Glass bar
 - [Navigation Bar](/dolan/navigation-bar): a screen's top bar, with a Back button that goes back through the router
+- [Stack Navigation example](/examples/stack-navigation): screens in a `<lynx-stack-outlet>`, three deep
 - [Angular routing guide](https://angular.dev/guide/routing)

@@ -1,0 +1,1113 @@
+import { Location, LocationStrategy } from '@angular/common';
+import {
+  type ComponentRef,
+  type EnvironmentInjector,
+  type InjectOptions,
+  type Injector,
+  type OnDestroy,
+  type ProviderToken,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  Renderer2,
+  ViewContainerRef,
+  booleanAttribute,
+  effect,
+  inject,
+  input,
+} from '@angular/core';
+import {
+  type Data,
+  type OutletContext,
+  ActivatedRoute,
+  ChildrenOutletContexts,
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationSkipped,
+  ROUTER_OUTLET_DATA,
+  Router,
+  RouterOutlet,
+} from '@angular/router';
+import { LynxAccessibilitySettings } from '../../accessibility/accessibility-settings';
+import { isAndroid } from '../../lynx-document/android-blur-capture';
+import { LynxElement } from '../../lynx-element/lynx-element';
+import { pointerIdOf } from '../../lynx-element/pointer-events';
+import { LynxLocationStrategy } from '../lynx-location-strategy';
+import { type LiveRoute, liveRoute } from './live-route';
+import { type StackNavigationInfo, changeFor } from './stack-change';
+import {
+  type PageLook,
+  type StackAnimation,
+  type StackMotion,
+  AT_REST,
+  FADE_MOTION,
+  IOS_MOTION,
+  MATERIAL_MOTION,
+  lookStyles,
+  mixLooks,
+} from './stack-motion';
+import { LynxStackPage, setActive } from './stack-page';
+import { SwipeTracker } from './swipe-tracker';
+
+/**
+ * What the outlet needs of an element it moves: the renderer's element, which
+ * on Lynx is a LynxElement and in a test's DOM an HTMLElement. Neither has
+ * `animate()` for sure (jsdom has none), so it's optional.
+ */
+type FrameElement = {
+  animate?: (
+    keyframes: Record<string, string | number>[],
+    options: { duration: number; easing: string; fill: 'forwards' },
+  ) => { cancel(): void } | undefined;
+};
+
+/**
+ * The outlet's own element, whose box a swipe measures: LynxElement keeps it
+ * from the element's layouts (see lynx-element/layout.ts).
+ */
+type HostElement = FrameElement & {
+  getBoundingClientRect(): { left: number; top: number; width: number };
+};
+
+/** The router's input binder (`withComponentInputBinding()`), as RouterOutlet keeps it. */
+type InputBinder = {
+  bindActivatedRouteToOutletComponent(
+    outlet: unknown,
+    injector: Injector,
+  ): void;
+  unsubscribeFromRouteData(outlet: unknown): void;
+};
+
+/** A page in the stack: the routed component, and the frame it moves in. */
+type Page = {
+  readonly ref: ComponentRef<unknown>;
+  /** What the component injects as its ActivatedRoute (see live-route.ts). */
+  readonly live: LiveRoute;
+  /** The route the router activated it with last. */
+  route: ActivatedRoute;
+  /** The view the outlet moves, rounds and hides, holding the component's host. */
+  readonly frame: FrameElement;
+  /**
+   * Where the history was when the page last came to the top (see
+   * LynxLocationStrategy.historyIndex): the swipe goes back to the entry
+   * before it.
+   */
+  historyIndex: number;
+  /**
+   * The contexts of the page's own router outlets while it isn't on top. The
+   * router forgets them when it leaves the page's route, and the outlets,
+   * which live on with the page, never register again.
+   */
+  contexts: Map<string, OutletContext>;
+  /** What the page's components inject to know about it. */
+  readonly stackPage: LynxStackPage;
+};
+
+/** One element moving from one look to another. */
+type Move = {
+  readonly element: FrameElement;
+  readonly from: Record<string, string>;
+  readonly to: Record<string, string>;
+};
+
+/**
+ * A transition running: `finish()` jumps it to its end, as a navigation
+ * that comes in mid-transition does, and `stop()` abandons it, as the
+ * outlet's destruction does (its pages go with it).
+ */
+type Transition = { finish(): void; stop(): void };
+
+/** A finger dragging the top page back. */
+type Swipe = {
+  readonly tracker: SwipeTracker;
+  /** The touch it follows, or null for a mouse. */
+  readonly touch: number | null;
+  readonly top: Page;
+  readonly under: Page;
+  /** Whether the pages are following the finger yet. */
+  dragging: boolean;
+};
+
+/** A touch, as Lynx and the DOM both report one. */
+type TouchPoint = {
+  readonly identifier: number;
+  readonly pageX: number;
+  readonly pageY: number;
+};
+
+/** A touch or mouse event, as Lynx and the DOM both report one. */
+type PointerEvent = {
+  readonly touches: ArrayLike<TouchPoint>;
+  readonly changedTouches: ArrayLike<TouchPoint>;
+  readonly target?: unknown;
+  readonly x?: number;
+  readonly y?: number;
+  readonly buttons?: number;
+};
+
+/** The elements a finger swipes sideways in on its own. */
+const SIDEWAYS_ELEMENTS = new Set(['viewpager', 'swiper', 'x-swiper']);
+
+/**
+ * The URL of a route's page: its path from the root, matrix parameters and
+ * all, without the query, which every page shares.
+ */
+const urlOf = (route: ActivatedRoute): string =>
+  `/${route.snapshot.pathFromRoot
+    .flatMap((snapshot) => snapshot.url.map(String))
+    .join('/')}`;
+
+/**
+ * The injector a page's component gets, as RouterOutlet's OutletInjector
+ * (not exported) is: it gives the page its route, its outlets' contexts and
+ * the outlet's data, and leaves the rest to the outlet's own injector.
+ */
+class PageInjector {
+  constructor(
+    readonly route: ActivatedRoute,
+    readonly childContexts: ChildrenOutletContexts,
+    readonly parent: Injector,
+    readonly outletData: unknown,
+    readonly stackPage: LynxStackPage,
+  ) {}
+
+  get<T>(
+    token: ProviderToken<T>,
+    notFoundValue?: unknown,
+    options?: InjectOptions,
+  ): T {
+    const key: unknown = token;
+    if (key === ActivatedRoute) return this.route as T;
+    if (key === ChildrenOutletContexts) return this.childContexts as T;
+    if (key === ROUTER_OUTLET_DATA) return this.outletData as T;
+    if (key === LynxStackPage) return this.stackPage as T;
+    return this.parent.get(token, notFoundValue as T, options);
+  }
+}
+
+/**
+ * A router outlet that keeps a stack of pages and moves between them as the
+ * platform's navigation does: on iOS, a new page slides in from the right
+ * with rounded corners over the last one, which slides a third of the way
+ * left under a shadow of dark, and going back slides it away again; on
+ * Android, pages slide and fade as Android's activities do. A finger dragging
+ * a page from the left edge, or anywhere on it that doesn't scroll sideways,
+ * takes it back, and the page follows the finger.
+ *
+ * Use it in place of `<router-outlet>`; it's one, with the same inputs and
+ * outputs. The pages under the top one stay alive, as a navigation
+ * controller's do, so going back finds them as they were, scrolled where they
+ * were.
+ *
+ * ```html
+ * <lynx-stack-outlet />
+ * ```
+ *
+ * The stack follows the URL (see {@link changeFor}): a deeper URL pushes a
+ * page, a URL in the stack pops back to it, and a URL at the same depth, as
+ * from a tab bar, starts a new stack without a transition. A navigation's
+ * `info` can say otherwise ({@link StackNavigationInfo}).
+ *
+ * Going back goes through the router: Back (`Location.back()`), the Android
+ * back button and a swipe all navigate, so guards and resolvers run, and a
+ * guard that refuses brings a swiped page back.
+ */
+@Component({
+  selector: 'lynx-stack-outlet',
+  exportAs: 'outlet',
+  template: '',
+  host: {
+    // The pages fill the outlet, one over another, and a page coming in from
+    // the side is clipped by it.
+    style: 'position: relative; overflow: hidden; flex: 1 1 0%;',
+  },
+})
+export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
+  /**
+   * How pages move: `'ios'`, `'material'`, or `'none'`, which swaps them at
+   * once and turns the swipe off. By default, Material on Android and iOS
+   * everywhere else, the web included. While Reduce Motion is on, a push or a
+   * pop cross-fades instead, as iOS's does; a drag still moves the page.
+   */
+  readonly animation = input<StackAnimation | undefined>(undefined);
+
+  /**
+   * Whether a finger dragging the top page to the right takes it back: from
+   * the left edge, or anywhere on the page that doesn't scroll sideways itself,
+   * as on iOS 26.
+   */
+  readonly swipeBack = input(true, { transform: booleanAttribute });
+
+  /**
+   * Classes for each page's frame, the view that holds the routed component
+   * and moves. Without them a page is drawn on the theme's background
+   * (`var(--background)`, white without the `@blotch/ui` theme), so the page
+   * under it doesn't show through; give a class with a background of its own
+   * for another (`pageClass="bg-card"`).
+   */
+  readonly pageClass = input('');
+
+  readonly #renderer = inject(Renderer2);
+  readonly #host = inject(ElementRef).nativeElement as HostElement;
+  readonly #pages = inject(ViewContainerRef);
+  readonly #contexts = inject(ChildrenOutletContexts);
+  readonly #changes = inject(ChangeDetectorRef);
+  readonly #router = inject(Router);
+  readonly #location = inject(Location);
+  readonly #strategy = inject(LocationStrategy);
+  readonly #settings = inject(LynxAccessibilitySettings);
+  readonly #android = isAndroid();
+
+  /** The pages, the bottom one first. */
+  #stack: Page[] = [];
+  /** The page the router has active: the top one, or null between routes. */
+  #active: Page | null = null;
+  /** Each component's page, for a component the reuse strategy hands back. */
+  readonly #liveRoutes = new WeakMap<ComponentRef<unknown>, LiveRoute>();
+  #transition: Transition | null = null;
+  #swipe: Swipe | null = null;
+  /** The page a swipe took away, until the navigation back settles. */
+  #swiped: Page | null = null;
+  /** Darkens the page under a moving one. */
+  readonly #scrim = this.#overlay({ 'background-color': '#000000' });
+  /** Takes the touches meant for pages while they move (see #shield). */
+  readonly #shieldElement = this.#overlay({});
+  #destroyed = false;
+
+  constructor() {
+    super();
+    this.#ownView(this.#host);
+    // Starts tracking the outlet's layout (see lynx-element/layout.ts), so
+    // the outlet's width is known by the time a finger needs it.
+    this.#host.getBoundingClientRect?.();
+    this.#listen('bindtouchstart', (event) => this.#touchStart(event));
+    this.#listen('bindtouchmove', (event) => this.#touchMove(event));
+    this.#listen('bindtouchend', (event) => this.#touchEnd(event));
+    this.#listen('bindtouchcancel', (event) => this.#touchEnd(event, true));
+    if (__WEB__) {
+      // A desktop browser sends a mouse no touches, and Lynx for Web passes
+      // mouse events through rather than making touches of them, so the
+      // mouse drags pages there itself, as the bottom sheet's handle does.
+      this.#listen('bindmousedown', (event) => this.#mouseDown(event));
+      this.#listen('bindmousemove', (event) => this.#mouseMove(event));
+      this.#listen('bindmouseup', () => this.#release(false));
+    }
+    effect(() => {
+      const classes = this.pageClass();
+      for (const page of this.#stack) this.#styleFrame(page.frame, classes);
+    });
+  }
+
+  override ngOnDestroy(): void {
+    this.#destroyed = true;
+    this.#transition?.stop();
+    super.ngOnDestroy();
+  }
+
+  override get isActivated(): boolean {
+    return this.#active !== null;
+  }
+
+  override get component(): object {
+    return this.#activePage().ref.instance as object;
+  }
+
+  override get activatedRoute(): ActivatedRoute {
+    return this.#activePage().route;
+  }
+
+  override get activatedRouteData(): Data {
+    return this.#active?.route.snapshot.data ?? {};
+  }
+
+  get activatedComponentRef(): ComponentRef<unknown> | null {
+    return this.#active?.ref ?? null;
+  }
+
+  override activateWith(
+    route: ActivatedRoute,
+    environmentInjector: EnvironmentInjector,
+  ): void {
+    if (this.#active) {
+      throw new Error('Cannot activate an already activated outlet');
+    }
+    const component = route.snapshot.component;
+    if (!component) throw new Error('The route has no component to show');
+    this.#show(route, (injector) =>
+      this.#pages.createComponent(component, {
+        index: this.#pages.length,
+        injector,
+        environmentInjector,
+      }),
+    );
+  }
+
+  override deactivate(): void {
+    const page = this.#active;
+    if (!page) return;
+    this.#binder?.unsubscribeFromRouteData(this);
+    // The router forgets the contexts of the page's outlets as it leaves
+    // the page's route (it calls this right after). Keep them for when the
+    // page comes back to the top.
+    page.contexts = this.#childContexts.onOutletDeactivated();
+    this.#active = null;
+    setActive(page.stackPage, false);
+    this.deactivateEvents.emit(page.ref.instance);
+    // The router activates the next route straight after, in the same
+    // pass. If it doesn't, this outlet shows nothing now.
+    queueMicrotask(() => {
+      if (!this.#active && !this.#destroyed) this.#clear();
+    });
+  }
+
+  override detach(): ComponentRef<unknown> {
+    const page = this.#activePage();
+    this.#binder?.unsubscribeFromRouteData(this);
+    this.#transition?.finish();
+    this.#cancelSwipe();
+    // The strategy has the page now: it leaves the stack alive, and comes
+    // back through attach().
+    this.#pages.detach(this.#pages.indexOf(page.ref.hostView));
+    this.#stack.splice(this.#stack.indexOf(page), 1);
+    this.#removePage(page, false);
+    this.#active = null;
+    setActive(page.stackPage, false);
+    this.detachEvents.emit(page.ref.instance);
+    return page.ref;
+  }
+
+  override attach(ref: ComponentRef<unknown>, route: ActivatedRoute): void {
+    this.#show(route, () => {
+      this.#pages.insert(ref.hostView);
+      return ref;
+    });
+    this.attachEvents.emit(ref.instance);
+  }
+
+  // --- Navigation -----------------------------------------------------------
+
+  /**
+   * Shows the route's page, a new one from `create` or one in the stack,
+   * moving the stack as the navigation says (see changeFor).
+   */
+  #show(
+    route: ActivatedRoute,
+    create: (injector: Injector) => ComponentRef<unknown>,
+  ): void {
+    this.#transition?.finish();
+    this.#cancelSwipe();
+    const navigation = this.#router.currentNavigation();
+    const top = this.#stack.at(-1);
+    const historyIndex = this.#historyIndex();
+    const change = changeFor({
+      stack: this.#stack.map((page) => urlOf(page.route)),
+      url: urlOf(route),
+      popstate: navigation?.trigger === 'popstate',
+      forward: top !== undefined && historyIndex > top.historyIndex,
+      replaceUrl: navigation?.extras.replaceUrl === true,
+      hint: (navigation?.extras.info as StackNavigationInfo | undefined)?.stack,
+    });
+    // A page a swipe took away is gone already: whatever the navigation does,
+    // nothing more slides.
+    const swiped = this.#swiped;
+    this.#swiped = null;
+
+    if (change.kind === 'pop') {
+      const page = this.#stack[change.index]!;
+      const leaving = this.#stack.splice(change.index + 1);
+      page.route = route;
+      page.live.follow(route);
+      this.#childContexts.onOutletReAttached(page.contexts);
+      page.historyIndex = historyIndex;
+      this.#activate(page);
+      if (swiped || !this.#animates) {
+        this.#rest(page);
+        for (const gone of leaving) this.#removePage(gone);
+      } else {
+        // Only the top page slides away, as UIKit's popToViewController
+        // does: the ones between go at once.
+        const sliding = leaving.pop()!;
+        for (const gone of leaving) this.#removePage(gone);
+        this.#slide(sliding, page, 'out', () => this.#removePage(sliding));
+      }
+      return;
+    }
+
+    const page = this.#createPage(route, historyIndex, create);
+    if (change.kind === 'push') {
+      this.#stack.push(page);
+      this.#activate(page);
+      if (top && change.animated && this.#animates) {
+        this.#slide(page, top, 'in', () => this.#hide(top));
+      } else if (top) {
+        this.#hide(top);
+      }
+      return;
+    }
+
+    // A replace or a reset: the page takes the top one's place, or all of
+    // theirs, at once or sliding in from behind.
+    const leaving =
+      change.kind === 'replace'
+        ? this.#stack.splice(-1)
+        : this.#stack.splice(0);
+    this.#stack.push(page);
+    this.#activate(page);
+    if (
+      change.kind === 'reset' &&
+      change.animated &&
+      top &&
+      !swiped &&
+      this.#animates
+    ) {
+      // The new page goes under the top one, which slides away off it.
+      this.#renderer.insertBefore(this.#host, page.frame, top.frame);
+      const sliding = leaving.pop()!;
+      for (const gone of leaving) this.#removePage(gone);
+      this.#slide(sliding, page, 'out', () => this.#removePage(sliding));
+    } else {
+      for (const gone of leaving) this.#removePage(gone);
+    }
+  }
+
+  /**
+   * Makes a page the router's active one, as RouterOutlet does.
+   */
+  #activate(page: Page): void {
+    this.#active = page;
+    setActive(page.stackPage, true);
+    this.#changes.markForCheck();
+    this.#binder?.bindActivatedRouteToOutletComponent(
+      this,
+      this.#pages.injector,
+    );
+    this.activateEvents.emit(page.ref.instance);
+  }
+
+  #createPage(
+    route: ActivatedRoute,
+    historyIndex: number,
+    create: (injector: Injector) => ComponentRef<unknown>,
+  ): Page {
+    const live = liveRoute(route);
+    const stackPage = new LynxStackPage();
+    const injector = new PageInjector(
+      live.route,
+      this.#childContexts,
+      this.#pages.injector,
+      this.routerOutletData,
+      stackPage,
+    ) as unknown as Injector;
+    const ref = create(injector);
+    // A component the reuse strategy hands back has the route of the page it
+    // was on, which now follows this one.
+    const remembered = this.#liveRoutes.get(ref);
+    remembered?.follow(route);
+    const frame = this.#renderer.createElement('view') as FrameElement;
+    this.#ownView(frame);
+    this.#styleFrame(frame, this.pageClass());
+    this.#setStyles(frame, {
+      position: 'absolute',
+      top: '0px',
+      left: '0px',
+      right: '0px',
+      bottom: '0px',
+      display: 'flex',
+      'flex-direction': 'column',
+      overflow: 'hidden',
+    });
+    this.#renderer.appendChild(this.#host, frame);
+    // The view container puts the component's host beside the outlet; it
+    // belongs in its frame.
+    this.#renderer.appendChild(frame, ref.location.nativeElement);
+    const page: Page = {
+      ref,
+      live: remembered ?? live,
+      route,
+      frame,
+      historyIndex,
+      contexts: new Map(),
+      stackPage,
+    };
+    this.#liveRoutes.set(ref, page.live);
+    return page;
+  }
+
+  #styleFrame(frame: FrameElement, classes: string): void {
+    this.#renderer.setAttribute(frame, 'class', classes);
+    if (classes) {
+      this.#renderer.removeStyle(frame, 'background-color');
+    } else {
+      // A bare var() works in Lynx's inline styles, fallback and all.
+      this.#renderer.setStyle(
+        frame,
+        'background-color',
+        'var(--background, #ffffff)',
+      );
+    }
+  }
+
+  /**
+   * Takes a page off the screen and destroys it.
+   */
+  #removePage(page: Page, destroy = true): void {
+    if (destroy) page.ref.destroy();
+    this.#renderer.removeChild(this.#host, page.frame);
+  }
+
+  /**
+   * Destroys every page: the router left this outlet empty.
+   */
+  #clear(): void {
+    this.#transition?.finish();
+    this.#cancelSwipe();
+    for (const page of this.#stack.splice(0)) this.#removePage(page);
+  }
+
+  #activePage(): Page {
+    if (!this.#active) throw new Error('Outlet is not activated');
+    return this.#active;
+  }
+
+  get #childContexts(): ChildrenOutletContexts {
+    return this.#contexts.getOrCreateContext(this.name).children;
+  }
+
+  get #binder(): InputBinder | null {
+    // RouterOutlet keeps withComponentInputBinding()'s binder in a field of
+    // its own, and the token it injects it by isn't exported.
+    return (this as unknown as { inputBinder: InputBinder | null }).inputBinder;
+  }
+
+  #historyIndex(): number {
+    return this.#strategy instanceof LynxLocationStrategy
+      ? this.#strategy.historyIndex
+      : 0;
+  }
+
+  /**
+   * --- Motion -----------------------------------------------------------------
+   */
+
+  get #animation(): StackAnimation {
+    return this.animation() ?? (this.#android ? 'material' : 'ios');
+  }
+
+  get #animates(): boolean {
+    return this.#animation !== 'none';
+  }
+
+  /**
+   * The platform's motion, which a finger drags with.
+   */
+  get #motion(): StackMotion {
+    return this.#animation === 'material' ? MATERIAL_MOTION : IOS_MOTION;
+  }
+
+  get #width(): number {
+    return this.#host.getBoundingClientRect().width;
+  }
+
+  /**
+   * Slides `moving` in over `under` (a push) or out off it (a pop), then runs
+   * `done`.
+   */
+  #slide(
+    moving: Page,
+    under: Page,
+    direction: 'in' | 'out',
+    done: () => void,
+  ): void {
+    const motion = this.#settings.reduceMotion() ? FADE_MOTION : this.#motion;
+    // The moving page on top, the page under it covered and dimmed.
+    const onTop = { top: AT_REST, under: motion.covered, scrim: motion.dim };
+    // The moving page off screen, the page under it shown.
+    const away = { top: motion.offscreen, under: AT_REST, scrim: 0 };
+    const [from, to] = direction === 'in' ? [away, onTop] : [onTop, away];
+    this.#run(
+      moving,
+      under,
+      motion,
+      motion.roundsAnimated,
+      from,
+      to,
+      motion.duration,
+      motion.easing,
+      done,
+    );
+  }
+
+  /**
+   * Animates the top page and the one under it, and the scrim between them,
+   * from one set of looks to another, then leaves them at rest: the top page
+   * shown, the one under it hidden.
+   */
+  #run(
+    top: Page,
+    under: Page,
+    motion: StackMotion,
+    rounded: boolean,
+    from: { top: PageLook; under: PageLook; scrim: number },
+    to: { top: PageLook; under: PageLook; scrim: number },
+    duration: number,
+    easing: string,
+    done: () => void,
+  ): void {
+    const width = this.#width;
+    this.#uncover(under);
+    this.#raise(top, motion, rounded);
+    const scrim = this.#placeScrim(top);
+    const moves: Move[] = [
+      {
+        element: top.frame,
+        from: lookStyles(from.top, width),
+        to: lookStyles(to.top, width),
+      },
+      {
+        element: under.frame,
+        from: lookStyles(from.under, width),
+        to: lookStyles(to.under, width),
+      },
+      {
+        element: scrim,
+        from: { opacity: String(from.scrim) },
+        to: { opacity: String(to.scrim) },
+      },
+    ];
+    this.#shield(true);
+    // Each element starts where the transition does, from this update on.
+    for (const move of moves) this.#setStyles(move.element, move.from);
+    let animations: ({ cancel(): void } | undefined)[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The animations start on the next turn, once this update has been
+    // flushed: Lynx drops an animation on an element it doesn't have yet,
+    // such as a page pushed this turn, and the page would just appear.
+    const start = setTimeout(() => {
+      animations = moves.map((move) =>
+        move.element.animate?.([move.from, move.to], {
+          duration,
+          easing,
+          fill: 'forwards',
+        }),
+      );
+      // Lynx tells a script nothing when an animation ends, so a timer does.
+      timer = setTimeout(finish, duration);
+    }, 0);
+    /**
+     * Only the outlet ends a transition, through #transition, which holds the
+     * one running: a new one starts once it's over.
+     */
+    const end = (): void => {
+      clearTimeout(start);
+      clearTimeout(timer);
+      this.#transition = null;
+    };
+    const finish = (): void => {
+      end();
+      // Set the end inline before canceling, so the frame between them
+      // doesn't draw the start.
+      for (const move of moves) this.#setStyles(move.element, move.to);
+      for (const animation of animations) animation?.cancel();
+      this.#dropScrim();
+      this.#lower(top);
+      this.#shield(false);
+      done();
+    };
+    const stop = (): void => {
+      end();
+      for (const animation of animations) animation?.cancel();
+    };
+    const transition: Transition = { finish, stop };
+    this.#transition = transition;
+  }
+
+  /**
+   * Leaves a page shown on top at rest, the one under it hidden.
+   */
+  #rest(page: Page): void {
+    this.#setStyles(page.frame, lookStyles(AT_REST, 0));
+    this.#renderer.removeStyle(page.frame, 'visibility');
+    const index = this.#stack.indexOf(page);
+    for (const below of this.#stack.slice(0, index)) this.#hide(below);
+  }
+
+  /**
+   * Hides a covered page, at rest under the others.
+   */
+  #hide(page: Page): void {
+    this.#setStyles(page.frame, {
+      ...lookStyles(AT_REST, 0),
+      visibility: 'hidden',
+    });
+  }
+
+  /**
+   * Shows a covered page, for the one above it to move over.
+   */
+  #uncover(page: Page): void {
+    this.#renderer.removeStyle(page.frame, 'visibility');
+  }
+
+  /**
+   * Rounds and shadows a page that moves.
+   */
+  #raise(page: Page, motion: StackMotion, rounded: boolean): void {
+    if (rounded && motion.radius > 0) {
+      this.#renderer.setStyle(
+        page.frame,
+        'border-radius',
+        `${motion.radius}px`,
+      );
+    }
+    if (motion.shadow) {
+      this.#renderer.setStyle(page.frame, 'box-shadow', motion.shadow);
+    }
+  }
+
+  #lower(page: Page): void {
+    this.#renderer.removeStyle(page.frame, 'border-radius');
+    this.#renderer.removeStyle(page.frame, 'box-shadow');
+  }
+
+  /**
+   * A view over the whole outlet, put in it when it's needed: the scrim or
+   * the shield.
+   */
+  #overlay(styles: Record<string, string>): FrameElement {
+    const overlay = this.#renderer.createElement('view') as FrameElement;
+    this.#ownView(overlay);
+    this.#setStyles(overlay, {
+      position: 'absolute',
+      top: '0px',
+      left: '0px',
+      right: '0px',
+      bottom: '0px',
+      ...styles,
+    });
+    return overlay;
+  }
+
+  /**
+   * Puts the scrim right under a page that moves.
+   */
+  #placeScrim(top: Page): FrameElement {
+    this.#renderer.insertBefore(this.#host, this.#scrim, top.frame);
+    this.#setStyles(this.#scrim, { display: 'flex', opacity: '0' });
+    return this.#scrim;
+  }
+
+  #dropScrim(): void {
+    this.#setStyles(this.#scrim, { display: 'none' });
+  }
+
+  /**
+   * Puts a clear view over the pages while they move, so a tap can't reach
+   * one mid-transition, as UIKit ignores touches while its navigation
+   * controller animates. It also takes the click a browser sends after a
+   * mouse drag, which would otherwise tap whatever is under the cursor.
+   */
+  #shield(on: boolean): void {
+    if (on) this.#renderer.appendChild(this.#host, this.#shieldElement);
+    this.#setStyles(this.#shieldElement, { display: on ? 'flex' : 'none' });
+  }
+
+  /**
+   * Gives an element a native view of its own on Android, which otherwise
+   * draws a view with no listeners into its parent ("flattens" it): there a
+   * `transform` animation runs without moving it, and `overflow: hidden`
+   * clips absolutely placed children unreliably (see "`flatten` (Android)" in
+   * investigations/lynx-vs-web-differences.md). Android decides when it first
+   * draws the element, so it's set as the element is made. Nothing elsewhere.
+   */
+  #ownView(element: FrameElement): void {
+    this.#renderer.setAttribute(element, 'flatten', false as never);
+  }
+
+  #setStyles(element: FrameElement, styles: Record<string, string>): void {
+    for (const [name, value] of Object.entries(styles)) {
+      this.#renderer.setStyle(element, name, value);
+    }
+  }
+
+  #listen(name: string, handler: (event: PointerEvent) => void): void {
+    this.#renderer.listen(this.#host, name, handler);
+  }
+
+  /**
+   * --- Swipe ----------------------------------------------------------------
+   */
+
+  #touchStart(event: PointerEvent): void {
+    const touch = event.touches[0];
+    if (!touch || this.#swipe) return;
+    this.#begin(touch.pageX, touch.pageY, pointerIdOf(touch), event.target);
+  }
+
+  #touchMove(event: PointerEvent): void {
+    const swipe = this.#swipe;
+    if (!swipe) return;
+    // pointerIdOf, as Lynx's own identifier for a single touch changes from
+    // one event to the next on iOS.
+    const touch = Array.from(event.touches).find(
+      (t) => pointerIdOf(t) === swipe.touch,
+    );
+    if (touch) this.#move(touch.pageX, touch.pageY);
+  }
+
+  #touchEnd(event: PointerEvent, canceled = false): void {
+    const swipe = this.#swipe;
+    if (!swipe) return;
+    const lifted = Array.from(event.changedTouches).some(
+      (t) => pointerIdOf(t) === swipe.touch,
+    );
+    // Another finger lifting leaves this one dragging.
+    if (lifted) this.#release(canceled);
+  }
+
+  #mouseDown(event: PointerEvent): void {
+    if (this.#swipe || event.x === undefined || event.y === undefined) return;
+    this.#begin(event.x, event.y, null, event.target);
+  }
+
+  #mouseMove(event: PointerEvent): void {
+    if (!this.#swipe || this.#swipe.touch !== null) return;
+    // No button held: the button came up outside the Lynx view, which
+    // web-core doesn't listen in. The first move back in is the release.
+    if (event.buttons === 0) {
+      this.#release(false);
+      return;
+    }
+    if (event.x !== undefined && event.y !== undefined) {
+      this.#move(event.x, event.y);
+    }
+  }
+
+  /**
+   * A finger (or the mouse) went down: it may be starting a swipe back.
+   */
+  #begin(x: number, y: number, touch: number | null, target: unknown): void {
+    const top = this.#stack.at(-1);
+    const under = this.#stack.at(-2);
+    const box = this.#host.getBoundingClientRect();
+    if (
+      !this.swipeBack() ||
+      !this.#animates ||
+      !top ||
+      !under ||
+      top !== this.#active ||
+      this.#transition ||
+      this.#swiped ||
+      box.width <= 0
+    ) {
+      return;
+    }
+    const tracker = new SwipeTracker(
+      x - box.left,
+      y - box.top,
+      Date.now(),
+      box.width,
+      !this.#inHorizontalScroller(target),
+    );
+    if (tracker.state === 'ignored') return;
+    this.#swipe = { tracker, touch, top, under, dragging: false };
+  }
+
+  #move(x: number, y: number): void {
+    const swipe = this.#swipe!;
+    const box = this.#host.getBoundingClientRect();
+    const state = swipe.tracker.move(x - box.left, y - box.top, Date.now());
+    if (state === 'ignored') {
+      this.#swipe = null;
+      return;
+    }
+    if (state !== 'dragging') return;
+    if (!swipe.dragging) {
+      swipe.dragging = true;
+      this.#uncover(swipe.under);
+      this.#raise(swipe.top, this.#motion, true);
+      this.#placeScrim(swipe.top);
+      this.#shield(true);
+    }
+    this.#drag(swipe, swipe.tracker.progress);
+  }
+
+  /**
+   * Puts the pages where a finger `progress` of the way across has them.
+   */
+  #drag(swipe: Swipe, progress: number): void {
+    const motion = this.#motion;
+    const width = this.#width;
+    this.#setStyles(
+      swipe.top.frame,
+      lookStyles(motion.dragged(progress), width),
+    );
+    this.#setStyles(
+      swipe.under.frame,
+      lookStyles(mixLooks(motion.covered, AT_REST, progress), width),
+    );
+    this.#setStyles(this.#scrim, {
+      opacity: String(motion.dim * (1 - progress)),
+    });
+  }
+
+  /**
+   * The finger let go (or the system took the touch): the page goes the rest
+   * of the way, and the router goes back, or it comes back.
+   */
+  #release(canceled: boolean): void {
+    const swipe = this.#swipe;
+    this.#swipe = null;
+    if (!swipe?.dragging) return;
+    const { tracker, top, under } = swipe;
+    const completes = !canceled && tracker.completes();
+    const motion = this.#motion;
+    const progress = tracker.progress;
+    const at = {
+      top: motion.dragged(progress),
+      under: mixLooks(motion.covered, AT_REST, progress),
+      scrim: motion.dim * (1 - progress),
+    };
+    const to = completes
+      ? { top: motion.dismissed, under: AT_REST, scrim: 0 }
+      : { top: AT_REST, under: motion.covered, scrim: motion.dim };
+    // The rest of the way takes as long as the finger's speed would, at the
+    // start of the spring's curve, which leaves at about twice its average
+    // speed (so the page doesn't jump or stall as the finger lets go), within
+    // reason.
+    const left = Math.abs((completes ? 1 : 0) - progress) * this.#width;
+    const speed = Math.abs(tracker.velocity);
+    const duration = Math.round(
+      Math.min(
+        IOS_MOTION.duration,
+        Math.max(150, speed > 0.05 ? (2 * left) / speed : IOS_MOTION.duration),
+      ),
+    );
+    this.#run(
+      top,
+      under,
+      motion,
+      true,
+      at,
+      to,
+      duration,
+      IOS_MOTION.easing,
+      () => {
+        if (completes) {
+          // Hidden where it went, off the screen, not put back in place: a
+          // native view under it, such as iOS's glass, can ignore the
+          // visibility and draw over the page under it until the navigation
+          // destroys the page.
+          this.#renderer.setStyle(top.frame, 'visibility', 'hidden');
+          this.#goBack(top);
+        } else {
+          this.#hide(under);
+        }
+      },
+    );
+  }
+
+  /**
+   * Lets go of a swipe in progress, putting the pages back as they were.
+   */
+  #cancelSwipe(): void {
+    const swipe = this.#swipe;
+    this.#swipe = null;
+    if (!swipe?.dragging) return;
+    this.#setStyles(swipe.top.frame, lookStyles(AT_REST, 0));
+    this.#lower(swipe.top);
+    this.#hide(swipe.under);
+    this.#dropScrim();
+    this.#shield(false);
+  }
+
+  /**
+   * Goes back to the page under `top`, which a swipe took away, through the
+   * history: to the entry before `top`'s, past any it added since. If the
+   * router doesn't go there (a guard refuses, or the history leads
+   * elsewhere), the page comes back.
+   */
+  #goBack(top: Page): void {
+    this.#swiped = top;
+    const settled = this.#router.events.subscribe((event) => {
+      if (
+        !(event instanceof NavigationEnd) &&
+        !(event instanceof NavigationCancel) &&
+        !(event instanceof NavigationError) &&
+        !(event instanceof NavigationSkipped)
+      ) {
+        return;
+      }
+      settled.unsubscribe();
+      if (this.#swiped === top) this.#swiped = null;
+      // Still on top: the router didn't go back. (Anywhere else in the stack,
+      // it's covered, and hidden already.)
+      if (this.#stack.at(-1) === top && !this.#destroyed) this.#bringBack(top);
+    });
+    const strategy = this.#strategy;
+    if (strategy instanceof LynxLocationStrategy && top.historyIndex > 0) {
+      this.#location.historyGo(top.historyIndex - 1 - strategy.historyIndex);
+    } else {
+      this.#location.back();
+    }
+  }
+
+  /**
+   * Slides a page a swipe took away back in, when the router didn't go back.
+   */
+  #bringBack(top: Page): void {
+    const under = this.#stack.at(-2)!;
+    this.#renderer.removeStyle(top.frame, 'visibility');
+    this.#slide(top, under, 'in', () => this.#hide(under));
+  }
+
+  /**
+   * Whether a touch on `target` is in something that scrolls sideways
+   * itself: there, only a swipe from the edge goes back, as iOS 26 leaves
+   * such a touch to the scroller.
+   */
+  #inHorizontalScroller(target: unknown): boolean {
+    let element = elementOf(target);
+    while (element && element !== (this.#host as unknown)) {
+      const tag = element.tagName?.toLowerCase();
+      if (tag && SIDEWAYS_ELEMENTS.has(tag)) return true;
+      if (
+        (tag === 'scroll-view' || tag === 'list') &&
+        (element.getAttribute?.('scroll-orientation') === 'horizontal' ||
+          String(element.getAttribute?.('scroll-x')) === 'true')
+      ) {
+        return true;
+      }
+      element = parentOf(element);
+    }
+    return false;
+  }
+}
+
+/** An element a touch can land on, as Lynx's elements and the DOM's both are. */
+type TargetElement = {
+  readonly tagName?: string;
+  getAttribute?(name: string): unknown;
+  parentNode?: (() => TargetElement | null) | TargetElement | null;
+};
+
+/**
+ * The element a touch landed on. Lynx reports the element's unique id, which
+ * leads to its LynxElement; the DOM (in tests) the element itself.
+ */
+const elementOf = (target: unknown): TargetElement | null => {
+  if (!target || typeof target !== 'object') return null;
+  const uid = (target as { uid?: unknown }).uid;
+  if (typeof uid === 'number') {
+    return (LynxElement.byUniqueId(uid) as TargetElement | undefined) ?? null;
+  }
+  return target as TargetElement;
+};
+
+/**
+ * An element's parent: LynxElement's `parentNode()`, or the DOM's property.
+ */
+const parentOf = (element: TargetElement): TargetElement | null => {
+  const parent = element.parentNode;
+  return typeof parent === 'function' ? parent.call(element) : (parent ?? null);
+};

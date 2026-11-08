@@ -1,15 +1,16 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxStackOutlet } from '@blotch/angular-lynx';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet],
+  imports: [LYNX_ELEMENTS, LynxStackOutlet],
   template: `
     <!-- Each screen fills the whole screen, with its own navigation bar
-         floating over its content. -->
+         floating over its content. lynx-stack-outlet slides a note in over
+         the list as iOS and Android do, and Back, the Android back button or
+         a swipe from the left (or anywhere on the note) slides it away. -->
     <view class="h-full flex-col bg-background flex">
-      <router-outlet />
+      <lynx-stack-outlet />
     </view>
   `,
 })

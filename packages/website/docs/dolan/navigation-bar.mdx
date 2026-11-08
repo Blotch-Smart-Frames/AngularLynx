@@ -125,12 +125,14 @@ The other designs mark the edge with the bar's own background instead: the frost
 
 ### Two bars at once
 
-`ui-bar-scroll` and the bars find each other through `UiBarState`, a root service, which fits one screen at a time. When two screens with bars show at once, such as a sheet with its own navigation bar over a screen, give the sheet's component its own:
+`ui-bar-scroll` and the bars find each other through `UiBarState`, a root service, which fits one screen at a time. Each screen of a [`<lynx-stack-outlet>`](/guide/routing#slide-screens-in-and-out-as-a-native-app-does), which keeps the screens under the top one alive, gets its own already. When two screens with bars show at once otherwise, such as a sheet with its own navigation bar over a screen, give the sheet's component its own:
 
 ```typescript
 @Component({ providers: [UiBarState], … })
 export class EditNoteSheet {}
 ```
+
+A bar of your own takes the state with `injectBarState()`, as these do, rather than `inject(UiBarState)`: it's the component's own when one provides it, the stack screen's on one, and otherwise the root's.
 
 ### Dark mode
 

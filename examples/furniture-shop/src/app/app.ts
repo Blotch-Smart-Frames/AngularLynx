@@ -1,17 +1,21 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxStackOutlet } from '@blotch/angular-lynx';
 
 /**
  * The shell: black from edge to edge, with the current screen filling it.
  * The screens pad themselves by the safe-area insets, so on a phone the
  * nav bar sits below the status bar and the Order button above the home
  * indicator.
+ *
+ * `<lynx-stack-outlet>` moves between the screens as the platform does: a
+ * product slides in over the gallery, and the back chevron, Android's back
+ * button or a drag to the right slides it away again, onto the gallery as
+ * you left it, scrolled where it was.
  */
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet],
-  template: `<router-outlet />`,
+  imports: [LYNX_ELEMENTS, LynxStackOutlet],
+  template: `<lynx-stack-outlet />`,
   styles: `
     :host {
       display: flex;

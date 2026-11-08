@@ -28,7 +28,7 @@ import {
 } from '../glass/glass-design';
 import { injectIconColor } from '../icon/icon-theme';
 import { type IconName, ICONS } from '../icon/icons';
-import { edgeFadeOverlay, platformOf, UiBarState } from './bar-scroll';
+import { edgeFadeOverlay, injectBarState, platformOf } from './bar-scroll';
 
 /**
  * The toolbar's height above the home indicator, in px, in each design:
@@ -482,7 +482,7 @@ export class UiToolbarSpacer {}
 export class UiToolbar {
   readonly userClass = input<string>('', { alias: 'class' });
 
-  readonly #state = inject(UiBarState);
+  readonly #state = injectBarState();
   readonly #platform = platformOf(inject(Injector));
 
   /** The design on this platform (see GlassDesign), which the items follow. */

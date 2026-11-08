@@ -1,6 +1,6 @@
 # Routing
 
-Router providers and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
+Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -49,6 +49,57 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 - **From an event handler,** call `router.navigate()` directly, as on the web.
 - **It also tells `LynxRouterLinkActive`** where to find an element's `RouterLinkActive`, so that `LYNX_ELEMENTS` doesn't import the router itself. Without `provideRouter()`, active links don't get the `selected` trait.
 - **The Android back button** calls `Location.back()` while `LynxLocationStrategy.canGoBack()` is `true`, and leaves the app when it's `false`. It works in the Android app `ng build --platform android` makes, and in [your own app](/guide/embedding/#connect-the-android-back-button) if it sends the same event. With a `LocationStrategy` of your own, the back button always leaves the app.
+
+### `LynxStackOutlet`
+
+```typescript
+@Component({ selector: 'lynx-stack-outlet', exportAs: 'outlet' })
+class LynxStackOutlet extends RouterOutlet {
+  readonly animation: InputSignal<StackAnimation | undefined>;
+  readonly swipeBack: InputSignalWithTransform<boolean, unknown>;
+  readonly pageClass: InputSignal<string>;
+}
+
+type StackAnimation = 'ios' | 'material' | 'none';
+```
+
+A `RouterOutlet` that keeps a stack of screens and moves between them as iOS and Android apps do, with a swipe back. Use it in place of `<router-outlet>`: it has the same inputs, outputs and API, and the screens under the top one stay alive. See [Slide screens in and out](/guide/routing#slide-screens-in-and-out-as-a-native-app-does) for what it does, and which way each navigation moves.
+
+| Input       | Default                                    | What it does                                                                                                                       |
+| ----------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `animation` | `'material'` on Android, `'ios'` elsewhere | How screens move. `'none'` swaps them at once and turns the swipe off.                                                             |
+| `swipeBack` | `true`                                     | Whether a finger dragging the top screen to the right takes it back: from the left edge, or anywhere that doesn't scroll sideways. |
+| `pageClass` | `''`                                       | Classes for each screen's frame. Without them a screen is drawn on `var(--background, #ffffff)`.                                   |
+
+- **It fills its parent** (`flex: 1`) and clips the screens in it. Each screen sits in a frame of its own, absolutely placed over the others.
+- **While Reduce Motion is on,** a push or a pop cross-fades.
+- **A swipe goes back through the history,** to the entry before the top screen's, however many it added since. A guard that refuses brings the screen back.
+
+### `StackNavigationInfo`
+
+```typescript
+type StackNavigationInfo = {
+  readonly stack?: 'push' | 'pop' | 'root';
+};
+```
+
+What a navigation does to a `LynxStackOutlet`'s stack, when the URL doesn't say it the way you want. Pass it as the navigation's `info`: `[info]="{ stack: 'push' }"` on a `routerLink`, or `router.navigate(commands, { info: { stack: 'root' } })`.
+
+| `stack`  | The stack                                                                   |
+| -------- | --------------------------------------------------------------------------- |
+| `'push'` | Pushes the screen, sliding it in, even at the same depth or already in it.  |
+| `'pop'`  | Pops back to the screen. One that isn't in the stack slides in from behind. |
+| `'root'` | Starts a new stack with the screen, without a transition.                   |
+
+### `LynxStackPage`
+
+```typescript
+class LynxStackPage {
+  readonly active: Signal<boolean>;
+}
+```
+
+The screen of a `LynxStackOutlet` that a component is on, which any component on it can inject (`inject(LynxStackPage, { optional: true })`, null off a stack). `active()` is `true` while the screen is on top, and `false` while another covers it or it's on its way out: a covered screen's components keep running, so pause what only matters while it shows. It also identifies the screen, for state kept per screen.
 
 ### `LynxRouterLinkActive`
 
@@ -234,6 +285,14 @@ historyGo(relativePosition?: number): void;
 ```
 
 Moves through history and notifies `popstate` listeners. A move past either end does nothing.
+
+### `LynxLocationStrategy.historyIndex`
+
+```typescript
+get historyIndex(): number;
+```
+
+Where the current entry is in the history, from `0` for the first. `LynxStackOutlet` keeps each screen's, so its swipe goes back to the entry before the screen's.
 
 ### `LynxLocationStrategy.onPopState()`
 

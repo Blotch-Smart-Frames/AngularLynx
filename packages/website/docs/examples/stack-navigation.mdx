@@ -1,0 +1,20 @@
+# Stack Navigation
+
+Screens that slide in and out as iOS and Android apps do, with a swipe back: a settings app three screens deep, in a `<lynx-stack-outlet>`. Tap a row to open it, and drag a screen to the right to go back.
+
+<Go example="stack-navigation" defaultFile="src/app/app.ts" />
+
+## What it shows
+
+- **`<lynx-stack-outlet>`** — `src/app/app.ts` puts it where `<router-outlet>` would go. A screen you open slides in over the last one, and Back (`Location.back()`), Android's back button or a drag to the right slides it away. See [Slide screens in and out](/guide/routing#slide-screens-in-and-out-as-a-native-app-does).
+- **A stack that follows the URL** — `/settings`, `/settings/general` and `/settings/general/about` are each under the last, so each pushes. Back to Settings is a `routerLink` to a screen in the stack, so it pops back to it, sliding the top screen away over the one between.
+- **The navigation's `info`** — Next is at the same depth as the screen it's on, which would swap screens at once, as a tab bar does. `[info]="{ stack: 'push' }"` on its `routerLink` makes it push instead.
+- **Screens that stay alive** — the count on the first screen, and a section's switch, keep their state while other screens cover them.
+- **`LynxStackPage`** — a section's clock reads `active()` and stops while another screen covers it.
+- **The motion** — the first screen switches the outlet's `animation` between the platform's own, iOS's, Material's and none, so you can compare them on any device.
+
+## Related
+
+- [Routing and navigation](/guide/routing)
+- [Routing API](/api/angular-lynx/routing#lynxstackoutlet)
+- [Furniture shop](/examples/furniture-shop): the Lynx tutorial app, with its product page in a stack

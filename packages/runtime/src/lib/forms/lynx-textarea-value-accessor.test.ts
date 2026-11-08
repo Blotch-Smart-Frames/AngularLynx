@@ -29,6 +29,7 @@ describe('LynxTextareaValueAccessor', () => {
   let renderer: {
     setAttribute: ReturnType<typeof vi.fn>;
     removeAttribute: ReturnType<typeof vi.fn>;
+    setProperty: ReturnType<typeof vi.fn>;
   };
   let nativeElement: { invoke?: ReturnType<typeof vi.fn> };
 
@@ -43,7 +44,11 @@ describe('LynxTextareaValueAccessor', () => {
   };
 
   beforeEach(() => {
-    renderer = { setAttribute: vi.fn(), removeAttribute: vi.fn() };
+    renderer = {
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      setProperty: vi.fn(),
+    };
     nativeElement = { invoke: vi.fn() };
     configure();
   });
@@ -100,16 +105,20 @@ describe('LynxTextareaValueAccessor', () => {
     expect(onTouched).toHaveBeenCalledTimes(1);
   });
 
-  it('writeValue invokes the native setValue UIMethod with the given value', () => {
+  it("writeValue sets the field's value property through the renderer", () => {
     const dir = TestBed.runInInjectionContext(
       () => new LynxTextareaValueAccessor(),
     );
 
     dir.writeValue('v');
 
-    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', {
-      value: 'v',
-    });
+    // A property, as Angular's DefaultValueAccessor sets a DOM field's: the
+    // element turns it into the field's text (see LynxElement's setProperty).
+    expect(renderer.setProperty).toHaveBeenCalledWith(
+      nativeElement,
+      'value',
+      'v',
+    );
   });
 
   it('writeValue defaults a null/undefined value to an empty string', () => {
@@ -119,9 +128,11 @@ describe('LynxTextareaValueAccessor', () => {
 
     dir.writeValue(null as unknown as string);
 
-    expect(nativeElement.invoke).toHaveBeenCalledWith('setValue', {
-      value: '',
-    });
+    expect(renderer.setProperty).toHaveBeenCalledWith(
+      nativeElement,
+      'value',
+      '',
+    );
   });
 
   it('setDisabledState(true) sets the disabled attribute via the renderer', () => {

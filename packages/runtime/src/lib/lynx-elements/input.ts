@@ -35,24 +35,14 @@ export class LynxInput extends LynxElementBase {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
 
   override ngOnChanges(changes: SimpleChanges): void {
-    if ('value' in changes) {
-      // __SetAttribute("value", ...) is a no-op for a Lynx native input once
-      // the user has typed into it. LynxUIBaseInput on both Android and iOS
-      // registers no @LynxProp handler for "value", so attribute mutations never
-      // reach the native text field. The only supported path is the setValue
-      // UIMethod (__InvokeUIMethod("setValue", {value})).
-      //
-      // We strip "value" from the changes object before forwarding to the base
-      // class so that super.ngOnChanges doesn't also call setAttribute("value"),
-      // which would be redundant and would not work anyway.
-      this.#el.invoke('setValue', {
-        value: changes['value'].currentValue ?? '',
-      });
-      const { value: _ignored, ...rest } = changes;
-      if (Object.keys(rest).length) super.ngOnChanges(rest);
-    } else {
-      super.ngOnChanges(changes);
-    }
+    const { value, ...rest } = changes;
+    // A field's text isn't an attribute in Lynx: XElement's LynxUIBaseInput
+    // registers no prop for "value" on Android or iOS, so __SetAttribute
+    // would do nothing. Set as the DOM property, it reaches the field
+    // whether native has made its UI yet or not (see LynxElement's
+    // setProperty).
+    if (value) this.#el.setProperty('value', value.currentValue);
+    if (Object.keys(rest).length) super.ngOnChanges(rest);
   }
 
   /**
@@ -64,7 +54,9 @@ export class LynxInput extends LynxElementBase {
    */
   placeholder?: string;
   /**
-   * Current value of the field.
+   * The text the field shows, from its first render, as the DOM's `value`
+   * property. Changing it doesn't move the caret when the field has the
+   * text already, such as a model bound back to it.
    */
   value?: string;
   /**
@@ -141,19 +133,11 @@ export class LynxTextarea extends LynxElementBase {
   readonly #el: BaseLynxElement = inject(ElementRef).nativeElement;
 
   override ngOnChanges(changes: SimpleChanges): void {
-    if ('value' in changes) {
-      // LynxTextarea shares LynxUIBaseInput as its native base class on both
-      // Android and iOS, so it has the same limitation: no @LynxProp for
-      // "value", making __SetAttribute a no-op for live text updates.
-      // The setValue UIMethod is required here for the same reason as LynxInput.
-      this.#el.invoke('setValue', {
-        value: changes['value'].currentValue ?? '',
-      });
-      const { value: _ignored, ...rest } = changes;
-      if (Object.keys(rest).length) super.ngOnChanges(rest);
-    } else {
-      super.ngOnChanges(changes);
-    }
+    const { value, ...rest } = changes;
+    // As LynxInput: LynxTextarea shares LynxUIBaseInput as its native base
+    // class on both Android and iOS.
+    if (value) this.#el.setProperty('value', value.currentValue);
+    if (Object.keys(rest).length) super.ngOnChanges(rest);
   }
 
   type?: 'text' | 'number' | 'digit' | 'tel' | 'email';

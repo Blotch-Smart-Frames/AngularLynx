@@ -87,6 +87,8 @@ fireEvent.load(image, { detail: { width: 240, height: 340 } });
 await waitForUpdate(); // the handler ran; this lets Angular render its result
 ```
 
+An `<input>` or `<textarea>` is a JSDOM input or textarea, and its `value` is the text the field shows: the `[value]` or form value it renders with or is set to, and what `fireEvent.input(field, { detail: { value: 'Ada' } })` types.
+
 To test a component's timers, use `vi.useFakeTimers()` after `render()`. Then nothing runs on the real clock: change detection waits for the fake clock too. `waitForUpdate()` waits on a zero-delay timer, so start it, move the clock, and await it. The fake clock runs a zero-delay timer set inside another timer a millisecond later, as Node does, so move it 1 ms:
 
 ```typescript

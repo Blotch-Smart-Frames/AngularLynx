@@ -11,6 +11,7 @@ import type { LynxDocumentBase } from '../lynx-document';
 import {
   processPendingAttributeRemovals,
   processPendingFlow,
+  processPendingInvokes,
   processPendingListUpdates,
   processPendingRemovals,
   processPendingTextNormalization,
@@ -99,6 +100,9 @@ export class LynxRendererFactory2 implements RendererFactory2 {
    *      gained/lost children during this CD cycle, then does a targeted flush
    *      per list. This MUST run after the bare flush so list children's subtrees
    *      are already committed when componentAtIndex appends them.
+   *   4. processPendingInvokes() — makes again the UI method calls native
+   *      dropped this cycle because their element had no UI yet (see
+   *      LynxElement.invoke), now that the flush has made it.
    * Reversing this order causes list items to appear empty (subtree not committed)
    * or crashes from re-entrant __FlushElementTree.
    *
@@ -167,6 +171,9 @@ export class LynxRendererFactory2 implements RendererFactory2 {
         __FlushElementTree();
       }
       processPendingListUpdates();
+      // Then the UI method calls made on elements this cycle created, which
+      // have their UIs now (see LynxElement.invoke).
+      processPendingInvokes();
     } finally {
       // In `finally` so a cycle that returns early or throws still ends its
       // timing: the start times nest, so a missed end would pair every later

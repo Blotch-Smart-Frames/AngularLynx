@@ -4186,33 +4186,44 @@ The `@blotch/ui` theme gives each opaque color a `-rgb` twin (`--primary-rgb: 24
 
 ---
 
-## `<input>` and `<textarea>` `value` attribute is write-once — programmatic resets require `setValue` UIMethod
+## `<input>` and `<textarea>` have no `value` attribute: their text is set with `setValue`, or as `default-value` before their UI exists
 
 ### What you'd expect (web)
 
-Setting `element.value = ''` or `element.setAttribute('value', '')` clears the input's displayed text at any time, even after user interaction.
+Setting a field's `value` property changes the text it shows, at any time, from its first render: `[value]="name"` on a field that renders with `name` already set shows it straight away.
 
 ### What Lynx does
 
-The native `<input>` and `<textarea>` elements (`LynxUIBaseInput` on both Android and iOS) have **no `@LynxProp` handler for the `value` attribute**. This means `__SetAttribute(element, 'value', '')` is effectively a **no-op** once the user has interacted with the field — it updates the attribute metadata but does not clear the displayed text.
+On iOS and Android, XElement's `LynxUIBaseInput` registers **no prop for `value`** (Lynx 4.1: `platform/darwin/ios/lynx_xelement/input/LynxUIBaseInput.m`, `platform/android/lynx_xelement/lynx_xelement_input/.../LynxUIBaseInput.kt`), so `__SetAttribute(element, 'value', …)` never changes the text, before or after the user types. Two things do:
 
-To programmatically set the displayed text, use the `setValue` UIMethod:
+- **The `setValue` UI method**, which reaches only a UI native has made. Native makes an element's UI when the element tree is next flushed, so a field created since the last flush has none: `__InvokeUIMethod` answers code 6 (`kUIMethodNoUiForNode` / `NO_UI_FOR_NODE`), synchronously on both platforms (the main thread runs on the UI thread), and drops the call. That's what left a field that rendered with a value empty on iOS and Android (#339), in any change detection that created it, not only the first screen.
+- **The `default-value` attribute**, which Lynx applies as it makes the field's UI, without firing `bindinput`, and ignores from then on (`onNodeReady` marks it consumed). The iOS shadow node reads it too, so a `<textarea>` is laid out with its text, and its placeholder overlay starts hidden.
 
-```ts
-// Wrong — __SetAttribute("value") is ignored after user interaction
-__SetAttribute(element, 'value', '');
-
-// Correct — routes through __InvokeUIMethod("setValue", {value: ''})
-element.invoke('setValue', { value: '' });
-```
-
-### Impact on Angular forms
-
-When using Angular Signal Forms with `[formField]` on a component that implements `FormValueControl`, the form field reset resets the component's `model()` signal, which triggers a template binding update via `[attr.value]="value()"`. But since this calls `renderer.setAttribute(el, 'value', '')` → `__SetAttribute` → no-op, the native input is NOT cleared visually.
+Lynx for Web is different: its `x-input`/`x-textarea` are DOM elements from the start, take `setValue` at once (code 0), observe a `value` attribute, and ignore `default-value`.
 
 ### The fix in AngularLynx
 
-The `LynxInput` and `LynxTextarea` directives override `ngOnChanges` to call `this.#el.invoke?.('setValue', {value})` when the `value` input changes, bypassing `__SetAttribute`. UI components should use `[value]="value()"` (an Angular input binding that routes through `ngOnChanges`) rather than `[attr.value]="value()"` (an attribute binding that calls `renderer.setAttribute` directly and bypasses the override).
+A field's `value` is a property, as on the web: `LynxElement.setProperty('value', text)` on an `input` or `textarea` sends the text both ways, with `setValue` for a field on screen and as `default-value` for one native makes later (not on web). Whichever state the field is in, one of them shows it, without the runtime having to know which. The `LynxInput`/`LynxTextarea` directives' `[value]`, the forms' value accessors (`writeValue`) and a plain `[value]` property binding all go through it.
+
+Text the field already holds isn't set again, as a DOM field's isn't: the runtime listens to the field's `input` event and keeps what's typed, so a model bound back to the field doesn't echo each keystroke into `setValue`. A field rebuilt on remount (see `#recreateSubtree`) is made with the text it had, typed or set, as its `default-value`.
+
+Bind `[value]`, not `[attr.value]`: an attribute binding calls `renderer.setAttribute`, which goes to `__SetAttribute` and does nothing on iOS and Android.
+
+---
+
+## A UI method on an element created since the last flush is dropped
+
+### What you'd expect (web)
+
+A DOM element's methods work as soon as the element exists: `ngAfterViewInit() { this.field().nativeElement.focus(); }` focuses a field the view just created.
+
+### What Lynx does
+
+`__InvokeUIMethod` runs the method on the element's native UI at once (`PaintingContextDarwin::Invoke`, `PaintingContextAndroid::Invoke`), and native makes that UI only when the element tree is flushed. The renderer flushes at the end of change detection, and on the first screen native flushes after `renderPage` returns, after Angular's bootstrap, `ngAfterViewInit()` and `afterNextRender()`. A method called on an element created since the last flush finds no UI, and iOS and Android answer code 6 (`NO_UI_FOR_NODE`) synchronously and drop it. Lynx has its own fix for this, behind the page config `enableElementInvokeUIMethodPendingTask`, but only for a main-thread script's element (`LepusElement::Invoke` queues the call until the element's flush); `__InvokeUIMethod` doesn't use it.
+
+### The fix in AngularLynx
+
+`LynxElement.invoke()` reads native's answer, and when it's code 6, calls the method again once, after the next flush: after `LynxRendererFactory2.end()`'s, after a settle flush (scheduled for a call outside change detection), or after the first render's (`runAfterFirstRender`). An element with no UI even then isn't on the page, and the call is dropped. `MainThreadElement.invoke()` (a main-thread script's) still rejects with code 6, as React Lynx's worklet `Element.invoke()` does.
 
 ---
 
@@ -4358,7 +4369,7 @@ A `<textarea>` (or `<input>`) hides its `placeholder` the moment it has a value 
 
 ### What Lynx does
 
-On **iOS**, the native textarea renders the placeholder as a **separate overlay `UITextView`**, not the field's own placeholder. That overlay's visibility is only recomputed inside `textViewDidChange:` (i.e. on user edits). Setting the initial value through the `setValue` UIMethod — which is the only way to set a Lynx textarea/input value (`__SetAttribute("value")` is a no-op; see `LynxTextarea`/`LynxInput` in `packages/runtime/src/lib/lynx-elements/input.ts`) — does not reliably hide that overlay, so the placeholder and the value render stacked on top of each other.
+On **iOS**, the native textarea renders the placeholder as a **separate overlay `UITextView`**, not the field's own placeholder. That overlay's visibility is only recomputed inside `textViewDidChange:` (i.e. on user edits). Setting the value through the `setValue` UIMethod (`__SetAttribute("value")` is a no-op; see the `value` entry above) does not reliably hide that overlay, so the placeholder and the value render stacked on top of each other. A value the field renders with now arrives as `default-value` as well, which hides it, but a value set later still goes through `setValue`.
 
 Android (native `EditText` `hint`) and web (native `<textarea>`) hide the placeholder automatically, so the bug is iOS-only. The root cause is in the vendored on-device runtime ([`lynx/platform/darwin/ios/lynx_xelement/input/LynxUITextArea.m`](https://github.com/lynx-family/lynx/blob/develop/platform/darwin/ios/lynx_xelement/input/LynxUITextArea.m)), so it can't be fixed from the Angular side.
 

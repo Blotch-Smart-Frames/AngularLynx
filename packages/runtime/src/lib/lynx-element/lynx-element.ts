@@ -20,6 +20,7 @@ import { globalEvents, type LynxGlobalDocument } from '../global-events';
 import {
   isFirstRenderPending,
   isInsideChangeDetection,
+  runAfterFirstRender,
 } from '../lynx-render-lifecycle';
 import type { ElementRef } from '../types/lynx';
 import { toLynxDisplay, withLynxDisplay } from './display';
@@ -182,6 +183,19 @@ const fillTargetValue = (event: {
     target['value'] = value;
   }
 };
+
+/**
+ * Lynx's text fields, whose `value` is the text they show, as a DOM field's
+ * is (see LynxElement#setFieldText).
+ */
+const TEXT_FIELDS: ReadonlySet<string> = new Set(['input', 'textarea']);
+
+/**
+ * What iOS and Android answer a UI method with when they haven't made a UI
+ * for the element yet: `kUIMethodNoUiForNode`, `NO_UI_FOR_NODE` in
+ * `LynxUIMethodConstants`.
+ */
+const NO_UI_FOR_NODE = 6;
 
 /**
  * The `accessibility-traits` value to give an element: the app's own traits
@@ -480,6 +494,12 @@ export class LynxElement implements BaseLynxElement {
   #webPointer: { offsetX: number; offsetY: number } | null = null;
   /** The element's layout, once something needs it (see layout.ts). */
   #layout: LayoutTracker | null = null;
+  /**
+   * The text of an `<input>` or `<textarea>`, as far as the runtime knows:
+   * what the app last set (see #setFieldText) or the user last typed (see
+   * #dispatch). Null until the app first sets it.
+   */
+  #fieldText: string | null = null;
   /**
    * The handler registered natively for each event (see nativeEventKey). It
    * runs every listener for that event, since native Lynx keeps only one.
@@ -807,7 +827,63 @@ export class LynxElement implements BaseLynxElement {
   }
 
   setProperty(name: string, value: any): void {
+    // A field's `value` is the text it shows, as the DOM property is, and
+    // Lynx has no attribute for it (see #setFieldText).
+    if (name === 'value' && TEXT_FIELDS.has(this.tagName)) {
+      this.#setFieldText(value == null ? '' : String(value));
+      return;
+    }
     this.setAttribute(name, value);
+  }
+
+  /**
+   * Shows `text` in an `<input>` or `<textarea>`.
+   *
+   * A Lynx text field has no attribute for its text: XElement's
+   * LynxUIBaseInput registers no prop for `value` on iOS or Android, so only
+   * its setValue UI method changes it. A UI method reaches only a UI native
+   * has made, and native makes an element's UI when the element tree is next
+   * flushed, so a field created since the last flush has none. iOS and
+   * Android answer setValue on it with NO_UI_FOR_NODE and drop it, and a form
+   * opened on data it already held showed empty fields (#339).
+   *
+   * So the text goes two ways: with setValue, for a field that's on screen,
+   * and as `default-value`, which Lynx applies as it makes the field's UI and
+   * ignores from then on (XElement marks it consumed in `onNodeReady`).
+   * Whether the field has a UI or not, one of them shows the text, without
+   * the runtime having to know which. The field shows it from its first
+   * frame, where a setValue sent after the flush would come a frame late, and
+   * a `<textarea>` is laid out with it. Lynx for Web has no `default-value`
+   * and needs none: its fields are DOM elements from the start, and take
+   * setValue at once.
+   *
+   * Text the field holds already is left alone, as a DOM field's is when its
+   * `value` is set to its own text. A field bound to a model gets its typed
+   * text back after each keystroke, and setting it again would only disturb
+   * the user's typing. #dispatch keeps #fieldText up with what's typed, so
+   * the runtime listens to the field's `input` itself: Lynx sends a field's
+   * events only to a handler, and the app may have none. While a main-thread
+   * directive has the field's `input` (see holdNativeEvent), the runtime
+   * doesn't hear it, and sets the text whatever it was.
+   */
+  #setFieldText(text: string): void {
+    if (text === this.#fieldText && !this.#heldEvents.has('input')) return;
+    if (this.#fieldText === null) {
+      this.addEventListener('bindinput', () => {});
+    }
+    this.#fieldText = text;
+    this.#sendFieldText(this.element);
+  }
+
+  /**
+   * Sends #fieldText to `element` both ways (see #setFieldText).
+   */
+  #sendFieldText(element: ElementRef): void {
+    const value = this.#fieldText;
+    // Not cached in #attrs: a rebuilt field gets the text it has then, which
+    // may be what the user typed since (see #recreateSubtree).
+    if (!__WEB__) __SetAttribute(element, 'default-value', value);
+    __InvokeUIMethod(element, 'setValue', { value }, () => {});
   }
 
   /**
@@ -2110,6 +2186,8 @@ export class LynxElement implements BaseLynxElement {
     for (const [name, value] of this.#attrs) {
       __SetAttribute(fresh, name, value);
     }
+    // A field's text, which the destroyed UI took with it.
+    if (this.#fieldText !== null) this.#sendFieldText(fresh);
     if (this.#classes) __SetClasses(fresh, this.#classes);
     // Whole-string styles first, then per-key overrides — same order as the
     // original setAttribute('style') vs [style.x] application.
@@ -2209,23 +2287,71 @@ export class LynxElement implements BaseLynxElement {
     );
   }
   /**
-   * Invokes a native UI method on this element by name.
+   * Invokes a native UI method on this element by name: `focus`,
+   * `scrollIntoView`, a text field's `setValue`… Lynx exposes some of what an
+   * element does only this way.
    *
-   * This is needed because some Lynx native elements expose behavior only
-   * through UIMethod calls and have no corresponding @LynxProp handler. The
-   * most common case is input/textarea text updates: the native
-   * LynxUIBaseInput class has no @LynxProp for "value", so __SetAttribute
-   * is a no-op for changing the displayed text after user interaction. The
-   * setValue UIMethod is the only way to programmatically update the live
-   * text.
+   * A UI method reaches only a UI native has made, which it does for an
+   * element when the element tree is next flushed. On an element made since
+   * then, as `ngAfterViewInit()` sees one its change detection created, or
+   * `afterNextRender()` does on the first screen (whose flush comes after
+   * it), iOS and Android answer at once that the element has no UI
+   * (NO_UI_FOR_NODE), and drop the call. A DOM element's method would have
+   * run, so it's called again after the flush that makes the UI. Only once:
+   * an element still without a UI then isn't on the page. The answer comes
+   * at once because the main thread runs on the UI thread, as the shells and
+   * Lynx Explorer run it; on another thread it would come too late to tell,
+   * and the call isn't made again.
    *
-   * The result callback is intentionally empty. Callers that need a result
+   * The result callback is otherwise ignored. Callers that need a result
    * (e.g. getValue, boundingClientRect) should use MainThreadElement.invoke(),
    * which returns a Promise. This method covers fire-and-forget cases like
-   * setValue where only the side-effect matters.
+   * focus where only the side-effect matters.
    */
   invoke(methodName: string, params?: Record<string, unknown>): void {
-    __InvokeUIMethod(this.element, methodName, params ?? {}, () => {});
+    // The app setting a field's text itself, which a `value` set to the
+    // same text afterwards mustn't take for the text the field has (see
+    // #setFieldText).
+    if (methodName === 'setValue' && this.#fieldText !== null) {
+      this.#fieldText = String(params?.['value'] ?? '');
+    }
+    const call = (): boolean => {
+      let made = true;
+      __InvokeUIMethod(this.element, methodName, params ?? {}, (result) => {
+        made = result?.code !== NO_UI_FOR_NODE;
+      });
+      return made;
+    };
+    if (!call()) LynxElement.#afterFlush(call);
+  }
+
+  /**
+   * Calls waiting for the flush that makes their element's UI (see invoke).
+   */
+  static #awaitingFlush: Array<() => void> = [];
+
+  /**
+   * Runs `callback` after the element tree's next flush: after the native
+   * flush that ends the first render while it's under way, else after
+   * LynxRendererFactory2.end()'s, or a settle flush's (scheduled here, for a
+   * call outside change detection).
+   */
+  static #afterFlush(callback: () => void): void {
+    if (isFirstRenderPending()) {
+      runAfterFirstRender(callback);
+      return;
+    }
+    LynxElement.#awaitingFlush.push(callback);
+    scheduleSettleFlush();
+  }
+
+  /**
+   * Makes the calls waiting for this flush (see #afterFlush). Called right
+   * after the flush, so the UIs it made are there.
+   */
+  static commitPendingInvokes(): void {
+    if (LynxElement.#awaitingFlush.length === 0) return;
+    for (const callback of LynxElement.#awaitingFlush.splice(0)) callback();
   }
 
   animate(
@@ -2675,6 +2801,14 @@ export class LynxElement implements BaseLynxElement {
       event.button = 0;
       event.pointerType = __WEB__ ? 'mouse' : 'touch';
     }
+    // What the user typed, which the field shows now (see #setFieldText).
+    if (
+      this.#fieldText !== null &&
+      entry.eventName === 'input' &&
+      typeof event?.detail?.value === 'string'
+    ) {
+      this.#fieldText = event.detail.value;
+    }
     let result: unknown;
     // As a DOM event does: the listeners are those registered when the event
     // fires, so one that removes itself doesn't make the next one skip, and a
@@ -2742,6 +2876,16 @@ export const processPendingTextNormalization = (): void => {
   LynxElement.commitPendingTextNormalization();
 };
 
+/**
+ * Makes the UI method calls that waited for this flush (see
+ * LynxElement.invoke) — a free-function wrapper over
+ * `LynxElement.commitPendingInvokes()` for `LynxRendererFactory2.end()`,
+ * right after its flush.
+ */
+export const processPendingInvokes = (): void => {
+  LynxElement.commitPendingInvokes();
+};
+
 let settleFlushScheduled = false;
 
 /**
@@ -2798,5 +2942,6 @@ export const scheduleSettleFlush = (): void => {
     LynxElement.commitPendingAttributeRemovals();
     LynxElement.commitPendingTextNormalization();
     __FlushElementTree();
+    LynxElement.commitPendingInvokes();
   });
 };

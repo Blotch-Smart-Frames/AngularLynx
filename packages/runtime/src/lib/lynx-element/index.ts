@@ -3,6 +3,7 @@ export {
   LynxElement,
   processPendingAttributeRemovals,
   processPendingFlow,
+  processPendingInvokes,
   processPendingRemovals,
   processPendingTextNormalization,
   scheduleSettleFlush,

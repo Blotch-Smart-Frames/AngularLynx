@@ -40,7 +40,7 @@ Read [bootstrap-and-setup.md](references/bootstrap-and-setup.md)
 
 ## Lynx Elements
 
-All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `blur-view`, `frame`, `svg`, `canvas`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, the `page` root element, the HTML tags that render as Lynx elements (`<div>` as `<view>`, `<p>` as `<text>`, `<img>` as `<image>`), and 3D in a `<canvas>` with WebGL2, three.js and angular-three.
+All available native elements: `view`, `text`, `image`, `scroll-view`, `list`, `list-item`, `input`, `textarea`, `overlay`, `blur-view`, `frame`, `svg`, `canvas`, `block`, `raw-text`. Includes attributes, the `LYNX_ELEMENTS` import, setting a field's text with `[value]` and calling UI methods with `invoke()`, the `page` root element, the HTML tags that render as Lynx elements (`<div>` as `<view>`, `<p>` as `<text>`, `<img>` as `<image>`), and 3D in a `<canvas>` with WebGL2, three.js and angular-three.
 
 Read [lynx-elements.md](references/lynx-elements.md)
 

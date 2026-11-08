@@ -252,6 +252,22 @@ describe('UiInput', () => {
     expect(host.signIn.email().touched()).toBe(true);
   });
 
+  // Issue #339: a field the form already held a value for rendered empty.
+  it("shows a Signal Forms field's value from its first render", async () => {
+    @Component({
+      imports: [FormField, UiInput],
+      template: `<ui-input label="Name" [formField]="settings.name" />`,
+    })
+    class SettingsHost {
+      readonly model = signal({ name: 'Clock' });
+      readonly settings = form(this.model);
+    }
+    const { getByRole } = await render(SettingsHost);
+    const name = getByRole('textbox', { name: 'Name' }) as HTMLInputElement;
+
+    expect(name.value).toBe('Clock');
+  });
+
   it('makes the wrapper a stacking context so the field scrolls with it', async () => {
     // On Lynx a z-indexed element inside a scroll-view only follows the scroll
     // when an ancestor inside the scroll content is a stacking context. Without

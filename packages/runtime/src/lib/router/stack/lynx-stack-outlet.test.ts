@@ -224,17 +224,18 @@ describe('LynxStackOutlet', () => {
     });
 
     it('pushes a deeper page over the last one, which stays alive', async () => {
-      const { go, frames, shown, settle } = await setup();
+      const { go, frames, shown, settle, host } = await setup();
+      layOut(host);
       await go('/notes/1');
       expect(frames()).toHaveLength(2);
       // The new page starts off to the right, then slides in on the next turn.
-      expect(frames()[1]!.style.transform).toBe('translateX(100%)');
+      expect(frames()[1]!.style.transform).toBe('translateX(400px)');
       expect(animate).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(0);
       expect(animate).toHaveBeenCalledWith(
         [
-          { transform: 'translateX(100%)', opacity: '1' },
-          { transform: 'translateX(0%)', opacity: '1' },
+          { transform: 'translateX(400px)', opacity: '1' },
+          { transform: 'translateX(0px)', opacity: '1' },
         ],
         expect.objectContaining({ duration: 350, fill: 'forwards' }),
       );
@@ -584,6 +585,39 @@ describe('LynxStackOutlet', () => {
       await settle();
       expect(animate).not.toHaveBeenCalled();
       expect(frames()).toHaveLength(1);
+    });
+
+    it('rounds only the corners in a corner of the screen', async () => {
+      const { go, frames, host } = await setup();
+      // Under an app bar: the top corners meet the bar, the bottom ones are
+      // the screen's.
+      layOut(host, { left: 0, top: 100, width: 400, height: 700 });
+      await go('/notes/1');
+      expect(frames()[1]!.style.borderRadius).toBe('0px 0px 62px 62px');
+    });
+
+    it('moves pages with square corners in no corner of the screen', async () => {
+      const { go, frames, host } = await setup();
+      layOut(host, { left: 0, top: 100, width: 400, height: 600 });
+      await go('/notes/1');
+      expect(frames()[1]!.style.borderRadius).toBe('');
+      expect(frames()[1]!.style.boxShadow).not.toBe('');
+    });
+
+    it('moves pages with square corners before the outlet is laid out', async () => {
+      const { go, frames } = await setup();
+      await go('/notes/1');
+      expect(frames()[1]!.style.transform).toBe('translateX(100%)');
+      expect(frames()[1]!.style.borderRadius).toBe('');
+    });
+
+    it('moves pages with square corners on a screen of no known size', async () => {
+      const { go, frames, host } = await setup();
+      layOut(host);
+      vi.stubGlobal('innerWidth', undefined);
+      vi.stubGlobal('innerHeight', undefined);
+      await go('/notes/1');
+      expect(frames()[1]!.style.borderRadius).toBe('');
     });
 
     it('measures the outlet in px once it has been laid out', async () => {
@@ -938,6 +972,33 @@ describe('LynxStackOutlet', () => {
       expect(top.style.transform).toBe('translateX(10px) scale(0.95)');
       expect(top.style.borderRadius).toBe('28px');
     });
+
+    it('rounds the square corners as the page shrinks on Android', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const harness = await setup();
+      layOut(harness.host, { left: 0, top: 100, width: 400, height: 700 });
+      await harness.go('/notes/1');
+      await harness.settle();
+      const top = harness.frames()[1]!;
+      // Square under the app bar as the drag starts, and halfway to 28px
+      // halfway across.
+      await drag(top.firstElementChild!, 100, 300);
+      expect(top.style.borderRadius).toBe('14px 14px 28px 28px');
+      // Lynx can't animate the radius: the page keeps it as it goes.
+      touch(top.firstElementChild!, 'touchend', 300);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(top.style.borderRadius).toBe('14px 14px 28px 28px');
+    });
+
+    it('keeps the corners of a page that doesn’t shrink as it drags', async () => {
+      const harness = await setup();
+      layOut(harness.host, { left: 0, top: 100, width: 400, height: 700 });
+      await harness.go('/notes/1');
+      await harness.settle();
+      const top = harness.frames()[1]!;
+      await drag(top.firstElementChild!, 100, 300);
+      expect(top.style.borderRadius).toBe('0px 0px 62px 62px');
+    });
   });
 });
 
@@ -949,11 +1010,16 @@ const outletOf = (fixture: { debugElement: DebugElement }): LynxStackOutlet =>
     .componentInstance as LynxStackOutlet;
 
 /**
- * Gives an element a 400×800 box, as Lynx would once it's laid out.
+ * Gives an element a box, as Lynx would once it's laid out, on a 400×800
+ * screen (the LynxView): the whole screen unless told otherwise.
  */
-const layOut = (element: HTMLElement): void => {
-  element.getBoundingClientRect = () =>
-    ({ left: 0, top: 0, width: 400, height: 800 }) as DOMRect;
+const layOut = (
+  element: HTMLElement,
+  box = { left: 0, top: 0, width: 400, height: 800 },
+): void => {
+  element.getBoundingClientRect = () => box as DOMRect;
+  vi.stubGlobal('innerWidth', 400);
+  vi.stubGlobal('innerHeight', 800);
 };
 
 /**

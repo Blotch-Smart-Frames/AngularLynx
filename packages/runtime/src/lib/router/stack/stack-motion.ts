@@ -43,10 +43,20 @@ export type StackMotion = {
    * it, which lifts as it comes back.
    */
   readonly dim: number;
-  /** The moving page's corner radius, in px, or 0 for square corners. */
+  /**
+   * The moving page's corner radius, in px, or 0 for square corners: the
+   * screen's own. Only the corners in a corner of the screen round (see
+   * screenCorners).
+   */
   readonly radius: number;
   /** Whether a push or a pop rounds the page too, or only a drag. */
   readonly roundsAnimated: boolean;
+  /**
+   * Whether a drag rounds the page's square corners too, as it shrinks the
+   * page away from the outlet's edges: from square at the start to `radius`
+   * at the end (see shrunkCorners).
+   */
+  readonly roundsShrinking: boolean;
   /** The moving page's shadow, as a `box-shadow`, or null for none. */
   readonly shadow: string | null;
 };
@@ -84,6 +94,7 @@ export const IOS_MOTION: StackMotion = {
   dim: 0.06,
   radius: IOS_DISPLAY_RADIUS,
   roundsAnimated: true,
+  roundsShrinking: false,
   shadow: '0 0 24px rgba(0, 0, 0, 0.12)',
 };
 
@@ -114,9 +125,12 @@ export const MATERIAL_MOTION: StackMotion = {
   dismissed: { x: 0.1, scale: 0.9, opacity: 0 },
   dim: 0.1,
   // Material 3's large-increased shape, which predictive back rounds a full
-  // screen to as it shrinks.
+  // screen to as it shrinks. Android starts from the display's own radius,
+  // which Lynx can't read either, so the screen's corners are this from the
+  // start.
   radius: 28,
   roundsAnimated: false,
+  roundsShrinking: true,
   shadow: null,
 };
 
@@ -134,6 +148,107 @@ export const FADE_MOTION: StackMotion = {
   dim: 0,
   roundsAnimated: false,
   shadow: null,
+};
+
+/**
+ * The radius of each corner of a page, in px, in the order `border-radius`
+ * lists them: top left, top right, bottom right, bottom left.
+ */
+export type Corners = readonly [number, number, number, number];
+
+/** Square corners all round. */
+export const SQUARE: Corners = [0, 0, 0, 0];
+
+/** A box on the screen, such as the outlet's, relative to the LynxView, in px. */
+export type ScreenBox = {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+};
+
+/** The screen's size, in px: the LynxView's (`innerWidth`, `innerHeight`). */
+export type ScreenSize = { readonly width: number; readonly height: number };
+
+/**
+ * How far from the screen's edge a box's edge can be and still be on it, in
+ * px: Lynx lays out in fractions of a pixel.
+ */
+const ON_EDGE = 0.5;
+
+/**
+ * The corners of a page at rest in an outlet whose box is `box`: `radius` at
+ * each of the outlet's corners that's a corner of the screen, and square at
+ * the others.
+ *
+ * A moving page rounds its corners to look like the screen it fills, whose
+ * own corners are round. Where the outlet's corner isn't the screen's, as
+ * under an app bar or over a tab bar, the outlet's corner is square and
+ * clips the page there, so a round corner on the page only shows the page
+ * under it through the gap. Both platforms round on that rule. Material's
+ * predictive back gives a corner the display's radius only where it's at the
+ * screen's corner, and 0 elsewhere (MaterialMainContainerBackHelper in
+ * Material Components for Android). iOS 26 makes a view's corners concentric
+ * with its container's, and a container away from the screen's corners has
+ * square ones.
+ *
+ * The LynxView counts as the screen, as it does for `innerWidth`: an app
+ * fills the screen with it. An outlet that isn't laid out yet, or a screen
+ * of no size, gets square corners: where the outlet is isn't known.
+ */
+export const screenCorners = (
+  box: ScreenBox,
+  screen: ScreenSize,
+  radius: number,
+): Corners => {
+  if (
+    radius <= 0 ||
+    box.width <= 0 ||
+    box.height <= 0 ||
+    screen.width <= 0 ||
+    screen.height <= 0
+  ) {
+    return SQUARE;
+  }
+  const left = box.left <= ON_EDGE;
+  const top = box.top <= ON_EDGE;
+  const right = box.left + box.width >= screen.width - ON_EDGE;
+  const bottom = box.top + box.height >= screen.height - ON_EDGE;
+  const radiusIf = (inCorner: boolean): number => (inCorner ? radius : 0);
+  return [
+    radiusIf(top && left),
+    radiusIf(top && right),
+    radiusIf(bottom && right),
+    radiusIf(bottom && left),
+  ];
+};
+
+/**
+ * The corners of a page a drag has shrunk `progress` (0 to 1) of the way:
+ * the square ones round toward `radius` as the page leaves the outlet's
+ * edges, which Material's predictive back interpolates the same way.
+ */
+export const shrunkCorners = (
+  corners: Corners,
+  radius: number,
+  progress: number,
+): Corners =>
+  corners.map((corner) => corner + (radius - corner) * progress) as [
+    number,
+    number,
+    number,
+    number,
+  ];
+
+/**
+ * Corners as a `border-radius`, or null for square ones.
+ */
+export const cornerStyle = (corners: Corners): string | null => {
+  if (corners.every((corner) => corner <= 0)) return null;
+  if (corners.every((corner) => corner === corners[0])) {
+    return `${round(corners[0])}px`;
+  }
+  return corners.map((corner) => `${round(corner)}px`).join(' ');
 };
 
 /** Interpolates between two looks, `t` (0 to 1) of the way from `a` to `b`. */

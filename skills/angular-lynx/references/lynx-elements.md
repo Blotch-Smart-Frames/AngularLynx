@@ -233,3 +233,7 @@ onInput({ detail }: LynxEvent<InputDetail>) {
   this.inputValue.set(detail.value);
 }
 ```
+
+Set a field's text from code with `[value]`, a form (`[formField]`, `[formControl]`, `[(ngModel)]`) or `form.reset()`. It shows from the field's first render, as on the web. Don't bind `[attr.value]`: on iOS and Android a Lynx field has no `value` attribute, so the runtime sets the text with the field's `setValue` method (and as `default-value` before the field is on screen). A `[value]` set to the text the field already has, such as a model bound back to it after each keystroke, leaves the field alone, so the caret doesn't move. Read what's typed from `(bindinput)`'s `detail.value`: `nativeElement.value` doesn't exist.
+
+Call an element's UI methods (`focus`, `setSelectionRange`, `scrollTo`…) with `nativeElement.invoke(method, params)` on its `ElementRef`. Native makes an element's UI when the tree is flushed after change detection; a method called before that, from `ngAfterViewInit()` or the first screen's `afterNextRender()`, is called again once it has.

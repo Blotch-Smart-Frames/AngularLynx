@@ -124,6 +124,11 @@ export const FLOWS: readonly Flow[] = [
   {
     file: 'webview.yaml',
     description: "loads and draws a page in XElement's web view",
+    // Only the app's own builds, where a web view that isn't linked or
+    // registered would go unnoticed (issue #34). In Lynx Explorer, whose
+    // navigation bar sits above the app, the canvas page's links are below
+    // the bottom of CI's 320x640 Android emulator.
+    only: { host: 'shell' },
   },
   {
     file: 'photo.yaml',

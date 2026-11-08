@@ -5107,7 +5107,7 @@ xcrun simctl spawn booted log show --last 5m --style compact \
   --predicate 'process == "<app executable>" AND (eventMessage CONTAINS "_endLiveResize" OR eventMessage CONTAINS "hideContentUntilPendingUpdate" OR eventMessage CONTAINS "event name:load")'
 ```
 
-`-[WKWebView _endLiveResize]` marks the web view going on screen, and `hideContentUntilPendingUpdate completed` its first frame. The E2E tests check that a web view loads and draws in both hosts (`packages/e2e/native/webview.yaml`).
+`-[WKWebView _endLiveResize]` marks the web view going on screen, and `hideContentUntilPendingUpdate completed` its first frame. The E2E tests check that a web view loads and draws in the app's own builds (`packages/e2e/native/webview.yaml`).
 
 ---
 

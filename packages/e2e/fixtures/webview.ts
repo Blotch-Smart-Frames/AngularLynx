@@ -10,7 +10,7 @@ const PAGE =
 
 /**
  * E2E fixture for `<webview>` (issue #338), loaded through `loadComponent`
- * like linking.ts; canvas.ts links here. It loads a page from its `html`
+ * like linking.ts; photo.ts links here. It loads a page from its `html`
  * attribute, with no network, and shows "Web view: loaded" once the native
  * web view (WKWebView, android.webkit.WebView) has finished loading it and
  * its `bindload` reached Angular, or the error it reported.

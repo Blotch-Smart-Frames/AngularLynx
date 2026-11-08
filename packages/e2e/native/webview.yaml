@@ -1,21 +1,28 @@
-# Layer 6: <webview> (issue #338), an XElement element like the ones
-# xelement.yaml checks. The web view page (fixtures/webview.ts) loads a page
-# from its html attribute, with no network: "Web view: loaded" means the
-# native web view finished loading it and its bindload reached Angular, and
-# "Web page text" is the page's own line, which only a web view that drew the
-# page has in its accessibility tree.
+# Layer 6, the app's own builds only: <webview> (issue #338), an XElement
+# element like the ones xelement.yaml checks. The web view page
+# (fixtures/webview.ts, linked from the photo page) loads a page from its html
+# attribute, with no network: "Web view: loaded" means the native web view
+# finished loading it and its bindload reached Angular, and "Web page text"
+# is the page's own line, which only a web view that drew the page has in its
+# accessibility tree.
 #
-# The wait is long because the first web view in an app starts the web
-# engine's processes (WebKit's on iOS, the WebView's renderer on Android),
-# which on a busy machine took over 10 seconds before the page drew.
+# The waits are long because a web view starts the web engine's processes
+# before it draws (WebKit's on iOS, the WebView's renderer on Android), which
+# on a busy machine took over 10 seconds. The page's line is waited for too,
+# not asserted: on iOS it reaches the accessibility tree a moment after
+# bindload, and on a busy Mac one look at the tree took 40 seconds, so a
+# single look missed it.
 appId: ${APP_ID}
 ---
 - runFlow: open-app.yaml
 - tapOn: Open storage
 - tapOn: Open canvas
+- tapOn: Open photo
 - tapOn: Open web view
 - extendedWaitUntil:
     visible: 'Web view: loaded'
     timeout: 60000
-- assertVisible: Web page text
+- extendedWaitUntil:
+    visible: Web page text
+    timeout: 60000
 - takeScreenshot: webview

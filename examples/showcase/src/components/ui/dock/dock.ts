@@ -25,7 +25,7 @@ import {
   LynxAccessibilitySettings,
   type LynxEvent,
   LynxRouterLinkActive,
-  LynxStackChrome,
+  LynxStackBottomBar,
 } from '@blotch/angular-lynx';
 
 import {
@@ -331,15 +331,18 @@ export class UiDockAccessory {}
  * A page that a `<lynx-stack-outlet>` pushes over its first page takes the
  * dock away, as iOS and Material take their tab bars away from the screens
  * they drill down to, and the dock comes back as the page goes (see
- * `LynxStackChrome`). Where the pages move as iOS's do, the dock stays with
- * the page underneath: it moves a little left with it, and the pushed page
- * covers it. Where they move as Android's do, it slides down off the screen.
- * It follows a finger dragging a page back, and it leaves screen readers and
- * taps alone while it's away.
+ * `LynxStackChrome`). Where the pages move as iOS's do, the page underneath
+ * carries the dock (see `LynxStackBottomBar`): it moves a little left with
+ * it, and the pushed page covers it, rounded corner, shadow and all. Where
+ * they move as Android's do, it slides down off the screen. It follows a
+ * finger dragging a page back, and it leaves screen readers and taps alone
+ * while it's away.
  */
 @Component({
   selector: 'ui-dock',
   imports: [LYNX_ELEMENTS, UiGlass, UiGlassGroup],
+  // A page the stack moves carries the dock, under the page moving over it.
+  hostDirectives: [LynxStackBottomBar],
   encapsulation: ViewEncapsulation.None,
   providers: [
     { provide: UI_ICON_COLOR, useValue: ACCESSORY_ICON_COLOR },
@@ -353,9 +356,8 @@ export class UiDockAccessory {}
     '[style.padding-bottom]': 'keyboardPadding()',
     '[style.transition]': 'hostTransition()',
     // Away with the stack's first page (see stackLook).
-    '[style.transform]': 'stackLook().host',
+    '[style.transform]': 'stackLook().transform',
     '[attr.accessibility-elements-hidden]': 'stackHidden() || null',
-    '(bindlayoutchange)': 'measureHost($event)',
   },
   // The shapes are direct children of the glass group, so they merge on iOS
   // and the web. Each one keeps its element as the dock minimizes and
@@ -369,20 +371,10 @@ export class UiDockAccessory {}
   // The dock measures its width with an empty view rather than on the
   // group: Lynx for Web sends no layoutchange for a blur-view.
   //
-  // The view around the group moves the shapes with the page under a pushed
-  // one (see stackLook). It's a view of its own, rather than the group,
-  // whose own transition moves its frame as the dock minimizes. It has a
-  // native view on Android, where a flattened view's transition doesn't move
-  // it.
+  // The view around the group stops the shapes' taps while the dock is away.
   template: `
     <view class="h-0 w-full" (bindlayoutchange)="measure($event)"></view>
-    <view
-      class="flex flex-col"
-      [flatten]="false"
-      [user-interaction-enabled]="!stackHidden()"
-      [style.transform]="stackLook().content"
-      [style.transition]="stackLook().transition"
-    >
+    <view class="flex flex-col" [user-interaction-enabled]="!stackHidden()">
       <blur-view
         ui-glass-group
         class="relative"
@@ -534,7 +526,7 @@ export class UiDock implements SearchFieldContainer {
   readonly #injector = inject(Injector);
   readonly #renderer = inject(Renderer2);
   readonly #host = inject(ElementRef);
-  readonly #chrome = inject(LynxStackChrome);
+  readonly #bar = inject(LynxStackBottomBar);
 
   // A native view of its own on Android, where a flattened view's transition
   // doesn't move it (see stackLook).
@@ -561,12 +553,6 @@ export class UiDock implements SearchFieldContainer {
    * the dock minimizes.
    */
   protected readonly width = signal(0);
-
-  /**
-   * The host's width, margins and all: as wide as the screen, which a page
-   * pushed over the stack's first one crosses.
-   */
-  protected readonly hostWidth = signal(0);
 
   /** The item whose route is active, if any. */
   readonly selectedItem = computed(() =>
@@ -664,7 +650,6 @@ export class UiDock implements SearchFieldContainer {
     cn(
       'absolute right-0 bottom-0 left-0 flex flex-col',
       this.design() !== 'frosted' && 'px-4 pb-safe-2',
-      this.stackLook().clip && 'overflow-hidden',
       this.userClass(),
     ),
   );
@@ -673,51 +658,34 @@ export class UiDock implements SearchFieldContainer {
    * Whether a page of the stack that's showing has taken the dock away (see
    * LynxStackChrome).
    */
-  protected readonly stackHidden = computed(() =>
-    this.#chrome.bottomBarHidden(),
-  );
+  protected readonly stackHidden = computed(() => this.#bar.hidden());
 
   /**
    * Where the stack has the dock, as its pages move.
    *
-   * Where they move as iOS's do, the dock stays with the page under a pushed
-   * one, as iOS's tab bar does: the shapes move left with it, by its share
-   * of the width (`coveredX`), and the pushed page covers them. The pushed
-   * page can't draw over the dock, which is outside the stack, so the host
-   * covers it instead: it moves left the whole way, its right edge with the
-   * pushed page's left one, and clips the shapes, which move back right by
-   * the rest.
+   * Where they move as iOS's do, the page under a pushed one carries the
+   * dock, as UIKit's carries its tab bar (see LynxStackBottomBar): the dock
+   * moves left with it, and the pushed page covers it, rounded corner and
+   * shadow and all. The dock stays as it is, at rest in the page.
    *
    * Otherwise it slides down off the screen, as Material's navigation bar
    * leaves a screen it drills down to, and as the dock's own toolbar does
-   * when it minimizes.
+   * when it minimizes. So does a dock no page can carry, such as one going
+   * away with a page that's popped.
    *
    * It moves as long as the pages do, on their curve, and at once as a
    * finger drags them. Under Reduce Motion, while the pages cross-fade, it
    * goes and comes at once, as the dock's own transitions do.
    */
   protected readonly stackLook = computed(() => {
-    const progress = this.#chrome.bottomBarProgress();
-    const motion = this.#chrome.bottomBarMotion();
-    const moving = motion.duration > 0;
-    const transition =
-      moving && motion.animation !== 'fade'
-        ? `transform ${motion.duration}ms ${motion.easing}`
-        : null;
-    if (motion.animation === 'ios') {
-      const back = progress * (1 + motion.coveredX) * this.hostWidth();
-      return {
-        host: `translateX(${round(-progress * 100)}%)`,
-        content: `translateX(${round(back)}px)`,
-        clip: progress > 0 || moving,
-        transition,
-      };
-    }
+    const progress = this.#bar.progress();
+    const motion = this.#bar.motion();
     return {
-      host: `translateY(${round(progress * 100)}%)`,
-      content: 'translateX(0px)',
-      clip: false,
-      transition,
+      transform: `translateY(${round(progress * 100)}%)`,
+      transition:
+        motion.duration > 0 && motion.animation !== 'fade'
+          ? `transform ${motion.duration}ms ${motion.easing}`
+          : null,
     };
   });
 
@@ -1126,10 +1094,6 @@ export class UiDock implements SearchFieldContainer {
 
   protected measure({ detail }: LynxEvent<LayoutChangeDetail>): void {
     this.width.set(detail.width);
-  }
-
-  protected measureHost({ detail }: LynxEvent<LayoutChangeDetail>): void {
-    this.hostWidth.set(detail.width);
   }
 
   /**

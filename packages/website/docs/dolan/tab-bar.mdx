@@ -71,11 +71,11 @@ export class Home {}
 Give a tab a [`<lynx-stack-outlet>`](/guide/routing#the-tab-bar-or-dock-goes-away-on-a-pushed-screen), and a screen it pushes over the tab's first screen takes the bar away, as iOS's `hidesBottomBarWhenPushed` and Material's navigation bar do. The example's Inbox is one: open a message.
 
 - **While it's away,** the bar lies over the bottom of the screen rather than under the outlet, so the pushed screen runs to the bottom edge.
-- **Where screens move as iOS's do,** the bar stays with the screen underneath: its tabs move a little left with it, and the pushed screen covers them.
+- **Where screens move as iOS's do,** the screen underneath carries the bar: it moves a little left with that screen, and the pushed screen slides over it, rounded corner and shadow and all.
 - **Where they move as Android's do,** it slides down off the screen.
 - **Back, Android's back button or a swipe brings it back,** following the finger while it drags. While it's away, screen readers skip it and it takes no taps.
 
-A route keeps the bar with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says.
+A route keeps the bar with `data: { bottomBar: 'visible' }`. See [`LynxStackChrome`](/api/angular-lynx/routing#lynxstackchrome) for what the stack says, and [`LynxStackBottomBar`](/api/angular-lynx/routing#lynxstackbottombar) for how a screen carries the bar.
 
 ### Badges
 

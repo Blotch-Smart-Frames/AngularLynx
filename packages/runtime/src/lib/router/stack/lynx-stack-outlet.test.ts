@@ -4,8 +4,11 @@ import { Location, LocationStrategy } from '@angular/common';
 import { MockLocationStrategy } from '@angular/common/testing';
 import {
   Component,
+  EnvironmentInjector,
   type OnDestroy,
   type Provider,
+  type Type,
+  createComponent,
   inject,
   provideZonelessChangeDetection,
   type DebugElement,
@@ -44,6 +47,7 @@ import { LynxAccessibilitySettings } from '../../accessibility/accessibility-set
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { provideRouter } from '../lynx-router';
 import { LynxStackOutlet } from './lynx-stack-outlet';
+import { LynxStackBottomBar } from './stack-bottom-bar';
 import { LynxStackChrome, STILL } from './stack-chrome';
 import { LynxStackPage } from './stack-page';
 
@@ -113,6 +117,53 @@ class NestPage {
 /** Every page with a stack of its own made. */
 const nests: NestPage[] = [];
 
+/** Every bottom bar made, so a test can see where it is. */
+const bars: Bar[] = [];
+
+/**
+ * A bottom bar, which a page can carry.
+ */
+@Component({
+  selector: 'test-bar',
+  template: 'bar',
+  hostDirectives: [LynxStackBottomBar],
+})
+class Bar {
+  readonly bar = inject(LynxStackBottomBar);
+
+  constructor() {
+    bars.push(this);
+  }
+}
+
+/**
+ * A page with a stack of its own and a bar of its own, beside it.
+ */
+@Component({
+  selector: 'test-bar-nest-page',
+  template: '<lynx-stack-outlet /><test-bar />',
+  imports: [LynxStackOutlet, Bar],
+})
+class BarNestPage {}
+
+/**
+ * The stack with the app's bottom bar beside it, as a tab bar or a dock is.
+ */
+@Component({
+  selector: 'test-bar-host',
+  template: `
+    <lynx-stack-outlet />
+    @if (barShown()) {
+      <test-bar />
+    }
+    <lynx-stack-outlet name="side" />
+  `,
+  imports: [LynxStackOutlet, Bar],
+})
+class BarHost {
+  readonly barShown = signal(true);
+}
+
 @Component({
   selector: 'test-host',
   template: `
@@ -146,6 +197,12 @@ const ROUTES: Routes = [
     children: [
       { path: '', component: Page },
       { path: 'kept', component: Page, data: { bottomBar: 'visible' } },
+      // A third stack, inside the second.
+      {
+        path: 'deeper',
+        component: NestPage,
+        children: [{ path: '', component: Page }],
+      },
       { path: ':item', component: Page },
     ],
   },
@@ -169,6 +226,15 @@ const ROUTES: Routes = [
     ],
   },
   { path: 'aside', component: Page, outlet: 'side' },
+  // A stack inside a page, with a bar of the page's own.
+  {
+    path: 'bars',
+    component: BarNestPage,
+    children: [
+      { path: '', component: Page },
+      { path: ':item', component: Page },
+    ],
+  },
 ];
 
 type Animate = ReturnType<typeof vi.fn>;
@@ -183,6 +249,7 @@ describe('LynxStackOutlet', () => {
   beforeEach(() => {
     made.length = 0;
     nests.length = 0;
+    bars.length = 0;
     canLeave = true;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     animate = vi.fn(() => ({ cancel: vi.fn() }));
@@ -204,11 +271,12 @@ describe('LynxStackOutlet', () => {
       ROUTES,
       withComponentInputBinding(),
     ),
+    root: Type<unknown> = Host,
   ) => {
     TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection(), router, ...providers],
     });
-    const fixture = TestBed.createComponent(Host);
+    const fixture = TestBed.createComponent(root);
     fixture.detectChanges();
     const routerService = TestBed.inject(Router);
     const location = TestBed.inject(Location);
@@ -1296,6 +1364,301 @@ describe('LynxStackOutlet', () => {
       expect(chrome().bottomBarHidden()).toBe(true);
       expect(made[1]!.chrome.bottomBarHidden()).toBe(false);
       expect(made[1]!.chrome).not.toBe(chrome());
+    });
+  });
+
+  describe('a bar a page carries', () => {
+    /**
+     * The stack with the app's bar beside it, laid out 400 wide.
+     */
+    const carrying = async (providers: Provider[] = [], url = '/notes') => {
+      const harness = await setup(
+        providers,
+        url,
+        provideRouter(ROUTES, withComponentInputBinding()),
+        BarHost,
+      );
+      layOut(harness.host);
+      const app = harness.fixture.nativeElement as HTMLElement;
+      const element = app.querySelector(':scope > test-bar') as HTMLElement;
+      const comments = () =>
+        Array.from(app.childNodes).filter(
+          (node) => node.nodeType === Node.COMMENT_NODE,
+        );
+      return { ...harness, app, element, bar: bars[0]!.bar, comments };
+    };
+
+    /**
+     * Whether the bar is in its own place: between the stack and the side
+     * outlet, with nothing of the page's style.
+     */
+    const atHome = (app: HTMLElement, element: HTMLElement): void => {
+      expect(Array.from(app.children).map((child) => child.tagName)).toEqual([
+        'LYNX-STACK-OUTLET',
+        'TEST-BAR',
+        'LYNX-STACK-OUTLET',
+      ]);
+      expect(app.children[1]).toBe(element);
+      expect(element.style.position).toBe('');
+      expect(element.style.bottom).toBe('');
+    };
+
+    it('has the page under a pushed one carry the bar, under the pushed page', async () => {
+      const { app, element, bar, comments, frames, go, settle, location } =
+        await carrying();
+      const before = comments().length;
+      atHome(app, element);
+      expect(bar.carried()).toBe(false);
+
+      await go('/notes/1');
+      // Over the first page, along its bottom: the page sliding in covers it.
+      const under = frames()[0]!;
+      expect(element.parentElement).toBe(under);
+      expect(under.lastElementChild).toBe(element);
+      expect(element.style.position).toBe('absolute');
+      expect(element.style.left).toBe('0px');
+      expect(element.style.right).toBe('0px');
+      expect(element.style.bottom).toBe('0px');
+      // A comment keeps its place.
+      expect(comments()).toHaveLength(before + 1);
+      // At rest in the page, which moves it.
+      expect(bar.carried()).toBe(true);
+      expect(bar.hidden()).toBe(true);
+      expect(bar.progress()).toBe(0);
+      expect(bar.motion()).toEqual(
+        expect.objectContaining({ animation: 'ios', duration: 0 }),
+      );
+
+      await settle();
+      // Covered, the page keeps it for when it comes back.
+      expect(element.parentElement).toBe(under);
+
+      location.back();
+      await vi.advanceTimersByTimeAsync(20);
+      // The page carries it back in.
+      expect(element.parentElement).toBe(under);
+      expect(bar.hidden()).toBe(false);
+      await settle();
+      atHome(app, element);
+      expect(comments()).toHaveLength(before);
+      expect(bar.carried()).toBe(false);
+    });
+
+    it('rounds a pushed page down to a bar it takes out of the layout under the stack', async () => {
+      const { element, frames, go, host, settle } = await carrying();
+      // A tab bar under the stack, at the bottom of the screen.
+      layOut(host, { left: 0, top: 0, width: 400, height: 740 });
+      element.getBoundingClientRect = () =>
+        ({ left: 0, top: 740, width: 400, height: 60 }) as DOMRect;
+      await go('/notes/1');
+      // The stack runs to the screen's bottom once the bar is out of it.
+      expect(frames()[1]!.style.borderRadius).toBe('62px');
+      await settle();
+      TestBed.resetTestingModule();
+      bars.length = 0;
+
+      // A bar that floats over the stack leaves it as it is.
+      const floating = await carrying();
+      layOut(floating.host, { left: 0, top: 0, width: 400, height: 740 });
+      floating.element.getBoundingClientRect = () =>
+        ({ left: 0, top: 680, width: 400, height: 60 }) as DOMRect;
+      await floating.go('/notes/1');
+      expect(floating.frames()[1]!.style.borderRadius).toBe(
+        '62px 62px 0px 0px',
+      );
+    });
+
+    it('carries the bar in the page under one a finger drags', async () => {
+      const { element, bar, frames, fixture, go, settle } = await carrying();
+      // Pushed at once, so the bar is still in its place.
+      setInput(outletOf(fixture), 'animation', 'none');
+      await go('/notes/1');
+      await settle();
+      expect(bar.carried()).toBe(false);
+      expect(bar.progress()).toBe(1);
+      setInput(outletOf(fixture), 'animation', 'ios');
+
+      const top = frames()[1]!.firstElementChild!;
+      await drag(top, 100, 160, 100);
+      expect(element.parentElement).toBe(frames()[0]);
+      expect(bar.progress()).toBe(0);
+      // Let go short: the page comes back over it, and keeps it.
+      touch(top, 'touchcancel', 160);
+      await settle();
+      expect(element.parentElement).toBe(frames()[0]);
+
+      // Dragged the whole way: back in its place once the router is back.
+      await drag(top, 100, 320, 100);
+      touch(top, 'touchend', 320);
+      await settle();
+      expect(frames()).toHaveLength(1);
+      expect(bar.carried()).toBe(false);
+      expect(bar.hidden()).toBe(false);
+    });
+
+    it('leaves the bar with the page carrying it while pages that both hide it move', async () => {
+      const { element, frames, go, settle, location } = await carrying();
+      await go('/notes/1');
+      await settle();
+      await go('/notes/1/edit');
+      expect(element.parentElement).toBe(frames()[0]);
+      await settle();
+      location.back();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(element.parentElement).toBe(frames()[0]);
+      await settle();
+      expect(element.parentElement).toBe(frames()[0]);
+    });
+
+    it('lets a pushed page that keeps the bar bring it in, and a popped one leave it', async () => {
+      const { app, element, bar, frames, go, settle, location } =
+        await carrying();
+      await go('/notes/1');
+      await settle();
+      await go('/notes/1/share');
+      // The page sliding in keeps the bar, so it brings it in.
+      expect(element.parentElement).toBe(frames()[2]);
+      expect(bar.hidden()).toBe(false);
+      await settle();
+      atHome(app, element);
+
+      location.back();
+      await vi.advanceTimersByTimeAsync(20);
+      // The page that has it goes, so it slides away on its own.
+      atHome(app, element);
+      expect(bar.progress()).toBe(1);
+      expect(bar.motion().duration).toBe(350);
+      await settle();
+      atHome(app, element);
+
+      // Back to the first page: it carries the bar in.
+      location.back();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(element.parentElement).toBe(frames()[0]);
+      await settle();
+      atHome(app, element);
+    });
+
+    it('keeps the bar when the page carrying it goes', async () => {
+      const { app, element, frames, go, settle } = await carrying();
+      await go('/notes/1');
+      await settle();
+      const first = made[0]!;
+      // A page that isn't in the stack, coming in from behind.
+      await go('/settings', { info: { stack: 'pop' } });
+      // The first page is gone, and the page coming in carries the bar.
+      expect(first.destroyed).toBe(true);
+      expect(element.parentElement).toBe(frames()[0]);
+      expect(element.isConnected).toBe(true);
+      await settle();
+      atHome(app, element);
+    });
+
+    it('leaves the bar alone on Android and under Reduce Motion', async () => {
+      vi.stubGlobal('SystemInfo', { platform: 'Android' });
+      const android = await carrying();
+      await android.go('/notes/1');
+      atHome(android.app, android.element);
+      expect(android.bar.progress()).toBe(1);
+      expect(android.bar.motion().duration).toBe(450);
+      TestBed.resetTestingModule();
+      vi.unstubAllGlobals();
+      bars.length = 0;
+
+      const reduced = await carrying([
+        {
+          provide: LynxAccessibilitySettings,
+          useValue: { reduceMotion: () => true },
+        },
+      ]);
+      await reduced.go('/notes/1');
+      atHome(reduced.app, reduced.element);
+      expect(reduced.bar.motion().animation).toBe('fade');
+    });
+
+    it('gives the bar back when the router leaves the stack', async () => {
+      const { app, element, frames, go, settle } = await carrying([], '/bars');
+      const own = bars[1]!;
+      const ownElement = app.querySelector(
+        'test-bar-nest-page test-bar',
+      ) as HTMLElement;
+      const ownHome = ownElement.parentElement;
+      await go('/bars/1');
+      // The inner stack pushed: its first page carries the app's bar, and
+      // the bar beside it on its page.
+      const inner = ownHome!.querySelector('lynx-stack-outlet')!;
+      const first = inner.children[0]!;
+      expect(element.parentElement).toBe(first);
+      expect(ownElement.parentElement).toBe(first);
+      expect(own.bar.carried()).toBe(true);
+      await settle();
+
+      // Coming in from behind, so the page with the stack slides away.
+      await go('/settings', { info: { stack: 'pop' } });
+      // The router left the inner stack: both bars are back in their places,
+      // and the outer stack moves the page's own with the page.
+      atHome(app, element);
+      expect(ownElement.parentElement).toBe(ownHome);
+      expect(own.bar.carried()).toBe(false);
+      await settle();
+      expect(frames()).toHaveLength(1);
+      atHome(app, element);
+    });
+
+    it('carries the bar with stacks inside the page a finger drags', async () => {
+      const { element, frames, go, settle } = await carrying();
+      await go('/notes/1/nest/deeper');
+      await settle();
+      expect(nests).toHaveLength(2);
+      expect(element.parentElement).toBe(frames()[0]);
+      const top = frames()[1]!.firstElementChild!;
+      // The stacks inside the dragged page don't say what the page under
+      // has.
+      await drag(top, 100, 200, 100);
+      expect(element.parentElement).toBe(frames()[0]);
+      touch(top, 'touchcancel', 200);
+      await settle();
+      expect(element.parentElement).toBe(frames()[0]);
+    });
+
+    it('lets go of a bar destroyed while a page carries it', async () => {
+      const { app, element, fixture, comments, go, settle, location } =
+        await carrying();
+      const before = comments().length;
+      await go('/notes/1');
+      await settle();
+      fixture.componentInstance.barShown.set(false);
+      fixture.detectChanges();
+      expect(element.isConnected).toBe(false);
+      expect(comments()).toHaveLength(before);
+      location.back();
+      await settle();
+      expect(app.querySelector('test-bar')).toBeNull();
+    });
+
+    it('takes the bar off the page when its place is gone', async () => {
+      const { app, element, comments, go, settle, location } = await carrying();
+      const before = comments();
+      await go('/notes/1');
+      await settle();
+      const place = comments().find((node) => !before.includes(node))!;
+      place.remove();
+      location.back();
+      await settle();
+      expect(element.isConnected).toBe(false);
+      expect(app.querySelector('test-bar')).toBeNull();
+    });
+
+    it("doesn't carry a bar that's out of the tree", async () => {
+      const { go, settle } = await carrying();
+      const loose = createComponent(Bar, {
+        environmentInjector: TestBed.inject(EnvironmentInjector),
+      });
+      await go('/notes/1');
+      expect(loose.instance.bar.carried()).toBe(false);
+      expect(loose.location.nativeElement.parentNode).toBeNull();
+      await settle();
+      loose.destroy();
     });
   });
 });

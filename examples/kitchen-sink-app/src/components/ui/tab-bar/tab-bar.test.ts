@@ -313,18 +313,21 @@ describe('UiTabBar', () => {
 describe('UiTabBar in a stack', () => {
   /**
    * What a `<lynx-stack-outlet>` says through LynxStackChrome, as a test
-   * sets it.
+   * sets it: a chrome of its own, which the bar's LynxStackBottomBar
+   * follows. No page carries the bar here (no outlet does); a page that does
+   * leaves it as it is at rest (see LynxStackBottomBar).
    */
-  const chrome = {
-    bottomBarHidden: signal(false),
-    bottomBarProgress: signal(0),
-    bottomBarMotion: signal<StackBarMotion>({
+  class TestChrome extends LynxStackChrome {
+    override readonly bottomBarHidden = signal(false);
+    override readonly bottomBarProgress = signal(0);
+    override readonly bottomBarMotion = signal<StackBarMotion>({
       animation: 'ios',
       duration: 0,
       easing: 'linear',
       coveredX: -0.3,
-    }),
-  };
+    });
+  }
+  const chrome = new TestChrome();
   const IOS_PUSH: StackBarMotion = {
     animation: 'ios',
     duration: 350,
@@ -359,19 +362,16 @@ describe('UiTabBar in a stack', () => {
   it('stays under the outlet while nothing takes it away', async () => {
     const { bar, tabs } = await renderBar();
     expect(bar.classList).not.toContain('absolute');
-    expect(bar.classList).not.toContain('overflow-hidden');
-    expect(style(bar, 'transform')).toBe('translateX(0%)');
+    expect(style(bar, 'transform')).toBe('translateY(0%)');
     expect(tabs.getAttribute('user-interaction-enabled')).toBe('true');
   });
 
-  it('lies over the bottom of the screen and stays with the page under a pushed one', async () => {
+  it('lies over the bottom of the screen, and slides down off it where no page carries it', async () => {
     const { bar, tabs } = await renderBar();
     await moveTo(1, IOS_PUSH);
     expect(bar.classList).toContain('absolute');
     expect(bar.classList).toContain('bottom-0');
-    expect(bar.classList).toContain('overflow-hidden');
-    expect(style(bar, 'transform')).toBe('translateX(-100%)');
-    expect(style(tabs, 'transform')).toBe('translateX(70%)');
+    expect(style(bar, 'transform')).toBe('translateY(100%)');
     expect(style(bar, 'transition')).toBe(
       'transform 350ms cubic-bezier(0.32, 0.68, 0.12, 1)',
     );
@@ -386,12 +386,10 @@ describe('UiTabBar in a stack', () => {
   });
 
   it('slides down off the screen as Android pages move', async () => {
-    const { bar, tabs } = await renderBar();
+    const { bar } = await renderBar();
     await moveTo(0.4, { animation: 'material' }, true);
     expect(style(bar, 'transform')).toBe('translateY(40%)');
-    expect(style(tabs, 'transform')).toBe('translateX(0%)');
     expect(bar.classList).toContain('absolute');
-    expect(bar.classList).not.toContain('overflow-hidden');
     await moveTo(1, { animation: 'fade', duration: 250 });
     expect(style(bar, 'transition')).toBe('');
   });

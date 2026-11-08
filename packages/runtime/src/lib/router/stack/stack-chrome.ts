@@ -115,11 +115,33 @@ export const awayOf = (
   return bar === 'pushed' && hidesPushed ? 1 : fallback;
 };
 
+/**
+ * A bar a page carries while the pages of a stack move (see
+ * LynxStackBottomBar), as the outlets see it.
+ */
+export type CarriedBar = {
+  /** The chrome the bar follows: a page's, for a bar on a stack page. */
+  readonly chrome: LynxStackChrome;
+  /** The frame the bar is in, or null while it's in its own place. */
+  frame(): unknown;
+  /**
+   * The bar's box relative to the LynxView, from its last layout: in its
+   * own place until it's laid out in a page.
+   */
+  box(): { readonly top: number; readonly height: number };
+  /** Puts the bar in a page's frame, over the page at its bottom. */
+  carry(frame: unknown): void;
+  /** Puts the bar back in its own place. */
+  home(): void;
+};
+
 /** The outlets every chrome of an app follows, shared by them all. */
 type Registry = {
   readonly claims: WritableSignal<readonly ChromeClaim[]>;
   /** The outlet each page is in. */
   readonly owners: WeakMap<LynxStackPage, ChromeClaim>;
+  /** The bars a page can carry (see LynxStackBottomBar). */
+  readonly bars: Set<CarriedBar>;
 };
 
 /**
@@ -145,6 +167,28 @@ export let chromeOn: (
   page: LynxStackPage,
 ) => LynxStackChrome;
 
+/**
+ * Adds a bar a page can carry, and returns the call that takes it out again.
+ * Assigned as follow is.
+ */
+export let addBar: (chrome: LynxStackChrome, bar: CarriedBar) => () => void;
+
+/** Every bar a page can carry, whichever chrome of the app it follows. */
+export let barsOf: (chrome: LynxStackChrome) => readonly CarriedBar[];
+
+/**
+ * How far away a chrome has the bar at rest, 0 (shown) or 1 (gone), with a
+ * page that says `bar` on top of the outlet `claim` follows: what its
+ * `bottomBarHidden` would say, without the outlets inside the outlet's top
+ * page. Null if the chrome doesn't follow the outlet (it isn't showing, or
+ * it's outside the chrome's page). Assigned as follow is.
+ */
+export let awayWith: (
+  chrome: LynxStackChrome,
+  claim: ChromeClaim,
+  bar: PageBar,
+) => number | null;
+
 /** Each page's chrome, made when a component on it first asks. */
 const pageChromes = new WeakMap<LynxStackPage, LynxStackChrome>();
 
@@ -155,7 +199,10 @@ const pageChromes = new WeakMap<LynxStackPage, LynxStackChrome>();
  * over the stack's first one takes the bar away, as iOS's
  * `hidesBottomBarWhenPushed` and Material's navigation bar do, and how far
  * the bar is on its way, so it can move with the pages. `@blotch/ui`'s dock
- * and tab bar follow it; a bar of an app's own reads it the same way:
+ * and tab bar follow it through `LynxStackBottomBar`, which also has
+ * the page carry the bar while iOS's motion slides another page over it; a
+ * bar of an app's own does the same (see LynxStackBottomBar), or reads this
+ * directly to slide away on its own:
  *
  * ```ts
  * @Component({
@@ -196,7 +243,11 @@ const pageChromes = new WeakMap<LynxStackPage, LynxStackChrome>();
  */
 @Injectable({ providedIn: 'root' })
 export class LynxStackChrome {
-  #registry: Registry = { claims: signal([]), owners: new WeakMap() };
+  #registry: Registry = {
+    claims: signal([]),
+    owners: new WeakMap(),
+    bars: new Set(),
+  };
   /** The page whose outlets this chrome follows, or null for every outlet. */
   #scope: LynxStackPage | null = null;
 
@@ -284,6 +335,34 @@ export class LynxStackChrome {
       return () => claims.update((list) => list.filter((c) => c !== claim));
     };
     own = (chrome, page, claim) => chrome.#registry.owners.set(page, claim);
+    addBar = (chrome, bar) => {
+      const { bars } = chrome.#registry;
+      bars.add(bar);
+      return () => bars.delete(bar);
+    };
+    barsOf = (chrome) => [...chrome.#registry.bars];
+    awayWith = (chrome, claim, bar) => {
+      const shown = chrome.#shown();
+      if (!shown.includes(claim)) return null;
+      const { owners } = chrome.#registry;
+      /**
+       * Whether an outlet is on a page of the outlet's (its top page, as
+       * it's showing): it says what that page has, not the page `bar`
+       * stands for.
+       */
+      const inside = (other: ChromeClaim): boolean => {
+        // Every page an outlet is on is in an outlet (see own).
+        for (let page = other.page; page; page = owners.get(page)!.page) {
+          if (owners.get(page) === claim) return true;
+        }
+        return false;
+      };
+      return shown.reduce((away, other) => {
+        if (other === claim) return awayOf(bar, other.hidesPushed(), away);
+        if (inside(other)) return away;
+        return awayOf(other.state().active!, other.hidesPushed(), away);
+      }, 0);
+    };
     chromeOn = (chrome, page) => {
       let scoped = pageChromes.get(page);
       if (!scoped) {

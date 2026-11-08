@@ -232,6 +232,7 @@ export { LynxStackPage } from './lib/router/stack/stack-page';
 export type { StackNavigationInfo } from './lib/router/stack/stack-change';
 export type { StackAnimation } from './lib/router/stack/stack-motion';
 export { LynxStackChrome } from './lib/router/stack/stack-chrome';
+export { LynxStackBottomBar } from './lib/router/stack/stack-bottom-bar';
 export type {
   StackBarMotion,
   StackBottomBar,

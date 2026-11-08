@@ -182,7 +182,7 @@ export type ScreenSize = { readonly width: number; readonly height: number };
  * How far from the screen's edge a box's edge can be and still be on it, in
  * px: Lynx lays out in fractions of a pixel.
  */
-const ON_EDGE = 0.5;
+export const ON_EDGE = 0.5;
 
 /**
  * The corners of a page at rest in an outlet whose box is `box`: `radius` at

@@ -27,8 +27,32 @@ const turnTheStone: AutoGestureOptions = {
 };
 
 /**
+ * The red line across Darkroom's photo, dragged to one side, then the other,
+ * then back to the middle: before and after, shown before anyone touches it.
+ * The photo's band sits at about a third of the screen's height.
+ */
+const sweepTheLine: AutoGestureOptions = {
+  startDelayMs: 1200,
+  loop: false,
+  steps: [
+    {
+      path: [
+        { x: 0.5, y: 0.31 },
+        { x: 0.16, y: 0.31 },
+        { x: 0.84, y: 0.31 },
+        { x: 0.5, y: 0.31 },
+      ],
+      durationMs: 2600,
+      restMs: 400,
+      iterations: 1,
+    },
+  ],
+};
+
+/**
  * The apps the landing page runs live. The showcase comes first: it's the
- * one that makes the case. The furniture shop is the Lynx tutorials' app,
+ * one that makes the case, and Darkroom is its 2D counterpart, image
+ * processing on the GPU. The furniture shop is the Lynx tutorials' app,
  * for a reader who knows the ReactLynx original; the other two are there for
  * anyone who wants the simplest app and the widest one. `code` is the docs
  * page with the app's source beside it.
@@ -54,6 +78,17 @@ const demos: {
     code: '/examples/showcase',
     autoGesture: turnTheStone,
     statusBar: 'light',
+  },
+  {
+    id: 'darkroom',
+    label: 'Darkroom',
+    tagline: 'A film photo editor',
+    blurb:
+      'A photo developed live by WebGL2 shaders, a test strip of every film stock drawn in one canvas, and a full-size JPEG out to the share sheet.',
+    hint: 'Drag the red line across the photo. Tap a stock on the test strip.',
+    code: '/examples/darkroom',
+    autoGesture: sweepTheLine,
+    statusBar: 'dark',
   },
   {
     id: 'furniture-shop',

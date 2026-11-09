@@ -1,0 +1,27 @@
+# Darkroom: a film photo editor
+
+A proof sheet you mark up: the photo on the easel develops live on the GPU, the roll is printed as a strip of contact prints, a test strip shows the photo in every film stock at once, and Print saves the developed photo at full size. Every choice is a red china-marker mark.
+
+<Go example="darkroom" defaultFile="src/app/develop/shaders.ts" />
+
+Drag sideways on the photo to move the red line between before and after. Tap a stock on the test strip, choose a control and drag the ruler under it, then tap **print**.
+
+## What it shows
+
+- **Image processing on the GPU** — `src/app/develop/shaders.ts` develops the photo in three short WebGL2 shaders in a [`<canvas>`](/api/elements/canvas), with no library: the highlights glow red (halation), then exposure, white balance, the stock's curves, contrast, highlights and shadows, color, fade, vignette and grain in one pass. On Metal on iOS through ANGLE, on the phone's GL ES on Android, and on WebGL2 here.
+- **One canvas, many prints** — the test strip is one `<canvas>` that draws the photo once per stock, each into its own part of the drawing buffer, so a slider moves every frame at once.
+- **Export** — Print draws the photo at its full size and reads it out with [`canvas.toBlob()`](/api/elements/canvas), then hands the JPEG to the phone's share sheet with [`LynxShare`](/guide/share), from which it saves to Photos. Here it downloads, or opens your browser's share sheet.
+- **Your own photos** — **load** opens the photo library with [`LynxImagePicker`](/guide/image-picker), scaled to 2048 pixels.
+- **Gestures** — the before/after line and the ruler follow [pan gestures](/guide/gestures/); `consume-slide-event` keeps sideways drags from scrolling the sheet.
+- **Storage** — each photo's development, and the recipes you **keep**, persist with [`LynxLocalStorage`](/guide/persistent-storage).
+- **Custom fonts** — Share Tech Mono for the film's edge print and Permanent Marker for the marks, through [`@font-face`](/guide/custom-fonts/).
+
+Lynx Explorer has no canvas, so there the photo shows as it was taken.
+
+The stocks are the app's own (Harbor, Signal, Ember, Pewter, Bypass, Crossed, Matte), not imitations of real films. The photos are CC0, from Wikimedia Commons; the app credits each one under the sheet.
+
+## Related
+
+- [Facet: a gem atlas](./showcase) — 3D on the same canvas, with three.js
+- [`<canvas>`](/api/elements/canvas) — WebGL2 on iOS, Android and the web
+- [Share files](/guide/share) — the share sheet

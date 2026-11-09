@@ -422,6 +422,7 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Showcase' },
         { text: 'Facet: a gem atlas', link: '/examples/showcase' },
+        { text: 'Darkroom: a film photo editor', link: '/examples/darkroom' },
         {
           text: 'Furniture shop: the Lynx tutorial app',
           link: '/examples/furniture-shop',

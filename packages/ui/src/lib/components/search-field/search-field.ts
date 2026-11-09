@@ -171,7 +171,11 @@ const iconSvg = (icon: IconName, color: string): string =>
       }
       <!-- [value], not [attr.value]: only the setValue UI method changes a
            native input's text (see LynxInput). The placeholder goes while
-           there's text: iOS can draw both when the text is set from code. -->
+           there's text: iOS can draw both when the text is set from code.
+           Its color is given twice: iOS ignores the placeholder-color
+           attribute (its setter takes a UIColor, which a string never
+           becomes) and reads only the -x-placeholder-color style, while the
+           web preview reads only the attribute. -->
       <input
         #input
         confirm-type="search"
@@ -180,6 +184,7 @@ const iconSvg = (icon: IconName, color: string): string =>
         [attr.accessibility-label]="placeholder()"
         [attr.placeholder]="value() ? null : placeholder()"
         [attr.placeholder-color]="placeholderColor()"
+        [style.-x-placeholder-color]="placeholderColor()"
         [attr.disabled]="disabled() || undefined"
         [value]="value()"
         [class]="inputClass()"
@@ -451,7 +456,8 @@ export class UiSearchField implements FormValueControl<string> {
   // The icons are drawn here, rather than by nested <ui-icon>s, so their color
   // is resolved to a value and written into the markup, as an SVG can't read
   // a text class or a CSS variable (see icon-theme.ts). So is the
-  // placeholder's: an attribute can't read a CSS variable either.
+  // placeholder's: an attribute can't read a CSS variable either, and the
+  // style takes the same value so both platforms draw the same color.
   protected readonly placeholderColor = computed(() =>
     this.#resolveColor(this.#mutedColor()),
   );

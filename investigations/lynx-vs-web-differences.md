@@ -4413,6 +4413,33 @@ Don't emit the `placeholder` attribute while a value is present — this matches
 
 ---
 
+## An `<input>`'s `placeholder-color` attribute does nothing on iOS: set `-x-placeholder-color` as a style
+
+Seen on the iOS 27 Simulator, 2026-11-09, in `@blotch/ui`'s search field.
+
+### What you'd expect (web)
+
+`input::placeholder { color: … }` colors the hint text.
+
+### What Lynx does
+
+Lynx has no `::placeholder` rule; the field takes the color as a property. On iOS, `placeholder-color` given as an attribute (a hex or an `rgba()` string) leaves the placeholder in the system's pale gray: the setter in [`LynxUIBaseInput.m`](https://github.com/lynx-family/lynx/blob/develop/platform/darwin/ios/lynx_xelement/input/LynxUIBaseInput.m) takes a `UIColor`, which a string attribute never becomes. The CSS property `-x-placeholder-color` in the element's inline style arrives parsed as a color and works. Lynx for Web is the other way round: web-elements reads the attribute, and web-core drops the `-x-placeholder-color` style.
+
+### The fix
+
+Set both. A `[style.-x-placeholder-color]` binding reaches iOS: Angular passes a style name with a dash through as written (`RendererStyleFlags2.DashCase`), and the runtime hands it to `__AddInlineStyle`.
+
+```html
+<input
+  [attr.placeholder-color]="color()"
+  [style.-x-placeholder-color]="color()"
+/>
+```
+
+(Applied in `packages/ui/src/lib/components/search-field/search-field.ts`.)
+
+---
+
 ## Keying a `Map`/`Set`/`WeakSet` on a native element ref crashes the main-thread engine (both the `<list>` callback AND the diff)
 
 ### What you'd expect (web)

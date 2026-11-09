@@ -878,6 +878,7 @@ const applyFixtures = (appDir: string, tailwind: '3' | '4' | false) => {
     'linking.ts',
     'photo.ts',
     'webview.ts',
+    'overlays.ts',
   ]) {
     copyFileSync(
       path.join(FIXTURES_DIR, file),
@@ -925,6 +926,10 @@ export const routes: Routes = [
   {
     path: 'webview',
     loadComponent: () => import('./webview').then((m) => m.WebViewRoute),
+  },
+  {
+    path: 'overlays',
+    loadComponent: () => import('./overlays').then((m) => m.OverlaysRoute),
   },
 ];
 `,

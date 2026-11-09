@@ -1,0 +1,21 @@
+# Layer 6, the app's own builds only (issue #345). The overlays page
+# (fixtures/overlays.ts, linked from the web view page) replaces a card of
+# rows, each holding a closed <overlay> styled position: fixed, 20 times. Each
+# time, the rows drop their overlays and the card goes in one change
+# detection, rows first. Lynx draws a fixed element from the page, and lost
+# its removal from there when the row it went from left the page too: iOS
+# then crashed in Lynx's layout, on a freed overlay, within a few
+# replacements, so the app never got to "replaced 20 times".
+appId: ${APP_ID}
+---
+- runFlow: open-app.yaml
+- tapOn: Open storage
+- tapOn: Open canvas
+- tapOn: Open photo
+- tapOn: Open web view
+- tapOn: Open overlays
+- tapOn: Replace rows
+- extendedWaitUntil:
+    visible: 'Overlays: replaced 20 times'
+    timeout: 60000
+- takeScreenshot: overlays

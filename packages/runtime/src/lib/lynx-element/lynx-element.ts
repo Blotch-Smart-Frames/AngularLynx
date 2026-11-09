@@ -1714,15 +1714,6 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
-   * Commits every queued genuine removal. Called by `LynxRendererFactory2.end()`
-   * once per change-detection cycle, BEFORE `__FlushElementTree()`, so the
-   * `__RemoveElement` calls are committed to the main thread in the same flush as
-   * the cycle's other mutations (see #pendingRemovals for why the timing
-   * matters). Any element that was re-inserted (a move) has already removed
-   * itself from the set via #cancelPendingRemoval, so only genuine destroys
-   * remain.
-   */
-  /**
    * Sends Lynx the attribute removals that weren't taken back this cycle
    * (see #removedAttributes). Called by `LynxRendererFactory2.end()` and the
    * settle flush, after removals and before `__FlushElementTree()`, so the
@@ -1740,15 +1731,70 @@ export class LynxElement implements BaseLynxElement {
     }
   }
 
+  /**
+   * Commits every queued genuine removal. Called by `LynxRendererFactory2.end()`
+   * once per change-detection cycle, BEFORE `__FlushElementTree()`, so the
+   * `__RemoveElement` calls are committed to the main thread in the same flush as
+   * the cycle's other mutations (see #pendingRemovals for why the timing
+   * matters). Any element that was re-inserted (a move) has already removed
+   * itself from the set via #cancelPendingRemoval, so only genuine destroys
+   * remain.
+   *
+   * An element goes before anything inside it, whatever order Angular asked
+   * for them in (see #outermostFirst).
+   */
   static commitPendingRemovals(): void {
     if (LynxElement.#pendingRemovals.size > 0) {
-      const items = [...LynxElement.#pendingRemovals];
+      const items = LynxElement.#outermostFirst([
+        ...LynxElement.#pendingRemovals,
+      ]);
       LynxElement.#pendingRemovals.clear();
       for (const el of items) {
         el.#doRemove();
       }
     }
     LynxElement.#commitPendingReleases();
+  }
+
+  /**
+   * Orders removals so that an element comes before its descendants, keeping
+   * Angular's order otherwise.
+   *
+   * Lynx draws a `position: fixed` element (an `<overlay>` styled for the
+   * web, as `ui-menu`'s and the dialogs' are) from the page, not from its
+   * parent. When something holding one is removed, Lynx queues the fixed
+   * element's own removal from the page on the parent it was removed from,
+   * and runs it when that parent flushes (`RemovedFrom` and
+   * `PrepareAndGenerateChildrenActions` in `fiber_element.cc`). A parent that is
+   * itself removed before the flush never flushes again, so the queued
+   * removal is lost: the page goes on drawing an element that is freed once
+   * its last reference goes, and the next layout walks into it and crashes
+   * (#345). Angular can ask for both in one change detection, the inner one
+   * first: a row's `@if` drops its menu, and then, in a second pass, the
+   * `@if` around the list drops the card the rows are in.
+   *
+   * With the outer element removed first, Lynx queues the fixed element's
+   * removal on the outer element's parent, which is still on the page and
+   * flushes. Removing the inner element afterwards, from a parent that has
+   * left the page, queues nothing, so it's harmless.
+   *
+   * Depth is counted through the wrappers' own parents (#jsParent), which
+   * follow the element tree, rather than asking native for each ancestor.
+   */
+  static #outermostFirst(items: LynxElement[]): LynxElement[] {
+    if (items.length < 2) return items;
+    const depth = (el: LynxElement): number => {
+      let count = 0;
+      for (let p = el.#jsParent; p; p = p.#jsParent) count++;
+      return count;
+    };
+    // Elements at one depth keep the order Angular removed them in. The
+    // index says so itself rather than trusting the engine's sort to be
+    // stable.
+    return items
+      .map((el, index) => ({ el, index, depth: depth(el) }))
+      .sort((a, b) => a.depth - b.depth || a.index - b.index)
+      .map(({ el }) => el);
   }
 
   /**

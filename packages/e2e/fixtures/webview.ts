@@ -1,4 +1,5 @@
 import { Component, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LYNX_ELEMENTS, type LynxEvent } from '@blotch/angular-lynx';
 
 /**
@@ -24,10 +25,12 @@ const PAGE =
  * web engine's processes for it then (on the iOS Simulator, 1 to 3 seconds,
  * and over 10 on a busy Mac). The box stays empty until then, which issue
  * #338 took for a web view that never draws.
+ *
+ * "Open overlays", below the status, opens overlays.ts.
  */
 @Component({
   selector: 'app-webview',
-  imports: [LYNX_ELEMENTS],
+  imports: [LYNX_ELEMENTS, RouterLink],
   template: `
     <webview
       style="margin-top: 16px; width: 200px; height: 80px; border-width: 1px; border-color: #999999;"
@@ -38,6 +41,16 @@ const PAGE =
     <text flatten="false" style="margin-top: 8px;"
       >Web view: {{ status() }}</text
     >
+    <view
+      [flatten]="false"
+      [accessibility-element]="true"
+      accessibility-label="Open overlays"
+      accessibility-traits="button"
+      style="margin-top: 8px; padding: 12px; background-color: #e0e0e0; align-self: flex-start;"
+      routerLink="/overlays"
+    >
+      <text>Open overlays</text>
+    </view>
   `,
 })
 export class WebViewRoute {

@@ -119,6 +119,9 @@ class OwnSvgHost {
     '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
 }
 
+/** A stroke of the spinner's drawing, which tells it from an icon. */
+const LOADER_PATH = 'm16.2 7.8 2.9-2.9';
+
 const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
 const IOS_18 = { platform: 'iOS', osVersion: '18.5' };
 const ANDROID = { platform: 'Android', osVersion: '15' };
@@ -200,16 +203,56 @@ describe('UiButton', () => {
     expect(host.presses()).toBe(0);
   });
 
-  it("shows a spinner in place of the label, dims and ignores taps while it's loading", async () => {
-    const { host, button, spinner, queryByText, update } = await renderButton();
+  it("shows a spinner before the label, dims and ignores taps while it's loading", async () => {
+    const { host, button, spinner, getByText, update } = await renderButton();
     expect(spinner()).toBeNull();
+    expect(button().classList).not.toContain('gap-2');
 
     await update(() => host.loading.set(true));
-    expect(spinner()).not.toBeNull();
-    expect(queryByText('Save')).toBeNull();
+    // The label stays beside the spinner, so the button can say what it's
+    // doing ("Saving..."), spaced from it as an icon would be.
+    expect(spinner()!.compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(button().classList).toContain('gap-2');
     expect(button().classList).toContain('opacity-50');
     fireEvent.tap(button());
     expect(host.presses()).toBe(0);
+  });
+
+  it('puts the spinner in place of a leading icon, and keeps a trailing one', async () => {
+    const { host, getByText, icons, update } = await renderButton();
+    await update(() => {
+      host.withIcon.set(true);
+      host.withTrailingIcon.set(true);
+      host.loading.set(true);
+    });
+
+    const [leading, trailing] = icons();
+    expect(icons()).toHaveLength(2);
+    expect(leading.getAttribute('content')).toContain(LOADER_PATH);
+    expect(trailing.getAttribute('content')).not.toContain(LOADER_PATH);
+    expect(leading.compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(trailing.compareDocumentPosition(getByText('Save'))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+  });
+
+  it('shows only the spinner in an icon size while loading', async () => {
+    const { host, button, icons, queryByText, update } = await renderButton();
+    await update(() => {
+      host.withIcon.set(true);
+      host.size.set('icon');
+      host.label.set('Search');
+      host.loading.set(true);
+    });
+
+    expect(icons()).toHaveLength(1);
+    expect(icons()[0].getAttribute('content')).toContain(LOADER_PATH);
+    expect(queryByText('Save')).toBeNull();
+    expect(button().classList).not.toContain('gap-2');
   });
 
   it('shrinks the spinner for a small button', async () => {

@@ -819,6 +819,8 @@ CSS inheritance is **disabled by default**. Every element must declare its own s
 
 **Exception:** Nested `<text>` inside `<text>` **does** inherit `color` and `font-family` from the parent `<text>`, even without explicit declaration.
 
+The parent has to be the `<text>` directly around it. A `<view>` in between stops it, and the inner `<text>` draws in the default black. This catches components that wrap projected content in a `<text>`: `<ui-button>` puts what an app writes inside it in its label's `<text>`, so `<ui-button><view><ui-spinner /><text>Uploading...</text></view></ui-button>` drew "Uploading..." black on the dark primary button, while a plain `<text>` there took the label's white (measured on the iOS 27 Simulator with Lynx Explorer and in the web preview, where it computed to `rgb(0, 0, 0)`, 2026-11-09). The button's `loading` input now draws the spinner beside the label instead.
+
 ```css
 /* On web, children inherit font-size from .container.
    On Lynx, you must set font-size on every x-text individually. */

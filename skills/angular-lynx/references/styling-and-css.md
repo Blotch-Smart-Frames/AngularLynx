@@ -34,7 +34,7 @@ Lynx uses a subset of CSS with fundamentally different defaults. Read this befor
 
 ### No CSS Inheritance
 
-CSS properties do **not** inherit from parent to child (except nested `<text>` inherits `color` and `font-family`). Every element must declare its own styles. CSS variables (`--x`) are the exception: they inherit, so a variable set on a parent reaches everything inside it.
+CSS properties do **not** inherit from parent to child (except nested `<text>` inherits `color` and `font-family` from the `<text>` directly around it; a `<view>` in between stops it, and the inner text draws in the default black). Every element must declare its own styles. CSS variables (`--x`) are the exception: they inherit, so a variable set on a parent reaches everything inside it.
 
 HTML text tags (`<p>`, `<span>`, `<h1>`…) and loose text do inherit text styles, through such variables: the build copies each `color`, `font-*`, `line-height`, `letter-spacing`, `text-align`, `text-decoration`, `text-shadow` and `direction` declaration to `--angular-lynx-<property>`, and those elements read the ones their own rules don't set. Only classes and stylesheet rules pass them down, not an inline `style`. A Lynx `<text>` reads none, so the example below still holds for it.
 

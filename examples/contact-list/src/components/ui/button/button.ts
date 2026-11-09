@@ -301,21 +301,28 @@ const buttonIconColor = () => inject(UiButton).foreground;
 
          The label's text has to be inside a <text>, so the content can't keep
          its own order: an icon goes before the label, and one marked
-         trailing after it, for an icon that points onward ("Next →"). -->
+         trailing after it, for an icon that points onward ("Next →").
+
+         While loading, the spinner takes the leading icon's place and the
+         label stays, so the button can say what it's doing ("Saving..."),
+         as shadcn's loading button does. An app can't build that itself:
+         whatever it projects lands in the label's <text>, and a <view> there
+         breaks Lynx's text color inheritance, so its text draws in the
+         default black, invisible on a dark button. -->
     <ng-template #content>
       @if (loading()) {
         <ui-spinner [size]="spinnerSize()" [color]="foreground()" />
       } @else {
         <ng-content select="ui-icon:not([trailing])" />
-        @if (showLabel()) {
-          <text
-            [attr.accessibility-traits]="accessibilityLabel() ? null : 'button'"
-            [class]="labelClass()"
-            ><ng-content
-          /></text>
-        }
-        <ng-content select="ui-icon[trailing]" />
       }
+      @if (showLabel()) {
+        <text
+          [attr.accessibility-traits]="accessibilityLabel() ? null : 'button'"
+          [class]="labelClass()"
+          ><ng-content
+        /></text>
+      }
+      <ng-content select="ui-icon[trailing]" />
     </ng-template>
   `,
 })
@@ -333,6 +340,11 @@ export class UiButton {
    */
   readonly size = input<ButtonSize>('default');
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * Shows a spinner in place of a leading icon, keeping the label beside it,
+   * and dims the button and ignores taps, as `disabled` does. Change the label
+   * to say what's happening (`Saving...`).
+   */
   readonly loading = input(false, { transform: booleanAttribute });
   /**
    * What a screen reader says for the button. An icon-only button needs one;
@@ -432,9 +444,10 @@ export class UiButton {
     () => !(this.projectedIcon() && ICON_SIZES.has(this.size())),
   );
 
-  /** Space between an icon and the label beside it. */
+  /** Space between an icon, or the loading spinner, and the label beside it. */
   readonly #gap = computed(
-    () => !!this.projectedIcon() && this.showLabel() && 'gap-2',
+    () =>
+      (!!this.projectedIcon() || this.loading()) && this.showLabel() && 'gap-2',
   );
 
   /**

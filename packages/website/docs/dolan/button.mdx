@@ -26,7 +26,9 @@ import { UiButton } from '../components/ui/button';
   selector: 'app-root',
   imports: [UiButton],
   template: `
-    <ui-button [loading]="saving()" (pressed)="save()">Save changes</ui-button>
+    <ui-button [loading]="saving()" (pressed)="save()">
+      {{ saving() ? 'Saving...' : 'Save changes' }}
+    </ui-button>
   `,
 })
 export class App {
@@ -39,7 +41,8 @@ export class App {
 ```
 
 - `pressed` fires on tap. It doesn't fire while the button is disabled or loading.
-- Put plain text inside. The button wraps it in a `<text>` element for you.
+- Put plain text inside. The button wraps it in a `<text>` in the variant's label color.
+- Don't wrap the text in a `<view>`. Lynx text takes its color only from a `<text>` directly around it, so text inside your view draws in the default black, which barely shows on a dark button. For an icon, use [`<ui-icon>`](#icons). For a spinner, use [`loading`](#disabled-and-loading).
 - The button shrinks slightly while a finger is down, on every platform.
 
 ### Variants
@@ -126,10 +129,14 @@ Put a [`<ui-icon>`](/dolan/icon) in the button. It takes the label's color:
 ```angular-html
 <ui-button disabled>Disabled</ui-button>
 
-<ui-button loading>Saving</ui-button>
+<ui-button [loading]="saving()">
+  {{ saving() ? 'Saving...' : 'Save' }}
+</ui-button>
 ```
 
-Both dim the button to 50% and ignore taps. `loading` also replaces the label with a spinner in the label's color. A glass button dims its label and keeps the glass, as iOS does.
+Both dim the button to 50% and ignore taps. A glass button dims its label and keeps the glass, as iOS does.
+
+`loading` also shows a spinner in the label's color. It goes before the label, in place of a leading icon, and the label stays, so change it to say what's happening. A trailing icon stays too. In an icon size, the spinner replaces the icon.
 
 ### Custom classes
 
@@ -169,14 +176,14 @@ export class SettingsLink {
 
 ### UiButton
 
-| Input                 | Type                                                                                                                 | Default     | Description                                                     |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------- |
-| `variant`             | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost' \| 'glass' \| 'glass-prominent' \| 'glass-clear'` | `'default'` | Visual style.                                                   |
-| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'`                                                               | `'default'` | Height and padding. `icon` is a square, `icon-circle` a circle. |
-| `disabled`            | `boolean`                                                                                                            | `false`     | Dims the button and ignores taps.                               |
-| `loading`             | `boolean`                                                                                                            | `false`     | Shows a spinner, dims the button, ignores taps.                 |
-| `accessibility-label` | `string`                                                                                                             | —           | What a screen reader says. Needed for an icon-only button.      |
-| `class`               | `string`                                                                                                             | `''`        | Extra Tailwind classes for the container.                       |
+| Input                 | Type                                                                                                                 | Default     | Description                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| `variant`             | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost' \| 'glass' \| 'glass-prominent' \| 'glass-clear'` | `'default'` | Visual style.                                                    |
+| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'`                                                               | `'default'` | Height and padding. `icon` is a square, `icon-circle` a circle.  |
+| `disabled`            | `boolean`                                                                                                            | `false`     | Dims the button and ignores taps.                                |
+| `loading`             | `boolean`                                                                                                            | `false`     | Shows a spinner before the label, dims the button, ignores taps. |
+| `accessibility-label` | `string`                                                                                                             | —           | What a screen reader says. Needed for an icon-only button.       |
+| `class`               | `string`                                                                                                             | `''`        | Extra Tailwind classes for the container.                        |
 
 | Output    | Type   | Description                               |
 | --------- | ------ | ----------------------------------------- |

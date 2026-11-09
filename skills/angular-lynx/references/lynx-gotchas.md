@@ -64,7 +64,7 @@ Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>
 
 ### No CSS inheritance
 
-Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from parent `<text>`, CSS variables (`--x`) inherit, and HTML text tags (`<p>`, `<span>`…) and loose text take the text styles their ancestors' classes set, through variables the build adds (see [lynx-elements.md](lynx-elements.md)).
+Every element must declare its own `font-size`, `color`, etc. Exceptions: nested `<text>` inherits `color`/`font-family` from the `<text>` directly around it (a `<view>` in between stops it: text inside a `<view>` you project into a component's `<text>` draws black), CSS variables (`--x`) inherit, and HTML text tags (`<p>`, `<span>`…) and loose text take the text styles their ancestors' classes set, through variables the build adds (see [lynx-elements.md](lynx-elements.md)).
 
 ### A hidden view in a `<text>` leaves a gap on iOS
 

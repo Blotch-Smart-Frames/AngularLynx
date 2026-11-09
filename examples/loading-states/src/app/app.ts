@@ -73,17 +73,10 @@ type UploadFile = {
               }
               <ui-button
                 size="sm"
+                [loading]="uploading()"
                 (pressed)="startUpload()"
-                [disabled]="uploading()"
               >
-                @if (uploading()) {
-                  <view class="flex-row items-center gap-2 flex">
-                    <ui-spinner size="sm" />
-                    <text>Uploading...</text>
-                  </view>
-                } @else {
-                  <text>Upload Files</text>
-                }
+                {{ uploading() ? 'Uploading...' : 'Upload Files' }}
               </ui-button>
             </view>
           </ui-card-content>

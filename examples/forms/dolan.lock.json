@@ -39,7 +39,7 @@
     },
     "button": {
       "button.ts": {
-        "hash": "cb555e21fbafb088"
+        "hash": "f0d45760bc279a3c"
       },
       "index.ts": {
         "hash": "ab92e24adab423a4"
@@ -62,5 +62,15 @@
       }
     }
   },
-  "theme": {}
+  "theme": {
+    "default.css": {
+      "hash": "df5b6172b99d88e0"
+    },
+    "dark.css": {
+      "hash": "2d60711510067786"
+    },
+    "tailwind-plugin.ts": {
+      "hash": "0706a8e28039a2ca"
+    }
+  }
 }

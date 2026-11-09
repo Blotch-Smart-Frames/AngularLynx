@@ -75,6 +75,7 @@ import {
   shrunkCorners,
 } from './stack-motion';
 import { LynxStackPage, setActive, setBottomBarHidden } from './stack-page';
+import { type MeasuredElement, boxInLynxView } from './stack-box';
 import { SwipeTracker } from './swipe-tracker';
 
 /**
@@ -92,16 +93,10 @@ type FrameElement = {
 /**
  * The outlet's own element, whose box a swipe measures, and the moving
  * page's corners: LynxElement keeps it from the element's layouts (see
- * lynx-element/layout.ts), relative to the LynxView.
+ * lynx-element/layout.ts), relative to the LynxView. The outlet reads it
+ * through boxInLynxView, which puts Lynx for Web's in the same terms.
  */
-type HostElement = FrameElement & {
-  getBoundingClientRect(): {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
-};
+type HostElement = FrameElement & MeasuredElement;
 
 /** The router's input binder (`withComponentInputBinding()`), as RouterOutlet keeps it. */
 type InputBinder = {
@@ -188,6 +183,9 @@ type TouchPoint = {
   readonly identifier: number;
   readonly pageX: number;
   readonly pageY: number;
+  /** Lynx for Web's position relative to the LynxView (see positionOf). */
+  readonly x?: number;
+  readonly y?: number;
 };
 
 /** A touch or mouse event, as Lynx and the DOM both report one. */
@@ -946,7 +944,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   get #width(): number {
-    return this.#host.getBoundingClientRect().width;
+    return boxInLynxView(this.#host).width;
   }
 
   /**
@@ -1123,7 +1121,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    * that carries the bar works out the pushed page's corners before then.
    */
   #box(): ScreenBox {
-    const box = this.#host.getBoundingClientRect();
+    const box = boxInLynxView(this.#host);
     let bottom = box.top + box.height;
     for (const bar of barsOf(this.#chrome)) {
       if (!this.#frames.has(bar.frame() as FrameElement)) continue;
@@ -1236,7 +1234,8 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #touchStart(event: PointerEvent): void {
     const touch = event.touches[0];
     if (!touch || this.#swipe) return;
-    this.#begin(touch.pageX, touch.pageY, pointerIdOf(touch), event.target);
+    const [x, y] = positionOf(touch);
+    this.#begin(x, y, pointerIdOf(touch), event.target);
   }
 
   #touchMove(event: PointerEvent): void {
@@ -1247,7 +1246,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const touch = Array.from(event.touches).find(
       (t) => pointerIdOf(t) === swipe.touch,
     );
-    if (touch) this.#move(touch.pageX, touch.pageY);
+    if (touch) this.#move(...positionOf(touch));
   }
 
   #touchEnd(event: PointerEvent, canceled = false): void {
@@ -1284,7 +1283,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #begin(x: number, y: number, touch: number | null, target: unknown): void {
     const top = this.#stack.at(-1);
     const under = this.#stack.at(-2);
-    const box = this.#host.getBoundingClientRect();
+    const box = boxInLynxView(this.#host);
     if (
       !this.swipeBack() ||
       !this.#animates ||
@@ -1318,7 +1317,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
 
   #move(x: number, y: number): void {
     const swipe = this.#swipe!;
-    const box = this.#host.getBoundingClientRect();
+    const box = boxInLynxView(this.#host);
     const state = swipe.tracker.move(x - box.left, y - box.top, Date.now());
     if (state === 'ignored') {
       this.#swipe = null;
@@ -1539,6 +1538,18 @@ const parentOf = (element: TargetElement): TargetElement | null => {
   const parent = element.parentNode;
   return typeof parent === 'function' ? parent.call(element) : (parent ?? null);
 };
+
+/**
+ * Where a touch is, relative to the LynxView, in its px, as the outlet's box
+ * is measured (see boxInLynxView): native Lynx's `pageX` and `pageY`. Lynx
+ * for Web's `pageX` and `pageY` are the browser's, from the document's top
+ * left, so there it's the touch's `x` and `y`, which web-core measures from
+ * the `<lynx-view>`, as it does a mouse event's.
+ */
+const positionOf = (touch: TouchPoint): [number, number] =>
+  __WEB__ && touch.x !== undefined && touch.y !== undefined
+    ? [touch.x, touch.y]
+    : [touch.pageX, touch.pageY];
 
 /**
  * The screen's size: the LynxView's, which `innerWidth` and `innerHeight` are

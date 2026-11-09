@@ -1,0 +1,67 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/*
+ * Padding that clears the notch and the home indicator: a spacing-scale
+ * value plus the inset (pt-safe-2, pb-safe-6). Lynx reads env() for the
+ * safe-area insets; where there are none (the docs' fitted preview) it's 0.
+ */
+@utility pt-safe-* {
+  padding-top: calc(--spacing(--value(number)) + env(safe-area-inset-top));
+}
+@utility pb-safe-* {
+  padding-bottom: calc(
+    --spacing(--value(number)) + env(safe-area-inset-bottom)
+  );
+}
+
+/*
+ * Two voices, both from the darkroom. Share Tech Mono (SIL OFL 1.1) for the
+ * edge print: the frame numbers, codes and figures a film carries along its
+ * edge. Permanent Marker (Apache 2.0) for the china marker the sheet is
+ * marked up with. Licenses are in assets/fonts.
+ */
+@font-face {
+  font-family: 'EdgePrint';
+  src: url('./assets/fonts/share-tech-mono.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'ChinaMarker';
+  src: url('./assets/fonts/permanent-marker.ttf') format('truetype');
+}
+
+@theme inline {
+  --font-edge: 'EdgePrint';
+  --font-marker: 'ChinaMarker';
+  --color-paper: var(--paper);
+  --color-film: var(--film);
+  --color-film-hole: var(--film-hole);
+  --color-edge: var(--edge);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-marker: var(--marker);
+}
+
+/*
+ * A proof sheet: white paper, black film, one red. Light whatever the
+ * phone's setting, as a print is: judging color needs the same surround
+ * every time. Written as rgba(), so no color compiles to a hex with a
+ * digit-e-digit run, which the CSS pipeline would mangle.
+ */
+page {
+  --paper: rgba(244, 243, 240, 1);
+  /* On a contact print the sprocket holes, where nothing held back the
+     light, print as the deepest black; the film's base a shade lighter. */
+  --film: rgba(24, 24, 23, 1);
+  --film-hole: rgba(0, 0, 0, 1);
+  --edge: rgba(176, 173, 166, 1);
+  --ink: rgba(20, 20, 20, 1);
+  --ink-muted: rgba(104, 101, 96, 1);
+  --marker: rgba(216, 40, 47, 1);
+}

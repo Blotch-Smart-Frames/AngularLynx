@@ -1,0 +1,307 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T14:26:37.252Z",
+  "title": "Design System: Darkroom",
+  "extensions": {
+    "colorMeta": {
+      "marker": {
+        "role": "primary",
+        "displayName": "China Marker Red",
+        "canonical": "oklch(57.2% 0.209 25)",
+        "tonalRamp": [
+          "oklch(15% 0.031 25)",
+          "oklch(26% 0.086 25)",
+          "oklch(38% 0.146 25)",
+          "oklch(49% 0.206 25)",
+          "oklch(61% 0.195 25)",
+          "oklch(72% 0.135 25)",
+          "oklch(84% 0.076 25)",
+          "oklch(95% 0.031 25)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Proof Paper",
+        "canonical": "oklch(96.4% 0.004 91)",
+        "tonalRamp": [
+          "oklch(15% 0.001 91)",
+          "oklch(26% 0.002 91)",
+          "oklch(38% 0.003 91)",
+          "oklch(49% 0.004 91)",
+          "oklch(61% 0.004 91)",
+          "oklch(72% 0.003 91)",
+          "oklch(84% 0.001 91)",
+          "oklch(95% 0.001 91)"
+        ]
+      },
+      "film": {
+        "role": "neutral",
+        "displayName": "Film Base",
+        "canonical": "oklch(20.9% 0.002 107)",
+        "tonalRamp": [
+          "oklch(15% 0.000 107)",
+          "oklch(26% 0.001 107)",
+          "oklch(38% 0.001 107)",
+          "oklch(49% 0.002 107)",
+          "oklch(61% 0.002 107)",
+          "oklch(72% 0.001 107)",
+          "oklch(84% 0.001 107)",
+          "oklch(95% 0.000 107)"
+        ]
+      },
+      "film-hole": {
+        "role": "neutral",
+        "displayName": "Sprocket Black",
+        "canonical": "oklch(0.0% 0.000 0)",
+        "tonalRamp": [
+          "oklch(15% 0.000 0)",
+          "oklch(26% 0.000 0)",
+          "oklch(38% 0.000 0)",
+          "oklch(49% 0.000 0)",
+          "oklch(61% 0.000 0)",
+          "oklch(72% 0.000 0)",
+          "oklch(84% 0.000 0)",
+          "oklch(95% 0.000 0)"
+        ]
+      },
+      "edge": {
+        "role": "neutral",
+        "displayName": "Edge Print Gray",
+        "canonical": "oklch(74.8% 0.010 87)",
+        "tonalRamp": [
+          "oklch(15% 0.002 87)",
+          "oklch(26% 0.004 87)",
+          "oklch(38% 0.007 87)",
+          "oklch(49% 0.010 87)",
+          "oklch(61% 0.010 87)",
+          "oklch(72% 0.007 87)",
+          "oklch(84% 0.004 87)",
+          "oklch(95% 0.002 87)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(19.1% 0.000 90)",
+        "tonalRamp": [
+          "oklch(15% 0.000 90)",
+          "oklch(26% 0.000 90)",
+          "oklch(38% 0.000 90)",
+          "oklch(49% 0.000 90)",
+          "oklch(61% 0.000 90)",
+          "oklch(72% 0.000 90)",
+          "oklch(84% 0.000 90)",
+          "oklch(95% 0.000 90)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Faded Ink",
+        "canonical": "oklch(50.8% 0.009 81)",
+        "tonalRamp": [
+          "oklch(15% 0.001 81)",
+          "oklch(26% 0.004 81)",
+          "oklch(38% 0.006 81)",
+          "oklch(49% 0.008 81)",
+          "oklch(61% 0.008 81)",
+          "oklch(72% 0.006 81)",
+          "oklch(84% 0.003 81)",
+          "oklch(95% 0.001 81)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "app-name": {
+        "displayName": "Name",
+        "purpose": "DARKROOM in the header, edge print."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "The chosen control's value in marker; tap to reset."
+      },
+      "mark": {
+        "displayName": "Mark",
+        "purpose": "The PRINT action inside its ring."
+      },
+      "note": {
+        "displayName": "Note",
+        "purpose": "Transient margin notes in marker, 2.6s."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Header actions LOAD and KEEP."
+      },
+      "control-name": {
+        "displayName": "Control Name",
+        "purpose": "Control names along the sheet, fixed-width cells."
+      },
+      "edge-print": {
+        "displayName": "Edge Print",
+        "purpose": "Codes, titles, counts and frame numbers on the film."
+      },
+      "edge-print-small": {
+        "displayName": "Edge Print Small",
+        "purpose": "Frame numbers, stock names and ruler figures; 9px floor, film only."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The stock's note and the photo's title on paper."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "The photo credit."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ring-in",
+        "value": "240ms cubic-bezier(0.16, 1, 0.3, 1); from scale(1.15) rotate(-6deg) opacity 0",
+        "purpose": "A marker ring drawing itself round a new selection; none under reduced motion."
+      },
+      {
+        "name": "ruler-settle",
+        "value": "left 160ms ease-out",
+        "purpose": "The ruler settling on the nearest tick after a drag or reset; snaps under reduced motion."
+      },
+      {
+        "name": "strip-scroll",
+        "value": "scrollIntoView inline center, behavior 'none' first then 'smooth'",
+        "purpose": "Brings a strip's chosen frame and its ring into view."
+      },
+      {
+        "name": "note-hold",
+        "value": "2600ms",
+        "purpose": "How long a margin note stays."
+      }
+    ],
+    "breakpoints": [],
+    "platformConstraints": [
+      "Lynx CSS has no :hover, @media or pseudo-elements: states are tap states, layout is measured from layout events, not breakpoints.",
+      "Text does not inherit fonts: every <text> names its family.",
+      "Theme variables live on page, not :root, as rgba() values.",
+      "SVG marks are strings rendered by <svg content>, so their colors are literal copies of the marker and edge tokens (marks.ts MARKER, EDGE).",
+      "scroll-view needs an explicit height."
+    ]
+  },
+  "components": [
+    {
+      "name": "Film Strip",
+      "kind": "card",
+      "refersTo": "film-strip",
+      "description": "The container every photo sits on: film with sprocket rows and an edge-print row naming the strip and its count.",
+      "html": "<div class=\"ds-strip\"><div class=\"ds-strip-edge\"><span><svg width=\"6\" height=\"7\" viewBox=\"0 0 6 7\" aria-hidden=\"true\"><path d=\"M0 0 L6 3.5 L0 7 Z\" fill=\"rgba(176, 173, 166, 1)\"/></svg> THE ROLL</span><span>7 FRAMES</span></div><div class=\"ds-holes\"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class=\"ds-strip-frames\"><div class=\"ds-strip-frame\"></div><div class=\"ds-strip-frame\"></div><div class=\"ds-strip-frame\"></div></div><div class=\"ds-holes\"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>",
+      "css": ".ds-strip { background: rgba(24, 24, 23, 1); width: 340px; padding-bottom: 6px; } .ds-strip-edge { display: flex; justify-content: space-between; padding: 8px 12px 0; color: rgba(176, 173, 166, 1); font-size: 10px; letter-spacing: 2px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } .ds-strip-edge span { display: inline-flex; gap: 6px; align-items: center; } .ds-holes { display: flex; gap: 7px; padding: 6px 6px 0; overflow: hidden; } .ds-holes i { flex: none; width: 7px; height: 5px; border-radius: 1.5px; background: rgba(0, 0, 0, 1); } .ds-strip-frames { display: flex; gap: 8px; padding: 8px 12px 2px; } .ds-strip-frame { width: 84px; height: 56px; background: linear-gradient(135deg, rgba(120, 92, 60, 1), rgba(30, 36, 52, 1)); }"
+    },
+    {
+      "name": "Roll Frame, chosen",
+      "kind": "custom",
+      "refersTo": "roll-frame",
+      "description": "A 3:2 contact print with its edge number; the chosen one is ringed in marker round frame and number together.",
+      "html": "<div class=\"ds-film\"><div class=\"ds-frame\"><div class=\"ds-frame-photo\"></div><div class=\"ds-frame-num\"><svg width=\"6\" height=\"7\" viewBox=\"0 0 6 7\" aria-hidden=\"true\"><path d=\"M0 0 L6 3.5 L0 7 Z\" fill=\"rgba(176, 173, 166, 1)\"/></svg> 1</div><svg class=\"ds-ring\" width=\"98\" height=\"88\" viewBox=\"0 0 98 88\" aria-hidden=\"true\"><ellipse cx=\"48\" cy=\"44\" rx=\"45\" ry=\"40\" fill=\"none\" stroke=\"rgba(216, 40, 47, 1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" transform=\"rotate(-2 49 44)\"/></svg></div></div>",
+      "css": ".ds-film { background: rgba(24, 24, 23, 1); padding: 16px 20px; display: inline-block; } .ds-frame { position: relative; width: 84px; display: flex; flex-direction: column; align-items: center; } .ds-frame .ds-ring { left: -7px; top: -8px; } .ds-frame-photo { width: 84px; height: 56px; background: linear-gradient(135deg, rgba(160, 110, 60, 1), rgba(30, 36, 52, 1)); } .ds-frame-num { margin-top: 4px; display: flex; gap: 4px; align-items: center; color: rgba(176, 173, 166, 1); font-size: 9px; letter-spacing: 1px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } @keyframes ds-ring-in { from { opacity: 0; transform: scale(1.15) rotate(-6deg); } to { opacity: 1; transform: none; } } .ds-ring { position: absolute; left: 0; top: 0; animation: ds-ring-in 240ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; } @media (prefers-reduced-motion: reduce) { .ds-ring { animation: none; } }"
+    },
+    {
+      "name": "Header Action",
+      "kind": "button",
+      "refersTo": "header-action",
+      "description": "LOAD and KEEP: ink edge-print labels with a generous touch area.",
+      "html": "<div class=\"ds-paper\"><button class=\"ds-action\">LOAD</button><button class=\"ds-action\">KEEP</button></div>",
+      "css": ".ds-paper { background: rgba(244, 243, 240, 1); padding: 8px; display: inline-flex; } .ds-action { background: none; border: 0; padding: 12px 10px; color: rgba(20, 20, 20, 1); font-size: 12px; letter-spacing: 2px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } .ds-action:active { opacity: 0.6; } .ds-action:focus-visible { outline: 2px solid rgba(216, 40, 47, 1); outline-offset: 2px; }"
+    },
+    {
+      "name": "Print Action",
+      "kind": "button",
+      "refersTo": "print-action",
+      "description": "The one marked action: \"print\" in marker inside a permanent marker ring; fades to 35% while printing.",
+      "html": "<div class=\"ds-paper2\"><button class=\"ds-print\"><span>print</span><svg class=\"ds-ring\" width=\"66\" height=\"40\" viewBox=\"0 0 66 40\" aria-hidden=\"true\"><ellipse cx=\"32\" cy=\"20\" rx=\"29\" ry=\"16\" fill=\"none\" stroke=\"rgba(216, 40, 47, 1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" transform=\"rotate(-2 33 20)\"/></svg></button></div>",
+      "css": ".ds-paper2 { background: rgba(244, 243, 240, 1); padding: 12px; display: inline-block; } .ds-print { position: relative; width: 66px; height: 40px; background: none; border: 0; padding: 0; color: rgba(216, 40, 47, 1); font-size: 17px; font-family: 'Permanent Marker', 'ChinaMarker', cursive; } .ds-print:active span { opacity: 0.35; } .ds-print:focus-visible { outline: 2px solid rgba(20, 20, 20, 1); outline-offset: 2px; } @keyframes ds-ring-in { from { opacity: 0; transform: scale(1.15) rotate(-6deg); } to { opacity: 1; transform: none; } } .ds-ring { position: absolute; left: 0; top: 0; animation: ds-ring-in 240ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; } @media (prefers-reduced-motion: reduce) { .ds-ring { animation: none; } }"
+    },
+    {
+      "name": "Control Names and Readout",
+      "kind": "nav",
+      "refersTo": "control-name",
+      "description": "Controls written along the sheet in fixed-width edge-print cells; the chosen one ringed; its value read out in marker.",
+      "html": "<div class=\"ds-controls\"><div class=\"ds-names\"><span class=\"ds-name is-set\">EXPOSURE<svg class=\"ds-ring\" width=\"80\" height=\"32\" viewBox=\"0 0 80 32\" aria-hidden=\"true\"><ellipse cx=\"39\" cy=\"16\" rx=\"36\" ry=\"12\" fill=\"none\" stroke=\"rgba(216, 40, 47, 1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" transform=\"rotate(-2 40 16)\"/></svg></span><span class=\"ds-name\">CONTRAST</span><span class=\"ds-name\">WARMTH</span></div><div class=\"ds-readout\">+0.4 EV</div></div>",
+      "css": ".ds-controls { background: rgba(244, 243, 240, 1); padding: 8px 6px; width: 340px; } .ds-names { display: flex; } .ds-name { position: relative; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; min-width: 60px; color: rgba(104, 101, 96, 1); font-size: 12px; letter-spacing: 1.5px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } .ds-name.is-set { color: rgba(20, 20, 20, 1); } .ds-readout { padding: 4px 6px 8px; color: rgba(216, 40, 47, 1); font-size: 26px; font-family: 'Permanent Marker', 'ChinaMarker', cursive; } @keyframes ds-ring-in { from { opacity: 0; transform: scale(1.15) rotate(-6deg); } to { opacity: 1; transform: none; } } .ds-ring { position: absolute; left: 0; top: 0; animation: ds-ring-in 240ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; } @media (prefers-reduced-motion: reduce) { .ds-ring { animation: none; } }"
+    },
+    {
+      "name": "Ruler",
+      "kind": "input",
+      "refersTo": "ruler",
+      "description": "A film-edge ruler of ticks sliding under a fixed marker index; drag to scrub, settles on the nearest tick in 160ms.",
+      "html": "<div class=\"ds-ruler\"><div class=\"ds-ticks\"><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:18px\"></i><b>-1.0</b></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:12px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:18px\"></i><b>±0.0</b></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:12px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:18px\"></i><b>+1.0</b></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div><div class=\"ds-tick\"><i style=\"height:7px\"></i></div></div><div class=\"ds-index\"></div></div>",
+      "css": ".ds-ruler { position: relative; width: 340px; height: 58px; overflow: hidden; background: rgba(24, 24, 23, 1); } .ds-ticks { position: absolute; top: 0; left: -2px; display: flex; transition: left 160ms ease-out; } .ds-tick { width: 12px; flex: none; display: flex; flex-direction: column; align-items: center; } .ds-tick i { width: 1px; background: rgba(176, 173, 166, 1); } .ds-tick b { margin-top: 4px; width: 40px; text-align: center; font-weight: 400; color: rgba(176, 173, 166, 1); font-size: 9px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } .ds-index { position: absolute; top: 0; left: 169px; width: 2px; height: 22px; background: rgba(216, 40, 47, 1); } .ds-ruler:focus-visible { outline: 2px solid rgba(216, 40, 47, 1); }"
+    },
+    {
+      "name": "Split Line",
+      "kind": "custom",
+      "refersTo": "film-strip",
+      "description": "The before/after line through the enlargement: a 2px marker rule with a 38px ring at its middle; BEFORE/AFTER sit in the edge print below, never on the photo.",
+      "html": "<div class=\"ds-enl\"><div class=\"ds-enl-photo\"><div class=\"ds-line\"></div><div class=\"ds-grab\"><svg class=\"ds-ring\" width=\"38\" height=\"38\" viewBox=\"0 0 38 38\" aria-hidden=\"true\"><ellipse cx=\"18\" cy=\"19\" rx=\"15\" ry=\"15\" fill=\"none\" stroke=\"rgba(216, 40, 47, 1)\" stroke-width=\"2.5\" stroke-linecap=\"round\" transform=\"rotate(-2 19 19)\"/></svg></div></div><div class=\"ds-enl-edge\"><span>BEFORE</span><span>AFTER</span></div></div>",
+      "css": ".ds-enl { background: rgba(24, 24, 23, 1); width: 340px; padding: 8px 0; } .ds-enl-photo { position: relative; height: 150px; background: linear-gradient(90deg, rgba(90, 80, 70, 1) 50%, rgba(170, 110, 50, 1) 50%); } .ds-line { position: absolute; left: 169px; top: 0; bottom: 0; width: 2px; background: rgba(216, 40, 47, 1); } .ds-grab { position: absolute; left: 151px; top: 56px; width: 38px; height: 38px; } .ds-enl-edge { display: flex; justify-content: center; gap: 16px; padding-top: 6px; color: rgba(176, 173, 166, 1); font-size: 10px; letter-spacing: 2px; font-family: 'Share Tech Mono', 'EdgePrint', ui-monospace, monospace; text-transform: uppercase; } @keyframes ds-ring-in { from { opacity: 0; transform: scale(1.15) rotate(-6deg); } to { opacity: 1; transform: none; } } .ds-ring { position: absolute; left: 0; top: 0; animation: ds-ring-in 240ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none; } @media (prefers-reduced-motion: reduce) { .ds-ring { animation: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Contact Sheet",
+    "overview": "Darkroom is a proof sheet marked up by hand. The ground is white proof paper; every photo sits on a strip of black film, numbered and coded in the pale monospace a film carries along its edge; and every decision the person makes is a red china-marker mark on the sheet: a hand-drawn ring round the chosen frame, stock and control, the before/after line through the enlargement, the value read out large. The sheet reads top to bottom as one continuous print: header on paper, the enlargement on its film, the roll, the test strip, then the printer's controls and a ruler cut from the film's edge.\n\nThe sheet stays light whatever the phone's setting, as a print does: judging color needs the same surround every time. Density is a working sheet's, not a gallery's: strips run edge to edge and scroll sideways, the paper between them carries only a title, a note and a credit. The photo is never covered while it is judged; labels about the photo live in the film's edge print beside it.\n\nIt rejects the category's near-black editor with thin white sliders and a tray of filter thumbnails.",
+    "keyCharacteristics": [
+      "Paper ground, film-black strips, one red.",
+      "Two drawn voices: monospace edge print on the film, china marker for marks.",
+      "Hard-edged rectangles; the only curves are the sprocket holes and the hand-drawn marks.",
+      "Flat: depth is paper versus film, never shadow.",
+      "Selection is a drawn ring, not a fill, tint or underline."
+    ],
+    "rules": [
+      {
+        "name": "The One Red Rule",
+        "body": "Marker red means \"the person marked this\". It never decorates, never fills a surface, and never appears as a second accent's companion; there is no second accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Belongs On Paper Rule",
+        "body": "Ink and Faded Ink are only on paper; Edge Print Gray is only on film. Text never crosses from one surface's color to the other's.",
+        "section": "colors"
+      },
+      {
+        "name": "The Print Is Light Rule",
+        "body": "The sheet does not follow dark mode. Paper stays paper.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Hands Rule",
+        "body": "Monospace is the film's voice, marker is the person's. Never set a mark in monospace or edge print in marker.",
+        "section": "typography"
+      },
+      {
+        "name": "The Name Every Text Rule",
+        "body": "Lynx text doesn't inherit fonts: every `<text>` names its family (`font-edge`, `font-marker`) or is deliberately system sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Paper And Film Rule",
+        "body": "Two surfaces only, paper and film. No cards, no shadows, no third tone between them.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Square Frame Rule",
+        "body": "A photo or a strip never has rounded corners. Round only what film rounds (sprocket holes) or what a hand draws (the ring).",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** put every photo on film, with sprocket rows and an edge-print row naming it.",
+      "**Do** mark a selection by drawing a marker ring round the item and its label, and scroll the chosen item into view.",
+      "**Do** write anything the film or the machine says (numbers, codes, stock names, control names) in edge print caps, and anything the person did in marker.",
+      "**Do** keep labels about the photo in the edge print beside it, never over it.",
+      "**Do** give every SVG mark and arrow its color from the marker and edge tokens' values, and respect reduced motion in every animation."
+    ],
+    "donts": [
+      "**Don't** use marker red for anything the person didn't mark.",
+      "**Don't** round a frame, strip or band, or give anything a shadow.",
+      "**Don't** add a dark theme; the sheet stays light.",
+      "**Don't** set a heading or label above a strip on the paper; the strip names itself in its own edge print.",
+      "**Don't** use thin white sliders or a filter-thumbnail tray; controls are names on the sheet and a ruler cut from the film."
+    ]
+  }
+}

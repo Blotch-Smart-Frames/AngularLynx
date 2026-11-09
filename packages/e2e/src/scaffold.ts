@@ -741,7 +741,7 @@ const checkGeneratedProject = (
   // `ng new` writes the root component's template, styles and test as separate
   // files (app.html, app.css and app.spec.ts since Angular 20, and
   // app.component.* before that). ng add inlines the template in app.ts, so
-  // the leftovers are dead code, and the spec tests the deleted template.
+  // the leftovers are dead code.
   const leftovers = [
     'app.component.ts',
     'app.component.html',
@@ -749,11 +749,19 @@ const checkGeneratedProject = (
     'app.component.spec.ts',
     'app.html',
     'app.css',
-    'app.spec.ts',
   ].filter((file) => existsSync(path.join(appDir, 'src/app', file)));
   check(
     leftovers.length === 0,
     `\`ng add\` left these \`ng new\` files behind in src/app: ${leftovers.join(', ')}.`,
+  );
+  // ng new's spec tests the browser template, so ng add rewrites it for the
+  // Lynx one rather than deleting it: a fresh app with no tests fails
+  // `ng test` (#351). runFreshAppTests runs it.
+  const appSpec = path.join(appDir, 'src/app/app.spec.ts');
+  check(
+    existsSync(appSpec) &&
+      readFileSync(appSpec, 'utf8').includes("querySelector('text')"),
+    "`ng add` didn't rewrite src/app/app.spec.ts for the Lynx template.",
   );
   console.log(
     '✓ the project has the AngularLynx builders and schematics, and Lynx bootstrap files',

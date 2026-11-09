@@ -156,12 +156,12 @@ export const applyEntry = (
         entryPoint.values(),
       );
       // The app's CSS is extracted from the main-thread half (see css.ts), so
-      // only that half needs the blur-view rule, or the web's font.
-      const mainThreadImports = isLynx
-        ? [BLUR_VIEW_STYLESHEET, ...entryImports]
-        : isWeb
-          ? [WEB_SYSTEM_FONT_STYLESHEET, ...entryImports]
-          : entryImports;
+      // only that half needs the native bundle's blur-view rule, or the web
+      // bundle's font. (Rspeedy builds only these two environments.)
+      const mainThreadImports = [
+        isLynx ? BLUR_VIEW_STYLESHEET : WEB_SYSTEM_FONT_STYLESHEET,
+        ...entryImports,
+      ];
       const backgroundImports = [
         ...entryImports.filter((entryImport) => preEntry.has(entryImport)),
         backgroundEntries.fileFor(environment.name, entryName),

@@ -6660,6 +6660,22 @@ On the phones, asking whether another app is installed is opt-in: iOS's `canOpen
 
 ---
 
+## Lynx for Web sets no font, so text takes the host page's (serif in a bare page)
+
+### What you'd expect (web)
+
+A page's text is in the font its stylesheet sets, and an unstyled page uses the browser's default font, which is a serif (Times) in most browsers.
+
+### What Lynx does
+
+On iOS and Android, text is in the system font unless a style says otherwise. Lynx for Web has no default font: `font-family` inherits from the page that shows the `<lynx-view>` into its shadow root and down to every `<x-text>`. rspeedy's web preview page (`@lynx-js/web-rsbuild-server-middleware`) sets none, only `margin` and `padding` on `body`, so a fresh app's text came out in Times there, and so does a ReactLynx app's: its starter sets no font either. Text does inherit on the web, unlike on the phones, so a font on `page` reaches all of it.
+
+### How AngularLynx handles it
+
+The build adds `styles/web-system-font.css` (a `page` rule with the system font stack, the one the docs site's live examples use) to the web bundle only, before the app's stylesheets, so an app's own `page` rule, a `font-*` class or an inline style still wins. The native bundle doesn't get it.
+
+---
+
 ## A canvas is saved by the shell: `toBlob()` reads the drawing buffer and the shell encodes it
 
 Found while adding `canvas.toBlob()` and `toDataURL()` for a photo editor, on the iOS 27 Simulator, the Android 14 emulator and Chromium, with a 2048×1365 canvas.

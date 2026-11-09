@@ -137,7 +137,6 @@ components:
 
 <!-- cspell:words Aurore Odette Rivka Tomás -->
 
-
 # Design System: Par Avion
 
 ## Overview

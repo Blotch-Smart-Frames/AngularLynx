@@ -27,6 +27,7 @@ import {
 import {
   applyEntry,
   BLUR_VIEW_STYLESHEET,
+  WEB_SYSTEM_FONT_STYLESHEET,
   CSS_HOT_UPDATE,
   getChunks,
   HMR_BACKGROUND_CLIENT,
@@ -399,7 +400,7 @@ describe('applyEntry', () => {
     expect(entryBuilders['main'].prepend).not.toHaveBeenCalled();
   });
 
-  it("starts the main thread from the app's entry, with the blur-view stylesheet first on native", () => {
+  it("starts the main thread from the app's entry, with the blur-view stylesheet first on native and the system font first on web", () => {
     const imports = (name: string) => {
       const { api, triggerChain } = createMockApi();
       const { chain, entryBuilders } = createMockChain({
@@ -422,7 +423,11 @@ describe('applyEntry', () => {
       './src/styles.css',
       './main.ts',
     ]);
-    expect(imports('web')).toEqual(['./src/styles.css', './main.ts']);
+    expect(imports('web')).toEqual([
+      WEB_SYSTEM_FONT_STYLESHEET,
+      './src/styles.css',
+      './main.ts',
+    ]);
   });
 
   // Angular runs on the main thread only, so the background thread gets the

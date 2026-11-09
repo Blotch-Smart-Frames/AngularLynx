@@ -46,6 +46,17 @@ export const BLUR_VIEW_STYLESHEET = path.resolve(
 );
 
 /**
+ * The `page` rule that gives the web bundle's text the system font, which
+ * Lynx for Web doesn't set (see the file). Only the web bundle gets it: on iOS
+ * and Android, text is in the system font already. It goes before every other
+ * import, so the app's own stylesheets come later and win a tie.
+ */
+export const WEB_SYSTEM_FONT_STYLESHEET = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  './styles/web-system-font.css',
+);
+
+/**
  * The hot update clients (see client/). The background one stands in for
  * `@rspack/core/hot/dev-server`; the main-thread one gives the main thread its
  * own hot updates. Together they apply each update on both threads, or reload.
@@ -145,10 +156,12 @@ export const applyEntry = (
         entryPoint.values(),
       );
       // The app's CSS is extracted from the main-thread half (see css.ts), so
-      // only that half needs the blur-view rule.
+      // only that half needs the blur-view rule, or the web's font.
       const mainThreadImports = isLynx
         ? [BLUR_VIEW_STYLESHEET, ...entryImports]
-        : entryImports;
+        : isWeb
+          ? [WEB_SYSTEM_FONT_STYLESHEET, ...entryImports]
+          : entryImports;
       const backgroundImports = [
         ...entryImports.filter((entryImport) => preEntry.has(entryImport)),
         backgroundEntries.fileFor(environment.name, entryName),

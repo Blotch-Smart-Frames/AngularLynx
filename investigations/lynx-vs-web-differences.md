@@ -6657,3 +6657,19 @@ On the phones, asking whether another app is installed is opt-in: iOS's `canOpen
 ### How AngularLynx uses it
 
 `LynxLinking` opens tabs through `parent.open()` in the web preview, before anything is awaited, so the tab still counts as part of the tap. angular.json's `canOpenURLSchemes` lists the schemes `canOpenURL()` may ask about, and `ng build --platform` writes them, after `http`, `https`, `mailto`, `tel` and `sms`, into both files.
+
+---
+
+## Lynx for Web sets no font, so text takes the host page's (serif in a bare page)
+
+### What you'd expect (web)
+
+A page's text is in the font its stylesheet sets, and an unstyled page uses the browser's default font, which is a serif (Times) in most browsers.
+
+### What Lynx does
+
+On iOS and Android, text is in the system font unless a style says otherwise. Lynx for Web has no default font: `font-family` inherits from the page that shows the `<lynx-view>` into its shadow root and down to every `<x-text>`. rspeedy's web preview page (`@lynx-js/web-rsbuild-server-middleware`) sets none, only `margin` and `padding` on `body`, so a fresh app's text came out in Times there, and so does a ReactLynx app's: its starter sets no font either. Text does inherit on the web, unlike on the phones, so a font on `page` reaches all of it.
+
+### How AngularLynx handles it
+
+The build adds `styles/web-system-font.css` (a `page` rule with the system font stack, the one the docs site's live examples use) to the web bundle only, before the app's stylesheets, so an app's own `page` rule, a `font-*` class or an inline style still wins. The native bundle doesn't get it.

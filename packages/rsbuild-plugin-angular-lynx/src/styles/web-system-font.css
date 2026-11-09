@@ -1,0 +1,19 @@
+/*
+ * The phone's system font for the web bundle's text. Lynx for Web sets no
+ * font: text inherits the font of the page that shows the <lynx-view>, and
+ * rspeedy's `ng serve` preview page sets none either, so an app's text came
+ * out in the browser's default serif (Times), unlike on iOS and Android.
+ * Text inherits from `page` on the web, so one rule there covers it.
+ *
+ * Only the web bundle gets this file: on iOS and Android, Lynx already draws
+ * text in the system font, and Lynx's docs don't say how they read these
+ * family names. It goes before every other import, and the type selector
+ * loses to any class, id or inline style, so an app's own font (a `page`
+ * rule of its own, `font-sans`, a class on a <text>) still wins. The same
+ * stack as the docs site's live examples (native-parity.ts in the website).
+ */
+page {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui,
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
+}

@@ -127,10 +127,6 @@ Must handle uppercase/lowercase in JavaScript.
 
 `text-maxline` only sizes the box: iOS cuts the rest off without "…", and Android draws the extra lines over what follows. Pair it with `text-overflow: ellipsis` (Tailwind's `text-ellipsis`) on every platform.
 
-### An `<input>`'s `placeholder-color` attribute does nothing on iOS
-
-iOS keeps the system's pale gray: its setter takes a color a string attribute never becomes. Set the CSS property in the style too, and keep the attribute for the web preview: `placeholder-color="#54607c" style="-x-placeholder-color: #54607c"`.
-
 ---
 
 ## Missing APIs

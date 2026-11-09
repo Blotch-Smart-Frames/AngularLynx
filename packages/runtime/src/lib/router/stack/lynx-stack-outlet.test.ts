@@ -1075,6 +1075,44 @@ describe('LynxStackOutlet', () => {
       mouse('mousemove', 100, 0);
     });
 
+    it('drags with a finger in the web preview, from where the touch is in the view', async () => {
+      vi.stubGlobal('__WEB__', true);
+      const { frames, settle } = await pushed();
+      const top = frames()[1]!;
+      const target = top.firstElementChild!;
+      /**
+       * A touch event at `x`. Lynx for Web's x is from the <lynx-view>'s top
+       * left, in its own pixels. Its pageX is the browser's: here from a
+       * document the view sits 900px into, drawn at half size, as a docs
+       * preview draws it.
+       */
+      const finger = (type: string, x: number) => {
+        const event = new Event(`bind${type}`, { bubbles: true });
+        const point = {
+          identifier: 0,
+          x,
+          y: 300,
+          pageX: 900 + x / 2,
+          pageY: 600,
+        };
+        Object.assign(event, {
+          touches: type === 'touchend' ? [] : [point],
+          changedTouches: [point],
+        });
+        target.dispatchEvent(event);
+      };
+      finger('touchstart', 10);
+      for (let x = 20; x <= 230; x += 10) {
+        await vi.advanceTimersByTimeAsync(16);
+        finger('touchmove', x);
+      }
+      // The page is under the finger, which moved 220 of the view's pixels.
+      expect(top.style.transform).toBe('translateX(220px)');
+      finger('touchend', 230);
+      await settle();
+      expect(frames()).toHaveLength(1);
+    });
+
     it('lets a mouse drag go when the button came up outside the view', async () => {
       vi.stubGlobal('__WEB__', true);
       const { frames, settle } = await pushed();

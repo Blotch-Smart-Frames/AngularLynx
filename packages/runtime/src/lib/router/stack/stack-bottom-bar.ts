@@ -15,11 +15,14 @@ import {
   LynxStackChrome,
   addBar,
 } from './stack-chrome';
+import { type MeasuredElement, boxInLynxView } from './stack-box';
 
-/** The bar's host: a LynxElement, or a DOM element on the web and in tests. */
-type BarElement = {
-  getBoundingClientRect(): { readonly top: number; readonly height: number };
-};
+/**
+ * The bar's host: a LynxElement, or a DOM element in tests. The outlet
+ * measures it as it does itself, relative to the LynxView (see
+ * boxInLynxView), to tell whether the bar runs along the outlet's bottom.
+ */
+type BarElement = MeasuredElement;
 
 /**
  * Where a page carries a bar: over the page, along the bottom of its frame,
@@ -132,7 +135,7 @@ export class LynxStackBottomBar implements OnDestroy {
   readonly #bar: CarriedBar = {
     chrome: this.#chrome,
     frame: () => untracked(this.#frame),
-    box: () => this.#element.getBoundingClientRect(),
+    box: () => boxInLynxView(this.#element),
     carry: (frame) => this.#carry(frame),
     home: () => this.#home(),
   };

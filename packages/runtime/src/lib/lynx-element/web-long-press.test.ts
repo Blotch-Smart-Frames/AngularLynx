@@ -57,6 +57,39 @@ describe('WebLongPress', () => {
     expect(dropsTap()).toBe(false);
   });
 
+  it('ends when the press is released somewhere else', () => {
+    // What a long press opens covers the element, so the release lands on
+    // that and only the document hears it.
+    const listeners = new Map<string, () => void>();
+    const document = {
+      addEventListener: (type: string, listener: () => void) =>
+        listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type),
+    };
+    const elsewhere = new WebLongPress(fire, () => document);
+    elsewhere.start(mouse(4, 4));
+    vi.advanceTimersByTime(LONG_PRESS_DURATION);
+    expect(dropsTap()).toBe(true);
+    expect([...listeners.keys()]).toEqual([
+      'touchend',
+      'touchcancel',
+      'mouseup',
+    ]);
+
+    listeners.get('mouseup')!();
+    expect(listeners.size).toBe(0);
+    vi.advanceTimersByTime(300);
+    expect(dropsTap()).toBe(false);
+  });
+
+  it('hears the release on the app document by default', () => {
+    // Ended by the element's own release here (afterEach), which stops
+    // listening on the document again.
+    press.start(touch(1, 1));
+    vi.advanceTimersByTime(LONG_PRESS_DURATION);
+    expect(fire).toHaveBeenCalled();
+  });
+
   it('fires for the main mouse button, held', () => {
     press.start(mouse(4, 5));
     vi.advanceTimersByTime(LONG_PRESS_DURATION);

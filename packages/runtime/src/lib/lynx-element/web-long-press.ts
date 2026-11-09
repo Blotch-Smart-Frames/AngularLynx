@@ -1,3 +1,5 @@
+import { globalEvents } from '../global-events';
+
 /**
  * Long presses on Lynx for Web, which never fires `longpress`.
  *
@@ -44,6 +46,20 @@ let longPresses = 0;
  */
 export const dropsTap = (): boolean => tapsDropped;
 
+/**
+ * The page-wide events that end a press, heard on the app's `document`
+ * (global-events), which hears every event in the `<lynx-view>`. Not
+ * `globalThis.document`: in the web preview the main thread runs in an
+ * iframe, whose own document hears nothing of the page.
+ */
+const RELEASES = ['touchend', 'touchcancel', 'mouseup'] as const;
+
+/** Where a press's release is heard, whatever it lands on. */
+export type ReleaseTarget = {
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+};
+
 /** Where a press is, in the `<lynx-view>`'s pixels. */
 export type LongPressPoint = { readonly x: number; readonly y: number };
 
@@ -74,9 +90,17 @@ export class WebLongPress {
   #timer: ReturnType<typeof setTimeout> | undefined;
   #start: LongPressPoint | null = null;
   #fired = false;
+  /** Stops listening for the release on the document, once it's heard. */
+  #unlisten: (() => void) | null = null;
 
-  constructor(fire: (point: LongPressPoint) => void) {
+  readonly #releases: () => ReleaseTarget;
+
+  constructor(
+    fire: (point: LongPressPoint) => void,
+    releases: () => ReleaseTarget = () => globalEvents().document,
+  ) {
     this.#fire = fire;
+    this.#releases = releases;
   }
 
   /** `touchstart` and `mousedown`: a press starts. */
@@ -98,6 +122,7 @@ export class WebLongPress {
       this.#fired = true;
       longPresses++;
       tapsDropped = true;
+      this.#listenForRelease();
       this.#fire(point);
     }, LONG_PRESS_DURATION);
   };
@@ -121,6 +146,8 @@ export class WebLongPress {
    */
   readonly end = (): void => {
     this.#stop();
+    this.#unlisten?.();
+    this.#unlisten = null;
     this.#start = null;
     if (this.#fired) {
       this.#fired = false;
@@ -130,6 +157,23 @@ export class WebLongPress {
       }, TAP_GRACE);
     }
   };
+
+  /**
+   * Hears the press end anywhere, not only on the element. A long press
+   * often opens something over the element, such as a menu or a sheet,
+   * and the finger or the button then comes up on that: the element never
+   * hears it, and without this every tap after it would be dropped, for
+   * good.
+   */
+  #listenForRelease(): void {
+    const document = this.#releases();
+    for (const type of RELEASES) document.addEventListener(type, this.end);
+    this.#unlisten = () => {
+      for (const type of RELEASES) {
+        document.removeEventListener(type, this.end);
+      }
+    };
+  }
 
   #stop(): void {
     // The main thread's clearTimeout throws for undefined.

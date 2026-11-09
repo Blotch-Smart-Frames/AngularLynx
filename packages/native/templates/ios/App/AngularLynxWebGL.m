@@ -195,6 +195,7 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     @"destroy" : NSStringFromSelector(@selector(destroy:)),
     @"decodeImage" : NSStringFromSelector(@selector(decodeImage:bytes:options:)),
     @"releaseImage" : NSStringFromSelector(@selector(releaseImage:)),
+    @"encodeImage" : NSStringFromSelector(@selector(encodeImage:options:)),
   };
 }
 
@@ -269,6 +270,21 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
   return @YES;
 }
 
+/// The drawing buffer as an image file, for canvas.toBlob() and toDataURL():
+/// `options` holds the MIME type (image/jpeg, or image/png for anything
+/// else, as browsers fall back), the JPEG quality and premultipliedAlpha.
+- (NSDictionary *)encodeImage:(NSNumber *)contextId options:(NSDictionary *)options {
+  AngularLynxWebGLContext *context = _contexts[contextId];
+  if (!context) return @{@"error" : @"The canvas has no WebGL context"};
+  if (![options isKindOfClass:NSDictionary.class]) options = @{};
+  NSString *type = [options[@"type"] isEqual:@"image/jpeg"] ? @"image/jpeg" : @"image/png";
+  NSNumber *quality = options[@"quality"];
+  return [context
+      encodeImageOfType:type
+                quality:[quality isKindOfClass:NSNumber.class] ? quality.doubleValue : 0.92
+          premultiplied:![options[@"premultipliedAlpha"] isEqual:@NO]];
+}
+
 @end
 
 #pragma mark - Canvas
@@ -291,6 +307,17 @@ static AngularLynxDecodedImage *decodeImage(NSData *bytes, NSDictionary *options
     self.userInteractionEnabled = NO;
   }
   return self;
+}
+
+// A frame drawn before Lynx gave the view a size waits for one (see
+// present). An app that draws only when something changes, such as a photo
+// editor drawing its photo once, would otherwise show nothing until it drew
+// again; one drawing every frame never noticed.
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  if (_canvasId) {
+    [[AngularLynxCanvasRegistry contextForCanvasId:_canvasId] viewDidLayOut:self];
+  }
 }
 
 - (void)setCanvasId:(NSString *)canvasId {

@@ -201,6 +201,8 @@ export type {
 } from './lib/resource-prefetch';
 export { LynxSessionStorage } from './lib/session-storage';
 export type { SessionStorageSubscription } from './lib/session-storage';
+export { LynxShare, ShareError } from './lib/share';
+export type { ShareData, ShareErrorCode, ShareFile } from './lib/share';
 export { LynxLocalStorage, LynxSecureStorage } from './lib/storage';
 export { LynxSystemInfo } from './lib/system-info';
 export type { PlatformType } from './lib/system-info';

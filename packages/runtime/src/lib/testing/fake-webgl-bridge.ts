@@ -22,6 +22,8 @@ export type FakeWebGLBridge = {
   destroy: ReturnType<typeof vi.fn<WebGLBridge['destroy']>>;
   decodeImage: ReturnType<typeof vi.fn<WebGLBridge['decodeImage']>>;
   releaseImage: ReturnType<typeof vi.fn<WebGLBridge['releaseImage']>>;
+  /** Answers with a file of bytes 1 and 2, of the type asked for. */
+  encodeImage: ReturnType<typeof vi.fn<WebGLBridge['encodeImage']>>;
   /** Every command sent after the first batch, flattened. */
   sent(): unknown[];
 } & WebGLBridge;
@@ -40,6 +42,7 @@ export const createFakeWebGLBridge = (): FakeWebGLBridge => {
     destroy: vi.fn(),
     decodeImage: vi.fn(() => ({ width: 4, height: 2 })),
     releaseImage: vi.fn(),
+    encodeImage: vi.fn((_contextId, { type }) => ({ base64: 'AQI=', type })),
     run: (_contextId, commands) => {
       fake.batches.push(commands);
       if (commands[0] === OP.resize && commands.includes(OP.getError)) {

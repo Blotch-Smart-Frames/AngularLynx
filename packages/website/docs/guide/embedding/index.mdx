@@ -176,6 +176,15 @@ The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift
 
 The apps `ng build --platform` makes have one you can copy: `ImagePickerModule.swift`, which uses `PHPickerViewController` and ImageIO, and `ImagePickerModule.kt`, which has the activity open the Photo Picker. Both are in AngularLynx's `packages/native/templates`. Without the module, `pick()` rejects with `unavailable`.
 
+## Open the share sheet
+
+[`LynxShare`](/guide/share) calls a native module named `AngularLynxShare`. To use it in your own app, register one with a `share(request, callback)` method:
+
+- **`request`** holds `files`, a list of `{ base64, name, type }` (each file's bytes as base64, its name and its MIME type, which may be empty), and `title`, `text` and `url` when the app passes them.
+- **`callback`** takes one map: `{ shared: true }` once the person has shared, `{ shared: false }` when they closed the sheet, or `{ error: "failed", message }`. Call it once per `share()`.
+
+The apps `ng build --platform` makes have one you can copy: `ShareModule.swift`, which writes the files to temporary files and opens `UIActivityViewController`, and `ShareModule.kt`, which shares them through a `FileProvider` (declared in the template's `AndroidManifest.xml`, with `res/xml/share_paths.xml`), given the activity as its param. Both are in AngularLynx's `packages/native/templates`. For "Save Image" on iOS, your Info.plist needs `NSPhotoLibraryAddUsageDescription`; without it, the iOS module leaves the action out. Without the module, `share()` rejects with `unavailable`.
+
 ## Pass data from your app
 
 Your native app can send values into Angular, such as a signed-in user's ID or the app's theme. See [Pass data from your native app](/guide/embedding/host-data).

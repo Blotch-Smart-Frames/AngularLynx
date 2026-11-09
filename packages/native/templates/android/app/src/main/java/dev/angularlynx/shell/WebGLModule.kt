@@ -3,6 +3,7 @@ package dev.angularlynx.shell
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Base64
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.JavaOnlyArray
@@ -10,9 +11,11 @@ import com.lynx.react.bridge.JavaOnlyMap
 import com.lynx.react.bridge.ReadableArray
 import com.lynx.react.bridge.ReadableMap
 import com.lynx.react.bridge.ReadableType
+import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.roundToInt
 
 /**
  * `<canvas>` with WebGL2 for the AngularLynx runtime: the `AngularLynxWebGL`
@@ -71,6 +74,95 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
         return true
     }
 
+    /**
+     * The drawing buffer as an image file, for canvas.toBlob() and
+     * toDataURL(): `{ base64, type }`, or `{ error }`. [options] holds the
+     * MIME type (image/jpeg, or image/png for anything else, as browsers fall
+     * back), the JPEG quality and premultipliedAlpha.
+     *
+     * The pixels are encoded here rather than sent to the runtime, which
+     * would have to carry 11 MB of RGBA for a 2048 by 1365 photo across the
+     * bridge as numbers, and encode it in JavaScript on PrimJS, which has no
+     * JIT. The file crosses as base64: the bridge can't return bytes (see
+     * webgl-bridge.ts).
+     */
+    @LynxMethod
+    fun encodeImage(contextId: Int, options: ReadableMap?): JavaOnlyMap {
+        val context = contexts[contextId] ?: return encodeFailed("The canvas has no WebGL context")
+        val jpeg = options?.optString("type") == "image/jpeg"
+        val quality = if (options != null && options.hasKey("quality") && options.getType("quality") in NUMBER_TYPES) {
+            options.getDouble("quality")
+        } else {
+            0.92
+        }
+        val premultiplied = !(
+            options != null && options.hasKey("premultipliedAlpha") &&
+                options.getType("premultipliedAlpha") == ReadableType.Boolean &&
+                !options.getBoolean("premultipliedAlpha")
+            )
+        return try {
+            val pixels = context.readDrawingBuffer() ?: return encodeFailed("The WebGL context is gone")
+            val file = encode(pixels, jpeg, quality, premultiplied)
+            JavaOnlyMap.from(
+                mapOf(
+                    "base64" to Base64.encodeToString(file, Base64.NO_WRAP),
+                    "type" to if (jpeg) "image/jpeg" else "image/png",
+                ),
+            )
+        } catch (_: OutOfMemoryError) {
+            encodeFailed("The canvas is too large to encode")
+        }
+    }
+
+    private fun encodeFailed(message: String) = JavaOnlyMap.from(mapOf("error" to message))
+
+    /**
+     * Encodes RGBA pixels, rows bottom to top, as a PNG or JPEG file.
+     */
+    private fun encode(pixels: DrawingBufferPixels, jpeg: Boolean, quality: Double, premultiplied: Boolean): ByteArray {
+        val buffer = pixels.rgba
+        val stride = pixels.width * 4
+        // GL's first row is the bottom of the image; a bitmap's is the top.
+        flipRows(buffer, stride, pixels.height)
+        if (jpeg && pixels.alpha) {
+            // A JPEG has no transparency. Browsers draw a canvas's
+            // transparent pixels over black for one, which premultiplied
+            // colors already are: straight ones are multiplied first. Then
+            // every pixel is opaque, so the encoder has no alpha to treat.
+            for (i in 0 until buffer.limit() step 4) {
+                val alpha = buffer.get(i + 3).toInt() and 0xff
+                if (alpha == 255) continue
+                if (!premultiplied) {
+                    for (c in 0 until 3) {
+                        val value = buffer.get(i + c).toInt() and 0xff
+                        buffer.put(i + c, ((value * alpha + 127) / 255).toByte())
+                    }
+                }
+                buffer.put(i + 3, 0xff.toByte())
+            }
+        }
+        val bitmap = Bitmap.createBitmap(pixels.width, pixels.height, Bitmap.Config.ARGB_8888)
+        // The drawing buffer's colors are premultiplied by alpha unless the
+        // app asked for premultipliedAlpha: false. A bitmap takes either, and
+        // compress() writes a PNG's straight colors from it.
+        if (!premultiplied && pixels.alpha && !jpeg) bitmap.isPremultiplied = false
+        // ARGB_8888 is R, G, B, A in memory: what GL_RGBA reads.
+        bitmap.copyPixelsFromBuffer(buffer)
+        if (jpeg || !pixels.alpha) bitmap.setHasAlpha(false)
+        return try {
+            ByteArrayOutputStream().use { output ->
+                bitmap.compress(
+                    if (jpeg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG,
+                    (quality.coerceIn(0.0, 1.0) * 100).roundToInt(),
+                    output,
+                )
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     override fun destroy() {
         for (context in contexts.values) context.destroy()
         contexts.clear()
@@ -123,6 +215,9 @@ class WebGLModule(context: Context, param: Any?) : LynxModule(context, param) {
 }
 
 internal val NUMBER_TYPES = setOf(ReadableType.Int, ReadableType.Long, ReadableType.Number)
+
+/** The drawing buffer's pixels: RGBA, rows bottom to top, and whether the canvas has alpha. */
+class DrawingBufferPixels(val rgba: ByteBuffer, val width: Int, val height: Int, val alpha: Boolean)
 
 /** Pixels the module decoded, which texture uploads read by id: RGBA, rows top to bottom. */
 internal class DecodedImage(val pixels: ByteBuffer, val width: Int, val height: Int, val premultiplied: Boolean)

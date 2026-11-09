@@ -224,6 +224,7 @@ export default defineConfig({
           link: '/guide/persistent-storage',
         },
         { text: 'Pick a Photo', link: '/guide/image-picker' },
+        { text: 'Share Files and Links', link: '/guide/share' },
         { text: '@defer', link: '/guide/defer' },
         { text: 'Visibility Detection', link: '/guide/exposure' },
         { text: 'Internationalization', link: '/guide/i18n' },
@@ -309,6 +310,7 @@ export default defineConfig({
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
             },
+            { text: 'LynxShare', link: '/api/angular-lynx/share' },
           ],
         },
         {

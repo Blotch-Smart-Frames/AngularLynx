@@ -848,6 +848,10 @@ describe('extensions', () => {
     expect(gl.getContextAttributes()).toBeNull();
     expect(gl.isEnabled(GL.BLEND)).toBe(false);
     expect(gl.isBuffer(gl.createBuffer())).toBe(false);
+    expect(gl.encodeDrawingBuffer('image/png', 1)).toEqual({
+      error: 'The WebGL context is lost',
+    });
+    expect(bridge.encodeImage).not.toHaveBeenCalled();
     expect(bridge.batches).toHaveLength(before);
   });
 

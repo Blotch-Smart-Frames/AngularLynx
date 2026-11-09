@@ -1,4 +1,5 @@
 import { LynxElement } from '../lynx-element/lynx-element';
+import { base64ToBytes } from '../network/base64';
 import type { ElementRef } from '../types/lynx';
 import { getWebGLBridge } from './webgl-bridge';
 import {
@@ -12,6 +13,9 @@ import {
 const ID_PREFIX = `c${Math.floor(Math.random() * 0x7fffffff).toString(36)}`;
 let nextCanvasId = 1;
 let nextContextId = 1;
+
+/** The JPEG quality toBlob() and toDataURL() use without one: Chrome's and Firefox's. */
+const DEFAULT_JPEG_QUALITY = 0.92;
 
 /** The context's events, which the canvas fires itself (see getContext). */
 const CONTEXT_EVENTS: ReadonlySet<string> = new Set([
@@ -276,15 +280,110 @@ export class LynxCanvasElement extends LynxElement {
     this.#context = null;
   }
 
-  toDataURL(): string {
-    throw new Error(
-      'canvas.toDataURL() is not available on Lynx: read the pixels with readPixels()',
-    );
+  /**
+   * The canvas's image as a `data:` URL, as HTMLCanvasElement's: a PNG, or a
+   * JPEG for `image/jpeg` with `quality` from 0 to 1 (0.92 otherwise, as in
+   * Chrome and Firefox). Any other type gives a PNG, as browsers fall back
+   * to. See {@link toBlob} for what it reads; `data:,` when there's nothing
+   * to read.
+   */
+  toDataURL(type?: string, quality?: unknown): string {
+    // The browser's canvas takes any quality, as the spec has it, and
+    // ignores one that isn't a number from 0 to 1: its types say number.
+    if (__WEB__) return this.#dom.toDataURL(type, quality as number);
+    const encoded = this.#encode(type, quality);
+    return encoded ? `data:${encoded.type};base64,${encoded.base64}` : 'data:,';
   }
 
-  toBlob(): void {
-    throw new Error(
-      'canvas.toBlob() is not available on Lynx: read the pixels with readPixels()',
-    );
+  /**
+   * Encodes the canvas's image as a PNG, or a JPEG for `image/jpeg`, and
+   * calls `callback` with it as a `Blob` on a later task, as
+   * HTMLCanvasElement's does. `quality` is the JPEG's, from 0 to 1 (0.92
+   * otherwise); any type other than `image/jpeg` and `image/png` gives a
+   * PNG, as browsers fall back to.
+   *
+   * It reads the drawing buffer as it is when it's called, as a browser
+   * does. WebGL clears the drawing buffer once a frame has been shown, so
+   * call it in the task that drew (right after three.js's `render()`), or
+   * make the context with `preserveDrawingBuffer: true`; called later, it
+   * gives a transparent image. JPEGs have no transparency: transparent
+   * pixels come out black, as in browsers.
+   *
+   * The shell reads and encodes the pixels, so the call blocks the main
+   * thread while it does (tens of milliseconds for a photo); the Blob comes
+   * back later. The callback gets `null` when there's nothing to encode: a
+   * canvas without a WebGL context, one whose context is lost, or a host
+   * without `<canvas>`, such as Lynx Explorer.
+   */
+  toBlob(
+    callback: (blob: Blob | null) => void,
+    type?: string,
+    quality?: unknown,
+  ): void {
+    if (typeof callback !== 'function') {
+      throw new TypeError(
+        "Failed to execute 'toBlob' on 'HTMLCanvasElement': The callback provided as parameter 1 is not a function.",
+      );
+    }
+    if (__WEB__) {
+      // The canvas is the page's, so its Blob is of the page's realm, which
+      // `instanceof Blob` in the app's iframe wouldn't see as a Blob. One of
+      // this realm holds the same bytes.
+      this.#dom.toBlob(
+        (blob) => callback(blob ? new Blob([blob], { type: blob.type }) : null),
+        type,
+        quality as number,
+      );
+      return;
+    }
+    // Read now, so the image is of the canvas as it is at the call, and
+    // handed over on a later task, as browsers do.
+    const encoded = this.#encode(type, quality);
+    setTimeout(() => {
+      callback(
+        encoded
+          ? (new Blob([base64ToBytes(encoded.base64)], {
+              type: encoded.type,
+            }) as Blob)
+          : null,
+      );
+    }, 0);
+  }
+
+  /**
+   * The drawing buffer as an image file, or null when there's nothing to
+   * encode.
+   */
+  #encode(
+    type: string | undefined,
+    quality: unknown,
+  ): { base64: string; type: string } | null {
+    // MIME types are matched without case, and an unknown one means PNG.
+    // A browser turns any type into a string first.
+    const mime =
+      String(type ?? '').toLowerCase() === 'image/jpeg'
+        ? 'image/jpeg'
+        : 'image/png';
+    const jpegQuality =
+      typeof quality === 'number' && quality >= 0 && quality <= 1
+        ? quality
+        : DEFAULT_JPEG_QUALITY;
+    const context = this.#context;
+    if (
+      this.#width === 0 ||
+      this.#height === 0 ||
+      !context ||
+      context.isContextLost()
+    ) {
+      return null;
+    }
+    const encoded = context.encodeDrawingBuffer(mime, jpegQuality);
+    if (encoded.base64 === undefined) {
+      console.warn(
+        `[angular-lynx] The canvas couldn't be encoded: ${encoded.error}`,
+      );
+      return null;
+    }
+    return { base64: encoded.base64, type: encoded.type ?? mime };
   }
 }

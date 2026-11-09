@@ -161,6 +161,10 @@ Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` str
 
 Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload).
 
+### No `navigator.share()` or `File`
+
+Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only `ng build --platform` apps and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links).
+
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
 Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.

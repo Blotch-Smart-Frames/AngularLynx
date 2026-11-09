@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The folder FileProvider shares LynxShare's files from (ShareModule.kt
+  writes them there), and nothing else of the app's.
+-->
+<paths>
+    <cache-path name="shared" path="angular-lynx-share/" />
+</paths>

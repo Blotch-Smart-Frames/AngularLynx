@@ -58,8 +58,15 @@ NS_ASSUME_NONNULL_BEGIN
                                     error:(NSString *_Nullable *_Nonnull)error;
 /// Runs the commands in order; returns one result per query.
 - (NSArray *)run:(NSArray *)commands;
+/// The drawing buffer as a PNG or JPEG file, in base64: `{ base64, type }`,
+/// or `{ error }`. For the runtime's canvas.toBlob() and toDataURL().
+- (NSDictionary *)encodeImageOfType:(NSString *)type
+                            quality:(double)quality
+                      premultiplied:(BOOL)premultiplied;
 /// Shows frames in this view, or nowhere while it's nil.
 - (void)attachView:(nullable AngularLynxCanvasView *)view;
+/// The view was laid out: a frame that waited for it to have a size is shown.
+- (void)viewDidLayOut:(AngularLynxCanvasView *)view;
 - (void)destroy;
 @end
 

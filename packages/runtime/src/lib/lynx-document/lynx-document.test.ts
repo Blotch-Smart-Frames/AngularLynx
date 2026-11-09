@@ -397,15 +397,35 @@ describe('LynxDocument', () => {
       expect(asMock(globalThis.__SetInlineStyles)).not.toHaveBeenCalled();
     });
 
-    it('falls back to __CreateView for unknown tags', () => {
+    it('falls back to __CreateView for unknown tags, warning for a likely typo', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const viewCallsBefore = asMock(globalThis.__CreateView).mock.calls.length;
-      doc.createElement('custom-tag');
+      doc.createElement('widget');
       const viewCallsAfter = asMock(globalThis.__CreateView).mock.calls.length;
       expect(viewCallsAfter).toBeGreaterThan(viewCallsBefore);
       expect(warn).toHaveBeenCalledWith(
-        'Unknown element tag "custom-tag". Falling back to view element.',
+        'Unknown element tag "widget". Falling back to view element.',
       );
+      warn.mockRestore();
+    });
+
+    it('makes component and directive hosts views without a warning', () => {
+      // Angular creates each component's host (<app-card>) and an element
+      // directive's (<router-outlet>) by its selector: a line for each
+      // flooded the console (#352).
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const viewCallsBefore = asMock(globalThis.__CreateView).mock.calls.length;
+      for (const tag of [
+        'app-card',
+        'router-outlet',
+        'ng-component',
+        'ngt-mesh',
+      ]) {
+        expect(doc.createElement(tag).tagName).toBe(tag);
+      }
+      const viewCallsAfter = asMock(globalThis.__CreateView).mock.calls.length;
+      expect(viewCallsAfter - viewCallsBefore).toBe(4);
+      expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });
 

@@ -46,8 +46,8 @@ const TEXT_TAGS = [
 /**
  * The HTML tags that render as a `<view>`: those that hold blocks of other
  * elements (HTML's flow content). Every other tag Lynx has no element for
- * renders as a `<view>` too, but with a warning (see createDefaultElement):
- * these are expected, so they don't get one.
+ * renders as a `<view>` too, and one without a hyphen gets a warning, as a
+ * likely typo (see createDefaultElement): these are expected, so they don't.
  */
 const VIEW_TAGS = [
   'div',

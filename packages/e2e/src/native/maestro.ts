@@ -131,6 +131,14 @@ export const FLOWS: readonly Flow[] = [
     only: { host: 'shell' },
   },
   {
+    file: 'overlays.yaml',
+    description:
+      'replaces rows holding overlays, the rows dropping theirs first',
+    // Only the app's own builds, where the page linking to it is reached
+    // (see webview.yaml).
+    only: { host: 'shell' },
+  },
+  {
     file: 'photo.yaml',
     description: 'picks a photo and uploads it as a Blob',
     // Only the app's own builds have the picker module. Lynx Explorer

@@ -370,6 +370,29 @@ Drain the queue from `end()`, **before** `__FlushElementTree()`, via `processPen
 
 ---
 
+## Removing a `position: fixed` element's holder from a parent that is itself removed before the flush crashes iOS
+
+### What you'd expect (web)
+
+Remove a node, then remove one of its ancestors, in any order before the next paint. Both go, and so does everything inside them, `position: fixed` or not.
+
+### What Lynx does
+
+Lynx 4.1 (Fiber, without `enableFixedNew`) draws a `position: fixed` element from the page, not from its parent (see "`position: fixed` is absolute-relative-to-root" above). When an element holding one is removed from a parent on the page, Lynx queues the fixed element's own removal from the page on that parent, to run when the parent flushes (`TreeResolver::NotifyNodeRemoved`, `FiberElement::RemovedFrom`, `PrepareAndGenerateChildrenActions`). Two things lose it:
+
+- A parent that has left the page queues nothing: `NotifyNodeRemoved` returns at once for a detached parent.
+- A parent removed after the removal was queued on it never flushes again, so the queued removal never runs. Radon passes such removals up to the parent's parent in `RemovedFrom`; Fiber doesn't.
+
+The page then goes on drawing the fixed element. It's freed once its last JavaScript wrapper is collected, and the next layout walks the page's render children into it: `EXC_BAD_ACCESS` in `ElementContainer::UpdateLayoutWithoutChange()` at `0x0`, or in `ElementContainer::UpdateLayout(float, float, bool)` once the memory is reused. The log shows `DestroyLayoutNodeBeforeRemoveFromParent tag:overlay` as each one is freed: its layout node is still under the page's.
+
+Angular asks for exactly that order within one change detection, the inner removal first: a row's `@if` drops a `ui-menu` (whose `<overlay>` is styled `position: fixed` for the web), and an effect that runs in the same pass starts a load that empties the list, so the `@if` around the list drops the card the rows are in in a second pass. Issue #345 crashed the iOS app this way, replacing a list of 12 rows by choosing another frame.
+
+### The fix
+
+`LynxElement.commitPendingRemovals()` (`packages/runtime/src/lib/lynx-element/lynx-element.ts`) removes an element before anything inside it, whatever order Angular asked for. With the outer element removed first, Lynx queues the fixed elements' removals on its parent, which is still on the page and flushes; the inner removal afterwards queues nothing. Covered by `lynx-element-fixed.test.ts` against a fake of Lynx's behavior, and on device by the E2E `native/overlays.yaml`.
+
+---
+
 ## Native mutations made outside a change-detection cycle need their own flush
 
 Content created outside a `begin()`/`end()` bracket paints only after a later, unrelated change-detection cycle. Arm a settle flush so it paints immediately.

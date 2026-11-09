@@ -123,6 +123,10 @@ Only `left`, `right`, `center`, `start`/`end`.
 
 Must handle uppercase/lowercase in JavaScript.
 
+### An `<input>`'s `placeholder-color` attribute does nothing on iOS
+
+iOS keeps the system's pale gray: its setter takes a color a string attribute never becomes. Set the CSS property in the style too, and keep the attribute for the web preview: `placeholder-color="#54607c" style="-x-placeholder-color: #54607c"`, or bound, `[attr.placeholder-color]="color()" [style.-x-placeholder-color]="color()"`.
+
 ---
 
 ## Missing APIs

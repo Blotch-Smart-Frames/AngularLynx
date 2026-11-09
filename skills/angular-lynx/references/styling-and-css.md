@@ -36,6 +36,8 @@ Lynx uses a subset of CSS with fundamentally different defaults. Read this befor
 
 CSS properties do **not** inherit from parent to child (except nested `<text>` inherits `color` and `font-family` from the `<text>` directly around it; a `<view>` in between stops it, and the inner text draws in the default black). Every element must declare its own styles. CSS variables (`--x`) are the exception: they inherit, so a variable set on a parent reaches everything inside it.
 
+On the web, Lynx sets no font, so text would take the font of the page around the `<lynx-view>` (the browser's default serif in `ng serve`'s preview). The build adds `page { font-family: <the system font stack> }` to the web bundle only, before the app's styles, so web text matches the phones' system font. An app's own font still wins: a `page` rule of its own, a `font-*` class, or a style on the element. On iOS and Android, text is in the system font already.
+
 HTML text tags (`<p>`, `<span>`, `<h1>`…) and loose text do inherit text styles, through such variables: the build copies each `color`, `font-*`, `line-height`, `letter-spacing`, `text-align`, `text-decoration`, `text-shadow` and `direction` declaration to `--angular-lynx-<property>`, and those elements read the ones their own rules don't set. Only classes and stylesheet rules pass them down, not an inline `style`. A Lynx `<text>` reads none, so the example below still holds for it.
 
 ```css

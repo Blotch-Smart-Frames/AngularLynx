@@ -1935,7 +1935,7 @@ Lynx has no Shadow DOM. Setting `encapsulation: ViewEncapsulation.ShadowDom` on 
 
 ---
 
-## Unknown element tags silently fall back to `<x-view>` with a console warning
+## Unknown element tags silently fall back to `<x-view>`
 
 ### What you'd expect (web)
 
@@ -1943,7 +1943,7 @@ Unknown HTML tags are rendered as `HTMLUnknownElement` and still appear in the D
 
 ### What Lynx does
 
-If you use an unrecognized element tag in a Lynx template, the renderer **silently creates an `<x-view>` in its place** and logs a console warning. Since there is no device console, this warning is invisible on-device. This means typos in element names (e.g., `<x-veiw>` instead of `<x-view>`) fail silently and produce an unexpectedly-styled `<x-view>`.
+If you use an unrecognized element tag in a Lynx template, the renderer **silently creates an `<x-view>` in its place**. A tag without a hyphen also logs a console warning, since it's most likely a misspelled element (`<veiw>` instead of `<view>`). A tag with a hyphen doesn't: Angular creates every component's host (`<app-card>`) and every element directive's (`<router-outlet>`) this way, and a view is the right element for them, so a warning for each flooded the console (#352). Since there is no device console, the warning is invisible on-device anyway, and a misspelled hyphenated element (`<scroll-veiw>`) gets no warning at all: both fail silently and produce an unexpectedly-styled `<x-view>`.
 
 ---
 

@@ -91,6 +91,17 @@ const demos: {
     statusBar: 'dark',
   },
   {
+    id: 'chat',
+    label: 'Par Avion',
+    tagline: 'A chat app',
+    blurb:
+      'Letters that load as you scroll back, swipe to reply, stamps for reactions, photos and the keyboard: the things a chat app is judged by, in Angular.',
+    hint: 'Open a letter and scroll up. Drag a letter left to reply, or hold it.',
+    // No demonstration: Lynx for Web takes a tap only from a real click, so
+    // a synthesized one can't open a conversation.
+    code: '/examples/chat',
+  },
+  {
     id: 'furniture-shop',
     label: 'Furniture shop',
     tagline: 'The Lynx tutorials, as one app',

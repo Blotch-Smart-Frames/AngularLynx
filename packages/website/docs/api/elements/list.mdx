@@ -84,13 +84,13 @@ Plus the [common events](/api/elements/view#events), such as `bindtap`.
 
 These **UI methods** ([Glossary](/guide/glossary#ui-method)) scroll it from code. Call them with `invoke()` on the element (see [Call element methods](/guide/selector-query)). A call from a handler returns nothing: to read a result, call `invoke()` in a main-thread script instead.
 
-| Method             | Parameters                                                                                                        | Description                                                                                                   |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `scrollToPosition` | `{ index: number; alignTo?: 'top' \| 'middle' \| 'bottom'; offset?: number; itemKey?: string; smooth?: boolean }` | Scrolls to the item at `index`, or the one with `itemKey`. It aligns the item's top unless you set `alignTo`. |
-| `scrollBy`         | `{ offset: number }`                                                                                              | Scrolls by `offset` px.                                                                                       |
-| `autoScroll`       | `{ rate: string; start?: boolean; autoStop?: boolean }`                                                           | Scrolls continuously at `rate` per second, e.g. `'60px'`. It stops at the end unless `autoStop` is `false`.   |
-| `getVisibleCells`  | —                                                                                                                 | Returns the items on screen.                                                                                  |
-| `getScrollInfo`    | —                                                                                                                 | Returns `{ scrollX, scrollY, maxScrollOffset }` in px.                                                        |
+| Method             | Parameters                                                                                                           | Description                                                                                                                                                                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scrollToPosition` | `{ position: number; alignTo?: 'top' \| 'middle' \| 'bottom'; offset?: number; itemKey?: string; smooth?: boolean }` | Scrolls to the item at `position`, or the one with `itemKey`, aligning it as `alignTo` says (its top by default), then scrolls `offset` px further. In the web preview it scrolls to the item's top plus `offset`, and ignores `alignTo` and `itemKey`. |
+| `scrollBy`         | `{ offset: number }`                                                                                                 | Scrolls by `offset` px.                                                                                                                                                                                                                                 |
+| `autoScroll`       | `{ rate: string; start?: boolean; autoStop?: boolean }`                                                              | Scrolls continuously at `rate` per second, e.g. `'60px'`. It stops at the end unless `autoStop` is `false`.                                                                                                                                             |
+| `getVisibleCells`  | —                                                                                                                    | Returns the items on screen.                                                                                                                                                                                                                            |
+| `getScrollInfo`    | —                                                                                                                    | Returns `{ scrollX, scrollY, maxScrollOffset }` in px.                                                                                                                                                                                                  |
 
 ```typescript
 import { Component, ElementRef, viewChild } from '@angular/core';
@@ -111,7 +111,7 @@ export class Inbox {
 
   toTop(): void {
     this.inbox().nativeElement.invoke?.('scrollToPosition', {
-      index: 0,
+      position: 0,
       smooth: true,
     });
   }

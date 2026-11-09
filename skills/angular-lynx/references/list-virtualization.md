@@ -30,8 +30,9 @@
 ### Optional Attributes
 
 - **`span-count`** — number of columns (for grid/flow layouts). Default is `1`.
-- **`upper-threshold`** / **`lower-threshold`** — distance from edges to trigger scroll events
-- **`scroll-with-animation`** — smooth scroll when programmatically scrolling
+- **`upper-threshold-item-count`** / **`lower-threshold-item-count`** — `(bindscrolltoupper)` / `(bindscrolltolower)` fire when fewer than this many items remain above or below the screen (`upper-threshold` and `lower-threshold`, in px, are `<scroll-view>`'s)
+- **`initial-scroll-index`** — the item to start at
+- **`need-visible-item-info`** — adds `attachedCells` to the scroll events
 
 ## How It Works
 
@@ -75,6 +76,31 @@ The AngularLynx renderer handles this transparently — you use `@for` as normal
   }
 </list>
 ```
+
+## Scrolling From Code
+
+`scrollToPosition` takes **`position`**, the item's index (`index` is ignored, and the call does nothing):
+
+```typescript
+this.list().nativeElement.invoke?.('scrollToPosition', {
+  position: this.items().length - 1,
+  alignTo: 'bottom', // 'top' (default), 'middle' or 'bottom'
+  offset: 0, // px further, after aligning
+  smooth: true,
+});
+```
+
+In the web preview the list scrolls to the item's top plus `offset` and ignores `alignTo` and `itemKey`, and it can't scroll to items Angular has just added until they're in the page, a frame or two later, with no event to say so (`bindlayoutcomplete` isn't sent there): retry each frame for a few frames.
+
+## Loading Older Items Above (a Chat)
+
+A chat opens on its newest message and loads older ones as the person scrolls up: `[upper-threshold-item-count]="4"` and `(bindscrolltoupper)` to fetch a page, prepended to the items.
+
+- **Nothing keeps the person's place.** Items inserted above the visible ones push them down, so the new page slides into view (measured in the web preview). Put the list back yourself: give the rows above the first item fixed heights, so where that item sits is their sum less the `scrollTop` from `(bindscroll)`; after the page renders, `scrollToPosition` to that item with `alignTo: 'top'` and `offset` minus that distance, from `(bindlayoutcomplete)` on iOS and Android and retried each frame in the web preview.
+- **Opening at the end:** on iOS, `initial-scroll-index` and a `scrollToPosition` in the first frames don't land while a `<lynx-stack-outlet>` screen slides in. Scroll to the last item each frame for the first ~40 frames, and stop when the person drags (`(bindscrollstatechange)` state `2`, or a `(bindscroll)` with `eventSource` `2` in the web preview).
+- **`attachedCells`** (with `need-visible-item-info`) in the web preview lists every item the list has rendered, not only those on screen, with `top` relative to the list's top: filter it before taking the first one as the topmost visible item.
+
+`examples/chat` (Par Avion) does all of this.
 
 ## Important Rules
 

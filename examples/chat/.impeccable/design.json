@@ -1,0 +1,478 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T17:32:26.658707+00:00",
+  "title": "Design System: Par Avion",
+  "extensions": {
+    "colorMeta": {
+      "aerogramme-paper": {
+        "role": "neutral",
+        "displayName": "Aerogramme Paper",
+        "canonical": "rgba(222, 231, 242, 1)",
+        "purpose": "Ground of every screen; text on red.",
+        "tonalRamp": [
+          "#1d252f",
+          "#253f5f",
+          "#355a87",
+          "#4575b0",
+          "#6992c4",
+          "#91afd4",
+          "#bdcfe5",
+          "#eff2f5"
+        ]
+      },
+      "envelope-white": {
+        "role": "neutral",
+        "displayName": "Envelope White",
+        "canonical": "rgba(252, 252, 250, 1)",
+        "purpose": "Inbox envelopes and the PAR AVION label.",
+        "tonalRamp": [
+          "#2c2c21",
+          "#535332",
+          "#767647",
+          "#99995c",
+          "#b1b17c",
+          "#c6c69f",
+          "#ddddc6",
+          "#f4f4f0"
+        ]
+      },
+      "onion-skin": {
+        "role": "neutral",
+        "displayName": "Onion Skin",
+        "canonical": "rgba(250, 251, 252, 1)",
+        "purpose": "Letters received, composer field, slips, sheet actions.",
+        "tonalRamp": [
+          "#21262c",
+          "#324253",
+          "#475e76",
+          "#5c7a99",
+          "#7c96b1",
+          "#9fb2c6",
+          "#c6d1dd",
+          "#f0f2f4"
+        ]
+      },
+      "aerogramme-deep": {
+        "role": "neutral",
+        "displayName": "Aerogramme Deep",
+        "canonical": "rgba(203, 218, 238, 1)",
+        "purpose": "Letters the person sent.",
+        "tonalRamp": [
+          "#1c2531",
+          "#213d64",
+          "#2e588e",
+          "#3c72b8",
+          "#618fcb",
+          "#8cadd9",
+          "#bacee8",
+          "#eff2f6"
+        ]
+      },
+      "navy-ink": {
+        "role": "neutral",
+        "displayName": "Navy Ink",
+        "canonical": "rgba(27, 39, 72, 1)",
+        "purpose": "Body text, names, icons.",
+        "tonalRamp": [
+          "#1d2230",
+          "#243460",
+          "#334a89",
+          "#4360b2",
+          "#6780c6",
+          "#90a2d5",
+          "#bcc7e6",
+          "#eff1f5"
+        ]
+      },
+      "faded-ink": {
+        "role": "neutral",
+        "displayName": "Faded Ink",
+        "canonical": "rgba(84, 96, 124, 1)",
+        "purpose": "Places, previews, times, quotes, placeholders.",
+        "tonalRamp": [
+          "#22252a",
+          "#363d4f",
+          "#4c5770",
+          "#637192",
+          "#828eab",
+          "#a4adc1",
+          "#c8ceda",
+          "#f1f2f4"
+        ]
+      },
+      "navy-hairline": {
+        "role": "neutral",
+        "displayName": "Navy Hairline",
+        "canonical": "rgba(27, 39, 72, 0.2)",
+        "purpose": "Header and composer rules; quote slip borders.",
+        "tonalRamp": [
+          "#1d2230",
+          "#243460",
+          "#334a89",
+          "#4360b2",
+          "#6780c6",
+          "#90a2d5",
+          "#bcc7e6",
+          "#eff1f5"
+        ]
+      },
+      "airmail-red": {
+        "role": "primary",
+        "displayName": "Airmail Red",
+        "canonical": "rgba(200, 34, 48, 1)",
+        "purpose": "Chevrons; unread count, armed Send, READ, writing status.",
+        "tonalRamp": [
+          "#35171a",
+          "#71131b",
+          "#a11b27",
+          "#d12432",
+          "#e14c59",
+          "#e97c85",
+          "#f2b1b6",
+          "#f7edee"
+        ]
+      },
+      "airmail-blue": {
+        "role": "secondary",
+        "displayName": "Airmail Blue",
+        "canonical": "rgba(31, 61, 140, 1)",
+        "purpose": "Chevrons and PAR AVION lettering.",
+        "tonalRamp": [
+          "#192034",
+          "#182f6d",
+          "#22439a",
+          "#2c57c8",
+          "#5478d9",
+          "#829de3",
+          "#b4c4ee",
+          "#eef0f7"
+        ]
+      },
+      "postmark-ink": {
+        "role": "tertiary",
+        "displayName": "Postmark Ink",
+        "canonical": "rgba(58, 50, 82, 1)",
+        "purpose": "Postmarks, writing dots, slip and sheet headings.",
+        "tonalRamp": [
+          "#24212b",
+          "#3a3252",
+          "#534775",
+          "#6c5d98",
+          "#8a7db0",
+          "#a9a0c5",
+          "#ccc6dc",
+          "#f1f1f4"
+        ]
+      },
+      "stamp-ochre": {
+        "role": "tertiary",
+        "displayName": "Stamp Ochre",
+        "canonical": "rgba(196, 128, 22, 1)",
+        "purpose": "The Ha reaction stamp.",
+        "tonalRamp": [
+          "#372a15",
+          "#774e0d",
+          "#aa6f13",
+          "#dc9019",
+          "#eaa943",
+          "#f0c075",
+          "#f6d9ac",
+          "#f8f3ed"
+        ]
+      },
+      "stamp-green": {
+        "role": "tertiary",
+        "displayName": "Stamp Green",
+        "canonical": "rgba(34, 102, 72, 1)",
+        "purpose": "The Yes reaction stamp.",
+        "tonalRamp": [
+          "#1c3127",
+          "#216346",
+          "#2f8e64",
+          "#3db882",
+          "#62cb9d",
+          "#8cd9b7",
+          "#bae8d4",
+          "#eff6f3"
+        ]
+      },
+      "stamp-slate": {
+        "role": "tertiary",
+        "displayName": "Stamp Slate",
+        "canonical": "rgba(72, 92, 128, 1)",
+        "purpose": "The Sad reaction stamp.",
+        "tonalRamp": [
+          "#20252c",
+          "#303d55",
+          "#445779",
+          "#58719d",
+          "#798eb4",
+          "#9dacc8",
+          "#c4cdde",
+          "#f0f2f4"
+        ]
+      },
+      "stamp-plum": {
+        "role": "tertiary",
+        "displayName": "Stamp Plum",
+        "canonical": "rgba(122, 48, 92, 1)",
+        "purpose": "The Thanks reaction stamp.",
+        "tonalRamp": [
+          "#2f1d28",
+          "#5f2548",
+          "#873566",
+          "#b04584",
+          "#c4699f",
+          "#d491b9",
+          "#e5bdd5",
+          "#f5eff3"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The inbox title, one per screen."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "The contact name in the thread header."
+      },
+      "label-action": {
+        "displayName": "Label, action",
+        "purpose": "REPLY and COPY on the stamp sheet."
+      },
+      "label-heading": {
+        "displayName": "Label, heading",
+        "purpose": "Sheet and list headings in caps."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "PAR AVION, header city, RE: and REPLYING TO, unread count."
+      },
+      "label-time": {
+        "displayName": "Label, time",
+        "purpose": "Letter times and stamp names."
+      },
+      "address-name": {
+        "displayName": "Address, name",
+        "purpose": "The correspondent name on an envelope, in the pen hand."
+      },
+      "address-place": {
+        "displayName": "Address, place",
+        "purpose": "City and country under the name, in the pen hand."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Letter text and fields."
+      },
+      "body-preview": {
+        "displayName": "Body, preview",
+        "purpose": "An envelope letter opening, two lines."
+      },
+      "body-quote": {
+        "displayName": "Body, quote",
+        "purpose": "Quoted text in a slip."
+      }
+    },
+    "fontAliases": {
+      "Postal": "League Gothic (assets/fonts/league-gothic.ttf)",
+      "Hand": "La Belle Aurore (assets/fonts/la-belle-aurore.ttf)"
+    },
+    "stampInks": {
+      "contacts": {
+        "rivka": "rgba(196, 66, 40, 1)",
+        "odette": "rgba(122, 48, 92, 1)",
+        "tomas": "rgba(176, 118, 28, 1)",
+        "mei": "rgba(34, 102, 72, 1)",
+        "jonah": "rgba(40, 62, 148, 1)"
+      },
+      "reactions": {
+        "heart/Love": "airmail-red",
+        "sun/Ha": "stamp-ochre",
+        "tick/Yes": "stamp-green",
+        "star/Wow": "airmail-blue",
+        "drop/Sad": "stamp-slate",
+        "flower/Thanks": "stamp-plum"
+      }
+    },
+    "shadows": [
+      {
+        "name": "letter-hairline",
+        "value": "0 1px 2px rgba(27, 39, 72, 0.14)",
+        "purpose": "Every paper sheet; the only elevation."
+      }
+    ],
+    "overlays": [
+      {
+        "name": "sheet-scrim",
+        "value": "rgba(27, 39, 72, 0.35)",
+        "purpose": "Behind the stamp sheet."
+      },
+      {
+        "name": "viewer-scrim",
+        "value": "rgba(10, 14, 26, 0.94)",
+        "purpose": "Behind the full-screen postcard."
+      }
+    ],
+    "motion": [
+      {
+        "name": "postmark-strike",
+        "value": "220ms cubic-bezier(0.2, 0.9, 0.3, 1); scale 1.35 rotate -14deg -> 0.96 -7deg (70%) -> 1 -8deg",
+        "purpose": "A postmark landing like a hand stamp; off under reduced motion."
+      },
+      {
+        "name": "letter-settle",
+        "value": "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "A dragged letter settling back, no bounce; none while dragging or under reduced motion."
+      },
+      {
+        "name": "swipe-reply",
+        "value": "leftward; reply at 56px, max 84px, 0.35 resistance past the reply point",
+        "purpose": "Swipe a letter to reply."
+      },
+      {
+        "name": "writing-pulse",
+        "value": "opacity 0.35 -> 1, 700ms ease-in-out infinite alternate, 180ms stagger",
+        "purpose": "The three ink dots while a contact writes."
+      }
+    ],
+    "platformConstraints": [
+      "Lynx CSS has no :hover, @media or pseudo-elements; states are bound classes or styles.",
+      "Text does not inherit a font from its view; every <text> sets its own family.",
+      "A list item clips overflow; content outside a letter (stuck stamps) gets room inside the row.",
+      "SVG drawn from a string cannot read var(); marks.ts repeats AIRMAIL_RED, AIRMAIL_BLUE, POSTMARK_INK and the onion-skin white as constants matching the tokens.",
+      "iOS reads an input placeholder color only from the -x-placeholder-color style; set it there and as placeholder-color.",
+      "Colors are written as rgba() so none compiles to a hex with a digit-e-digit run, which the CSS pipeline mangles."
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Envelope",
+      "kind": "card",
+      "refersTo": "envelope",
+      "description": "An inbox row: hand-addressed, stamped, edged in airmail chevrons when unread.",
+      "html": "<div class=\"ds-envelope\"><div class=\"ds-edge\"></div><div class=\"ds-env-body\"><div class=\"ds-env-text\"><div class=\"ds-hand-name\">Rivka</div><div class=\"ds-hand-place\">Lisbon, Portugal</div><div class=\"ds-env-preview\">So tell me honestly. Which one will you use first?</div></div><div class=\"ds-env-stamp\">0.95</div></div><div class=\"ds-unread\">2</div></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-envelope{position:relative;background:var(--envelope);box-shadow:0 1px 2px rgba(27,39,72,0.14);width:340px;color:var(--ink);transition:transform .2s} .ds-envelope:hover{transform:rotate(-0.5deg)} .ds-edge{height:6px;background-image:repeating-linear-gradient(-45deg,var(--airmail-red) 0 6px,transparent 6px 10px,var(--airmail-blue) 10px 16px,transparent 16px 20px);} .ds-env-body{display:flex;padding:12px 16px 16px} .ds-env-text{flex:1;padding-right:12px} .ds-hand-name{font-family:'La Belle Aurore',cursive;font-size:23px;line-height:30px} .ds-hand-place{font-family:'La Belle Aurore',cursive;font-size:16px;line-height:24px;color:var(--ink-muted)} .ds-env-preview{margin-top:8px;font:14px/19px system-ui,sans-serif} .ds-env-stamp{width:48px;height:58px;background:rgba(196,66,40,1);outline:5px dotted var(--letter);outline-offset:-3px;color:var(--paper);font-family:'League Gothic','Oswald',sans-serif;font-size:10px;text-align:right;padding:4px;box-sizing:border-box} .ds-unread{position:absolute;left:16px;bottom:-8px;height:18px;min-width:18px;padding:0 6px;box-sizing:border-box;background:var(--airmail-red);color:var(--paper);font-family:'League Gothic','Oswald',sans-serif;font-size:12px;line-height:18px;text-align:center}"
+    },
+    {
+      "name": "Letter, received",
+      "kind": "card",
+      "refersTo": "letter-received",
+      "description": "A letter from the contact: onion skin, square, time in postal caps.",
+      "html": "<div class=\"ds-letter\"><p>Packing them this morning so the post office gets them before the rush</p><span>10:06</span></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-letter{background:var(--letter);color:var(--ink);box-shadow:0 1px 2px rgba(27,39,72,0.14);max-width:300px;display:flex;flex-direction:column} .ds-letter p{margin:0;padding:10px 14px 0;font:16px/22px system-ui,sans-serif} .ds-letter span{align-self:flex-end;padding:4px 12px 8px;font-family:'League Gothic','Oswald',sans-serif;font-size:11px;letter-spacing:1px;color:var(--ink-muted)}"
+    },
+    {
+      "name": "Letter, sent",
+      "kind": "card",
+      "refersTo": "letter-sent",
+      "description": "A letter from the person: aerogramme deep, right-aligned.",
+      "html": "<div class=\"ds-letter-mine\"><p>Leaning one. Obviously.</p><span>17:28</span></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-letter-mine{background:var(--letter-mine);color:var(--ink);box-shadow:0 1px 2px rgba(27,39,72,0.14);max-width:300px;margin-left:auto;display:flex;flex-direction:column} .ds-letter-mine p{margin:0;padding:10px 14px 0;font:16px/22px system-ui,sans-serif} .ds-letter-mine span{align-self:flex-end;padding:4px 12px 8px;font-family:'League Gothic','Oswald',sans-serif;font-size:11px;letter-spacing:1px;color:var(--ink-muted)}"
+    },
+    {
+      "name": "PAR AVION label",
+      "kind": "chip",
+      "refersTo": "par-avion-label",
+      "description": "The airmail label beside the inbox title, edged in chevrons above and below.",
+      "html": "<div class=\"ds-paravion\"><div class=\"ds-pa-edge\"></div><span>PAR AVION</span><div class=\"ds-pa-edge\"></div></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-paravion{display:inline-flex;flex-direction:column;width:78px;background:var(--envelope);box-shadow:0 1px 2px rgba(27,39,72,0.14)} .ds-pa-edge{height:4px;background-image:repeating-linear-gradient(-45deg,var(--airmail-red) 0 6px,transparent 6px 10px,var(--airmail-blue) 10px 16px,transparent 16px 20px);} .ds-paravion span{padding:3px 8px;text-align:center;font-family:'League Gothic','Oswald',sans-serif;font-size:12px;letter-spacing:2px;color:var(--airmail-blue)}"
+    },
+    {
+      "name": "Postmark receipt",
+      "kind": "custom",
+      "refersTo": "postmark",
+      "description": "A plain postmark under the latest sent letter: SENT, DELIVERED, or READ in red.",
+      "html": "<div class=\"ds-postmark\"><span class=\"ds-pm-top\">READ</span><span class=\"ds-pm-mid\">17:28</span></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-postmark{width:40px;height:40px;border-radius:50%;border:2px solid var(--airmail-red);box-shadow:inset 0 0 0 3px var(--paper),inset 0 0 0 4px rgba(200,34,48,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-8deg);color:var(--airmail-red);font-family:'League Gothic','Oswald',sans-serif;} .ds-pm-top{font-size:6px;letter-spacing:1px} .ds-pm-mid{font-size:10px;line-height:10px}"
+    },
+    {
+      "name": "Composer field",
+      "kind": "input",
+      "refersTo": "composer-field",
+      "description": "The letter field: an onion-skin sheet, 44px, square.",
+      "html": "<div class=\"ds-composer\"><input class=\"ds-field\" placeholder=\"Write a letter\"><button class=\"ds-send\" aria-label=\"Send\">SEND</button></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-composer{display:flex;gap:4px;align-items:center;background:var(--paper);padding:8px;border-top:1px solid rgba(27,39,72,0.2)} .ds-field{flex:1;height:44px;border:0;border-radius:0;padding:0 12px;background:var(--letter);box-shadow:0 1px 2px rgba(27,39,72,0.14);color:var(--ink);font:16px system-ui,sans-serif} .ds-field::placeholder{color:var(--ink-muted)} .ds-field:focus-visible{outline:none} .ds-send{width:44px;height:44px;border:0;border-radius:0;background:var(--airmail-red);color:var(--paper);font-family:'League Gothic','Oswald',sans-serif;font-size:11px;letter-spacing:1px} .ds-send:active{transform:scale(0.96)}"
+    },
+    {
+      "name": "Sheet action",
+      "kind": "button",
+      "refersTo": "sheet-action",
+      "description": "REPLY and COPY on the stamp sheet: onion skin, postal caps.",
+      "html": "<button class=\"ds-action\">REPLY</button>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-action{height:44px;padding:0 24px;border:0;border-radius:0;background:var(--letter);box-shadow:0 1px 2px rgba(27,39,72,0.14);color:var(--ink);font-family:'League Gothic','Oswald',sans-serif;font-size:15px;letter-spacing:1px;transition:transform .2s} .ds-action:hover{transform:rotate(-1deg)} .ds-action:focus-visible{outline:1px solid rgba(27,39,72,0.2);outline-offset:2px}"
+    },
+    {
+      "name": "Quote slip",
+      "kind": "custom",
+      "refersTo": "quote-slip",
+      "description": "The letter being answered: inset translucent paper with a full hairline.",
+      "html": "<div class=\"ds-quote\"><b>REPLYING TO RIVKA</b><span>I wanted to. You named my stall.</span></div>",
+      "css": ":host{--paper:rgba(222,231,242,1);--envelope:rgba(252,252,250,1);--letter:rgba(250,251,252,1);--letter-mine:rgba(203,218,238,1);--ink:rgba(27,39,72,1);--ink-muted:rgba(84,96,124,1);--airmail-red:rgba(200,34,48,1);--airmail-blue:rgba(31,61,140,1);--postmark:rgba(58,50,82,1);} .ds-quote{display:flex;flex-direction:column;padding:6px 10px;border:1px solid rgba(27,39,72,0.2);background:rgba(250,251,252,0.7);max-width:300px} .ds-quote b{font-weight:400;font-family:'League Gothic','Oswald',sans-serif;font-size:12px;letter-spacing:1px;color:var(--postmark)} .ds-quote span{font:13px/17px system-ui,sans-serif;color:var(--ink-muted)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Correspondence by Airmail",
+    "overview": "Every conversation is a correspondence. The inbox is a stack of hand-addressed envelopes, each stamped with the contact's own postage stamp and struck by a postmark; a thread is the letters between two people, onion-skin from them and aerogramme blue from you, postmarked as they are sent and read. The world is built from the materials of the post office and nothing else: paper, ink, printed stamps, rubber-stamped postmarks, the red and blue airmail edge. It refuses the category's rounded blue and gray bubbles.\n\nDensity is a letter-writer's, not a messenger's: one envelope per correspondent, generous paper between letters, labels lettered in condensed postal caps and addresses in a pen hand. The paper stays light whatever the phone's setting, because paper is light. Motion is the motion of a hand at a counter: a postmark lands like a rubber stamp, a dragged letter settles back without a bounce, ink comes and goes while someone writes.\n\nThe app is a Lynx app (iOS, Android, Lynx for Web). Lynx CSS has no `:hover`, no `@media`, no pseudo-elements, and text doesn't inherit fonts from views, so every state is a bound class or style, every `<text>` names its own face, and the marks are SVG.",
+    "keyCharacteristics": [
+      "Aerogramme-blue paper ground; envelopes and letters are flat sheets on it, lifted by a single hairline shadow.",
+      "Square paper corners everywhere; the only round shapes are ink marks (postmark rings, ink dots, the reply disc).",
+      "Two lettering voices plus the system sans: League Gothic for every label, name and time; La Belle Aurore only for addresses; message text in the platform sans.",
+      "The post's marks (Stamp, Postmark, AirmailEdge) are drawn SVG components and carry identity, time, receipt and reaction.",
+      "Red is the airmail red: the unread count, the armed Send, the READ postmark, the writing status, a chosen stamp's label."
+    ],
+    "rules": [
+      {
+        "name": "The Paper and Ink Rule",
+        "body": "Every surface is a paper the post uses (aerogramme, envelope, onion skin) and every mark is an ink (navy, postmark, airmail red, a stamp's ink). A color that is neither has no place.",
+        "section": "colors"
+      },
+      {
+        "name": "The Airmail Edge Rule",
+        "body": "The red and blue chevrons appear in exactly two places: across the top edge of an envelope with letters unread, and above and below the PAR AVION label. Elsewhere a division is the navy hairline.",
+        "section": "colors"
+      },
+      {
+        "name": "The Always Paper Rule",
+        "body": "The world is light whatever the phone's appearance setting; the palette is set on `page` and is not switched for dark mode.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Voices Rule",
+        "body": "League Gothic speaks for the post (labels, names, times, marks); the pen hand only writes addresses on envelopes. The hand never labels a control or sets message text.",
+        "section": "typography"
+      },
+      {
+        "name": "The Every Text Names Its Face Rule",
+        "body": "Lynx text doesn't inherit a font from its view, so each `<text>` carries its own family class; a label without `font-postal` silently falls back to the system sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Sheet Thick Rule",
+        "body": "There is a single elevation. A held letter is shown lifted by turning it a degree (-1deg) on the sheet, not by a larger shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do put every surface on a postal paper (aerogramme paper, envelope white, onion skin, aerogramme deep) with the letter hairline shadow.",
+      "Do let marks carry time and status: a postmark for days and receipts, a stamp for a person or a reaction.",
+      "Do set labels, names and times in League Gothic caps with tracking, and give every `<text>` its own family class.",
+      "Do keep corners square (0px) on sheets and controls; keep round shapes for ink marks.",
+      "Do turn marks a few degrees, never quite straight.",
+      "Do honor reduced motion: no strike, no settle transition.",
+      "Do write SVG mark colors as the constants in `marks.ts`, matching their tokens; an SVG drawn from a string can't read `var()`.",
+      "Do set an input's placeholder color both as `placeholder-color` and as the `-x-placeholder-color` style; iOS reads only the style.",
+      "Do write colors as `rgba()`."
+    ],
+    "donts": [
+      "Don't use rounded chat bubbles or a gray and blue bubble pair.",
+      "Don't use the airmail chevrons as a general border or divider; dividers are the navy hairline.",
+      "Don't use the pen hand for anything but an address on an envelope.",
+      "Don't add a second shadow depth; a held or chosen thing is shown by a turn or a small raise.",
+      "Don't switch the palette for dark mode.",
+      "Don't use `:hover`, `@media` or pseudo-elements; Lynx doesn't support them."
+    ]
+  }
+}

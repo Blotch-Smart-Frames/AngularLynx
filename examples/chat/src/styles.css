@@ -1,0 +1,70 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* The @blotch/ui theme, which dolan copied into src/styles. */
+@import './styles/default.css';
+@import './styles/dark.css';
+@import './styles/tailwind.css';
+
+/*
+ * The post's two lettering voices. League Gothic (SIL OFL 1.1), the
+ * condensed caps of postal labels and postmarks, for every label, name and
+ * time. La Belle Aurore (SIL OFL 1.1), a pen hand, for addresses on
+ * envelopes only. Licenses are in assets/fonts.
+ */
+@font-face {
+  font-family: 'Postal';
+  src: url('./assets/fonts/league-gothic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Hand';
+  src: url('./assets/fonts/la-belle-aurore.ttf') format('truetype');
+}
+
+@theme inline {
+  --font-postal: 'Postal';
+  --font-hand: 'Hand';
+  --color-paper: var(--paper);
+  --color-envelope: var(--envelope);
+  --color-letter: var(--letter);
+  --color-letter-mine: var(--letter-mine);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-airmail-red: var(--airmail-red);
+  --color-airmail-blue: var(--airmail-blue);
+  --color-postmark: var(--postmark);
+}
+
+/* A letter's hairline shadow: paper on paper, lifted by a sheet's depth. */
+@utility shadow-letter {
+  box-shadow: 0 1px 2px rgba(27, 39, 72, 0.14);
+}
+
+/*
+ * Airmail: aerogramme-blue paper, onion-skin letters, navy ink, the red and
+ * blue of the airmail edge, and postmark ink. Light, as paper is, whatever
+ * the phone's setting. Written as rgba(), so no color compiles to a hex
+ * with a digit-e-digit run, which the CSS pipeline would mangle.
+ */
+page {
+  --paper: rgba(222, 231, 242, 1);
+  --envelope: rgba(252, 252, 250, 1);
+  --letter: rgba(250, 251, 252, 1);
+  --letter-mine: rgba(203, 218, 238, 1);
+  --ink: rgba(27, 39, 72, 1);
+  --ink-muted: rgba(84, 96, 124, 1);
+  --airmail-red: rgba(200, 34, 48, 1);
+  --airmail-blue: rgba(31, 61, 140, 1);
+  --postmark: rgba(58, 50, 82, 1);
+
+  --background: rgba(222, 231, 242, 1);
+  --background-rgb: 222, 231, 242;
+  --foreground: rgba(27, 39, 72, 1);
+  --foreground-rgb: 27, 39, 72;
+}

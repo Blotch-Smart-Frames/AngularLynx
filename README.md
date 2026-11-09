@@ -13,6 +13,10 @@
 
 Build native mobile apps with Angular. AngularLynx renders Angular components to native iOS, Android, and Web UI via the [Lynx](https://lynxjs.org/) runtime by ByteDance.
 
+<p align="center">
+  <img src="https://angularlynx.js.org/demo.gif" alt="The same Angular app, the Facet showcase, running natively on iOS and Android and on the web through Lynx for Web" width="870" />
+</p>
+
 ## Quick Start
 
 ```bash

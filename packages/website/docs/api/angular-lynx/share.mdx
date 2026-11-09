@@ -1,0 +1,89 @@
+# LynxShare
+
+Opens the phone's share sheet, as `navigator.share()` does on the web. `import { LynxShare, ShareError, type ShareData, type ShareFile, type ShareErrorCode } from '@blotch/angular-lynx';`
+
+[Share Files and Links](/guide/share) shows it in use.
+
+## Usage
+
+```typescript
+const sharing = inject(LynxShare);
+
+canvas.toBlob(
+  async (blob) => {
+    if (!blob) return;
+    const shared = await sharing.share({
+      files: [{ blob, name: 'photo.jpg' }],
+      title: 'My photo',
+    });
+  },
+  'image/jpeg',
+  0.9,
+);
+```
+
+## API
+
+### `LynxShare`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxShare {}
+```
+
+Uses `UIActivityViewController` on iOS, an `ACTION_SEND` chooser with a `FileProvider` on Android, and `navigator.share()` in the web preview, or a download of each file where the browser can't share them. Only the apps `ng build --platform` makes have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `share()` rejects with `unavailable`.
+
+### `LynxShare.share()`
+
+```typescript
+share(data: ShareData): Promise<boolean>;
+```
+
+Opens the share sheet and resolves `true` once the person has shared, or `false` when they close it without sharing. On Android, which doesn't say whether the person finished in the app they picked, it resolves `true` as soon as they pick an app. In the web preview, a browser that can't share the files downloads them and resolves `true`.
+
+Rejects with a `TypeError` when there's nothing to share, a file has no name or `url` isn't absolute, and with a [`ShareError`](#shareerror) when the sheet can't open. One sheet can be open at a time: sharing again while one is open rejects with `failed`.
+
+### `ShareData`
+
+```typescript
+type ShareData = {
+  readonly files?: readonly ShareFile[];
+  readonly title?: string;
+  readonly text?: string;
+  readonly url?: string;
+};
+```
+
+| Property | Description                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| `files`  | Files to share, such as a photo the app made                                                     |
+| `title`  | A title: an email's subject, and the heading of the sheet's preview where the platform shows one |
+| `text`   | Text, such as a message to go with a link                                                        |
+| `url`    | An absolute URL, such as `https://example.com/post/42`                                           |
+
+Give at least one of them.
+
+### `ShareFile`
+
+```typescript
+type ShareFile =
+  | { readonly blob: Blob; readonly name: string }
+  | (Blob & { readonly name: string });
+```
+
+A `Blob` and the file's name, such as `photo.jpg`. Lynx has no `File` class, so the name goes beside the `Blob`, the shape `LynxImagePicker`'s [`PickedImage`](/api/angular-lynx/image-picker#pickedimage) has. A `Blob` with a `name`, such as a `File` in the web preview, works too. The name's extension gives the file's type when the `Blob` has none.
+
+### `ShareError`
+
+```typescript
+class ShareError extends Error {
+  readonly code: ShareErrorCode;
+}
+
+type ShareErrorCode = 'unavailable' | 'failed';
+```
+
+| `code`        | When                                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no share sheet, or, in the web preview, the browser can't share text or links                 |
+| `failed`      | The sheet couldn't open, one was already open, a file couldn't be written, or the browser refused to share |

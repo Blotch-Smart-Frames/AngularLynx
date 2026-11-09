@@ -118,6 +118,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The photo picker behind LynxImagePicker (ImagePickerModule.kt), which
             // this activity launches.
             registerModule(ImagePickerModule.NAME, ImagePickerModule::class.java, imagePickerHost)
+            // The share sheet behind LynxShare (ShareModule.kt), which it opens
+            // from this activity.
+            registerModule(ShareModule.NAME, ShareModule::class.java, this@MainActivity)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name).

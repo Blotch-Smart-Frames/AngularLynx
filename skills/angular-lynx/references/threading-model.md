@@ -109,3 +109,4 @@ These do not exist in Lynx and are shimmed by the runtime:
 | `localStorage`                             | `LynxLocalStorage`, or `LynxSecureStorage` for secrets                                                           |
 | `navigator.clipboard`                      | `LynxClipboard`                                                                                                  |
 | `window.open` / `location.href = url`      | `LynxLinking.openURL()`, or `openInApp()` for a browser sheet                                                    |
+| `navigator.share()`                        | `LynxShare.share()`, with files as `{ blob, name }`                                                              |

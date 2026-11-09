@@ -40,6 +40,12 @@ export const PERMISSION_MAP: Record<
     ios: ['NSPhotoLibraryUsageDescription'],
     android: ['android.permission.READ_MEDIA_IMAGES'],
   },
+  // Adding to the photo library only, as the share sheet's Save Image does
+  // (LynxShare). Android needs no permission for it.
+  savePhotos: {
+    ios: ['NSPhotoLibraryAddUsageDescription'],
+    android: [],
+  },
   contacts: {
     ios: ['NSContactsUsageDescription'],
     android: ['android.permission.READ_CONTACTS'],

@@ -4,6 +4,7 @@
 #import <EGL/eglext.h>
 #import <EGL/eglext_angle.h>
 #import <GLES3/gl3.h>
+#import <ImageIO/ImageIO.h>
 #import <QuartzCore/QuartzCore.h>
 
 #import "AngularLynxWebGLOps.h"
@@ -432,6 +433,10 @@ static NSUInteger componentsOf(GLenum format) {
   }
 }
 
+- (void)viewDidLayOut:(AngularLynxCanvasView *)view {
+  if (view == _view && _framePending) [self present];
+}
+
 /// Shows the finished frame: copies the default framebuffer (resolving it
 /// when it's multisampled) into the view's layer, scaled to its size, and
 /// presents it. Without a laid-out view, the frame waits for one.
@@ -522,6 +527,140 @@ static NSUInteger componentsOf(GLenum format) {
 
 - (void)endRead:(BOOL)resolved {
   if (resolved) glBindFramebuffer(GL_READ_FRAMEBUFFER, _readFramebuffer);
+}
+
+#pragma mark - Image files
+
+/// The drawing buffer as an image file, for the runtime's canvas.toBlob() and
+/// toDataURL(): `{ base64, type }`, or `{ error }`.
+///
+/// It reads what the drawing buffer holds now, as a browser does: what the
+/// app has drawn since the last frame was shown, or, once a frame has been
+/// shown without preserveDrawingBuffer, the cleared buffer. The pixels are
+/// encoded here rather than sent to the runtime, which would have to carry
+/// 11 MB of RGBA for a 2048 by 1365 photo across the bridge as numbers, and
+/// encode it in JavaScript on PrimJS, which has no JIT. The file crosses as
+/// base64: the bridge can't return bytes (see webgl-bridge.ts).
+- (NSDictionary *)encodeImageOfType:(NSString *)type
+                            quality:(double)quality
+                      premultiplied:(BOOL)premultiplied {
+  if (_context == EGL_NO_CONTEXT) return @{@"error" : @"The WebGL context is gone"};
+  [self makeCurrent];
+  size_t width = (size_t)_width;
+  size_t height = (size_t)_height;
+  size_t stride = width * 4;
+  NSMutableData *pixels = [NSMutableData dataWithLength:stride * height];
+  if (!pixels) return @{@"error" : @"Could not allocate the canvas's pixels"};
+
+  // A plain read of the whole default framebuffer, whatever the app has
+  // bound and set: its pixel pack buffer and pack parameters would move or
+  // redirect the read. The app's state is put back after.
+  GLint packBuffer = 0, alignment = 4, rowLength = 0, skipPixels = 0, skipRows = 0;
+  glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &packBuffer);
+  glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+  glGetIntegerv(GL_PACK_ROW_LENGTH, &rowLength);
+  glGetIntegerv(GL_PACK_SKIP_PIXELS, &skipPixels);
+  glGetIntegerv(GL_PACK_SKIP_ROWS, &skipRows);
+  glPixelStorei(GL_PACK_ALIGNMENT, 4);
+  glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+  glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+  glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+  GLuint source = _framebuffer;
+  if (_samples > 0) {
+    // GLES can't read a multisampled framebuffer: its samples are resolved
+    // first, as present and beginRead do. A blit is clipped by the scissor
+    // test, and skipped with rasterizer discard on, so both are off for it.
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    GLboolean discard = glIsEnabled(GL_RASTERIZER_DISCARD);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_RASTERIZER_DISCARD);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _resolveFramebuffer);
+    glBlitFramebuffer(0, 0, _width, _height, 0, 0, _width, _height, GL_COLOR_BUFFER_BIT,
+                      GL_NEAREST);
+    if (scissor) glEnable(GL_SCISSOR_TEST);
+    if (discard) glEnable(GL_RASTERIZER_DISCARD);
+    source = _resolveFramebuffer;
+  }
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, source);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
+  // Read into a pixel pack buffer and mapped, rather than straight into
+  // memory: ANGLE on Metal reads a 2048 by 1365 canvas into memory in
+  // about 145 ms on the Simulator, and into a buffer, mapped, in about 5.
+  GLuint pack = 0;
+  glGenBuffers(1, &pack);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, pack);
+  glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)(stride * height), NULL, GL_STREAM_READ);
+  glReadPixels(0, 0, _width, _height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+  const uint8_t *read =
+      glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)(stride * height), GL_MAP_READ_BIT);
+  uint8_t *bytes = pixels.mutableBytes;
+  if (read) {
+    // GL's first row is the bottom of the image; an image file's is the
+    // top. So the rows are copied in the other order.
+    for (size_t y = 0; y < height; y++) {
+      memcpy(bytes + y * stride, read + (height - 1 - y) * stride, stride);
+    }
+    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+  }
+  glDeleteBuffers(1, &pack);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)packBuffer);
+  glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+  glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
+  glPixelStorei(GL_PACK_SKIP_PIXELS, skipPixels);
+  glPixelStorei(GL_PACK_SKIP_ROWS, skipRows);
+  [self restoreBindings];
+  if (!read) return @{@"error" : @"Could not read the canvas's pixels"};
+
+  BOOL jpeg = [type isEqualToString:@"image/jpeg"];
+  CGBitmapInfo alphaInfo;
+  if (!_alpha) {
+    alphaInfo = (CGBitmapInfo)kCGImageAlphaNoneSkipLast;
+  } else if (jpeg) {
+    // A JPEG has no transparency. Browsers draw a canvas's transparent
+    // pixels over black for one, which premultiplied colors already are:
+    // straight ones are multiplied first.
+    if (!premultiplied) {
+      for (size_t i = 0; i < stride * height; i += 4) {
+        uint8_t alpha = bytes[i + 3];
+        if (alpha == 255) continue;
+        bytes[i] = (uint8_t)((bytes[i] * alpha + 127) / 255);
+        bytes[i + 1] = (uint8_t)((bytes[i + 1] * alpha + 127) / 255);
+        bytes[i + 2] = (uint8_t)((bytes[i + 2] * alpha + 127) / 255);
+      }
+    }
+    alphaInfo = (CGBitmapInfo)kCGImageAlphaNoneSkipLast;
+  } else {
+    // The drawing buffer's colors are premultiplied by alpha unless the app
+    // asked for premultipliedAlpha: false. ImageIO writes the PNG's straight
+    // colors from either.
+    alphaInfo = (CGBitmapInfo)(premultiplied ? kCGImageAlphaPremultipliedLast : kCGImageAlphaLast);
+  }
+  CGDataProviderRef provider = CGDataProviderCreateWithCFData((__bridge CFDataRef)pixels);
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGImageRef image =
+      CGImageCreate(width, height, 8, 32, stride, colorSpace,
+                    alphaInfo | kCGBitmapByteOrder32Big, provider, NULL, false,
+                    kCGRenderingIntentDefault);
+  CGColorSpaceRelease(colorSpace);
+  CGDataProviderRelease(provider);
+  if (!image) return @{@"error" : @"Could not make an image of the canvas's pixels"};
+  NSMutableData *file = [NSMutableData data];
+  NSString *fileType = jpeg ? @"public.jpeg" : @"public.png";
+  CGImageDestinationRef destination = CGImageDestinationCreateWithData(
+      (__bridge CFMutableDataRef)file, (__bridge CFStringRef)fileType, 1, NULL);
+  BOOL written = NO;
+  if (destination) {
+    NSDictionary *properties =
+        jpeg ? @{(__bridge NSString *)kCGImageDestinationLossyCompressionQuality : @(quality)}
+             : @{};
+    CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
+    written = CGImageDestinationFinalize(destination);
+    CFRelease(destination);
+  }
+  CGImageRelease(image);
+  if (!written) return @{@"error" : @"Could not encode the canvas's pixels"};
+  return @{@"base64" : [file base64EncodedStringWithOptions:0], @"type" : type};
 }
 
 #pragma mark - Objects

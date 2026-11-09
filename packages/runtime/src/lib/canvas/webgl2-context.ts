@@ -1,6 +1,7 @@
 // cspell:words PVRTC BPPV PUNCHTHROUGH
 import {
   bytesOf,
+  type EncodedImage,
   fromWords,
   numbersFrom,
   toWords,
@@ -567,6 +568,23 @@ export class LynxWebGL2RenderingContext {
     this.#lost = true;
     this.#commands = [];
     this.#bridge.destroy(this.#id);
+  }
+
+  /**
+   * @internal The drawing buffer as a PNG or JPEG file, for the canvas's
+   * toBlob() and toDataURL(). The recorded calls go first, so the file holds
+   * what the app drew up to now. A frame it hasn't shown yet is still in the
+   * drawing buffer, as in a browser, where toBlob() in the task that drew
+   * reads what it drew.
+   */
+  encodeDrawingBuffer(type: string, quality: number): EncodedImage {
+    if (this.#lost) return { error: 'The WebGL context is lost' };
+    this.#send();
+    return this.#bridge.encodeImage(this.#id, {
+      type,
+      quality,
+      premultipliedAlpha: this.#attributes.premultipliedAlpha,
+    });
   }
 
   getContextAttributes(): LynxWebGLContextAttributes | null {

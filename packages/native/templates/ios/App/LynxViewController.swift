@@ -30,6 +30,8 @@ final class LynxViewController: UIViewController {
     config.register(LinkingModule.self)
     // The photo picker behind LynxImagePicker (ImagePickerModule).
     config.register(ImagePickerModule.self)
+    // The share sheet behind LynxShare (ShareModule).
+    config.register(ShareModule.self)
     // <canvas>'s WebGL (AngularLynxWebGL.h), which the runtime calls from
     // the main thread. It's Objective-C, which Swift reaches without a
     // bridging header by name.

@@ -326,6 +326,63 @@ class WebGLContext(val canvasId: String, attributes: ReadableMap?) {
     }
 
     /**
+     * The drawing buffer's pixels, for canvas.toBlob() and toDataURL(): RGBA,
+     * rows bottom to top as GL reads them, or null once the context is gone.
+     * It's what the drawing buffer holds now, as a browser reads it: what the
+     * app has drawn since the last frame was shown, or, once a frame has been
+     * shown without preserveDrawingBuffer, the cleared buffer.
+     */
+    fun readDrawingBuffer(): DrawingBufferPixels? {
+        if (destroyed) return null
+        val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+        withCurrent {
+            // A plain read of the whole default framebuffer, whatever the app
+            // has bound and set: its pixel pack buffer and pack parameters
+            // would move or redirect the read. The app's state is put back
+            // after.
+            val pack = IntArray(5)
+            GLES30.glGetIntegerv(GLES30.GL_PIXEL_PACK_BUFFER_BINDING, pack, 0)
+            GLES30.glGetIntegerv(GLES30.GL_PACK_ALIGNMENT, pack, 1)
+            GLES30.glGetIntegerv(GLES30.GL_PACK_ROW_LENGTH, pack, 2)
+            GLES30.glGetIntegerv(GLES30.GL_PACK_SKIP_PIXELS, pack, 3)
+            GLES30.glGetIntegerv(GLES30.GL_PACK_SKIP_ROWS, pack, 4)
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
+            GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 4)
+            GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, 0)
+            GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_PIXELS, 0)
+            GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_ROWS, 0)
+            var source = framebuffer
+            if (samples > 0) {
+                // GLES can't read a multisampled framebuffer: its samples are
+                // resolved first, as present and reading do. A blit is clipped
+                // by the scissor test, and skipped with rasterizer discard on,
+                // so both are off for it.
+                val scissor = GLES30.glIsEnabled(GLES30.GL_SCISSOR_TEST)
+                val discard = GLES30.glIsEnabled(GLES30.GL_RASTERIZER_DISCARD)
+                GLES30.glDisable(GLES30.GL_SCISSOR_TEST)
+                GLES30.glDisable(GLES30.GL_RASTERIZER_DISCARD)
+                GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, framebuffer)
+                GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, resolveFramebuffer)
+                GLES30.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GLES30.GL_COLOR_BUFFER_BIT, GLES30.GL_NEAREST)
+                if (scissor) GLES30.glEnable(GLES30.GL_SCISSOR_TEST)
+                if (discard) GLES30.glEnable(GLES30.GL_RASTERIZER_DISCARD)
+                source = resolveFramebuffer
+            }
+            GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, source)
+            GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
+            GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels)
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, pack[0])
+            GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, pack[1])
+            GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, pack[2])
+            GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_PIXELS, pack[3])
+            GLES30.glPixelStorei(GLES30.GL_PACK_SKIP_ROWS, pack[4])
+            restoreFramebuffers()
+        }
+        pixels.rewind()
+        return DrawingBufferPixels(pixels, width, height, alpha)
+    }
+
+    /**
      * Shows the finished frame: copies the default framebuffer (resolving it
      * when it's multisampled) into the TextureView's surface, scaled to its
      * size, and swaps. Without a surface, the frame waits for one.

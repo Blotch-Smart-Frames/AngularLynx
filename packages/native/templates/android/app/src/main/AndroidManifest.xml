@@ -48,6 +48,21 @@
         </activity>
 
         <!--
+          The files LynxShare shares (ShareModule), which the app picked in
+          the share sheet reads through content:// URIs of this provider.
+          It's not exported: each share grants the one app it goes to.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.angularlynx.share"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
+
+        <!--
           Lets Google Play services install the Photo Picker that
           LynxImagePicker opens (ImagePickerModule) on Android 10 and older,
           which don't have one. Without it, they open the document picker.

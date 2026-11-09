@@ -51,6 +51,7 @@ export type Permission =
   | 'microphone'
   | 'location'
   | 'photos'
+  | 'savePhotos'
   | 'contacts'
   | 'notifications';
 
@@ -137,6 +138,7 @@ const PERMISSIONS: readonly Permission[] = [
   'microphone',
   'location',
   'photos',
+  'savePhotos',
   'contacts',
   'notifications',
 ];

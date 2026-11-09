@@ -129,3 +129,32 @@ async change(): Promise<void> {
 - **Web preview:** an `<input type="file" accept="image/*">` in the page, so call `pick()` straight from a tap handler; browsers open file dialogs only right after a tap.
 - **Specs:** provide a stand-in: `render(Cmp, { providers: [{ provide: LynxImagePicker, useValue: { pick: async () => picked } }] })`.
 - **Your own native app** registers an `AngularLynxImagePicker` module with `pick(options, callback)`, calling back `{ base64, name, type }`, `{ canceled: true }` or `{ error, message }`: see the website's "Embed in a Native App" guide.
+
+## Share files and links
+
+Lynx has no `navigator.share()` and no `File`. `LynxShare.share()` takes what `navigator.share()` takes, with each file a `{ blob, name }` pair (a `PickedImage` from `LynxImagePicker` is one), and opens the phone's share sheet (`UIActivityViewController` on iOS, an `ACTION_SEND` chooser on Android). It resolves `true` once shared, `false` when the person closes the sheet:
+
+```typescript
+import { LynxShare, ShareError } from '@blotch/angular-lynx';
+
+readonly #sharing = inject(LynxShare);
+
+export(): void {
+  this.draw(); // toBlob() reads the drawing buffer: draw in the same task
+  this.canvas().nativeElement.toBlob(async (blob) => {
+    if (!blob) return;
+    const shared = await this.#sharing.share({
+      files: [{ blob, name: 'photo.jpg' }],
+      title: 'My photo', // email subject
+    });
+  }, 'image/jpeg', 0.9);
+}
+```
+
+- **`text` and `url`** work too, alone or with files; `url` must be absolute. Nothing to share, a file without a name or a relative URL rejects with a `TypeError`.
+- **iOS Save Image** adds an image to Photos. iOS asks the person first, with angular.json's `permissions.savePhotos` reason (default "Saves the images you choose to your photo library."); `ng build --platform` always writes one, since iOS ends an app without it.
+- **Android can't tell whether sharing finished:** `share()` resolves `true` as soon as the person picks an app, and `false` when they close the sheet, including with its own Copy button.
+- **Web preview:** the page's `navigator.share()`; a browser that can't share files downloads them and resolves `true`. Call it from a tap handler with the files ready.
+- **Rejects with `ShareError`**, `code` `unavailable` (Lynx Explorer, specs, or a browser that can't share text or links) or `failed` (couldn't open, already open, browser refused).
+- **Specs:** provide a stand-in: `{ provide: LynxShare, useValue: { share: async (data) => true } }`.
+- **Your own native app** registers an `AngularLynxShare` module with `share(request, callback)`, where `request` is `{ files: [{ base64, name, type }], title?, text?, url? }`, calling back `{ shared }` or `{ error, message }`: see the website's "Embed in a Native App" guide.

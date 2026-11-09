@@ -194,6 +194,10 @@
         "photos": {
           "type": "string"
         },
+        "savePhotos": {
+          "type": "string",
+          "description": "Why the app adds images to the photo library: iOS shows it the first time someone taps Save Image in LynxShare's share sheet. Defaults to \"Saves the images you choose to your photo library.\""
+        },
         "contacts": {
           "type": "string"
         },

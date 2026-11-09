@@ -45,6 +45,28 @@ export type DecodedImage = {
   error?: string;
 };
 
+/** What `encodeImage` sends the shell. */
+export type EncodeImageOptions = {
+  /** `image/jpeg` or `image/png`. */
+  type: string;
+  /** The JPEG quality, from 0 to 1. */
+  quality: number;
+  /** Whether the drawing buffer's colors are premultiplied by alpha. */
+  premultipliedAlpha: boolean;
+};
+
+/**
+ * What `encodeImage` returns: the drawing buffer as an image file, in base64
+ * (a string is the one form a file can come back across the bridge in), or
+ * why not.
+ */
+export type EncodedImage = {
+  base64?: string;
+  /** The file's MIME type. */
+  type?: string;
+  error?: string;
+};
+
 /**
  * The module's methods. `run` returns one result per query command in the
  * batch, in order; void commands return nothing.
@@ -63,6 +85,12 @@ export type WebGLBridge = {
     options: Record<string, unknown>,
   ): DecodedImage;
   releaseImage(imageId: number): void;
+  /**
+   * Reads the drawing buffer and encodes it as a PNG or JPEG file, for
+   * `canvas.toBlob()` and `toDataURL()`. The shell encodes it, so the
+   * pixels, 11 MB for a 2048 by 1365 photo, never cross the bridge.
+   */
+  encodeImage(contextId: number, options: EncodeImageOptions): EncodedImage;
 };
 
 type LynxModuleHandle = {
@@ -130,6 +158,22 @@ const lookUpBridge = (): WebGLBridge | null => {
         error: `${WEBGL_MODULE_NAME} isn't registered in this app's shell`,
       },
     releaseImage: (imageId) => void handle.invoke('releaseImage', imageId),
+    encodeImage: (contextId, options) => {
+      let encoded: EncodedImage | undefined;
+      try {
+        encoded = handle.invoke('encodeImage', contextId, options) as
+          | EncodedImage
+          | undefined;
+      } catch {
+        // A shell from before encodeImage, which Lynx may answer by throwing
+        // or with nothing.
+      }
+      return (
+        encoded ?? {
+          error: `This app's shell can't encode a canvas: build it again with \`ng build --platform\``,
+        }
+      );
+    },
   };
 };
 

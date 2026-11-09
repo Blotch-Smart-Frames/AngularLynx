@@ -76,6 +76,10 @@ export const xcconfig = (app: ResolvedApp): string =>
     '',
   ].join('\n');
 
+/** What iOS shows the first time someone taps Save Image, without `savePhotos`. */
+export const DEFAULT_SAVE_PHOTOS_REASON =
+  'Saves the images you choose to your photo library.';
+
 export const infoPlistEntries = (app: ResolvedApp): string => {
   const lines: string[] = [];
   const array = (key: string, values: readonly string[]) => {
@@ -94,7 +98,14 @@ export const infoPlistEntries = (app: ResolvedApp): string => {
     app.edgeToEdge ? '<true/>' : '<false/>',
   );
 
-  for (const [permission, reason] of Object.entries(app.permissions)) {
+  // The share sheet LynxShare opens has Save Image for an image, which adds
+  // it to the photo library, and iOS ends an app that does so without a
+  // reason in Info.plist. So every app has one, which `savePhotos` changes.
+  const permissions = {
+    savePhotos: DEFAULT_SAVE_PHOTOS_REASON,
+    ...app.permissions,
+  };
+  for (const [permission, reason] of Object.entries(permissions)) {
     for (const key of PERMISSION_MAP[permission as keyof typeof PERMISSION_MAP]
       .ios) {
       lines.push(`<key>${key}</key>`, `<string>${escapeXml(reason!)}</string>`);

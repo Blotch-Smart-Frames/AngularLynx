@@ -44,7 +44,9 @@ describe('getWebGLBridge', () => {
           ? [1]
           : method === 'decodeImage'
             ? { width: 2, height: 3 }
-            : undefined,
+            : method === 'encodeImage'
+              ? { base64: 'AQI=', type: 'image/png' }
+              : undefined,
     );
     const module = vi.fn(() => ({ invoke }));
     vi.stubGlobal('lynx', { module });
@@ -58,12 +60,22 @@ describe('getWebGLBridge', () => {
     bridge.destroy(1);
     expect(bridge.decodeImage(2, [0, 0], {})).toEqual({ width: 2, height: 3 });
     bridge.releaseImage(2);
+    const encodeOptions = {
+      type: 'image/png',
+      quality: 0.92,
+      premultipliedAlpha: true,
+    };
+    expect(bridge.encodeImage(1, encodeOptions)).toEqual({
+      base64: 'AQI=',
+      type: 'image/png',
+    });
     expect(invoke.mock.calls).toEqual([
       ['create', 1, 'c-1', { alpha: true }],
       ['run', 1, [OP_CLEAR]],
       ['destroy', 1],
       ['decodeImage', 2, [0, 0], {}],
       ['releaseImage', 2],
+      ['encodeImage', 1, encodeOptions],
     ]);
   });
 
@@ -79,6 +91,32 @@ describe('getWebGLBridge', () => {
       width: 0,
       error: expect.stringMatching(/isn't registered/),
     });
+    expect(
+      bridge.encodeImage(1, {
+        type: 'image/png',
+        quality: 1,
+        premultipliedAlpha: true,
+      }),
+    ).toEqual({ error: expect.stringMatching(/ng build --platform/) });
+  });
+
+  it('answers for a shell from before encodeImage, which throws for it', async () => {
+    vi.stubGlobal('lynx', {
+      module: () => ({
+        invoke: (method: string) => {
+          if (method === 'encodeImage') throw new Error('no such method');
+          return undefined;
+        },
+      }),
+    });
+    const bridge = (await load()).getWebGLBridge()!;
+    expect(
+      bridge.encodeImage(1, {
+        type: 'image/jpeg',
+        quality: 1,
+        premultipliedAlpha: true,
+      }),
+    ).toEqual({ error: expect.stringMatching(/can't encode a canvas/) });
   });
 
   it('can be replaced, and restored, for tests', async () => {

@@ -259,11 +259,142 @@ describe('LynxCanvasElement', () => {
     expect((canvas.style as any)[Symbol.iterator]).toBeUndefined();
     expect(Reflect.set(canvas.style, Symbol.iterator, 1)).toBe(false);
   });
+});
 
-  it('can’t be saved as an image', () => {
+describe('LynxCanvasElement as an image', () => {
+  const drawn = () => {
     const canvas = new LynxCanvasElement({} as ElementRef);
-    expect(() => canvas.toDataURL()).toThrow(/readPixels/);
-    expect(() => canvas.toBlob()).toThrow(/readPixels/);
+    canvas.width = 4;
+    canvas.height = 2;
+    const gl = canvas.getContext('webgl2') as LynxWebGL2RenderingContext;
+    return { canvas, gl };
+  };
+
+  it('is a PNG data: URL of what the shell encoded', () => {
+    const { canvas } = drawn();
+    expect(canvas.toDataURL()).toBe('data:image/png;base64,AQI=');
+    expect(bridge.encodeImage).toHaveBeenCalledWith(expect.any(Number), {
+      type: 'image/png',
+      quality: 0.92,
+      premultipliedAlpha: true,
+    });
+  });
+
+  it('is a JPEG of the quality asked for, whatever the type’s case', () => {
+    const { canvas } = drawn();
+    expect(canvas.toDataURL('IMAGE/JPEG', 0.5)).toBe(
+      'data:image/jpeg;base64,AQI=',
+    );
+    expect(bridge.encodeImage).toHaveBeenLastCalledWith(expect.any(Number), {
+      type: 'image/jpeg',
+      quality: 0.5,
+      premultipliedAlpha: true,
+    });
+  });
+
+  it.each([[1.5], [-1], ['0.5'], [Number.NaN]])(
+    'uses 0.92 for a quality of %o, as browsers do',
+    (quality) => {
+      const { canvas } = drawn();
+      canvas.toDataURL('image/jpeg', quality);
+      expect(bridge.encodeImage).toHaveBeenLastCalledWith(
+        expect.any(Number),
+        expect.objectContaining({ quality: 0.92 }),
+      );
+    },
+  );
+
+  it('is a PNG for a type other than JPEG and PNG, as browsers fall back to', () => {
+    const { canvas } = drawn();
+    expect(canvas.toDataURL('image/webp')).toBe('data:image/png;base64,AQI=');
+  });
+
+  it('tells the shell when the colors are straight', () => {
+    const canvas = new LynxCanvasElement({} as ElementRef);
+    canvas.getContext('webgl2', { premultipliedAlpha: false });
+    canvas.toDataURL();
+    expect(bridge.encodeImage).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ premultipliedAlpha: false }),
+    );
+  });
+
+  it('sends what was drawn before reading it, without showing the frame', () => {
+    const { canvas, gl } = drawn();
+    gl.clearColor(1, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const sent = bridge.batches.length;
+    canvas.toDataURL();
+    expect(bridge.batches).toHaveLength(sent + 1);
+    expect(bridge.batches.at(-1)).toContain(OP.clear);
+    expect(bridge.batches.at(-1)).not.toContain(OP.present);
+  });
+
+  it('is `data:,` with nothing to read, as a browser’s is for an empty canvas', () => {
+    const plain = new LynxCanvasElement({} as ElementRef);
+    expect(plain.toDataURL()).toBe('data:,');
+
+    const { canvas } = drawn();
+    canvas.width = 0;
+    expect(canvas.toDataURL()).toBe('data:,');
+
+    const lost = drawn();
+    (
+      lost.gl.getExtension('WEBGL_lose_context') as { loseContext(): void }
+    ).loseContext();
+    expect(lost.canvas.toDataURL()).toBe('data:,');
+    expect(bridge.encodeImage).not.toHaveBeenCalled();
+  });
+
+  it('is `data:,` with a warning when the shell can’t encode it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bridge.encodeImage.mockReturnValueOnce({ error: 'Out of memory' });
+    const { canvas } = drawn();
+    expect(canvas.toDataURL()).toBe('data:,');
+    expect(warn).toHaveBeenCalledWith(
+      "[angular-lynx] The canvas couldn't be encoded: Out of memory",
+    );
+  });
+
+  it('takes the type the shell answers with', () => {
+    bridge.encodeImage.mockReturnValueOnce({ base64: 'AQI=' });
+    const { canvas } = drawn();
+    expect(canvas.toDataURL('image/jpeg')).toBe('data:image/jpeg;base64,AQI=');
+  });
+
+  it('calls back on a later task with a Blob read when it was called', async () => {
+    vi.useFakeTimers();
+    try {
+      const { canvas } = drawn();
+      const callback = vi.fn();
+      canvas.toBlob(callback, 'image/jpeg', 0.8);
+      expect(bridge.encodeImage).toHaveBeenCalledWith(expect.any(Number), {
+        type: 'image/jpeg',
+        quality: 0.8,
+        premultipliedAlpha: true,
+      });
+      await Promise.resolve();
+      expect(callback).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      const blob = callback.mock.calls[0]![0] as Blob;
+      expect(blob).toBeInstanceOf(Blob);
+      expect(blob.type).toBe('image/jpeg');
+      expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([1, 2]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('calls back with null when there’s nothing to encode', async () => {
+    const canvas = new LynxCanvasElement({} as ElementRef);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+    expect(blob).toBeNull();
+  });
+
+  it('needs a callback, as HTMLCanvasElement’s does', () => {
+    const { canvas } = drawn();
+    expect(() => canvas.toBlob(undefined as never)).toThrow(TypeError);
+    expect(bridge.encodeImage).not.toHaveBeenCalled();
   });
 });
 
@@ -295,5 +426,50 @@ describe('LynxCanvasElement on Lynx for Web', () => {
     const listener = vi.fn();
     canvas.addEventListener('webglcontextlost', listener);
     canvas.removeEventListener('webglcontextlost', listener);
+  });
+
+  it('saves the image with the browser’s canvas, as a Blob of the app’s realm', async () => {
+    vi.stubGlobal('__WEB__', true);
+    // The page's Blob, which the app's realm (web-core's iframe) wouldn't
+    // count as its own.
+    const pageBlob = { type: 'image/jpeg', bytes: [9] };
+    const dom = {
+      style: {},
+      toDataURL: vi.fn(() => 'data:image/jpeg;base64,CQ=='),
+      toBlob: vi.fn(
+        (callback: (blob: unknown) => void, _type: string, _quality: number) =>
+          callback(pageBlob),
+      ),
+    };
+    const blobOf = vi.fn();
+    vi.stubGlobal(
+      'Blob',
+      class {
+        readonly type: string;
+        constructor(parts: unknown[], options: { type: string }) {
+          blobOf(parts);
+          this.type = options.type;
+        }
+      },
+    );
+    const canvas = new LynxCanvasElement(dom as unknown as ElementRef);
+    expect(canvas.toDataURL('image/jpeg', 0.5)).toBe(
+      'data:image/jpeg;base64,CQ==',
+    );
+    expect(dom.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.5);
+    const callback = vi.fn();
+    canvas.toBlob(callback, 'image/jpeg', 0.7);
+    expect(dom.toBlob).toHaveBeenCalledWith(
+      expect.any(Function),
+      'image/jpeg',
+      0.7,
+    );
+    expect(blobOf).toHaveBeenCalledWith([pageBlob]);
+    expect(callback.mock.calls[0]![0]).toMatchObject({ type: 'image/jpeg' });
+    dom.toBlob.mockImplementationOnce((done: (blob: unknown) => void) =>
+      done(null),
+    );
+    canvas.toBlob(callback);
+    expect(callback).toHaveBeenLastCalledWith(null);
   });
 });

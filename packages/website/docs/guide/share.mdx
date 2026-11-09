@@ -1,0 +1,149 @@
+# Share Files and Links
+
+On the web, `navigator.share()` opens the system's share sheet, so someone can send a photo or a link to another app. Lynx has no `navigator`, so `LynxShare` opens the phone's share sheet instead. It takes what `navigator.share()` takes: files, a title, text and a URL.
+
+## Share a photo your app made
+
+A photo editor that draws on a [`<canvas>`](/api/elements/canvas) can export the result with `toBlob()` and share it:
+
+```typescript title="src/app/export-button.ts"
+import { Component, type ElementRef, inject, input } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  type LynxCanvasElement,
+  LynxShare,
+  ShareError,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-export-button',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    <view (bindtap)="export()">
+      <text>Share</text>
+    </view>
+  `,
+})
+export class ExportButton {
+  readonly canvas = input.required<ElementRef<LynxCanvasElement>>();
+  readonly #sharing = inject(LynxShare);
+
+  export(): void {
+    // Draw the photo first, in this same function: see "Export a canvas" below.
+    this.canvas().nativeElement.toBlob(
+      async (blob) => {
+        if (!blob) return;
+        try {
+          const shared = await this.#sharing.share({
+            files: [{ blob, name: 'photo.jpg' }],
+            title: 'My photo',
+          });
+          if (!shared) return; // They closed the share sheet.
+        } catch (error) {
+          if (error instanceof ShareError) {
+            // Show a message: see "When it doesn't share" below.
+          }
+        }
+      },
+      'image/jpeg',
+      0.9,
+    );
+  }
+}
+```
+
+`share()` resolves `true` once the person has shared, and `false` when they close the sheet without sharing.
+
+Each file is a `{ blob, name }` pair rather than a `File`: Lynx has no `File` class. The name is what the person sees, in AirDrop or Files, and the extension tells the other app the file's type when the `Blob` has none. A photo from [`LynxImagePicker`](/guide/image-picker) is already this shape, so you can share it as it is: `share({ files: [picked] })`.
+
+## Share a link or text
+
+```typescript
+await sharing.share({
+  title: 'Sunset at the pier',
+  text: 'Look what I made',
+  url: 'https://example.com/photos/42',
+});
+```
+
+The URL must be absolute, with its scheme: there's no page for a relative one to be relative to. The title becomes an email's subject, and the heading of the sheet's preview where the platform shows one.
+
+## Save to Photos
+
+On iOS, the share sheet has **Save Image** for a JPEG, PNG or other image, which adds it to the photo library. The first time, iOS asks the person whether to allow it, with your app's reason: "Saves the images you choose to your photo library." Give your own with `savePhotos` in angular.json's `permissions`:
+
+```json title="angular.json"
+"options": {
+  "permissions": {
+    "savePhotos": "Saves your edited photos to your library."
+  }
+}
+```
+
+Android's share sheet has no Save Image: there, people save a file with an app such as Files or Google Photos.
+
+## Export a canvas
+
+`toBlob()` reads the canvas's drawing buffer, which WebGL clears once a frame is on screen, as in a browser. So draw and call `toBlob()` in the same function, or create the context with `preserveDrawingBuffer: true`. Otherwise you get a transparent image. See [Save it as an image](/api/elements/canvas#save-it-as-an-image).
+
+## What people see
+
+- **On iOS,** the system share sheet (`UIActivityViewController`), with AirDrop, Messages, Mail, Save Image, Save to Files and the other apps that take the files. `share()` resolves `true` once the person finishes, such as when the photo is saved or the message sent.
+- **On Android,** the system share sheet. Android doesn't tell an app whether the person finished sharing in the app they picked, so `share()` resolves `true` as soon as they pick an app, and `false` when they close the sheet without picking one. The sheet's own buttons, such as Copy, count as closing it: `false`.
+- **In the [web preview](/guide/glossary#web-preview),** the browser's share sheet, from `navigator.share()`. A browser that can't share files, such as Firefox on a computer, downloads them instead, and `share()` resolves `true`. Browsers share only in answer to a tap, so call `share()` from a tap handler, with the files ready.
+
+## When it doesn't share
+
+Closing the share sheet isn't an error: `share()` resolves `false`. It rejects with a `TypeError` when there's nothing to share, a file has no name or the URL isn't absolute, and with a `ShareError`, whose `code` says why, when the sheet can't open:
+
+| `code`        | When                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no share sheet: only the apps `ng build --platform` makes and the web preview do. Or a browser can't share text or links |
+| `failed`      | The sheet couldn't open, one was already open, a file couldn't be written, or the browser refused, such as when it wasn't a tap       |
+
+:::info Lynx Explorer
+Lynx Explorer has no share sheet, so there `share()` rejects with `unavailable`. Try it on a simulator or emulator with [`ng build --platform ios --run`](/guide/native-apps), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#open-the-share-sheet).
+:::
+
+## Test it
+
+In a spec there's no share sheet to tap through, so provide a stand-in that records what was shared:
+
+```typescript title="src/app/export-button.test.ts"
+import { LynxShare, type ShareData } from '@blotch/angular-lynx';
+import {
+  fireEvent,
+  render,
+  screen,
+} from '@blotch/angular-lynx-testing-library';
+import { ExportButton } from './export-button';
+
+it('shares the photo', async () => {
+  const shared: ShareData[] = [];
+  await render(ExportButton, {
+    providers: [
+      {
+        provide: LynxShare,
+        useValue: {
+          share: async (data: ShareData) => {
+            shared.push(data);
+            return true;
+          },
+        },
+      },
+    ],
+  });
+
+  fireEvent.tap(screen.getByText('Share'));
+  // ...
+});
+```
+
+Return `false` from the stand-in to test what happens when the person closes the sheet. Without a stand-in, `share()` rejects with `unavailable`, as in Lynx Explorer.
+
+## Related
+
+- [`LynxShare` reference](/api/angular-lynx/share)
+- [`<canvas>`](/api/elements/canvas)
+- [Pick a Photo](/guide/image-picker)
+- [Run on iOS and Android](/guide/native-apps)

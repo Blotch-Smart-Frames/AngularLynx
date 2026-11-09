@@ -6657,3 +6657,50 @@ On the phones, asking whether another app is installed is opt-in: iOS's `canOpen
 ### How AngularLynx uses it
 
 `LynxLinking` opens tabs through `parent.open()` in the web preview, before anything is awaited, so the tab still counts as part of the tap. angular.json's `canOpenURLSchemes` lists the schemes `canOpenURL()` may ask about, and `ng build --platform` writes them, after `http`, `https`, `mailto`, `tel` and `sms`, into both files.
+
+---
+
+## A canvas is saved by the shell: `toBlob()` reads the drawing buffer and the shell encodes it
+
+Found while adding `canvas.toBlob()` and `toDataURL()` for a photo editor, on the iOS 27 Simulator, the Android 14 emulator and Chromium, with a 2048×1365 canvas.
+
+### What you'd expect (web)
+
+`canvas.toBlob(callback, 'image/jpeg', 0.9)` encodes the canvas in the background and calls back with a `Blob`; `toDataURL()` returns a `data:` URL. For WebGL, what's read after a frame is on screen is undefined unless the context has `preserveDrawingBuffer: true`: the spec lets the drawing buffer be cleared once it's presented.
+
+### What Lynx does
+
+Lynx has no canvas; AngularLynx's (`canvas-element.ts`) draws through the shells' `AngularLynxWebGL` main-thread module. Its `encodeImage` method reads the default framebuffer (resolving its samples first), flips GL's bottom-up rows, and encodes with ImageIO on iOS and `Bitmap.compress` on Android. The file comes back as base64, because the bridge can't return bytes, and the pixels never cross it: 11 MB of RGBA as an array of numbers, then encoded in JavaScript on PrimJS, would take seconds. The read is synchronous, as the context's batch must be sent first, so the main thread waits for it; the `Blob` is made, from the base64, on a later task.
+
+- **Measured, JPEG at 0.9, warm:** 13 to 22 ms for `toBlob()` itself on the iOS Simulator (110 ms the first time) and 29 to 44 ms on the Android emulator, both including the GPU finishing the frame just drawn, then 12 to 20 ms more before the callback has the `Blob`. A PNG of the same canvas took 99 ms (iOS) and 332 ms (Android), and was 1.2 to 1.7 MB.
+- **ANGLE on Metal reads pixels into memory slowly.** `glReadPixels` of the 2048×1365 framebuffer straight into memory took 145 ms on the iOS Simulator; into a pixel pack buffer, then mapped, 2 to 15 ms. So `encodeImage` reads through a pack buffer. The context's own `readPixels()` into a typed array still reads straight into memory, so a large `readPixels()` on iOS is slow the same way.
+- **The drawing buffer is cleared after each frame is shown**, as browsers may: `toBlob()` called on a later task without `preserveDrawingBuffer` gave a transparent PNG, which the WebGL spec allows; a browser may instead keep a copy of the frame on screen. Called in the task that drew, it has the frame.
+- **Alpha.** The drawing buffer's colors are premultiplied unless the context asked otherwise; both encoders write a PNG's straight colors from premultiplied ones, and a JPEG drops alpha as browsers do, with transparent pixels black.
+
+### A frame drawn before the canvas's view had a size was never shown on iOS
+
+The shell shows a frame by copying it into the canvas view's layer, and waits when the view has no size yet. On iOS, nothing showed the waiting frame once Lynx laid the view out, so an app that draws once (a photo editor drawing its photo) showed an empty canvas until it drew again; three.js scenes, which draw every frame, never noticed. Android shows it when the view's surface arrives. The iOS canvas view now shows a waiting frame from `layoutSubviews`.
+
+---
+
+## There's no `navigator.share()`, and iOS's Save Image needs a reason in Info.plist
+
+Found while adding `LynxShare`, on the iOS 27 Simulator, the Android 14 emulator and Chromium.
+
+### What you'd expect (web)
+
+`navigator.share({ files, title, text, url })` opens the system share sheet and resolves once the person shares, or rejects with an `AbortError` when they close it. It takes `File`s.
+
+### What Lynx does
+
+There's no `navigator`, no `File` and no share API. The shells' `AngularLynxShare` module opens the share sheet: `UIActivityViewController` on iOS and an `ACTION_SEND` chooser on Android. A file is a `{ blob, name }` pair, the shape `LynxImagePicker` returns, and crosses to the module as base64, as the picker's photos do the other way.
+
+- **iOS gets real files.** Each file is written to a temporary file of its name, so the sheet shows its name and type and offers Save Image for an image. Handing over `Data` or a `UIImage` loses the name.
+- **Save Image ends the app without `NSPhotoLibraryAddUsageDescription`.** iOS kills an app that adds to the photo library without a reason in Info.plist. `ng build --platform` always writes one (angular.json's `permissions.savePhotos`, with a default), and the module leaves Save Image out of the sheet when Info.plist has none, as in a project ejected before. With it, the first Save Image showed iOS's "Allow … to add photos" prompt with the reason, and the JPEG landed in Photos.
+- **The completion handler.** From iOS 13, closing an action's own screen, such as Save to Files', calls it with that action while the sheet stays open; the module waits for the sheet to close. On iOS 27 the share sheet logs completing twice as it closes, so the module answers once.
+- **Android doesn't say whether sharing finished.** The chooser reports which app the person picked, through the `IntentSender` given to `Intent.createChooser`, and nothing after. So `share()` resolves `true` on the pick, and `false` when the app comes back to the front without one. The Android 14 chooser's own Copy button reports no pick: `false`.
+- **Android's files go through a `FileProvider`**, written under the cache's `angular-lynx-share/` folder and kept until the next share, since the app picked may read them after the sheet closes.
+
+### Lynx for Web
+
+Web-core's iframe has no `web-share` permission and no `allow-downloads`, so the runtime shares through the page around it, `parent.navigator.share()`, with `File`s made in the page's realm. Headless Chromium has no `navigator.share`, and Firefox on a computer can't share files, so there the runtime downloads each file with an `<a download>` in the page, and resolves `true`.

@@ -70,6 +70,8 @@ describe('infoPlistEntries', () => {
         '</array>',
         '<key>AngularLynxEdgeToEdge</key>',
         '<true/>',
+        '<key>NSPhotoLibraryAddUsageDescription</key>',
+        '<string>Saves the images you choose to your photo library.</string>',
         '<key>LSApplicationQueriesSchemes</key>',
         '<array>',
         '\t<string>http</string>',
@@ -80,6 +82,19 @@ describe('infoPlistEntries', () => {
         '</array>',
       ].join('\n'),
     );
+  });
+
+  it("gives Save Image a reason, so the share sheet's action doesn't end the app", () => {
+    expect(infoPlistEntries(app({}))).toContain(
+      '<key>NSPhotoLibraryAddUsageDescription</key>\n<string>Saves the images you choose to your photo library.</string>',
+    );
+    const entries = infoPlistEntries(
+      app({ permissions: { savePhotos: 'Saves your edits' } }),
+    );
+    expect(entries).toContain(
+      '<key>NSPhotoLibraryAddUsageDescription</key>\n<string>Saves your edits</string>',
+    );
+    expect(entries.match(/NSPhotoLibraryAddUsageDescription/g)).toHaveLength(1);
   });
 
   it('tells the shell to keep the page inside the safe area', () => {

@@ -7,6 +7,7 @@ import {
 import { LYNX_ELEMENTS, LynxAccessibilitySettings } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
+import { lynxMainThread } from '../../../test-utils/lynx-main-thread';
 import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import {
   type SearchFieldContainer,
@@ -253,6 +254,9 @@ describe('UiSearchField’s static attributes', () => {
 
 describe('UiSearchField on iOS 26 and later', () => {
   it('is a glass capsule with a magnifier and a search box that searches on return', async () => {
+    // jsdom drops a style it doesn't know, such as -x-placeholder-color:
+    // watch what reaches Lynx's inline style API instead.
+    const addInlineStyle = vi.spyOn(lynxMainThread(), '__AddInlineStyle');
     const { getByRole, field, fieldHost, glass, icons } =
       await renderOn(IOS_26);
 
@@ -270,8 +274,14 @@ describe('UiSearchField on iOS 26 and later', () => {
     expect(field().classList).toContain('text-glass-foreground');
     expect(style(field(), 'font-size')).toBe('17px');
     // The placeholder and the magnifier take the glass's muted foreground,
-    // resolved, as an attribute and an SVG can't read a CSS variable.
+    // resolved, as an attribute and an SVG can't read a CSS variable. The
+    // placeholder's color is a style too, the only one iOS reads.
     expect(field().getAttribute('placeholder-color')).toBe(
+      color('glass-muted-foreground'),
+    );
+    expect(addInlineStyle).toHaveBeenCalledWith(
+      field(),
+      '-x-placeholder-color',
       color('glass-muted-foreground'),
     );
     expect(icons()).toEqual([
@@ -476,6 +486,7 @@ describe('UiSearchField and the keyboard', () => {
 
 describe('UiSearchField before iOS 26', () => {
   it('is UISearchBar’s field: a rounded rectangle on a gray fill', async () => {
+    const addInlineStyle = vi.spyOn(lynxMainThread(), '__AddInlineStyle');
     const { glass, fieldHost, field, icons } = await renderOn(IOS_18);
     expect(glass()).toBeNull();
     const fill = fieldHost().querySelector<HTMLElement>('.bg-muted')!;
@@ -483,6 +494,11 @@ describe('UiSearchField before iOS 26', () => {
     expect(style(fill, 'height')).toBe('36px');
     expect(field().classList).toContain('text-foreground');
     expect(field().getAttribute('placeholder-color')).toBe(
+      color('muted-foreground'),
+    );
+    expect(addInlineStyle).toHaveBeenCalledWith(
+      field(),
+      '-x-placeholder-color',
       color('muted-foreground'),
     );
     expect(icons()[0]).toContain(color('muted-foreground'));

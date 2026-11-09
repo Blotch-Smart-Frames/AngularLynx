@@ -108,6 +108,13 @@ export const scaffoldApp = async (
     await overrideRspeedy(appDir, options, pm, exec);
   }
 
+  // Before any generated component brings a test of its own: a fresh app's
+  // `ng test` runs the root component's spec, which `ng add` rewrites for the
+  // Lynx template. With none, `ng test` fails with "No tests found" (#351).
+  if (!options.buildOnly) {
+    await runFreshAppTests(pm, exec);
+  }
+
   // Step 5 comes before the final build so the build (and Layer 3) cover the
   // generated component, the test setup and i18n together. Plain
   // `ng generate component`: `ng add` makes it reach AngularLynx's schematic.
@@ -204,6 +211,19 @@ const extractMessages = async (
   console.log('✓ ng extract-i18n wrote the messages as JSON to src/locale');
 };
 
+const runFreshAppTests = async (
+  pm: PackageManagerCommands,
+  exec: (command: string, args: string[]) => Promise<{ output: string }>,
+) => {
+  step('Layer 2: ng test in the fresh app');
+  const { output } = await exec(...pm.run('test'));
+  check(
+    /Test Files\s+1 passed/.test(stripAnsi(output)),
+    "`ng test` didn't run and pass the fresh app's src/app/app.spec.ts.",
+  );
+  console.log("✓ the fresh app's own test passes under `ng test`");
+};
+
 const addTestingAndRunTests = async (
   appDir: string,
   pm: PackageManagerCommands,
@@ -254,12 +274,12 @@ const addTestingAndRunTests = async (
   await exec(...pm.exec('ng', ['generate', 'component', 'greeting']));
   checkGeneratedComponent(appDir, 'greeting', 'greeting.test.ts');
   const { output: testOutput } = await exec(...pm.run('test'));
-  // `ng test` finds both kinds: hello's Angular TestBed spec (generated
-  // before the testing library was installed) and greeting's Lynx test.
-  // (Vitest only lists test file names when attached to a terminal.)
+  // `ng test` finds both kinds: the app's and hello's Angular TestBed specs
+  // (generated before the testing library was installed) and greeting's Lynx
+  // test. (Vitest only lists test file names when attached to a terminal.)
   check(
-    /Test Files\s+2 passed/.test(stripAnsi(testOutput)),
-    "`ng test` didn't run and pass both generated tests (src/app/hello/hello.spec.ts and src/app/greeting/greeting.test.ts).",
+    /Test Files\s+3 passed/.test(stripAnsi(testOutput)),
+    "`ng test` didn't run and pass all three tests (src/app/app.spec.ts, src/app/hello/hello.spec.ts and src/app/greeting/greeting.test.ts).",
   );
   console.log("✓ the generated components' tests pass under `ng test`");
 };
@@ -721,7 +741,7 @@ const checkGeneratedProject = (
   // `ng new` writes the root component's template, styles and test as separate
   // files (app.html, app.css and app.spec.ts since Angular 20, and
   // app.component.* before that). ng add inlines the template in app.ts, so
-  // the leftovers are dead code, and the spec tests the deleted template.
+  // the leftovers are dead code.
   const leftovers = [
     'app.component.ts',
     'app.component.html',
@@ -729,11 +749,19 @@ const checkGeneratedProject = (
     'app.component.spec.ts',
     'app.html',
     'app.css',
-    'app.spec.ts',
   ].filter((file) => existsSync(path.join(appDir, 'src/app', file)));
   check(
     leftovers.length === 0,
     `\`ng add\` left these \`ng new\` files behind in src/app: ${leftovers.join(', ')}.`,
+  );
+  // ng new's spec tests the browser template, so ng add rewrites it for the
+  // Lynx one rather than deleting it: a fresh app with no tests fails
+  // `ng test` (#351). runFreshAppTests runs it.
+  const appSpec = path.join(appDir, 'src/app/app.spec.ts');
+  check(
+    existsSync(appSpec) &&
+      readFileSync(appSpec, 'utf8').includes("querySelector('text')"),
+    "`ng add` didn't rewrite src/app/app.spec.ts for the Lynx template.",
   );
   console.log(
     '✓ the project has the AngularLynx builders and schematics, and Lynx bootstrap files',

@@ -32,9 +32,13 @@ describe('the ng-add schematic', () => {
   let cwd: string;
 
   /**
-   * An app as `ng new` makes it, with this `packageManager` field.
+   * An app as `ng new` makes it, with this `packageManager` field and any
+   * other `ng new` options.
    */
-  const ngNew = async (packageManager: string) => {
+  const ngNew = async (
+    packageManager: string,
+    options: Record<string, unknown> = {},
+  ) => {
     tree = await angular.runSchematic('workspace', {
       name: 'workspace',
       newProjectRoot: 'projects',
@@ -42,7 +46,7 @@ describe('the ng-add schematic', () => {
     });
     tree = await angular.runSchematic(
       'application',
-      { name: 'my-app', projectRoot: '', skipInstall: true },
+      { name: 'my-app', projectRoot: '', skipInstall: true, ...options },
       tree,
     );
     const pkg = tree.readJson('package.json') as Record<string, unknown>;
@@ -80,5 +84,30 @@ describe('the ng-add schematic', () => {
     await ngAdd();
 
     expect(tree.exists('pnpm-workspace.yaml')).toBe(false);
+  });
+
+  it("replaces ng new's spec with one for the Lynx template", async () => {
+    await ngNew('npm@11.6.0');
+    expect(tree.readText('src/app/app.spec.ts')).toContain(
+      "querySelector('h1')",
+    );
+
+    await ngAdd();
+
+    // A fresh app keeps a test, or `ng test` fails with "No tests found".
+    const spec = tree.readText('src/app/app.spec.ts');
+    expect(spec).toContain("import { App } from './app';");
+    expect(spec).toContain(
+      "expect(compiled.querySelector('text')?.textContent).toContain('my-app');",
+    );
+    expect(spec).not.toContain('h1');
+  });
+
+  it('writes no spec for an app made without tests', async () => {
+    await ngNew('npm@11.6.0', { skipTests: true });
+
+    await ngAdd();
+
+    expect(tree.exists('src/app/app.spec.ts')).toBe(false);
   });
 });

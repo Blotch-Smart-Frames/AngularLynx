@@ -1,0 +1,25 @@
+# Par Avion: a chat app
+
+A messaging app where every conversation is correspondence by airmail: the inbox is a stack of envelopes, each stamped with the contact's own stamp, and a thread is the letters between you, postmarked as they're sent and read. It's the interactions people judge a chat app by, on iOS, Android and the web from one Angular codebase.
+
+<Go example="chat" defaultFile="src/app/thread/thread.ts" />
+
+Open a letter, then scroll up: older letters arrive a page at a time. Drag a letter to the left to reply to it, hold one to stick a stamp on it, and write back: the contact reads it and answers.
+
+## What it shows
+
+- **Infinite scroll, upwards** — a thread is a virtualized [`<list>`](/api/elements/list) that opens on the newest letter (`initial-scroll-index`) and fetches older ones as you near the top (`upper-threshold-item-count` and `bindscrolltoupper`). The list reports the letters on screen (`need-visible-item-info`), so the one at the top is held in place while a page arrives above it.
+- **Native navigation** — [`<lynx-stack-outlet>`](/guide/routing#slide-screens-in-and-out-as-a-native-app-does) slides a conversation in over the inbox, and Back, Android's back button or a drag from the edge slides it away. The conversation is a lazy route that reads its id with `withComponentInputBinding()`.
+- **Gestures** — a [pan gesture](/guide/gestures/) on each letter drags it left to reply, as Telegram does, which leaves a drag to the right to the stack outlet's swipe back; `consume-slide-event` keeps vertical scrolling for the list; `bindlongpress` opens the sheet of stamps.
+- **The keyboard** — the composer follows the on-screen keyboard with the field's `bindkeyboardheightchange`, and the thread keeps its newest letter in view.
+- **Photos** — the camera button picks a photo with [`LynxImagePicker`](/guide/image-picker) and sends it as a postcard; tap one to see it full screen. **Copy** puts a letter on the clipboard with [`LynxClipboard`](/api/angular-lynx/clipboard).
+- **Storage** — what you write, the stamps you stick and what you've read persist with [`LynxLocalStorage`](/guide/persistent-storage).
+- **Custom fonts** — League Gothic for the post's labels and La Belle Aurore, a pen hand, for addresses, through [`@font-face`](/guide/custom-fonts/).
+
+The contacts, their letters and their replies are invented for the app, and bundled with it: nothing goes over the network. In Lynx Explorer there's no photo picker, so the camera button says so.
+
+## Related
+
+- [Darkroom](./darkroom) — image processing on the GPU
+- [Facet](./showcase) — 3D on the GPU
+- [`<list>`](/api/elements/list) — the virtualized list

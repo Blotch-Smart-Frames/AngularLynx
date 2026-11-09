@@ -6720,3 +6720,42 @@ There's no `navigator`, no `File` and no share API. The shells' `AngularLynxShar
 ### Lynx for Web
 
 Web-core's iframe has no `web-share` permission and no `allow-downloads`, so the runtime shares through the page around it, `parent.navigator.share()`, with `File`s made in the page's realm. Headless Chromium has no `navigator.share`, and Firefox on a computer can't share files, so there the runtime downloads each file with an `<a download>` in the page, and resolves `true`.
+
+---
+
+## Loading older items above a `<list>`'s visible ones: holding the place, and the web preview's list
+
+Found while building the chat showcase (`examples/chat`), whose threads load older letters as you scroll up, on the iOS 27 Simulator, the Android 14 emulator and Chromium, 2026-11-09.
+
+### What you'd expect (web)
+
+A scroll container whose content grows above what's on screen keeps what's on screen where it was: browsers' scroll anchoring (`overflow-anchor: auto`) moves the scroll position by the height inserted above.
+
+### What Lynx does
+
+- **Nothing holds the place in the web preview.** Items inserted above the visible ones push them down: the scroll offset stays the same, so the new items slide into view (measured in Chromium). The example applies the same correction on iOS and Android; there, the place held wasn't measured with or without it. The app has to put the list back. The chat example notes where its first letter is on screen before the page lands (the rows above it have fixed heights, so its top is their sum less the scroll from `bindscroll`), then calls `scrollToPosition` with that letter's `position` and an `offset` once the list has laid the page out.
+- **`scrollToPosition` takes `position`, not `index`.** It's Lynx's own name (lynxjs.org's `<list>` reference); `index` is ignored, so the call does nothing. AngularLynx's `<list>` page said `index` until this was found.
+- **`initial-scroll-index` and an early `scrollToPosition` don't open a list at its end on iOS.** Both run before the native list has its items while a `<lynx-stack-outlet>` screen slides in. The chat example scrolls to its last row each frame for about 40 frames on opening, and stops as soon as the person drags (`bindscrollstatechange` state 2).
+
+### Lynx for Web
+
+- `scrollToPosition` scrolls to the item's top plus `offset`: it ignores `alignTo` and `itemKey`. Scrolling to the last item still lands at the bottom, since the scroll position can't go past the end.
+- Until the new items are in the page, which takes a frame or two after Angular renders them, `scrollToPosition` does nothing (it looks the item up among the element's children), and no event says when they arrive: `bindlayoutcomplete` isn't sent. The chat example retries each frame for a few frames.
+- `attachedCells` in `bindscroll` (with `need-visible-item-info`) lists every item the list has rendered, not only those on screen, with `top` relative to the list's visible top: it can't tell you the topmost visible item without filtering.
+- There's no `scrollBy` UI method on the web preview's list.
+
+---
+
+## An `<input>`'s `placeholder-color` attribute does nothing on iOS: set `-x-placeholder-color` as a style
+
+Found while building the chat showcase (`examples/chat`), on the iOS 27 Simulator, 2026-11-09.
+
+### What you'd expect (web)
+
+`input::placeholder { color: … }` colors the hint text.
+
+### What Lynx does
+
+Lynx has no `::placeholder` rule for apps to write; the field takes the color as a property. On iOS, `placeholder-color` given as an attribute, as a hex or an `rgba()` string, leaves the placeholder in the system's pale gray: the setter (`LynxUIBaseInput.m`) takes a `UIColor`, which a string attribute never becomes. The CSS property `-x-placeholder-color`, set in the element's style (`style="-x-placeholder-color: #54607c"`), arrives parsed as a color and works. The chat example sets both: the attribute for the web preview, where web-elements reads it, and the style for iOS.
+
+`@blotch/ui`'s search field binds only `[attr.placeholder-color]`, so its placeholder on iOS is likely the system gray too (not checked).

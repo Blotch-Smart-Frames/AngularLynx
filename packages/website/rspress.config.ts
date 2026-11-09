@@ -423,6 +423,7 @@ export default defineConfig({
         { sectionHeaderText: 'Showcase' },
         { text: 'Facet: a gem atlas', link: '/examples/showcase' },
         { text: 'Darkroom: a film photo editor', link: '/examples/darkroom' },
+        { text: 'Par Avion: a chat app', link: '/examples/chat' },
         {
           text: 'Furniture shop: the Lynx tutorial app',
           link: '/examples/furniture-shop',

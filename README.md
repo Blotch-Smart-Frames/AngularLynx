@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="AngularLynx" width="200" />
+  <img src="https://angularlynx.js.org/logo.png" alt="AngularLynx" width="200" />
 </p>
 
 <p align="center">

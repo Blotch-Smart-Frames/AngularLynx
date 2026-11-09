@@ -21,6 +21,31 @@ type HistorySnapshot = { history: HistoryEntry[]; index: number };
 let snapshotOf: (strategy: LynxLocationStrategy) => HistorySnapshot;
 
 /**
+ * Moves a strategy's current entry back to `index` (see {@link rewindHistory}).
+ * Assigned in the class's static block, as {@link snapshotOf} is.
+ */
+let rewind: (strategy: LynxLocationStrategy, index: number) => void;
+
+/**
+ * Takes the history back to `index` without a navigation: the current entry
+ * moves there, and the entries between go, as if the app had gone back to
+ * `index` and then replaced its entry with the current one.
+ *
+ * `<lynx-stack-outlet>` calls it when a link pops its stack back to a page.
+ * The router has pushed an entry for the page by then, over the entries of
+ * the pages the link popped, so Back, Android's back button and the swipe
+ * would go back to the last of those pages rather than to the page under
+ * the one now on top. A navigation controller's stack is its history; this
+ * keeps the two the same.
+ *
+ * Does nothing unless `index` is before the current entry.
+ */
+export const rewindHistory = (
+  strategy: LynxLocationStrategy,
+  index: number,
+): void => rewind(strategy, index);
+
+/**
  * Keeps the app on the screen it was showing when a hot update re-bootstraps
  * it. Called with the old app's injector before it's destroyed, it saves the
  * old strategy's history, and the next strategy created starts from it. The
@@ -76,6 +101,16 @@ export class LynxLocationStrategy extends LocationStrategy {
       history: strategy.#history.map((entry) => ({ ...entry })),
       index: strategy.#historyIndex,
     });
+    rewind = (strategy, index) => strategy.#rewind(index);
+  }
+
+  #rewind(index: number): void {
+    if (index < 0 || index >= this.#historyIndex) return;
+    const { state, url } = this.#history[this.#historyIndex];
+    this.#history.length = index;
+    this.#history.push({ state: atPosition(state, index), url });
+    this.#historyIndex = index;
+    this.#canGoBack.set(index > 0);
   }
 
   /**
@@ -163,3 +198,18 @@ export class LynxLocationStrategy extends LocationStrategy {
     };
   }
 }
+
+/**
+ * The router's state for an entry that has moved to `index` in the history.
+ * With `canceledNavigationResolution: 'computed'`, the router numbers each
+ * entry it adds by its place in the history (`ɵrouterPageId`, 0 for the
+ * first and one more for each push), and goes back to an entry when a
+ * navigation fails by how far apart those numbers are: a moved entry's
+ * number has to move with it. Any other state is the app's, and stays as is.
+ */
+const atPosition = (state: unknown, index: number): unknown =>
+  state !== null &&
+  typeof state === 'object' &&
+  typeof (state as { ɵrouterPageId?: unknown }).ɵrouterPageId === 'number'
+    ? { ...state, ɵrouterPageId: index }
+    : state;

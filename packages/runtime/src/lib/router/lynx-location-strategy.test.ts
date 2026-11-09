@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   carryOverLocation,
   LynxLocationStrategy,
+  rewindHistory,
 } from './lynx-location-strategy';
 
 describe('LynxLocationStrategy', () => {
@@ -314,5 +315,62 @@ describe('carryOverLocation', () => {
     );
 
     expect(new LynxLocationStrategy().path()).toBe('/');
+  });
+});
+
+describe('rewindHistory', () => {
+  let strategy: LynxLocationStrategy;
+
+  beforeEach(() => {
+    strategy = new LynxLocationStrategy();
+    strategy.replaceState({ id: 0 }, '', '/a', '');
+    strategy.pushState({ id: 1 }, '', '/b', '');
+    strategy.pushState({ id: 2 }, '', '/c', '');
+    strategy.pushState({ id: 3 }, '', '/b', 'tab=2');
+  });
+
+  it('moves the current entry back, dropping the entries between', () => {
+    const listener = vi.fn();
+    strategy.onPopState(listener);
+
+    rewindHistory(strategy, 1);
+
+    expect(strategy.historyIndex).toBe(1);
+    expect(strategy.path()).toBe('/b?tab=2');
+    expect(strategy.getState()).toEqual({ id: 3 });
+    // It isn't a navigation: the app is where it was.
+    expect(listener).not.toHaveBeenCalled();
+    strategy.back();
+    expect(strategy.path()).toBe('/a');
+    // Nothing is left ahead of it.
+    strategy.historyGo(2);
+    expect(strategy.path()).toBe('/a');
+  });
+
+  it('turns Back off when it goes back to the first entry', () => {
+    rewindHistory(strategy, 0);
+
+    expect(strategy.canGoBack()).toBe(false);
+    expect(strategy.path()).toBe('/b?tab=2');
+  });
+
+  it('does nothing for the current entry, one after it, or none', () => {
+    for (const index of [3, 4, -1]) rewindHistory(strategy, index);
+
+    expect(strategy.historyIndex).toBe(3);
+    strategy.back();
+    expect(strategy.path()).toBe('/c');
+  });
+
+  it("renumbers the router's entry, and leaves other states alone", () => {
+    strategy.replaceState({ navigationId: 7, ɵrouterPageId: 3 }, '', '/b', '');
+    rewindHistory(strategy, 1);
+    expect(strategy.getState()).toEqual({ navigationId: 7, ɵrouterPageId: 1 });
+
+    for (const state of [null, 'saved', { ɵrouterPageId: 'x' }]) {
+      strategy.pushState(state, '', '/c', '');
+      rewindHistory(strategy, 1);
+      expect(strategy.getState()).toBe(state);
+    }
   });
 });

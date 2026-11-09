@@ -17,6 +17,12 @@ const ROUNDS = 20;
 const LOADING_MS = 100;
 
 /**
+ * The names of a round's rows.
+ */
+const rowsOf = (round: number): string[] =>
+  Array.from({ length: ROWS }, (_, i) => `Row ${round}.${i + 1}`);
+
+/**
  * What the loader watches and the page shows, shared between them.
  */
 @Injectable()
@@ -123,19 +129,15 @@ export class OverlaysRoute implements OnDestroy {
   protected readonly state = inject(OverlaysState);
   readonly status = signal('ready');
   readonly menus = signal(true);
-  readonly rows = signal(OverlaysRoute.#rowsOf(0));
+  readonly rows = signal(rowsOf(0));
   #timer: ReturnType<typeof setTimeout> | undefined;
-
-  static #rowsOf(round: number): string[] {
-    return Array.from({ length: ROWS }, (_, i) => `Row ${round}.${i + 1}`);
-  }
 
   replace(round = 1): void {
     this.status.set(`replacing ${round}`);
     this.menus.set(false);
     this.state.requested.set(round);
     this.#timer = setTimeout(() => {
-      this.rows.set(OverlaysRoute.#rowsOf(round));
+      this.rows.set(rowsOf(round));
       this.menus.set(true);
       this.state.loading.set(false);
       this.#timer = setTimeout(() => {

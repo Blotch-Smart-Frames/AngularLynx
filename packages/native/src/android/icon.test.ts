@@ -35,21 +35,25 @@ const at = (image: Image, x: number, y: number) => {
  * A size×size PNG: red in its middle half, blue around it, so the tests can
  * tell how an icon was scaled and placed.
  */
+const fixtures = new Map<string, Buffer>();
 const writeIcon = (file: string, size = 1024, alpha = 255) => {
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const middle = Math.min(x, y, size - 1 - x, size - 1 - y) >= size / 4;
-      data.set(
-        middle ? [255, 0, 0, 255] : [0, 0, 255, alpha],
-        (y * size + x) * 4,
-      );
+  // Encoded once per kind: building a 1024 px image pixel by pixel is slow
+  // under coverage, and most tests write the same one.
+  const key = `${size}/${alpha}`;
+  if (!fixtures.has(key)) {
+    const data = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const middle = Math.min(x, y, size - 1 - x, size - 1 - y) >= size / 4;
+        data.set(
+          middle ? [255, 0, 0, 255] : [0, 0, 255, alpha],
+          (y * size + x) * 4,
+        );
+      }
     }
+    fixtures.set(key, encodePng({ width: size, height: size, data }));
   }
-  writeFileSync(
-    path.join(dir, file),
-    encodePng({ width: size, height: size, data }),
-  );
+  writeFileSync(path.join(dir, file), fixtures.get(key)!);
 };
 
 const app = (options = {}) =>
@@ -62,7 +66,9 @@ beforeEach(() => {
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe('writeAndroidIcon', () => {
+// Each test resizes 1024 px images a dozen times or more, which a CI runner
+// measuring coverage can take several seconds over.
+describe('writeAndroidIcon', { timeout: 30_000 }, () => {
   it('keeps the placeholder without an icon', () => {
     writeAndroidIcon(dir, app(), dir);
     expect(existsSync(res('mipmap/ic_launcher.xml'))).toBe(true);

@@ -1,6 +1,7 @@
 import { closeSync, openSync, readSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
-import { PNG } from 'pngjs';
+import type { PNG as PngClass } from 'pngjs';
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -30,6 +31,16 @@ export const readPngSize = (
   return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
 };
 
+/**
+ * pngjs, loaded the first time an icon is resized rather than with this
+ * module. Only Android needs it, and CI builds the iOS app from this
+ * package's tarball unpacked without its dependencies (packages/e2e's
+ * README), which works as long as the iOS path loads nothing but Node's
+ * built-ins.
+ */
+const pngjs = (): typeof PngClass =>
+  (createRequire(import.meta.url)('pngjs') as { PNG: typeof PngClass }).PNG;
+
 /** A decoded image: 8-bit RGBA rows, top to bottom, not premultiplied. */
 export type Image = {
   readonly width: number;
@@ -44,13 +55,13 @@ export type Image = {
  * resized with macOS's `sips` the way an Xcode build could.
  */
 export const decodePng = (bytes: Buffer): Image => {
-  const png = PNG.sync.read(bytes);
+  const png = pngjs().sync.read(bytes);
   return { width: png.width, height: png.height, data: png.data };
 };
 
 export const encodePng = (image: Image): Buffer =>
-  PNG.sync.write(
-    Object.assign(new PNG({ width: image.width, height: image.height }), {
+  pngjs().sync.write(
+    Object.assign(new (pngjs())({ width: image.width, height: image.height }), {
       data: Buffer.from(
         image.data.buffer,
         image.data.byteOffset,
@@ -70,18 +81,10 @@ export const encodePng = (image: Image): Buffer =>
  * pixel (often black) doesn't bleed into the edge of a shape next to it.
  */
 export const resize = (image: Image, width: number, height: number): Image => {
-  const premultiplied = new Float32Array(image.width * image.height * 4);
-  for (let i = 0; i < image.width * image.height; i++) {
-    const alpha = image.data[i * 4 + 3]! / 255;
-    premultiplied[i * 4] = image.data[i * 4]! * alpha;
-    premultiplied[i * 4 + 1] = image.data[i * 4 + 1]! * alpha;
-    premultiplied[i * 4 + 2] = image.data[i * 4 + 2]! * alpha;
-    premultiplied[i * 4 + 3] = alpha;
-  }
-  // Separable: rows first, then columns, which is the same average as
-  // over each output pixel's rectangle, at a fraction of the work.
+  // Separable: rows first, then columns, which is the same average as over
+  // each output pixel's rectangle, at a fraction of the work.
   const rows = resizeAxis(
-    premultiplied,
+    premultiply(image),
     image.width,
     width,
     image.height,
@@ -90,15 +93,38 @@ export const resize = (image: Image, width: number, height: number): Image => {
   const both = resizeAxis(rows, image.height, height, width, false);
 
   const data = new Uint8Array(width * height * 4);
-  for (let i = 0; i < width * height; i++) {
-    const alpha = both[i * 4 + 3]!;
+  for (let i = 0; i < width * height * 4; i += 4) {
+    const alpha = both[i + 3]!;
     const unpremultiply = alpha > 0 ? 1 / alpha : 0;
-    data[i * 4] = toByte(both[i * 4]! * unpremultiply);
-    data[i * 4 + 1] = toByte(both[i * 4 + 1]! * unpremultiply);
-    data[i * 4 + 2] = toByte(both[i * 4 + 2]! * unpremultiply);
-    data[i * 4 + 3] = toByte(alpha * 255);
+    data[i] = toByte(both[i]! * unpremultiply);
+    data[i + 1] = toByte(both[i + 1]! * unpremultiply);
+    data[i + 2] = toByte(both[i + 2]! * unpremultiply);
+    data[i + 3] = toByte(alpha * 255);
   }
   return { width, height, data };
+};
+
+/**
+ * Each image's premultiplied pixels, kept while the image is: the generator
+ * resizes one icon to a dozen sizes.
+ */
+const premultipliedCache = new WeakMap<Image, Float32Array>();
+
+const premultiply = (image: Image): Float32Array => {
+  const cached = premultipliedCache.get(image);
+  if (cached) {
+    return cached;
+  }
+  const pixels = new Float32Array(image.data.length);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const alpha = image.data[i + 3]! / 255;
+    pixels[i] = image.data[i]! * alpha;
+    pixels[i + 1] = image.data[i + 1]! * alpha;
+    pixels[i + 2] = image.data[i + 2]! * alpha;
+    pixels[i + 3] = alpha;
+  }
+  premultipliedCache.set(image, pixels);
+  return pixels;
 };
 
 /**
@@ -115,32 +141,54 @@ const resizeAxis = (
   horizontal: boolean,
 ): Float32Array => {
   const scale = from / to;
-  // Which source pixels each output pixel covers, and by how much.
-  const spans = Array.from({ length: to }, (_, i) => {
+  // Which source pixels each output pixel covers, and by how much: output
+  // pixel i reads `tapCount[i]` source pixels from `tapStart[i]`, with
+  // their weights in `weights` from `tapOffset[i]`. Flat typed arrays keep
+  // the loop below, run for every pixel of every line, free of objects.
+  const tapStart = new Int32Array(to);
+  const tapCount = new Int32Array(to);
+  const tapOffset = new Int32Array(to);
+  const weights: number[] = [];
+  for (let i = 0; i < to; i++) {
     const start = i * scale;
     const end = start + scale;
-    const taps: { index: number; weight: number }[] = [];
-    for (let j = Math.floor(start); j < Math.min(Math.ceil(end), from); j++) {
-      taps.push({
-        index: j,
-        weight: (Math.min(end, j + 1) - Math.max(start, j)) / scale,
-      });
+    const first = Math.floor(start);
+    const last = Math.min(Math.ceil(end), from);
+    tapStart[i] = first;
+    tapCount[i] = last - first;
+    tapOffset[i] = weights.length;
+    for (let j = first; j < last; j++) {
+      weights.push((Math.min(end, j + 1) - Math.max(start, j)) / scale);
     }
-    return taps;
-  });
-  const offset = (line: number, i: number, length: number) =>
-    (horizontal ? line * length + i : i * lines + line) * 4;
+  }
+  const weight = Float32Array.from(weights);
+  // How far apart, in floats, neighboring pixels along the axis are, and
+  // where each line starts, in the input and the output.
+  const step = horizontal ? 4 : lines * 4;
+  const inLine = horizontal ? from * 4 : 4;
+  const outLine = horizontal ? to * 4 : 4;
 
   const out = new Float32Array(to * lines * 4);
   for (let line = 0; line < lines; line++) {
     for (let i = 0; i < to; i++) {
-      const target = offset(line, i, to);
-      for (const { index, weight } of spans[i]!) {
-        const source = offset(line, index, from);
-        for (let channel = 0; channel < 4; channel++) {
-          out[target + channel]! += pixels[source + channel]! * weight;
-        }
+      const target = line * outLine + i * step;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let source = line * inLine + tapStart[i]! * step;
+      for (let k = 0, w = tapOffset[i]!; k < tapCount[i]!; k++, w++) {
+        const factor = weight[w]!;
+        r += pixels[source]! * factor;
+        g += pixels[source + 1]! * factor;
+        b += pixels[source + 2]! * factor;
+        a += pixels[source + 3]! * factor;
+        source += step;
       }
+      out[target] = r;
+      out[target + 1] = g;
+      out[target + 2] = b;
+      out[target + 3] = a;
     }
   }
   return out;

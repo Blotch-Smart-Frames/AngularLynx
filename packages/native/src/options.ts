@@ -38,7 +38,12 @@ export type NativeAppOptions = {
    * `mailto`, `tel` and `sms` are always there.
    */
   readonly canOpenURLSchemes?: readonly string[];
-  /** A 1024×1024 PNG without transparency, relative to the project root. */
+  /**
+   * A 1024×1024 PNG without transparency, relative to the project root. iOS
+   * uses it as it is. Android gets it resized for each screen density, round
+   * for the launchers that want a round icon, and as an adaptive icon (see
+   * {@link AndroidOptions.adaptiveIcon}).
+   */
   readonly icon?: string;
   readonly ios?: IosOptions;
   readonly android?: AndroidOptions;
@@ -81,6 +86,24 @@ export type AndroidOptions = {
     readonly keyAlias?: string;
     readonly keyPasswordEnv?: string;
   };
+  /**
+   * The two layers of the adaptive icon Android 8 and later show. The
+   * launcher masks it to its own shape and moves the layers apart as the
+   * icon is touched. Without it, the adaptive icon is `icon` alone, as the
+   * background layer, scaled so the masked shape shows all of it.
+   */
+  readonly adaptiveIcon?: AdaptiveIcon;
+};
+
+export type AdaptiveIcon = {
+  /**
+   * A 1024×1024 PNG with transparency, relative to the project root. The
+   * launcher's mask crops its edges: keep what matters inside the middle 66
+   * of its 108 dp, about 626 px of the 1024.
+   */
+  readonly foreground?: string;
+  /** A color (`#RRGGBB` or `#RGB`), or a 1024×1024 PNG like `foreground`. */
+  readonly background?: string;
 };
 
 /** {@link NativeAppOptions} with every default applied and every value checked. */
@@ -118,6 +141,12 @@ const APP_ID = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$/;
 /** Up to three period-separated integers, as App Store Connect requires. */
 const VERSION = /^\d+(\.\d+){0,2}$/;
 const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/;
+/**
+ * The colors both CSS and Android resources read the same way. Android also
+ * takes `#ARGB` and `#AARRGGBB`, but CSS reads 4 and 8 digits with the alpha
+ * last, and an adaptive icon's background should be opaque anyway.
+ */
+export const ICON_BACKGROUND_COLOR = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
 /** Google Play's maximum versionCode. */
 const MAX_BUILD_NUMBER = 2_100_000_000;
 /**
@@ -236,6 +265,31 @@ export const resolveAppOptions = (
     );
   }
 
+  const android = options.android ?? {};
+  if (android.adaptiveIcon) {
+    const { foreground, background } = android.adaptiveIcon;
+    if (!foreground || !background) {
+      throw new NativeConfigError(
+        'android.adaptiveIcon needs both a foreground (a PNG) and a background (a color like "#111111", or a PNG).',
+      );
+    }
+    if (
+      !ICON_BACKGROUND_COLOR.test(background) &&
+      !background.toLowerCase().endsWith('.png')
+    ) {
+      throw new NativeConfigError(
+        `android.adaptiveIcon.background "${background}" is neither a color (#RRGGBB or #RGB) nor a PNG file.`,
+      );
+    }
+    // Android 7, and launchers that ignore adaptive icons, still show the
+    // flat icon made from \`icon\`.
+    if (!options.icon) {
+      throw new NativeConfigError(
+        'android.adaptiveIcon needs icon too: Android 7 shows the flat icon made from it.',
+      );
+    }
+  }
+
   const productName = name.replace(/[^A-Za-z0-9]/g, '') || 'App';
   const artifactName =
     name
@@ -257,7 +311,7 @@ export const resolveAppOptions = (
     productName,
     artifactName,
     ios: options.ios ?? {},
-    android: options.android ?? {},
+    android,
   };
 };
 

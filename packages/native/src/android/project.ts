@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { PlatformGenerator } from '../generate.ts';
 import type { Orientation, ResolvedApp } from '../options.ts';
 import { PERMISSION_MAP } from '../permissions.ts';
+import { writeAndroidIcon } from './icon.ts';
 import { escapeXml, replaceMarker } from '../xml.ts';
 
 const MANIFEST = 'app/src/main/AndroidManifest.xml';
@@ -19,10 +20,11 @@ const SCREEN_ORIENTATIONS: Record<Orientation, string> = {
  * Writes the app options into the Android template: identity goes in
  * angular-lynx.properties (which app/build.gradle.kts reads), and permissions,
  * deep links and the apps canOpenURL can see go between the manifest's
- * `angular-lynx:*` markers.
+ * `angular-lynx:*` markers, and the icon options become the launcher icon's
+ * resources.
  */
 export const androidGenerator: PlatformGenerator = {
-  configure: (dir, app) => {
+  configure: (dir, app, projectRoot) => {
     // npm keeps file modes when it packs, but a copy through another tool
     // (or a Windows checkout) may not, and Gradle can't start without it.
     chmodSync(path.join(dir, 'gradlew'), 0o755);
@@ -34,6 +36,8 @@ export const androidGenerator: PlatformGenerator = {
     manifest = replaceMarker(manifest, 'deep-links', deepLinkEntries(app));
     manifest = replaceMarker(manifest, 'queries', queriesEntries(app));
     writeFileSync(manifestPath, manifest);
+
+    writeAndroidIcon(dir, app, projectRoot);
   },
   bundleDir: (dir) => path.join(dir, 'app/src/main/assets'),
 };

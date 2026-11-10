@@ -143,6 +143,17 @@ describe('androidGenerator', () => {
       path.join(dir, 'app/src/main/assets'),
     );
   });
+
+  it("keeps Android's focus highlight off the page", () => {
+    androidGenerator.configure(dir, app(), dir);
+    const activity = readFileSync(
+      path.join(dir, 'app/src/main/java/dev/angularlynx/shell/MainActivity.kt'),
+      'utf8',
+    );
+    // Out of touch mode (after any key press) the focused LynxView would
+    // otherwise be drawn under a 12% black, darkening every color (#362).
+    expect(activity).toContain('lynxView.defaultFocusHighlightEnabled = false');
+  });
 });
 
 describe('findAndroidSdk', () => {

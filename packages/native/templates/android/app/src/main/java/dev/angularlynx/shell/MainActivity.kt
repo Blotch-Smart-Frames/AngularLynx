@@ -138,6 +138,19 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
         }.build(this)
+        // The LynxView is focusable, so it takes focus whenever the window
+        // isn't in touch mode: after any key press, from a hardware keyboard,
+        // a D-pad, the keyboard's Enter, or a key sent with adb.
+        // Android 14 keeps touch mode for the whole display, so an app opened
+        // afterwards starts out of it too. Android 8 and later then draw
+        // their default focus highlight over the focused view, here the whole
+        // page: a 12% black (`#1F000000`, a 12% white in dark mode), which
+        // made every color about 12% darker (issue #362). The page is the
+        // document, not a control, and a browser doesn't outline the document
+        // either; the elements in it draw their own focus.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            lynxView.defaultFocusHighlightEnabled = false
+        }
         lynxView.addLynxViewClient(object : LynxViewClient() {
             override fun onReceivedError(error: LynxError?) {
                 Log.e(TAG, "Lynx error: ${error?.msg}")

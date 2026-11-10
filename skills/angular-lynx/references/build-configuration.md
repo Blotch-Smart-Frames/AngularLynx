@@ -172,10 +172,13 @@ ng test
 ng build --platform ios       # or android, or all
 ng build --platform ios --run # then install on a simulator/emulator and open it
                               # (--device "iPhone 18 Pro", --device <AVD or adb serial>)
+ng build --platform ios --run --device "Jane's iPhone"   # a paired real iPhone
 
 # From the monorepo root
 npm run demo              # Runs ng serve for the kitchen-sink-app
 ```
+
+On a real iPhone, `--run` needs `"ios": { "teamId": "ABCDE12345" }` in the build options (without it, the error lists the teams this Mac can sign for), an Apple ID signed in to Xcode (a free one's Personal Team works; its apps stop opening after 7 days), Developer Mode on, and the phone unlocked while it builds. It builds only `dist/ios/MyApp-device.app`, signed for development. Without `--device`, `--run` always uses a simulator. `"ios": { "teamId": ..., "export": "release-testing" }` builds an ad hoc `.ipa` for the team's registered iPhones; `app-store-connect` is the default once `ios.signing` (an API key) is set.
 
 ## Dev Workflow
 

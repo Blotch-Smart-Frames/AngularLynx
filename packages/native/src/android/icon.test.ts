@@ -67,8 +67,10 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 // Each test resizes 1024 px images a dozen times or more, which a CI runner
-// measuring coverage can take several seconds over.
-describe('writeAndroidIcon', { timeout: 30_000 }, () => {
+// measuring coverage can take several seconds over: up to 3 s usually, but a
+// slow runner took 16 s. The work is fixed, so the timeout only has to catch a
+// hang, and is set well clear of a slow run.
+describe('writeAndroidIcon', { timeout: 120_000 }, () => {
   it('keeps the placeholder without an icon', () => {
     writeAndroidIcon(dir, app(), dir);
     expect(existsSync(res('mipmap/ic_launcher.xml'))).toBe(true);

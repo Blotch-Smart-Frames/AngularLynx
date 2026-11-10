@@ -14,7 +14,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildAndroid } from './android/build.ts';
-import { buildIos } from './ios/build.ts';
+import { buildIos, missingTeamMessage, signingTeams } from './ios/build.ts';
 import { resolveAppOptions } from './options.ts';
 
 /**
@@ -33,6 +33,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.env['PATH'] = originalPath;
+  delete process.env['XCODEBUILD_FAILS'];
+  delete process.env['XCODEBUILD_FAILS_ON'];
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -65,17 +67,19 @@ describe('buildIos', () => {
     script(
       path.join(bin, 'xcodebuild'),
       `echo "$@" >> "${calls}"
-dd=""; archive=""; export_path=""; prev=""
+[ -n "$XCODEBUILD_FAILS" ] && [ "\${XCODEBUILD_FAILS_ON:-$1}" = "$1" ] && { echo "$XCODEBUILD_FAILS" >&2; exit 65; }
+dd=""; archive=""; export_path=""; sdk=""; prev=""
 for arg in "$@"; do
   case "$prev" in
     -derivedDataPath) dd="$arg" ;;
+    -sdk) sdk="$arg" ;;
     -archivePath) archive="$arg" ;;
     -exportPath) export_path="$arg" ;;
   esac
   prev="$arg"
 done
 case "$1" in
-  build) mkdir -p "$dd/Build/Products/Release-iphonesimulator/MyApp.app" && echo app > "$dd/Build/Products/Release-iphonesimulator/MyApp.app/MyApp" ;;
+  build) mkdir -p "$dd/Build/Products/Release-$sdk/MyApp.app" && echo "$sdk" > "$dd/Build/Products/Release-$sdk/MyApp.app/MyApp" ;;
   archive) mkdir -p "$archive" ;;
   -exportArchive) mkdir -p "$export_path" && echo ipa > "$export_path/MyApp.ipa" ;;
 esac`,
@@ -110,7 +114,7 @@ esac`,
         path.join(dir, 'dist/ios/MyApp-simulator.app/MyApp'),
         'utf8',
       ),
-    ).toBe('app\n');
+    ).toBe('iphonesimulator\n');
     const link = path.join(options.project.dir, 'Frameworks');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readlinkSync(link)).toBe(options.frameworksDir);
@@ -118,7 +122,7 @@ esac`,
       `build -project App.xcodeproj -scheme App -configuration Release -sdk iphonesimulator -destination generic/platform=iOS Simulator -derivedDataPath ${options.buildDir}`,
     );
     expect(messages).toContain(
-      'Skipping the App Store .ipa: set ios.teamId and ios.signing in angular.json to build one.',
+      'Skipping the .ipa: set ios.teamId and ios.signing in angular.json to build one.',
     );
   });
 
@@ -133,15 +137,16 @@ esac`,
 
   it('archives and exports a signed .ipa with the API key', async () => {
     const options = setup();
+    const messages: string[] = [];
     const artifacts = await buildIos({
       ...options,
       app: app(),
       signing: {
         teamId: 'TEAM',
-        keyPath: '/k.p8',
-        keyId: 'KID',
-        issuerId: 'ISS',
+        apiKey: { keyPath: '/k.p8', keyId: 'KID', issuerId: 'ISS' },
+        export: 'app-store-connect',
       },
+      log: (message) => messages.push(message),
     });
     expect(artifacts).toEqual([
       path.join(dir, 'dist/ios/MyApp-simulator.app'),
@@ -155,9 +160,240 @@ esac`,
     expect(log).toMatch(
       /-exportArchive .*-exportOptionsPlist .*ExportOptions\.plist/,
     );
+    const plist = readFileSync(
+      path.join(options.buildDir, 'ExportOptions.plist'),
+      'utf8',
+    );
+    expect(plist).toContain('<string>TEAM</string>');
+    expect(plist).toContain('<string>app-store-connect</string>');
+    expect(messages).toContain('Archiving the iOS app for the App Store');
+  });
+
+  it('exports an ad hoc .ipa with the Apple ID signed in to Xcode', async () => {
+    const options = setup();
+    const messages: string[] = [];
+    const artifacts = await buildIos({
+      ...options,
+      app: app(),
+      signing: { teamId: 'TEAM', export: 'release-testing' },
+      log: (message) => messages.push(message),
+    });
+    expect(artifacts.at(-1)).toBe(path.join(dir, 'dist/ios/MyApp.ipa'));
+    const log = readFileSync(calls, 'utf8');
+    expect(log).toContain('-allowProvisioningUpdates DEVELOPMENT_TEAM=TEAM');
+    expect(log).not.toContain('-authenticationKeyPath');
     expect(
       readFileSync(path.join(options.buildDir, 'ExportOptions.plist'), 'utf8'),
-    ).toContain('<string>TEAM</string>');
+    ).toContain('<string>release-testing</string>');
+    expect(messages).toContain(
+      "Archiving the iOS app for the team's registered iPhones",
+    );
+  });
+
+  it('builds no .ipa for a team alone, and says what would build one', async () => {
+    const options = setup();
+    const messages: string[] = [];
+    const artifacts = await buildIos({
+      ...options,
+      app: app(),
+      signing: { teamId: 'TEAM' },
+      log: (message) => messages.push(message),
+    });
+    expect(artifacts).toEqual([path.join(dir, 'dist/ios/MyApp-simulator.app')]);
+    expect(messages).toContain(
+      'Skipping the .ipa: set ios.signing (an App Store Connect API key) or ios.export in angular.json to build one.',
+    );
+  });
+
+  describe('for an iPhone', () => {
+    const device = { udid: '00008120-0001', name: 'Dolan’s iPhone' };
+
+    it('builds only a development-signed app for the device, registering it with the team', async () => {
+      const options = setup();
+      const messages: string[] = [];
+      const artifacts = await buildIos({
+        ...options,
+        app: app(),
+        signing: { teamId: 'TEAM', export: 'app-store-connect' },
+        device,
+        log: (message) => messages.push(message),
+      });
+      expect(artifacts).toEqual([path.join(dir, 'dist/ios/MyApp-device.app')]);
+      expect(readFileSync(path.join(artifacts[0]!, 'MyApp'), 'utf8')).toBe(
+        'iphoneos\n',
+      );
+      expect(readFileSync(calls, 'utf8')).toBe(
+        `build -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination id=00008120-0001 -derivedDataPath ${options.buildDir} -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=TEAM\n`,
+      );
+      expect(messages).toEqual(['Building the iOS app for Dolan’s iPhone']);
+    });
+
+    it('signs with the API key when there is one', async () => {
+      const options = setup();
+      await buildIos({
+        ...options,
+        app: app(),
+        signing: {
+          teamId: 'TEAM',
+          apiKey: { keyPath: '/k.p8', keyId: 'KID', issuerId: 'ISS' },
+        },
+        device,
+      });
+      expect(readFileSync(calls, 'utf8')).toContain(
+        '-allowProvisioningUpdates -authenticationKeyPath /k.p8 -authenticationKeyID KID -authenticationKeyIssuerID ISS -allowProvisioningDeviceRegistration',
+      );
+    });
+
+    it('needs a team', async () => {
+      const options = setup();
+      await expect(
+        buildIos({ ...options, app: app(), signing: undefined, device }),
+      ).rejects.toThrow(
+        /^Running the app on Dolan’s iPhone needs ios\.teamId in angular\.json/,
+      );
+    });
+
+    it("explains xcodebuild's errors about the phone and signing", async () => {
+      const options = setup();
+      const build = () =>
+        buildIos({
+          ...options,
+          app: app(),
+          signing: { teamId: 'TEAM' },
+          device,
+        });
+      process.env['XCODEBUILD_FAILS'] =
+        'error: No Account for Team "TEAM". Add a new account in Accounts settings.';
+      await expect(build()).rejects.toThrow(
+        /^Xcode has no signed-in account for team TEAM\. Sign in to Xcode[\s\S]*No Account for Team/,
+      );
+      process.env['XCODEBUILD_FAILS'] =
+        "error: No profiles for 'com.example.myapp' were found";
+      await expect(build()).rejects.toThrow(
+        /^Xcode couldn't make a provisioning profile for team TEAM/,
+      );
+      process.env['XCODEBUILD_FAILS'] =
+        'xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available\n{ platform:iOS, name:Dolan’s iPhone, error:Dolan’s iPhone needs to be unlocked to enable development services Please unlock the device. }';
+      await expect(build()).rejects.toThrow(
+        /^Dolan’s iPhone is locked\. Unlock it, keep it unlocked until the app opens, and build again\./,
+      );
+      process.env['XCODEBUILD_FAILS'] =
+        'xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available';
+      await expect(build()).rejects.toThrow(
+        /^xcodebuild couldn't reach Dolan’s iPhone\./,
+      );
+      process.env['XCODEBUILD_FAILS'] = 'error: Something else';
+      await expect(build()).rejects.toThrow(
+        /^xcodebuild build failed \(exit code 65\)/,
+      );
+    });
+  });
+
+  it('explains a signing error while archiving', async () => {
+    const options = setup();
+    process.env['XCODEBUILD_FAILS'] = 'error: No Accounts';
+    process.env['XCODEBUILD_FAILS_ON'] = 'archive';
+    await expect(
+      buildIos({
+        ...options,
+        app: app(),
+        signing: { teamId: 'TEAM', export: 'release-testing' },
+      }),
+    ).rejects.toThrow(/^Xcode has no signed-in account for team TEAM/);
+  });
+});
+
+/**
+ * A self-signed certificate with the subject of an Apple Development one:
+ * `OU=ABCDE12345, O=Jane Doe`.
+ */
+const DEVELOPMENT_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIICHzCCAcagAwIBAgIUMh7cHzXtkcMIbJpd/aGoeSIujn0wCgYIKoZIzj0EAwIw
+djETMBEGCgmSJomT8ixkAQEMA0FCQzEqMCgGA1UEAwwhQXBwbGUgRGV2ZWxvcG1l
+bnQ6IEphbmUgRG9lIChYWVopMRMwEQYDVQQLDApBQkNERTEyMzQ1MREwDwYDVQQK
+DAhKYW5lIERvZTELMAkGA1UEBhMCVVMwHhcNMjYxMTEwMDEzOTE1WhcNMzYxMTA3
+MDEzOTE1WjB2MRMwEQYKCZImiZPyLGQBAQwDQUJDMSowKAYDVQQDDCFBcHBsZSBE
+ZXZlbG9wbWVudDogSmFuZSBEb2UgKFhZWikxEzARBgNVBAsMCkFCQ0RFMTIzNDUx
+ETAPBgNVBAoMCEphbmUgRG9lMQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABAgg2nRvxow1WwwCoCmBSCoj/3z0RlRSsBCVNEb7QwIWkNxi6L0a
+MTfyTdDICGcn25cu5gd1Ej/RAzKhB81HI6mjMjAwMB0GA1UdDgQWBBR7vsgevmqw
+g8iSxCQfuohv3Htn8jAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0cAMEQC
+IBHBCxXGxuGndDaboI/F5MMuySWm3o3C9i63J8tYRL76AiA9uPHzgBe1EMvhCTqN
+pNVEHI9o5e0Twpd94DbgJrEong==
+-----END CERTIFICATE-----`;
+
+describe('signingTeams', () => {
+  const fakeTools = ({
+    preferences,
+    certificates,
+  }: {
+    preferences?: Record<string, unknown>;
+    certificates?: string;
+  }) => {
+    const bin = path.join(dir, 'bin');
+    // plutil prints the key it's asked for from preferences.json as JSON,
+    // or fails as it does for a missing key.
+    writeFileSync(
+      path.join(dir, 'preferences.json'),
+      JSON.stringify(preferences ?? {}),
+    );
+    script(
+      path.join(bin, 'plutil'),
+      `node -e 'const value = require(process.argv[1])[process.argv[2]]; if (value === undefined) process.exit(1); console.log(JSON.stringify(value))' "${dir}/preferences.json" "$2"`,
+    );
+    writeFileSync(path.join(dir, 'certificates.pem'), certificates ?? '');
+    script(path.join(bin, 'security'), `cat "${dir}/certificates.pem"`);
+    process.env['PATH'] = `${bin}:${originalPath}`;
+  };
+
+  it("lists the teams of Xcode's accounts, then of the keychain's development certificates", async () => {
+    fakeTools({
+      preferences: {
+        IDEProvisioningTeamByIdentifier: {
+          'account-1': [
+            {
+              teamID: 'PERSONAL01',
+              teamName: 'Jane Doe',
+              isFreeProvisioningTeam: true,
+            },
+            { teamID: 'ABCDE12345', teamName: 'Acme Inc' },
+            { teamName: 'No ID' },
+          ],
+        },
+        IDEProvisioningTeams: {
+          'jane@example.com': [{ teamID: '1234567890' }],
+        },
+      },
+      certificates: `${DEVELOPMENT_CERTIFICATE}\n-----BEGIN CERTIFICATE-----\nbroken\n-----END CERTIFICATE-----\n${DEVELOPMENT_CERTIFICATE.replace('ABCDE12345', 'x')}`,
+    });
+    expect(
+      await signingTeams({ preferences: path.join(dir, 'Xcode.plist') }),
+    ).toEqual([
+      { id: 'PERSONAL01', name: 'Jane Doe, Personal Team' },
+      { id: 'ABCDE12345', name: 'Acme Inc' },
+      { id: '1234567890', name: '1234567890' },
+    ]);
+  });
+
+  it('reads a certificate team when Xcode has no account', async () => {
+    fakeTools({
+      preferences: { IDEProvisioningTeams: 'not a dictionary of arrays' },
+      certificates: DEVELOPMENT_CERTIFICATE,
+    });
+    expect(await signingTeams()).toEqual([
+      { id: 'ABCDE12345', name: 'Jane Doe' },
+    ]);
+    expect(await missingTeamMessage('Phone')).toContain(
+      'Set it to one of your teams: ABCDE12345 (Jane Doe).',
+    );
+  });
+
+  it('says to sign in to Xcode when there is no team at all', async () => {
+    fakeTools({});
+    expect(await signingTeams()).toEqual([]);
+    expect(await missingTeamMessage('Phone')).toBe(
+      "Running the app on Phone needs ios.teamId in angular.json: iOS only runs apps signed by an Apple Developer team. Sign in to Xcode with your Apple ID (Xcode → Settings → Accounts) and build again, and this message lists your teams. A free Apple ID's Personal Team works, but its apps stop opening after 7 days; the paid Apple Developer Program's team keeps them working for a year.",
+    );
   });
 });
 

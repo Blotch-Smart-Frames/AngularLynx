@@ -6770,3 +6770,19 @@ A scroll container whose content grows above what's on screen keeps what's on sc
 - Until the new items are in the page, which takes a frame or two after Angular renders them, `scrollToPosition` does nothing (it looks the item up among the element's children), and no event says when they arrive: `bindlayoutcomplete` isn't sent. The chat example retries each frame for a few frames.
 - `attachedCells` in `bindscroll` (with `need-visible-item-info`) lists every item the list has rendered, not only those on screen, with `top` relative to the list's visible top: it can't tell you the topmost visible item without filtering.
 - There's no `scrollBy` UI method on the web preview's list.
+
+---
+
+## After a key press, Android draws a 12% black over the whole page
+
+Found while chasing issue #362 (every color about 12% darker on the Android 14 emulator), 2026-11-10.
+
+### What you'd expect (web)
+
+A browser never outlines the document itself. Pressing a key, Tab or Enter, shows a focus ring only around the focused element, and only where `:focus-visible` matches.
+
+### What Lynx does
+
+The `LynxView` is a focusable Android view, and it takes focus whenever the window isn't in touch mode. Any key press leaves touch mode: a hardware keyboard, a D-pad, the soft keyboard's Enter, `adb shell input keyevent`, Maestro's `pressKey`. On Android 14 touch mode belongs to the whole display, so an app opened afterwards starts out of it too, and the next tap brings it back. Android 8 and later then draw a default focus highlight over a focused view whose background doesn't style focus: `selectableItemBackground`'s focused color, `#1F000000` (12% black) in a light theme and a 12% white in a dark one. Over a full-screen `LynxView`, every color was multiplied by 0.878, so white came out as 224. Black stayed black, and nothing showed in `dumpsys SurfaceFlinger`, since the highlight is drawn in the app's own buffer. `dumpsys activity <package>` shows the `LynxView` focused (`.F......`) and `dumpsys window` shows `mInTouchMode=false`. Chrome and Settings, opened the same way, weren't darkened.
+
+The generated Android shell turns the highlight off on its `LynxView` (`defaultFocusHighlightEnabled = false`). The elements in the page draw their own focus. Layer 6's Android shell run checks it: after the flows, it opens the app again, presses Enter, and reads the counter's `#e0e0e0` buttons from a screenshot. Lynx Explorer wasn't checked for the same highlight.

@@ -190,6 +190,18 @@ describe('resolveAppOptions', () => {
     );
   });
 
+  it('accepts the two .ipa export methods and rejects any other', () => {
+    expect(
+      resolveAppOptions({ ios: { export: 'release-testing' } }, defaults).ios
+        .export,
+    ).toBe('release-testing');
+    expect(() =>
+      resolveAppOptions({ ios: { export: 'ad-hoc' } } as never, defaults),
+    ).toThrow(
+      'ios.export "ad-hoc" is not valid. Use app-store-connect or release-testing.',
+    );
+  });
+
   it('ignores the undefined keys Angular CLI fills in for nested options', () => {
     const app = resolveAppOptions(
       {

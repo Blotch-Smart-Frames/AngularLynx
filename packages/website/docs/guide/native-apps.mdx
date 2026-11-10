@@ -185,11 +185,34 @@ The app's name, ID and version are options of the `build` target in `angular.jso
 | `appId`             | The iOS bundle ID and Android application ID. Two or more dot-separated parts of letters and digits, each starting with a letter                                                                                                                   |
 | `version`           | The version users see, up to three numbers (`1.2.0`). Defaults to `package.json`'s version, or `1.0.0` while that's still `ng new`'s `0.0.0`                                                                                                       |
 | `buildNumber`       | A whole number that must increase with every store upload. Defaults to `1`                                                                                                                                                                         |
-| `icon`              | A 1024×1024 PNG without transparency. iOS only for now: Android apps get a placeholder icon                                                                                                                                                        |
+| `icon`              | A 1024×1024 PNG without transparency. Both apps' icon is made from it: see [The app icon](#the-app-icon)                                                                                                                                           |
 | `orientation`       | `portrait` (default), `landscape` or `all`                                                                                                                                                                                                         |
 | `permissions`       | Any of `camera`, `microphone`, `location`, `photos`, `savePhotos`, `contacts` and `notifications`, each with the reason iOS shows when it asks. Android shows its own message. `savePhotos` is for the share sheet's Save Image, and has a default |
 | `deepLinkSchemes`   | URL schemes that open the app, e.g. `myapp` for `myapp://` links. On Android, include the callback scheme of a [web sign-in](/guide/web-sign-in)                                                                                                   |
 | `canOpenURLSchemes` | Other apps' URL schemes your app asks [`canOpenURL()`](/guide/open-links#check-before-you-link) about, e.g. `whatsapp`. iOS and Android 11+ say no for any scheme the app doesn't declare                                                          |
+
+### The app icon
+
+`icon` is one 1024×1024 PNG without transparency. iOS uses it as it is. For Android, the build makes the sizes each screen density needs, a round copy for the launchers that show round icons, and an [adaptive icon](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive) for Android 8 and later. The launcher masks an adaptive icon to its own shape (a circle, a squircle...), so by default the build scales your icon to fit inside the mask: like on iOS, only its corners are cut off.
+
+Adaptive icons have two layers that the launcher moves apart as the icon is touched. To use them, give the layers in `android.adaptiveIcon`:
+
+```json title="angular.json"
+"options": {
+  "icon": "src/assets/icon.png",
+  "android": {
+    "adaptiveIcon": {
+      "foreground": "src/assets/icon-foreground.png",
+      "background": "#111111"
+    }
+  }
+}
+```
+
+- `foreground` is a 1024×1024 PNG with transparency. The mask crops its edges: keep what matters inside the middle 66 of its 108 dp, about 626 px of the 1024.
+- `background` is a color (`#RRGGBB` or `#RGB`) or a 1024×1024 PNG.
+
+Android 7 still shows the flat icon made from `icon`, so set both. The 512×512 icon of your Google Play listing is uploaded in the Play Console, not built.
 
 ### Per-environment values
 

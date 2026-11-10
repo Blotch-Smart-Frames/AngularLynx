@@ -139,7 +139,7 @@ In CI, store the key files and passwords as the CI service's secrets, and expose
 - **App ID:** you've replaced `ng add`'s `com.example.*` placeholder. The stores don't let you change it later.
 - **Build number:** it's higher than in your last upload.
 - **The built app works:** install `MyApp-simulator.app` or `my-app.apk` and try it. That's what your users get, not Lynx Explorer.
-- **Icon:** iOS uses your `icon`. The Android app still gets a placeholder icon for now.
+- **Icon:** both apps use your [`icon`](/guide/native-apps#the-app-icon). Check the Android one on a phone or emulator: its launcher masks it to its own shape. Google Play's listing also wants a 512×512 icon, which you upload in the Play Console.
 - **No debug aids:** remove on-screen debugging, such as an [error display](/guide/debugging#show-errors-on-screen).
 - **Crash reports:** [`LynxLogger`](/guide/debugging#stream-logs-to-your-computer) only works with your dev server, so it's silent in shipped apps. AngularLynx can't upload error reports yet either (see [Add your own handling](/guide/error-handling#add-your-own-handling)), so plan how you'll hear about your users' errors.
 - **Bundle size:** [budgets](/guide/building-for-production#budgets) fail the build when the bundle grows past a limit.

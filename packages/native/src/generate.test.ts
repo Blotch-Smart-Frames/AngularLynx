@@ -19,6 +19,7 @@ import {
 } from './generate.ts';
 import { iosGenerator } from './ios/project.ts';
 import { resolveAppOptions } from './options.ts';
+import { decodePng, encodePng } from './png.ts';
 
 let root: string;
 let dist: string;
@@ -100,6 +101,68 @@ describe('prepareProject', () => {
       'CURRENT_PROJECT_VERSION = 2',
     );
   });
+
+  // Generating the Android icons resizes 1024 px images, which a CI runner
+  // measuring coverage can take several seconds over.
+  it(
+    "regenerates the Android icon when an icon image's content changes",
+    { timeout: 30_000 },
+    () => {
+      const solid = (file: string, color: readonly number[], alpha = 255) =>
+        writeFileSync(
+          path.join(root, file),
+          encodePng({
+            width: 1024,
+            height: 1024,
+            // One pixel repeated: fill() is fast where a per-byte callback
+            // is slow under coverage.
+            data: new Uint8Array(
+              new Uint32Array(1024 * 1024).fill(
+                new Uint32Array(
+                  Uint8Array.from([...color.slice(0, 3), alpha]).buffer,
+                )[0]!,
+              ).buffer,
+            ),
+          }),
+        );
+      const options = {
+        icon: 'icon.png',
+        android: {
+          adaptiveIcon: { foreground: 'fg.png', background: '#123456' },
+        },
+      };
+      solid('icon.png', [255, 0, 0]);
+      solid('fg.png', [0, 255, 0]);
+      const legacy = path.join(
+        workDir,
+        'android/app/src/main/res/mipmap-mdpi/ic_launcher.png',
+      );
+      const foreground = path.join(
+        workDir,
+        'android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png',
+      );
+      const pixel = (file: string) => [
+        ...decodePng(readFileSync(file)).data.subarray(0, 4),
+      ];
+
+      expect(prepare('android', options).regenerated).toBe(true);
+      expect(pixel(legacy)).toEqual([255, 0, 0, 255]);
+      expect(prepare('android', options).regenerated).toBe(false);
+
+      // Same file names, new pictures.
+      solid('icon.png', [0, 0, 255]);
+      expect(prepare('android', options).regenerated).toBe(true);
+      expect(pixel(legacy)).toEqual([0, 0, 255, 255]);
+      solid('fg.png', [0, 0, 0], 0);
+      expect(prepare('android', options).regenerated).toBe(true);
+      expect(pixel(foreground)).toEqual([0, 0, 0, 0]);
+
+      // The Android layers aren't iOS inputs.
+      expect(prepare('ios', options).regenerated).toBe(true);
+      solid('fg.png', [0, 255, 0]);
+      expect(prepare('ios', options).regenerated).toBe(false);
+    },
+  );
 
   it('copies a fresh bundle into a reused project', () => {
     prepare('ios');

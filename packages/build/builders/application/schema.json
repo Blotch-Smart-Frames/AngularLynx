@@ -175,7 +175,7 @@
     },
     "icon": {
       "type": "string",
-      "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root."
+      "description": "The app icon: a 1024×1024 PNG without transparency, relative to the project root. iOS uses it as it is; Android gets it at each screen density, round, and as an adaptive icon."
     },
     "permissions": {
       "type": "object",
@@ -271,6 +271,21 @@
             },
             "keyPasswordEnv": {
               "type": "string"
+            }
+          }
+        },
+        "adaptiveIcon": {
+          "type": "object",
+          "description": "The two layers of the adaptive icon Android 8 and later show. Without it, the adaptive icon is `icon`, scaled so the launcher's mask shows all of it.",
+          "additionalProperties": false,
+          "properties": {
+            "foreground": {
+              "type": "string",
+              "description": "A 1024×1024 PNG with transparency, relative to the project root. Keep its content inside the middle 66 of its 108 dp (about 626 px of the 1024): the mask crops the rest."
+            },
+            "background": {
+              "type": "string",
+              "description": "A hex color of 6 or 3 digits (e.g. #111111), or a 1024×1024 PNG relative to the project root."
             }
           }
         }

@@ -11,7 +11,7 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ResolvedApp } from './options.ts';
+import { ICON_BACKGROUND_COLOR, type ResolvedApp } from './options.ts';
 
 export type Platform = 'ios' | 'android';
 
@@ -55,7 +55,7 @@ export type PreparedProject = {
  * `<workDir>/<platform>`, or the user's ejected folder.
  *
  * Generation is skipped when a hash of every input (this package's version,
- * the template files, the app options and the icon) matches the last run, so
+ * the template files, the app options and the icon images) matches the last run, so
  * Xcode and Gradle keep their incremental state between builds. The bundle is
  * copied in on every build, because it changes on every build.
  */
@@ -173,9 +173,16 @@ const inputHash = ({
     hash.update(file.relative);
     hash.update(readFileSync(file.absolute));
   }
-  if (app.icon) {
-    const icon = path.resolve(projectRoot, app.icon);
-    hash.update(existsSync(icon) ? readFileSync(icon) : 'missing icon');
+  // The images, not just their paths (which the options above hold), so
+  // replacing one with a new image of the same name regenerates the icons.
+  // A missing file is hashed as such: generation then fails and says so.
+  const { foreground, background } =
+    (platform === 'android' && app.android.adaptiveIcon) || {};
+  for (const file of [app.icon, foreground, background]) {
+    if (file && !ICON_BACKGROUND_COLOR.test(file)) {
+      const absolute = path.resolve(projectRoot, file);
+      hash.update(existsSync(absolute) ? readFileSync(absolute) : 'missing');
+    }
   }
   return hash.digest('hex');
 };

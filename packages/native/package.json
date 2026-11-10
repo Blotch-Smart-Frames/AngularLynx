@@ -43,9 +43,13 @@
     "build:angle-ios-frameworks": "scripts/build-angle-ios-frameworks.sh",
     "publish:local": "yalc publish --push"
   },
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  },
   "devDependencies": {
     "@bacons/xcode": "1.0.0-alpha.33",
     "@types/node": "^22.0.0",
+    "@types/pngjs": "^6.0.5",
     "typescript": "~6.0.0"
   },
   "engines": {

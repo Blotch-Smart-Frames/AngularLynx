@@ -111,7 +111,8 @@ The options are flat rather than nested under `app`: Angular merges a configurat
       "signing": { "keyIdEnv": "ASC_KEY_ID", "issuerIdEnv": "ASC_ISSUER_ID", "keyPathEnv": "ASC_KEY_PATH" }
     },
     "android": {
-      "signing": { "storeFileEnv": "UPLOAD_KEYSTORE", "storePasswordEnv": "UPLOAD_STORE_PASSWORD", "keyAlias": "upload", "keyPasswordEnv": "UPLOAD_KEY_PASSWORD" }
+      "signing": { "storeFileEnv": "UPLOAD_KEYSTORE", "storePasswordEnv": "UPLOAD_STORE_PASSWORD", "keyAlias": "upload", "keyPasswordEnv": "UPLOAD_KEY_PASSWORD" },
+      "adaptiveIcon": { "foreground": "src/assets/icon-foreground.png", "background": "#111111" }  // optional
     }
   },
   "configurations": {
@@ -257,7 +258,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
   - rspeedy's JS API (`loadConfig`, `createRspeedy`, `build`, `startDevServer`, all `@public` in its API report) is enough; `ng serve` keeps the QR code output and live reload.
   - Headless iOS signing is implemented (archive, then `-exportArchive` with the API key flags) but **not yet verified**: it needs an Apple Developer account. An unsigned device archive builds.
 - **Phase 1, done.** A fresh `npm create angular-lynx` app from the local registry passes the Maestro flows on both platforms through `ng build --platform`. Layers 1–3 pass with the builders in place.
-- **Phase 2, partly.** Permissions, deep links, orientation, version and build numbers, and the iOS icon are generated. Android release signing works with a real keystore. Not done: the Android icon and splash (placeholders now), uploading to TestFlight and Play.
+- **Phase 2, partly.** Permissions, deep links, orientation, version and build numbers, and the iOS and Android icons are generated (Android's: legacy `mipmap-*` PNGs, round copies and an adaptive icon, resized in JavaScript with pngjs so Linux and Windows builds make them too). Android release signing works with a real keystore. Not done: the Android splash (a placeholder now), uploading to TestFlight and Play.
 - **Phase 3, done.** An ejected project builds with the same command, and a native edit in `ios/` appears in the app.
 - **Phases 4–5, not started.**
 
@@ -300,7 +301,7 @@ As of 2026-10-15. Verified on Xcode 27 with the iOS 27 Simulator, and on an API 
 1. ~~Publish the iOS frameworks zip.~~ Done: the [`lynx-ios-4.1.0` release](https://github.com/Blotch-Smart-Frames/AngularLynx/releases/tag/lynx-ios-4.1.0), pinned in `packages/native/src/ios/frameworks.ts`. Built locally with Xcode 27 by the same script the workflow runs (the workflow can only be dispatched once it is on `master`). A clean machine downloads and verifies it on its first iOS build.
 2. ~~Move CI's Layer 6 to the shells.~~ Done ([#36](https://github.com/Blotch-Smart-Frames/AngularLynx/issues/36)): CI runs the Maestro flows in the app's own build and in Explorer, on both platforms. The Linux `build-app` job builds the APK (Gradle cached) and hands it to the emulator job. The iOS job runs on GitHub's `xcode-27` image and scaffolds the app itself, because the shell builds only on macOS and the Linux job's `node_modules` holds Linux binaries; it caches the pinned frameworks zip. Explorer stays for the `ng serve` path.
 3. **Verify headless iOS signing** with an App Store Connect API key, and upload to TestFlight and a Play internal track.
-4. ~~Router-driven Android back navigation in the runtime~~ (done, #59); Android icon and splash generation; a `doctor` target.
+4. ~~Router-driven Android back navigation in the runtime~~ (done, #59); ~~Android icon generation~~ (done, #365); Android splash generation; a `doctor` target.
 5. Phase 4 (debug shells loading from the dev server, with Lynx DevTool).
 6. **Before the next release tag:** `@blotch/angular-lynx-native` and `@blotch/angular-lynx-build` have never been published, and `publish.yml` uses npm trusted publishing, which is configured per package on npmjs.com and needs the package to exist. Publish each once by hand (`npm run build`, then `npm publish --access public` from `packages/native`, then from `packages/build`), then add this repository and `publish.yml` as their trusted publisher. Otherwise the release stops at the first of them, after the build plugin is published and before the runtime is.
 

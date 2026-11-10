@@ -144,6 +144,52 @@ describe('resolveAppOptions', () => {
     ).toEqual(['my-app+x.y']);
   });
 
+  it('accepts an adaptive icon with a color or a PNG background', () => {
+    for (const background of ['#111111', '#fff', 'bg.PNG']) {
+      expect(
+        resolveAppOptions(
+          {
+            icon: 'icon.png',
+            android: { adaptiveIcon: { foreground: 'fg.png', background } },
+          },
+          defaults,
+        ).android.adaptiveIcon,
+      ).toEqual({ foreground: 'fg.png', background });
+    }
+  });
+
+  it.each([
+    [{ foreground: 'fg.png' }, /needs both a foreground/],
+    [{ background: '#111111' }, /needs both a foreground/],
+    [{ foreground: 'fg.png', background: '#1111' }, /neither a color/],
+    [{ foreground: 'fg.png', background: 'navy' }, /neither a color/],
+    [{ foreground: 'fg.png', background: 'bg.jpg' }, /neither a color/],
+  ])('rejects the adaptive icon %j', (adaptiveIcon, message) => {
+    expect(() =>
+      resolveAppOptions(
+        { icon: 'icon.png', android: { adaptiveIcon } },
+        defaults,
+      ),
+    ).toThrow(message);
+  });
+
+  it('needs icon for the flat icon when the adaptive icon is set', () => {
+    expect(() =>
+      resolveAppOptions(
+        {
+          android: {
+            adaptiveIcon: { foreground: 'fg.png', background: '#111111' },
+          },
+        },
+        defaults,
+      ),
+    ).toThrow(
+      new NativeConfigError(
+        'android.adaptiveIcon needs icon too: Android 7 shows the flat icon made from it.',
+      ),
+    );
+  });
+
   it('accepts the two .ipa export methods and rejects any other', () => {
     expect(
       resolveAppOptions({ ios: { export: 'release-testing' } }, defaults).ios

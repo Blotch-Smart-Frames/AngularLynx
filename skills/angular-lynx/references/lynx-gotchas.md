@@ -342,6 +342,10 @@ If both are registered, `longpress` takes priority — `tap` won't fire on long 
 
 While an `<overlay>` is shown, nothing else on screen gets touches: right for a modal, wrong for a popover or a toast. Float those in a `position: fixed` view instead, and close a popover on a touch anywhere else with `(global-bindtouchstart)`, which runs for a touch on any element, before that element's own listeners. `npx @blotch/dolan add popover` adds one that does this.
 
+### Android dims the whole page after a key press (ejected projects)
+
+A key press (a hardware keyboard, a D-pad, the keyboard's Enter, a key sent with adb or Maestro) takes Android out of touch mode, and the focused `LynxView` then got Android's default focus highlight: a 12% black over the whole page, so white drew as 224. On Android 14 an app opened afterwards starts out of touch mode too. The shell `ng build --platform android` generates turns the highlight off. A project ejected before the fix needs `lynxView.defaultFocusHighlightEnabled = false` (Android 8+) in `MainActivity.kt` after the `LynxView` is built.
+
 ### `capture-bind` listeners didn't run on iOS
 
 In Lynx Explorer 4.1 on iOS, `capture-bindtouchstart` and `capture-bindtap` on a view never ran, while a `bindtouchstart` on the same element did. Don't rely on the capture phase on iOS; a `global-bind` listener hears every touch first.

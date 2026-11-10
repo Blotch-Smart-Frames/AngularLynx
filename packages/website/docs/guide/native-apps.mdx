@@ -40,12 +40,12 @@ ng build --platform all       # both
 
 Each build first makes the bundle, as `ng build` does, then the app around it. You get these files:
 
-| File                           | What it is                                                                                                                                                                        |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dist/ios/MyApp-simulator.app` | An **`.app`**: an iOS app as a folder. This one runs only on the iOS Simulator                                                                                                    |
-| `dist/ios/MyApp.ipa`           | An [**`.ipa`**](/guide/glossary#ipa): a signed iOS app file you upload to the App Store. Built only once [iOS signing](/guide/publishing#ios-app-store-connect-api-key) is set up |
-| `dist/android/my-app.apk`      | An [**`.apk`**](/guide/glossary#apk): an Android app file you can install directly on an emulator or phone                                                                        |
-| `dist/android/my-app.aab`      | An [**`.aab`**](/guide/glossary#aab): an Android App Bundle, the file you upload to Google Play. It can't be installed directly                                                   |
+| File                           | What it is                                                                                                                                                                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dist/ios/MyApp-simulator.app` | An **`.app`**: an iOS app as a folder. This one runs only on the iOS Simulator                                                                                                                                                                             |
+| `dist/ios/MyApp.ipa`           | An [**`.ipa`**](/guide/glossary#ipa): a signed iOS app file you upload to the App Store, or [install on your testers' iPhones](/guide/publishing#ios-ad-hoc-ipa). Built only once [iOS signing](/guide/publishing#ios-app-store-connect-api-key) is set up |
+| `dist/android/my-app.apk`      | An [**`.apk`**](/guide/glossary#apk): an Android app file you can install directly on an emulator or phone                                                                                                                                                 |
+| `dist/android/my-app.aab`      | An [**`.aab`**](/guide/glossary#aab): an Android App Bundle, the file you upload to Google Play. It can't be installed directly                                                                                                                            |
 
 The file names come from your app's [`appName`](#set-the-app-identity): `My App` gives `MyApp` on iOS and `my-app` on Android.
 
@@ -66,10 +66,11 @@ ng build --platform ios --run       # on the iOS Simulator
 ng build --platform android --run   # on an emulator or Android phone
 ```
 
-After a change, run the same command again: the new build replaces the copy that's open. To choose the virtual phone, name it with `--device`:
+After a change, run the same command again: the new build replaces the copy that's open. To choose the phone, name it with `--device`:
 
 ```bash
-ng build --platform ios --run --device "iPhone 18 Pro"
+ng build --platform ios --run --device "iPhone 18 Pro"    # a simulator
+ng build --platform ios --run --device "Jane's iPhone"    # a real iPhone
 ng build --platform android --run --device Pixel_9
 ```
 
@@ -97,7 +98,40 @@ Without `--run`:
 
    `booted` means the simulator that's running. Pass your [`appId`](#set-the-app-identity) to `launch`, or tap the app's icon instead.
 
-**On a real iPhone,** the simulator app doesn't run. Upload the signed `.ipa` to App Store Connect, then install it with TestFlight, Apple's app for testing builds before release. That needs an Apple Developer account and signing: see [Publish to the app stores](/guide/publishing).
+## Run on a real iPhone
+
+Some things only show on a real phone: its speed, the camera, haptics and the real Liquid Glass. `--run` installs the app on your own iPhone when `--device` names it, without the App Store or TestFlight:
+
+```bash
+ng build --platform ios --run --device "Jane's iPhone"
+```
+
+`--device` takes the phone's name, as `xcrun devicectl list devices` prints it, or its UDID. A straight apostrophe matches the curly one iOS puts in the name. Without `--device`, `--run` always picks a simulator, even with a phone plugged in.
+
+iOS only runs signed apps, so the build signs this one for your phone. Set it up once:
+
+1. **Sign in to Xcode** with your Apple ID: **Xcode → Settings → Accounts**. A free Apple ID works. It gives a **Personal Team**, whose apps stop opening after 7 days: build again to renew one. The paid [Apple Developer Program](https://developer.apple.com/programs/)'s team keeps them working for a year.
+2. **Set your team** in `angular.json`, next to the [app identity](#set-the-app-identity):
+
+   ```json title="angular.json"
+   "ios": { "teamId": "ABCDE12345" }
+   ```
+
+   Don't know your team ID? Build without it: the error lists the teams this Mac can sign for.
+
+3. **Pair the phone:** connect it with a USB cable, unlock it and tap **Trust**. After that it also works over Wi-Fi.
+4. **Turn on Developer Mode** on the phone: **Settings → Privacy & Security → Developer Mode**. The phone restarts. The setting shows up once the phone has been connected to the Mac.
+
+`ng build --platform ios --run --device "Jane's iPhone"` then:
+
+1. **Builds the app for the phone,** signed for development. Xcode registers the phone with your team and makes the provisioning profile itself, with `-allowProvisioningUpdates`. This build makes only `dist/ios/MyApp-device.app`, not the simulator app or the `.ipa`.
+2. **Installs the app and opens it** with `xcrun devicectl`, closing the copy a previous run left open.
+
+**Keep the phone unlocked** while it builds: Xcode asks the phone for its development services before it compiles. If it's locked, if Developer Mode is off, or if the phone isn't paired, the build stops and says what to do on the phone.
+
+**The first time** you open an app signed with a free Apple ID, iOS refuses to open it until you trust its developer: **Settings → General → VPN & Device Management**, tap your Apple ID under **Developer App**, then **Trust**. Then run the same command again.
+
+To give the app to testers who don't have a Mac, build an [ad hoc `.ipa`](/guide/publishing#ios-ad-hoc-ipa).
 
 ## Run on an emulator or Android phone
 

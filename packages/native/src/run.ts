@@ -3,10 +3,10 @@ import type { ResolvedApp } from './options.ts';
 /** `ng build --platform <platform> --run`'s options. */
 export type RunOptions = {
   /**
-   * Where to open the app. On iOS, a simulator's name or UDID; on Android, a
-   * virtual device's name or an adb serial. When it's left out, a running
-   * simulator, emulator or phone, or else the newest iPhone simulator or the
-   * first virtual device.
+   * Where to open the app. On iOS, a simulator's or a paired iPhone's name or
+   * UDID; on Android, a virtual device's name or an adb serial. When it's
+   * left out, a running simulator, emulator or Android phone, or else the
+   * newest iPhone simulator or the first virtual device.
    */
   readonly device?: string;
 };
@@ -17,6 +17,11 @@ export type RunOptions = {
  * seconds, and a simulator or emulator boots while Xcode or Gradle compiles.
  */
 export type RunTarget = {
+  /**
+   * The real iPhone the app runs on, which takes a development-signed build
+   * for the device rather than the simulator app.
+   */
+  readonly iPhone?: { readonly udid: string; readonly name: string };
   /** Waits for the device to finish starting, then installs and opens the app. */
   readonly launch: (binary: string, app: ResolvedApp) => Promise<void>;
 };

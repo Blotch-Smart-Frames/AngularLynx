@@ -55,9 +55,32 @@ export type Permission =
   | 'contacts'
   | 'notifications';
 
+/**
+ * How the `.ipa` is signed, as Xcode's export methods name it:
+ * `app-store-connect` for App Store Connect and TestFlight, and
+ * `release-testing` (ad hoc) for the iPhones registered to the team, which
+ * install it from Finder or Apple Configurator.
+ */
+export type IosExportMethod = 'app-store-connect' | 'release-testing';
+
+export const IOS_EXPORT_METHODS: readonly IosExportMethod[] = [
+  'app-store-connect',
+  'release-testing',
+];
+
 export type IosOptions = {
-  /** The Apple Developer team that signs the app. */
+  /**
+   * The Apple Developer team that signs the app. On its own, it signs the
+   * development builds `--run --device <iPhone>` installs, with the Apple ID
+   * signed in to Xcode; a free Apple ID's Personal Team works for those.
+   */
   readonly teamId?: string;
+  /**
+   * Builds an `.ipa` signed this way. Defaults to `app-store-connect` once
+   * `signing` is set; without `signing`, the Apple ID signed in to Xcode
+   * signs it.
+   */
+  readonly export?: IosExportMethod;
   /**
    * Headless signing with an App Store Connect API key. Each field names the
    * environment variable that holds the value, so no secret is ever written
@@ -233,6 +256,16 @@ export const resolveAppOptions = (
   if (canOpenURLSchemes.length > MAX_QUERIED_SCHEMES) {
     throw new NativeConfigError(
       `canOpenURLSchemes lists ${canOpenURLSchemes.length} schemes with the ${ALWAYS_QUERIED_SCHEMES.length} always there (${ALWAYS_QUERIED_SCHEMES.join(', ')}). iOS reads no more than ${MAX_QUERIED_SCHEMES}.`,
+    );
+  }
+
+  const exportMethod = options.ios?.export;
+  if (
+    exportMethod !== undefined &&
+    !IOS_EXPORT_METHODS.includes(exportMethod)
+  ) {
+    throw new NativeConfigError(
+      `ios.export "${exportMethod}" is not valid. Use ${IOS_EXPORT_METHODS.join(' or ')}.`,
     );
   }
 

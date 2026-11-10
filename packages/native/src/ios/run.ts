@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { ResolvedApp } from '../options.ts';
 import { NativeBuildError, capture, run } from '../process.ts';
 import type { RunTarget } from '../run.ts';
+import { listIPhones, pickIPhone, startIPhone } from './iphone.ts';
 
 /** What `xcrun simctl list --json devices runtimes` prints, as far as it's read here. */
 export type SimctlList = {
@@ -59,6 +60,8 @@ export type Simulator = {
 export const pickSimulator = (
   list: SimctlList,
   device: string | undefined,
+  /** The paired iPhones' names, listed when `device` names nothing. */
+  iPhones: readonly string[] = [],
 ): Simulator => {
   const runtimes = list.runtimes
     .filter(
@@ -100,7 +103,11 @@ export const pickSimulator = (
     if (!match) {
       const names = [...new Set(simulators.map((simulator) => simulator.name))];
       throw new NativeBuildError(
-        `There's no iOS simulator named "${device}". Pass the name or UDID of one of these: ${names.join(', ')}. Or create one in Xcode's DeviceHub.`,
+        `There's no iOS simulator or paired iPhone named "${device}". Pass the name or UDID of one of these simulators: ${names.join(', ')}${
+          iPhones.length > 0
+            ? `; or of one of these iPhones: ${iPhones.join(', ')}.`
+            : `. Or create a simulator in Xcode's DeviceHub, or pair an iPhone: connect it with a USB cable, unlock it and tap Trust.`
+        }`,
       );
     }
     return match;
@@ -164,6 +171,36 @@ const compareVersions = (a: string, b: string) => {
 };
 
 /**
+ * Picks where `ng build --platform ios --run` opens the app: the paired
+ * iPhone `--device` names, or else a simulator. Without `--device` it's
+ * always a simulator, so a phone left plugged in doesn't change what `--run`
+ * does.
+ */
+export const startIosTarget = async ({
+  device,
+  logFile,
+  log,
+}: {
+  readonly device: string | undefined;
+  readonly logFile: string;
+  readonly log: (message: string) => void;
+}): Promise<RunTarget> => {
+  if (!device) {
+    return startIosSimulator({ device, logFile, log });
+  }
+  const iPhones = await listIPhones();
+  const iPhone = pickIPhone(iPhones, device);
+  return iPhone
+    ? startIPhone({ phone: iPhone, logFile, log })
+    : startIosSimulator({
+        device,
+        logFile,
+        log,
+        iPhones: iPhones.map((phone) => phone.name),
+      });
+};
+
+/**
  * Picks the simulator for `--run` and starts booting it, so it boots while
  * xcodebuild compiles. The returned target installs and opens the app once
  * it's built.
@@ -172,10 +209,13 @@ export const startIosSimulator = async ({
   device,
   logFile,
   log,
+  iPhones,
 }: {
   readonly device: string | undefined;
   readonly logFile: string;
   readonly log: (message: string) => void;
+  /** The paired iPhones' names, listed when `device` names nothing. */
+  readonly iPhones?: readonly string[];
 }): Promise<RunTarget> => {
   const output = await capture('xcrun', [
     'simctl',
@@ -189,7 +229,11 @@ export const startIosSimulator = async ({
       "Couldn't list the iOS simulators with `xcrun simctl`. Install Xcode and open it once, so it installs its command-line tools and the iOS platform.",
     );
   }
-  const simulator = pickSimulator(JSON.parse(output) as SimctlList, device);
+  const simulator = pickSimulator(
+    JSON.parse(output) as SimctlList,
+    device,
+    iPhones,
+  );
   const xcrun = (args: readonly string[]) =>
     run('xcrun', args, { cwd: process.cwd(), logFile });
 

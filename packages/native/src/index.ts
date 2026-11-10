@@ -9,11 +9,16 @@ import {
   prepareProject,
   removeLegacyWorkDir,
 } from './generate.ts';
-import { buildIos, resolveIosSigning } from './ios/build.ts';
+import {
+  buildIos,
+  missingTeamMessage,
+  resolveIosSigning,
+} from './ios/build.ts';
 import { resolveLynxFrameworks } from './ios/frameworks.ts';
 import { iosGenerator } from './ios/project.ts';
-import { startIosSimulator } from './ios/run.ts';
+import { startIosTarget } from './ios/run.ts';
 import { type NativeAppOptions, resolveAppOptions } from './options.ts';
+import { NativeBuildError } from './process.ts';
 import type { RunOptions } from './run.ts';
 
 export type { Platform } from './generate.ts';
@@ -22,6 +27,7 @@ export { renderEjectedProject } from './eject.ts';
 export { LYNX_IOS, FRAMEWORKS_ENV } from './ios/frameworks.ts';
 export type {
   AndroidOptions,
+  IosExportMethod,
   IosOptions,
   NativeAppOptions,
   Orientation,
@@ -99,8 +105,13 @@ export const buildNativeApp = async (
   const target = !options.run
     ? undefined
     : platform === 'ios'
-      ? await startIosSimulator({ device: options.run.device, logFile, log })
+      ? await startIosTarget({ device: options.run.device, logFile, log })
       : await startAndroidDevice({ device: options.run.device, logFile, log });
+  // An iPhone only runs a signed app, so a run without a team stops here,
+  // before the project is generated and built.
+  if (target?.iPhone && !iosSigning) {
+    throw new NativeBuildError(await missingTeamMessage(target.iPhone.name));
+  }
 
   const project = prepareProject({
     platform,
@@ -136,6 +147,7 @@ export const buildNativeApp = async (
           logFile,
           log,
           signing: iosSigning,
+          device: target?.iPhone,
         })
       : await buildAndroid({
           project,
@@ -146,7 +158,8 @@ export const buildNativeApp = async (
           signing: androidSigning,
         });
   await target?.launch(
-    // The simulator .app or the .apk, not the .ipa or .aab for the stores.
+    // The simulator's or the iPhone's .app or the .apk, not the .ipa or .aab
+    // for the stores.
     artifacts.find((artifact) =>
       artifact.endsWith(platform === 'ios' ? '.app' : '.apk'),
     )!,

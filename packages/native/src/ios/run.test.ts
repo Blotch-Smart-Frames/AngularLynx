@@ -224,7 +224,7 @@ describe('pickSimulator', () => {
 
     it('lists the simulators there are when none matches', () => {
       expect(() => pickSimulator(devices, 'iPhone 99')).toThrow(
-        `There's no iOS simulator named "iPhone 99". Pass the name or UDID of one of these: iPhone 17, iPhone 18 Pro. Or create one in Xcode's DeviceHub.`,
+        `There's no iOS simulator or paired iPhone named "iPhone 99". Pass the name or UDID of one of these simulators: iPhone 17, iPhone 18 Pro. Or create a simulator in Xcode's DeviceHub, or pair an iPhone: connect it with a USB cable, unlock it and tap Trust.`,
       );
     });
   });

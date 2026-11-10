@@ -14,11 +14,11 @@
     "run": {
       "type": "boolean",
       "default": false,
-      "description": "After --platform builds the app, install it on a simulator, emulator or phone and open it. iOS uses the running simulator, or else starts the newest iPhone simulator; Android uses the running emulator or connected phone, or else starts the first virtual device."
+      "description": "After --platform builds the app, install it on a simulator, emulator or phone and open it. iOS uses the running simulator, or else starts the newest iPhone simulator, and a real iPhone only when --device names it; Android uses the running emulator or connected phone, or else starts the first virtual device."
     },
     "device": {
       "type": "string",
-      "description": "With --run, where to open the app: on iOS a simulator's name (e.g. \"iPhone 18 Pro\") or UDID, on Android a virtual device's name or an adb serial (e.g. emulator-5554)."
+      "description": "With --run, where to open the app: on iOS a simulator's or a paired iPhone's name (e.g. \"iPhone 18 Pro\", \"Jane's iPhone\") or UDID, on Android a virtual device's name or an adb serial (e.g. emulator-5554). An iPhone needs ios.teamId."
     },
     "watch": {
       "type": "boolean",
@@ -226,7 +226,12 @@
       "properties": {
         "teamId": {
           "type": "string",
-          "description": "The Apple Developer team ID that signs the app."
+          "description": "The Apple Developer team ID that signs the app. On its own, it signs the builds --run --device installs on an iPhone, with the Apple ID signed in to Xcode (a free Apple ID's Personal Team works)."
+        },
+        "export": {
+          "type": "string",
+          "enum": ["app-store-connect", "release-testing"],
+          "description": "Builds an .ipa signed this way: app-store-connect for App Store Connect and TestFlight, or release-testing (ad hoc) for the iPhones registered to the team. Defaults to app-store-connect once signing is set; without signing, the Apple ID signed in to Xcode signs it."
         },
         "signing": {
           "type": "object",

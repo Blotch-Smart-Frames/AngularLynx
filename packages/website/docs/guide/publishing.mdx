@@ -60,11 +60,26 @@ export ASC_ISSUER_ID="57246542-96fe-1a63-e053-0824d011072a"
 export ASC_KEY_PATH="$HOME/secrets/app-store-connect.p8"
 ```
 
-Without iOS signing, the build makes only the simulator app. Apple's [API key guide](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) has the details.
+Without iOS signing, the build makes only the simulator app. `ios.teamId` on its own signs only the builds [`--run` installs on your iPhone](/guide/native-apps#run-on-a-real-iphone), with the Apple ID signed in to Xcode. Apple's [API key guide](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api) has the details.
 
 :::warning Not yet tested with a real account
 iOS signing hasn't been verified against a real App Store Connect account yet. Use a key with the **Admin** role, which may be needed to create a distribution certificate. If signing fails, please [open an issue](https://github.com/Blotch-Smart-Frames/AngularLynx/issues).
 :::
+
+### iOS: ad hoc .ipa
+
+To give the app to testers who don't have a Mac, export the `.ipa` with Apple's ad hoc method, which Xcode calls `release-testing`:
+
+```json title="angular.json"
+"ios": { "teamId": "ABCDE12345", "export": "release-testing" }
+```
+
+- **It installs only on the iPhones registered to your team,** in your Apple Developer account under **Devices**. Add each tester's iPhone there by its UDID, then build again, so the provisioning profile lists it. A phone you've run the app on with [`--run`](/guide/native-apps#run-on-a-real-iphone) is registered already.
+- **It needs the paid Apple Developer Program.** A free Apple ID's Personal Team can't export an `.ipa`.
+- **Testers install it** by dragging it onto their iPhone in a Mac's Finder, or with Apple Configurator. Without a Mac, you send it through a service that installs ad hoc builds.
+- **Signing:** with `ios.signing` set, the API key signs, as for the App Store. Without it, the Apple ID signed in to Xcode does.
+
+`app-store-connect` is the default `export` once `ios.signing` is set.
 
 ### Android: upload keystore
 
@@ -99,7 +114,7 @@ Without Android signing, the build signs the app with a debug key. That app inst
 ng build --platform all
 ```
 
-With signing set up, the build adds `dist/ios/MyApp.ipa` and signs `dist/android/my-app.aab` with your upload key.
+With signing set up, the build adds `dist/ios/MyApp.ipa` (for App Store Connect, or ad hoc with `"export": "release-testing"`) and signs `dist/android/my-app.aab` with your upload key.
 
 In CI, store the key files and passwords as the CI service's secrets, and expose them as the same environment variables.
 

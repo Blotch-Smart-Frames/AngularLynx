@@ -38,10 +38,28 @@ describe('resolveIosSigning', () => {
       }),
     ).toEqual({
       teamId: 'TEAM',
-      keyPath: keyFile,
-      keyId: 'id',
-      issuerId: 'issuer',
+      apiKey: { keyPath: keyFile, keyId: 'id', issuerId: 'issuer' },
+      export: 'app-store-connect',
     });
+    expect(
+      resolveIosSigning(app({ ios: { ...ios, export: 'release-testing' } }), {
+        KEY_ID: 'id',
+        ISSUER: 'issuer',
+        KEY: keyFile,
+      })?.export,
+    ).toBe('release-testing');
+  });
+
+  it('signs with the Apple ID in Xcode without an API key: development builds only, unless export asks for an .ipa', () => {
+    expect(resolveIosSigning(app({ ios: { teamId: 'TEAM' } }), {})).toEqual({
+      teamId: 'TEAM',
+    });
+    expect(
+      resolveIosSigning(
+        app({ ios: { teamId: 'TEAM', export: 'release-testing' } }),
+        {},
+      ),
+    ).toEqual({ teamId: 'TEAM', export: 'release-testing' });
   });
 
   it('explains each way the configuration can be incomplete', () => {
@@ -49,7 +67,13 @@ describe('resolveIosSigning', () => {
       resolveIosSigning(app({ ios: { signing: ios.signing } }), {}),
     ).toThrow('ios.signing is set, but ios.teamId is not.');
     expect(() =>
-      resolveIosSigning(app({ ios: { teamId: 'TEAM' } }), {}),
+      resolveIosSigning(app({ ios: { export: 'release-testing' } }), {}),
+    ).toThrow('ios.export is set, but ios.teamId is not.');
+    expect(() =>
+      resolveIosSigning(
+        app({ ios: { teamId: 'TEAM', signing: { keyIdEnv: 'KEY_ID' } } }),
+        {},
+      ),
     ).toThrow(
       'ios.signing.keyPathEnv must name the environment variable that holds it.',
     );
@@ -64,9 +88,17 @@ describe('resolveIosSigning', () => {
 
 describe('exportOptionsPlist', () => {
   it('exports for App Store Connect with automatic signing', () => {
-    const plist = exportOptionsPlist('TEAM&1');
+    const plist = exportOptionsPlist('TEAM&1', 'app-store-connect');
     expect(plist).toContain('<string>app-store-connect</string>');
     expect(plist).toContain('<string>TEAM&amp;1</string>');
+    expect(plist).toContain('<key>uploadSymbols</key>');
+  });
+
+  it("exports ad hoc without App Store Connect's settings", () => {
+    const plist = exportOptionsPlist('TEAM', 'release-testing');
+    expect(plist).toContain('<string>release-testing</string>');
+    expect(plist).not.toContain('uploadSymbols');
+    expect(plist).not.toContain('manageAppVersionAndBuildNumber');
   });
 });
 

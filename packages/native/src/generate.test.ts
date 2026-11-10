@@ -103,10 +103,12 @@ describe('prepareProject', () => {
   });
 
   // Generating the Android icons resizes 1024 px images, which a CI runner
-  // measuring coverage can take several seconds over.
+  // measuring coverage can take several seconds over: about 11 s usually, but
+  // a slow runner took 55 s. The work is fixed, so the timeout only has to
+  // catch a hang, and is set well clear of a slow run.
   it(
     "regenerates the Android icon when an icon image's content changes",
-    { timeout: 30_000 },
+    { timeout: 120_000 },
     () => {
       const solid = (file: string, color: readonly number[], alpha = 255) =>
         writeFileSync(

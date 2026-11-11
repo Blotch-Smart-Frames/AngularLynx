@@ -1796,6 +1796,8 @@ describe('updateCommand — ejected components', () => {
       uiSource: {
         select: { 'select.ts': select },
         'bottom-sheet': { 'bottom-sheet.ts': 'export const BottomSheet = {};' },
+        // What a searchable select's sheet holds.
+        'search-field': { 'search-field.ts': 'export const SearchField = {};' },
         // What bottom-sheet's glass variant draws with.
         glass: { 'glass.ts': 'export const Glass = {};' },
         icon: { 'icon.ts': 'export const Icon = {};' },

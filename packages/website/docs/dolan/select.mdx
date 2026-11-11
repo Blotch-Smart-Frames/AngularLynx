@@ -1,6 +1,6 @@
 # Select
 
-A field that opens a bottom sheet of options and shows the one the user picks.
+A field that opens a bottom sheet of options and shows the one the user picks. Long lists get a search field.
 
 <Go example="ui-select" defaultFile="src/app/app.ts" />
 
@@ -14,7 +14,9 @@ npx @blotch/dolan add select
 import { UiSelect, UiSelectItem } from '../components/ui/select';
 ```
 
-This also adds [Bottom Sheet](/dolan/bottom-sheet), which holds the options.
+:::tip
+This also adds [Bottom Sheet](/dolan/bottom-sheet), which holds the options, and [Search Field](/dolan/search-field), for a searchable select.
+:::
 
 ## Usage
 
@@ -41,7 +43,7 @@ export class App {
 - Tapping the field opens the sheet. Tapping an item selects it and closes the sheet.
 - Tapping the dimmed backdrop, or dragging the sheet's handle down, closes it without a change.
 - The field shows the selected item's `label`, or `placeholder` when nothing is selected. The selected item has a check mark.
-- The list scrolls once it's taller than 300 pixels.
+- The list scrolls once it's taller than 300 pixels. A [searchable](#search) select's list fills the sheet instead.
 
 ### With a label
 
@@ -64,11 +66,82 @@ export class App {
 </view>
 ```
 
+### Search
+
+Add `searchable` for a long list, such as time zones or countries:
+
+```angular-html
+<ui-select label="Time zone" searchable [(value)]="timeZone">
+  @for (zone of timeZones; track zone) {
+    <ui-select-item [value]="zone" [label]="zone" />
+  }
+</ui-select>
+```
+
+- The sheet opens at full height, with a [Search Field](/dolan/search-field) at the top. The keyboard rises below it.
+- Typing hides every item whose `label` doesn't contain the text. Case doesn't matter.
+- `emptyText` shows when nothing matches. It defaults to `No results`.
+- The text clears when the sheet closes, so it opens on the full list next time.
+- Bind `[(query)]` to read or set the text.
+
+### Results of your own
+
+Set `[filter]="false"` to show your own results for the text, such as suggestions from a server:
+
+```angular-html
+<ui-select
+  label="Address"
+  searchable
+  [filter]="false"
+  [emptyText]="query() ? 'No addresses found' : 'Start typing an address'"
+  [(query)]="query"
+  [(value)]="address"
+>
+  @for (result of results(); track result.id) {
+    <ui-select-item [value]="result.id" [label]="result.text" />
+  }
+</ui-select>
+```
+
+```typescript
+protected readonly query = signal('');
+protected readonly address = signal('');
+// Fetches suggestions whenever the query changes.
+protected readonly suggestions = httpResource<Suggestion[]>(() => {
+  const query = this.query().trim();
+  return query
+    ? `https://api.example.com/addresses?q=${encodeURIComponent(query)}`
+    : undefined;
+});
+protected readonly results = computed(() => this.suggestions.value() ?? []);
+```
+
+See [HTTP requests](/guide/http) for `httpResource` on Lynx.
+
+The field shows the chosen item's `label`. Once the item is gone from the list, it shows the `value` itself. Keep the chosen result among the items to keep its label in the field.
+
+### Icons
+
+Put content in an item, such as an [Icon](/dolan/icon), and it goes before the label. Mark content `leading` on the select itself to show it in the field, before the text:
+
+```angular-html
+<ui-select label="Weather" [(value)]="weather">
+  <ui-icon leading [name]="weather()" size="xs" />
+  <ui-select-item value="sun" label="Sunny">
+    <ui-icon name="sun" size="sm" />
+  </ui-select-item>
+  <ui-select-item value="cloud" label="Cloudy">
+    <ui-icon name="cloud" size="sm" />
+  </ui-select-item>
+</ui-select>
+```
+
 ### Accessibility
 
 - The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`), with the chosen item's label, or the placeholder, as its value: VoiceOver says "Country, Germany, button". Without either, the field's name is the text it shows.
 - A disabled field is dimmed to VoiceOver as well.
 - Each item is a button named by its `label`, and the chosen one is `selected`, as its check mark shows.
+- Content in the field and the items, such as icons, isn't read. The label says what they mean.
 
 So a spec finds them by role:
 
@@ -99,19 +172,30 @@ A disabled select dims and doesn't open.
 
 ### UiSelect
 
-| Input                 | Type      | Default       | Description                                                               |
-| --------------------- | --------- | ------------- | ------------------------------------------------------------------------- |
-| `value`               | `string`  | `''`          | The selected item's value. Supports `[(value)]`.                          |
-| `label`               | `string`  | `''`          | Shown above the field, and read by screen readers as its name.            |
-| `placeholder`         | `string`  | `'Select...'` | Shown in the field while nothing is selected.                             |
-| `accessibility-label` | `string`  | `''`          | The field's name for screen readers when it has no `label`.               |
-| `disabled`            | `boolean` | `false`       | Dims the field and stops it from opening.                                 |
-| `class`               | `string`  | `''`          | Extra Tailwind classes for the column that holds the label and the field. |
+| Input                 | Type      | Default        | Description                                                               |
+| --------------------- | --------- | -------------- | ------------------------------------------------------------------------- |
+| `value`               | `string`  | `''`           | The selected item's value. Supports `[(value)]`.                          |
+| `label`               | `string`  | `''`           | Shown above the field, and read by screen readers as its name.            |
+| `placeholder`         | `string`  | `'Select...'`  | Shown in the field while nothing is selected.                             |
+| `accessibility-label` | `string`  | `''`           | The field's name for screen readers when it has no `label`.               |
+| `disabled`            | `boolean` | `false`        | Dims the field and stops it from opening.                                 |
+| `class`               | `string`  | `''`           | Extra Tailwind classes for the column that holds the label and the field. |
+| `searchable`          | `boolean` | `false`        | Shows a search field in the sheet, which opens at full height.            |
+| `query`               | `string`  | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.     |
+| `filter`              | `boolean` | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.     |
+| `searchPlaceholder`   | `string`  | `'Search'`     | Shown in the search field while it's empty.                               |
+| `emptyText`           | `string`  | `'No results'` | Shown in a searchable sheet while no item is.                             |
 
 | Output        | Type     | Description                                  |
 | ------------- | -------- | -------------------------------------------- |
 | `changed`     | `string` | Emits the value of the item the user tapped. |
 | `valueChange` | `string` | Emits the new value, for `[(value)]`.        |
+| `queryChange` | `string` | Emits the search text, for `[(query)]`.      |
+
+| Content       | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `[leading]`   | Shown in the field, before the text.               |
+| Anything else | The items, `<ui-select-item>`, shown in the sheet. |
 
 ### UiSelectItem
 
@@ -121,10 +205,11 @@ A disabled select dims and doesn't open.
 | `label` | `string` | Required | The text shown in the list and in the field. |
 | `class` | `string` | `''`     | Extra Tailwind classes for the item's row.   |
 
-No outputs.
+No outputs. Content inside the item, such as an icon, goes before its label.
 
 ## Related
 
+- [Multi Select](/dolan/multi-select): pick any number of options
 - [Radio Group](/dolan/radio-group): show every option on screen
 - [Bottom Sheet](/dolan/bottom-sheet): the panel the options open in
 - [Dialogs and overlays](/guide/overlays)

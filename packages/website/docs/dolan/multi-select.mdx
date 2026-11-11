@@ -1,0 +1,155 @@
+# Multi Select
+
+A field that opens a sheet of checkboxes and shows every option the user picks as a chip.
+
+<Go example="ui-multi-select" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add multi-select
+```
+
+```typescript
+import {
+  UiMultiSelect,
+  UiMultiSelectItem,
+} from '../components/ui/multi-select';
+```
+
+:::tip
+This also adds [Select](/dolan/select), whose sheet and search it shares, and the [Checkbox](/dolan/checkbox), [Badge](/dolan/badge) and [Button](/dolan/button) it draws with.
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import {
+  UiMultiSelect,
+  UiMultiSelectItem,
+} from '../components/ui/multi-select';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiMultiSelect, UiMultiSelectItem],
+  template: `
+    <ui-multi-select
+      label="Topics"
+      placeholder="Choose topics"
+      [(value)]="topics"
+    >
+      <ui-multi-select-item value="news" label="News" />
+      <ui-multi-select-item value="sport" label="Sport" />
+      <ui-multi-select-item value="science" label="Science" />
+    </ui-multi-select>
+  `,
+})
+export class App {
+  protected readonly topics = signal<readonly string[]>([]);
+}
+```
+
+- Tapping the field opens the sheet. Each item has a checkbox.
+- Tapping an item toggles it. The sheet stays open.
+- **Done**, the dimmed backdrop, or dragging the handle down closes the sheet.
+- `value` lists the chosen values in the order they were chosen.
+- The field shows the chosen items' labels as chips, in that order. It grows onto more lines as they need. With none chosen, it shows `placeholder`.
+
+### Search
+
+Add `searchable` for a long list. It works as [Select's search](/dolan/select#search) does:
+
+```angular-html
+<ui-multi-select label="Topics" searchable [(value)]="topics">
+  @for (topic of allTopics; track topic) {
+    <ui-multi-select-item [value]="topic" [label]="topic" />
+  }
+</ui-multi-select>
+```
+
+- The sheet opens at full height, with a search field under its header.
+- Typing hides the items whose `label` doesn't contain the text. Case doesn't matter.
+- `emptyText` shows when nothing matches.
+- Set `[filter]="false"` to show [results of your own](/dolan/select#results-of-your-own) for `[(query)]`.
+
+### Icons
+
+Content in an item, such as an [Icon](/dolan/icon), goes between its checkbox and its label:
+
+```angular-html
+<ui-multi-select-item value="rain" label="Rain">
+  <ui-icon name="cloud-rain" size="sm" />
+</ui-multi-select-item>
+```
+
+### Disabled
+
+```angular-html
+<ui-multi-select label="Features" [value]="['sync']" disabled>
+  <ui-multi-select-item value="sync" label="Sync" />
+</ui-multi-select>
+```
+
+A disabled field dims and doesn't open.
+
+### Open from code
+
+`UiMultiSelect` has public `open()`, `close()` and `toggle()` methods. Get it with `viewChild(UiMultiSelect)` and call them from a handler. `open()` and `toggle()` do nothing while disabled.
+
+### Accessibility
+
+- The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`). Its value is the chosen labels, or the placeholder: VoiceOver says "Topics, News, Sport, button".
+- The sheet's title is a heading, and **Done** is a button.
+- Each item is a button named by its `label`, and `selected` while it's chosen.
+
+So a spec finds them by role:
+
+```typescript
+fireEvent.tap(screen.getByRole('button', { name: 'Topics' }));
+fireEvent.tap(await screen.findByRole('button', { name: 'News' }));
+expect(
+  screen.getByRole('button', { name: 'News', selected: true }),
+).toBeTruthy();
+```
+
+## API
+
+### UiMultiSelect
+
+| Input                 | Type                | Default        | Description                                                                  |
+| --------------------- | ------------------- | -------------- | ---------------------------------------------------------------------------- |
+| `value`               | `readonly string[]` | `[]`           | The chosen values, in the order they were chosen. Supports `[(value)]`.      |
+| `label`               | `string`            | `''`           | Shown above the field and as the sheet's title. Names it for screen readers. |
+| `placeholder`         | `string`            | `'Select...'`  | Shown in the field while nothing is chosen.                                  |
+| `accessibility-label` | `string`            | `''`           | The field's name for screen readers, and the sheet's title, with no `label`. |
+| `disabled`            | `boolean`           | `false`        | Dims the field and stops it from opening.                                    |
+| `class`               | `string`            | `''`           | Extra Tailwind classes for the column that holds the label and the field.    |
+| `searchable`          | `boolean`           | `false`        | Shows a search field in the sheet, which opens at full height.               |
+| `query`               | `string`            | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.        |
+| `filter`              | `boolean`           | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.        |
+| `searchPlaceholder`   | `string`            | `'Search'`     | Shown in the search field while it's empty.                                  |
+| `emptyText`           | `string`            | `'No results'` | Shown in a searchable sheet while no item is.                                |
+| `doneLabel`           | `string`            | `'Done'`       | The label of the button that closes the sheet.                               |
+
+| Output        | Type                | Description                                        |
+| ------------- | ------------------- | -------------------------------------------------- |
+| `changed`     | `readonly string[]` | Emits the new value every time an item is toggled. |
+| `valueChange` | `readonly string[]` | Emits the new value, for `[(value)]`.              |
+| `queryChange` | `string`            | Emits the search text, for `[(query)]`.            |
+
+### UiMultiSelectItem
+
+| Input   | Type     | Default  | Description                                 |
+| ------- | -------- | -------- | ------------------------------------------- |
+| `value` | `string` | Required | The value this item adds to the selection.  |
+| `label` | `string` | Required | The text shown in the list and in its chip. |
+| `class` | `string` | `''`     | Extra Tailwind classes for the item's row.  |
+
+No outputs. Content inside the item, such as an icon, goes between its checkbox and its label.
+
+## Related
+
+- [Select](/dolan/select): pick one option
+- [Checkbox](/dolan/checkbox): a single on/off box
+- [Toggle](/dolan/toggle): a group of buttons that stay pressed, for a few options on screen

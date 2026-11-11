@@ -130,6 +130,13 @@ export const registry: RegistryEntry[] = [
     dependencies: ['glass', 'icon'],
     themeColors: ['glass-foreground', 'glass-muted-foreground', 'glass-dim'],
   },
+  // The multi-select shares select's sheet, search and filtering, marks its
+  // rows with checkboxes, shows the chosen items as badges, and closes the
+  // sheet with a button.
+  {
+    name: 'multi-select',
+    dependencies: ['badge', 'button', 'checkbox', 'select'],
+  },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
   // The navigation bar's Back button and items are toolbar items, it shares
@@ -159,7 +166,9 @@ export const registry: RegistryEntry[] = [
   // `variant="segmented"`: its indicator lifts into glass on iOS 26, and it
   // picks the thumb's color for the app's color scheme with icon-theme.ts.
   { name: 'segmented-control', dependencies: ['glass', 'icon'] },
-  { name: 'select', dependencies: ['bottom-sheet'] },
+  // The options open in a bottom sheet, which holds a search field when the
+  // select is searchable (select-sheet.ts, which multi-select shares).
+  { name: 'select', dependencies: ['bottom-sheet', 'search-field'] },
   { name: 'separator', dependencies: [] },
   // Its specs present a sheet from a glass button (`uiSheetSource`), which
   // the sheet grows out of.

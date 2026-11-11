@@ -177,6 +177,8 @@ Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg'
 
 Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.
 
+Or add ready-made controls with `npx @blotch/dolan add <name>`: `checkbox`, `radio-group`, and `select`, whose `<ui-select [(value)]>` opens a bottom sheet of `<ui-select-item value label>`s. Give a long list `searchable` for a search field that filters the items by label, or `[filter]="false"` with `[(query)]` to show results of your own, such as a server's. `multi-select` adds `<ui-multi-select [(value)]>` (a `string[]`), with a checkbox per `<ui-multi-select-item>` and the chosen items as chips in the field, and the same search.
+
 ### No `localStorage` / `sessionStorage`
 
 - **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only the `--platform` apps (`ng build` and `ng serve`) have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.

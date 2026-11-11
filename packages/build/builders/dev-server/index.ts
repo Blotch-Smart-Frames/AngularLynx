@@ -6,7 +6,7 @@ import {
 } from '@angular-devkit/architect';
 import path from 'node:path';
 
-import { nativeCacheDir } from '../application/native-cache';
+import { angularCacheDir, nativeCacheDir } from '../application/native-cache';
 import type { ApplicationBuilderOptions } from '../application/schema';
 import { type NativeModule, importNative, readPackageVersion } from '../native';
 import {
@@ -106,6 +106,11 @@ const startDevServer = async (
       config: buildOptions.config,
       environment,
       server: { port: options.port, host: options.host },
+      // Angular's cache, where `--platform` (or an `ng build --platform`
+      // beside this server) generates and builds the native project.
+      watchIgnore: [
+        angularCacheDir({ metadata, workspaceRoot: context.workspaceRoot }),
+      ],
     });
     const { server, urls, port } = await rspeedy.startDevServer();
     context.addTeardown(() => server.close());
@@ -117,7 +122,12 @@ const startDevServer = async (
         bundleUrl: lynxBundleUrl(rspeedy, port),
         buildOptions,
         context,
-        metadata,
+        workDir: nativeCacheDir({
+          metadata,
+          workspaceRoot: context.workspaceRoot,
+          projectRoot,
+          projectName,
+        }),
         projectRoot,
         projectName,
         bundleDir: rspeedy.context.distPath,
@@ -174,7 +184,7 @@ const runDevelopmentApp = async ({
   bundleUrl,
   buildOptions,
   context,
-  metadata,
+  workDir,
   projectRoot,
   projectName,
   bundleDir,
@@ -185,17 +195,12 @@ const runDevelopmentApp = async ({
   readonly bundleUrl: string;
   readonly buildOptions: ApplicationBuilderOptions;
   readonly context: BuilderContext;
-  readonly metadata: Record<string, unknown>;
+  /** The native cache folder (see `nativeCacheDir`). */
+  readonly workDir: string;
   readonly projectRoot: string;
   readonly projectName: string;
   readonly bundleDir: string;
 }): Promise<void> => {
-  const workDir = nativeCacheDir({
-    metadata,
-    workspaceRoot: context.workspaceRoot,
-    projectRoot,
-    projectName,
-  });
   context.reportStatus(`Building the ${platform} development app`);
   await native.buildNativeApp({
     platform,

@@ -213,10 +213,13 @@ export const startIPhone = ({
           phone.udid,
           '--terminate-existing',
           app.id,
-          // devicectl hands what follows the app to it as its arguments.
-          ...iosDevServerArguments(devServer),
         ],
-        { phone, action: 'open the app', logFile },
+        {
+          phone,
+          action: 'open the app',
+          logFile,
+          appArguments: iosDevServerArguments(devServer),
+        },
       );
       log(`Opened ${app.name} on ${phone.name}`);
     },
@@ -227,6 +230,11 @@ export const startIPhone = ({
  * Runs a devicectl command with its result written as JSON, so a failure is
  * read from the structured error rather than its indented text, and
  * explained when it's something the developer fixes on the phone.
+ *
+ * `appArguments` go to the app `process launch` opens, after a `--`.
+ * devicectl reads its own options anywhere before that, so without it,
+ * `-AngularLynxDevServer` failed as "Unknown option '-A'", and a
+ * `--json-output` after the arguments would have been the app's.
  */
 const devicectl = async (
   args: readonly string[],
@@ -234,19 +242,31 @@ const devicectl = async (
     phone,
     action,
     logFile,
+    appArguments = [],
   }: {
     readonly phone: IPhone;
     readonly action: string;
     readonly logFile: string;
+    readonly appArguments?: readonly string[];
   },
 ) => {
   const json = path.join(path.dirname(logFile), 'devicectl.json');
   rmSync(json, { force: true });
   try {
-    await run('xcrun', ['devicectl', ...args, '--json-output', json], {
-      cwd: process.cwd(),
-      logFile,
-    });
+    await run(
+      'xcrun',
+      [
+        'devicectl',
+        ...args,
+        '--json-output',
+        json,
+        ...(appArguments.length > 0 ? ['--', ...appArguments] : []),
+      ],
+      {
+        cwd: process.cwd(),
+        logFile,
+      },
+    );
   } catch (error) {
     const reasons = existsSync(json)
       ? devicectlErrors(readFileSync(json, 'utf8'))

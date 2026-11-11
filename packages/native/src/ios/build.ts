@@ -410,6 +410,13 @@ const explainSigningFailure = (error: Error, teamId: string): Error => {
       `Xcode has no signed-in account for team ${teamId}. Sign in to Xcode with the Apple ID of that team (Xcode → Settings → Accounts), or set ios.signing to an App Store Connect API key, then build again.\n\n${error.message}`,
     );
   }
+  // Apple refuses to register one more device, and xcodebuild then also
+  // reports "No profiles for", which alone would point at the wrong fix.
+  if (/maximum number of registered \w+ devices/i.test(error.message)) {
+    return new NativeBuildError(
+      `Team ${teamId} can't register this device: it has as many as Apple allows. A paid team can remove the devices it no longer uses at the start of its membership year (developer.apple.com → Certificates, IDs & Profiles → Devices). A free Personal Team can't remove them, so set ios.teamId to another team, such as the Personal Team of another Apple ID signed in to Xcode.\n\n${error.message}`,
+    );
+  }
   if (/requires a development team|No profiles for/i.test(error.message)) {
     return new NativeBuildError(
       `Xcode couldn't make a provisioning profile for team ${teamId}. Check that ios.teamId is a team your Apple ID in Xcode → Settings → Accounts belongs to, and for an .ipa that the team is in the paid Apple Developer Program.\n\n${error.message}`,

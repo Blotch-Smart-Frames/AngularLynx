@@ -44,6 +44,18 @@ export const nativeCacheDir = ({
   );
 
 /**
+ * Angular's cache folder, absolute: angular.json's `cli.cache.path`, which
+ * {@link nativeCacheDir} is inside.
+ */
+export const angularCacheDir = ({
+  metadata,
+  workspaceRoot,
+}: {
+  readonly metadata: Record<string, unknown>;
+  readonly workspaceRoot: string;
+}): string => path.resolve(workspaceRoot, cachePath(metadata));
+
+/**
  * angular.json's `cli.cache.path`, defaulting as Angular does.
  */
 const cachePath = (metadata: Record<string, unknown>): string => {

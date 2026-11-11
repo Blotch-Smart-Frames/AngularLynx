@@ -192,6 +192,55 @@ const applyBaseHref = (
   output.assetPrefix ??= baseHref;
 };
 
+type WatchIgnored = string | readonly string[] | RegExp | undefined;
+
+/**
+ * Adds `dir` to rspack's `watchOptions.ignored`, keeping what's there:
+ * appended as a glob to a list of globs, or as an alternative to a RegExp
+ * (rspack takes one kind or the other, not both).
+ */
+export const addWatchIgnored = (
+  ignored: WatchIgnored,
+  dir: string,
+): string[] | RegExp => {
+  if (ignored instanceof RegExp) {
+    const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(
+      `(?:${ignored.source})|^${escaped}(?:[\\\\/]|$)`,
+      ignored.flags,
+    );
+  }
+  const glob = `${dir.split(path.sep).join('/')}/**`;
+  return [...(ignored === undefined ? [] : [ignored].flat()), glob];
+};
+
+/**
+ * Keeps the dev server from rebuilding when something is written to one of
+ * `dirs`, Angular's cache. `ng serve --platform` generates and builds the
+ * native project there, inside the project, and Tailwind 4's PostCSS plugin has
+ * the dev server watch the whole project for class names, git-ignored
+ * folders included. Without this, every file Xcode or Gradle wrote rebuilt
+ * both bundles, five times over one iPhone build.
+ */
+export const pluginIgnoreWatch = (dirs: readonly string[]) => ({
+  name: 'angular-lynx:ignore-watch',
+  setup(api: {
+    modifyRspackConfig: (
+      modify: (config: { watchOptions?: { ignored?: WatchIgnored } }) => void,
+    ) => void;
+  }) {
+    api.modifyRspackConfig((config) => {
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: dirs.reduce<WatchIgnored>(
+          (ignored, dir) => addWatchIgnored(ignored, dir),
+          config.watchOptions?.ignored,
+        ),
+      };
+    });
+  },
+});
+
 /**
  * Creates an rspeedy instance the way `rspeedy build` and `rspeedy dev` do:
  * load lynx.config.ts, then apply the command-line overrides, which here come
@@ -223,6 +272,7 @@ export const createRspeedy = async ({
   config,
   environment,
   server,
+  watchIgnore = [],
 }: {
   rspeedy: RspeedyModule;
   plugin: RspeedyPluginModule;
@@ -234,6 +284,8 @@ export const createRspeedy = async ({
   environment?: string[];
   /** Dev server settings that override lynx.config.ts's `server`. */
   server?: { readonly port?: number; readonly host?: string };
+  /** Folders whose changes never rebuild (see {@link pluginIgnoreWatch}). */
+  watchIgnore?: readonly string[];
 }): Promise<RspeedyInstance> => {
   const mode = modeFromOptimization(angularCli.buildOptions['optimization']);
   // As the rspeedy CLI does before anything else, so plugins (Tailwind,
@@ -286,6 +338,7 @@ export const createRspeedy = async ({
     ...(qrCode && !(await hasPlugin(plugins, QR_CODE_PLUGIN_NAME))
       ? [qrCode.pluginQRCode({ fullscreen: true })]
       : []),
+    ...(watchIgnore.length > 0 ? [pluginIgnoreWatch(watchIgnore)] : []),
   ];
   return rspeedy.createRspeedy({
     cwd: projectRoot,

@@ -315,7 +315,9 @@ describe('startIosTarget', () => {
    * A fake xcrun that records its arguments. `devicectl list` prints
    * `devicectl.json`, or fails when it's missing, as on Xcode 14. A
    * devicectl install or launch fails with `<install|launch>-error.json`
-   * written to its --json-output path, the last argument, when that exists.
+   * written to its --json-output path, when that exists. As the real one
+   * does, it rejects an option it doesn't know before `--`, such as an app
+   * argument passed without one.
    * `simctl list` prints one simulator.
    */
   const setup = (devices: readonly DevicectlDevice[] | undefined) => {
@@ -354,13 +356,22 @@ describe('startIosTarget', () => {
       xcrun,
       `#!/bin/sh
 echo "xcrun $*" >> "${calls}"
-for arg; do last="$arg"; done
+json=; prev=; rest=
+for arg; do
+  if [ -n "$rest" ]; then continue; fi
+  case "$arg" in
+    --) rest=1 ;;
+    -A*) echo "Error: Unknown option '-A'" >&2; exit 64 ;;
+  esac
+  [ "$prev" = --json-output ] && json="$arg"
+  prev="$arg"
+done
 case "$1 $2" in
   "devicectl list") cat "${dir}/devicectl.json" || exit 1 ;;
   "devicectl device")
     step=launch; [ "$3" = install ] && step=install
     if [ -e "${dir}/$step-error.json" ]; then
-      cp "${dir}/$step-error.json" "$last"
+      cp "${dir}/$step-error.json" "$json"
       echo "ERROR: it failed" >&2
       exit 1
     fi ;;
@@ -412,7 +423,7 @@ exit 0
       bundleUrl: 'http://192.168.1.20:3000/main.lynx.bundle',
     });
     expect(recorded().at(-1)).toBe(
-      `xcrun devicectl device process launch --device UDID --terminate-existing com.example.myapp -AngularLynxDevServer http://192.168.1.20:3000/main.lynx.bundle --json-output ${path.join(dir, 'logs/devicectl.json')}`,
+      `xcrun devicectl device process launch --device UDID --terminate-existing com.example.myapp --json-output ${path.join(dir, 'logs/devicectl.json')} -- -AngularLynxDevServer http://192.168.1.20:3000/main.lynx.bundle`,
     );
   });
 

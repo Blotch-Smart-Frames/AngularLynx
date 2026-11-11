@@ -84,13 +84,13 @@ To sign in without the browser's sign-ins, and leave nothing signed in afterward
 | `code`        | When                                                                                                          |
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `canceled`    | The person closed the sheet or the tab, or, on iOS, said no when asked                                        |
-| `unavailable` | The host can't open a sign-in sheet: only the apps `ng build --platform` makes can                            |
+| `unavailable` | The host can't open a sign-in sheet: only the apps `--platform` builds (`ng build` or `ng serve`) can         |
 | `failed`      | The page couldn't be opened, for example because a sign-in is already open or the phone has no browser at all |
 
 Treat `canceled` as the person changing their mind, not as an error.
 
 :::info Lynx Explorer and the web preview
-Lynx Explorer and the [web preview](/guide/glossary#web-preview) don't have the sign-in sheet, so there `start()` rejects with `unavailable`. Try sign-in on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#sign-in-with-a-web-page).
+Lynx Explorer and the [web preview](/guide/glossary#web-preview) don't have the sign-in sheet, so there `start()` rejects with `unavailable`. Try sign-in on a simulator, emulator or phone with [`ng serve --platform ios` or `--platform android`](/guide/native-apps#develop-in-the-real-app-with-ng-serve). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#sign-in-with-a-web-page).
 :::
 
 ## Related

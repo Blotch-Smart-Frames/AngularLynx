@@ -14,7 +14,7 @@ A **trace** is a timeline of what the app did during a recording, on every threa
 To trace the app's launch, use **Startup Trace** in the top bar instead. Lynx's [trace guide](https://lynxjs.org/guide/devtool/trace) covers both.
 
 :::info Traces need Lynx Explorer
-Only development builds of the Lynx engine can record traces. Lynx Explorer has one. The apps `ng build --platform` makes use the release engine, which can't.
+Only development builds of the Lynx engine can record traces. Lynx Explorer has one. The apps `--platform` builds, with `ng build` or `ng serve`, use the release engine, which can't.
 :::
 
 ## Mark your own code in the trace

@@ -31,7 +31,7 @@ canvas.toBlob(
 class LynxShare {}
 ```
 
-Uses `UIActivityViewController` on iOS, an `ACTION_SEND` chooser with a `FileProvider` on Android, and `navigator.share()` in the web preview, or a download of each file where the browser can't share them. Only the apps `ng build --platform` makes have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `share()` rejects with `unavailable`.
+Uses `UIActivityViewController` on iOS, an `ACTION_SEND` chooser with a `FileProvider` on Android, and `navigator.share()` in the web preview, or a download of each file where the browser can't share them. Only the apps `--platform` builds, with `ng build` or `ng serve`, have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `share()` rejects with `unavailable`.
 
 ### `LynxShare.share()`
 

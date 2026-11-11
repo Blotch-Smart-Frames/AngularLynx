@@ -98,13 +98,13 @@ Both send the bytes through AngularLynx's `fetch` and `XMLHttpRequest`, which pa
 
 Closing the picker isn't an error: `pick()` resolves with `null`. It rejects with an `ImagePickerError`, whose `code` says why:
 
-| `code`        | When                                                                                            |
-| ------------- | ----------------------------------------------------------------------------------------------- |
-| `unavailable` | The host has no photo picker: only the apps `ng build --platform` makes and the web preview do  |
-| `failed`      | The picker couldn't open, one was already open, or the picked photo couldn't be read or decoded |
+| `code`        | When                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no photo picker: only the apps `--platform` builds (`ng build` or `ng serve`) and the web preview do |
+| `failed`      | The picker couldn't open, one was already open, or the picked photo couldn't be read or decoded                   |
 
 :::info Lynx Explorer
-Lynx Explorer has no photo picker, so there `pick()` rejects with `unavailable`. Try it on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#let-someone-pick-a-photo).
+Lynx Explorer has no photo picker, so there `pick()` rejects with `unavailable`. Try it on a simulator, emulator or phone with [`ng serve --platform ios` or `--platform android`](/guide/native-apps#develop-in-the-real-app-with-ng-serve), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#let-someone-pick-a-photo).
 :::
 
 ## Test it

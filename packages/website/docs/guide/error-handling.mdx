@@ -8,11 +8,11 @@ When your code throws, AngularLynx reports the error to Lynx and keeps it as tex
 
 An error is **uncaught** when nothing handles it, for example a throw in a template binding, a lifecycle hook or an event handler. What you see depends on where the app runs:
 
-| Your app runs in                               | What you see                                                                                                                             |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | Lynx's red error screen, **LogBox**, with the message and stack trace                                                                    |
-| The [web preview](/guide/glossary#web-preview) | The error in your browser's DevTools console                                                                                             |
-| The apps `ng build --platform` makes           | No error screen. These apps don't include LogBox, so [show errors on screen](/guide/debugging#show-errors-on-screen) while you test them |
+| Your app runs in                                            | What you see                                                                                                                             |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [Lynx Explorer](/guide/glossary#lynx-explorer)              | Lynx's red error screen, **LogBox**, with the message and stack trace                                                                    |
+| The [web preview](/guide/glossary#web-preview)              | The error in your browser's DevTools console                                                                                             |
+| The apps `--platform` builds, with `ng build` or `ng serve` | No error screen. These apps don't include LogBox, so [show errors on screen](/guide/debugging#show-errors-on-screen) while you test them |
 
 ## What `provideRenderer()` sets up
 

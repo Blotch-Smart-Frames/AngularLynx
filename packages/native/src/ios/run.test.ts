@@ -330,6 +330,22 @@ exit 0`,
     );
   });
 
+  it('opens the development app with the dev server as a launch argument', async () => {
+    setup(list({ '27.0': [simulator('iPhone 18 Pro', IPHONE_18_PRO)] }));
+    const target = await startIosSimulator({
+      device: undefined,
+      logFile,
+      log: () => {},
+    });
+    expect(target.simulator).toEqual({ udid: 'UDID-iPhone 18 Pro' });
+    await target.launch('/serve/ios/MyApp-simulator.app', app, {
+      bundleUrl: 'http://192.168.1.20:3000/main.lynx.bundle',
+    });
+    expect(recorded().at(-1)).toBe(
+      'xcrun simctl launch --terminate-running-process UDID-iPhone 18 Pro com.example.myapp -AngularLynxDevServer http://192.168.1.20:3000/main.lynx.bundle',
+    );
+  });
+
   it('says when it uses a simulator that is already running', async () => {
     setup(
       list({

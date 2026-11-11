@@ -3,7 +3,9 @@ import Lynx
 
 /// Serves the app's Lynx bundles and assets from the `LynxBundle` folder that
 /// the generator copies `dist/` into, and falls back to the network for
-/// anything else (remote images, a dev server).
+/// anything else (remote images, an API). The development build that
+/// `ng serve --platform ios` runs has no LynxBundle: it loads everything the
+/// bundle names from the dev server instead (see DevServer).
 ///
 /// One class covers every loader Lynx asks for: the global template provider
 /// (`LynxTemplateProvider`), and the per-view template, generic and media
@@ -54,6 +56,24 @@ final class BundleResourceFetcher: NSObject, LynxTemplateProvider,
   }
 
   private func load(_ url: String, completion: @escaping (Data?, Error?) -> Void) {
+    if let remote = DevServer.shared.remoteURL(for: url) {
+      // Never from URLSession's cache: the server has a new build after
+      // every edit, under the same URL.
+      let request = URLRequest(url: remote, cachePolicy: .reloadIgnoringLocalCacheData)
+      URLSession.shared.dataTask(with: request) { data, response, error in
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let failure =
+          error
+          ?? (status >= 400
+            ? NSError(
+              domain: "AngularLynx", code: status,
+              userInfo: [NSLocalizedDescriptionKey: "The dev server answered \(status) for \(remote)."])
+            : nil)
+        DevServer.shared.loaded(url, error: failure)
+        completion(failure == nil ? data : nil, failure)
+      }.resume()
+      return
+    }
     if let file = localFile(for: url) {
       do {
         completion(try Data(contentsOf: file), nil)
@@ -114,6 +134,29 @@ final class BundleResourceFetcher: NSObject, LynxTemplateProvider,
     _ request: LynxResourceRequest,
     onComplete callback: @escaping LynxGenericResourcePathCompletionBlock
   ) -> () -> Void {
+    if let remote = DevServer.shared.remoteURL(for: request.url) {
+      // A file the bundle loads by path is on the dev server, so it's
+      // downloaded to a file first.
+      let task = URLSession.shared.downloadTask(
+        with: URLRequest(url: remote, cachePolicy: .reloadIgnoringLocalCacheData)
+      ) { location, _, error in
+        guard let location else {
+          callback(nil, error)
+          return
+        }
+        let file = FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)
+          .appendingPathExtension(remote.pathExtension)
+        do {
+          try FileManager.default.moveItem(at: location, to: file)
+          callback(file.path, nil)
+        } catch {
+          callback(nil, error)
+        }
+      }
+      task.resume()
+      return { task.cancel() }
+    }
     if let file = localFile(for: request.url) {
       callback(file.path, nil)
     } else {
@@ -131,6 +174,7 @@ final class BundleResourceFetcher: NSObject, LynxTemplateProvider,
   /// Images load through LynxService's SDWebImage service, which reads
   /// `file://` URLs itself, so local images only need their URL rewritten.
   func shouldRedirectUrl(_ request: LynxResourceRequest) -> String {
-    localFile(for: request.url)?.absoluteString ?? request.url
+    DevServer.shared.remoteURL(for: request.url)?.absoluteString
+      ?? localFile(for: request.url)?.absoluteString ?? request.url
   }
 }

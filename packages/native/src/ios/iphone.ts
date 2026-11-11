@@ -1,9 +1,8 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-import type { ResolvedApp } from '../options.ts';
 import { NativeBuildError, capture, run } from '../process.ts';
-import type { RunTarget } from '../run.ts';
+import { type RunTarget, iosDevServerArguments } from '../run.ts';
 
 /**
  * A device in `xcrun devicectl list devices --json-output -`, as far as it's
@@ -197,7 +196,7 @@ export const startIPhone = ({
   );
   return {
     iPhone: { udid: phone.udid, name: phone.name },
-    launch: async (binary: string, app: ResolvedApp) => {
+    launch: async (binary, app, devServer) => {
       log(`Installing the app on ${phone.name}`);
       await devicectl(
         ['device', 'install', 'app', '--device', phone.udid, binary],
@@ -214,6 +213,8 @@ export const startIPhone = ({
           phone.udid,
           '--terminate-existing',
           app.id,
+          // devicectl hands what follows the app to it as its arguments.
+          ...iosDevServerArguments(devServer),
         ],
         { phone, action: 'open the app', logFile },
       );

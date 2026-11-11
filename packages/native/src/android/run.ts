@@ -2,9 +2,13 @@ import { spawn } from 'node:child_process';
 import { closeSync, existsSync, openSync } from 'node:fs';
 import path from 'node:path';
 
-import type { ResolvedApp } from '../options.ts';
 import { NativeBuildError, capture, run } from '../process.ts';
-import type { RunTarget } from '../run.ts';
+import {
+  DEV_SERVER_ARGUMENT,
+  DEV_SERVER_ORIGIN_ARGUMENT,
+  type DevServerOptions,
+  type RunTarget,
+} from '../run.ts';
 import { findAndroidSdk } from './project.ts';
 
 /**
@@ -210,7 +214,7 @@ export const startAndroidDevice = async ({
   const emulatorLog = emulatorLogFile(logFile);
 
   return {
-    launch: async (binary: string, app: ResolvedApp) => {
+    launch: async (binary, app, devServer) => {
       const serials = new Set(before.map((candidate) => candidate.serial));
       let serial = 'serial' in choice ? choice.serial : undefined;
       // An emulator shows up in `adb devices` a few seconds after it starts,
@@ -279,6 +283,18 @@ export const startAndroidDevice = async ({
         app.id,
       ]);
       const component = resolved?.trim().split('\n').at(-1)?.trim();
+      if (devServer) {
+        // Lets the app reach the dev server at localhost, whatever network
+        // the device is on: adb forwards the device's port to this
+        // machine's, over USB or wireless debugging, and an emulator's too.
+        await adb([
+          '-s',
+          serial!,
+          'reverse',
+          `tcp:${devServerPort(devServer)}`,
+          `tcp:${devServerPort(devServer)}`,
+        ]);
+      }
       // -S stops the copy a previous `--run` left open first, as iOS's
       // --terminate-running-process does.
       const output = await adb([
@@ -291,6 +307,7 @@ export const startAndroidDevice = async ({
         '-W',
         '-n',
         component?.includes('/') ? component : `${app.id}/${SHELL_ACTIVITY}`,
+        ...androidDevServerExtras(devServer),
       ]);
       // `am start` exits with 0 even when it fails, and says why on stdout,
       // last: `Error type 3`, then `Error: Activity class ... does not exist.`
@@ -307,6 +324,41 @@ export const startAndroidDevice = async ({
     },
   };
 };
+
+/**
+ * The dev server's port, which `adb reverse` forwards.
+ */
+const devServerPort = (devServer: DevServerOptions): string => {
+  const url = new URL(devServer.bundleUrl);
+  return url.port || (url.protocol === 'https:' ? '443' : '80');
+};
+
+/**
+ * The intent extras that point the development app at the dev server
+ * (DevServer.kt reads them): the bundle at localhost, which `adb reverse`
+ * forwards to this machine, and the address the bundle was built with, so the
+ * app sends what the bundle asks of that address (lazy bundles, images, the
+ * live reload socket) to localhost too. Quoted, because adb runs `am` in the
+ * device's shell.
+ */
+export const androidDevServerExtras = (
+  devServer: DevServerOptions | undefined,
+): string[] => {
+  if (!devServer) return [];
+  const built = new URL(devServer.bundleUrl);
+  const local = new URL(devServer.bundleUrl);
+  local.hostname = 'localhost';
+  return [
+    '--es',
+    DEV_SERVER_ARGUMENT,
+    shellQuote(local.href),
+    '--es',
+    DEV_SERVER_ORIGIN_ARGUMENT,
+    shellQuote(built.origin),
+  ];
+};
+
+const shellQuote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 const capitalize = (text: string) => text[0]!.toUpperCase() + text.slice(1);
 

@@ -3,7 +3,6 @@ import {
   type BuilderOutput,
   createBuilder,
 } from '@angular-devkit/architect';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -14,28 +13,15 @@ import {
   importPlugin,
   importRspeedy,
 } from '../rspeedy';
-import type * as Native from '@blotch/angular-lynx-native' with {
-  'resolution-mode': 'import',
-};
-
+import { type NativeModule, importNative, readPackageVersion } from '../native';
 import { nativeCacheDir } from './native-cache';
 import type { ApplicationBuilderOptions } from './schema';
-
-type NativeModule = typeof Native;
 
 export type ApplicationBuilderDeps = {
   readonly importRspeedy: () => Promise<RspeedyModule>;
   readonly importPlugin: () => Promise<RspeedyPluginModule>;
   readonly importNative: () => Promise<NativeModule>;
 };
-
-/**
- * Like the rsbuild plugin, the native builder is this package's own
- * dependency, resolved from here. Imported only for `--platform`, so a plain
- * bundle build never loads it.
- */
-const importNative = (): Promise<NativeModule> =>
-  import('@blotch/angular-lynx-native');
 
 const defaultDeps: ApplicationBuilderDeps = {
   importRspeedy,
@@ -217,16 +203,6 @@ const watchBundle = async function* (
       yield results.shift()!;
     }
     await new Promise<void>((resolve) => (wake = resolve));
-  }
-};
-
-const readPackageVersion = (projectRoot: string): string | undefined => {
-  try {
-    return JSON.parse(
-      readFileSync(path.join(projectRoot, 'package.json'), 'utf8'),
-    ).version;
-  } catch {
-    return undefined;
   }
 };
 

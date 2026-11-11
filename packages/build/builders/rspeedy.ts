@@ -28,6 +28,10 @@ export type RspeedyInstance = {
     port: number;
     server: { close: () => Promise<void> };
   }>;
+  /** An environment's config, after rspeedy's plugins filled it in. */
+  getNormalizedConfig: (options: { environment: string }) => {
+    readonly dev?: { readonly assetPrefix?: unknown };
+  };
 };
 
 export type RspeedyModule = {

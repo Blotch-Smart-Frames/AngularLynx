@@ -171,7 +171,7 @@ Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves 
 
 ### No `navigator.share()` or `File`
 
-Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only `ng build --platform` apps and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links).
+Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only the `--platform` apps (`ng build` and `ng serve`) and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links).
 
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
@@ -179,12 +179,12 @@ Build custom selection UI with `<view>` and state. Mark the chosen option for sc
 
 ### No `localStorage` / `sessionStorage`
 
-- **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only `ng build --platform` apps have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.
+- **Data kept after the app closes:** `LynxLocalStorage`, or `LynxSecureStorage` for tokens (Keychain on iOS, Android Keystore encryption on Android). Async: `await storage.setItem(key, value)`, `await storage.getItem<T>(key)` (`null` when unset), `removeItem(key)`, `clear()`. Values are JSON. Only the `--platform` apps (`ng build` and `ng serve`) have the native modules; Lynx Explorer and tests keep values in memory, and the web uses `localStorage`.
 - **State shared between pages while the app runs:** `LynxSessionStorage`, which empties when the app quits.
 
 ### No `window.open`, `location` or `<a href>`
 
-Open links with `LynxLinking`: `openURL()` for the browser, mail or another app, `openInApp()` for a browser sheet over the app, `canOpenURL()` to check first (declare other apps' schemes in `canOpenURLSchemes`). Only `ng build --platform` apps have its native module; Lynx Explorer rejects with `unavailable`. See [http-requests.md](http-requests.md).
+Open links with `LynxLinking`: `openURL()` for the browser, mail or another app, `openInApp()` for a browser sheet over the app, `canOpenURL()` to check first (declare other apps' schemes in `canOpenURLSchemes`). Only the `--platform` apps (`ng build` and `ng serve`) have its native module; Lynx Explorer rejects with `unavailable`. See [http-requests.md](http-requests.md).
 
 ### HTTP needs absolute URLs
 
@@ -192,7 +192,7 @@ Open links with `LynxLinking`: `openURL()` for the browser, mail or another app,
 
 ### No `navigator.clipboard`
 
-Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and `await clipboard.getString()` (`''` when it holds no text). It uses `UIPasteboard` on iOS, `ClipboardManager` on Android and the page's Clipboard API in the web preview, where you call `setString()` straight from the tap's handler, before any `await`. Only `ng build --platform` apps have the native module: in Lynx Explorer both reject with a `ClipboardError` whose `code` is `unavailable`.
+Copy and paste text with `LynxClipboard`: `await clipboard.setString(text)` and `await clipboard.getString()` (`''` when it holds no text). It uses `UIPasteboard` on iOS, `ClipboardManager` on Android and the page's Clipboard API in the web preview, where you call `setString()` straight from the tap's handler, before any `await`. Only the `--platform` apps (`ng build` and `ng serve`) have the native module: in Lynx Explorer both reject with a `ClipboardError` whose `code` is `unavailable`.
 
 - **Don't read the clipboard on launch.** iOS 16+ asks "Allow Paste?" before the app reads text another app copied (a refusal reads as `''`), and Android 12+ shows a "pasted" message.
 - **Android 13+ confirms every copy itself,** in a panel TalkBack reads. Check `clipboard.confirmsCopies` before showing or announcing your own "Copied".
@@ -208,7 +208,7 @@ Inside a transformed (or CSS-`zoom`ed) `<lynx-view>`, `getBoundingClientRect()` 
 
 ### No 2D canvas, and WebGL only in built apps
 
-`<canvas>` has only a WebGL2 context, and only in apps built with `ng build --platform ios|android` and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
+`<canvas>` has only a WebGL2 context, and only in the `--platform ios|android` apps (`ng build` and `ng serve`) and the web preview: Lynx Explorer's `getContext('webgl2')` is `null`. Libraries that draw with `getContext('2d')`, such as most chart libraries, don't work. See "3D with `<canvas>`" in [lynx-elements.md](lynx-elements.md).
 
 ### `<video>` in the web preview only plays and pauses
 

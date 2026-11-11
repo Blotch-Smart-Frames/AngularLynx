@@ -58,6 +58,7 @@ describe('prepareProject', () => {
       dir: path.join(workDir, 'ios'),
       ejected: false,
       regenerated: true,
+      hash: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
     expect(
       readFileSync(path.join(project.dir, 'Config/App.xcconfig'), 'utf8'),
@@ -86,6 +87,31 @@ describe('prepareProject', () => {
         'utf8',
       ),
     ).toBe('bundle');
+  });
+
+  it("generates `ng serve --platform`'s development app in its own folder, without the bundle", () => {
+    const release = prepare('ios');
+    const development = prepareProject({
+      platform: 'ios',
+      generator: iosGenerator,
+      projectRoot: root,
+      workDir,
+      app: app(),
+      bundleDir: undefined,
+      packageVersion: '1.0.0',
+      development: true,
+    });
+    expect(development.dir).toBe(path.join(workDir, 'ios-dev'));
+    expect(development.regenerated).toBe(true);
+    // The same inputs as the release app's.
+    expect(development.hash).toBe(release.hash);
+    expect(
+      existsSync(path.join(development.dir, 'LynxBundle/main.lynx.bundle')),
+    ).toBe(false);
+    // Neither touches the other's project.
+    expect(
+      existsSync(path.join(release.dir, 'LynxBundle/main.lynx.bundle')),
+    ).toBe(true);
   });
 
   it('reuses the generated project until an input changes', () => {

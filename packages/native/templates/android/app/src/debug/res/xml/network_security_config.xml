@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The debug build's network security config, in place of src/main's: plain
+  HTTP to any host. Only `ng serve` builds the debug build type (with the
+  platform option set to android). The dev
+  server is plain HTTP, and a development bundle names it by the computer's
+  address on the local network (rspeedy's dev.assetPrefix), which the app's
+  own fetch() of an imported file goes to directly. The release build keeps
+  src/main's, which allows plain HTTP to localhost alone.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

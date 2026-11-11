@@ -40,6 +40,8 @@ final class LynxViewController: UIViewController {
     }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
+    // `ng serve --platform ios`'s live reload, in the development build.
+    DevServer.shared.register(in: config)
     let lynxView = LynxView { builder in
       builder.config = config
       // Lets main-thread code, where Angular runs, call the config's modules
@@ -59,7 +61,13 @@ final class LynxViewController: UIViewController {
 
     layoutLynxView()
     lynxView.updateGlobalProps(with: globalProps())
-    lynxView.loadTemplate(fromURL: "main.lynx.bundle", initData: nil)
+    // The bundle inside the app, or in the development build, the dev
+    // server's, which it loads again on every edit.
+    let templateURL = DevServer.shared.templateURL
+    lynxView.loadTemplate(fromURL: templateURL, initData: nil)
+    DevServer.shared.attach(to: view) { [weak self] in
+      self?.lynxView?.loadTemplate(fromURL: templateURL, initData: nil)
+    }
 
     // Send the new theme when the phone switches between light and dark
     // while the app is open. Before iOS 17, traitCollectionDidChange does.

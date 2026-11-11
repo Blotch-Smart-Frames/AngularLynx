@@ -141,6 +141,11 @@ const fakeRspeedy = (config?: Record<string, unknown>) => {
       port: 3000,
       server: { close: serverClose },
     })),
+    // What rspeedy's Lynx plugin makes of dev.assetPrefix: the computer's
+    // address on the local network, with the port to fill in.
+    getNormalizedConfig: vi.fn((_options: { environment: string }) => ({
+      dev: { assetPrefix: 'http://192.168.1.20:<port>/' },
+    })),
   };
   const rspeedy: RspeedyModule = {
     loadConfig: vi.fn(async () => ({
@@ -765,6 +770,152 @@ describe('dev-server builder', () => {
       error: 'port in use',
     });
     expect((await outputs.next()).done).toBe(true);
+  });
+
+  describe('--platform', () => {
+    const serveApp = async (
+      options: Parameters<typeof runDevServer>[0],
+      buildNativeApp = vi.fn(async () => ({ artifacts: [], projectDir: '' })),
+    ) => {
+      installAngularBuild('22.2.2');
+      const fake = fakeRspeedy();
+      const ctx = fakeContext('my-app', {
+        'my-app:build:development': {
+          appId: 'com.example.app',
+          optimization: false,
+        },
+      });
+      const importNative = vi.fn(async () => ({ buildNativeApp }) as never);
+      const outputs = runDevServer(options, ctx.context, {
+        importRspeedy: async () => fake.rspeedy,
+        importPlugin,
+        importQRCodePlugin,
+        importNative,
+      })[Symbol.asyncIterator]();
+      const first = await outputs.next();
+      return { ...fake, ...ctx, first, outputs, buildNativeApp, importNative };
+    };
+
+    it("builds the development app from the build target's options and opens it, loading from the server", async () => {
+      const { first, buildNativeApp, instance, raw } = await serveApp({
+        platform: 'ios',
+        device: 'iPhone 18 Pro',
+      });
+      expect(first.value).toEqual({
+        success: true,
+        baseUrl: 'http://localhost:3000',
+      });
+      // After the server is up, so the app finds it.
+      expect(instance.startDevServer).toHaveBeenCalled();
+      const workDir = path.join(
+        root,
+        '.angular/cache/22.2.2/my-app/lynx-native',
+      );
+      expect(buildNativeApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'ios',
+          projectRoot: root,
+          workDir,
+          projectName: 'my-app',
+          packageVersion: '2.0.0',
+          outputDir: path.join(workDir, 'serve/ios'),
+          app: expect.objectContaining({ appId: 'com.example.app' }),
+          run: { device: 'iPhone 18 Pro' },
+          devServer: {
+            bundleUrl: 'http://192.168.1.20:3000/main.lynx.bundle',
+          },
+        }),
+      );
+      expect(instance.getNormalizedConfig).toHaveBeenCalledWith({
+        environment: 'lynx',
+      });
+      expect(raw.logger.info).toHaveBeenCalledWith(
+        'The ios app loads from http://192.168.1.20:3000/main.lynx.bundle and reloads on every edit.',
+      );
+    });
+
+    it('opens it where --run would without --device', async () => {
+      const { buildNativeApp } = await serveApp({ platform: 'android' });
+      expect(buildNativeApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          platform: 'android',
+          run: { device: undefined },
+        }),
+      );
+    });
+
+    it('keeps serving the web preview and Lynx Explorer', async () => {
+      // An empty list, the build target's default, builds every environment.
+      const { rspeedy, passedConfig, first } = await serveApp({
+        platform: 'ios',
+        environment: [],
+      });
+      expect(first.value).toEqual(expect.objectContaining({ success: true }));
+      expect(rspeedy.createRspeedy).toHaveBeenCalledWith(
+        expect.objectContaining({ environment: [] }),
+      );
+      expect(passedConfig()['plugins']).toContainEqual(
+        qrCodePlugin({ fullscreen: true }),
+      );
+    });
+
+    it("doesn't load the native builder without --platform", async () => {
+      const { importNative } = await serveApp({});
+      expect(importNative).not.toHaveBeenCalled();
+    });
+
+    it('reports a native build that fails, and stops', async () => {
+      const { first, outputs } = await serveApp(
+        { platform: 'android' },
+        vi.fn(async () => {
+          throw new Error('No emulator is running');
+        }),
+      );
+      expect(first.value).toEqual({
+        success: false,
+        error: 'No emulator is running',
+      });
+      expect((await outputs.next()).done).toBe(true);
+    });
+
+    it.each([
+      [
+        { device: 'iPhone 18 Pro' },
+        '--device picks where --platform opens the app. Add --platform ios or --platform android.',
+      ],
+      [
+        { platform: 'ios', environment: ['web'] },
+        "--platform opens the app on the lynx environment's bundle, which --environment leaves out (web).",
+      ],
+    ])('fails before serving for %o', async (options, error) => {
+      const { first, instance, buildNativeApp } = await serveApp(
+        options as Parameters<typeof runDevServer>[0],
+      );
+      expect(first.value).toEqual({ success: false, error });
+      expect(instance.startDevServer).not.toHaveBeenCalled();
+      expect(buildNativeApp).not.toHaveBeenCalled();
+    });
+
+    it("fails when lynx.config.ts's dev.assetPrefix isn't the server's URL", async () => {
+      installAngularBuild('22.2.2');
+      const fake = fakeRspeedy();
+      fake.instance.getNormalizedConfig.mockReturnValue({
+        dev: { assetPrefix: '/' },
+      });
+      const buildNativeApp = vi.fn();
+      const outputs = runDevServer({ platform: 'ios' }, fakeContext().context, {
+        importRspeedy: async () => fake.rspeedy,
+        importPlugin,
+        importQRCodePlugin,
+        importNative: async () => ({ buildNativeApp }) as never,
+      })[Symbol.asyncIterator]();
+      expect((await outputs.next()).value).toEqual({
+        success: false,
+        error:
+          '--platform needs the lynx environment\'s dev.assetPrefix to be the dev server\'s URL, which the app loads from; lynx.config.ts sets it to "/".',
+      });
+      expect(buildNativeApp).not.toHaveBeenCalled();
+    });
   });
 
   it('needs a project', async () => {

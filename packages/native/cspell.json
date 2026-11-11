@@ -74,6 +74,7 @@
     "NONNULL",
     "OBJC",
     "okhttp",
+    "okio",
     "Onone",
     "Parcelable",
     "pbxproj",

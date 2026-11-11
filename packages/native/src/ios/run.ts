@@ -1,9 +1,8 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import type { ResolvedApp } from '../options.ts';
 import { NativeBuildError, capture, run } from '../process.ts';
-import type { RunTarget } from '../run.ts';
+import { type RunTarget, iosDevServerArguments } from '../run.ts';
 import { listIPhones, pickIPhone, startIPhone } from './iphone.ts';
 
 /** What `xcrun simctl list --json devices runtimes` prints, as far as it's read here. */
@@ -261,7 +260,8 @@ export const startIosSimulator = async ({
   booted.catch(() => {});
 
   return {
-    launch: async (binary: string, app: ResolvedApp) => {
+    simulator: { udid },
+    launch: async (binary, app, devServer) => {
       await booted;
       await showSimulator(udid, logFile, log);
       log(`Installing the app on ${simulator.name}`);
@@ -274,6 +274,7 @@ export const startIosSimulator = async ({
         '--terminate-running-process',
         udid,
         app.id,
+        ...iosDevServerArguments(devServer),
       ]);
       log(`Opened ${app.name} on ${simulator.name}`);
     },

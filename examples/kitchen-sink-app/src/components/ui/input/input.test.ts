@@ -117,6 +117,40 @@ describe('UiInput', () => {
     ).toBe('true');
   });
 
+  it('takes its name from accessibility-label when shown without a label', async () => {
+    @Component({
+      imports: [UiInput],
+      template: `
+        <ui-input
+          [label]="label()"
+          accessibility-label="Street"
+          placeholder="Add a street"
+        />
+      `,
+    })
+    class UnlabeledHost {
+      readonly label = signal('');
+    }
+
+    const {
+      componentRef,
+      container,
+      getAllByAccessibilityLabel,
+      getByText,
+      queryByText,
+    } = await render(UnlabeledHost);
+    const field = container.querySelector('input')!;
+    // Only the native field is named: the host drops its copy.
+    expect(getAllByAccessibilityLabel('Street')).toEqual([field]);
+    expect(queryByText('Street')).toBeNull();
+
+    // A label wins, and is shown.
+    (componentRef.instance as UnlabeledHost).label.set('Address');
+    await waitForUpdate();
+    expect(field.getAttribute('accessibility-label')).toBe('Address');
+    expect(getByText('Address')).toBeTruthy();
+  });
+
   it('updates `value` and emits `changed` as the user types', async () => {
     const { host, field } = await renderInput();
     // Lynx puts the typed text in the event's detail, not on its target.

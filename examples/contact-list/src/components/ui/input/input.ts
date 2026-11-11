@@ -24,12 +24,13 @@ import { cn } from '@blotch/dolan/utils/cn';
   // The host is the field's column. Angular gives a component's host every
   // static attribute the app writes on it, so a class on <ui-input> lands
   // there whatever the component does: a column inside the host applied it
-  // twice. A placeholder lands there too, and goes: it belongs to the
-  // <input>, and a second element with it is a second match for
-  // getByPlaceholderText.
+  // twice. A placeholder and an accessibility label land there too, and go:
+  // they belong to the <input>, and a second element with one is a second
+  // match for getByPlaceholderText or getByLabelText.
   host: {
     '[class]': 'containerClass()',
     '[attr.placeholder]': 'null',
+    '[attr.accessibility-label]': 'null',
   },
   template: `
     <!-- The <input> below carries the label as its accessibility-label, so
@@ -81,10 +82,11 @@ import { cn } from '@blotch/dolan/utils/cn';
            accessibility elements by default, so the UITextField under an
            <input> isn't one. VoiceOver then read the placeholder inside it,
            or nothing once it held text. As one, it reads its
-           accessibility-label, the label, then its text. -->
+           accessibility-label, the label (or the accessibility label when
+           there's none), then its text. -->
       <input
         accessibility-element="true"
-        [attr.accessibility-label]="label() || null"
+        [attr.accessibility-label]="label() || accessibilityLabel() || null"
         [attr.placeholder]="placeholder()"
         [attr.type]="type()"
         [value]="value()"
@@ -106,6 +108,14 @@ import { cn } from '@blotch/dolan/utils/cn';
 export class UiInput implements FormValueControl<string> {
   readonly value = model<string>('');
   readonly label = input<string>('');
+  /**
+   * What a screen reader calls the field when it's shown without a label,
+   * such as one of several fields under a label of the app's own. `label`
+   * wins when both are set.
+   */
+  readonly accessibilityLabel = input<string>('', {
+    alias: 'accessibility-label',
+  });
   readonly placeholder = input<string>('');
   readonly type = input<string>('text');
   readonly helperText = input<string>('');

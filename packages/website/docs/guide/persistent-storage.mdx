@@ -84,7 +84,7 @@ export class SessionStore {
 - **On the web,** keys start with `angular-lynx:` or `angular-lynx-secure:`, so `clear()` leaves the page's own keys alone. Secure values aren't encrypted there: like web sign-in libraries, which keep their tokens in `localStorage` or IndexedDB too, it relies on the browser keeping each site's storage to itself.
 
 :::info Lynx Explorer and tests
-Lynx Explorer has no storage for your app, so there both services keep values in memory: every method works, but the values are gone when the app closes. Unit tests do the same. Try storage that lasts on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#keep-data-after-the-app-closes).
+Lynx Explorer has no storage for your app, so there both services keep values in memory: every method works, but the values are gone when the app closes. Unit tests do the same. Try storage that lasts on a simulator, emulator or phone with [`ng serve --platform ios` or `--platform android`](/guide/native-apps#develop-in-the-real-app-with-ng-serve). To use it in your own native app, see [Embed in a Native App](/guide/embedding/#keep-data-after-the-app-closes).
 :::
 
 ## Keep a Firebase sign-in

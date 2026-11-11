@@ -15,7 +15,7 @@ flowchart LR
 
 1. The build compiles your app into a single file: the **bundle**.
 2. A **host app**, a native iOS or Android app, loads that bundle and shows it.
-3. While you develop, the host app is **Lynx Explorer**. When you ship, it's an app that `ng build --platform` generates for you.
+3. While you develop, the host app is **Lynx Explorer**, or a development build of your own app that `ng serve --platform` makes. When you ship, it's an app that `ng build --platform` generates for you.
 
 ## The bundle
 
@@ -35,11 +35,12 @@ A [**host app**](/guide/glossary#host-app) is a regular iOS or Android app with 
 
 There are three kinds of host app:
 
-| Host app                | When you use it                        | Who makes it                                         |
-| ----------------------- | -------------------------------------- | ---------------------------------------------------- |
-| **Lynx Explorer**       | Development                            | Lynx. You install it from a store or GitHub          |
-| **The generated app**   | Shipping to the stores                 | `ng build --platform ios\|android` builds it         |
-| **Your own native app** | Adding Lynx screens to an existing app | Your native team. See [Embedding](/guide/embedding/) |
+| Host app                  | When you use it                             | Who makes it                                         |
+| ------------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| **Lynx Explorer**         | Development                                 | Lynx. You install it from a store or GitHub          |
+| **The development build** | Development, with your app's native modules | `ng serve --platform ios\|android` builds it         |
+| **The generated app**     | Shipping to the stores                      | `ng build --platform ios\|android` builds it         |
+| **Your own native app**   | Adding Lynx screens to an existing app      | Your native team. See [Embedding](/guide/embedding/) |
 
 ## Lynx Explorer
 
@@ -52,6 +53,8 @@ When you save a file, the dev server rebuilds the bundle and sends the changes t
 - A changed template or stylesheet re-renders its component, which keeps its state.
 - Any other change restarts the app on the screen it was showing.
 - A change that can't be applied reloads the whole app. That needs **Lynx DevTool** turned on in Lynx Explorer's settings.
+
+Lynx Explorer only has Lynx's own native modules, not the ones your app adds. To develop in your own app instead, run `ng serve --platform ios` or `--platform android`: it builds a development build of your app, which loads the bundle from the dev server and updates the same way. See [Develop in the real app](/guide/native-apps#develop-in-the-real-app-with-ng-serve).
 
 ## The web preview
 

@@ -101,6 +101,10 @@ The [**Android emulator**](/guide/glossary#emulator) is a virtual Android phone.
 
 You should see the same screen as in the browser, drawn by the phone's own UI controls.
 
+:::tip Your own app instead of Lynx Explorer
+Lynx Explorer doesn't have your app's native modules, such as secure storage, sign-in and the share sheet. With Xcode or Android Studio installed, `ng serve --platform ios` or `ng serve --platform android` builds your own app, opens it on a simulator, emulator or phone, and updates it on every save, as Lynx Explorer does. See [Develop in the real app](/guide/native-apps#develop-in-the-real-app-with-ng-serve).
+:::
+
 ## 5. Make a change
 
 1. Open `src/app/app.ts` and change the line "Edit src/app/app.ts to get started".
@@ -136,13 +140,14 @@ my-app/
 
 These are the commands you'll use most. Prefix them with `npx` (`npx ng build`), or install the CLI globally with `npm install -g @angular/cli`:
 
-| Command                        | What it does                                                |
-| ------------------------------ | ----------------------------------------------------------- |
-| `ng serve`                     | Starts the dev server for the web preview and Lynx Explorer |
-| `ng generate component <name>` | Creates a component that uses Lynx elements                 |
-| `ng test`                      | Runs your unit tests                                        |
-| `ng build`                     | Builds the app's bundle into `dist/`                        |
-| `ng build --platform ios`      | Builds an iOS app ([details](/guide/native-apps))           |
+| Command                        | What it does                                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `ng serve`                     | Starts the dev server for the web preview and Lynx Explorer                                                          |
+| `ng serve --platform ios`      | Also runs your own app on a simulator or phone ([details](/guide/native-apps#develop-in-the-real-app-with-ng-serve)) |
+| `ng generate component <name>` | Creates a component that uses Lynx elements                                                                          |
+| `ng test`                      | Runs your unit tests                                                                                                 |
+| `ng build`                     | Builds the app's bundle into `dist/`                                                                                 |
+| `ng build --platform ios`      | Builds an iOS app ([details](/guide/native-apps))                                                                    |
 
 ## Teach your AI coding agent
 

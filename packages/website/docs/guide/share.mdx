@@ -96,13 +96,13 @@ Android's share sheet has no Save Image: there, people save a file with an app s
 
 Closing the share sheet isn't an error: `share()` resolves `false`. It rejects with a `TypeError` when there's nothing to share, a file has no name or the URL isn't absolute, and with a `ShareError`, whose `code` says why, when the sheet can't open:
 
-| `code`        | When                                                                                                                                  |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `unavailable` | The host has no share sheet: only the apps `ng build --platform` makes and the web preview do. Or a browser can't share text or links |
-| `failed`      | The sheet couldn't open, one was already open, a file couldn't be written, or the browser refused, such as when it wasn't a tap       |
+| `code`        | When                                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unavailable` | The host has no share sheet: only the apps `--platform` builds (`ng build` or `ng serve`) and the web preview do. Or a browser can't share text or links |
+| `failed`      | The sheet couldn't open, one was already open, a file couldn't be written, or the browser refused, such as when it wasn't a tap                          |
 
 :::info Lynx Explorer
-Lynx Explorer has no share sheet, so there `share()` rejects with `unavailable`. Try it on a simulator or emulator with [`ng build --platform ios --run`](/guide/native-apps), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#open-the-share-sheet).
+Lynx Explorer has no share sheet, so there `share()` rejects with `unavailable`. Try it on a simulator, emulator or phone with [`ng serve --platform ios` or `--platform android`](/guide/native-apps#develop-in-the-real-app-with-ng-serve), or in the web preview. To use it in your own native app, see [Embed in a Native App](/guide/embedding/#open-the-share-sheet).
 :::
 
 ## Test it

@@ -91,5 +91,5 @@ type LinkingErrorCode = 'unavailable' | 'failed';
 
 | `code`        | When                                                                                                      |
 | ------------- | --------------------------------------------------------------------------------------------------------- |
-| `unavailable` | The host can't open links. Only the apps `ng build --platform` makes can                                  |
+| `unavailable` | The host can't open links. Only the apps `--platform` builds (`ng build` or `ng serve`) can               |
 | `failed`      | Nothing on the device opens the URL, a browser sheet was already open, or the browser blocked the new tab |

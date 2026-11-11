@@ -25,7 +25,7 @@ const code = new URL(callback).searchParams.get('code');
 class LynxWebAuthSession {}
 ```
 
-Uses `ASWebAuthenticationSession` on iOS and a Custom Tab on Android. Only the apps `ng build --platform` makes have it; elsewhere, such as Lynx Explorer, the web preview and unit tests, `start()` rejects with `unavailable`.
+Uses `ASWebAuthenticationSession` on iOS and a Custom Tab on Android. Only the apps `--platform` builds, with `ng build` or `ng serve`, have it; elsewhere, such as Lynx Explorer, the web preview and unit tests, `start()` rejects with `unavailable`.
 
 ### `LynxWebAuthSession.start()`
 

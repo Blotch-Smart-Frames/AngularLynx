@@ -6,11 +6,11 @@ A phone has no browser console to open. This page shows where your logs go, how 
 
 `console.log()`, `console.warn()` and the rest work on Lynx. Where you read the output depends on where the app runs:
 
-| Your app runs in                               | Read `console.*` output in                                                  |
-| ---------------------------------------------- | --------------------------------------------------------------------------- |
-| The [web preview](/guide/glossary#web-preview) | Your browser's DevTools console, as for any web page                        |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | The **Console** panel of [Lynx DevTool](#inspect-the-app-with-lynx-devtool) |
-| The apps `ng build --platform` makes           | Nowhere you can easily read. These apps don't include Lynx DevTool          |
+| Your app runs in                                            | Read `console.*` output in                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| The [web preview](/guide/glossary#web-preview)              | Your browser's DevTools console, as for any web page                        |
+| [Lynx Explorer](/guide/glossary#lynx-explorer)              | The **Console** panel of [Lynx DevTool](#inspect-the-app-with-lynx-devtool) |
+| The apps `--platform` builds, with `ng build` or `ng serve` | Nowhere you can easily read. These apps don't include Lynx DevTool          |
 
 On a device, `console.*` goes to Lynx's native logging, not to a panel on screen. To read logs without Lynx DevTool, use `LynxLogger`.
 
@@ -84,7 +84,7 @@ Lynx's [DevTool guide](https://lynxjs.org/guide/devtool) covers each panel in de
 
 ## Show errors on screen
 
-When nothing is connected, put the latest error on screen. This helps most in the apps `ng build --platform` makes, which show no error screen of their own.
+When nothing is connected, put the latest error on screen. This helps most in the apps `--platform` builds, with `ng build` or `ng serve`, which show no error screen of their own.
 
 Extend [`LynxErrorHandler`](/guide/error-handling) so it copies each error into a signal:
 

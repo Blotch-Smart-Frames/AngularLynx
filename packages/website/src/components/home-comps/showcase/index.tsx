@@ -145,7 +145,7 @@ const steps = [
   {
     title: 'Develop',
     command: 'ng serve',
-    desc: 'Preview in your browser, or scan the QR code with Lynx Explorer to run it on your phone.',
+    desc: 'Preview in your browser, scan the QR code with Lynx Explorer, or add --platform ios to run your own app on a simulator or phone.',
     link: '/guide/concepts/how-it-runs',
   },
   {

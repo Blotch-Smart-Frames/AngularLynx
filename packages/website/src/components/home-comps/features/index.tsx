@@ -55,7 +55,7 @@ const featuresConfig = [
   {
     icon: 'fa-light fa-rocket-launch',
     title: 'From ng serve to the App Store',
-    desc: 'Preview in the browser and on your phone as you code. ng build --platform ios or android builds apps ready for the stores, with no Xcode or Gradle project to maintain.',
+    desc: 'Preview in the browser and on your phone as you code, or run your own app with ng serve --platform ios, updating on every save. ng build --platform builds apps ready for the stores, with no Xcode or Gradle project to maintain.',
     actions: [
       { text: 'Quick Start', link: '/guide/quick-start' },
       { text: 'Run on iOS and Android', link: '/guide/native-apps' },

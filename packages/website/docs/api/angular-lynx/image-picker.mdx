@@ -24,7 +24,7 @@ if (picked) {
 class LynxImagePicker {}
 ```
 
-Uses `PHPickerViewController` on iOS, the Photo Picker on Android, and an `<input type="file" accept="image/*">` in the web preview. Only the apps `ng build --platform` makes have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `pick()` rejects with `unavailable`.
+Uses `PHPickerViewController` on iOS, the Photo Picker on Android, and an `<input type="file" accept="image/*">` in the web preview. Only the apps `--platform` builds, with `ng build` or `ng serve`, have the native module behind it; elsewhere, such as Lynx Explorer and unit tests, `pick()` rejects with `unavailable`.
 
 ### `LynxImagePicker.pick()`
 

@@ -80,7 +80,7 @@ Give the scheme alone, without `://`. iOS reads no more than 50, the five always
 ## In the web preview, Lynx Explorer and tests
 
 - **In the [web preview](/guide/glossary#web-preview),** `openURL()` and `openInApp()` open a new tab, and `canOpenURL()` resolves `true`, since a browser can't tell. `openInApp()` resolves when the person closes the tab or comes back to your app's tab. Browsers block a new tab that doesn't come from a tap, so call them from a tap handler, before anything is awaited.
-- **In Lynx Explorer,** which doesn't have your app's native modules, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`. Try links on a simulator or emulator with [`npm run ios` or `npm run android`](/guide/native-apps). To use them in your own native app, see [Embed in a Native App](/guide/embedding/#open-links-outside-the-app).
+- **In Lynx Explorer,** which doesn't have your app's native modules, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`. Try links on a simulator, emulator or phone with [`ng serve --platform ios` or `--platform android`](/guide/native-apps#develop-in-the-real-app-with-ng-serve). To use them in your own native app, see [Embed in a Native App](/guide/embedding/#open-links-outside-the-app).
 - **In unit tests,** the [testing library](/api/testing-library/#openedurls) records each URL instead of opening it, so a spec can check where a tap leads:
 
 ```typescript title="src/app/account.test.ts"

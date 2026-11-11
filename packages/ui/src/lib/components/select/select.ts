@@ -237,8 +237,10 @@ export class UiSelect {
  *
  * An item the search hides takes no room (`hidden`) and draws nothing: on
  * iOS, `display: none` shrinks an element to nothing but its children still
- * paint, so every hidden item's label piled up at the top of the list. Its
- * content is removed while it's hidden, and it's hidden from screen readers.
+ * paint, so every hidden item's label piled up at the top of the list.
+ * `overflow-hidden` clips them to that nothing. Its content stays: removed
+ * with an `@if`, the projected content didn't come back on iOS when the item
+ * showed again. It's hidden from screen readers meanwhile.
  */
 @Component({
   selector: 'ui-select-item',
@@ -253,12 +255,10 @@ export class UiSelect {
     '(bindtap)': 'onTap()',
   },
   template: `
-    @if (shown()) {
-      <ng-content />
-      <text [class]="labelClass()">{{ label() }}</text>
-      @if (isSelected()) {
-        <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
-      }
+    <ng-content />
+    <text [class]="labelClass()">{{ label() }}</text>
+    @if (isSelected()) {
+      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
     }
   `,
 })
@@ -294,7 +294,7 @@ export class UiSelectItem {
     cn(
       'flex-row items-center gap-3 px-4 py-3 flex',
       this.isSelected() && 'bg-accent',
-      !this.shown() && 'hidden',
+      !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );

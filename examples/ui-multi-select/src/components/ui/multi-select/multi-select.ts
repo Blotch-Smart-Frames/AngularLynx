@@ -270,8 +270,8 @@ export class UiMultiSelect {
  * the state it already has. A tap beside it toggles the value alone, and the
  * binding moves the checkbox. Either way it shows its check popping in or out.
  *
- * An item the search hides takes no room and draws nothing, as UiSelectItem
- * does: on iOS a `display: none` element's children still paint.
+ * An item the search hides takes no room and draws nothing, clipped as
+ * UiSelectItem is: on iOS a `display: none` element's children still paint.
  */
 @Component({
   selector: 'ui-multi-select-item',
@@ -286,11 +286,9 @@ export class UiMultiSelect {
     '(bindtap)': 'onTap()',
   },
   template: `
-    @if (shown()) {
-      <ui-checkbox [checked]="isChosen()" />
-      <ng-content />
-      <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
-    }
+    <ui-checkbox [checked]="isChosen()" />
+    <ng-content />
+    <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
   `,
 })
 export class UiMultiSelectItem {
@@ -323,7 +321,7 @@ export class UiMultiSelectItem {
   protected readonly containerClass = computed(() =>
     cn(
       'flex-row items-center gap-3 pl-1 pr-4 flex',
-      !this.shown() && 'hidden',
+      !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );

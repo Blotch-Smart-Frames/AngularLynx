@@ -387,36 +387,37 @@ describe('UiMultiSelect search', () => {
   });
 
   // On iOS a `display: none` element's children still paint, so a hidden
-  // row's checkbox and label drew on top of the list.
-  it('draws nothing of a hidden item, and hides it from screen readers', async () => {
+  // row's checkbox and label drew on top of the list. The clip stops that,
+  // and the content stays: removed with an `@if`, projected content didn't
+  // come back on iOS.
+  it('clips a hidden item, keeps its content, and hides it from screen readers', async () => {
     const { overlay, row, open, type } = await renderTopics((h) => {
       h.searchable.set(true);
       h.value.set(['science']);
     });
     await open();
+    const glyph = overlay.querySelector('.item-glyph')!;
+    const box = row('Science').querySelector('.rounded-sm')!;
     await type('news');
-    expect(within(overlay).queryByText('Science')).toBeNull();
-    expect(row('Science').querySelector('.rounded-sm')).toBeNull();
-    expect(overlay.querySelector('.item-glyph')).toBeNull();
+    expect(row('Science').classList).toContain('hidden');
+    expect(row('Science').classList).toContain('overflow-hidden');
     expect(row('Science').getAttribute('accessibility-elements-hidden')).toBe(
       'true',
     );
+    expect(row('News').classList).not.toContain('overflow-hidden');
     expect(row('News').hasAttribute('accessibility-elements-hidden')).toBe(
       false,
     );
+    // Its checkbox, glyph and label are still in it.
+    expect(within(row('Science')).getByText('Science')).toBeTruthy();
+    expect(glyph.parentElement).toBe(row('Science'));
 
-    // Shown again, it draws its checkbox, still checked, its content and its
-    // label.
+    // Shown again, the same checkbox, still checked, and the same glyph.
     await type('');
-    expect(row('Science').querySelector('.rounded-sm')!.classList).toContain(
-      'bg-primary',
-    );
-    expect(overlay.querySelector('.item-glyph')!.parentElement).toBe(
-      row('Science'),
-    );
-    expect(within(overlay).getByText('Science').parentElement).toBe(
-      row('Science'),
-    );
+    expect(row('Science').classList).not.toContain('hidden');
+    expect(row('Science').querySelector('.rounded-sm')).toBe(box);
+    expect(box.classList).toContain('bg-primary');
+    expect(overlay.querySelector('.item-glyph')).toBe(glyph);
   });
 
   it('clears the query once the sheet has closed', async () => {

@@ -438,26 +438,32 @@ describe('UiSelect search', () => {
   });
 
   // On iOS a `display: none` element's children still paint, so a hidden
-  // item's label and content drew on top of the list.
-  it('draws nothing of a hidden item, and hides it from screen readers', async () => {
+  // item's label and content drew on top of the list. The clip stops that,
+  // and the content stays: removed with an `@if`, the projected glyph didn't
+  // come back on iOS.
+  it('clips a hidden item, keeps its content, and hides it from screen readers', async () => {
     const { overlay, row, type, openSheet } = await renderSearch();
     await openSheet();
+    const glyph = overlay.querySelector('.pear-glyph')!;
     await type('app');
-    expect(within(overlay).queryByText('Pear')).toBeNull();
-    expect(overlay.querySelector('.pear-glyph')).toBeNull();
+    expect(row('Pear').classList).toContain('hidden');
+    expect(row('Pear').classList).toContain('overflow-hidden');
     expect(row('Pear').getAttribute('accessibility-elements-hidden')).toBe(
       'true',
     );
+    expect(row('Apple').classList).not.toContain('overflow-hidden');
     expect(row('Apple').hasAttribute('accessibility-elements-hidden')).toBe(
       false,
     );
+    // Its label and glyph are still in it, the same elements as before.
+    expect(within(row('Pear')).getByText('Pear')).toBeTruthy();
+    expect(glyph.parentElement).toBe(row('Pear'));
 
-    // Shown again, it draws its label and its content once more.
+    // Shown again, nothing of it has changed but the host's classes.
     await type('');
-    expect(within(overlay).getByText('Pear').parentElement).toBe(row('Pear'));
-    expect(overlay.querySelector('.pear-glyph')!.parentElement).toBe(
-      row('Pear'),
-    );
+    expect(row('Pear').classList).not.toContain('hidden');
+    expect(row('Pear').classList).not.toContain('overflow-hidden');
+    expect(overlay.querySelector('.pear-glyph')).toBe(glyph);
     expect(row('Pear').hasAttribute('accessibility-elements-hidden')).toBe(
       false,
     );

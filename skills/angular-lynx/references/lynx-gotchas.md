@@ -60,7 +60,7 @@ Not `content-box`. Width/height include padding and border.
 
 ### `display: none` content still draws on iOS
 
-Lynx shrinks a hidden element and everything in it to 0×0, but on iOS what's inside still draws: a `<text>`'s glyphs and an `<svg>` spill out from the element's top-left corner, and several hidden elements pile up there on top of each other. Give the element `overflow: hidden` while it's hidden. HTML's `hidden` attribute (`[hidden]="!open()"`) does both. Or remove the content: keep `display: none` on the element, so it takes no room, and wrap what's in it in `@if (shown())`, as suits rows a search filters.
+Lynx shrinks a hidden element and everything in it to 0×0, but on iOS what's inside still draws: a `<text>`'s glyphs and an `<svg>` spill out from the element's top-left corner, and several hidden elements pile up there on top of each other. Give the element `overflow: hidden` while it's hidden (Tailwind's `hidden overflow-hidden`). HTML's `hidden` attribute (`[hidden]="!open()"`) does both. Don't remove the content with an `@if` instead where it's projected: on iOS, `<ng-content>` inside a toggled `@if` can come back without the projected content (issue #380).
 
 ### No CSS inheritance
 

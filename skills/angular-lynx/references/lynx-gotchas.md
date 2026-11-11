@@ -58,9 +58,9 @@ Two siblings with `margin-bottom: 16px` and `margin-top: 8px` produce 24px of sp
 
 Not `content-box`. Width/height include padding and border.
 
-### `display: none` text still draws on iOS
+### `display: none` content still draws on iOS
 
-Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>` inside still draws its glyphs, spilling out from the element's top-left corner. Give the element `overflow: hidden` while it's hidden. HTML's `hidden` attribute (`[hidden]="!open()"`) does both.
+Lynx shrinks a hidden element and everything in it to 0×0, but on iOS what's inside still draws: a `<text>`'s glyphs and an `<svg>` spill out from the element's top-left corner, and several hidden elements pile up there on top of each other. Give the element `overflow: hidden` while it's hidden. HTML's `hidden` attribute (`[hidden]="!open()"`) does both. Or remove the content: keep `display: none` on the element, so it takes no room, and wrap what's in it in `@if (shown())`, as suits rows a search filters.
 
 ### No CSS inheritance
 

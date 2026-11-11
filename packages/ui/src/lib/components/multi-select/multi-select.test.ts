@@ -103,6 +103,9 @@ const renderTopics = async (setUp: (host: TopicsHost) => void = () => {}) => {
       ),
     /** An item's row, found by its label in the sheet. */
     item: (label: string) => within(overlay).getByText(label).parentElement!,
+    /** An item's row, found by its name, which it keeps while hidden. */
+    row: (label: string) =>
+      overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
     /** An item's checkbox box. */
     box: (label: string) =>
       within(overlay)
@@ -365,7 +368,7 @@ describe('UiMultiSelectItem', () => {
 
 describe('UiMultiSelect search', () => {
   it('opens at full height with a search field, and filters the items', async () => {
-    const { host, overlay, item, open, type } = await renderTopics((h) =>
+    const { host, overlay, row, open, type } = await renderTopics((h) =>
       h.searchable.set(true),
     );
     await open();
@@ -375,12 +378,45 @@ describe('UiMultiSelect search', () => {
 
     await type('SC');
     expect(host.query()).toBe('SC');
-    expect(item('Science').classList).not.toContain('hidden');
-    expect(item('News').classList).toContain('hidden');
+    expect(row('Science').classList).not.toContain('hidden');
+    expect(row('News').classList).toContain('hidden');
     expect(within(overlay).queryByText('No results')).toBeNull();
 
     await type('weather');
     expect(within(overlay).getByText('No results')).toBeTruthy();
+  });
+
+  // On iOS a `display: none` element's children still paint, so a hidden
+  // row's checkbox and label drew on top of the list.
+  it('draws nothing of a hidden item, and hides it from screen readers', async () => {
+    const { overlay, row, open, type } = await renderTopics((h) => {
+      h.searchable.set(true);
+      h.value.set(['science']);
+    });
+    await open();
+    await type('news');
+    expect(within(overlay).queryByText('Science')).toBeNull();
+    expect(row('Science').querySelector('.rounded-sm')).toBeNull();
+    expect(overlay.querySelector('.item-glyph')).toBeNull();
+    expect(row('Science').getAttribute('accessibility-elements-hidden')).toBe(
+      'true',
+    );
+    expect(row('News').hasAttribute('accessibility-elements-hidden')).toBe(
+      false,
+    );
+
+    // Shown again, it draws its checkbox, still checked, its content and its
+    // label.
+    await type('');
+    expect(row('Science').querySelector('.rounded-sm')!.classList).toContain(
+      'bg-primary',
+    );
+    expect(overlay.querySelector('.item-glyph')!.parentElement).toBe(
+      row('Science'),
+    );
+    expect(within(overlay).getByText('Science').parentElement).toBe(
+      row('Science'),
+    );
   });
 
   it('clears the query once the sheet has closed', async () => {

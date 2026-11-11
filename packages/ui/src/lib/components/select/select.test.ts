@@ -343,7 +343,7 @@ describe('UiSelect accessibility', () => {
 
 describe('UiSelect search', () => {
   @Component({
-    imports: [UiSelect, UiSelectItem],
+    imports: [UiSelect, UiSelectItem, LYNX_ELEMENTS],
     template: `
       <ui-select
         label="Fruit"
@@ -354,7 +354,9 @@ describe('UiSelect search', () => {
         [(query)]="query"
       >
         <ui-select-item value="apple" label="Apple" />
-        <ui-select-item value="pear" label="Pear" />
+        <ui-select-item value="pear" label="Pear">
+          <text class="pear-glyph">P</text>
+        </ui-select-item>
         <ui-select-item value="pineapple" label="Pineapple" />
       </ui-select>
     `,
@@ -392,6 +394,9 @@ describe('UiSelect search', () => {
       field: () => overlay.querySelector('input')!,
       list: () => overlay.querySelector('scroll-view')!,
       item: (label: string) => within(overlay).getByText(label).parentElement!,
+      /** An item's host, found by its name, which it keeps while hidden. */
+      row: (label: string) =>
+        overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
       openSheet: async () => {
         fireEvent.tap(getByRole('button', { name: 'Fruit' }));
         await waitForOpen();
@@ -419,17 +424,43 @@ describe('UiSelect search', () => {
   });
 
   it("hides the items whose label doesn't contain the query, ignoring case", async () => {
-    const { host, item, type, openSheet } = await renderSearch();
+    const { host, row, type, openSheet } = await renderSearch();
     await openSheet();
     await type(' APP ');
     expect(host.query()).toBe(' APP ');
     // The query is trimmed: "Apple" and "Pineapple" hold "app", "Pear"
     // doesn't.
-    expect(item('Apple').classList).not.toContain('hidden');
-    expect(item('Pineapple').classList).not.toContain('hidden');
-    expect(item('Pear').classList).toContain('hidden');
+    expect(row('Apple').classList).not.toContain('hidden');
+    expect(row('Pineapple').classList).not.toContain('hidden');
+    expect(row('Pear').classList).toContain('hidden');
     // `hidden` and the row's own `flex` would fight: only one stays.
-    expect(item('Pear').classList).not.toContain('flex');
+    expect(row('Pear').classList).not.toContain('flex');
+  });
+
+  // On iOS a `display: none` element's children still paint, so a hidden
+  // item's label and content drew on top of the list.
+  it('draws nothing of a hidden item, and hides it from screen readers', async () => {
+    const { overlay, row, type, openSheet } = await renderSearch();
+    await openSheet();
+    await type('app');
+    expect(within(overlay).queryByText('Pear')).toBeNull();
+    expect(overlay.querySelector('.pear-glyph')).toBeNull();
+    expect(row('Pear').getAttribute('accessibility-elements-hidden')).toBe(
+      'true',
+    );
+    expect(row('Apple').hasAttribute('accessibility-elements-hidden')).toBe(
+      false,
+    );
+
+    // Shown again, it draws its label and its content once more.
+    await type('');
+    expect(within(overlay).getByText('Pear').parentElement).toBe(row('Pear'));
+    expect(overlay.querySelector('.pear-glyph')!.parentElement).toBe(
+      row('Pear'),
+    );
+    expect(row('Pear').hasAttribute('accessibility-elements-hidden')).toBe(
+      false,
+    );
   });
 
   it('shows the empty text while no item shows', async () => {

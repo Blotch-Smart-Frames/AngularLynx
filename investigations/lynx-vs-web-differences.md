@@ -5986,7 +5986,7 @@ What the failing ones share: Angular puts a block's top elements in with `__Inse
 
 ---
 
-## A `display: none` element still draws its text on iOS, from its corner
+## A `display: none` element still draws its content on iOS, from its corner
 
 ### What you'd expect (web)
 
@@ -5994,11 +5994,19 @@ An element with `display: none` draws nothing, and nor does anything in it.
 
 ### What Lynx does
 
-Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) a `<text>` in it still draws its glyphs, spilling out of the 0×0 box from its top-left corner. The tabs' hidden panels did this: their first letters overlapped the tab list.
+Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) what's in it still draws, spilling out of the 0×0 box from its top-left corner. A `<text>` draws its glyphs, and an `<svg>` (a `ui-icon`) draws too. Several hidden elements in one place all draw at the same corner, on top of each other.
+
+- The tabs' hidden panels did this: their first letters overlapped the tab list.
+- A searchable `ui-select` hid the items the search filtered out with Tailwind's `hidden` (`display: none`) on each item's host. On the iPhone 18 Pro Simulator (iOS 27), every hidden item's label and icon drew stacked at the top of the list, a smear of overlapping text above the first item still shown. The web preview drew nothing for them.
 
 ### The fix
 
-Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0. The runtime does the same for HTML's `hidden` attribute, which gives an element `display: none; overflow: hidden` (measured on the iOS 27 Simulator, Lynx Explorer 4.1: a hidden `<p>` drew its first letter without the clip).
+Either of these draws nothing:
+
+- **Clip the hidden element.** `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0. The runtime does the same for HTML's `hidden` attribute, which gives an element `display: none; overflow: hidden` (measured on the iOS 27 Simulator, Lynx Explorer 4.1: a hidden `<p>` drew its first letter without the clip).
+- **Remove what's in it.** `ui-select-item` and `ui-multi-select-item` keep `hidden` on their host, so it takes no room, and wrap their whole template in `@if (shown())`, so a filtered-out item has no label, icon or checkbox to draw (checked on the iOS 27 Simulator). This also takes the hidden items' content out of layout and out of the screen reader's way; the host itself is marked `accessibility-elements-hidden` while hidden. Projected content (an item's icon) comes back when the item shows again, through the renderer's recreate-on-remount (see "Projected content in a toggled `@if`" above).
+
+Removing suits rows a search filters: a long list keeps only the rows it shows. Clipping keeps the content alive, which suits a panel that comes back as it was.
 
 ---
 

@@ -233,7 +233,12 @@ export class UiSelect {
  * accessibility attributes are attribute bindings: a property binding on a
  * component's host is checked against the DOM schema, which has no
  * `accessibility-label`. Content projected into the item, such as an icon,
- * goes before its label. An item the search hides takes no room.
+ * goes before its label.
+ *
+ * An item the search hides takes no room (`hidden`) and draws nothing: on
+ * iOS, `display: none` shrinks an element to nothing but its children still
+ * paint, so every hidden item's label piled up at the top of the list. Its
+ * content is removed while it's hidden, and it's hidden from screen readers.
  */
 @Component({
   selector: 'ui-select-item',
@@ -244,13 +249,16 @@ export class UiSelect {
     '[attr.accessibility-element]': "'true'",
     '[attr.accessibility-traits]': "'button'",
     '[attr.accessibility-label]': 'label()',
+    '[attr.accessibility-elements-hidden]': 'shown() ? null : true',
     '(bindtap)': 'onTap()',
   },
   template: `
-    <ng-content />
-    <text [class]="labelClass()">{{ label() }}</text>
-    @if (isSelected()) {
-      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+    @if (shown()) {
+      <ng-content />
+      <text [class]="labelClass()">{{ label() }}</text>
+      @if (isSelected()) {
+        <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+      }
     }
   `,
 })
@@ -268,6 +276,9 @@ export class UiSelectItem {
     () => this.#select.value() === this.itemValue(),
   );
 
+  /** Whether the item shows for the search text (see UiSelect.shows). */
+  protected readonly shown = computed(() => this.#select.shows(this.label()));
+
   /**
    * The chosen item is `selected` to a screen reader, as its check mark
    * shows. The trait is added to the host's own `button`, as
@@ -283,7 +294,7 @@ export class UiSelectItem {
     cn(
       'flex-row items-center gap-3 px-4 py-3 flex',
       this.isSelected() && 'bg-accent',
-      !this.#select.shows(this.label()) && 'hidden',
+      !this.shown() && 'hidden',
       this.userClass(),
     ),
   );

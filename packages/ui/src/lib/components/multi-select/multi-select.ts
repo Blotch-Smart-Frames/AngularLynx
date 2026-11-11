@@ -269,6 +269,9 @@ export class UiMultiSelect {
  * to the row, which toggles the value: the binding then sets the checkbox to
  * the state it already has. A tap beside it toggles the value alone, and the
  * binding moves the checkbox. Either way it shows its check popping in or out.
+ *
+ * An item the search hides takes no room and draws nothing, as UiSelectItem
+ * does: on iOS a `display: none` element's children still paint.
  */
 @Component({
   selector: 'ui-multi-select-item',
@@ -279,12 +282,15 @@ export class UiMultiSelect {
     '[attr.accessibility-element]': "'true'",
     '[attr.accessibility-traits]': "'button'",
     '[attr.accessibility-label]': 'label()',
+    '[attr.accessibility-elements-hidden]': 'shown() ? null : true',
     '(bindtap)': 'onTap()',
   },
   template: `
-    <ui-checkbox [checked]="isChosen()" />
-    <ng-content />
-    <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
+    @if (shown()) {
+      <ui-checkbox [checked]="isChosen()" />
+      <ng-content />
+      <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
+    }
   `,
 })
 export class UiMultiSelectItem {
@@ -299,6 +305,9 @@ export class UiMultiSelectItem {
     this.#select.value().includes(this.itemValue()),
   );
 
+  /** Whether the item shows for the search text (see UiMultiSelect.shows). */
+  protected readonly shown = computed(() => this.#select.shows(this.label()));
+
   /**
    * A chosen item is `selected` to a screen reader, as its checkbox shows.
    * Added to the host's own `button` trait, as UiSelectItem does.
@@ -309,13 +318,12 @@ export class UiMultiSelectItem {
 
   /**
    * The checkbox's 44pt tap target insets its box, so the row's own inset
-   * is smaller: the box lines up with the search field and the header. An
-   * item the search hides takes no room.
+   * is smaller: the box lines up with the search field and the header.
    */
   protected readonly containerClass = computed(() =>
     cn(
       'flex-row items-center gap-3 pl-1 pr-4 flex',
-      !this.#select.shows(this.label()) && 'hidden',
+      !this.shown() && 'hidden',
       this.userClass(),
     ),
   );

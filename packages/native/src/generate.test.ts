@@ -108,6 +108,14 @@ describe('prepareProject', () => {
     expect(
       existsSync(path.join(development.dir, 'LynxBundle/main.lynx.bundle')),
     ).toBe(false);
+    // Only the development app asks to reach the dev server on the local
+    // network.
+    expect(
+      readFileSync(path.join(development.dir, 'App/Info.plist'), 'utf8'),
+    ).toContain('NSLocalNetworkUsageDescription');
+    expect(
+      readFileSync(path.join(release.dir, 'App/Info.plist'), 'utf8'),
+    ).not.toContain('NSLocalNetworkUsageDescription');
     // Neither touches the other's project.
     expect(
       existsSync(path.join(release.dir, 'LynxBundle/main.lynx.bundle')),

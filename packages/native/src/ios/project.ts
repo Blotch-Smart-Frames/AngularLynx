@@ -26,7 +26,7 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
  * between the template's `angular-lynx:info` markers.
  */
 export const iosGenerator: PlatformGenerator = {
-  configure: (dir, app, projectRoot) => {
+  configure: (dir, app, projectRoot, development = false) => {
     writeFileSync(path.join(dir, 'Config/App.xcconfig'), xcconfig(app));
 
     const plistPath = path.join(dir, 'App/Info.plist');
@@ -35,7 +35,7 @@ export const iosGenerator: PlatformGenerator = {
       replaceMarker(
         readFileSync(plistPath, 'utf8'),
         'info',
-        infoPlistEntries(app),
+        infoPlistEntries(app, { development }),
       ),
     );
 
@@ -80,7 +80,17 @@ export const xcconfig = (app: ResolvedApp): string =>
 export const DEFAULT_SAVE_PHOTOS_REASON =
   'Saves the images you choose to your photo library.';
 
-export const infoPlistEntries = (app: ResolvedApp): string => {
+/**
+ * What iOS shows the first time the development app connects to the dev
+ * server, on a real iPhone. The simulator never asks.
+ */
+export const LOCAL_NETWORK_REASON =
+  'Loads the app from ng serve on your computer while you develop it.';
+
+export const infoPlistEntries = (
+  app: ResolvedApp,
+  { development = false }: { readonly development?: boolean } = {},
+): string => {
   const lines: string[] = [];
   const array = (key: string, values: readonly string[]) => {
     lines.push(`<key>${key}</key>`, '<array>');
@@ -110,6 +120,19 @@ export const infoPlistEntries = (app: ResolvedApp): string => {
       .ios) {
       lines.push(`<key>${key}</key>`, `<string>${escapeXml(reason!)}</string>`);
     }
+  }
+
+  // `ng serve --platform ios`'s development app loads from the dev server at
+  // the Mac's address on the local network, which iOS (14 and later) lets an
+  // app reach only once the person allows it. iOS asks the first time, with
+  // this reason. Only the development app has it: the app for the stores
+  // loads its own bundle, and App Review asks about any reason it doesn't
+  // need.
+  if (development) {
+    lines.push(
+      '<key>NSLocalNetworkUsageDescription</key>',
+      `<string>${escapeXml(LOCAL_NETWORK_REASON)}</string>`,
+    );
   }
 
   // The schemes LinkingModule's canOpenURL can ask about: iOS answers false

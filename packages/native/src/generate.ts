@@ -31,11 +31,15 @@ export const EJECT_MARKER = '.angular-lynx-ejected';
 const HASH_FILE = '.angular-lynx-hash';
 
 export type PlatformGenerator = {
-  /** Writes the config into a fresh copy of the template. */
+  /**
+   * Writes the config into a fresh copy of the template. `development` is
+   * true for `ng serve --platform`'s development app.
+   */
   readonly configure: (
     dir: string,
     app: ResolvedApp,
     projectRoot: string,
+    development?: boolean,
   ) => void;
   /** Where the Lynx bundle and its assets go inside the native project. */
   readonly bundleDir: (dir: string) => string;
@@ -111,7 +115,7 @@ export const prepareProject = ({
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     cpSync(path.join(TEMPLATES_DIR, platform), dir, { recursive: true });
-    generator.configure(dir, app, projectRoot);
+    generator.configure(dir, app, projectRoot, development);
     writeFileSync(hashFile, hash);
   }
   // Generated projects are build output. `ng new` already ignores Angular's

@@ -12,7 +12,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
-import { infoPlistEntries, iosGenerator, xcconfig } from './project.ts';
+import {
+  infoPlistEntries,
+  iosGenerator,
+  LOCAL_NETWORK_REASON,
+  xcconfig,
+} from './project.ts';
 
 const app = (options = {}) =>
   resolveAppOptions(options, { projectName: 'my-app' });
@@ -97,6 +102,15 @@ describe('infoPlistEntries', () => {
     expect(entries.match(/NSPhotoLibraryAddUsageDescription/g)).toHaveLength(1);
   });
 
+  it('asks for the local network only in the development app', () => {
+    expect(infoPlistEntries(app({}))).not.toContain(
+      'NSLocalNetworkUsageDescription',
+    );
+    expect(infoPlistEntries(app({}), { development: true })).toContain(
+      `<key>NSLocalNetworkUsageDescription</key>\n<string>${LOCAL_NETWORK_REASON}</string>`,
+    );
+  });
+
   it('tells the shell to keep the page inside the safe area', () => {
     expect(infoPlistEntries(app({ edgeToEdge: false }))).toContain(
       '<key>AngularLynxEdgeToEdge</key>\n<false/>',
@@ -147,6 +161,13 @@ describe('iosGenerator', () => {
     expect(plist.match(/UISupportedInterfaceOrientations/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
+  });
+
+  it('gives the development app the local network reason', () => {
+    iosGenerator.configure(dir, app({}), dir, true);
+    expect(readFileSync(path.join(dir, 'App/Info.plist'), 'utf8')).toContain(
+      '<key>NSLocalNetworkUsageDescription</key>',
+    );
   });
 
   it('uses a 1024×1024 icon and rejects other sizes', () => {

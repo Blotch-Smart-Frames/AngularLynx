@@ -157,7 +157,7 @@ final class DevServer {
           return
         }
         self.show(
-          "Can't reach the dev server at \(bundle.host ?? "")\(bundle.port.map { ":\($0)" } ?? "").\n\n\(error.localizedDescription)\n\nIs `ng serve --platform ios` running, and is this device on the same network? Trying again…"
+          "Can't reach the dev server at \(bundle.host ?? "")\(bundle.port.map { ":\($0)" } ?? "").\n\n\(error.localizedDescription)\n\nIs `ng serve --platform ios` running, and is this device on the same network?\(Self.localNetworkHint) Trying again…"
         )
         let retry = DispatchWorkItem { [weak self] in self?.reload?() }
         self.retry = retry
@@ -167,6 +167,19 @@ final class DevServer {
   }
 
   #if DEBUG
+    /// On an iPhone, iOS blocks the dev server until the person allows the
+    /// app on the local network, which it asks about the first time. Tapping
+    /// Don't Allow leaves the app failing like this, with nothing to say why,
+    /// so it says where to turn it back on. The simulator never asks.
+    private static var localNetworkHint: String {
+      #if targetEnvironment(simulator)
+        return ""
+      #else
+        return
+          " If you tapped Don't Allow when iOS asked to find devices on your local network, turn on this app in Settings > Privacy & Security > Local Network."
+      #endif
+    }
+
     private func show(_ message: String) {
       guard let status, let statusScreen else { return }
       status.text = message

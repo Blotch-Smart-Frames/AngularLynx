@@ -153,6 +153,8 @@ export default defineConfig({
         { text: 'Slider', link: '/dolan/slider' },
         { text: 'Switch', link: '/dolan/switch' },
         { text: 'Toggle', link: '/dolan/toggle' },
+        { text: 'Calendar', link: '/dolan/calendar' },
+        { text: 'Date Picker', link: '/dolan/date-picker' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Feedback' },
         { text: 'Alert', link: '/dolan/alert' },

@@ -169,6 +169,10 @@ Write `xmlns="http://www.w3.org/2000/svg"` on the root of an `<svg content>` str
 
 Pick photos with `LynxImagePicker`, which opens the phone's picker and resolves with a `Blob`. Show it with `<image [src]>` and `URL.createObjectURL()`. See [http-requests.md](http-requests.md#pick-a-photo-to-upload).
 
+### No `<input type="date">`
+
+Lynx has no date field and no date picker. Don't build a calendar by hand: `npx @blotch/dolan add date-picker` adds `<ui-date-picker label="Ends on" clearable [(value)]="endsOn" />`, a field that opens a month calendar in a bottom sheet, and `npx @blotch/dolan add calendar` adds the calendar on its own (`<ui-calendar [(value)]="day" [min]="today" />`). The value is a `Date` at local midnight, or `null`. Both write their month names, weekdays and screen reader labels from `LOCALE_ID` with Angular's `formatDate()`, so a language needs `registerLocaleData()`, not the `intl` option.
+
 ### No `navigator.share()` or `File`
 
 Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg' }], title, text, url })` opens the phone's share sheet and resolves `true`, or `false` when closed (on Android, `true` once the person picks an app). Only the `--platform` apps (`ng build` and `ng serve`) and the web preview have it; Lynx Explorer and specs reject with `unavailable`. See [http-requests.md](http-requests.md#share-files-and-links).

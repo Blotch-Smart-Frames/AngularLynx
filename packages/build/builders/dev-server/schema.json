@@ -23,6 +23,15 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Only build these rspeedy environments (e.g. lynx). Defaults to the build target's `environment`, or all of them."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android"],
+      "description": "Also build the app's development build for this platform, from the build target's native options (appId, icon, permissions, ...), and open it on a simulator, emulator or phone, as `ng build --platform <platform> --run` does. It loads the bundle from the dev server and reloads on every edit. Its native build is cached: a second `ng serve` with the same native options opens the app without running Xcode or Gradle."
+    },
+    "device": {
+      "type": "string",
+      "description": "With --platform, where to open the app: on iOS a simulator's or a paired iPhone's name (e.g. \"iPhone 18 Pro\", \"Jane's iPhone\") or UDID, on Android a virtual device's name or an adb serial (e.g. emulator-5554). Without it, iOS uses the running simulator, or else starts the newest iPhone simulator; Android uses the running emulator or connected phone, or else starts the first virtual device. An iPhone needs ios.teamId."
     }
   }
 }

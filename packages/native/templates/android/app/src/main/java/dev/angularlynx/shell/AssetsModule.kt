@@ -4,8 +4,11 @@ import android.content.Context
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.JavaOnlyArray
+import com.lynx.tasm.core.LynxThreadPool
+import okhttp3.Request
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.concurrent.FutureTask
 
 /**
  * The `AngularLynxAssets` module: a file the app bundles (`/static/...`),
@@ -26,6 +29,7 @@ class AssetsModule(context: Context, param: Any?) : LynxModule(context, param) {
      */
     @LynxMethod
     fun read(url: String): JavaOnlyArray? {
+        DevServer.remoteUrl(url)?.let { return readRemote(it) }
         val path = BundleAssets.assetPath(url) ?: return null
         return try {
             val bytes = BundleAssets.read(mContext, path)
@@ -33,6 +37,24 @@ class AssetsModule(context: Context, param: Any?) : LynxModule(context, param) {
         } catch (_: IOException) {
             null
         }
+    }
+
+    /**
+     * The file on the dev server, in the debug build `ng serve --platform
+     * android` runs, which has the current copy. The call is synchronous, so
+     * the request is too, but on a thread of its own: Android doesn't allow
+     * network requests on the UI thread, where Lynx may call this.
+     */
+    private fun readRemote(url: String): JavaOnlyArray? = try {
+        val download = FutureTask {
+            http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (response.isSuccessful) response.body?.bytes() else null
+            }
+        }
+        LynxThreadPool.getBriefIOExecutor().execute(download)
+        download.get()?.let { wordsFromBytes(ByteBuffer.wrap(it), it.size) }
+    } catch (_: Exception) {
+        null
     }
 
     companion object {

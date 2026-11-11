@@ -78,6 +78,8 @@ The build target's Angular options (`browser`, `tsConfig`, `polyfills`, `styles`
 
 Like Angular's own dev server, `ng serve` builds its `buildTarget` (by default the build target's `development` configuration), so `ng serve -c production` serves a production build. It also takes `--port` and `--host`, and prints the QR code Lynx Explorer scans.
 
+`ng serve --platform ios|android` (with `--device` as for `--run`) also builds a development build of the app from the build target's native options and opens it on a simulator, emulator or phone. It loads the bundle from the dev server and updates on every save, as Lynx Explorer does, but it's the app itself, with the native modules Lynx Explorer lacks (`LynxSecureStorage`, `LynxWebAuthSession`, `LynxShare`, WebGL `<canvas>`...). Develop an app that needs them this way. The native build is cached: the next `ng serve --platform` with the same native options reinstalls it without Xcode or Gradle. On Android the app reaches the server at `localhost` through `adb reverse`; a real iPhone needs the Mac's Wi-Fi network. When the server can't be reached, the app says so and retries. It's a Debug/debug build that has no bundle inside it: never ship it, `ng build --platform` builds the store app. `"configurations": { "ios": { "platform": "ios" } }` in the `serve` target gives `ng serve -c ios`.
+
 `ng test` takes the options of Angular's unit-test builder. It finds `*.spec.ts` and `*.test.ts` files, compiles them ahead of time like the app, and loads `@blotch/angular-lynx-testing-library`'s setup when the project has it. Templates are checked strictly, so a component using Lynx elements imports `LYNX_ELEMENTS`. A TestBed spec renders through Angular's DOM renderer, where a Lynx element is an element like any other: `fixture.nativeElement.querySelector('text')` finds a `<text>`. `ng add` gives a new app one for its root component (`src/app/app.spec.ts`), so `ng test` has a test to run from the start. The testing library's `fireEvent` sends an event the way a device does: first every `global-bind` handler for it, anywhere in the page; then a touch event goes down from the page through the `capture-bind` and `capture-catch` handlers, then back up through the `bind` and `catch` ones, and a `catch` handler stops it. An event that doesn't bubble, such as `input`, runs only the target's own handler. `document:` and `window:` listeners run after the elements' handlers; for an event a `catch` handler stopped, on the next timer (`await waitForUpdate()`). `$event.target` is `{ uid }`, the element's unique id, as on a device.
 
 `fireEvent` has a method for each common event (`tap`, `input`, `scroll`, `layoutchange`, an `<image>`'s `load` and `error`, `uiappear` and `uidisappear` for an element coming into view and leaving it, …). Pass what the element would report as `detail`, and the handler gets it as `$event.detail`:
@@ -158,6 +160,8 @@ my-app/
 ```bash
 # Development (starts dev server, shows QR code for Lynx Explorer)
 ng serve
+ng serve --platform ios        # also opens the real app on a simulator, loading from the server
+ng serve --platform android --device emulator-5554
 
 # Production build
 ng build
@@ -187,6 +191,8 @@ On a real iPhone, `--run` needs `"ios": { "teamId": "ABCDE12345" }` in the build
 3. Scan QR code — loads your app on-device
 4. Edit code — hot reload updates the app
 5. Check terminal for logs from `LynxLogger`
+
+Or `ng serve --platform ios|android` in place of steps 2–3, which opens your own app, native modules included, instead of Lynx Explorer.
 
 ## Dependencies
 

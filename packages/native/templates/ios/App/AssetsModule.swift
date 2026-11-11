@@ -31,9 +31,7 @@ final class AssetsModule: NSObject, LynxModule {
   /// in the runtime's webgl-bridge.ts: Lynx's bridge carries no binary), or
   /// nil when the app doesn't bundle it.
   @objc func read(_ url: String) -> [NSNumber]? {
-    guard let file = BundleResourceFetcher.shared.localFile(for: url),
-      let data = try? Data(contentsOf: file)
-    else { return nil }
+    guard let data = Self.contents(of: url) else { return nil }
     var words = [NSNumber]()
     words.reserveCapacity(data.count / 4 + 2)
     data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
@@ -49,5 +47,25 @@ final class AssetsModule: NSObject, LynxModule {
     }
     words.append(NSNumber(value: data.count))
     return words
+  }
+
+  /// The file in LynxBundle, or in the development build, on the dev server,
+  /// which has the current copy. The call is synchronous, so that request is
+  /// too; URLSession answers on its own queue, so waiting here can't block it.
+  private static func contents(of url: String) -> Data? {
+    if let remote = DevServer.shared.remoteURL(for: url) {
+      var result: Data?
+      let done = DispatchSemaphore(value: 0)
+      URLSession.shared.dataTask(
+        with: URLRequest(url: remote, cachePolicy: .reloadIgnoringLocalCacheData)
+      ) { data, response, _ in
+        if (response as? HTTPURLResponse)?.statusCode == 200 { result = data }
+        done.signal()
+      }.resume()
+      done.wait()
+      return result
+    }
+    guard let file = BundleResourceFetcher.shared.localFile(for: url) else { return nil }
+    return try? Data(contentsOf: file)
   }
 }

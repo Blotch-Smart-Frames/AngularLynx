@@ -4,4 +4,6 @@ export type DevServerBuilderOptions = {
   readonly port?: number;
   readonly host?: string;
   readonly environment?: string[];
+  readonly platform?: 'ios' | 'android';
+  readonly device?: string;
 };

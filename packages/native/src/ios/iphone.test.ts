@@ -401,6 +401,21 @@ exit 0
     ]);
   });
 
+  it('opens the development app on the iPhone with the dev server as an argument', async () => {
+    setup([phone('Phone', 'UDID')]);
+    const target = await startIosTarget({
+      device: 'Phone',
+      logFile,
+      log: () => {},
+    });
+    await target.launch('/serve/ios/MyApp-device.app', app, {
+      bundleUrl: 'http://192.168.1.20:3000/main.lynx.bundle',
+    });
+    expect(recorded().at(-1)).toBe(
+      `xcrun devicectl device process launch --device UDID --terminate-existing com.example.myapp -AngularLynxDevServer http://192.168.1.20:3000/main.lynx.bundle --json-output ${path.join(dir, 'logs/devicectl.json')}`,
+    );
+  });
+
   it('explains why devicectl could not install or open the app', async () => {
     setup([phone('Phone', 'UDID')]);
     writeFileSync(path.join(dir, 'install-error.json'), JSON.stringify(LOCKED));

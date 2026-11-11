@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        // The bundle in the app's assets, or in the debug build `ng serve
+        // --platform android` runs, the dev server's (DevServer.kt).
+        val bundleUrl = DevServer.bundleUrl(this) ?: BundleAssets.MAIN_BUNDLE
         lynxView = LynxViewBuilder().apply {
             setTemplateProvider(AssetTemplateProvider(this@MainActivity))
             setTemplateResourceFetcher(AssetTemplateResourceFetcher(this@MainActivity))
@@ -137,6 +140,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             if (edgeToEdge) addBehavior(EdgeToEdgeOverlay.behavior())
             // The shell's own <canvas> (CanvasUI.kt): Lynx has none.
             addBehavior(CanvasUI.behavior())
+            // Live reload, in the debug build: it renders the bundle again
+            // after every edit.
+            DevServer.register(this) { lynxView.renderTemplateUrl(bundleUrl, "") }
         }.build(this)
         // The LynxView is focusable, so it takes focus whenever the window
         // isn't in touch mode: after any key press, from a hardware keyboard,
@@ -195,6 +201,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             }
             WindowInsetsCompat.CONSUMED
         }
+        DevServer.attach(container)
         setContentView(container)
 
         contentResolver.registerContentObserver(
@@ -218,7 +225,7 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         // Sent before the bundle loads, so the app starts with the theme and
         // the language. The insets follow once the window reports them.
         lynxView.updateGlobalProps(globalProps(resources.configuration))
-        lynxView.renderTemplateUrl(BundleAssets.MAIN_BUNDLE, "")
+        lynxView.renderTemplateUrl(bundleUrl, "")
     }
 
     override fun setBackHandlerEnabled(enabled: Boolean) {

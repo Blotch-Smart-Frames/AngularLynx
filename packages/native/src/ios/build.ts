@@ -105,6 +105,8 @@ export const buildIos = async ({
   log,
   signing,
   device,
+  development = false,
+  simulator,
 }: {
   readonly project: PreparedProject;
   readonly app: ResolvedApp;
@@ -117,7 +119,19 @@ export const buildIos = async ({
   readonly signing: IosSigning | undefined;
   /** The iPhone `--run` installs the app on, when it's one. */
   readonly device?: { readonly udid: string; readonly name: string };
+  /**
+   * `ng serve --platform ios`'s development app: the Debug configuration,
+   * which compiles the shell's dev server support in (DevServer.swift) and
+   * builds for one architecture, and no `.ipa`.
+   */
+  readonly development?: boolean;
+  /**
+   * The simulator the development app runs on. The Debug configuration builds
+   * only its architecture, so it builds for that simulator rather than any.
+   */
+  readonly simulator?: { readonly udid: string };
 }): Promise<string[]> => {
+  const configuration = development ? 'Debug' : 'Release';
   linkFrameworks(project.dir, frameworksDir);
   const xcodebuild = (args: readonly string[]) =>
     run('xcodebuild', args, { cwd: project.dir, logFile });
@@ -152,7 +166,7 @@ export const buildIos = async ({
       'build',
       ...common,
       '-configuration',
-      'Release',
+      configuration,
       '-sdk',
       'iphoneos',
       // The phone itself rather than generic/platform=iOS, so automatic
@@ -173,7 +187,7 @@ export const buildIos = async ({
     cpSync(
       path.join(
         buildDir,
-        'Build/Products/Release-iphoneos',
+        `Build/Products/${configuration}-iphoneos`,
         `${app.productName}.app`,
       ),
       deviceApp,
@@ -188,11 +202,11 @@ export const buildIos = async ({
     'build',
     ...common,
     '-configuration',
-    'Release',
+    configuration,
     '-sdk',
     'iphonesimulator',
     '-destination',
-    'generic/platform=iOS Simulator',
+    simulator ? `id=${simulator.udid}` : 'generic/platform=iOS Simulator',
     '-derivedDataPath',
     buildDir,
   ]);
@@ -201,7 +215,7 @@ export const buildIos = async ({
   cpSync(
     path.join(
       buildDir,
-      'Build/Products/Release-iphonesimulator',
+      `Build/Products/${configuration}-iphonesimulator`,
       `${app.productName}.app`,
     ),
     simulatorApp,
@@ -209,6 +223,9 @@ export const buildIos = async ({
   );
   artifacts.push(simulatorApp);
 
+  if (development) {
+    return artifacts;
+  }
   if (!signing?.export) {
     log(
       signing

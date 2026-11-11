@@ -48,6 +48,11 @@ export type PreparedProject = {
   readonly ejected: boolean;
   /** False when the cached project matched the inputs and was reused. */
   readonly regenerated: boolean;
+  /**
+   * The hash of the generated project's inputs, or undefined for an ejected
+   * project, whose inputs are the user's own files.
+   */
+  readonly hash?: string;
 };
 
 /**
@@ -58,6 +63,12 @@ export type PreparedProject = {
  * the template files, the app options and the icon images) matches the last run, so
  * Xcode and Gradle keep their incremental state between builds. The bundle is
  * copied in on every build, because it changes on every build.
+ *
+ * `ng serve --platform`'s development app is generated in a folder of its
+ * own, `<workDir>/<platform>-dev`, so it and `ng build --platform`'s app each
+ * keep their incremental build state, and one never regenerates or overwrites
+ * the other. It gets no bundle (`bundleDir` undefined): it loads the bundle
+ * from the dev server.
  */
 export const prepareProject = ({
   platform,
@@ -67,6 +78,7 @@ export const prepareProject = ({
   app,
   bundleDir,
   packageVersion,
+  development = false,
 }: {
   readonly platform: Platform;
   readonly generator: PlatformGenerator;
@@ -74,17 +86,22 @@ export const prepareProject = ({
   /** Where generated projects go (see `BuildNativeAppOptions.workDir`). */
   readonly workDir: string;
   readonly app: ResolvedApp;
-  /** The rspeedy output folder (dist/). */
-  readonly bundleDir: string;
+  /**
+   * The rspeedy output folder (dist/), or undefined for the development app,
+   * which takes no bundle.
+   */
+  readonly bundleDir: string | undefined;
   readonly packageVersion: string;
+  /** The development app `ng serve --platform` runs. */
+  readonly development?: boolean;
 }): PreparedProject => {
   const ejectedDir = path.join(projectRoot, platform);
   if (existsSync(path.join(ejectedDir, EJECT_MARKER))) {
-    copyBundle(bundleDir, generator.bundleDir(ejectedDir));
+    if (bundleDir) copyBundle(bundleDir, generator.bundleDir(ejectedDir));
     return { dir: ejectedDir, ejected: true, regenerated: false };
   }
 
-  const dir = path.join(workDir, platform);
+  const dir = path.join(workDir, development ? `${platform}-dev` : platform);
   const hash = inputHash({ platform, app, projectRoot, packageVersion });
   const hashFile = path.join(dir, HASH_FILE);
   const upToDate =
@@ -102,8 +119,8 @@ export const prepareProject = ({
   // not be: keep them out of the user's git without asking them to edit it.
   writeFileSync(path.join(workDir, '.gitignore'), '*\n');
 
-  copyBundle(bundleDir, generator.bundleDir(dir));
-  return { dir, ejected: false, regenerated: !upToDate };
+  if (bundleDir) copyBundle(bundleDir, generator.bundleDir(dir));
+  return { dir, ejected: false, regenerated: !upToDate, hash };
 };
 
 /**

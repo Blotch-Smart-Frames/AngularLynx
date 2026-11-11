@@ -265,6 +265,18 @@ exec sleep 30`,
     );
   });
 
+  it('forwards the dev server to the device and opens the development app on it at localhost', async () => {
+    setup(['emulator-5554\tdevice']);
+    const target = await start();
+    await target.launch('/serve/android/my-app-dev.apk', app, {
+      bundleUrl: 'http://192.168.1.20:3000/main.lynx.bundle',
+    });
+    expect(recorded().slice(-2)).toEqual([
+      'adb -s emulator-5554 reverse tcp:3000 tcp:3000',
+      "adb -s emulator-5554 shell am start -S -W -n com.example.myapp/com.example.Renamed --es AngularLynxDevServer 'http://localhost:3000/main.lynx.bundle' --es AngularLynxDevServerOrigin 'http://192.168.1.20:3000'",
+    ]);
+  });
+
   it("falls back to the shell's activity when the launcher activity can't be looked up", async () => {
     setup(['emulator-5554\tdevice'], {
       adb: 'case "$*" in *resolve-activity*) echo "No activity found"; exit 0 ;; esac',

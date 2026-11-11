@@ -76,6 +76,38 @@ ng build --platform android --run --device Pixel_9
 
 `--device` names one device, so it goes with `--platform ios` or `--platform android`. `ng build --platform all --run` opens the app on both.
 
+## Develop in the real app with `ng serve`
+
+Rebuilding the app for every change takes a minute or more. While you work, run the dev server with `--platform` instead:
+
+```bash
+ng serve --platform ios                            # on the iOS Simulator
+ng serve --platform android                        # on an emulator or Android phone
+ng serve --platform ios --device "iPhone 18 Pro"   # --device as with --run
+```
+
+It starts the dev server, as `ng serve` always does (the web preview and the Lynx Explorer QR code too), then builds a **development build** of your app and opens it where `--run` would. That app loads your code from the dev server instead of from a copy inside it, and updates on every save, as Lynx Explorer does. Unlike Lynx Explorer, it's your app: it has the native modules `--platform` builds in, such as [`LynxSecureStorage`](/guide/persistent-storage), sign-in with [`LynxWebAuthSession`](/api/angular-lynx/web-auth-session) and WebGL in [`<canvas>`](/api/elements/canvas), so an app that needs them works.
+
+- **The native build is cached.** The next `ng serve --platform` with the same native options (`appId`, `icon`, `permissions`, ...) reinstalls the app without running Xcode or Gradle. A change to those options rebuilds it.
+- **It's built from the build target's options,** the same ones `ng build --platform` uses, so the development app has your app's name, icon and permissions.
+- **On Android, the app reaches the dev server at `localhost`.** `ng serve` forwards the port to the device with `adb reverse`, so it works over USB too, without the phone and your computer sharing a network.
+- **On a real iPhone, the phone loads from your Mac's address on the local network,** the one the QR code shows. Both need to be on the same Wi-Fi.
+- **When the dev server can't be reached,** the app says so and keeps trying. Opening it from the home screen later loads from the same server, once `ng serve` runs again.
+
+The development build is for development only. It's built in the Debug configuration (iOS) and as the debug build type (Android), it isn't optimized and it has no copy of your app inside it, so never ship it: `ng build --platform` builds the app for the stores. You can keep both installed: they're the same app, so each replaces the other.
+
+You can also set the platform in `angular.json`, for `ng serve -c ios`:
+
+```json
+"serve": {
+  "builder": "@blotch/angular-lynx-build:dev-server",
+  "configurations": {
+    "ios": { "platform": "ios" },
+    "android": { "platform": "android" }
+  }
+}
+```
+
 ## Run on the iOS Simulator
 
 `ng build --platform ios --run`:

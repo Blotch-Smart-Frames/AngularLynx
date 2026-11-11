@@ -68,18 +68,19 @@ describe('buildIos', () => {
       path.join(bin, 'xcodebuild'),
       `echo "$@" >> "${calls}"
 [ -n "$XCODEBUILD_FAILS" ] && [ "\${XCODEBUILD_FAILS_ON:-$1}" = "$1" ] && { echo "$XCODEBUILD_FAILS" >&2; exit 65; }
-dd=""; archive=""; export_path=""; sdk=""; prev=""
+dd=""; archive=""; export_path=""; sdk=""; configuration=""; prev=""
 for arg in "$@"; do
   case "$prev" in
     -derivedDataPath) dd="$arg" ;;
     -sdk) sdk="$arg" ;;
+    -configuration) configuration="$arg" ;;
     -archivePath) archive="$arg" ;;
     -exportPath) export_path="$arg" ;;
   esac
   prev="$arg"
 done
 case "$1" in
-  build) mkdir -p "$dd/Build/Products/Release-$sdk/MyApp.app" && echo "$sdk" > "$dd/Build/Products/Release-$sdk/MyApp.app/MyApp" ;;
+  build) mkdir -p "$dd/Build/Products/$configuration-$sdk/MyApp.app" && echo "$configuration $sdk" > "$dd/Build/Products/$configuration-$sdk/MyApp.app/MyApp" ;;
   archive) mkdir -p "$archive" ;;
   -exportArchive) mkdir -p "$export_path" && echo ipa > "$export_path/MyApp.ipa" ;;
 esac`,
@@ -114,7 +115,7 @@ esac`,
         path.join(dir, 'dist/ios/MyApp-simulator.app/MyApp'),
         'utf8',
       ),
-    ).toBe('iphonesimulator\n');
+    ).toBe('Release iphonesimulator\n');
     const link = path.join(options.project.dir, 'Frameworks');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readlinkSync(link)).toBe(options.frameworksDir);
@@ -124,6 +125,24 @@ esac`,
     expect(messages).toContain(
       'Skipping the .ipa: set ios.teamId and ios.signing in angular.json to build one.',
     );
+  });
+
+  it("builds `ng serve --platform`'s development app in Debug, for its simulator alone, and never an .ipa", async () => {
+    const options = setup();
+    const artifacts = await buildIos({
+      ...options,
+      app: app({ ios: { teamId: 'TEAM123', export: 'release-testing' } }),
+      signing: { teamId: 'TEAM123', export: 'release-testing' },
+      development: true,
+      simulator: { udid: 'SIM-UDID' },
+    });
+    expect(artifacts).toEqual([path.join(dir, 'dist/ios/MyApp-simulator.app')]);
+    expect(readFileSync(path.join(artifacts[0]!, 'MyApp'), 'utf8')).toBe(
+      'Debug iphonesimulator\n',
+    );
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual([
+      `build -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination id=SIM-UDID -derivedDataPath ${options.buildDir}`,
+    ]);
   });
 
   it('keeps the Frameworks folder an ejected project vendors', async () => {
@@ -220,12 +239,29 @@ esac`,
       });
       expect(artifacts).toEqual([path.join(dir, 'dist/ios/MyApp-device.app')]);
       expect(readFileSync(path.join(artifacts[0]!, 'MyApp'), 'utf8')).toBe(
-        'iphoneos\n',
+        'Release iphoneos\n',
       );
       expect(readFileSync(calls, 'utf8')).toBe(
         `build -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination id=00008120-0001 -derivedDataPath ${options.buildDir} -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=TEAM\n`,
       );
       expect(messages).toEqual(['Building the iOS app for Dolan’s iPhone']);
+    });
+
+    it('builds the development app for it in Debug', async () => {
+      const options = setup();
+      const artifacts = await buildIos({
+        ...options,
+        app: app(),
+        signing: { teamId: 'TEAM' },
+        device,
+        development: true,
+      });
+      expect(readFileSync(path.join(artifacts[0]!, 'MyApp'), 'utf8')).toBe(
+        'Debug iphoneos\n',
+      );
+      expect(readFileSync(calls, 'utf8')).toContain(
+        '-configuration Debug -sdk iphoneos -destination id=00008120-0001',
+      );
     });
 
     it('signs with the API key when there is one', async () => {
@@ -408,9 +444,10 @@ describe('buildAndroid', () => {
       `echo "$@" >> "${calls}"
 env | grep '^ORG_GRADLE_PROJECT_angularLynx' | sort >> "${calls}"
 [ "$ANDROID_HOME" = "${dir}" ] || echo "wrong ANDROID_HOME: $ANDROID_HOME" >> "${calls}"
-mkdir -p app/build/outputs/apk/release app/build/outputs/bundle/release
+mkdir -p app/build/outputs/apk/release app/build/outputs/bundle/release app/build/outputs/apk/debug
 echo apk > app/build/outputs/apk/release/app-release.apk
-echo aab > app/build/outputs/bundle/release/app-release.aab`,
+echo aab > app/build/outputs/bundle/release/app-release.aab
+echo debug > app/build/outputs/apk/debug/app-debug.apk`,
       GRADLEW_SHELL,
     );
     return {
@@ -439,6 +476,25 @@ echo aab > app/build/outputs/bundle/release/app-release.aab`,
       ':app:assembleRelease :app:bundleRelease --console=plain\n',
     );
     expect(messages[0]).toMatch(/debug key/);
+  });
+
+  it("builds `ng serve --platform`'s development app as the debug build type's apk alone", async () => {
+    const options = setup();
+    const messages: string[] = [];
+    const artifacts = await buildAndroid({
+      ...options,
+      app: app(),
+      signing: undefined,
+      development: true,
+      log: (message) => messages.push(message),
+    });
+    expect(artifacts).toEqual([path.join(dir, 'dist/android/my-app-dev.apk')]);
+    expect(readFileSync(artifacts[0]!, 'utf8')).toBe('debug\n');
+    expect(readFileSync(calls, 'utf8')).toBe(
+      ':app:assembleDebug --console=plain\n',
+    );
+    // The debug key is the debug build type's, not a missing upload key.
+    expect(messages).toEqual(['Building the Android app']);
   });
 
   it('passes the upload key through the environment, never the command line', async () => {

@@ -59,6 +59,10 @@ export const resolveAndroidSigning = (
 /**
  * Builds the Android shell into a release `.apk` (for emulators and
  * sideloading) and `.aab` (for Google Play). Returns the artifacts' paths.
+ *
+ * With `development`, `ng serve --platform android`'s app instead: the debug
+ * build type's `.apk` alone, which compiles the shell's dev server support in
+ * (src/debug) and is signed with the debug key.
  */
 export const buildAndroid = async ({
   project,
@@ -67,6 +71,7 @@ export const buildAndroid = async ({
   logFile,
   log,
   signing,
+  development = false,
 }: {
   readonly project: PreparedProject;
   readonly app: ResolvedApp;
@@ -74,6 +79,7 @@ export const buildAndroid = async ({
   readonly logFile: string;
   readonly log: (message: string) => void;
   readonly signing: AndroidSigning | undefined;
+  readonly development?: boolean;
 }): Promise<string[]> => {
   // Signing values reach Gradle as project properties through
   // ORG_GRADLE_PROJECT_* environment variables: never on the command line,
@@ -103,7 +109,7 @@ export const buildAndroid = async ({
       ORG_GRADLE_PROJECT_angularLynxKeyPassword: signing.keyPassword,
     }),
   };
-  if (!signing) {
+  if (!signing && !development) {
     log(
       'Signing the release build with the debug key: set android.signing in angular.json for a Google Play upload.',
     );
@@ -118,12 +124,19 @@ export const buildAndroid = async ({
   }
   await run(
     gradlew,
-    [':app:assembleRelease', ':app:bundleRelease', '--console=plain'],
+    development
+      ? [':app:assembleDebug', '--console=plain']
+      : [':app:assembleRelease', ':app:bundleRelease', '--console=plain'],
     { cwd: project.dir, logFile, env },
   );
 
   mkdirSync(outputDir, { recursive: true });
   const outputs = path.join(project.dir, 'app/build/outputs');
+  if (development) {
+    const apk = path.join(outputDir, `${app.artifactName}-dev.apk`);
+    cpSync(path.join(outputs, 'apk/debug/app-debug.apk'), apk);
+    return [apk];
+  }
   const apk = path.join(outputDir, `${app.artifactName}.apk`);
   const aab = path.join(outputDir, `${app.artifactName}.aab`);
   cpSync(path.join(outputs, 'apk/release/app-release.apk'), apk);

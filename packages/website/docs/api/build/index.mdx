@@ -30,7 +30,7 @@ The Angular CLI builders behind `ng build`, `ng serve`, `ng test` and `ng extrac
 | Builder        | Command           | What it does                                                                                               |
 | -------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
 | `application`  | `ng build`        | Builds the [bundles](/guide/glossary#bundle) into `dist/`, and with `--platform`, the iOS and Android apps |
-| `dev-server`   | `ng serve`        | Serves the app to Lynx Explorer and the web preview, and prints the QR code that Lynx Explorer scans       |
+| `dev-server`   | `ng serve`        | Serves the app to Lynx Explorer, the web preview and, with `--platform`, a development build of your app   |
 | `unit-test`    | `ng test`         | Runs your unit tests with Angular's own unit-test builder, set up for Lynx                                 |
 | `extract-i18n` | `ng extract-i18n` | Extracts the messages to translate with Angular's own extractor, set up for Lynx                           |
 
@@ -106,14 +106,16 @@ The signing fields name environment variables, so no secret goes in `angular.jso
 
 ## dev-server
 
-`ng serve` runs RSpeedy's dev server. Lynx Explorer and the web preview load your app from it.
+`ng serve` runs RSpeedy's dev server. Lynx Explorer and the web preview load your app from it. With `--platform`, so does a development build of your app, which it opens on a simulator, emulator or phone (see [Develop in the real app](/guide/native-apps#develop-in-the-real-app-with-ng-serve)).
 
-| Option        | Type       | Default                           | Description                                                                                     |
-| ------------- | ---------- | --------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `buildTarget` | `string`   | The project's `build:development` | The build target to serve, as `project:target[:configuration]`. Its options configure the build |
-| `port`        | `number`   | RSpeedy's                         | The port to serve on. Overrides `server.port` in `lynx.config.ts`                               |
-| `host`        | `string`   | RSpeedy's                         | The host to listen on. Overrides `server.host` in `lynx.config.ts`                              |
-| `environment` | `string[]` | The build target's, or all        | Only build these RSpeedy environments                                                           |
+| Option        | Type                   | Default                           | Description                                                                                                                                                                                                |
+| ------------- | ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buildTarget` | `string`               | The project's `build:development` | The build target to serve, as `project:target[:configuration]`. Its options configure the build                                                                                                            |
+| `port`        | `number`               | RSpeedy's                         | The port to serve on. Overrides `server.port` in `lynx.config.ts`                                                                                                                                          |
+| `host`        | `string`               | RSpeedy's                         | The host to listen on. Overrides `server.host` in `lynx.config.ts`                                                                                                                                         |
+| `environment` | `string[]`             | The build target's, or all        | Only build these RSpeedy environments                                                                                                                                                                      |
+| `platform`    | `"ios"` \| `"android"` | —                                 | Also build the app's development build from the build target's native options and open it where `ng build --run` would. It loads from the dev server and updates on every save. Its native build is cached |
+| `device`      | `string`               | A running one, else a new one     | With `platform`, where to open the app: a simulator's, paired iPhone's or virtual device's name, a UDID or an adb serial                                                                                   |
 
 ## unit-test
 

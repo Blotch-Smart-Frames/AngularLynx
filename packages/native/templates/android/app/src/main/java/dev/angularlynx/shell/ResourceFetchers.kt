@@ -16,11 +16,12 @@ import okhttp3.Request
 /**
  * Lynx can't load anything by itself: the host app supplies loaders for
  * bundles, images and other resources. Ours read the copy of dist/ inside the
- * APK and fall back to HTTP for absolute http(s) URLs (an API, a CDN, or a dev
- * server).
+ * APK and fall back to HTTP for absolute http(s) URLs (an API, a CDN). The
+ * debug build `ng serve --platform android` runs has no copy: it loads what
+ * the bundle names from the dev server instead (DevServer.kt).
  */
 
-private val http by lazy { OkHttpClient() }
+internal val http by lazy { OkHttpClient() }
 
 // LynxResourceResponse.onFailed is declared without a type parameter, so
 // Kotlin sees a raw type; this gives it the one each callback expects.
@@ -37,17 +38,21 @@ private fun load(
 ) {
     LynxThreadPool.getBriefIOExecutor().execute {
         try {
-            val asset = BundleAssets.assetPath(url)
+            val remote = DevServer.remoteUrl(url)
+            val asset = if (remote == null) BundleAssets.assetPath(url) else null
             val bytes = if (asset != null) {
                 BundleAssets.read(context, asset)
             } else {
-                http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                    check(response.isSuccessful) { "HTTP ${response.code} for $url" }
+                val address = remote ?: url
+                http.newCall(Request.Builder().url(address).build()).execute().use { response ->
+                    check(response.isSuccessful) { "HTTP ${response.code} for $address" }
                     response.body!!.bytes()
                 }
             }
+            DevServer.loaded(url, null)
             onSuccess(bytes)
         } catch (error: Throwable) {
+            DevServer.loaded(url, error)
             onFailure(Exception("Couldn't load $url: ${error.message}", error))
         }
     }
@@ -90,6 +95,7 @@ class AssetTemplateResourceFetcher(context: Context) : LynxTemplateResourceFetch
  */
 class AssetMediaResourceFetcher : LynxMediaResourceFetcher() {
     override fun shouldRedirectUrl(request: LynxResourceRequest): String {
+        DevServer.remoteUrl(request.url)?.let { return it }
         val asset = BundleAssets.assetPath(request.url) ?: return request.url
         return "asset:///$asset"
     }

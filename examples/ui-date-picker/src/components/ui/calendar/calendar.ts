@@ -101,6 +101,11 @@ const PATTERN_PIECE = /'(?:[^']|'')*'|([A-Za-z])\1*|[^'A-Za-z]+/g;
 const patternWithout = (locale: string, drop: string): string => {
   let pattern = '';
   let dropping = false;
+  // Deprecated in favor of Intl, which a component can't count on with Lynx:
+  // the thread Angular runs on has none, and an app's build `intl` option
+  // adds only the APIs the app lists. Angular's locale data, which DatePipe
+  // reads too, needs nothing from the build. Moved to Intl.DateTimeFormat,
+  // this would throw on a phone while the specs, in Node, pass.
   const long = getLocaleDateFormat(locale, FormatWidth.Long);
   for (const [piece, field] of long.matchAll(PATTERN_PIECE)) {
     if (field) dropping = drop.includes(field);
@@ -414,6 +419,11 @@ export class UiCalendar {
     this.#clamp(monthIndex(this.value() ?? this.#today)),
   );
 
+  /**
+   * The weekday in the first column. getLocaleFirstDayOfWeek is deprecated
+   * in favor of `Intl.Locale#getWeekInfo`, which a component can't count on
+   * with Lynx (see patternWithout), so keep it.
+   */
   readonly #weekStart = computed(
     () => this.weekStartsOn() ?? getLocaleFirstDayOfWeek(this.#locale),
   );

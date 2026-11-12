@@ -103,6 +103,13 @@ export const applyAngularConfig = (
     config.source.define['__LYNX_SOURCE_LOCALE__'] = JSON.stringify(
       buildOptions.i18n.sourceLocale,
     );
+    // A Lynx bundle, lynx or web, is never rendered on a server. Angular reads
+    // `ngServerMode` to tell, and its CLI defines it as false for every
+    // browser build, development and production. Since @angular/core 22.2.6
+    // bootstrap reads it as a bare global (`ngDevMode || ngServerMode`), so
+    // once `ngDevMode` is false, as in production, an undefined one threw a
+    // ReferenceError before the app started.
+    config.source.define.ngServerMode = false;
     const isProd =
       process.env.NODE_ENV === 'production' || config.mode === 'production';
     if (isProd) {

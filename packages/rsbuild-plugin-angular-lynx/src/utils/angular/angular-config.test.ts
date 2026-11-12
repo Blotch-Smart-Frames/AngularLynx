@@ -274,6 +274,38 @@ describe('applyAngularConfig', () => {
     });
   });
 
+  // Angular's bootstrap reads `ngServerMode` as a bare global since
+  // @angular/core 22.2.6: without a definition, a production bundle threw a
+  // ReferenceError before the app started.
+  describe('ngServerMode', () => {
+    it.each(['production', 'development'])(
+      'defines ngServerMode as false in %s',
+      (mode) => {
+        process.env['NODE_ENV'] = mode;
+        const { api, triggerHandler } = createMockApi();
+        const config = { mode } as any;
+
+        applyAngularConfig(api as never, createBuildOptions() as never);
+        triggerHandler(config);
+
+        expect(config.source.define.ngServerMode).toBe(false);
+      },
+    );
+
+    it('keeps the defines the project set', () => {
+      const { api, triggerHandler } = createMockApi();
+      const config = { source: { define: { APP_FLAG: 'true' } } } as any;
+
+      applyAngularConfig(api as never, createBuildOptions() as never);
+      triggerHandler(config);
+
+      expect(config.source.define).toMatchObject({
+        APP_FLAG: 'true',
+        ngServerMode: false,
+      });
+    });
+  });
+
   describe('production mode defines', () => {
     it('sets ngDevMode = false when NODE_ENV is "production"', () => {
       process.env['NODE_ENV'] = 'production';

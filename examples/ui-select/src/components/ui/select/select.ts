@@ -256,21 +256,18 @@ const ITEM_ROW: Readonly<Record<SelectLook, string>> = {
 };
 
 /**
- * The chosen item's tint, and its label's color on it: none on iOS, which
- * marks the choice with the check alone, and Material's secondary container
- * (the theme's `accent`, which dynamic-color maps to it).
+ * The chosen item's tint: none on iOS, which marks the choice with the check
+ * alone. Material tints it as its selected list items, with the primary at
+ * 10% rather than the theme's `accent`: outside dynamic color, `accent` is
+ * the same color as `secondary`, the Material sheet's surface, so the tint
+ * didn't show. A tint can take an opacity modifier, as the check marks the
+ * choice too.
  */
 const CHOSEN_ROW: Readonly<Record<SelectLook, string>> = {
   default: 'bg-accent',
   glass: '',
   frosted: '',
-  material: 'bg-accent',
-};
-const CHOSEN_LABEL: Readonly<Record<SelectLook, string>> = {
-  default: '',
-  glass: '',
-  frosted: '',
-  material: 'text-accent-foreground',
+  material: 'bg-primary/10',
 };
 
 /**
@@ -379,11 +376,7 @@ export class UiSelectItem {
   );
 
   protected readonly labelClass = computed(() =>
-    cn(
-      'flex-1',
-      ROW_LABEL[this.look()],
-      this.isSelected() && CHOSEN_LABEL[this.look()],
-    ),
+    cn('flex-1', ROW_LABEL[this.look()]),
   );
 
   protected onTap(): void {

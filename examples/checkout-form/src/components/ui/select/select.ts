@@ -15,6 +15,7 @@ import {
 import { type BaseLynxElement, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
 import { UiSelectSheet, matchesQuery } from './select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
@@ -258,19 +259,31 @@ export class UiSelect {
     <ng-content />
     <text [class]="labelClass()">{{ label() }}</text>
     @if (isSelected()) {
-      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+      <svg [attr.content]="checkSvg()" style="width: 16px; height: 16px;" />
     }
   `,
 })
 export class UiSelectItem {
   readonly #select = inject(UiSelect);
   readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
+  readonly #resolveColor = injectIconColor();
 
   readonly itemValue = input.required<string>({ alias: 'value' });
   readonly label = input.required<string>();
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly checkSvg = CHECK_SVG;
+  /**
+   * The check in the text's color, resolved and written into the markup: an
+   * SVG can't read a text class or a CSS variable, and Lynx's native `<svg>`
+   * reads only a literal `current-color` (see icon-theme.ts), so a
+   * `currentColor` check didn't follow the theme, such as in dark mode.
+   */
+  protected readonly checkSvg = computed(() =>
+    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+    CHECK_SVG.split('currentColor').join(
+      this.#resolveColor('var(--foreground)'),
+    ),
+  );
 
   protected readonly isSelected = computed(
     () => this.#select.value() === this.itemValue(),
@@ -292,7 +305,9 @@ export class UiSelectItem {
 
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center gap-3 px-4 py-3 flex',
+      // At least 48px tall: Android's 48dp touch target, which covers
+      // iOS's 44pt. In px, as Lynx's rem is 14px.
+      'min-h-[48px] flex-row items-center gap-3 px-4 py-3 flex',
       this.isSelected() && 'bg-accent',
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),

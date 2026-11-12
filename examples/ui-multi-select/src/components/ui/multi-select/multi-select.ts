@@ -320,7 +320,8 @@ export class UiMultiSelectItem {
    */
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center gap-3 pl-1 pr-4 flex',
+      // At least 48px tall, as UiSelectItem's rows are.
+      'min-h-[48px] flex-row items-center gap-3 pl-1 pr-4 flex',
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),

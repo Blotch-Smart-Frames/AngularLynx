@@ -9,6 +9,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '@blotch/dolan/testing/fire-lynx-event';
 import { DURATION } from '@blotch/dolan/utils/animate';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSelect, UiSelectItem } from './select';
 
 @Component({
@@ -228,7 +229,10 @@ describe('UiSelectItem', () => {
     host.value.set('pear');
     await waitForUpdate();
     expect(item('Pear').classList).toContain('bg-accent');
-    expect(item('Pear').querySelector('svg')).not.toBeNull();
+    // In the text's color, which the SVG can't read for itself.
+    expect(
+      item('Pear').querySelector('svg')!.getAttribute('content'),
+    ).toContain(ICON_LIGHT_COLORS['foreground']);
     expect(item('Apple').classList).not.toContain('bg-accent');
     expect(item('Apple').querySelector('svg')).toBeNull();
   });
@@ -237,6 +241,8 @@ describe('UiSelectItem', () => {
     const { item } = await renderSelect();
     expect(item('Pear').classList).toContain('font-bold');
     expect(item('Pear').classList).toContain('px-4');
+    // A touch target's height on Android and iOS alike.
+    expect(item('Pear').classList).toContain('min-h-[48px]');
   });
 });
 

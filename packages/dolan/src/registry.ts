@@ -167,8 +167,9 @@ export const registry: RegistryEntry[] = [
   // picks the thumb's color for the app's color scheme with icon-theme.ts.
   { name: 'segmented-control', dependencies: ['glass', 'icon'] },
   // The options open in a bottom sheet, which holds a search field when the
-  // select is searchable (select-sheet.ts, which multi-select shares).
-  { name: 'select', dependencies: ['bottom-sheet', 'search-field'] },
+  // select is searchable (select-sheet.ts, which multi-select shares). The
+  // check is drawn in the theme's text color, resolved by icon-theme.ts.
+  { name: 'select', dependencies: ['bottom-sheet', 'icon', 'search-field'] },
   { name: 'separator', dependencies: [] },
   // Its specs present a sheet from a glass button (`uiSheetSource`), which
   // the sheet grows out of.

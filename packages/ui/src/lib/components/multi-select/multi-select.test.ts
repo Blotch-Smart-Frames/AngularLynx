@@ -363,6 +363,8 @@ describe('UiMultiSelectItem', () => {
     ).toBeTruthy();
     expect(item('Sport').classList).toContain('font-bold');
     expect(item('Sport').classList).toContain('pr-4');
+    // A touch target's height on Android and iOS alike.
+    expect(item('Sport').classList).toContain('min-h-[48px]');
   });
 });
 

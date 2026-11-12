@@ -16,17 +16,9 @@ import { type BaseLynxElement, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
 import { UiBadge } from '../badge/badge';
-import { type BottomSheetVariant } from '../bottom-sheet/bottom-sheet';
 import { UiButton } from '../button/button';
 import { UiCheckbox } from '../checkbox/checkbox';
-import {
-  ROW_LABEL,
-  type SelectLook,
-  UiSelectSheet,
-  injectSelectLook,
-  matchesQuery,
-} from '../select/select-sheet';
-import { UiToolbarItem } from '../toolbar/toolbar';
+import { UiSelectSheet, matchesQuery } from '../select/select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 
@@ -36,73 +28,6 @@ const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
  * nothing calls, which an app's coverage report would show as uncovered.
  */
 const multiSelectItem = () => UiMultiSelectItem;
-
-/**
- * The sheet's header in each look (see SelectLook). iOS centers a sheet's
- * title in a 44pt bar, between flexible space on each side, with Done at the
- * trailing end. Material 3 puts the title at the start in Title Large, in a
- * 56dp bar. The default look keeps its own. In px, as Lynx's rem is 14px.
- */
-const HEADER: Readonly<
-  Record<
-    SelectLook,
-    {
-      readonly row: string;
-      readonly start: string;
-      readonly title: string;
-      readonly end: string;
-    }
-  >
-> = {
-  default: {
-    row: 'gap-3 px-4 pb-3',
-    start: 'hidden',
-    title: 'flex-1 text-base font-semibold text-foreground',
-    end: '',
-  },
-  glass: {
-    row: 'min-h-[52px] gap-[8px] px-[16px] pb-[8px]',
-    start: 'flex-1',
-    title:
-      'text-center text-[17px] font-semibold leading-[22px] text-foreground',
-    end: 'flex-1 justify-end',
-  },
-  frosted: {
-    row: 'min-h-[44px] gap-[8px] px-[8px]',
-    start: 'flex-1',
-    title:
-      'text-center text-[17px] font-semibold leading-[22px] text-foreground',
-    end: 'flex-1 justify-end',
-  },
-  material: {
-    row: 'min-h-[56px] gap-[12px] pl-[16px] pr-[12px] pb-[8px]',
-    start: 'hidden',
-    title: 'flex-1 text-[22px] leading-[28px] text-foreground',
-    end: '',
-  },
-};
-
-/**
- * An item's row in each look, at least as tall as a touch target: 44pt on
- * iOS and in the default look, and Material 3's 56dp one-line list item
- * with a leading checkbox. The checkbox's tap target insets its box, so the
- * row's own inset at its start is smaller, which lines the box up with the
- * search field and the header.
- */
-const ITEM_ROW: Readonly<Record<SelectLook, string>> = {
-  default: 'min-h-[44px] gap-3 pl-1 pr-4',
-  glass: 'min-h-[44px] gap-[12px] pl-[6px] pr-[16px]',
-  frosted: 'min-h-[44px] gap-[12px] pl-[6px] pr-[16px]',
-  material: 'min-h-[56px] gap-[16px] pl-[6px] pr-[16px]',
-};
-
-/** A row's label: the default look's padding, or the platform's text. */
-const ITEM_LABEL: Readonly<Record<SelectLook, string>> = {
-  default: cn('py-3', ROW_LABEL.default),
-  glass: cn('py-[11px]', ROW_LABEL.glass),
-  frosted: cn('py-[11px]', ROW_LABEL.frosted),
-  material: cn('py-[8px]', ROW_LABEL.material),
-};
 
 /**
  * A field that opens a sheet of options with a checkbox each, and shows the
@@ -118,7 +43,7 @@ const ITEM_LABEL: Readonly<Record<SelectLook, string>> = {
  */
 @Component({
   selector: 'ui-multi-select',
-  imports: [LYNX_ELEMENTS, UiBadge, UiButton, UiSelectSheet, UiToolbarItem],
+  imports: [LYNX_ELEMENTS, UiBadge, UiButton, UiSelectSheet],
   encapsulation: ViewEncapsulation.None,
   host: {
     '[class]': 'hostClass()',
@@ -178,31 +103,20 @@ const ITEM_LABEL: Readonly<Record<SelectLook, string>> = {
         (queryChange)="query.set($event)"
         [searchPlaceholder]="searchPlaceholder()"
         [emptyText]="emptyText()"
-        [variant]="variant()"
         [empty]="noneShown()"
       >
         <!-- The sheet stays open while items are toggled, so it says what's
-             being chosen and has a button to finish. The platform's Done is
-             a toolbar item: a tinted glass capsule on iOS 26 and later, a
-             bold label in the tint before, and Material's text button. -->
-        <view ui-select-sheet-header [class]="headerClass()">
-          <view [class]="headerStartClass()"></view>
-          <text [class]="titleClass()" accessibility-traits="header">{{
-            sheetTitle()
-          }}</text>
-          <view [class]="headerEndClass()">
-            @if (look() === 'default') {
-              <ui-button size="sm" (pressed)="close()">{{
-                doneLabel()
-              }}</ui-button>
-            } @else {
-              <ui-toolbar-item
-                [label]="doneLabel()"
-                [prominent]="look() !== 'material'"
-                (pressed)="close()"
-              />
-            }
-          </view>
+             being chosen and has a button to finish. -->
+        <view
+          ui-select-sheet-header
+          class="flex-row items-center gap-3 px-4 pb-3 flex"
+        >
+          <text
+            class="flex-1 text-base font-semibold text-foreground"
+            accessibility-traits="header"
+            >{{ sheetTitle() }}</text
+          >
+          <ui-button size="sm" (pressed)="close()">{{ doneLabel() }}</ui-button>
         </view>
         <ng-content />
       </ui-select-sheet>
@@ -244,13 +158,6 @@ export class UiMultiSelect {
   readonly emptyText = input('No results');
   /** The label of the button in the sheet's header that closes it. */
   readonly doneLabel = input('Done');
-  /**
-   * `'glass'` opens the options in the platform's own sheet, and draws them
-   * and its Done button as the platform does: Liquid Glass on iOS 26 and
-   * later, iOS's sheet before, and Material 3 on Android (see
-   * BottomSheetVariant). `'default'` looks the same everywhere.
-   */
-  readonly variant = input<BottomSheetVariant>('default');
 
   /** Emits the new value every time an item is toggled. */
   readonly changed = output<readonly string[]>();
@@ -258,24 +165,6 @@ export class UiMultiSelect {
   protected readonly chevronSvg = CHEVRON_SVG;
 
   protected readonly sheetOpen = signal(false);
-
-  /** How the sheet's header and rows draw (see SelectLook). */
-  protected readonly look = injectSelectLook(() => this.variant());
-
-  protected readonly headerClass = computed(() =>
-    cn('flex-row items-center flex', HEADER[this.look()].row),
-  );
-
-  /** Flexible space before an iOS title, which centers it. */
-  protected readonly headerStartClass = computed(
-    () => HEADER[this.look()].start,
-  );
-
-  protected readonly titleClass = computed(() => HEADER[this.look()].title);
-
-  protected readonly headerEndClass = computed(() =>
-    cn('flex-row items-center flex', HEADER[this.look()].end),
-  );
 
   // The projected items, so the field can show the chosen ones' labels.
   readonly itemRefs = contentChildren(multiSelectItem());
@@ -399,7 +288,7 @@ export class UiMultiSelect {
   template: `
     <ui-checkbox [checked]="isChosen()" />
     <ng-content />
-    <text [class]="labelClass()">{{ label() }}</text>
+    <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
   `,
 })
 export class UiMultiSelectItem {
@@ -414,9 +303,6 @@ export class UiMultiSelectItem {
     this.#select.value().includes(this.itemValue()),
   );
 
-  /** The look of the select's sheet (see SelectLook). */
-  protected readonly look = injectSelectLook(() => this.#select.variant());
-
   /** Whether the item shows for the search text (see UiMultiSelect.shows). */
   protected readonly shown = computed(() => this.#select.shows(this.label()));
 
@@ -428,18 +314,16 @@ export class UiMultiSelectItem {
     this.#host.setAccessibilityTrait('selected', this.isChosen());
   });
 
-  /** The row for the sheet's look (see ITEM_ROW). */
+  /**
+   * The checkbox's 44pt tap target insets its box, so the row's own inset
+   * is smaller: the box lines up with the search field and the header.
+   */
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center flex',
-      ITEM_ROW[this.look()],
+      'flex-row items-center gap-3 pl-1 pr-4 flex',
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
-  );
-
-  protected readonly labelClass = computed(() =>
-    cn('flex-1', ITEM_LABEL[this.look()]),
   );
 
   protected onTap(): void {

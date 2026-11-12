@@ -132,18 +132,10 @@ export const registry: RegistryEntry[] = [
   },
   // The multi-select shares select's sheet, search and filtering, marks its
   // rows with checkboxes, shows the chosen items as badges, and closes the
-  // sheet with a button, or the glass variant with the platform's Done, a
-  // toolbar item.
+  // sheet with a button.
   {
     name: 'multi-select',
-    dependencies: [
-      'badge',
-      'bottom-sheet',
-      'button',
-      'checkbox',
-      'select',
-      'toolbar',
-    ],
+    dependencies: ['badge', 'button', 'checkbox', 'select'],
   },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
@@ -175,13 +167,8 @@ export const registry: RegistryEntry[] = [
   // picks the thumb's color for the app's color scheme with icon-theme.ts.
   { name: 'segmented-control', dependencies: ['glass', 'icon'] },
   // The options open in a bottom sheet, which holds a search field when the
-  // select is searchable (select-sheet.ts, which multi-select shares). The
-  // glass variant's rows follow the platform's design from glass, and the
-  // check is drawn in theme colors resolved by icon-theme.ts.
-  {
-    name: 'select',
-    dependencies: ['bottom-sheet', 'glass', 'icon', 'search-field'],
-  },
+  // select is searchable (select-sheet.ts, which multi-select shares).
+  { name: 'select', dependencies: ['bottom-sheet', 'search-field'] },
   { name: 'separator', dependencies: [] },
   // Its specs present a sheet from a glass button (`uiSheetSource`), which
   // the sheet grows out of.

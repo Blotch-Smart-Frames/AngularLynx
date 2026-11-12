@@ -6,18 +6,12 @@ import {
   effect,
   input,
   model,
-  type Signal,
   untracked,
   viewChild,
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-import {
-  type BottomSheetVariant,
-  type SheetDetent,
-  UiBottomSheet,
-} from '../bottom-sheet/bottom-sheet';
-import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
+import { type SheetDetent, UiBottomSheet } from '../bottom-sheet/bottom-sheet';
 import { UiSearchField } from '../search-field/search-field';
 
 /**
@@ -41,37 +35,6 @@ const LARGE: readonly SheetDetent[] = ['large'];
  */
 export const matchesQuery = (label: string, query: string): boolean =>
   label.toLowerCase().includes(query.trim().toLowerCase());
-
-/**
- * How a select's sheet and rows draw: `'default'`, the sheet's own look on
- * every platform, or, for `variant="glass"`, the design the bottom sheet
- * resolves to on this platform (see GlassDesign).
- */
-export type SelectLook = 'default' | GlassDesign;
-
-/**
- * The look for a select's `variant`, from a field initializer. It follows
- * the platform's design as the bottom sheet does, so the rows match the
- * sheet they're in rather than the variant alone: on Android the glass
- * variant draws Material 3, unless the app opted in to glass there.
- */
-export const injectSelectLook = (
-  variant: () => BottomSheetVariant,
-): Signal<SelectLook> => {
-  const design = injectGlassDesign();
-  return computed(() => (variant() === 'glass' ? design() : 'default'));
-};
-
-/**
- * A row's label in each look. Sizes are px, as Lynx's rem is 14px: iOS's
- * 17pt body text, and Material 3's 16sp Body Large.
- */
-export const ROW_LABEL: Readonly<Record<SelectLook, string>> = {
-  default: 'text-sm text-foreground',
-  glass: 'text-[17px] leading-[22px] text-foreground',
-  frosted: 'text-[17px] leading-[22px] text-foreground',
-  material: 'text-[16px] leading-[24px] text-foreground',
-};
 
 /**
  * The sheet a select's options open in, shared by `ui-select` and
@@ -101,7 +64,6 @@ export const ROW_LABEL: Readonly<Record<SelectLook, string>> = {
     <ui-bottom-sheet
       [open]="open()"
       (openChange)="open.set($event)"
-      [variant]="variant()"
       [detents]="detents()"
       (closed)="query.set('')"
     >
@@ -137,8 +99,6 @@ export const ROW_LABEL: Readonly<Record<SelectLook, string>> = {
 })
 export class UiSelectSheet {
   readonly open = model(false);
-  /** The bottom sheet's `variant`: `'glass'` draws the platform's sheet. */
-  readonly variant = input<BottomSheetVariant>('default');
   /** Shows a search field above the items, and opens at full height. */
   readonly searchable = input(false, { transform: booleanAttribute });
   /** The search field's text. Cleared once the sheet has closed. */

@@ -15,7 +15,7 @@ import { UiSelect, UiSelectItem } from '../components/ui/select';
 ```
 
 :::tip
-This also adds [Bottom Sheet](/dolan/bottom-sheet), which holds the options, [Search Field](/dolan/search-field), for a searchable select, and the [Glass](/dolan/glass) and [Icon](/dolan/icon) its platform look draws with.
+This also adds [Bottom Sheet](/dolan/bottom-sheet), which holds the options, and [Search Field](/dolan/search-field), for a searchable select.
 :::
 
 ## Usage
@@ -136,25 +136,6 @@ Put content in an item, such as an [Icon](/dolan/icon), and it goes before the l
 </ui-select>
 ```
 
-### Platform look
-
-`variant="glass"` opens the options in each platform's own sheet, the [Bottom Sheet's glass variant](/dolan/bottom-sheet#glass), and draws them as that platform's lists do:
-
-```angular-html
-<ui-select label="Time zone" searchable variant="glass" [(value)]="timeZone">
-  …
-</ui-select>
-```
-
-| Platform         | Sheet                          | Rows                                                                                                 |
-| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| iOS 26 and later | Liquid Glass                   | 44pt tall, 17pt text, the chosen one marked by a check in the tint                                   |
-| iOS 15 to 25     | That iOS's opaque sheet        | The same                                                                                             |
-| Android          | Material 3's bottom sheet      | 56dp one-line list items, 16sp text, the chosen one on the secondary container, its check in primary |
-| Web preview      | Liquid Glass, drawn with WebGL | As on iOS 26                                                                                         |
-
-The rows follow the design the sheet draws, so Android with [`provideGlass({ android: 'glass' })`](/dolan/glass) gets iOS's rows on glass. The search field follows the platform in every variant. Without `variant`, the select looks the same everywhere, with rows at least 44px tall.
-
 ### Accessibility
 
 - The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`), with the chosen item's label, or the placeholder, as its value: VoiceOver says "Country, Germany, button". Without either, the field's name is the text it shows.
@@ -191,20 +172,19 @@ A disabled select dims and doesn't open.
 
 ### UiSelect
 
-| Input                 | Type                   | Default        | Description                                                                                             |
-| --------------------- | ---------------------- | -------------- | ------------------------------------------------------------------------------------------------------- |
-| `value`               | `string`               | `''`           | The selected item's value. Supports `[(value)]`.                                                        |
-| `label`               | `string`               | `''`           | Shown above the field, and read by screen readers as its name.                                          |
-| `placeholder`         | `string`               | `'Select...'`  | Shown in the field while nothing is selected.                                                           |
-| `accessibility-label` | `string`               | `''`           | The field's name for screen readers when it has no `label`.                                             |
-| `disabled`            | `boolean`              | `false`        | Dims the field and stops it from opening.                                                               |
-| `class`               | `string`               | `''`           | Extra Tailwind classes for the column that holds the label and the field.                               |
-| `searchable`          | `boolean`              | `false`        | Shows a search field in the sheet, which opens at full height.                                          |
-| `query`               | `string`               | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.                                   |
-| `filter`              | `boolean`              | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.                                   |
-| `searchPlaceholder`   | `string`               | `'Search'`     | Shown in the search field while it's empty.                                                             |
-| `emptyText`           | `string`               | `'No results'` | Shown in a searchable sheet while no item is.                                                           |
-| `variant`             | `'default' \| 'glass'` | `'default'`    | `'glass'` opens the options in each platform's own sheet and rows. See [Platform look](#platform-look). |
+| Input                 | Type      | Default        | Description                                                               |
+| --------------------- | --------- | -------------- | ------------------------------------------------------------------------- |
+| `value`               | `string`  | `''`           | The selected item's value. Supports `[(value)]`.                          |
+| `label`               | `string`  | `''`           | Shown above the field, and read by screen readers as its name.            |
+| `placeholder`         | `string`  | `'Select...'`  | Shown in the field while nothing is selected.                             |
+| `accessibility-label` | `string`  | `''`           | The field's name for screen readers when it has no `label`.               |
+| `disabled`            | `boolean` | `false`        | Dims the field and stops it from opening.                                 |
+| `class`               | `string`  | `''`           | Extra Tailwind classes for the column that holds the label and the field. |
+| `searchable`          | `boolean` | `false`        | Shows a search field in the sheet, which opens at full height.            |
+| `query`               | `string`  | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.     |
+| `filter`              | `boolean` | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.     |
+| `searchPlaceholder`   | `string`  | `'Search'`     | Shown in the search field while it's empty.                               |
+| `emptyText`           | `string`  | `'No results'` | Shown in a searchable sheet while no item is.                             |
 
 | Output        | Type     | Description                                  |
 | ------------- | -------- | -------------------------------------------- |

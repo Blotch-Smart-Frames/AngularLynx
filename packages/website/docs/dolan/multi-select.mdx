@@ -18,7 +18,7 @@ import {
 ```
 
 :::tip
-This also adds [Select](/dolan/select), whose sheet and search it shares, and the [Checkbox](/dolan/checkbox), [Badge](/dolan/badge), [Button](/dolan/button) and [Toolbar](/dolan/toolbar) it draws with.
+This also adds [Select](/dolan/select), whose sheet and search it shares, and the [Checkbox](/dolan/checkbox), [Badge](/dolan/badge) and [Button](/dolan/button) it draws with.
 :::
 
 ## Usage
@@ -97,24 +97,6 @@ A disabled field dims and doesn't open.
 
 `UiMultiSelect` has public `open()`, `close()` and `toggle()` methods. Get it with `viewChild(UiMultiSelect)` and call them from a handler. `open()` and `toggle()` do nothing while disabled.
 
-### Platform look
-
-`variant="glass"` opens the options in each platform's own sheet, and draws its header and rows as that platform does. It works as [Select's](/dolan/select#platform-look) does:
-
-```angular-html
-<ui-multi-select label="Topics" searchable variant="glass" [(value)]="topics">
-  …
-</ui-multi-select>
-```
-
-| Platform         | Header                                                    | Rows                                                    |
-| ---------------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| iOS 26 and later | Title centered; **Done** a tinted Liquid Glass button     | 44pt tall, 17pt text, a checkbox at the start           |
-| iOS 15 to 25     | Title centered; **Done** a bold label in the tint         | The same                                                |
-| Android          | Title at the start in Title Large; **Done** a text button | Material 3's 56dp list items with a checkbox, 16sp text |
-
-**Done** is a [Toolbar](/dolan/toolbar) item, so it's the same button as in your bars. Without `variant`, the multi-select looks the same everywhere, with rows at least 44px tall.
-
 ### Accessibility
 
 - The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`). Its value is the chosen labels, or the placeholder: VoiceOver says "Topics, News, Sport, button".
@@ -135,21 +117,20 @@ expect(
 
 ### UiMultiSelect
 
-| Input                 | Type                   | Default        | Description                                                                                                     |
-| --------------------- | ---------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `value`               | `readonly string[]`    | `[]`           | The chosen values, in the order they were chosen. Supports `[(value)]`.                                         |
-| `label`               | `string`               | `''`           | Shown above the field and as the sheet's title. Names it for screen readers.                                    |
-| `placeholder`         | `string`               | `'Select...'`  | Shown in the field while nothing is chosen.                                                                     |
-| `accessibility-label` | `string`               | `''`           | The field's name for screen readers, and the sheet's title, with no `label`.                                    |
-| `disabled`            | `boolean`              | `false`        | Dims the field and stops it from opening.                                                                       |
-| `class`               | `string`               | `''`           | Extra Tailwind classes for the column that holds the label and the field.                                       |
-| `searchable`          | `boolean`              | `false`        | Shows a search field in the sheet, which opens at full height.                                                  |
-| `query`               | `string`               | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.                                           |
-| `filter`              | `boolean`              | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.                                           |
-| `searchPlaceholder`   | `string`               | `'Search'`     | Shown in the search field while it's empty.                                                                     |
-| `emptyText`           | `string`               | `'No results'` | Shown in a searchable sheet while no item is.                                                                   |
-| `doneLabel`           | `string`               | `'Done'`       | The label of the button that closes the sheet.                                                                  |
-| `variant`             | `'default' \| 'glass'` | `'default'`    | `'glass'` opens the options in each platform's own sheet, header and rows. See [Platform look](#platform-look). |
+| Input                 | Type                | Default        | Description                                                                  |
+| --------------------- | ------------------- | -------------- | ---------------------------------------------------------------------------- |
+| `value`               | `readonly string[]` | `[]`           | The chosen values, in the order they were chosen. Supports `[(value)]`.      |
+| `label`               | `string`            | `''`           | Shown above the field and as the sheet's title. Names it for screen readers. |
+| `placeholder`         | `string`            | `'Select...'`  | Shown in the field while nothing is chosen.                                  |
+| `accessibility-label` | `string`            | `''`           | The field's name for screen readers, and the sheet's title, with no `label`. |
+| `disabled`            | `boolean`           | `false`        | Dims the field and stops it from opening.                                    |
+| `class`               | `string`            | `''`           | Extra Tailwind classes for the column that holds the label and the field.    |
+| `searchable`          | `boolean`           | `false`        | Shows a search field in the sheet, which opens at full height.               |
+| `query`               | `string`            | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.        |
+| `filter`              | `boolean`           | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.        |
+| `searchPlaceholder`   | `string`            | `'Search'`     | Shown in the search field while it's empty.                                  |
+| `emptyText`           | `string`            | `'No results'` | Shown in a searchable sheet while no item is.                                |
+| `doneLabel`           | `string`            | `'Done'`       | The label of the button that closes the sheet.                               |
 
 | Output        | Type                | Description                                        |
 | ------------- | ------------------- | -------------------------------------------------- |

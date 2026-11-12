@@ -9,7 +9,6 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '@blotch/dolan/testing/fire-lynx-event';
 import { DURATION } from '@blotch/dolan/utils/animate';
-import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSelect, UiSelectItem } from './select';
 
 @Component({
@@ -575,99 +574,5 @@ describe('UiSelect projected content', () => {
     expect(
       glyph.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-  });
-});
-
-describe('UiSelect variant', () => {
-  @Component({
-    imports: [UiSelect, UiSelectItem],
-    template: `
-      <ui-select label="Fruit" value="pear" [variant]="variant()">
-        <ui-select-item value="apple" label="Apple" />
-        <ui-select-item value="pear" label="Pear" />
-      </ui-select>
-    `,
-  })
-  class VariantHost {
-    readonly variant = signal<'default' | 'glass'>('glass');
-  }
-
-  const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
-  const IOS_17 = { platform: 'iOS', osVersion: '17.5' };
-  const ANDROID = { platform: 'Android', osVersion: '15' };
-
-  /**
-   * The theme's light colors, as an item resolves them for its check.
-   */
-  const color = (token: string) => ICON_LIGHT_COLORS[token]!;
-
-  /**
-   * Renders the host on a platform, as `SystemInfo` reports it, with the
-   * sheet's panel and the items found the same way in every look.
-   */
-  const renderOn = async (
-    platform: { platform: string; osVersion: string },
-    variant: 'default' | 'glass' = 'glass',
-  ) => {
-    vi.stubGlobal('SystemInfo', platform);
-    const result = await render(VariantHost);
-    (result.componentRef.instance as VariantHost).variant.set(variant);
-    await waitForUpdate();
-    const overlay = result.container.querySelector<HTMLElement>('overlay')!;
-    const backdrop = overlay.querySelector('view')!;
-    return {
-      ...result,
-      overlay,
-      panel: backdrop.children[1] as HTMLElement,
-      row: (label: string) =>
-        overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
-      label: (label: string) => within(overlay).getByText(label),
-      check: () => overlay.querySelector('svg')!,
-    };
-  };
-
-  it('keeps its own look by default, in rows at least 44px tall', async () => {
-    const { panel, row, label, check } = await renderOn(IOS_26, 'default');
-    expect(panel.classList).toContain('border-t');
-    expect(row('Pear').classList).toContain('min-h-[44px]');
-    expect(row('Pear').classList).toContain('px-4');
-    expect(row('Pear').classList).toContain('bg-accent');
-    expect(label('Pear').classList).toContain('text-sm');
-    expect(check().getAttribute('style')).toContain('width: 16px');
-    expect(check().getAttribute('content')).toContain(color('foreground'));
-  });
-
-  it("opens in iOS 26's Liquid Glass sheet, with iOS's rows", async () => {
-    const { overlay, row, label, check } = await renderOn(IOS_26);
-    expect(overlay.querySelector('blur-view')).not.toBeNull();
-    expect(row('Pear').classList).toContain('min-h-[44px]');
-    expect(row('Pear').classList).toContain('px-[16px]');
-    // iOS marks the choice with the check alone, in the tint.
-    expect(row('Pear').classList).not.toContain('bg-accent');
-    expect(label('Pear').classList).toContain('text-[17px]');
-    expect(check().getAttribute('style')).toContain('width: 20px');
-    expect(check().getAttribute('content')).toContain(color('primary'));
-  });
-
-  it("opens in the sheet of iOS 15 to 25, with iOS's rows", async () => {
-    const { overlay, panel, row, label } = await renderOn(IOS_17);
-    expect(overlay.querySelector('blur-view')).toBeNull();
-    expect(panel.classList).toContain('rounded-t-[10px]');
-    expect(row('Apple').classList).toContain('min-h-[44px]');
-    expect(label('Apple').classList).toContain('text-[17px]');
-  });
-
-  it("opens in Material 3's sheet on Android, with its list items", async () => {
-    const { panel, row, label, check } = await renderOn(ANDROID);
-    expect(panel.classList).toContain('rounded-t-[28px]');
-    expect(row('Apple').classList).toContain('min-h-[56px]');
-    expect(row('Apple').classList).toContain('px-[16px]');
-    expect(row('Apple').classList).not.toContain('bg-accent');
-    expect(label('Apple').classList).toContain('text-[16px]');
-    // The chosen item on the secondary container, its check in primary.
-    expect(row('Pear').classList).toContain('bg-accent');
-    expect(label('Pear').classList).toContain('text-accent-foreground');
-    expect(check().getAttribute('style')).toContain('width: 24px');
-    expect(check().getAttribute('content')).toContain(color('primary'));
   });
 });

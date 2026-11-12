@@ -304,6 +304,11 @@ esac`,
         /^Xcode has no signed-in account for team TEAM\. Sign in to Xcode[\s\S]*No Account for Team/,
       );
       process.env['XCODEBUILD_FAILS'] =
+        "error: Communication with Apple failed: Your development team has reached the maximum number of registered iPhone devices.\nerror: No profiles for 'com.example.myapp' were found";
+      await expect(build()).rejects.toThrow(
+        /^Team TEAM can't register this device: it has as many as Apple allows\./,
+      );
+      process.env['XCODEBUILD_FAILS'] =
         "error: No profiles for 'com.example.myapp' were found";
       await expect(build()).rejects.toThrow(
         /^Xcode couldn't make a provisioning profile for team TEAM/,

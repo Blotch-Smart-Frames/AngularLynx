@@ -19,6 +19,7 @@ const createMockApi = (rootPath = '/project') => {
 
 const createBuildOptions = (overrides: Record<string, any> = {}) => ({
   outputPath: undefined as string | undefined,
+  aot: true,
   polyfills: [] as string[],
   styles: [] as string[],
   tsconfig: '/project/tsconfig.json',
@@ -271,6 +272,60 @@ describe('applyAngularConfig', () => {
       triggerHandler(config);
 
       expect(config.source.tsconfigPath).toBe('/app/tsconfig.app.json');
+    });
+  });
+
+  // Angular's compile-time flags, as Angular's CLI defines them for a browser
+  // build. Its bootstrap reads `ngServerMode` as a bare global since
+  // @angular/core 22.2.6: without a definition, a production bundle threw a
+  // ReferenceError before the app started.
+  describe("Angular's compile-time flags", () => {
+    it.each(['production', 'development'])(
+      'defines the flags in %s, for an app compiled ahead of time',
+      (mode) => {
+        process.env['NODE_ENV'] = mode;
+        const { api, triggerHandler } = createMockApi();
+        const config = { mode } as any;
+
+        applyAngularConfig(api as never, createBuildOptions() as never);
+        triggerHandler(config);
+
+        expect(config.source.define).toMatchObject({
+          ngServerMode: false,
+          ngJitMode: false,
+          ngHmrMode: false,
+          ngI18nClosureMode: false,
+        });
+      },
+    );
+
+    it('turns ngJitMode on for an app compiled just in time', () => {
+      const { api, triggerHandler } = createMockApi();
+      const config = {} as any;
+
+      applyAngularConfig(
+        api as never,
+        createBuildOptions({ aot: false }) as never,
+      );
+      triggerHandler(config);
+
+      expect(config.source.define.ngJitMode).toBe(true);
+    });
+
+    it("keeps the project's defines, and its ngI18nClosureMode", () => {
+      const { api, triggerHandler } = createMockApi();
+      const config = {
+        source: { define: { APP_FLAG: 'true', ngI18nClosureMode: true } },
+      } as any;
+
+      applyAngularConfig(api as never, createBuildOptions() as never);
+      triggerHandler(config);
+
+      expect(config.source.define).toMatchObject({
+        APP_FLAG: 'true',
+        ngI18nClosureMode: true,
+        ngServerMode: false,
+      });
     });
   });
 

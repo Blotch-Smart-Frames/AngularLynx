@@ -1,4 +1,5 @@
 import { type Signal, computed, signal } from '@angular/core';
+import type { ChromeClaim, LynxStackChrome } from './stack-chrome';
 
 /**
  * Sets a page's `active`. Assigned in the class's static block, the only place
@@ -15,6 +16,31 @@ export let setBottomBarHidden: (
   page: LynxStackPage,
   hidden: Signal<boolean>,
 ) => void;
+
+/**
+ * What the stack keeps about a page (see LynxStackChrome): the outlet it's in,
+ * and the chrome the bars on it follow, made when a component on it first
+ * asks.
+ */
+export type PageLinks = {
+  owner: ChromeClaim | null;
+  chrome: LynxStackChrome | null;
+};
+
+/**
+ * The page's links (see PageLinks). Assigned as setActive is.
+ *
+ * They're kept on the page rather than in a WeakMap keyed by it, which on
+ * Lynx's main thread would keep every page the app ever had, and the screen
+ * on each one (issue #390). What a page leads to leads back to the page: the
+ * outlet that owns it holds it in its stack, and the chrome reaches the
+ * outlet. PrimJS, the engine that runs the main thread, never lets go of a
+ * WeakMap entry whose value leads back to its key through a native element,
+ * and a page's components, its elements and their native elements are all
+ * on the way. A long-lived WeakMap's entries then stay for good. Held by the
+ * page itself, they go when the page does.
+ */
+export let linksOf: (page: LynxStackPage) => PageLinks;
 
 const SHOWN = signal(false).asReadonly();
 
@@ -37,11 +63,17 @@ const SHOWN = signal(false).asReadonly();
  * ```
  *
  * It also stands for the page itself: something kept per screen can key on
- * it, as `@blotch/ui`'s bars keep their state per page.
+ * it, as `@blotch/ui`'s bars keep their state per page in a `WeakMap`. What
+ * the map keeps for a page mustn't hold on to the page's components or
+ * elements once they're destroyed, as the bars' state lets go of the bars
+ * and the scroll view: on Lynx's main thread, an entry whose value still
+ * leads back to its page through an element is never collected, and keeps
+ * the page and its screen for as long as the map.
  */
 export class LynxStackPage {
   readonly #active = signal(false);
   readonly #bottomBarHidden = signal<Signal<boolean>>(SHOWN);
+  readonly #links: PageLinks = { owner: null, chrome: null };
 
   /**
    * Whether the page is on top of its stack, where the router has it active,
@@ -72,5 +104,6 @@ export class LynxStackPage {
   static {
     setActive = (page, active) => page.#active.set(active);
     setBottomBarHidden = (page, hidden) => page.#bottomBarHidden.set(hidden);
+    linksOf = (page) => page.#links;
   }
 }

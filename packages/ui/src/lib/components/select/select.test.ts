@@ -664,8 +664,9 @@ describe('UiSelect variant', () => {
     expect(row('Apple').classList).toContain('px-[16px]');
     expect(row('Apple').classList).not.toContain('bg-accent');
     expect(label('Apple').classList).toContain('text-[16px]');
-    // The chosen item tinted with the primary, its check in primary.
-    expect(row('Pear').classList).toContain('bg-primary/10');
+    // The chosen item on the secondary container, its check in primary.
+    expect(row('Pear').classList).toContain('bg-accent');
+    expect(label('Pear').classList).toContain('text-accent-foreground');
     expect(check().getAttribute('style')).toContain('width: 24px');
     expect(check().getAttribute('content')).toContain(color('primary'));
   });

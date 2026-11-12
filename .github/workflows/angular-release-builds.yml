@@ -1,0 +1,132 @@
+name: Angular release builds
+
+# Runs every build against the newest Angular and Angular CLI: ci.yml with
+# every Angular package moved to its newest release, and the E2E tests' full
+# matrix with the native platforms, whose fresh app installs the newest
+# Angular itself. angular-release.yml starts it within the hour of a new
+# release of either reaching npm, patches included.
+#
+# Why: an app made with `npm create angular-lynx` installs the newest Angular
+# the day it's published, while package-lock.json can stay behind for weeks.
+# Angular 22.2.6 broke the production build of every new app, and CI stayed
+# green on the lockfile's 22.2.4 (#384).
+#
+# A failing run opens an issue that mentions the maintainer, or comments on
+# the one still open, and a passing run closes it. To check a fix, run this
+# workflow on master by hand.
+run-name: Builds on ${{ inputs.release || 'the newest Angular' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'The release, which names the run (angular-release.yml fills it in, and looks for the run by it). Every run builds on the newest release.'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  # The versions the builds use, for the issue.
+  versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.newest.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            /package-lock.json
+            /.github/scripts/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: newest
+        run: node .github/scripts/newest-angular.mts
+
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      newest-angular: true
+
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    permissions:
+      # e2e.yml's ios job finds build-app's artifact through the API. GitHub
+      # checks every called job's permissions, including those of
+      # report-nightly, which only runs on E2E's own schedule.
+      actions: read
+      contents: read
+      issues: write
+    with:
+      matrix: full
+      native: true
+
+  report:
+    needs: [versions, ci, e2e]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # To list the run's failed jobs.
+      actions: read
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Not the versions job: if it can't reach npm, the builds still ran.
+          FAILED: ${{ needs.ci.result == 'failure' || needs.e2e.result == 'failure' }}
+          RELEASE: ${{ needs.versions.outputs.release || 'the newest Angular' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/angular-release-builds.yml
+          # Who the issue mentions.
+          MAINTAINER: dolanmiu
+        run: |
+          label=angular-release-builds
+          # Leave the label's color and description alone when it exists, so
+          # edits made on GitHub stick.
+          gh label create "$label" --color B60205 \
+            --description "Builds fail on the newest Angular release" 2>/dev/null || true
+          open=$(gh issue list --label "$label" --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          if [ "$FAILED" != true ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --comment "Every build passes on $RELEASE: $RUN_URL"
+            fi
+            echo "Every build passes on $RELEASE." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The latest attempt of each job, so a re-run lists what still
+          # fails. The called workflows' jobs are named "ci / <job>" and
+          # "e2e / <job>".
+          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/jobs" \
+            --jq '.jobs[] | select(.conclusion == "failure") | "- [\(.name)](\(.html_url))"')
+
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Failed on $RELEASE as well: $RUN_URL
+
+          $failed"
+            echo "Commented on #$open." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          body="@$MAINTAINER The builds fail on $RELEASE, the newest on npm: $RUN_URL
+
+          $failed
+
+          An app made with \`npm create angular-lynx\` installs the newest Angular the day it's published, so new apps may be broken, as they were in #384.
+
+          - The \`ci / …\` jobs are ci.yml with every Angular package moved to its newest release. To do the same locally: \`node .github/scripts/newest-angular.mts --install && npm ci\`, and \`git checkout package.json package-lock.json\` afterwards.
+          - The \`e2e / …\` jobs install the packed packages into a fresh app, which takes the newest Angular itself. \`npm run e2e\` does the same locally.
+          - The experimental E2E entries (Angular next, rspeedy latest, pnpm, Yarn) and Android can fail without failing the run: if one of them is listed above, something else failed it too.
+
+          Once a fix is on master, run [Angular release builds]($WORKFLOW_URL) on it: a passing run closes this issue."
+          url=$(gh issue create --label "$label" --title "Builds fail on $RELEASE" --body "$body")
+          echo "Opened $url." >> "$GITHUB_STEP_SUMMARY"

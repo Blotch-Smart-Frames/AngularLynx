@@ -190,7 +190,9 @@ export class UiDatePicker {
 
   protected readonly fieldClass = computed(() =>
     cn(
-      'h-10 flex-row rounded-md border border-input bg-background flex',
+      // 48px tall, a full touch target on Android (48dp) and iOS (44pt), as
+      // the other form fields are. In px: h-10 is 2.5rem, 35px on Lynx.
+      'h-[48px] flex-row rounded-md border border-input bg-background flex',
       this.disabled() && 'opacity-50',
     ),
   );

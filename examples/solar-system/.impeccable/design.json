@@ -1,0 +1,440 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T06:43:40.212Z",
+  "title": "Design System: The Orrery",
+  "extensions": {
+    "colorMeta": {
+      "brass": {
+        "role": "primary",
+        "displayName": "Turned Brass",
+        "canonical": "oklch(71.0% 0.110 81)",
+        "tonalRamp": [
+          "oklch(15% 0.030 81)",
+          "oklch(26% 0.052 81)",
+          "oklch(38% 0.076 81)",
+          "oklch(49% 0.098 81)",
+          "oklch(61% 0.098 81)",
+          "oklch(72% 0.076 81)",
+          "oklch(84% 0.052 81)",
+          "oklch(95% 0.030 81)"
+        ]
+      },
+      "brass-lit": {
+        "role": "primary",
+        "displayName": "Lit Brass",
+        "canonical": "oklch(85.7% 0.098 86)",
+        "tonalRamp": [
+          "oklch(15% 0.027 86)",
+          "oklch(26% 0.046 86)",
+          "oklch(38% 0.067 86)",
+          "oklch(49% 0.087 86)",
+          "oklch(61% 0.087 86)",
+          "oklch(72% 0.067 86)",
+          "oklch(84% 0.046 86)",
+          "oklch(95% 0.027 86)"
+        ]
+      },
+      "brass-shade": {
+        "role": "primary",
+        "displayName": "Brass Shade",
+        "canonical": "oklch(49.0% 0.083 78)",
+        "tonalRamp": [
+          "oklch(15% 0.023 78)",
+          "oklch(26% 0.039 78)",
+          "oklch(38% 0.058 78)",
+          "oklch(49% 0.074 78)",
+          "oklch(61% 0.074 78)",
+          "oklch(72% 0.058 78)",
+          "oklch(84% 0.039 78)",
+          "oklch(95% 0.023 78)"
+        ]
+      },
+      "verdigris": {
+        "role": "secondary",
+        "displayName": "Verdigris",
+        "canonical": "oklch(65.4% 0.077 174)",
+        "tonalRamp": [
+          "oklch(15% 0.021 174)",
+          "oklch(26% 0.036 174)",
+          "oklch(38% 0.053 174)",
+          "oklch(49% 0.069 174)",
+          "oklch(61% 0.069 174)",
+          "oklch(72% 0.053 174)",
+          "oklch(84% 0.036 174)",
+          "oklch(95% 0.021 174)"
+        ]
+      },
+      "silver": {
+        "role": "neutral",
+        "displayName": "Silvered Plate",
+        "canonical": "oklch(86.9% 0.011 95)",
+        "tonalRamp": [
+          "oklch(15% 0.003 95)",
+          "oklch(26% 0.005 95)",
+          "oklch(38% 0.008 95)",
+          "oklch(49% 0.010 95)",
+          "oklch(61% 0.010 95)",
+          "oklch(72% 0.008 95)",
+          "oklch(84% 0.005 95)",
+          "oklch(95% 0.003 95)"
+        ]
+      },
+      "silver-shade": {
+        "role": "neutral",
+        "displayName": "Silver Shade",
+        "canonical": "oklch(69.6% 0.013 92)",
+        "tonalRamp": [
+          "oklch(15% 0.004 92)",
+          "oklch(26% 0.006 92)",
+          "oklch(38% 0.009 92)",
+          "oklch(49% 0.012 92)",
+          "oklch(61% 0.012 92)",
+          "oklch(72% 0.009 92)",
+          "oklch(84% 0.006 92)",
+          "oklch(95% 0.004 92)"
+        ]
+      },
+      "wax": {
+        "role": "neutral",
+        "displayName": "Black Wax",
+        "canonical": "oklch(18.4% 0.005 67)",
+        "tonalRamp": [
+          "oklch(15% 0.001 67)",
+          "oklch(26% 0.002 67)",
+          "oklch(38% 0.004 67)",
+          "oklch(49% 0.005 67)",
+          "oklch(61% 0.005 67)",
+          "oklch(72% 0.004 67)",
+          "oklch(84% 0.002 67)",
+          "oklch(95% 0.001 67)"
+        ]
+      },
+      "wax-soft": {
+        "role": "neutral",
+        "displayName": "Soft Wax",
+        "canonical": "oklch(38.3% 0.016 75)",
+        "tonalRamp": [
+          "oklch(15% 0.004 75)",
+          "oklch(26% 0.007 75)",
+          "oklch(38% 0.011 75)",
+          "oklch(49% 0.014 75)",
+          "oklch(61% 0.014 75)",
+          "oklch(72% 0.011 75)",
+          "oklch(84% 0.007 75)",
+          "oklch(95% 0.004 75)"
+        ]
+      },
+      "mahogany": {
+        "role": "neutral",
+        "displayName": "Mahogany",
+        "canonical": "oklch(24.3% 0.051 36)",
+        "tonalRamp": [
+          "oklch(15% 0.014 36)",
+          "oklch(26% 0.024 36)",
+          "oklch(38% 0.035 36)",
+          "oklch(49% 0.045 36)",
+          "oklch(61% 0.045 36)",
+          "oklch(72% 0.035 36)",
+          "oklch(84% 0.024 36)",
+          "oklch(95% 0.014 36)"
+        ]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "Night",
+        "canonical": "oklch(10.9% 0.010 285)",
+        "tonalRamp": [
+          "oklch(15% 0.003 285)",
+          "oklch(26% 0.005 285)",
+          "oklch(38% 0.007 285)",
+          "oklch(49% 0.009 285)",
+          "oklch(61% 0.009 285)",
+          "oklch(72% 0.007 285)",
+          "oklch(84% 0.005 285)",
+          "oklch(95% 0.003 285)"
+        ]
+      },
+      "orbit-hairline": {
+        "role": "neutral",
+        "displayName": "Orbit Hairline",
+        "canonical": "oklch(78.5% 0.102 83)",
+        "tonalRamp": [
+          "oklch(15% 0.028 83)",
+          "oklch(26% 0.048 83)",
+          "oklch(38% 0.070 83)",
+          "oklch(49% 0.091 83)",
+          "oklch(61% 0.091 83)",
+          "oklch(72% 0.070 83)",
+          "oklch(84% 0.048 83)",
+          "oklch(95% 0.028 83)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "cartouche": {
+        "displayName": "Cartouche",
+        "purpose": "\"The Orrery\", the maker's name on the case; the script's only use."
+      },
+      "plate-title": {
+        "displayName": "Plate Title",
+        "purpose": "The body's name on the specification plate."
+      },
+      "date": {
+        "displayName": "Date",
+        "purpose": "The long date in the silvered date window."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Figure values on the specification plate."
+      },
+      "key-label": {
+        "displayName": "Key Label",
+        "purpose": "RUN, STOP, TODAY, ORRERY on brass keys."
+      },
+      "plate-name": {
+        "displayName": "Plate Name",
+        "purpose": "Body names on the brass name plates."
+      },
+      "sky-label": {
+        "displayName": "Sky Label",
+        "purpose": "Planet names in lit brass over the 3D view."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "The plate's Roman numeral from the Sun (STAR for the Sun)."
+      },
+      "figure-label": {
+        "displayName": "Figure Label",
+        "purpose": "Figure names on the specification plate; 8px is the floor."
+      },
+      "note": {
+        "displayName": "Note",
+        "purpose": "The body's kind and note on the specification plate, two lines."
+      },
+      "aside": {
+        "displayName": "Aside",
+        "purpose": "The relative date, and the cartouche's notes in brass."
+      }
+    },
+    "shadows": [
+      {
+        "name": "engraved-lip",
+        "value": "text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75)",
+        "purpose": "The light on an engraving's lower lip; on every engraved label, on brass and silver. Not a drop shadow."
+      },
+      {
+        "name": "brass-bevel",
+        "value": "border 1px: top/left rgba(236, 204, 132, 1), bottom/right rgba(122, 90, 34, 1)",
+        "purpose": "Raised brass. Pressed brass inverts it with rgba(70, 50, 18, 1) on top/left."
+      },
+      {
+        "name": "silver-bevel",
+        "value": "border 1px: top/left rgba(160, 157, 148, 1), bottom/right rgba(242, 241, 236, 1)",
+        "purpose": "Silvered plate set into the case."
+      },
+      {
+        "name": "case-edge",
+        "value": "1px rgba(236, 204, 132, 1) over 2px rgba(122, 90, 34, 1)",
+        "purpose": "The case's top edge against the 3D view."
+      },
+      {
+        "name": "halo-earth",
+        "value": "rgb(0.25, 0.5, 1.2) linear, shell 1.045 r, glow pow(depth, 1.6), day-side only",
+        "purpose": "Earth's blue air at the limb."
+      },
+      {
+        "name": "halo-venus",
+        "value": "rgb(0.9, 0.75, 0.45), shell 1.05 r",
+        "purpose": "Venus's cloud haze."
+      },
+      {
+        "name": "halo-mars",
+        "value": "rgb(0.7, 0.42, 0.28), shell 1.025 r",
+        "purpose": "Mars's thin dusty air."
+      },
+      {
+        "name": "halo-giants",
+        "value": "Jupiter and Saturn rgb(0.14, 0.12, 0.08) 1.02 r; Uranus rgb(0.07, 0.15, 0.17) 1.07 r; Neptune rgb(0.06, 0.1, 0.3) 1.07 r",
+        "purpose": "Faint limb glow on the giants."
+      },
+      {
+        "name": "earth-glint",
+        "value": "pow(N·H, 600) × water × (1 − clouds) × (0.6 + fresnel) × 0.8, tinted rgb(1.0, 0.92, 0.8)",
+        "purpose": "The Sun's glint on Earth's oceans."
+      },
+      {
+        "name": "brass-3d",
+        "value": "MeshStandardMaterial #c49a4a, metalness 1, roughness 0.34, envMapIntensity 1.15; room #0b0806 with window #ffd9a8 ×3.2 and lamp #ffb36b ×1.4",
+        "purpose": "The orrery in 3D: brass reads as brass by reflecting a warm room."
+      },
+      {
+        "name": "tone-mapping",
+        "value": "ACESFilmic, exposure 1.05",
+        "purpose": "The whole 3D view."
+      }
+    ],
+    "motion": [
+      {
+        "name": "fly-in",
+        "value": "1400ms ease-in-out (cubic, symmetric); brass and hairlines fade over the first 60%; other planets hide past 50%",
+        "purpose": "Flying to a body and back. Cuts under reduced motion."
+      },
+      {
+        "name": "case-swap",
+        "value": "immediate, in a fixed 194px well",
+        "purpose": "Name plates give way to the specification plate without moving the dial."
+      },
+      {
+        "name": "dial-turn",
+        "value": "1 day per px of drag, 2° of ring per day; fling coasts",
+        "purpose": "Scrubbing time on the date dial."
+      },
+      {
+        "name": "run",
+        "value": "45 days per second",
+        "purpose": "RUN: the orrery turns by itself (Mercury laps in about 2s). Allowed under reduced motion, since it is asked for."
+      },
+      {
+        "name": "idle",
+        "value": "shader clock: boiling Sun, drifting bands, twinkling stars",
+        "purpose": "Off under reduced motion."
+      }
+    ],
+    "breakpoints": [],
+    "platformConstraints": [
+      "Lynx CSS has no :hover, @media or pseudo-elements: states are tap states, the case is one fluid column.",
+      "Theme variables live on page, not :root, as rgba() values (a hex with a digit-e-digit run is mangled by the CSS pipeline).",
+      "A background-image url() in styles.css draws nothing on iOS; the brushed-brass and mahogany rasters are bound inline from case/materials.ts, and the classes keep the bevels and fallback colors.",
+      "SVG is rendered from strings by <svg content> and cannot read CSS variables: the dial, index, plan and chevrons carry literal hex copies of the tokens.",
+      "Text does not inherit fonts: every <text> names its family. Bodoni Moda is shipped as static instances because Lynx picks no variable-font axes.",
+      "Lynx Explorer has no <canvas>: the orrery is drawn as a flat SVG plan with a note saying why."
+    ]
+  },
+  "components": [
+    {
+      "name": "Brass Key",
+      "kind": "button",
+      "refersTo": "brass-key",
+      "description": "RUN/STOP and TODAY: brushed brass, raised bevel, engraved wax label; inverts its bevel when pressed.",
+      "html": "<div class=\"ds-case\"><button class=\"ds-brass-key\">RUN</button><button class=\"ds-brass-key ds-dim\">TODAY</button></div>",
+      "css": ".ds-case { background: rgba(52, 22, 14, 1) linear-gradient(180deg, rgba(58, 25, 15, 1), rgba(47, 21, 13, 1)); padding: 12px; display: flex; gap: 8px; } .ds-brass-key { background: var(--brass, rgba(196, 154, 74, 1)) linear-gradient(180deg, rgba(240, 214, 150, 1) 0%, rgba(184, 142, 62, 1) 55%, rgba(150, 112, 44, 1) 100%); border-radius: 3px; border: 1px solid; border-color: rgba(236, 204, 132, 1) rgba(122, 90, 34, 1) rgba(122, 90, 34, 1) rgba(236, 204, 132, 1); width: 64px; height: 44px; font-family: 'Bodoni Moda', 'Engraved', 'Didot', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); text-transform: uppercase; font-size: 10px; letter-spacing: 1.5px; cursor: pointer; } .ds-brass-key:hover { filter: brightness(1.06); } .ds-brass-key:focus-visible { outline: 1px solid rgba(236, 204, 132, 1); outline-offset: 2px; } .ds-brass-key:active { background: rgba(122, 90, 34, 1) linear-gradient(180deg, rgba(126, 92, 34, 1), rgba(170, 128, 52, 1)); border-radius: 3px; border: 1px solid; border-color: rgba(70, 50, 18, 1) rgba(236, 204, 132, 1) rgba(236, 204, 132, 1) rgba(70, 50, 18, 1); } .ds-dim { opacity: 0.5; }"
+    },
+    {
+      "name": "Name Plates",
+      "kind": "nav",
+      "refersTo": "name-plate",
+      "description": "A brass plate per body in whole rows, numeral over name; the body flown to stays pressed.",
+      "html": "<div class=\"ds-case\"><div class=\"ds-row\"><button class=\"ds-plate\"><small>STAR</small>SUN</button><button class=\"ds-plate\"><small>I</small>MERCURY</button><button class=\"ds-plate\"><small>II</small>VENUS</button><button class=\"ds-plate ds-pressed\"><small>III</small>EARTH</button><button class=\"ds-plate\"><small>IV</small>MARS</button></div><div class=\"ds-row\"><button class=\"ds-plate\"><small>V</small>JUPITER</button><button class=\"ds-plate\"><small>VI</small>SATURN</button><button class=\"ds-plate\"><small>VII</small>URANUS</button><button class=\"ds-plate\"><small>VIII</small>NEPTUNE</button></div></div>",
+      "css": ".ds-case { background: rgba(52, 22, 14, 1) linear-gradient(180deg, rgba(58, 25, 15, 1), rgba(47, 21, 13, 1)); padding: 12px; width: 378px; } .ds-row { display: flex; gap: 6px; } .ds-row + .ds-row { margin-top: 6px; } .ds-plate { background: var(--brass, rgba(196, 154, 74, 1)) linear-gradient(180deg, rgba(240, 214, 150, 1) 0%, rgba(184, 142, 62, 1) 55%, rgba(150, 112, 44, 1) 100%); border-radius: 3px; border: 1px solid; border-color: rgba(236, 204, 132, 1) rgba(122, 90, 34, 1) rgba(122, 90, 34, 1) rgba(236, 204, 132, 1); flex: 1; height: 42px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Bodoni Moda', 'Engraved', 'Didot', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); text-transform: uppercase; font-size: 10px; letter-spacing: 1.2px; padding: 0; cursor: pointer; } .ds-plate small { font-size: 8px; letter-spacing: 1px; color: rgba(72, 66, 58, 1); } .ds-plate:hover { filter: brightness(1.06); } .ds-plate:focus-visible { outline: 1px solid rgba(236, 204, 132, 1); outline-offset: 2px; } .ds-pressed, .ds-plate:active { background: rgba(122, 90, 34, 1) linear-gradient(180deg, rgba(126, 92, 34, 1), rgba(170, 128, 52, 1)); border-radius: 3px; border: 1px solid; border-color: rgba(70, 50, 18, 1) rgba(236, 204, 132, 1) rgba(236, 204, 132, 1) rgba(70, 50, 18, 1); }"
+    },
+    {
+      "name": "Date Dial",
+      "kind": "custom",
+      "refersTo": "date-window",
+      "description": "The signature control: a brass ring seen through a slot, a tick a day, the index fid verdigris on today; below it, the date engraved on silver between RUN and TODAY.",
+      "html": "<div class=\"ds-case\"><div class=\"ds-slot\"><svg class=\"ds-ring\" viewBox=\"0 0 400 60\" aria-hidden=\"true\"><path d=\"M-20 70 Q200 -10 420 70\" fill=\"none\" stroke=\"#b68b3e\" stroke-width=\"28\"/><path d=\"M-20 56 Q200 -24 420 56\" fill=\"none\" stroke=\"#ecd08a\" stroke-width=\"1\"/><g stroke=\"#2e2110\" stroke-width=\"0.8\"><line x1=\"120\" y1=\"28\" x2=\"121\" y2=\"36\"/><line x1=\"160\" y1=\"22\" x2=\"160.5\" y2=\"30\"/><line x1=\"240\" y1=\"22\" x2=\"239.5\" y2=\"30\"/><line x1=\"280\" y1=\"28\" x2=\"279\" y2=\"36\"/></g><line x1=\"200\" y1=\"17\" x2=\"200\" y2=\"40\" stroke=\"#2e2110\" stroke-width=\"1.4\"/><path d=\"M193 1 L207 1 L200 13 Z\" fill=\"#5aa08d\" stroke=\"#2f5a4f\"/></svg></div><div class=\"ds-row\"><span class=\"ds-key\">RUN</span><span class=\"ds-window\"><b>Thursday 12 November 2026</b><i>Today</i></span><span class=\"ds-key\">TODAY</span></div></div>",
+      "css": ".ds-case { background: rgba(52, 22, 14, 1) linear-gradient(180deg, rgba(58, 25, 15, 1), rgba(47, 21, 13, 1)); width: 402px; padding-bottom: 12px; border-top: 1px solid rgba(236, 204, 132, 1); } .ds-slot { height: 58px; overflow: hidden; } .ds-ring { width: 402px; height: 60px; display: block; } .ds-row { display: flex; gap: 8px; padding: 0 12px; height: 44px; } .ds-key { background: var(--brass, rgba(196, 154, 74, 1)) linear-gradient(180deg, rgba(240, 214, 150, 1) 0%, rgba(184, 142, 62, 1) 55%, rgba(150, 112, 44, 1) 100%); border-radius: 3px; border: 1px solid; border-color: rgba(236, 204, 132, 1) rgba(122, 90, 34, 1) rgba(122, 90, 34, 1) rgba(236, 204, 132, 1); width: 64px; display: flex; align-items: center; justify-content: center; font-family: 'Bodoni Moda', 'Engraved', 'Didot', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); text-transform: uppercase; font-size: 10px; letter-spacing: 1.5px; } .ds-window { background: rgba(214, 212, 204, 1) linear-gradient(180deg, rgba(234, 233, 228, 1), rgba(204, 202, 194, 1)); border-radius: 2px; border: 1px solid; border-color: rgba(160, 157, 148, 1) rgba(242, 241, 236, 1) rgba(242, 241, 236, 1) rgba(160, 157, 148, 1); flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Bodoni Moda', 'Engraved', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); } .ds-window b { font-weight: 400; font-size: 12px; letter-spacing: 1px; } .ds-window i { font-size: 10px; color: rgba(72, 66, 58, 1); }"
+    },
+    {
+      "name": "Specification Plate",
+      "kind": "card",
+      "refersTo": "spec-plate",
+      "description": "Silvered plate flown in to a body: name in the display cut, brass step keys, italic note, three rows of engraved figures.",
+      "html": "<div class=\"ds-case\"><div class=\"ds-spec\"><div class=\"ds-head\"><span class=\"ds-title\">SATURN</span><span class=\"ds-steps\"><button class=\"ds-step\" aria-label=\"Previous\"><svg width=\"10\" height=\"12\" viewBox=\"0 0 10 12\" aria-hidden=\"true\"><path d=\"M9 1 L2 6 L9 11\" fill=\"none\" stroke=\"#141210\" stroke-width=\"1.6\"/></svg></button><button class=\"ds-step\" aria-label=\"Next\"><svg width=\"10\" height=\"12\" viewBox=\"0 0 10 12\" aria-hidden=\"true\"><path d=\"M1 1 L8 6 L1 11\" fill=\"none\" stroke=\"#141210\" stroke-width=\"1.6\"/></svg></button></span></div><p class=\"ds-note\">The sixth planet. Its rings are mostly water ice: 270,000 km across, and in most places about 10 m thick.</p><div class=\"ds-rule\"></div><div class=\"ds-figs\"><div><small>DIAMETER</small>120,536 km</div><div><small>GRAVITY</small>9.0 m/s²</div><div><small>MEAN TEMP.</small>−140 °C</div><div><small>DAY</small>10.7 hours</div><div><small>YEAR</small>29.4 years</div><div><small>MOONS</small>274</div></div></div></div>",
+      "css": ".ds-case { background: rgba(52, 22, 14, 1) linear-gradient(180deg, rgba(58, 25, 15, 1), rgba(47, 21, 13, 1)); padding: 10px 12px 12px; width: 378px; } .ds-spec { background: rgba(214, 212, 204, 1) linear-gradient(180deg, rgba(234, 233, 228, 1), rgba(204, 202, 194, 1)); border-radius: 2px; border: 1px solid; border-color: rgba(160, 157, 148, 1) rgba(242, 241, 236, 1) rgba(242, 241, 236, 1) rgba(160, 157, 148, 1); padding: 8px 12px 10px; font-family: 'Bodoni Moda', 'Engraved', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); } .ds-head { display: flex; justify-content: space-between; align-items: center; } .ds-title { font-family: 'Bodoni Moda', 'EngravedDisplay', serif; font-size: 26px; line-height: 30px; letter-spacing: 3px; } .ds-steps { display: flex; gap: 6px; } .ds-step { background: var(--brass, rgba(196, 154, 74, 1)) linear-gradient(180deg, rgba(240, 214, 150, 1) 0%, rgba(184, 142, 62, 1) 55%, rgba(150, 112, 44, 1) 100%); border-radius: 3px; border: 1px solid; border-color: rgba(236, 204, 132, 1) rgba(122, 90, 34, 1) rgba(122, 90, 34, 1) rgba(236, 204, 132, 1); width: 40px; height: 30px; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; } .ds-step:hover { filter: brightness(1.06); } .ds-step:focus-visible { outline: 1px solid rgba(122, 90, 34, 1); outline-offset: 2px; } .ds-step:active { background: rgba(122, 90, 34, 1) linear-gradient(180deg, rgba(126, 92, 34, 1), rgba(170, 128, 52, 1)); border-radius: 3px; border: 1px solid; border-color: rgba(70, 50, 18, 1) rgba(236, 204, 132, 1) rgba(236, 204, 132, 1) rgba(70, 50, 18, 1); } .ds-note { margin: 4px 0 0; font-style: italic; font-size: 11px; line-height: 15px; color: rgba(72, 66, 58, 1); } .ds-rule { height: 1px; background: rgba(160, 157, 148, 1); margin-top: 8px; } .ds-figs { display: grid; grid-template-columns: repeat(3, 1fr); } .ds-figs div { padding-top: 6px; font-size: 12px; line-height: 16px; display: flex; flex-direction: column; } .ds-figs small { font-size: 8px; letter-spacing: 1.2px; color: rgba(72, 66, 58, 1); }"
+    },
+    {
+      "name": "Back Key",
+      "kind": "button",
+      "refersTo": "back-key",
+      "description": "ORRERY with a stroked chevron, top-left over the 3D view under the notch: back out to the whole machine.",
+      "html": "<div class=\"ds-sky\"><button class=\"ds-back\"><svg width=\"10\" height=\"12\" viewBox=\"0 0 10 12\" aria-hidden=\"true\"><path d=\"M9 1 L2 6 L9 11\" fill=\"none\" stroke=\"#141210\" stroke-width=\"1.6\"/></svg><span>ORRERY</span></button></div>",
+      "css": ".ds-sky { background: rgba(4, 4, 7, 1); padding: 12px; width: 200px; } .ds-back { background: var(--brass, rgba(196, 154, 74, 1)) linear-gradient(180deg, rgba(240, 214, 150, 1) 0%, rgba(184, 142, 62, 1) 55%, rgba(150, 112, 44, 1) 100%); border-radius: 3px; border: 1px solid; border-color: rgba(236, 204, 132, 1) rgba(122, 90, 34, 1) rgba(122, 90, 34, 1) rgba(236, 204, 132, 1); height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; font-family: 'Bodoni Moda', 'Engraved', 'Didot', serif; color: rgba(20, 18, 16, 1); text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75); text-transform: uppercase; font-size: 10px; letter-spacing: 1.5px; cursor: pointer; } .ds-back svg { width: 8px; height: 12px; } .ds-back:hover { filter: brightness(1.06); } .ds-back:focus-visible { outline: 1px solid rgba(236, 204, 132, 1); outline-offset: 2px; } .ds-back:active { background: rgba(122, 90, 34, 1) linear-gradient(180deg, rgba(126, 92, 34, 1), rgba(170, 128, 52, 1)); border-radius: 3px; border: 1px solid; border-color: rgba(70, 50, 18, 1) rgba(236, 204, 132, 1) rgba(236, 204, 132, 1) rgba(70, 50, 18, 1); }"
+    },
+    {
+      "name": "Sky Label",
+      "kind": "chip",
+      "refersTo": "sky-label",
+      "description": "A planet name engraved in lit brass beside it over the 3D view, with a 1px leader when placed a step out.",
+      "html": "<div class=\"ds-sky\"><span class=\"ds-planet\"></span><span class=\"ds-leader\"></span><span class=\"ds-label\">NEPTUNE</span></div>",
+      "css": ".ds-sky { position: relative; background: rgba(4, 4, 7, 1); width: 200px; height: 90px; } .ds-planet { position: absolute; left: 40px; top: 52px; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, rgba(90, 130, 230, 1), rgba(30, 50, 140, 1)); } .ds-leader { position: absolute; left: 51px; top: 30px; width: 1px; height: 22px; background: rgba(236, 204, 132, 0.55); } .ds-label { position: absolute; left: 22px; top: 14px; font-family: 'Bodoni Moda', 'Engraved', serif; font-size: 10px; letter-spacing: 1.6px; color: rgba(236, 204, 132, 1); }"
+    },
+    {
+      "name": "Cartouche",
+      "kind": "custom",
+      "refersTo": "case",
+      "description": "The maker's name in copperplate on the mahogany case, with the honest notes in brass italic.",
+      "html": "<div class=\"ds-case\"><span class=\"ds-script\">The Orrery</span><span class=\"ds-asides\"><i>Distances and sizes not to scale.</i><i>Positions true for the date · drawn with WebGL2</i></span></div>",
+      "css": ".ds-case { background: rgba(52, 22, 14, 1) linear-gradient(180deg, rgba(58, 25, 15, 1), rgba(47, 21, 13, 1)); width: 370px; padding: 16px; display: flex; justify-content: space-between; align-items: center; } .ds-script { font-family: 'Pinyon Script', 'Copperplate', cursive; font-size: 30px; line-height: 38px; color: rgba(236, 204, 132, 1); } .ds-asides { display: flex; flex-direction: column; align-items: flex-end; } .ds-asides i { font-family: 'Bodoni Moda', 'EngravedItalic', serif; font-size: 10px; line-height: 14px; color: rgba(196, 154, 74, 1); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Maker's Bench",
+    "overview": "The app is the machine itself: an 18th-century brass orrery standing in a dark room, its arms carrying each planet to where it really is on the date shown, and below it the mahogany case that holds its controls. The top of the screen is the machine in 3D, full bleed over a night sky; the bottom is the case, separated from it by a brass edge, holding a brass date dial seen through a slot, a silvered window engraved with the date, and either two whole rows of brass name plates with the maker's cartouche, or, flown in to a body, a silvered specification plate. Flying in, the brass and the orbits fall away and the model becomes the real world.\n\nThe world is a material law before it is a palette: brass is what moves or can be touched, silver carries every figure, black wax fills every engraving, mahogany holds it all. Color lives in the planets (real NASA/USGS maps and live GLSL); the case stays in its metals and wood. It is dark whatever the phone's setting, because it's a machine in a room at night.\n\nIt refuses the dark space explorer with glowing cyan HUD and frosted glass cards.",
+    "keyCharacteristics": [
+      "Three metals and a wood, each with one job: brass moves, silver tells, wax engraves, mahogany holds.",
+      "One engraved serif in three cuts, caps widely tracked for everything cut into metal; a copperplate script for the cartouche alone.",
+      "Depth by bevels: 1px lit-over-shade rules on brass and silver, never drop shadows.",
+      "Real materials: brushed brass and mahogany grain are procedural rasters bound inline; silvered plate is a smooth gradient.",
+      "One green, verdigris, and only on the dial's index when it shows today."
+    ],
+    "rules": [
+      {
+        "name": "The Metals By Law Rule",
+        "body": "Brass moves (anything you drag or tap), silver tells (every figure), mahogany holds. No metal does another's job: a figure is never set on brass, a control is never silver.",
+        "section": "colors"
+      },
+      {
+        "name": "The Color Lives In The Planets Rule",
+        "body": "The case stays in its metals and wood. The only hue outside them is verdigris on today's index; planet colors appear only on the planets themselves (and the plan's discs).",
+        "section": "colors"
+      },
+      {
+        "name": "The Always Night Rule",
+        "body": "The app does not follow light mode.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Hand Rule",
+        "body": "Copperplate script is the maker's signature and appears once, in the cartouche. Everything else is engraved Bodoni.",
+        "section": "typography"
+      },
+      {
+        "name": "The Name Every Text Rule",
+        "body": "Lynx text doesn't inherit fonts: every `<text>` names its family (`font-engraved`, `font-display`, `font-italic`, `font-script`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Bevel Not Shadow Rule",
+        "body": "Raised and sunk are 1px lit and shade borders on the metal's own color. Never a drop shadow on a flat fill.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Whole Units Rule",
+        "body": "Plates sit in whole rows; nothing in the case is clipped or scrolled.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Double Rule Rule",
+        "body": "Orbits are single engraved hairlines; the chosen planet's orbit becomes a double rule, never a brighter or thicker line.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "**Do** make every touchable thing brass with the brushed raster bound inline from `case/materials.ts`, and every stated figure silver.",
+      "**Do** bevel metal with 1px lit and shade borders; brass raised, silver set in, pressed brass inverted.",
+      "**Do** engrave text in wax with the 1px lit lip, caps tracked 1-3px for names and labels.",
+      "**Do** give literal SVG strokes and fills the hex of the matching token, since SVG can't read CSS variables.",
+      "**Do** keep plates in whole rows and the case's well a fixed height.",
+      "**Do** honor reduced motion: cut the flight, stop idle drift."
+    ],
+    "donts": [
+      "**Don't** put a drop shadow on brass or silver, or any shadow on a flat fill.",
+      "**Don't** use verdigris anywhere but today's index, or bring any other hue into the case.",
+      "**Don't** use the copperplate script for anything but the cartouche.",
+      "**Don't** brighten or thicken an orbit to select it; double it.",
+      "**Don't** write a `url()` raster in styles.css; it doesn't draw on iOS.",
+      "**Don't** add a light theme, glowing HUD lines or frosted glass cards."
+    ]
+  }
+}

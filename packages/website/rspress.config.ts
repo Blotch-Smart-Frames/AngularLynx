@@ -425,6 +425,10 @@ export default defineConfig({
         { dividerType: 'solid' },
         { sectionHeaderText: 'Showcase' },
         { text: 'Facet: a gem atlas', link: '/examples/showcase' },
+        {
+          text: 'Orrery: the solar system',
+          link: '/examples/solar-system',
+        },
         { text: 'Darkroom: a film photo editor', link: '/examples/darkroom' },
         { text: 'Par Avion: a chat app', link: '/examples/chat' },
         {

@@ -5570,6 +5570,12 @@ It's written out rather than taken from core-js: `core-js/es` adds about 400 kB,
 
 To check them on the devices, an app ran one case per method on both threads and compared each result with Node's own built-ins: all 51 matched on iOS and Android, once `Array.fromAsync` stopped using `for await` for sync iterables (see the next section).
 
+### `String.prototype.normalize()` was missing too, and three.js's loaders call it
+
+`normalize()` is ES2015, so the probe above didn't list it, but the main thread lacks it as well. three.js 0.187's `LoadingManager.resolveURL()` calls `url.normalize('NFC')` on every URL, so `TextureLoader`, `ImageLoader` and `GLTFLoader` threw "not a function" on iOS and Android while the web preview, a browser, drew the textures. Found by the solar system example (`examples/solar-system`), whose planet maps stayed black natively.
+
+`es-builtins.js` now adds it: the form is checked as the spec says (a `RangeError` for anything but NFC, NFD, NFKC or NFKD), ASCII comes back exactly as every form leaves it, and other text comes back as given. A real normalizer needs Unicode's decomposition and composition tables, tens of kilobytes in every app, for a method whose callers here pass URLs, and text is almost always stored composed (NFC) already. So `'café'.normalize('NFD')` doesn't decompose the é on Lynx.
+
 ---
 
 ## `<svg>` content can't use CSS variables, and JS can't read their values
@@ -6796,3 +6802,19 @@ A browser never outlines the document itself. Pressing a key, Tab or Enter, show
 The `LynxView` is a focusable Android view, and it takes focus whenever the window isn't in touch mode. Any key press leaves touch mode: a hardware keyboard, a D-pad, the soft keyboard's Enter, `adb shell input keyevent`, Maestro's `pressKey`. On Android 14 touch mode belongs to the whole display, so an app opened afterwards starts out of it too, and the next tap brings it back. Android 8 and later then draw a default focus highlight over a focused view whose background doesn't style focus: `selectableItemBackground`'s focused color, `#1F000000` (12% black) in a light theme and a 12% white in a dark one. Over a full-screen `LynxView`, every color was multiplied by 0.878, so white came out as 224. Black stayed black, and nothing showed in `dumpsys SurfaceFlinger`, since the highlight is drawn in the app's own buffer. `dumpsys activity <package>` shows the `LynxView` focused (`.F......`) and `dumpsys window` shows `mInTouchMode=false`. Chrome and Settings, opened the same way, weren't darkened.
 
 The generated Android shell turns the highlight off on its `LynxView` (`defaultFocusHighlightEnabled = false`). The elements in the page draw their own focus. Layer 6's Android shell run checks it: after the flows, it opens the app again, presses Enter, and reads the counter's `#e0e0e0` buttons from a screenshot. Lynx Explorer wasn't checked for the same highlight.
+
+---
+
+## A `background-image: url()` in styles.css draws nothing on iOS; bound inline, the same file draws
+
+### What you'd expect (web)
+
+A rule in the app's stylesheet, `background-image: url('./assets/wood.jpg')`, paints the image, and the bundler rewrites the path to the built file.
+
+### What Lynx does
+
+Found by the solar system example (`examples/solar-system`), on the iOS 27 Simulator with Lynx 4.1: its case's mahogany and brushed-brass rasters, set with `url()` in `src/styles.css`, drew nothing natively, leaving the fallback `background-color`. The web preview drew them. The same files, imported in TypeScript and bound with `[style.background-image]="'url(' + file + ')'"`, draw on iOS. Not traced further: whether it's the path the CSS pipeline writes or how the native image loader resolves it. Android wasn't checked.
+
+### The fix
+
+Import the image and bind it on the element (`examples/solar-system/src/app/case/materials.ts`), keeping the rest of the rule (size, borders, fallback color) in the stylesheet.

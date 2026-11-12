@@ -35,6 +35,7 @@ const rect = (left: number, top: number, width: number, height: number) =>
 
 afterEach(() => {
   vi.restoreAllMocks();
+  document.body.replaceChildren();
 });
 
 describe('glassRole', () => {
@@ -96,6 +97,9 @@ describe('readShape', () => {
     vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(
       rect(30, 50, 100, 60),
     );
+    // In the page, as a shape always is: a detached element has no computed
+    // style in browsers, nor in jsdom since 31, so its radius would read as 0.
+    document.body.append(element);
     return element;
   };
 

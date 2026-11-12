@@ -96,22 +96,42 @@ const renderScroll = async (
 };
 
 /**
- * The scroll view's mask as [how much shows, where] stops, however the DOM
- * writes it back: jsdom versions differ, writing opaque black as
- * `rgb(0, 0, 0)` and leaving out the default `to bottom`.
+ * A mask's [how much shows, where] stops, however the DOM writes it back:
+ * jsdom versions differ, writing opaque black as `rgb(0, 0, 0)` and leaving
+ * out the default `to bottom`.
  */
-const maskStops = (element: HTMLElement): [number, string][] =>
+const stopsIn = (mask: string): [number, string][] =>
   Array.from(
-    element.style
-      .getPropertyValue('mask-image')
-      .matchAll(
-        /rgba?\(0, 0, 0(?:, ([\d.]+))?\) (calc\([^)]*\)|[\d.]+(?:%|px))/g,
-      ),
+    mask.matchAll(
+      /rgba?\(0, 0, 0(?:, ([\d.]+))?\) (calc\([^)]*\)|[\d.]+(?:%|px))/g,
+    ),
     ([, alpha, at]): [number, string] => [
       alpha === undefined ? 1 : Number(alpha),
       at,
     ],
   );
+
+/**
+ * The scroll view's mask as stops.
+ */
+const maskStops = (element: HTMLElement): [number, string][] =>
+  stopsIn(element.style.getPropertyValue('mask-image'));
+
+/**
+ * The stops a mask drawn with `stops` has once the DOM writes it back. jsdom
+ * 31 serializes it the way browsers do (`10.00%` as `10%`, and
+ * `calc(100% - 0px)` as `calc(100% + 0px)`), where older versions hand it
+ * back as set. dolan copies this spec into apps that may pin either, so it
+ * compares through the DOM rather than with one version's strings.
+ */
+const asWritten = (stops: [number, string][]): [number, string][] => {
+  const gradient = `linear-gradient(to bottom, ${stops
+    .map(([shows, at]) => `rgba(0, 0, 0, ${shows}) ${at}`)
+    .join(', ')})`;
+  const probe = document.createElement('div');
+  probe.style.setProperty('mask-image', gradient);
+  return stopsIn(probe.style.getPropertyValue('mask-image') || gradient);
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -262,28 +282,34 @@ describe('UiBarScroll', () => {
     expect(scrollView().style.getPropertyValue('mask-image')).toContain(
       'linear-gradient(',
     );
-    expect(maskStops(scrollView())).toEqual([
-      [0, '0.00%'],
-      [0, '7.00%'],
-      [0.12, '9.00%'],
-      [1, '10.00%'],
-      [1, '95.00%'],
-      [0.12, '95.50%'],
-      [0, '96.50%'],
-      [0, '100.00%'],
-    ]);
+    expect(maskStops(scrollView())).toEqual(
+      asWritten([
+        [0, '0.00%'],
+        [0, '7.00%'],
+        [0.12, '9.00%'],
+        [1, '10.00%'],
+        [1, '95.00%'],
+        [0.12, '95.50%'],
+        [0, '96.50%'],
+        [0, '100.00%'],
+      ]),
+    );
 
     // A top bar alone fades the top only, and a bottom bar alone the bottom.
     await layOut(1000, 100, 0);
-    expect(maskStops(scrollView()).slice(-2)).toEqual([
-      [1, '10.00%'],
-      [1, '100.00%'],
-    ]);
+    expect(maskStops(scrollView()).slice(-2)).toEqual(
+      asWritten([
+        [1, '10.00%'],
+        [1, '100.00%'],
+      ]),
+    );
     await layOut(1000, 0, 50);
-    expect(maskStops(scrollView()).slice(0, 2)).toEqual([
-      [1, '0.00%'],
-      [1, '95.00%'],
-    ]);
+    expect(maskStops(scrollView()).slice(0, 2)).toEqual(
+      asWritten([
+        [1, '0.00%'],
+        [1, '95.00%'],
+      ]),
+    );
   });
 
   it('fades with lengths in the web preview, whose scroll view reports no layout', async () => {
@@ -297,24 +323,28 @@ describe('UiBarScroll', () => {
       detail: { width: 402, height: 100 },
     });
     await waitForUpdate();
-    expect(maskStops(scrollView())).toEqual([
-      [0, '0px'],
-      [0, '70px'],
-      [0.12, '90px'],
-      [1, '100px'],
-      [1, 'calc(100% - 0px)'],
-    ]);
+    expect(maskStops(scrollView())).toEqual(
+      asWritten([
+        [0, '0px'],
+        [0, '70px'],
+        [0.12, '90px'],
+        [1, '100px'],
+        [1, 'calc(100% - 0px)'],
+      ]),
+    );
 
     fireEvent.layoutchange(bottomSpacer(), {
       detail: { width: 402, height: 50 },
     });
     await waitForUpdate();
-    expect(maskStops(scrollView()).slice(-4)).toEqual([
-      [1, 'calc(100% - 50px)'],
-      [0.12, 'calc(100% - 45px)'],
-      [0, 'calc(100% - 35px)'],
-      [0, 'calc(100% - 0px)'],
-    ]);
+    expect(maskStops(scrollView()).slice(-4)).toEqual(
+      asWritten([
+        [1, 'calc(100% - 50px)'],
+        [0.12, 'calc(100% - 45px)'],
+        [0, 'calc(100% - 35px)'],
+        [0, 'calc(100% - 0px)'],
+      ]),
+    );
   });
 
   it('leaves the edge to Android’s glass bars, as its scroll view takes no mask', async () => {

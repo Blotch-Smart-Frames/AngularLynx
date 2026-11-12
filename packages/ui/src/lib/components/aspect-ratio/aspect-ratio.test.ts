@@ -22,7 +22,8 @@ class DefaultHost {}
 
 /**
  * The ratio the box's inline style holds. jsdom writes `aspect-ratio: 1` back
- * as `1` or, in newer versions (an app's), as `1 / 1`.
+ * as `1` or, in newer versions, as `1 / 1`, and jsdom 31 rounds it to six
+ * significant digits the way browsers do (16 / 9 is `1.77778`).
  */
 const ratioOf = (box: HTMLElement) =>
   parseFloat(box.style.getPropertyValue('aspect-ratio'));
@@ -41,6 +42,6 @@ describe('UiAspectRatio', () => {
     const box = getByText('Media').parentElement as HTMLElement;
     expect([...container.querySelectorAll('.rounded-md')]).toEqual([box]);
     expect(box.classList).toContain('overflow-hidden');
-    expect(ratioOf(box)).toBe(16 / 9);
+    expect(ratioOf(box)).toBeCloseTo(16 / 9, 4);
   });
 });

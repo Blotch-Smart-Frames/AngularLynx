@@ -21,6 +21,20 @@ import { provideGlass } from '../glass/glass-design';
 import { UiDock, UiDockAccessory, UiDockAction, UiDockItem } from './dock';
 import { UiDockState } from './dock-scroll';
 
+/**
+ * `value` as the DOM writes it back for `property`. jsdom 31 serializes
+ * styles the way browsers do (six significant digits, so a third is
+ * `33.3333%`; a shadow's color first; `0.00%` as `0%`), where older versions
+ * hand them back as set. Comparing through it keeps this spec passing on
+ * either, as dolan copies it into apps that may pin an older jsdom. A
+ * property the DOM doesn't know comes back as set.
+ */
+const serialized = (property: string, value: string): string => {
+  const probe = document.createElement('div');
+  probe.style.setProperty(property, value);
+  return probe.style.getPropertyValue(property) || value;
+};
+
 @Component({
   selector: 'home-page',
   imports: [LYNX_ELEMENTS],
@@ -353,7 +367,7 @@ describe('UiDock on iOS 26 and later', () => {
 
     // Three items share the row, so the capsule is a third of it, and moves
     // by its own width per item.
-    expect(style(capsule(), 'width')).toBe('33.333333333333336%');
+    expect(style(capsule(), 'width')).toBe(serialized('width', `${100 / 3}%`));
     expect(style(capsule(), 'transform')).toBe('translateX(0%)');
     expect(style(capsule(), 'opacity')).toBe('0.1');
     expect(style(capsule(), 'transition')).toContain('transform');

@@ -17,6 +17,20 @@ import {
 } from './segmented-control';
 
 /**
+ * `value` as the DOM writes it back for `property`. jsdom 31 serializes
+ * styles the way browsers do (six significant digits, so a third is
+ * `33.3333%`; a shadow's color first; `0.00%` as `0%`), where older versions
+ * hand them back as set. Comparing through it keeps this spec passing on
+ * either, as dolan copies it into apps that may pin an older jsdom. A
+ * property the DOM doesn't know comes back as set.
+ */
+const serialized = (property: string, value: string): string => {
+  const probe = document.createElement('div');
+  probe.style.setProperty(property, value);
+  return probe.style.getPropertyValue(property) || value;
+};
+
+/**
  * The control, as its segmented control reads it. Named, as a provider's
  * factory in a component must be.
  */
@@ -310,8 +324,8 @@ describe('UiSegmentedControl', () => {
   describe('the indicator', () => {
     it('takes an equal share of the track until the segments are measured', async () => {
       const { frame } = await renderControl(IOS_26);
-      expect(frame().style.left).toBe(`${100 / 3}%`);
-      expect(frame().style.width).toBe(`${100 / 3}%`);
+      expect(frame().style.left).toBe(serialized('left', `${100 / 3}%`));
+      expect(frame().style.width).toBe(serialized('width', `${100 / 3}%`));
       expect(frame().style.opacity).toBe('1');
       expect(frame().style.transition).toBe('none');
     });
@@ -359,7 +373,7 @@ describe('UiSegmentedControl', () => {
       fireLynxEvent(slot('Day'), 'layoutchange', { params: { width: 90 } });
       fireLynxEvent(slot('Week'), 'layoutchange', { detail: {} });
       await waitForUpdate();
-      expect(frame().style.width).toBe(`${100 / 3}%`);
+      expect(frame().style.width).toBe(serialized('width', `${100 / 3}%`));
 
       await measure({ Day: 90, Week: 110, Month: 100 });
       expect(frame().style.left).toBe('90px');
@@ -383,14 +397,14 @@ describe('UiSegmentedControl', () => {
       expect(glass.thumb().classList).toContain('bg-background');
       expect(glass.thumb().style.left).toBe('2px');
       expect(glass.thumb().style.getPropertyValue('box-shadow')).toBe(
-        '0 1px 2px rgba(0, 0, 0, 0.1)',
+        serialized('box-shadow', '0 1px 2px rgba(0, 0, 0, 0.1)'),
       );
       glass.unmount();
 
       const frosted = await renderControl(IOS_18);
       expect(frosted.thumb().classList).toContain('rounded-[7px]');
       expect(frosted.thumb().style.getPropertyValue('box-shadow')).toContain(
-        '0 3px 8px',
+        '3px 8px',
       );
     });
 
@@ -831,7 +845,7 @@ describe('UiSegmentedControl', () => {
       expect(segment('Day').classList).toContain('bg-background');
       expect(segment('Day').classList).toContain('rounded-[7px]');
       expect(segment('Day').style.getPropertyValue('box-shadow')).toContain(
-        '0 3px 8px',
+        '3px 8px',
       );
       expect(segment('Week').classList).toContain('m-[2px]');
       expect(segment('Week').classList).not.toContain('bg-background');

@@ -103,6 +103,31 @@ export const applyAngularConfig = (
     config.source.define['__LYNX_SOURCE_LOCALE__'] = JSON.stringify(
       buildOptions.i18n.sourceLocale,
     );
+    // Angular's compile-time flags, defined as Angular's CLI defines them for
+    // a browser build (`getEsBuildCommonOptions` in @angular/build, and
+    // `ngI18nClosureMode` in its `createCompilerPlugin`). Angular reads them
+    // as globals, usually behind a `typeof` check but not always: since
+    // @angular/core 22.2.6 bootstrap reads `ngDevMode || ngServerMode` bare,
+    // so with `ngDevMode` false, as in production, an undefined
+    // `ngServerMode` threw a ReferenceError before the app started. Defining
+    // every flag the CLI defines keeps a bare read of another from doing the
+    // same.
+    //
+    // - `ngServerMode`: false. A Lynx bundle, lynx or web, is never rendered
+    //   on a server.
+    // - `ngJitMode`: whether the app compiles just in time (`aot: false`).
+    // - `ngHmrMode`: false, as the CLI's is without Angular's template hot
+    //   replacement, which the plugin doesn't compile for (Angular's
+    //   `_enableHmr`). The runtime's own hot updates don't read it.
+    // - `ngI18nClosureMode`: false, unless the project defines it, as the
+    //   CLI's compiler plugin leaves it.
+    // - `ngDevMode`: false only in a production build, the build that
+    //   optimizes scripts, as the CLI's is. Left undefined otherwise: Angular
+    //   makes it an object of debug counters, which a constant would break.
+    config.source.define.ngServerMode = false;
+    config.source.define.ngJitMode = !buildOptions.aot;
+    config.source.define.ngHmrMode = false;
+    config.source.define.ngI18nClosureMode ??= false;
     const isProd =
       process.env.NODE_ENV === 'production' || config.mode === 'production';
     if (isProd) {

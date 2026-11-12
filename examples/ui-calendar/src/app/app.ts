@@ -34,6 +34,15 @@ const daysFromToday = (days: number): Date => {
           </text>
         </view>
 
+        <!-- The platform's own look: iOS's inline date picker on iOS (and
+             in the web preview), Material 3's date picker on Android -->
+        <view class="flex-col gap-2 flex">
+          <text class="text-sm font-medium text-foreground">
+            The platform's look
+          </text>
+          <ui-calendar variant="glass" [(value)]="native" />
+        </view>
+
         <!-- Pick any day -->
         <view class="flex-col gap-2 flex">
           <text class="text-sm font-medium text-foreground">Any day</text>
@@ -79,6 +88,7 @@ export class App {
   protected readonly inTwoWeeks = daysFromToday(14);
 
   protected readonly day = signal<Date | null>(null);
+  protected readonly native = signal<Date | null>(null);
   protected readonly delivery = signal<Date | null>(null);
   protected readonly birthday = signal<Date | null>(new Date(1990, 2, 14));
 }

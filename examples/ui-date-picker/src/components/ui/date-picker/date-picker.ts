@@ -14,10 +14,35 @@ import {
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '@blotch/dolan/utils/cn';
-import { UiBottomSheet } from '../bottom-sheet/bottom-sheet';
+import {
+  type BottomSheetVariant,
+  UiBottomSheet,
+} from '../bottom-sheet/bottom-sheet';
 import { UiButton } from '../button/button';
-import { type Weekday, UiCalendar } from '../calendar/calendar';
+import { type Weekday, UiCalendar, calendarLook } from '../calendar/calendar';
+import { injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
+
+/**
+ * Clear in the platform looks, as a text button: iOS's plain button in the
+ * tint color, centered under the calendar and dimmed while it's held, and
+ * Material 3's text button, at the end of the row like the date picker's
+ * own actions, with its pressed state layer.
+ */
+const CLEAR_STYLES = {
+  ios: {
+    row: 'justify-center',
+    button: 'h-[44px] px-[16px]',
+    pressed: 'opacity-30',
+    text: 'text-[17px] text-primary',
+  },
+  material: {
+    row: 'justify-end',
+    button: 'h-[40px] rounded-full px-[12px]',
+    pressed: 'bg-primary/10',
+    text: 'text-[14px] font-medium text-primary',
+  },
+} as const;
 
 /**
  * A field that shows a day and opens a bottom sheet with a calendar to pick
@@ -72,6 +97,7 @@ import { UiIcon } from '../icon/icon';
            closed, so each opening starts at the chosen day's month, among
            the days, wherever it was left. -->
       <ui-bottom-sheet
+        [variant]="variant()"
         [open]="sheetOpen()"
         (openChange)="sheetOpen.set($event)"
         (closed)="calendarShown.set(false)"
@@ -79,6 +105,7 @@ import { UiIcon } from '../icon/icon';
         @if (calendarShown()) {
           <view class="flex-col gap-2 px-4 pb-4 flex">
             <ui-calendar
+              [variant]="variant()"
               [value]="value()"
               [min]="min()"
               [max]="max()"
@@ -90,12 +117,35 @@ import { UiIcon } from '../icon/icon';
               (changed)="pick($event)"
             />
             @if (clearable() && value()) {
-              <ui-button
-                variant="ghost"
-                class="w-full"
-                (pressed)="pick(null)"
-                >{{ clearLabel() }}</ui-button
-              >
+              @if (clearStyle(); as clear) {
+                <!-- A text button of the platform's, which ui-button has no
+                     variant for: one accessibility element, a button named
+                     by its text. -->
+                <view [class]="clear.row">
+                  <view
+                    [class]="clear.button"
+                    accessibility-element="true"
+                    accessibility-traits="button"
+                    [accessibility-label]="clearLabel()"
+                    (bindtouchstart)="clearPressed.set(true)"
+                    (bindtouchend)="clearPressed.set(false)"
+                    (bindtouchcancel)="clearPressed.set(false)"
+                    (bindmousedown)="clearPressed.set(true)"
+                    (bindmouseup)="clearPressed.set(false)"
+                    (bindmouseleave)="clearPressed.set(false)"
+                    (bindtap)="pick(null)"
+                  >
+                    <text [class]="clear.text">{{ clearLabel() }}</text>
+                  </view>
+                </view>
+              } @else {
+                <ui-button
+                  variant="ghost"
+                  class="w-full"
+                  (pressed)="pick(null)"
+                  >{{ clearLabel() }}</ui-button
+                >
+              }
             }
           </view>
         }
@@ -140,11 +190,17 @@ export class UiDatePicker {
   /** Offers a button in the sheet that clears the day, while one is chosen. */
   readonly clearable = input(false, { transform: booleanAttribute });
   readonly clearLabel = input('Clear');
+  /**
+   * `'default'` or `'glass'`, the platform's look, for the sheet, the
+   * calendar and Clear (see BottomSheetVariant and CalendarVariant).
+   */
+  readonly variant = input<BottomSheetVariant>('default');
 
   /** Emits the day the user picked, or null when they cleared it. */
   readonly changed = output<Date | null>();
 
   readonly #locale = inject(LOCALE_ID);
+  readonly #design = injectGlassDesign();
 
   // Drives the bottom sheet's `open` model. Bound both ways by hand rather
   // than with `[(open)]`: for a two-way binding Angular also compiles a
@@ -154,6 +210,28 @@ export class UiDatePicker {
 
   /** Whether the sheet holds its calendar: from opening until it has closed. */
   protected readonly calendarShown = signal(false);
+
+  /** A finger (or the mouse) is down on the platform look's Clear. */
+  protected readonly clearPressed = signal(false);
+
+  /**
+   * The classes of Clear in a platform look, or null for the default look's
+   * ghost ui-button.
+   */
+  protected readonly clearStyle = computed(() => {
+    const look = calendarLook(this.variant(), this.#design());
+    if (look === 'default') return null;
+    const style = CLEAR_STYLES[look];
+    return {
+      row: cn('flex-row flex', style.row),
+      button: cn(
+        'items-center flex justify-center',
+        style.button,
+        this.clearPressed() && style.pressed,
+      ),
+      text: style.text,
+    };
+  });
 
   protected readonly displayText = computed(() => {
     const value = this.value();

@@ -17,7 +17,7 @@ import { UiCalendar } from '../components/ui/calendar';
 ```
 
 :::tip
-This also adds [Button](/dolan/button) and [Icon](/dolan/icon), which draw its arrows.
+This also adds [Button](/dolan/button) and [Icon](/dolan/icon), which draw its arrows, and [Glass](/dolan/glass), which picks the platform's look.
 :::
 
 ## Usage
@@ -59,6 +59,25 @@ Tap the title to see the year's months. Tap it again to see a list of years.
 - The arrows stop at the first and last months in range, and the calendar opens inside it.
 - Only the day counts: the time of day in `min` and `max` is ignored.
 
+### Platform look
+
+```angular-html
+<ui-calendar variant="glass" [(value)]="day" />
+```
+
+`variant="glass"` draws the platform's own date picker. Without it, the calendar looks the same everywhere.
+
+| Platform                                       | Looks like               | Today                  | Chosen day                            |
+| ---------------------------------------------- | ------------------------ | ---------------------- | ------------------------------------- |
+| iOS                                            | iOS's inline date picker | Its number in the tint | A light tinted circle, number in tint |
+| Android                                        | Material 3's date picker | A ring in the primary  | A filled primary circle               |
+| Android, with [`provideGlass()`](/dolan/glass) | iOS's inline date picker | Its number in the tint | A light tinted circle, number in tint |
+| [Web preview](/guide/glossary#web-preview)     | iOS's inline date picker | Its number in the tint | A light tinted circle, number in tint |
+
+- **iOS:** a 17pt semibold title whose chevron turns down while the months or years show, tinted arrows, weekdays in capitals (`SUN MON`), and 17pt days in 44pt rows.
+- **Material 3:** a label-large title with a drop-down arrow, 48dp round arrow buttons, and 40dp day marks in 48dp cells. The years are 72×36dp pills.
+- The tint is the theme's `primary`.
+
 ### Start the week on another day
 
 ```angular-html
@@ -91,24 +110,25 @@ The arrows' screen reader labels are inputs. Mark them for [translation](/guide/
 
 ## API
 
-| Input                | Type                              | Default            | Description                                                   |
-| -------------------- | --------------------------------- | ------------------ | ------------------------------------------------------------- |
-| `value`              | `Date \| null`                    | `null`             | The chosen day, at local midnight. Supports `[(value)]`.      |
-| `min`                | `Date \| null`                    | `null`             | The first day that can be picked.                             |
-| `max`                | `Date \| null`                    | `null`             | The last day that can be picked.                              |
-| `weekStartsOn`       | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the first column. `0` is Sunday.               |
-| `previousMonthLabel` | `string`                          | `'Previous month'` | What screen readers say for the arrow back, among the days.   |
-| `nextMonthLabel`     | `string`                          | `'Next month'`     | What screen readers say for the arrow on, among the days.     |
-| `previousYearLabel`  | `string`                          | `'Previous year'`  | What screen readers say for the arrow back, among the months. |
-| `nextYearLabel`      | `string`                          | `'Next year'`      | What screen readers say for the arrow on, among the months.   |
-| `class`              | `string`                          | `''`               | Extra Tailwind classes for the calendar's column.             |
+| Input                | Type                              | Default            | Description                                                                      |
+| -------------------- | --------------------------------- | ------------------ | -------------------------------------------------------------------------------- |
+| `value`              | `Date \| null`                    | `null`             | The chosen day, at local midnight. Supports `[(value)]`.                         |
+| `min`                | `Date \| null`                    | `null`             | The first day that can be picked.                                                |
+| `max`                | `Date \| null`                    | `null`             | The last day that can be picked.                                                 |
+| `weekStartsOn`       | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the first column. `0` is Sunday.                                  |
+| `previousMonthLabel` | `string`                          | `'Previous month'` | What screen readers say for the arrow back, among the days.                      |
+| `nextMonthLabel`     | `string`                          | `'Next month'`     | What screen readers say for the arrow on, among the days.                        |
+| `previousYearLabel`  | `string`                          | `'Previous year'`  | What screen readers say for the arrow back, among the months.                    |
+| `nextYearLabel`      | `string`                          | `'Next year'`      | What screen readers say for the arrow on, among the months.                      |
+| `variant`            | `'default' \| 'glass'`            | `'default'`        | `'glass'` draws the platform's date picker. See [Platform look](#platform-look). |
+| `class`              | `string`                          | `''`               | Extra Tailwind classes for the calendar's column.                                |
 
 | Output        | Type           | Description                           |
 | ------------- | -------------- | ------------------------------------- |
 | `changed`     | `Date`         | Emits the day the user tapped.        |
 | `valueChange` | `Date \| null` | Emits the new value, for `[(value)]`. |
 
-`Weekday`, the type of `weekStartsOn`, is exported too.
+`Weekday` and `CalendarVariant`, the types of `weekStartsOn` and `variant`, are exported too.
 
 ## Accessibility
 

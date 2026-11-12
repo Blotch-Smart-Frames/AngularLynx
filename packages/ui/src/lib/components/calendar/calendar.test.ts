@@ -9,7 +9,7 @@ import {
   within,
 } from '@blotch/angular-lynx-testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UiCalendar, type Weekday } from './calendar';
+import { type CalendarVariant, UiCalendar, type Weekday } from './calendar';
 
 registerLocaleData(localeDe);
 registerLocaleData(localeJa);
@@ -23,6 +23,7 @@ registerLocaleData(localeJa);
       [min]="min()"
       [max]="max()"
       [weekStartsOn]="weekStartsOn()"
+      [variant]="variant()"
       (changed)="changed($event)"
     />
   `,
@@ -32,6 +33,7 @@ class CalendarHost {
   readonly min = signal<Date | null>(null);
   readonly max = signal<Date | null>(null);
   readonly weekStartsOn = signal<Weekday | undefined>(undefined);
+  readonly variant = signal<CalendarVariant>('default');
   readonly changed = vi.fn((_day: Date) => {});
 }
 
@@ -87,7 +89,9 @@ const shownChildren = (element: Element) =>
  * The rows of days under the weekdays.
  */
 const dayRows = (container: Element) =>
-  shownChildren(container.querySelector('.h-\\[296px\\]')!).slice(1);
+  shownChildren(
+    container.querySelector('[accessibility-elements-hidden]')!.parentElement!,
+  ).slice(1);
 
 /**
  * The mark (the round fill or ring) inside a day, month or year button.
@@ -98,6 +102,11 @@ const markOf = (button: HTMLElement) => button.querySelector('view')!;
  * The text inside a day, month or year button.
  */
 const textOf = (button: HTMLElement) => button.querySelector('text')!;
+
+/**
+ * An element's classes, sorted, to compare them whatever order cn() gave.
+ */
+const classesOf = (element: Element) => [...element.classList].sort();
 
 // The calendar marks today and opens at today's month, so every test runs on
 // Wednesday, 11 November 2026. Only Date is faked: the testing library's
@@ -576,5 +585,245 @@ describe('UiCalendar locales', () => {
       'S',
       'S',
     ]);
+  });
+});
+
+describe('UiCalendar glass variant', () => {
+  const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+  const IOS_17 = { platform: 'iOS', osVersion: '17.0' };
+  const ANDROID = { platform: 'Android', osVersion: '14' };
+
+  /** The theme's light primary, which tinted chevrons draw in. */
+  const PRIMARY = 'rgba(24, 24, 27, 1)';
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * Renders the calendar's glass variant on a platform.
+   */
+  const renderOn = (
+    platform: { platform: string; osVersion: string },
+    setup: (host: CalendarHost) => void = () => {},
+  ) => {
+    vi.stubGlobal('SystemInfo', platform);
+    return renderCalendar((host) => {
+      host.variant.set('glass');
+      setup(host);
+    });
+  };
+
+  /**
+   * The header row, the title's text and its chevron.
+   */
+  const header = (container: Element) => {
+    const title = container.querySelector('[accessibility-traits="button"]')!;
+    return {
+      row: title.parentElement!,
+      text: title.querySelector('text')!,
+      chevron: title.querySelector('svg')!.getAttribute('content')!,
+    };
+  };
+
+  describe('on iOS', () => {
+    it("draws iOS's inline date picker: a tinted chevron and arrows, and weekdays in capitals", async () => {
+      const { container, getByRole, weekdays } = await renderOn(IOS_26);
+      const { row, text, chevron } = header(container);
+      expect(row.classList).toContain('h-[48px]');
+      expect([...text.classList]).toEqual(
+        expect.arrayContaining([
+          'text-[17px]',
+          'font-semibold',
+          'text-foreground',
+        ]),
+      );
+      // A chevron pointing right, in the tint color.
+      expect(chevron).toContain('m9 18 6-6-6-6');
+      expect(chevron).toContain(PRIMARY);
+      expect(weekdays()).toEqual([
+        'SUN',
+        'MON',
+        'TUE',
+        'WED',
+        'THU',
+        'FRI',
+        'SAT',
+      ]);
+
+      const next = getByRole('button', { name: 'Next month' });
+      expect([...next.classList]).toEqual(
+        expect.arrayContaining(['h-[44px]', 'w-[44px]']),
+      );
+      expect(next.classList).not.toContain('h-10');
+      expect(next.querySelector('svg')!.getAttribute('content')).toContain(
+        PRIMARY,
+      );
+      expect(dayRows(container)[0]!.classList).toContain('h-[44px]');
+    });
+
+    it('marks today in the tint, and the chosen day with a light tinted circle', async () => {
+      const { host, getByRole } = await renderOn(IOS_26, (host) =>
+        host.value.set(new Date(2026, 10, 20)),
+      );
+      const today = getByRole('button', {
+        name: 'Wednesday, November 11, 2026',
+      });
+      expect(markOf(today).classList).not.toContain('border');
+      expect([...textOf(today).classList]).toEqual(
+        expect.arrayContaining([
+          'text-[17px]',
+          'font-semibold',
+          'text-primary',
+        ]),
+      );
+
+      const chosen = getByRole('button', {
+        name: 'Friday, November 20, 2026',
+        selected: true,
+      });
+      expect(markOf(chosen).classList).toContain('bg-primary/15');
+      expect([...textOf(chosen).classList]).toEqual(
+        expect.arrayContaining(['font-semibold', 'text-primary']),
+      );
+
+      const other = getByRole('button', {
+        name: 'Thursday, November 12, 2026',
+      });
+      expect(classesOf(textOf(other))).toEqual([
+        'text-[17px]',
+        'text-foreground',
+      ]);
+      expect(markOf(other).classList).not.toContain('bg-primary/15');
+
+      // Today chosen is a solid circle.
+      host.value.set(new Date(2026, 10, 11));
+      await waitForUpdate();
+      expect(markOf(today).classList).toContain('bg-primary');
+      expect(markOf(today).classList).not.toContain('bg-primary/15');
+      expect(textOf(today).classList).toContain('text-primary-foreground');
+    });
+
+    it("fades the days it can't pick to a faint gray", async () => {
+      const { getByRole } = await renderOn(IOS_26, (host) =>
+        host.min.set(new Date(2026, 10, 5)),
+      );
+      expect(
+        markOf(getByRole('button', { name: 'Wednesday, November 4, 2026' }))
+          .classList,
+      ).toContain('opacity-30');
+    });
+
+    it('tints the title, and turns its chevron down, while the months or years show', async () => {
+      const { container, getByRole, title } = await renderOn(IOS_26);
+      fireEvent.tap(title('November 2026'));
+      await waitForUpdate();
+      let { text, chevron } = header(container);
+      expect(text.classList).toContain('text-primary');
+      expect(chevron).toContain('m6 9 6 6 6-6');
+      const november = getByRole('button', { name: 'November 2026' });
+      expect(markOf(november).classList).toContain('h-[36px]');
+      expect(markOf(november).classList).toContain('min-w-[72px]');
+
+      fireEvent.tap(title('2026'));
+      await waitForUpdate();
+      ({ chevron } = header(container));
+      expect(chevron).toContain('m6 9 6 6 6-6');
+      // The shorter body centers the year differently.
+      expect(
+        container
+          .querySelector('scroll-view')!
+          .getAttribute('initial-scroll-offset'),
+      ).toBe(String(33 * 52 - (292 - 52) / 2));
+    });
+
+    it("draws the same before iOS 26, whose design isn't glass", async () => {
+      const { weekdays } = await renderOn(IOS_17);
+      expect(weekdays()[0]).toBe('SUN');
+    });
+  });
+
+  describe('on Android', () => {
+    it("draws Material 3's date picker: label-large title, 48dp arrows and cells", async () => {
+      const { container, getByRole, weekdays } = await renderOn(ANDROID);
+      const { row, text, chevron } = header(container);
+      expect(row.classList).toContain('h-[56px]');
+      expect([...text.classList]).toEqual(
+        expect.arrayContaining([
+          'text-[14px]',
+          'font-medium',
+          'text-muted-foreground',
+        ]),
+      );
+      expect(chevron).toContain('m6 9 6 6 6-6');
+      expect(weekdays()).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+
+      const previous = getByRole('button', { name: 'Previous month' });
+      expect([...previous.classList]).toEqual(
+        expect.arrayContaining(['h-[48px]', 'w-[48px]', 'rounded-full']),
+      );
+      // A 24dp icon.
+      expect(previous.querySelector('svg')!.getAttribute('style')).toContain(
+        '24px',
+      );
+      for (const row of dayRows(container)) {
+        expect(row.classList).toContain('h-[48px]');
+      }
+    });
+
+    it('rings today and fills the chosen day, in one weight', async () => {
+      const { getByRole } = await renderOn(ANDROID, (host) => {
+        host.value.set(new Date(2026, 10, 20));
+        host.max.set(new Date(2026, 10, 25));
+      });
+      const today = getByRole('button', {
+        name: 'Wednesday, November 11, 2026',
+      });
+      expect(markOf(today).classList).toContain('border-primary');
+      expect(classesOf(textOf(today))).toEqual(['text-[16px]', 'text-primary']);
+
+      const chosen = getByRole('button', { name: 'Friday, November 20, 2026' });
+      expect(markOf(chosen).classList).toContain('bg-primary');
+      expect(classesOf(textOf(chosen))).toEqual([
+        'text-[16px]',
+        'text-primary-foreground',
+      ]);
+      const other = getByRole('button', {
+        name: 'Thursday, November 12, 2026',
+      });
+      expect(classesOf(textOf(other))).toEqual([
+        'text-[16px]',
+        'text-foreground',
+      ]);
+      expect(
+        markOf(getByRole('button', { name: 'Thursday, November 26, 2026' }))
+          .classList,
+      ).toContain('opacity-40');
+    });
+
+    it("lists the years as Material's 72×36dp pills, in its taller body", async () => {
+      const { container, title } = await renderOn(ANDROID);
+      fireEvent.tap(title('November 2026'));
+      await waitForUpdate();
+      fireEvent.tap(title('2026'));
+      await waitForUpdate();
+      expect(header(container).chevron).toContain('m18 15-6-6-6 6');
+      const list = container.querySelector<HTMLElement>('scroll-view')!;
+      // By name alone: Android reads one trait, so the runtime leaves
+      // `selected` off there and keeps `button`.
+      const year = within(list).getByRole('button', { name: '2026' });
+      expect([...markOf(year).classList]).toEqual(
+        expect.arrayContaining(['h-[36px]', 'min-w-[72px]', 'bg-primary']),
+      );
+      expect(list.classList).toContain('h-[336px]');
+      expect(list.getAttribute('initial-scroll-offset')).toBe(
+        String(33 * 52 - (336 - 52) / 2),
+      );
+    });
+  });
+
+  it('keeps its own look without the variant, whatever the platform', async () => {
+    vi.stubGlobal('SystemInfo', IOS_26);
+    const { container, weekdays } = await renderCalendar();
+    expect(weekdays()[0]).toBe('S');
+    expect(header(container).text.classList).toContain('text-[16px]');
   });
 });

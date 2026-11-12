@@ -327,6 +327,37 @@ describe('UiDatePicker clearable', () => {
     await waitForClose(overlay);
   });
 
+  // Android asks for 48dp touch targets and iOS for 44pt. h-10 is 2.5rem,
+  // only 35px on Lynx.
+  it('makes the field 48px tall, with its text and icon centered', async () => {
+    const { field, trigger } = await renderPicker();
+    expect(field.classList).toContain('h-[48px]');
+    expect(field.classList).not.toContain('h-10');
+    // The trigger fills the field's height and centers what it holds.
+    expect([...trigger().classList]).toEqual(
+      expect.arrayContaining(['flex-1', 'items-center']),
+    );
+    expect(trigger().parentElement).toBe(field);
+  });
+
+  // ui-button's default height is 2.5rem, 35px on Lynx, short of the 48px
+  // touch target Android asks for (iOS asks for 44).
+  it('makes Clear a full-width button 48px tall', async () => {
+    const { openSheet } = await renderPicker((host) => {
+      host.clearable.set(true);
+      host.value.set(new Date(2026, 10, 20));
+    });
+    const sheet = await openSheet();
+    const clear = sheet.getByText('Clear').parentElement!;
+    expect([...clear.classList]).toEqual(
+      expect.arrayContaining(['h-[48px]', 'w-full']),
+    );
+    expect(clear.classList).not.toContain('h-10');
+    // 12px either side, so a 360px-wide phone's calendar is 336px: seven
+    // 48px days. Clear sits in the same column as the calendar.
+    expect(clear.parentElement!.classList).toContain('px-[12px]');
+  });
+
   it('offers no Clear without a day, or unless clearable', async () => {
     const { host, overlay, openSheet } = await renderPicker((host) =>
       host.clearable.set(true),

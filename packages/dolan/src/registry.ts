@@ -89,6 +89,8 @@ export const registry: RegistryEntry[] = [
     packages: CVA_PACKAGES,
     themeColors: GLASS_COLORS,
   },
+  // Its arrows are ghost buttons with the icon set's chevrons.
+  { name: 'calendar', dependencies: ['button', 'icon'] },
   { name: 'candlestick-chart', dependencies: ['chart'] },
   { name: 'card', dependencies: [] },
   // Renders any TanStack Charts definition with Lynx elements; the presets
@@ -103,6 +105,12 @@ export const registry: RegistryEntry[] = [
   // A button that copies with the runtime's LynxClipboard, and shows the
   // icon set's check once it has.
   { name: 'copy-button', dependencies: ['button', 'icon'] },
+  // A field like select's that opens a calendar in a bottom sheet, with a
+  // Clear button and the icon set's calendar icon.
+  {
+    name: 'date-picker',
+    dependencies: ['bottom-sheet', 'button', 'calendar', 'icon'],
+  },
   { name: 'dialog', dependencies: [] },
   // Gives icons, glass tints and charts the wallpaper's colors through
   // icon-theme.ts, and follows its color scheme.

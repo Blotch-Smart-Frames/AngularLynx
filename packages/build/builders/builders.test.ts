@@ -25,6 +25,8 @@ import {
 } from './extract-i18n/index';
 import { importFromProject } from './project-import';
 import {
+  addWatchIgnored,
+  type pluginIgnoreWatch,
   type RspeedyBuildResult,
   type RspeedyModule,
   type RspeedyPluginModule,
@@ -723,6 +725,23 @@ describe('dev-server builder', () => {
     ).toEqual([configured]);
   });
 
+  it("never rebuilds for what's written to Angular's cache, where --platform builds the native app", async () => {
+    const { passedConfig } = await serve({});
+    const plugin = (
+      passedConfig()['plugins'] as { name: string; setup?: unknown }[]
+    ).find(({ name }) => name === 'angular-lynx:ignore-watch') as
+      | ReturnType<typeof pluginIgnoreWatch>
+      | undefined;
+    expect(plugin).toBeDefined();
+    let modify: ((config: { watchOptions?: object }) => void) | undefined;
+    plugin!.setup({ modifyRspackConfig: (fn) => (modify = fn) });
+    const config: { watchOptions?: { ignored?: unknown } } = {};
+    modify!(config);
+    expect(config.watchOptions?.ignored).toEqual([
+      expect.stringMatching(/[\\/]\.angular[\\/]cache\/\*\*$/),
+    ]);
+  });
+
   it("applies its own environment, port and host over the build target's and lynx.config.ts's", async () => {
     const { rspeedy, passedConfig } = await serve(
       { environment: ['web'], port: 4300, host: '127.0.0.1' },
@@ -1405,5 +1424,33 @@ describe('nativeCacheDir', () => {
     expect(cacheDir({ cli: { cache: { enabled: false } } })).toBe(
       path.join(root, '.angular/cache/22.2.2/app/lynx-native'),
     );
+  });
+});
+
+describe('addWatchIgnored', () => {
+  const dir = path.join(path.sep, 'app', '.angular', 'cache');
+
+  it('adds the folder as a glob, keeping the globs already ignored', () => {
+    expect(addWatchIgnored(undefined, dir)).toEqual(['/app/.angular/cache/**']);
+    expect(addWatchIgnored('**/.git', dir)).toEqual([
+      '**/.git',
+      '/app/.angular/cache/**',
+    ]);
+    expect(addWatchIgnored(['**/.git'], dir)).toEqual([
+      '**/.git',
+      '/app/.angular/cache/**',
+    ]);
+  });
+
+  it('extends a RegExp, which rspack takes instead of globs', () => {
+    const ignored = addWatchIgnored(/[\\/]node_modules[\\/]/i, dir);
+    expect(ignored).toBeInstanceOf(RegExp);
+    const regExp = ignored as RegExp;
+    expect(regExp.flags).toBe('i');
+    expect(regExp.test('/app/node_modules/x.js')).toBe(true);
+    expect(regExp.test(path.join(dir, 'lynx-native', 'App.swift'))).toBe(true);
+    expect(regExp.test(dir)).toBe(true);
+    expect(regExp.test('/app/.angular/cache-other/x')).toBe(false);
+    expect(regExp.test('/app/src/main.ts')).toBe(false);
   });
 });

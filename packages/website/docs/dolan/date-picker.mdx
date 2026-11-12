@@ -1,0 +1,143 @@
+# Date Picker
+
+A form field that shows a day, and opens a calendar in a bottom sheet to pick another.
+
+<Go example="ui-date-picker" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add date-picker
+```
+
+```typescript
+import { UiDatePicker } from '../components/ui/date-picker';
+```
+
+:::tip
+This also adds [Calendar](/dolan/calendar), [Bottom Sheet](/dolan/bottom-sheet), [Button](/dolan/button) and [Icon](/dolan/icon).
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiDatePicker } from '../components/ui/date-picker';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiDatePicker],
+  template: `
+    <ui-date-picker
+      label="Ends on"
+      placeholder="Pick a day"
+      [(value)]="endsOn"
+    />
+  `,
+})
+export class App {
+  protected readonly endsOn = signal<Date | null>(null);
+}
+```
+
+- Tapping the field opens a sheet with a [Calendar](/dolan/calendar), at the chosen day's month.
+- Tapping a day sets `value`, emits `changed`, and closes the sheet.
+- Tapping the backdrop, or dragging the sheet down, closes it without a change.
+- The field shows the day as `Nov 20, 2026`, or `placeholder` while there's none.
+
+### Let the user clear it
+
+```angular-html
+<ui-date-picker label="Ends on" clearable [(value)]="endsOn" />
+```
+
+While a day is chosen, the sheet has a **Clear** button under the calendar. It sets `value` to `null`, emits `changed` with `null`, and closes the sheet. Translate it with `clearLabel`.
+
+### Format the day
+
+```angular-html
+<ui-date-picker label="Delivery" format="EEEE d MMMM" [(value)]="delivery" />
+```
+
+`format` takes any [Angular date format](https://angular.dev/api/common/DatePipe#pre-defined-format-options): a name such as `'longDate'`, or a pattern. The field writes it in the app's `LOCALE_ID`, as the calendar does (see [Languages](/dolan/calendar#languages)).
+
+### Limit the days
+
+```angular-html
+<ui-date-picker
+  label="Birthday"
+  format="longDate"
+  [max]="today"
+  [(value)]="birthday"
+/>
+```
+
+`min`, `max` and `weekStartsOn` go to the calendar, as do its screen reader labels. To reach a day years away, tap the calendar's title.
+
+### With a label of your own
+
+`label` is shown above the field and names it for screen readers. A label of your own, such as a [Label](/dolan/label), isn't tied to it, so give the picker an `accessibility-label` with the same text:
+
+```angular-html
+<view class="flex flex-col gap-2">
+  <ui-label>Ends on</ui-label>
+  <ui-date-picker accessibility-label="Ends on" [(value)]="endsOn" />
+</view>
+```
+
+### Disabled
+
+```angular-html
+<ui-date-picker label="Signed on" [value]="signedOn" disabled />
+```
+
+A disabled picker dims and doesn't open.
+
+### Open from code
+
+`UiDatePicker` has public `open()`, `close()` and `toggle()` methods. Get it with `viewChild(UiDatePicker)` and call them from a handler. `open()` and `toggle()` do nothing while disabled.
+
+## API
+
+| Input                 | Type                              | Default            | Description                                                               |
+| --------------------- | --------------------------------- | ------------------ | ------------------------------------------------------------------------- |
+| `value`               | `Date \| null`                    | `null`             | The chosen day. Supports `[(value)]`.                                     |
+| `label`               | `string`                          | `''`               | Shown above the field, and read by screen readers as its name.            |
+| `placeholder`         | `string`                          | `'Select date'`    | Shown in the field while no day is chosen.                                |
+| `accessibility-label` | `string`                          | `''`               | The field's name for screen readers when it has no `label`.               |
+| `format`              | `string`                          | `'mediumDate'`     | How the field writes the day: an Angular date format.                     |
+| `min`                 | `Date \| null`                    | `null`             | The first day that can be picked.                                         |
+| `max`                 | `Date \| null`                    | `null`             | The last day that can be picked.                                          |
+| `weekStartsOn`        | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the calendar's first column. `0` is Sunday.                |
+| `clearable`           | `boolean`                         | `false`            | Adds a Clear button to the sheet while a day is chosen.                   |
+| `clearLabel`          | `string`                          | `'Clear'`          | The Clear button's text.                                                  |
+| `previousMonthLabel`  | `string`                          | `'Previous month'` | The calendar's arrow back, among the days, for screen readers.            |
+| `nextMonthLabel`      | `string`                          | `'Next month'`     | The calendar's arrow on, among the days, for screen readers.              |
+| `previousYearLabel`   | `string`                          | `'Previous year'`  | The calendar's arrow back, among the months, for screen readers.          |
+| `nextYearLabel`       | `string`                          | `'Next year'`      | The calendar's arrow on, among the months, for screen readers.            |
+| `disabled`            | `boolean`                         | `false`            | Dims the field and stops it from opening.                                 |
+| `class`               | `string`                          | `''`               | Extra Tailwind classes for the column that holds the label and the field. |
+
+| Output        | Type           | Description                                                    |
+| ------------- | -------------- | -------------------------------------------------------------- |
+| `changed`     | `Date \| null` | Emits the day the user tapped, or `null` when they cleared it. |
+| `valueChange` | `Date \| null` | Emits the new value, for `[(value)]`.                          |
+
+## Accessibility
+
+- The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`), with the day it shows, or the placeholder, as its value: VoiceOver says "Ends on, Nov 20, 2026, button". Without either, its name is the text it shows.
+- A disabled field is dimmed to VoiceOver as well.
+- In the sheet, each day is a button named by its whole date (see [Calendar](/dolan/calendar#accessibility)).
+
+```typescript
+fireEvent.tap(screen.getByRole('button', { name: 'Ends on' }));
+fireEvent.tap(
+  await screen.findByRole('button', { name: 'Friday, November 20, 2026' }),
+);
+```
+
+## Related
+
+- [Calendar](/dolan/calendar): the calendar on its own, in the page
+- [Select](/dolan/select): a field that opens a list of options
+- [Bottom Sheet](/dolan/bottom-sheet): the panel the calendar opens in

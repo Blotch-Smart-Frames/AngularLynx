@@ -1,0 +1,137 @@
+# Calendar
+
+Show a month of days and let the user pick one, in the app's language.
+
+<Go example="ui-calendar" defaultFile="src/app/app.ts" />
+
+For a form field that opens a calendar in a sheet, use [Date Picker](/dolan/date-picker).
+
+## Installation
+
+```bash
+npx @blotch/dolan add calendar
+```
+
+```typescript
+import { UiCalendar } from '../components/ui/calendar';
+```
+
+:::tip
+This also adds [Button](/dolan/button) and [Icon](/dolan/icon), which draw its arrows.
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { UiCalendar } from '../components/ui/calendar';
+
+@Component({
+  selector: 'app-root',
+  imports: [UiCalendar],
+  template: `<ui-calendar [(value)]="day" />`,
+})
+export class App {
+  protected readonly day = signal<Date | null>(null);
+}
+```
+
+- Tapping a day sets `value` to that day at local midnight, and emits `changed`.
+- It opens at the month of `value`, or today's month while `value` is null.
+- The arrows page through the months.
+- Today has a ring. The chosen day is filled.
+
+### Jump to another month or year
+
+Tap the title to see the year's months. Tap it again to see a list of years.
+
+- Tap a year to see its months, then a month to see its days.
+- Among the months, the arrows page through the years.
+- So a birthday decades back takes five taps: title, title, year, month, day.
+
+### Limit the days
+
+```angular-html
+<ui-calendar [(value)]="delivery" [min]="tomorrow" [max]="inTwoWeeks" />
+```
+
+- Days before `min` or after `max` are faded, and tapping them does nothing.
+- The arrows stop at the first and last months in range, and the calendar opens inside it.
+- Only the day counts: the time of day in `min` and `max` is ignored.
+
+### Start the week on another day
+
+```angular-html
+<ui-calendar [(value)]="day" [weekStartsOn]="1" />
+```
+
+`0` is Sunday and `6` is Saturday. Without `weekStartsOn`, the week starts where the locale says: Sunday in `en-US`, Monday in most of Europe.
+
+### Languages
+
+The calendar writes every word from Angular's `LOCALE_ID`: the title, the weekdays and what screen readers say for each day. Set `LOCALE_ID` with [`provideLocale()`](/guide/i18n#set-up), and register each language's data with [`registerLocaleData()`](https://angular.dev/api/common/registerLocaleData). It doesn't need the [`intl` build option](/guide/i18n#use-intl).
+
+The title follows the locale's own order: `November 2026` in English, `2026年11月` in Japanese.
+
+The arrows' screen reader labels are inputs. Mark them for [translation](/guide/i18n#mark-text-for-translation) like any other attribute:
+
+```angular-html
+<ui-calendar
+  previousMonthLabel="Previous month"
+  i18n-previousMonthLabel
+  nextMonthLabel="Next month"
+  i18n-nextMonthLabel
+  previousYearLabel="Previous year"
+  i18n-previousYearLabel
+  nextYearLabel="Next year"
+  i18n-nextYearLabel
+  [(value)]="day"
+/>
+```
+
+## API
+
+| Input                | Type                              | Default            | Description                                                   |
+| -------------------- | --------------------------------- | ------------------ | ------------------------------------------------------------- |
+| `value`              | `Date \| null`                    | `null`             | The chosen day, at local midnight. Supports `[(value)]`.      |
+| `min`                | `Date \| null`                    | `null`             | The first day that can be picked.                             |
+| `max`                | `Date \| null`                    | `null`             | The last day that can be picked.                              |
+| `weekStartsOn`       | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the first column. `0` is Sunday.               |
+| `previousMonthLabel` | `string`                          | `'Previous month'` | What screen readers say for the arrow back, among the days.   |
+| `nextMonthLabel`     | `string`                          | `'Next month'`     | What screen readers say for the arrow on, among the days.     |
+| `previousYearLabel`  | `string`                          | `'Previous year'`  | What screen readers say for the arrow back, among the months. |
+| `nextYearLabel`      | `string`                          | `'Next year'`      | What screen readers say for the arrow on, among the months.   |
+| `class`              | `string`                          | `''`               | Extra Tailwind classes for the calendar's column.             |
+
+| Output        | Type           | Description                           |
+| ------------- | -------------- | ------------------------------------- |
+| `changed`     | `Date`         | Emits the day the user tapped.        |
+| `valueChange` | `Date \| null` | Emits the new value, for `[(value)]`. |
+
+`Weekday`, the type of `weekStartsOn`, is exported too.
+
+## Accessibility
+
+- Each day is a button named by its whole date, such as "Wednesday, November 11, 2026". The chosen day is `selected`.
+- Days outside `min` and `max`, and arrows that lead nowhere, are dimmed to VoiceOver as well.
+- The weekday initials are hidden: each day says its weekday.
+- The title is a button named by what it shows. It stays the same element as the view changes, so focus stays on it.
+
+So a spec finds the days by role:
+
+```typescript
+fireEvent.tap(
+  screen.getByRole('button', { name: 'Friday, November 20, 2026' }),
+);
+expect(
+  screen.getByRole('button', {
+    name: 'Friday, November 20, 2026',
+    selected: true,
+  }),
+).toBeTruthy();
+```
+
+## Related
+
+- [Date Picker](/dolan/date-picker): a field that opens a calendar in a sheet
+- [Internationalization](/guide/i18n)

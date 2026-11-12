@@ -120,6 +120,7 @@ Pad for the notch, the status bar and the home indicator with `env(safe-area-ins
 - **`text-align`**: No `justify`.
 - **`aspect-ratio`**: No `auto` keyword.
 - **`clip-path`**: Only on `<view>`, no `polygon()`.
+- **`background-image: url()`**: A `url()` in a stylesheet draws nothing on iOS (the web preview draws it). Import the image in TypeScript and bind it on the element instead: `[style.background-image]="'url(' + wood + ')'"`, keeping size, borders and a fallback `background-color` in the stylesheet.
 
 ## Colors
 

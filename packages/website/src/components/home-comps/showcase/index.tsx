@@ -27,6 +27,29 @@ const turnTheStone: AutoGestureOptions = {
 };
 
 /**
+ * A slow drag across the Orrery's date dial, right to left: time runs
+ * forward, and the planets sweep round the Sun on their brass arms before
+ * anyone touches it. On the iPhone's 874-point screen the dial's band sits
+ * at 0.645 of the height, just under the 3D view: any higher and the drag
+ * turns the view instead.
+ */
+const turnTheDial: AutoGestureOptions = {
+  startDelayMs: 1600,
+  loop: false,
+  steps: [
+    {
+      path: [
+        { x: 0.82, y: 0.645 },
+        { x: 0.18, y: 0.645 },
+      ],
+      durationMs: 2400,
+      restMs: 500,
+      iterations: 2,
+    },
+  ],
+};
+
+/**
  * The red line across Darkroom's photo, dragged to one side, then the other,
  * then back to the middle: before and after, shown before anyone touches it.
  * The photo's band sits at about a third of the screen's height.
@@ -51,8 +74,8 @@ const sweepTheLine: AutoGestureOptions = {
 
 /**
  * The apps the landing page runs live. The showcase comes first: it's the
- * one that makes the case, and Darkroom is its 2D counterpart, image
- * processing on the GPU. The furniture shop is the Lynx tutorials' app,
+ * one that makes the case. The Orrery is a whole 3D world of hand-written
+ * shaders, and Darkroom the 2D counterpart, image processing on the GPU. The furniture shop is the Lynx tutorials' app,
  * for a reader who knows the ReactLynx original; the other two are there for
  * anyone who wants the simplest app and the widest one. `code` is the docs
  * page with the app's source beside it.
@@ -77,6 +100,17 @@ const demos: {
     hint: 'Drag the dial to turn the stone. Tap another stone to recolor the app.',
     code: '/examples/showcase',
     autoGesture: turnTheStone,
+    statusBar: 'light',
+  },
+  {
+    id: 'solar-system',
+    label: 'Orrery',
+    tagline: 'The solar system, today',
+    blurb:
+      'A brass orrery with every planet where it really is today, drawn in three.js with hand-written shaders: a boiling Sun, swirling gas giants, Saturn’s rings and their shadows, Earth’s city lights at night.',
+    hint: 'Drag the dial to turn time. Tap a planet to fly to it, then drag to spin it.',
+    code: '/examples/solar-system',
+    autoGesture: turnTheDial,
     statusBar: 'light',
   },
   {

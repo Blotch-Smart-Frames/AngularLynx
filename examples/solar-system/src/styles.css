@@ -1,0 +1,142 @@
+/*
+ * Tailwind CSS 4, as `ng add` sets it up: its theme and utilities, without
+ * Preflight, whose rules are for HTML elements. The build rewrites the CSS
+ * Tailwind writes into CSS Lynx reads.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/*
+ * Padding that clears the notch and the home indicator: a spacing-scale
+ * value plus the inset (pt-safe-2, pb-safe-6). Lynx reads env() for the
+ * safe-area insets; where there are none (the docs' fitted preview) it's 0.
+ */
+@utility pt-safe-* {
+  padding-top: calc(--spacing(--value(number)) + env(safe-area-inset-top));
+}
+@utility pb-safe-* {
+  padding-bottom: calc(
+    --spacing(--value(number)) + env(safe-area-inset-bottom)
+  );
+}
+
+/*
+ * Two voices, both from an instrument maker's bench. Bodoni Moda (SIL OFL
+ * 1.1), a high-contrast roman of the engraver's era, for everything cut
+ * into the brass and silver: names, figures, the date. Pinyon Script (SIL
+ * OFL 1.1), a copperplate hand, for the maker's cartouche alone. Static
+ * instances of Bodoni Moda's variable font, since Lynx picks no axes.
+ * Licenses are in assets/fonts.
+ */
+@font-face {
+  font-family: 'Engraved';
+  src: url('./assets/fonts/bodoni-moda-text.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'EngravedDisplay';
+  src: url('./assets/fonts/bodoni-moda-display.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'EngravedItalic';
+  src: url('./assets/fonts/bodoni-moda-italic.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Copperplate';
+  src: url('./assets/fonts/pinyon-script.ttf') format('truetype');
+}
+
+@theme inline {
+  --font-engraved: 'Engraved';
+  --font-display: 'EngravedDisplay';
+  --font-italic: 'EngravedItalic';
+  --font-script: 'Copperplate';
+  --color-night: var(--night);
+  --color-mahogany: var(--mahogany);
+  --color-brass: var(--brass);
+  --color-brass-lit: var(--brass-lit);
+  --color-brass-shade: var(--brass-shade);
+  --color-silver: var(--silver);
+  --color-silver-shade: var(--silver-shade);
+  --color-wax: var(--wax);
+  --color-wax-soft: var(--wax-soft);
+}
+
+/*
+ * Metals by law: brass is what moves or can be touched, silver carries
+ * every figure, engraved in black wax, mahogany holds it all. Verdigris
+ * marks only today. Written as rgba(), so no color compiles to a hex with
+ * a digit-e-digit run, which the CSS pipeline would mangle. Dark whatever
+ * the phone's setting: it's a machine in a room at night.
+ */
+page {
+  --night: rgba(4, 4, 7, 1);
+  --mahogany: rgba(52, 22, 14, 1);
+  --brass: rgba(196, 154, 74, 1);
+  --brass-lit: rgba(236, 204, 132, 1);
+  --brass-shade: rgba(122, 90, 34, 1);
+  --silver: rgba(214, 212, 204, 1);
+  --silver-shade: rgba(160, 157, 148, 1);
+  --wax: rgba(20, 18, 16, 1);
+  --wax-soft: rgba(72, 66, 58, 1);
+  background-color: var(--night);
+}
+
+/*
+ * The case's finishes, used by every part of it. Rasters, because they're
+ * materials: brushed brass (lit from above, the brushing running across)
+ * for whatever can be pressed, mahogany grain for the case that holds it
+ * all. Both are drawn by ffmpeg from noise (assets/materials), and bound
+ * from case/materials.ts, since a url() in this file doesn't draw on iOS. Silvered
+ * plate is smooth, so a gradient serves. Bevels are 1px rules, never
+ * shadows.
+ */
+.brass {
+  border-radius: 3px;
+  background-color: var(--brass);
+  background-size: 100% 100%;
+  border-width: 1px;
+  border-top-color: var(--brass-lit);
+  border-left-color: var(--brass-lit);
+  border-right-color: var(--brass-shade);
+  border-bottom-color: var(--brass-shade);
+}
+.brass-pressed {
+  border-radius: 3px;
+  background-color: var(--brass-shade);
+  background-image: linear-gradient(
+    180deg,
+    rgba(126, 92, 34, 1),
+    rgba(170, 128, 52, 1)
+  );
+  border-width: 1px;
+  border-top-color: rgba(70, 50, 18, 1);
+  border-left-color: rgba(70, 50, 18, 1);
+  border-right-color: var(--brass-lit);
+  border-bottom-color: var(--brass-lit);
+}
+.silver {
+  border-radius: 2px;
+  background-color: var(--silver);
+  background-image: linear-gradient(
+    180deg,
+    rgba(234, 233, 228, 1),
+    rgba(204, 202, 194, 1)
+  );
+  border-width: 1px;
+  border-top-color: var(--silver-shade);
+  border-left-color: var(--silver-shade);
+  border-right-color: rgba(242, 241, 236, 1);
+  border-bottom-color: rgba(242, 241, 236, 1);
+}
+.mahogany {
+  background-color: var(--mahogany);
+  background-size: 100% 100%;
+}
+/*
+ * Engraved: the letters cut into the metal and filled with black wax, so
+ * the cut's lower lip catches the light. On brass and silver alike.
+ */
+.engraved {
+  text-shadow: 0 1px 0 rgba(255, 238, 196, 0.75);
+}

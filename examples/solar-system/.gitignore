@@ -1,0 +1,5 @@
+# Impeccable working files: the decision pages' logs and the review captures.
+# The surface brief (.impeccable/surfaces) stays: later design work reloads it.
+.impeccable/questions/
+.impeccable/review/
+.impeccable/mocks/

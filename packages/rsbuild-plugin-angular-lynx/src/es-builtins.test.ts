@@ -34,6 +34,7 @@ const METHODS: [owner: string, name: string, length: number][] = [
   ['Object.getPrototypeOf(Int8Array.prototype)', 'toReversed', 0],
   ['Object.getPrototypeOf(Int8Array.prototype)', 'toSorted', 1],
   ['Object.getPrototypeOf(Int8Array.prototype)', 'with', 2],
+  ['String.prototype', 'normalize', 0],
   ['String.prototype', 'at', 1],
   ['String.prototype', 'isWellFormed', 0],
   ['String.prototype', 'toWellFormed', 0],
@@ -374,6 +375,29 @@ describe('ES2021–ES2026 built-in polyfills', () => {
   });
 
   describe('string methods', () => {
+    it('normalizes ASCII, and checks the form, as the native method does', () => {
+      expectSameAsNative([
+        `'https://example.com/a.png'.normalize()`,
+        `'https://example.com/a.png'.normalize('NFC')`,
+        `'abc'.normalize('NFD')`,
+        `'abc'.normalize('NFKC')`,
+        `'abc'.normalize('NFKD')`,
+        `'abc'.normalize(undefined)`,
+        `'abc'.normalize('nfc')`,
+        `'abc'.normalize(null)`,
+        `String.prototype.normalize.call(12)`,
+        `String.prototype.normalize.call(null)`,
+        // Composed text asked for composed: as given, as it already is.
+        `'caf\u00e9'.normalize('NFC')`,
+      ]);
+    });
+
+    it('leaves non-ASCII text as given, without Unicode tables', () => {
+      expect(runInContext(`'caf\u00e9'.normalize('NFD')`, polyfilled)).toBe(
+        'caf\u00e9',
+      );
+    });
+
     it('reads characters from either end', () => {
       expectSameAsNative([
         `'abc'.at(-1)`,

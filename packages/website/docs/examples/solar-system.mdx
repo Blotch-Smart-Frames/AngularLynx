@@ -1,0 +1,30 @@
+# Orrery: the solar system
+
+The solar system as an 18th-century brass orrery: the Sun on its column, and every planet on its arm where it really is on the date the dial shows. Fly in to a planet and the brass falls away: the planet turns under your finger, drawn by its own shader, with its figures engraved on a silver plate below.
+
+<Go example="solar-system" defaultFile="src/app/scene/shaders.ts" />
+
+Drag the dial sideways to turn time, or tap **RUN**. Drag the sky to walk round the machine. Tap a planet, or its brass plate, to fly to it, then drag to spin it.
+
+## What it shows
+
+- **Hand-written shaders** — `src/app/scene/shaders.ts` draws every body in GLSL with three.js's `ShaderMaterial`, in a [`<canvas>`](/api/elements/canvas): the Sun's churning convection, granulation, sunspots, limb darkening and corona; Earth's day and night maps meeting at a soft terminator, with city lights, drifting clouds and their shadows, the Sun's glint on the oceans and a sky that reddens at the twilight line; the gas giants' bands sheared by alternating jets, with Jupiter's Great Red Spot and Neptune's dark spot; Saturn's rings at the radii Cassini measured, crossed by the planet's shadow and casting their own on its clouds; and the Milky Way where the galaxy really lies. On Metal on iOS through ANGLE, on the phone's GL ES on Android, and on WebGL2 here.
+- **Real positions** — `src/app/sky/ephemeris.ts` places each planet from JPL's Keplerian elements, solving Kepler's equation for the date. Each axis leans as the IAU's poles say, so Saturn's rings face the Sun as they do this year, and the Earth turns by sidereal time, so the right side of it is in daylight.
+- **Brass that reflects** — the arms are three.js's physical metal, reflecting a room built in code (`src/app/scene/brass.ts`).
+- **Signals** — one `time` signal is the dial: the scene, the labels, the date and every figure on the plate derive from it.
+- **Gestures** — a [pan, a fling and a tap](/guide/gestures/) on the canvas turn the view or the planet with momentum and pick a planet; the dial is a pan and a fling too, and `consume-slide-event` keeps its drags to itself.
+- **Native text over 3D** — the planets' names are `<text>` elements, placed where the scene projects each planet and kept from overlapping.
+- **`@defer`** — the 3D view loads after the first screen paints, behind an [`@defer`](/guide/defer) block.
+- **SVG** — the date dial is one [`<svg>`](/api/elements/svg) turned with a CSS rotation, so a drag moves pixels, not SVG. Lynx Explorer has no canvas, so there the orrery is drawn as an SVG plan instead.
+- **Platform APIs** — Reduce Motion (`LynxAccessibilitySettings`) cuts the camera instead of flying it and stills the idle motion; `LynxSystemInfo` names what draws it.
+- **Custom fonts** — Bodoni Moda for the engraving and Pinyon Script for the maker's cartouche, through [`@font-face`](/guide/custom-fonts/).
+
+Distances and sizes aren't to scale: the arms are spaced evenly so every planet can be seen and tapped, as a real orrery's are, and the app says so. Positions, axes and figures are real: the figures are from NASA's planetary fact sheets.
+
+The maps of Earth, the Moon, Mars and Mercury are public-domain NASA and USGS mosaics (Blue Marble, Black Marble, the LRO camera, Viking and MESSENGER), credited in `src/assets/planets/CREDITS.md`. Venus's clouds, the gas giants and the Sun are noise.
+
+## Related
+
+- [Facet: a gem atlas](./showcase) — a single stone in three.js, with Liquid Glass and charts
+- [Darkroom](./darkroom) — image processing in raw WebGL2 shaders
+- [`<canvas>`](/api/elements/canvas) — WebGL2 on iOS, Android and the web

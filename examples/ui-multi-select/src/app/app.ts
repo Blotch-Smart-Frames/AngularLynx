@@ -66,12 +66,14 @@ const ALERTS: readonly { value: IconName; label: string }[] = [
           }
         </ui-multi-select>
 
-        <!-- Searchable: a longer list, filtered as the user types -->
+        <!-- Searchable: a longer list, filtered as the user types, in the
+             platform's own sheet (variant="glass") -->
         <ui-multi-select
           label="Topics"
           placeholder="Choose topics"
           searchable
           searchPlaceholder="Search topics"
+          variant="glass"
           [(value)]="topics"
         >
           @for (topic of topicOptions; track topic) {
@@ -79,8 +81,12 @@ const ALERTS: readonly { value: IconName; label: string }[] = [
           }
         </ui-multi-select>
 
-        <!-- Icons in the items -->
-        <ui-multi-select label="Weather alerts" [(value)]="alerts">
+        <!-- Icons in the items, in the platform's own sheet and rows -->
+        <ui-multi-select
+          label="Weather alerts"
+          variant="glass"
+          [(value)]="alerts"
+        >
           @for (alert of alertOptions; track alert.value) {
             <ui-multi-select-item [value]="alert.value" [label]="alert.label">
               <ui-icon [name]="alert.value" size="sm" />

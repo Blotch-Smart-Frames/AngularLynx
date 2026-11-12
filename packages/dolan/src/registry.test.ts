@@ -80,13 +80,14 @@ describe('resolveDependencies', () => {
     expect(resolveDependencies(['multi-select'])).toEqual([
       'badge',
       'icon',
-      'spinner',
       'glass',
+      'bottom-sheet',
+      'spinner',
       'button',
       'checkbox',
-      'bottom-sheet',
       'search-field',
       'select',
+      'toolbar',
       'multi-select',
     ]);
   });

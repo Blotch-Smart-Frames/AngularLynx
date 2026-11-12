@@ -79,12 +79,14 @@ const AIRPORTS = [
           </ui-select>
         </view>
 
-        <!-- Searchable: a long list, filtered as the user types -->
+        <!-- Searchable: a long list, filtered as the user types, in the
+             platform's own sheet (variant="glass") -->
         <ui-select
           label="Time zone"
           placeholder="Choose a time zone"
           searchable
           searchPlaceholder="Search time zones"
+          variant="glass"
           [(value)]="timeZone"
         >
           @for (zone of timeZones; track zone) {
@@ -92,8 +94,9 @@ const AIRPORTS = [
           }
         </ui-select>
 
-        <!-- Icons in the items, and the chosen one's in the field -->
-        <ui-select label="Weather" [(value)]="weather">
+        <!-- Icons in the items, and the chosen one's in the field, in the
+             platform's own sheet and rows -->
+        <ui-select label="Weather" variant="glass" [(value)]="weather">
           <ui-icon leading [name]="weatherIcon()" size="xs" />
           @for (option of weatherOptions; track option.value) {
             <ui-select-item [value]="option.value" [label]="option.label">

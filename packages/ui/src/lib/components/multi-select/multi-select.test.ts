@@ -482,3 +482,122 @@ describe('UiMultiSelect accessibility', () => {
     expect(trigger.hasAttribute('accessibility-value')).toBe(false);
   });
 });
+
+describe('UiMultiSelect variant', () => {
+  @Component({
+    imports: [UiMultiSelect, UiMultiSelectItem],
+    template: `
+      <ui-multi-select label="Topics" [value]="['news']" [variant]="variant()">
+        <ui-multi-select-item value="news" label="News" />
+        <ui-multi-select-item value="sport" label="Sport" />
+      </ui-multi-select>
+    `,
+  })
+  class VariantHost {
+    readonly variant = signal<'default' | 'glass'>('glass');
+  }
+
+  const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+  const IOS_17 = { platform: 'iOS', osVersion: '17.5' };
+  const ANDROID = { platform: 'Android', osVersion: '15' };
+
+  /**
+   * Renders the host on a platform, as `SystemInfo` reports it, with the
+   * sheet's parts found the same way in every look.
+   */
+  const renderOn = async (
+    platform: { platform: string; osVersion: string },
+    variant: 'default' | 'glass' = 'glass',
+  ) => {
+    vi.stubGlobal('SystemInfo', platform);
+    const result = await render(VariantHost);
+    (result.componentRef.instance as VariantHost).variant.set(variant);
+    await waitForUpdate();
+    const overlay = result.container.querySelector<HTMLElement>('overlay')!;
+    const backdrop = overlay.querySelector('view')!;
+    const title = within(overlay).getByText('Topics');
+    return {
+      ...result,
+      overlay,
+      panel: backdrop.children[1] as HTMLElement,
+      title,
+      header: title.parentElement!,
+      done: () => within(overlay).getByText('Done'),
+      row: (label: string) =>
+        overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
+      label: (label: string) => within(overlay).getByText(label),
+      open: async () => {
+        fireEvent.tap(result.getByRole('button', { name: 'Topics' }));
+        await vi.advanceTimersByTimeAsync(OPENED);
+        await waitForUpdate();
+      },
+      closed: async () => {
+        await vi.advanceTimersByTimeAsync(CLOSED);
+        await waitForUpdate();
+        return overlay.getAttribute('visible') === 'false';
+      },
+    };
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps its own look by default, in rows at least 44px tall', async () => {
+    const { panel, header, title, done, row, label } = await renderOn(
+      IOS_26,
+      'default',
+    );
+    expect(panel.classList).toContain('border-t');
+    expect(header.classList).toContain('px-4');
+    expect(title.classList).toContain('text-base');
+    // The default look's Done is a small filled button.
+    expect(done().classList).toContain('text-primary-foreground');
+    expect(row('News').classList).toContain('min-h-[44px]');
+    expect(row('News').classList).toContain('pl-1');
+    expect(label('News').classList).toContain('text-sm');
+  });
+
+  it("opens in iOS 26's Liquid Glass sheet, with a glass Done and iOS's rows", async () => {
+    const { overlay, header, title, done, row, label, closed, open } =
+      await renderOn(IOS_26);
+    expect(overlay.querySelector('blur-view')).not.toBeNull();
+    // A centered title between flexible space, with Done at the end.
+    expect(title.classList).toContain('text-center');
+    expect(title.classList).toContain('text-[17px]');
+    expect(header.firstElementChild!.classList).toContain('flex-1');
+    // Done is a toolbar item: a tinted glass capsule.
+    expect(done().classList).toContain('text-glass-tint-foreground');
+    expect(row('Sport').classList).toContain('min-h-[44px]');
+    expect(row('Sport').classList).toContain('pr-[16px]');
+    expect(label('Sport').classList).toContain('text-[17px]');
+
+    await open();
+    fireEvent.tap(done());
+    expect(await closed()).toBe(true);
+  });
+
+  it('opens in the sheet of iOS 15 to 25, with a bold Done in the tint', async () => {
+    const { overlay, panel, done, row } = await renderOn(IOS_17);
+    expect(overlay.querySelector('blur-view')).toBeNull();
+    expect(panel.classList).toContain('rounded-t-[10px]');
+    expect(done().classList).toContain('font-semibold');
+    expect(done().classList).toContain('text-primary');
+    expect(row('Sport').classList).toContain('min-h-[44px]');
+  });
+
+  it("opens in Material 3's sheet on Android, with a text-button Done and its list items", async () => {
+    const { panel, header, title, done, row, label } = await renderOn(ANDROID);
+    expect(panel.classList).toContain('rounded-t-[28px]');
+    // The title at the start, in Title Large.
+    expect(title.classList).toContain('text-[22px]');
+    expect(title.classList).toContain('flex-1');
+    expect(header.firstElementChild!.classList).toContain('hidden');
+    // A text button: the label in primary, on no fill.
+    expect(done().classList).toContain('text-primary');
+    expect(done().classList).not.toContain('text-primary-foreground');
+    expect(done().parentElement!.classList).not.toContain('bg-primary');
+    expect(row('Sport').classList).toContain('min-h-[56px]');
+    expect(label('Sport').classList).toContain('text-[16px]');
+  });
+});

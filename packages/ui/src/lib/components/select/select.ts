@@ -14,8 +14,16 @@ import {
 } from '@angular/core';
 import { type BaseLynxElement, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
+import { type BottomSheetVariant } from '../bottom-sheet/bottom-sheet';
 import { cn } from '../../utils/cn';
-import { UiSelectSheet, matchesQuery } from './select-sheet';
+import { injectIconColor } from '../icon/icon-theme';
+import {
+  ROW_LABEL,
+  type SelectLook,
+  UiSelectSheet,
+  injectSelectLook,
+  matchesQuery,
+} from './select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -92,6 +100,7 @@ const selectItem = () => UiSelectItem;
         (queryChange)="query.set($event)"
         [searchPlaceholder]="searchPlaceholder()"
         [emptyText]="emptyText()"
+        [variant]="variant()"
         [empty]="noneShown()"
       >
         <ng-content />
@@ -132,6 +141,13 @@ export class UiSelect {
   readonly searchPlaceholder = input('Search');
   /** Shown in a searchable sheet while no item is. */
   readonly emptyText = input('No results');
+  /**
+   * `'glass'` opens the options in the platform's own sheet, and draws them
+   * as its lists do: Liquid Glass on iOS 26 and later, iOS's sheet before,
+   * and Material 3 on Android (see BottomSheetVariant). `'default'` looks
+   * the same everywhere.
+   */
+  readonly variant = input<BottomSheetVariant>('default');
 
   readonly changed = output<string>();
 
@@ -227,6 +243,50 @@ export class UiSelect {
 }
 
 /**
+ * An item's row in each look (see SelectLook), at least as tall as a touch
+ * target: 44pt on iOS, and in the default look on every platform, and
+ * Material 3's 56dp one-line list item, 16dp in from each side. In px, as
+ * Lynx's rem is 14px.
+ */
+const ITEM_ROW: Readonly<Record<SelectLook, string>> = {
+  default: 'min-h-[44px] gap-3 px-4 py-3',
+  glass: 'min-h-[44px] gap-[12px] px-[16px] py-[11px]',
+  frosted: 'min-h-[44px] gap-[12px] px-[16px] py-[11px]',
+  material: 'min-h-[56px] gap-[16px] px-[16px] py-[8px]',
+};
+
+/**
+ * The chosen item's tint, and its label's color on it: none on iOS, which
+ * marks the choice with the check alone, and Material's secondary container
+ * (the theme's `accent`, which dynamic-color maps to it).
+ */
+const CHOSEN_ROW: Readonly<Record<SelectLook, string>> = {
+  default: 'bg-accent',
+  glass: '',
+  frosted: '',
+  material: 'bg-accent',
+};
+const CHOSEN_LABEL: Readonly<Record<SelectLook, string>> = {
+  default: '',
+  glass: '',
+  frosted: '',
+  material: 'text-accent-foreground',
+};
+
+/**
+ * The check's color, as a theme token, and size in px: the text's color in
+ * the default look, and the tint, as iOS and Material draw it.
+ */
+const CHECK: Readonly<
+  Record<SelectLook, { readonly color: string; readonly size: number }>
+> = {
+  default: { color: 'var(--foreground)', size: 16 },
+  glass: { color: 'var(--primary)', size: 20 },
+  frosted: { color: 'var(--primary)', size: 20 },
+  material: { color: 'var(--primary)', size: 24 },
+};
+
+/**
  * Each item is its host, styled through `host` (see UiSelect). The host is
  * one accessibility element, a button named by its label: VoiceOver and
  * TalkBack read it as something to tap rather than as plain text. The
@@ -258,19 +318,37 @@ export class UiSelect {
     <ng-content />
     <text [class]="labelClass()">{{ label() }}</text>
     @if (isSelected()) {
-      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+      <svg [attr.content]="checkSvg()" [style]="checkStyle()" />
     }
   `,
 })
 export class UiSelectItem {
   readonly #select = inject(UiSelect);
   readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
+  readonly #resolveColor = injectIconColor();
 
   readonly itemValue = input.required<string>({ alias: 'value' });
   readonly label = input.required<string>();
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly checkSvg = CHECK_SVG;
+  /** The look of the select's sheet (see SelectLook). */
+  protected readonly look = injectSelectLook(() => this.#select.variant());
+
+  /**
+   * The check, its color resolved and written into the markup: an SVG can't
+   * read a text class or a CSS variable (see icon-theme.ts).
+   */
+  protected readonly checkSvg = computed(() =>
+    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+    CHECK_SVG.split('currentColor').join(
+      this.#resolveColor(CHECK[this.look()].color),
+    ),
+  );
+
+  protected readonly checkStyle = computed(() => {
+    const size = `${CHECK[this.look()].size}px`;
+    return { width: size, height: size };
+  });
 
   protected readonly isSelected = computed(
     () => this.#select.value() === this.itemValue(),
@@ -292,15 +370,20 @@ export class UiSelectItem {
 
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center gap-3 px-4 py-3 flex',
-      this.isSelected() && 'bg-accent',
+      'flex-row items-center flex',
+      ITEM_ROW[this.look()],
+      this.isSelected() && CHOSEN_ROW[this.look()],
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );
 
   protected readonly labelClass = computed(() =>
-    cn('flex-1 text-sm text-foreground'),
+    cn(
+      'flex-1',
+      ROW_LABEL[this.look()],
+      this.isSelected() && CHOSEN_LABEL[this.look()],
+    ),
   );
 
   protected onTap(): void {

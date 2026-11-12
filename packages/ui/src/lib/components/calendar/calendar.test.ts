@@ -87,7 +87,7 @@ const shownChildren = (element: Element) =>
  * The rows of days under the weekdays.
  */
 const dayRows = (container: Element) =>
-  shownChildren(container.querySelector('.h-\\[296px\\]')!).slice(1);
+  shownChildren(container.querySelector('.h-\\[320px\\]')!).slice(1);
 
 /**
  * The mark (the round fill or ring) inside a day, month or year button.
@@ -248,6 +248,39 @@ describe('UiCalendar', () => {
     await waitForUpdate();
     expect(getByRole('button', { name: 'Back a year' })).toBeTruthy();
     expect(getByRole('button', { name: 'On a year' })).toBeTruthy();
+  });
+
+  // Android asks for 48dp touch targets and iOS for 44pt: 48px meets both.
+  // In px, since rem is 14px on Lynx.
+  it('gives every control a touch target 48px tall', async () => {
+    const { container, getByRole, title } = await renderCalendar();
+    expect(title('November 2026').classList).toContain('h-[48px]');
+    for (const name of ['Previous month', 'Next month']) {
+      const arrow = getByRole('button', { name });
+      expect([...arrow.classList]).toEqual(
+        expect.arrayContaining(['h-[48px]', 'w-[48px]']),
+      );
+      expect(arrow.classList).not.toContain('h-10');
+    }
+    for (const row of dayRows(container)) {
+      expect(row.classList).toContain('h-[48px]');
+    }
+
+    // The months share the same 320px body, four rows of 80px.
+    fireEvent.tap(title('November 2026'));
+    await waitForUpdate();
+    expect(
+      getByRole('button', { name: 'January 2026' }).parentElement!
+        .parentElement!.classList,
+    ).toContain('h-[320px]');
+
+    // The years sit in 52px rows.
+    fireEvent.tap(title('2026'));
+    await waitForUpdate();
+    expect(
+      getByRole('button', { name: '2026', selected: true }).parentElement!
+        .classList,
+    ).toContain('h-[52px]');
   });
 
   it('puts its class on its own column, once', async () => {
@@ -463,10 +496,10 @@ describe('UiCalendar years', () => {
     const shown = getByRole('button', { name: '2026', selected: true });
     expect(markOf(shown).classList).toContain('bg-primary');
     // Its row, 2025 to 2027, is the 34th: 33 rows of 52px above it, less
-    // what centers it in the 296px list.
+    // what centers it in the 320px list.
     const list = container.querySelector('scroll-view')!;
     expect(list.getAttribute('initial-scroll-offset')).toBe(
-      String(33 * 52 - (296 - 52) / 2),
+      String(33 * 52 - (320 - 52) / 2),
     );
     // The title's chevron points up: tapping it goes back.
     expect(

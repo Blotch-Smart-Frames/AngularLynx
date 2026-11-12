@@ -116,6 +116,7 @@ The arrows' screen reader labels are inputs. Mark them for [translation](/guide/
 - Days outside `min` and `max`, and arrows that lead nowhere, are dimmed to VoiceOver as well.
 - The weekday initials are hidden: each day says its weekday.
 - The title is a button named by what it shows. It stays the same element as the view changes, so focus stays on it.
+- Every control is a touch target at least 48px each way, which meets Android's 48dp and iOS's 44pt. A day is a seventh of the calendar's width, so give the calendar at least 336px.
 
 So a spec finds the days by role:
 

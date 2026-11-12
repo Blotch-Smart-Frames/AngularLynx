@@ -77,7 +77,9 @@ import { UiIcon } from '../icon/icon';
         (closed)="calendarShown.set(false)"
       >
         @if (calendarShown()) {
-          <view class="flex-col gap-2 px-4 pb-4 flex">
+          <!-- 12px either side leaves the calendar 336px on a 360px-wide
+               phone, the narrowest common width: seven 48px days. -->
+          <view class="flex-col gap-2 px-[12px] pb-4 flex">
             <ui-calendar
               [value]="value()"
               [min]="min()"
@@ -90,9 +92,12 @@ import { UiIcon } from '../icon/icon';
               (changed)="pick($event)"
             />
             @if (clearable() && value()) {
+              <!-- 48px tall, a full touch target: ui-button's default
+                   height is 2.5rem, 35px on Lynx. Ghost, so the box doesn't
+                   show. -->
               <ui-button
                 variant="ghost"
-                class="w-full"
+                class="h-[48px] w-full"
                 (pressed)="pick(null)"
                 >{{ clearLabel() }}</ui-button
               >

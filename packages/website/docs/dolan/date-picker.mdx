@@ -128,6 +128,7 @@ A disabled picker dims and doesn't open.
 - The field is one button to VoiceOver and TalkBack, named by `label` (or `accessibility-label`), with the day it shows, or the placeholder, as its value: VoiceOver says "Ends on, Nov 20, 2026, button". Without either, its name is the text it shows.
 - A disabled field is dimmed to VoiceOver as well.
 - In the sheet, each day is a button named by its whole date (see [Calendar](/dolan/calendar#accessibility)).
+- In the sheet, the calendar's controls and Clear are touch targets at least 48px each way, on phones 360px wide and up.
 
 ```typescript
 fireEvent.tap(screen.getByRole('button', { name: 'Ends on' }));

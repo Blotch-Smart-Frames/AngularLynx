@@ -60,7 +60,10 @@ type CalendarCell = {
 
 type DayCell = CalendarCell & { readonly date: Date };
 
-/** Rows of the day grid: six weeks hold any month, so its height never changes. */
+/**
+ * Rows of the day grid: six weeks hold any month, so its height never
+ * changes.
+ */
 const WEEKS = 6;
 
 /** Years in each row of the years list. */
@@ -74,7 +77,7 @@ const YEAR_ROW_HEIGHT = 52;
  * weeks. Every view fills the same height, so the calendar (and a sheet
  * that holds it) doesn't jump as it changes view.
  */
-const BODY_HEIGHT = 296;
+const BODY_HEIGHT = 320;
 
 /**
  * How many years the list reaches either side of today when `min` or `max`
@@ -205,12 +208,18 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'hostClass()' },
   template: `
+    <!-- Every control is at least 48px each way, Android's minimum touch
+         target (48dp), which covers iOS's (44pt) too: the title fills the
+         header's height, the arrows are 48px squares, the days sit in 48px
+         rows, and the months and years in taller ones. A day's width is a
+         seventh of the calendar's, so 48px from 336px wide. In px, since
+         rem is 14px on Lynx. -->
     <view class="h-[48px] flex-row items-center flex justify-between">
       <!-- The title is one button: VoiceOver reads its label, not the
            chevron beside it. It stays the same element from view to view, so
            a screen reader's focus stays on it as the view changes. -->
       <view
-        class="h-[44px] flex-row items-center gap-1 rounded-md px-2 flex"
+        class="h-[48px] flex-row items-center gap-1 rounded-md px-2 flex"
         accessibility-element="true"
         accessibility-traits="button"
         [accessibility-label]="title()"
@@ -226,7 +235,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
           <ui-button
             variant="ghost"
             size="icon"
-            class="h-[40px] w-[40px]"
+            class="h-[48px] w-[48px]"
             [accessibility-label]="previousLabel()"
             [disabled]="!canGoBack()"
             [lynxAccessibilityTraits]="{ disabled: !canGoBack() }"
@@ -237,7 +246,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
           <ui-button
             variant="ghost"
             size="icon"
-            class="h-[40px] w-[40px]"
+            class="h-[48px] w-[48px]"
             [accessibility-label]="nextLabel()"
             [disabled]="!canGoForward()"
             [lynxAccessibilityTraits]="{ disabled: !canGoForward() }"
@@ -250,7 +259,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
     </view>
     @switch (view()) {
       @case ('days') {
-        <view class="h-[296px] flex-col flex">
+        <view class="h-[320px] flex-col flex">
           <!-- Hidden from screen readers: each day says its weekday. -->
           <view
             class="h-[32px] flex-row items-center flex"
@@ -267,7 +276,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
                grid layout or positional selectors. A day outside the month
                is an empty cell that holds its column. -->
           @for (week of weeks(); track $index) {
-            <view class="h-[44px] flex-row flex">
+            <view class="h-[48px] flex-row flex">
               @for (day of week; track $index) {
                 @if (day) {
                   <view
@@ -294,7 +303,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
         </view>
       }
       @case ('months') {
-        <view class="h-[296px] flex-col flex">
+        <view class="h-[320px] flex-col flex">
           @for (row of monthRows(); track $index) {
             <view class="flex-1 flex-row flex">
               @for (month of row; track month.value) {
@@ -323,7 +332,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
              year being shown: initial-scroll-offset applies only once. -->
         <scroll-view
           scroll-orientation="vertical"
-          class="h-[296px]"
+          class="h-[320px]"
           [initial-scroll-offset]="yearsOffset()"
         >
           @for (row of yearRows(); track $index) {

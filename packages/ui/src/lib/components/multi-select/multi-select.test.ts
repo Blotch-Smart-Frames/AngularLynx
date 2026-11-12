@@ -146,7 +146,7 @@ describe('UiMultiSelect field', () => {
     expect(within(field).queryByText('Choose topics')).toBeNull();
     // The chips wrap onto more lines, and the field grows to hold them.
     expect(field.querySelector('.flex-wrap')).not.toBeNull();
-    expect(field.classList).toContain('min-h-10');
+    expect(field.classList).toContain('min-h-[48px]');
   });
 
   it('shows a value that no item has as it is', async () => {

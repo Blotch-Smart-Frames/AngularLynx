@@ -215,10 +215,13 @@ export class UiMultiSelect {
     cn('flex-col gap-1.5 flex', this.userClass()),
   );
 
-  /** As tall as `ui-select`'s field with one line of chips, and taller with more. */
+  /**
+   * As tall as `ui-select`'s 48px field with one line of chips, and taller
+   * with more. The trigger fills it and centers the chips.
+   */
   protected readonly fieldClass = computed(() =>
     cn(
-      'min-h-10 flex-row rounded-md border border-input bg-background flex',
+      'min-h-[48px] flex-row rounded-md border border-input bg-background flex',
       this.disabled() && 'opacity-50',
     ),
   );

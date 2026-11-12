@@ -164,8 +164,10 @@ export class UiInput implements FormValueControl<string> {
 
   protected readonly inputWrapperClass = computed(() =>
     // z-0: stacking context for the input's z-index (see the template comment).
+    // 48px tall: Android's 48dp touch target, which covers iOS's 44pt, as
+    // ui-select's field is. In px, as Lynx's rem is 14px.
     cn(
-      'z-0 h-10 rounded-xl bg-muted px-3.5 py-2',
+      'z-0 h-[48px] rounded-xl bg-muted px-3.5 py-2',
       this.disabled() && 'opacity-50',
     ),
   );

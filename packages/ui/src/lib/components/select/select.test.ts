@@ -103,6 +103,13 @@ const waitForClose = async (overlay: Element) => {
 };
 
 describe('UiSelect', () => {
+  it('is 48px tall, a touch target on Android and iOS alike', async () => {
+    const { field, trigger } = await renderSelect();
+    expect(field.classList).toContain('h-[48px]');
+    // The trigger fills the field and centers its text.
+    expect(trigger.classList).toContain('items-center');
+  });
+
   it('shows the placeholder, muted, until a value is chosen', async () => {
     const { triggerText, column } = await renderSelect();
     expect(triggerText().textContent).toBe('Pick a fruit');

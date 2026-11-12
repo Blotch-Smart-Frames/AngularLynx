@@ -183,9 +183,14 @@ export class UiSelect {
     cn('text-sm font-medium text-foreground'),
   );
 
+  /**
+   * 48px tall: Android's 48dp touch target, which covers iOS's 44pt, as
+   * ui-input's field is. In px, as Lynx's rem is 14px. The trigger fills it
+   * and centers its text.
+   */
   protected readonly fieldClass = computed(() =>
     cn(
-      'h-10 flex-row rounded-md border border-input bg-background flex',
+      'h-[48px] flex-row rounded-md border border-input bg-background flex',
       this.disabled() && 'opacity-50',
     ),
   );

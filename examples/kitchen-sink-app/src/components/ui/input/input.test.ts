@@ -310,4 +310,9 @@ describe('UiInput', () => {
     const { wrapper } = await renderInput();
     expect(wrapper().classList).toContain('z-0');
   });
+
+  it('is 48px tall, a touch target on Android and iOS alike', async () => {
+    const { wrapper } = await renderInput();
+    expect(wrapper().classList).toContain('h-[48px]');
+  });
 });

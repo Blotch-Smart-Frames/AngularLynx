@@ -15,23 +15,23 @@
     "dolan:update:force": "dolan update --force"
   },
   "dependencies": {
-    "@angular/common": "^22.2.4",
-    "@angular/compiler": "^22.2.4",
-    "@angular/core": "^22.2.4",
-    "@angular/forms": "^22.2.4",
-    "@angular/platform-browser": "^22.2.4",
-    "@angular/router": "^22.2.4",
+    "@angular/common": "^22.2.5",
+    "@angular/compiler": "^22.2.5",
+    "@angular/core": "^22.2.5",
+    "@angular/forms": "^22.2.5",
+    "@angular/platform-browser": "^22.2.5",
+    "@angular/router": "^22.2.5",
     "@blotch/angular-lynx": "*",
     "@blotch/dolan": "*",
-    "@tanstack/charts": "^1.2.0",
+    "@tanstack/charts": "^1.5.0",
     "@types/d3-shape": "^3.2.0",
     "class-variance-authority": "^0.7.1",
-    "d3-shape": "^3.2.0"
+    "d3-shape": "^3.2.1"
   },
   "devDependencies": {
     "@angular/cli": "^22.2.5",
-    "@angular/compiler-cli": "^22.2.4",
-    "@angular/localize": "^22.2.4",
+    "@angular/compiler-cli": "^22.2.5",
+    "@angular/localize": "^22.2.5",
     "@blotch/angular-lynx-build": "*",
     "@blotch/angular-lynx-testing-library": "*",
     "@lynx-js/tailwind-preset": "^0.6.0",

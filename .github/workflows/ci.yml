@@ -10,9 +10,27 @@ on:
   # which leaves that commit without one: run this on master by hand to catch
   # up.
   workflow_dispatch:
+    inputs:
+      newest-angular:
+        description: Build and test against the newest Angular release instead of package-lock.json's
+        type: boolean
+        default: false
+  # angular-release-builds.yml runs the builds and tests with newest-angular
+  # when Angular or Angular CLI publishes a release: an app made with
+  # `npm create angular-lynx` installs it that day, while package-lock.json
+  # can stay behind for weeks (#384). Such a run moves every Angular package
+  # to its newest release before `npm ci` (.github/scripts/newest-angular.mts),
+  # skips the checks Angular doesn't affect (format, cspell, lint), and saves
+  # nothing outside the run: no turbo cache, no coverage upload.
+  workflow_call:
+    inputs:
+      newest-angular:
+        type: boolean
+        default: false
 
 jobs:
   format:
+    if: ${{ !inputs.newest-angular }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +42,7 @@ jobs:
       - run: npm run format:check
 
   cspell:
+    if: ${{ !inputs.newest-angular }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -35,6 +54,7 @@ jobs:
       - run: npm run cspell
 
   lint:
+    if: ${{ !inputs.newest-angular }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -60,10 +80,16 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Move to the newest Angular
+        if: inputs.newest-angular
+        run: node .github/scripts/newest-angular.mts --install
       - run: npm ci
       # Restore only: save-turbo-cache saves the turbo cache, on master only,
-      # and a pull request's run restores master's newest.
+      # and a pull request's run restores master's newest. Not in a
+      # newest-angular run, so that everything it checks is built with the
+      # newest Angular, in this run.
       - name: Restore turbo cache
+        if: ${{ !inputs.newest-angular }}
         uses: actions/cache/restore@v6
         with:
           path: .turbo
@@ -122,6 +148,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Move to the newest Angular
+        if: inputs.newest-angular
+        run: node .github/scripts/newest-angular.mts --install
       - run: npm ci
       # build-packages' turbo cache, so this shard reuses the already-compiled
       # package deps instead of rebuilding them, plus every example output
@@ -201,6 +230,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Move to the newest Angular
+        if: inputs.newest-angular
+        run: node .github/scripts/newest-angular.mts --install
       - run: npm ci
       - name: Download the package and example builds
         uses: actions/download-artifact@v8
@@ -217,7 +249,7 @@ jobs:
       # On master, for save-turbo-cache. Only the website's entry is new here;
       # the rest are the same files as the other jobs' and merge with them.
       - name: Share turbo cache
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && !inputs.newest-angular
         uses: actions/upload-artifact@v7
         with:
           name: turbo-cache-website
@@ -249,11 +281,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Move to the newest Angular
+        if: inputs.newest-angular
+        run: node .github/scripts/newest-angular.mts --install
       - run: npm ci
       # Restore only, like build-packages. `test:ci:coverage` dependsOn ^build,
       # so master's cache skips rebuilding the package deps as well as
       # re-running the tests of packages that haven't changed.
       - name: Restore turbo cache
+        if: ${{ !inputs.newest-angular }}
         uses: actions/cache/restore@v6
         with:
           path: .turbo
@@ -263,7 +299,7 @@ jobs:
       # the tests, then prune and share the cache after, as build-packages
       # does.
       - name: List this commit's turbo tasks
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && !inputs.newest-angular
         run: npx turbo run test:ci:coverage --dry=json > "$RUNNER_TEMP/turbo-tasks.json"
       # THE GATE: each package enforces 100% via vitest `thresholds`, so this
       # step exits non-zero (failing the job) if any package drops below 100% on
@@ -271,10 +307,10 @@ jobs:
       # only. turbo caches each package's coverage/** as a task output.
       - run: npm run test:ci:coverage
       - name: Prune turbo cache
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && !inputs.newest-angular
         run: node .github/scripts/prune-turbo-cache.mts "$RUNNER_TEMP/turbo-tasks.json"
       - name: Share turbo cache
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && !inputs.newest-angular
         uses: actions/upload-artifact@v7
         with:
           name: turbo-cache-test
@@ -288,9 +324,11 @@ jobs:
       # mirroring the board repo. `disable_search` pins the exact lcov path;
       # `fail_ci_if_error: false` + `if: !cancelled()` keep uploads non-blocking
       # (the threshold gate above is what protects the branch). Requires the
-      # CODECOV_TOKEN repo secret; without it these steps simply no-op.
+      # CODECOV_TOKEN repo secret; without it these steps simply no-op. Not in a
+      # newest-angular run, which tests master's commit again on another
+      # Angular.
       - name: Upload runtime coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -299,7 +337,7 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
       - name: Upload rsbuild-plugin coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -308,7 +346,7 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
       - name: Upload testing-library coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -319,7 +357,7 @@ jobs:
       # ui runs its specs with `ng test`, as apps do, which reports under the
       # angular.json project's name.
       - name: Upload ui coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -328,7 +366,7 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
       - name: Upload dolan coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -337,7 +375,7 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
       - name: Upload oxlint-plugin coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && !inputs.newest-angular }}
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -359,7 +397,9 @@ jobs:
     needs: [build-packages, build-examples, build-website, test]
     # Also after a failed shard or test job: turbo caches only the tasks that
     # passed.
-    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.build-packages.result == 'success' }}
+    # Never in a newest-angular run, whose builds aren't the commit's: it runs
+    # on master, and would save them under master's key.
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && !inputs.newest-angular && needs.build-packages.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8

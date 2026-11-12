@@ -1,28 +1,35 @@
 name: Angular release
 
-# Opens an issue when a new Angular minor or major reaches npm, so the
-# repository's own release to that line (its packages are versioned after
-# Angular's major.minor) has somewhere to start. See the script for the rest.
+# Watches npm for Angular releases:
+# - a new Angular minor or major opens an issue, so the repository's own
+#   release to that line (its packages are versioned after Angular's
+#   major.minor) has somewhere to start. See the script for the rest.
+# - any new release of Angular or Angular CLI, patches included, starts
+#   angular-release-builds.yml, which runs every build against it.
 on:
   schedule:
-    # Once a day. Angular releases on a Wednesday afternoon, US time, so this
-    # finds a release the next morning in Europe.
-    - cron: '0 7 * * *'
+    # Hourly: an app made with `npm create angular-lynx` installs a new Angular
+    # release as soon as it's published (#384), so the builds should run
+    # against it the same day, not the next morning. A quarter past, since
+    # GitHub delays scheduled runs most at the top of the hour.
+    - cron: '15 * * * *'
   workflow_dispatch:
     inputs:
       dry-run:
-        description: Print the issue it would open, without opening it
+        description: Print the issue it would open and the builds it would start, without doing either
         type: boolean
         default: false
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,3 +44,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry-run && '1' || '' }}
+
+  # Starts angular-release-builds.yml once for each new release. Angular and
+  # Angular CLI are released separately, with their own patch numbers, so
+  # either one's release counts. The builds' runs are named after the
+  # releases, which is how this tells whether a release has had one.
+  builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # To list the builds' runs and start one.
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            /package-lock.json
+            /.github/scripts/
+          sparse-checkout-cone-mode: false
+      # For TypeScript type stripping, which the runner's own Node may lack.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: newest
+        run: node .github/scripts/newest-angular.mts
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ steps.newest.outputs.release }}
+          DRY_RUN: ${{ inputs.dry-run && '1' || '' }}
+        run: |
+          # The run-name angular-release-builds.yml gives a run for $RELEASE.
+          title="Builds on $RELEASE"
+          if gh run list --workflow angular-release-builds.yml --limit 200 \
+            --json displayTitle --jq '.[].displayTitle' | grep -qxF "$title"; then
+            echo "$RELEASE has had its builds run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ -n "$DRY_RUN" ]; then
+            echo "Dry run: would start the builds on $RELEASE." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run angular-release-builds.yml -f release="$RELEASE"
+          echo "Started the builds on $RELEASE." >> "$GITHUB_STEP_SUMMARY"

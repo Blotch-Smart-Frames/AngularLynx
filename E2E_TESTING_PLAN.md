@@ -235,6 +235,8 @@ Pull requests run one configuration: ubuntu-latest, Node 24 with its bundled npm
 
 **Reporting:** a failing nightly run opens or updates a GitHub issue labeled `e2e-nightly`, de-duplicated by title, so drift doesn't go unnoticed.
 
+**New Angular releases:** a fresh app installs a new Angular release the day it's published, while the monorepo's lockfile can stay behind for weeks: Angular 22.2.6 broke every new app's production build with CI green on 22.2.4 (#384). So `angular-release.yml` checks npm hourly, and for each new release of Angular or Angular CLI it starts `angular-release-builds.yml`. That runs `ci.yml` with every Angular package moved to its newest release (`.github/scripts/newest-angular.mts`) and this workflow's full matrix with the native platforms. A failure opens an issue labeled `angular-release-builds` that mentions the maintainer, and the next passing run closes it.
+
 ## Layer 5: Release gates
 
 1. **Publishing waits for the tests on the tagged commit.**

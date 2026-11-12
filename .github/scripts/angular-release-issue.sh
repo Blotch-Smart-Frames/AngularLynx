@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Opens an issue when npm's latest @angular/core is on a newer major.minor
 # than package-lock.json holds, once per Angular release. angular-release.yml
-# runs it daily. To run it by hand: DRY_RUN=1 prints the issue instead of
+# runs it hourly. To run it by hand: DRY_RUN=1 prints the issue instead of
 # opening it, and ANGULAR_LATEST=23.0.0 stands in for a release that hasn't
 # happened. Needs gh (signed in, or GH_TOKEN set), jq and npm.
 #

@@ -1,1 +1,1 @@
-export { UiCalendar, type Weekday } from './calendar';
+export { type CalendarVariant, UiCalendar, type Weekday } from './calendar';

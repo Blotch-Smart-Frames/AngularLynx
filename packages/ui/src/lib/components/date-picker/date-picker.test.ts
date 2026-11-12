@@ -9,6 +9,7 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
 import { UiDatePicker } from './date-picker';
 
@@ -29,6 +30,7 @@ registerLocaleData(localeDe);
       [max]="max()"
       [weekStartsOn]="weekStartsOn()"
       [format]="format()"
+      [variant]="variant()"
       (changed)="changed($event)"
     />
     <text class="open-from-code" (bindtap)="picker.open()">Choose</text>
@@ -42,6 +44,7 @@ class PickerHost {
   readonly min = signal<Date | null>(null);
   readonly max = signal<Date | null>(null);
   readonly weekStartsOn = signal<1 | undefined>(undefined);
+  readonly variant = signal<'default' | 'glass'>('default');
   readonly format = signal('mediumDate');
   readonly changed = vi.fn((_day: Date | null) => {});
 }
@@ -409,5 +412,110 @@ describe('UiDatePicker accessibility', () => {
     const { getByRole } = await render(BareHost);
     const trigger = getByRole('button', { name: 'Select date' });
     expect(trigger.hasAttribute('accessibility-value')).toBe(false);
+  });
+});
+
+describe('UiDatePicker glass variant', () => {
+  const IOS_26 = { platform: 'iOS', osVersion: '26.0' };
+  const ANDROID = { platform: 'Android', osVersion: '14' };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  /**
+   * Opens the glass variant's sheet on a platform, with a day chosen and
+   * Clear offered.
+   */
+  const openOn = async (platform: { platform: string; osVersion: string }) => {
+    vi.stubGlobal('SystemInfo', platform);
+    const result = await renderPicker((host) => {
+      host.variant.set('glass');
+      host.clearable.set(true);
+      host.value.set(new Date(2026, 10, 20));
+    });
+    fireEvent.tap(result.trigger());
+    // The platform sheets wait for the screen's layout before they come in.
+    await vi.advanceTimersByTimeAsync(500);
+    await waitForOpen();
+    const sheet = within(result.overlay);
+    const clear = sheet.getByRole('button', { name: 'Clear' });
+    return {
+      ...result,
+      sheet,
+      clear,
+      /** The calendar's weekday names, as it draws them in the sheet. */
+      weekdays: () =>
+        [
+          ...result.overlay.querySelectorAll(
+            '[accessibility-elements-hidden] text',
+          ),
+        ].map((text) => text.textContent),
+    };
+  };
+
+  it("gives the sheet and the calendar iOS's look, and Clear iOS's plain text button", async () => {
+    const { host, overlay, clear, weekdays } = await openOn(IOS_26);
+    // The sheet is Liquid Glass, and the calendar iOS's inline one.
+    expect(overlay.querySelector('blur-view')).not.toBeNull();
+    expect(weekdays()[0]).toBe('SUN');
+
+    expect(clear.parentElement!.classList).toContain('justify-center');
+    expect(clear.classList).toContain('h-[44px]');
+    expect([...clear.querySelector('text')!.classList].sort()).toEqual([
+      'text-[17px]',
+      'text-primary',
+    ]);
+
+    // Dimmed while it's held, by a finger or the mouse.
+    fireEvent.touchstart(clear);
+    await waitForUpdate();
+    expect(clear.classList).toContain('opacity-30');
+    fireEvent.touchcancel(clear);
+    await waitForUpdate();
+    expect(clear.classList).not.toContain('opacity-30');
+    fireLynxEvent(clear, 'mousedown');
+    await waitForUpdate();
+    expect(clear.classList).toContain('opacity-30');
+    fireLynxEvent(clear, 'mouseleave');
+    await waitForUpdate();
+    expect(clear.classList).not.toContain('opacity-30');
+    fireLynxEvent(clear, 'mousedown');
+    fireLynxEvent(clear, 'mouseup');
+    await waitForUpdate();
+    expect(clear.classList).not.toContain('opacity-30');
+
+    fireEvent.touchstart(clear);
+    fireEvent.touchend(clear);
+    fireEvent.tap(clear);
+    expect(host.value()).toBeNull();
+    expect(host.changed).toHaveBeenCalledWith(null);
+    await waitForClose(overlay);
+  });
+
+  it("gives the sheet and the calendar Material 3's look, and Clear its text button", async () => {
+    const { overlay, clear, weekdays } = await openOn(ANDROID);
+    expect(overlay.querySelector('.rounded-t-\\[28px\\]')).not.toBeNull();
+    expect(weekdays()).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+    expect(
+      overlay.querySelector('[accessibility-label="Previous month"]')!
+        .classList,
+    ).toContain('h-[48px]');
+
+    // At the end of its row, as Material's dialog actions are.
+    expect(clear.parentElement!.classList).toContain('justify-end');
+    expect([...clear.classList]).toEqual(
+      expect.arrayContaining(['h-[40px]', 'rounded-full', 'px-[12px]']),
+    );
+    expect([...clear.querySelector('text')!.classList].sort()).toEqual([
+      'font-medium',
+      'text-[14px]',
+      'text-primary',
+    ]);
+    // Its pressed state layer.
+    fireEvent.touchstart(clear);
+    await waitForUpdate();
+    expect(clear.classList).toContain('bg-primary/10');
+    fireEvent.touchend(clear);
+    await waitForUpdate();
+    expect(clear.classList).not.toContain('bg-primary/10');
   });
 });

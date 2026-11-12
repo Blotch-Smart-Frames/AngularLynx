@@ -15,7 +15,7 @@ import { UiDatePicker } from '../components/ui/date-picker';
 ```
 
 :::tip
-This also adds [Calendar](/dolan/calendar), [Bottom Sheet](/dolan/bottom-sheet), [Button](/dolan/button) and [Icon](/dolan/icon).
+This also adds [Calendar](/dolan/calendar), [Bottom Sheet](/dolan/bottom-sheet), [Button](/dolan/button), [Glass](/dolan/glass) and [Icon](/dolan/icon).
 :::
 
 ## Usage
@@ -74,6 +74,24 @@ While a day is chosen, the sheet has a **Clear** button under the calendar. It s
 
 `min`, `max` and `weekStartsOn` go to the calendar, as do its screen reader labels. To reach a day years away, tap the calendar's title.
 
+### Platform look
+
+```angular-html
+<ui-date-picker variant="glass" label="Ends on" clearable [(value)]="endsOn" />
+```
+
+`variant="glass"` gives the sheet, the calendar and Clear the platform's own look:
+
+| Platform                                       | Sheet                                                    | Calendar                                                             | Clear                                           |
+| ---------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------- |
+| iOS 26 and later                               | Liquid Glass ([Bottom Sheet](/dolan/bottom-sheet#glass)) | iOS's inline date picker ([Calendar](/dolan/calendar#platform-look)) | A plain text button in the tint, centered       |
+| iOS 15 to 25                                   | The opaque sheet of that time                            | iOS's inline date picker                                             | A plain text button in the tint, centered       |
+| Android                                        | A Material 3 bottom sheet                                | Material 3's date picker                                             | A Material 3 text button, at the end of its row |
+| Android, with [`provideGlass()`](/dolan/glass) | Glass without the refraction                             | iOS's inline date picker                                             | A plain text button in the tint, centered       |
+| [Web preview](/guide/glossary#web-preview)     | Liquid Glass                                             | iOS's inline date picker                                             | A plain text button in the tint, centered       |
+
+Without it, the picker looks the same on every platform. The field itself looks the same either way.
+
 ### With a label of your own
 
 `label` is shown above the field and names it for screen readers. A label of your own, such as a [Label](/dolan/label), isn't tied to it, so give the picker an `accessibility-label` with the same text:
@@ -99,24 +117,25 @@ A disabled picker dims and doesn't open.
 
 ## API
 
-| Input                 | Type                              | Default            | Description                                                               |
-| --------------------- | --------------------------------- | ------------------ | ------------------------------------------------------------------------- |
-| `value`               | `Date \| null`                    | `null`             | The chosen day. Supports `[(value)]`.                                     |
-| `label`               | `string`                          | `''`               | Shown above the field, and read by screen readers as its name.            |
-| `placeholder`         | `string`                          | `'Select date'`    | Shown in the field while no day is chosen.                                |
-| `accessibility-label` | `string`                          | `''`               | The field's name for screen readers when it has no `label`.               |
-| `format`              | `string`                          | `'mediumDate'`     | How the field writes the day: an Angular date format.                     |
-| `min`                 | `Date \| null`                    | `null`             | The first day that can be picked.                                         |
-| `max`                 | `Date \| null`                    | `null`             | The last day that can be picked.                                          |
-| `weekStartsOn`        | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the calendar's first column. `0` is Sunday.                |
-| `clearable`           | `boolean`                         | `false`            | Adds a Clear button to the sheet while a day is chosen.                   |
-| `clearLabel`          | `string`                          | `'Clear'`          | The Clear button's text.                                                  |
-| `previousMonthLabel`  | `string`                          | `'Previous month'` | The calendar's arrow back, among the days, for screen readers.            |
-| `nextMonthLabel`      | `string`                          | `'Next month'`     | The calendar's arrow on, among the days, for screen readers.              |
-| `previousYearLabel`   | `string`                          | `'Previous year'`  | The calendar's arrow back, among the months, for screen readers.          |
-| `nextYearLabel`       | `string`                          | `'Next year'`      | The calendar's arrow on, among the months, for screen readers.            |
-| `disabled`            | `boolean`                         | `false`            | Dims the field and stops it from opening.                                 |
-| `class`               | `string`                          | `''`               | Extra Tailwind classes for the column that holds the label and the field. |
+| Input                 | Type                              | Default            | Description                                                                                             |
+| --------------------- | --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `value`               | `Date \| null`                    | `null`             | The chosen day. Supports `[(value)]`.                                                                   |
+| `label`               | `string`                          | `''`               | Shown above the field, and read by screen readers as its name.                                          |
+| `placeholder`         | `string`                          | `'Select date'`    | Shown in the field while no day is chosen.                                                              |
+| `accessibility-label` | `string`                          | `''`               | The field's name for screen readers when it has no `label`.                                             |
+| `format`              | `string`                          | `'mediumDate'`     | How the field writes the day: an Angular date format.                                                   |
+| `min`                 | `Date \| null`                    | `null`             | The first day that can be picked.                                                                       |
+| `max`                 | `Date \| null`                    | `null`             | The last day that can be picked.                                                                        |
+| `weekStartsOn`        | `0 \| 1 \| 2 \| 3 \| 4 \| 5 \| 6` | The locale's       | The weekday in the calendar's first column. `0` is Sunday.                                              |
+| `clearable`           | `boolean`                         | `false`            | Adds a Clear button to the sheet while a day is chosen.                                                 |
+| `clearLabel`          | `string`                          | `'Clear'`          | The Clear button's text.                                                                                |
+| `variant`             | `'default' \| 'glass'`            | `'default'`        | `'glass'` gives the sheet, calendar and Clear the platform's look. See [Platform look](#platform-look). |
+| `previousMonthLabel`  | `string`                          | `'Previous month'` | The calendar's arrow back, among the days, for screen readers.                                          |
+| `nextMonthLabel`      | `string`                          | `'Next month'`     | The calendar's arrow on, among the days, for screen readers.                                            |
+| `previousYearLabel`   | `string`                          | `'Previous year'`  | The calendar's arrow back, among the months, for screen readers.                                        |
+| `nextYearLabel`       | `string`                          | `'Next year'`      | The calendar's arrow on, among the months, for screen readers.                                          |
+| `disabled`            | `boolean`                         | `false`            | Dims the field and stops it from opening.                                                               |
+| `class`               | `string`                          | `''`               | Extra Tailwind classes for the column that holds the label and the field.                               |
 
 | Output        | Type           | Description                                                    |
 | ------------- | -------------- | -------------------------------------------------------------- |

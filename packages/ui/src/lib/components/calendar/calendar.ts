@@ -20,10 +20,39 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { cn } from '../../utils/cn';
 import { UiButton } from '../button/button';
+import { type GlassDesign, injectGlassDesign } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
 
 /** A day of the week, numbered as `Date.getDay()` numbers it: 0 is Sunday. */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * `'default'` is the calendar's own look, the same on every platform.
+ * `'glass'` is the platform's: iOS's inline date picker on iOS (and in the
+ * web preview, and on Android with `provideGlass({ android: 'glass' })`),
+ * and Material 3's date picker on Android. The same values as
+ * BottomSheetVariant, so a sheet and the calendar in it can share one.
+ */
+export type CalendarVariant = 'default' | 'glass';
+
+/**
+ * What the calendar draws: its own look, iOS's inline date picker, or
+ * Material 3's date picker.
+ */
+export type CalendarLook = 'default' | 'ios' | 'material';
+
+/**
+ * The look a variant takes in a platform's design (see injectGlassDesign):
+ * iOS's for Liquid Glass and for the frosted design before it, Material's
+ * for Material.
+ */
+export const calendarLook = (
+  variant: CalendarVariant,
+  design: GlassDesign,
+): CalendarLook => {
+  if (variant === 'default') return 'default';
+  return design === 'material' ? 'material' : 'ios';
+};
 
 /**
  * What the calendar shows: a month's days, a year's months, or the years.
@@ -66,15 +95,11 @@ const WEEKS = 6;
 /** Years in each row of the years list. */
 const YEARS_PER_ROW = 3;
 
-/** A row of the years list's height in px, as its class sets it. */
-const YEAR_ROW_HEIGHT = 52;
-
 /**
- * The body's height in px, as its class sets it: the weekday row and six
- * weeks. Every view fills the same height, so the calendar (and a sheet
- * that holds it) doesn't jump as it changes view.
+ * A row of the years list's height in px, as its class sets it: Material
+ * 3's year rows, which suit the other looks too.
  */
-const BODY_HEIGHT = 296;
+const YEAR_ROW_HEIGHT = 52;
 
 /**
  * How many years the list reaches either side of today when `min` or `max`
@@ -145,24 +170,39 @@ const monthIndex = (date: Date): number =>
 const firstDayOf = (index: number): Date =>
   dayOf(Math.floor(index / 12), index % 12, 1);
 
-/**
- * The classes of a cell's round mark and its text: filled while selected,
- * ringed when it's today (or this month, or this year), and faded while it
- * can't be picked. The ring rather than a color alone marks today, since the
- * default theme's primary color is almost its foreground.
- */
-const cellClasses = (
-  width: string,
+/** What a cell's round mark always is. */
+const MARK = 'items-center rounded-full flex justify-center';
+
+/** The classes of a cell's mark and its text, in one look. */
+type CellClasses = (
+  shape: string,
   selected: boolean,
   current: boolean,
   disabled: boolean,
-): Pick<CalendarCell, 'markClass' | 'textClass'> => ({
-  markClass: cn(
-    'h-[40px] items-center rounded-full flex justify-center',
-    width,
+) => Pick<CalendarCell, 'markClass' | 'textClass'>;
+
+/**
+ * A mark filled while selected, ringed when it's today (or this month, or
+ * this year), and faded while it can't be picked: the default look's, and
+ * Material 3's, which fades to 38%. The ring rather than a color alone
+ * marks today, since the default theme's primary color is almost its
+ * foreground.
+ */
+const ringedMark = (
+  shape: string,
+  selected: boolean,
+  current: boolean,
+  disabled: boolean,
+): string =>
+  cn(
+    MARK,
+    shape,
     selected ? 'bg-primary' : current && 'border border-primary',
     disabled && 'opacity-40',
-  ),
+  );
+
+const defaultCell: CellClasses = (shape, selected, current, disabled) => ({
+  markClass: ringedMark(shape, selected, current, disabled),
   textClass: cn(
     'text-[16px]',
     selected
@@ -172,6 +212,150 @@ const cellClasses = (
         : 'text-foreground',
   ),
 });
+
+/**
+ * Material 3's: the same marks, with its body-large numbers at one weight.
+ */
+const materialCell: CellClasses = (shape, selected, current, disabled) => ({
+  markClass: ringedMark(shape, selected, current, disabled),
+  textClass: cn(
+    'text-[16px]',
+    selected
+      ? 'text-primary-foreground'
+      : current
+        ? 'text-primary'
+        : 'text-foreground',
+  ),
+});
+
+/**
+ * iOS's: today is its number in the tint color, the chosen day a light
+ * circle of the tint with its number in the tint, and today chosen a solid
+ * circle. Days that can't be picked are a faint gray.
+ */
+const iosCell: CellClasses = (shape, selected, current, disabled) => ({
+  markClass: cn(
+    MARK,
+    shape,
+    selected && (current ? 'bg-primary' : 'bg-primary/15'),
+    disabled && 'opacity-30',
+  ),
+  textClass: cn(
+    'text-[17px]',
+    selected && current
+      ? 'font-semibold text-primary-foreground'
+      : selected || current
+        ? 'font-semibold text-primary'
+        : 'text-foreground',
+  ),
+});
+
+/** The chevron beside the title. */
+type TitleIcon = 'chevron-down' | 'chevron-up' | 'chevron-right';
+
+/**
+ * Everything that differs between the looks. Sizes are in px, as the
+ * platforms give them: Tailwind's spacing scale is in rem, which is 14px on
+ * Lynx.
+ */
+type LookStyle = {
+  readonly header: string;
+  readonly title: string;
+  /** The title's classes while the months or years show. */
+  readonly openTitle: string;
+  readonly titleIcons: Readonly<Record<CalendarView, TitleIcon>>;
+  /** The chevrons' color, or undefined for the foreground. */
+  readonly iconColor: string | undefined;
+  readonly arrow: string;
+  readonly arrowIcon: 'sm' | 'md';
+  readonly weekdayRow: string;
+  readonly weekday: string;
+  /** Short weekday names in capitals (`SUN`), rather than initials. */
+  readonly weekdayCaps: boolean;
+  readonly week: string;
+  readonly body: string;
+  /** The body's height in px, as `body` sets it: the weekday row and six weeks. */
+  readonly bodyHeight: number;
+  readonly day: string;
+  /** A month's or a year's mark. */
+  readonly pill: string;
+  readonly cell: CellClasses;
+};
+
+const LOOKS: Readonly<Record<CalendarLook, LookStyle>> = {
+  default: {
+    header: 'h-[48px]',
+    title: 'text-[16px] font-semibold text-foreground',
+    openTitle: 'text-[16px] font-semibold text-foreground',
+    titleIcons: {
+      days: 'chevron-down',
+      months: 'chevron-down',
+      years: 'chevron-up',
+    },
+    iconColor: undefined,
+    arrow: 'h-[40px] w-[40px]',
+    arrowIcon: 'sm',
+    weekdayRow: 'h-[32px]',
+    weekday: 'text-[13px] font-medium text-muted-foreground',
+    weekdayCaps: false,
+    week: 'h-[44px]',
+    body: 'h-[296px]',
+    bodyHeight: 296,
+    day: 'h-[40px] w-[40px]',
+    pill: 'h-[40px] w-[88px]',
+    cell: defaultCell,
+  },
+  // iOS's inline date picker: a 17pt semibold title with a tinted chevron
+  // that turns down while the months or years show, tinted arrows, 13pt
+  // semibold weekdays in capitals, and 17pt days in 44pt rows.
+  ios: {
+    header: 'h-[48px]',
+    title: 'text-[17px] font-semibold text-foreground',
+    openTitle: 'text-[17px] font-semibold text-primary',
+    titleIcons: {
+      days: 'chevron-right',
+      months: 'chevron-down',
+      years: 'chevron-down',
+    },
+    iconColor: 'var(--primary)',
+    arrow: 'h-[44px] w-[44px]',
+    arrowIcon: 'sm',
+    weekdayRow: 'h-[28px]',
+    weekday: 'text-[13px] font-semibold text-muted-foreground',
+    weekdayCaps: true,
+    week: 'h-[44px]',
+    body: 'h-[292px]',
+    bodyHeight: 292,
+    day: 'h-[40px] w-[40px]',
+    pill: 'h-[36px] min-w-[72px] px-[12px]',
+    cell: iosCell,
+  },
+  // Material 3's date picker: a label-large title and drop-down arrow in
+  // on-surface-variant, 48dp round icon buttons with 24dp icons, body-large
+  // weekdays and days in 48dp cells with 40dp marks, and 72×36dp years.
+  material: {
+    header: 'h-[56px]',
+    title: 'text-[14px] font-medium text-muted-foreground',
+    openTitle: 'text-[14px] font-medium text-muted-foreground',
+    titleIcons: {
+      days: 'chevron-down',
+      months: 'chevron-down',
+      years: 'chevron-up',
+    },
+    iconColor: 'var(--muted-foreground)',
+    arrow: 'h-[48px] w-[48px] rounded-full',
+    arrowIcon: 'md',
+    weekdayRow: 'h-[48px]',
+    weekday: 'text-[16px] text-foreground',
+    weekdayCaps: false,
+    week: 'h-[48px]',
+    body: 'h-[336px]',
+    bodyHeight: 336,
+    day: 'h-[40px] w-[40px]',
+    pill: 'h-[36px] min-w-[72px] px-[12px]',
+    cell: materialCell,
+  },
+};
 
 /**
  * Splits cells into rows of `size`.
@@ -205,7 +389,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
   encapsulation: ViewEncapsulation.None,
   host: { '[class]': 'hostClass()' },
   template: `
-    <view class="h-[48px] flex-row items-center flex justify-between">
+    <view [class]="headerClass()">
       <!-- The title is one button: VoiceOver reads its label, not the
            chevron beside it. It stays the same element from view to view, so
            a screen reader's focus stays on it as the view changes. -->
@@ -216,58 +400,61 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
         [accessibility-label]="title()"
         (bindtap)="stepOut()"
       >
-        <text class="text-[16px] font-semibold text-foreground">{{
-          title()
-        }}</text>
-        <ui-icon [name]="titleIcon()" size="xs" />
+        <text [class]="titleClass()">{{ title() }}</text>
+        <ui-icon [name]="titleIcon()" size="xs" [color]="style().iconColor" />
       </view>
       @if (view() !== 'years') {
         <view class="flex-row flex">
           <ui-button
             variant="ghost"
             size="icon"
-            class="h-[40px] w-[40px]"
+            [class]="style().arrow"
             [accessibility-label]="previousLabel()"
             [disabled]="!canGoBack()"
             [lynxAccessibilityTraits]="{ disabled: !canGoBack() }"
             (pressed)="page(-1)"
           >
-            <ui-icon name="chevron-left" size="sm" />
+            <ui-icon
+              name="chevron-left"
+              [size]="style().arrowIcon"
+              [color]="style().iconColor"
+            />
           </ui-button>
           <ui-button
             variant="ghost"
             size="icon"
-            class="h-[40px] w-[40px]"
+            [class]="style().arrow"
             [accessibility-label]="nextLabel()"
             [disabled]="!canGoForward()"
             [lynxAccessibilityTraits]="{ disabled: !canGoForward() }"
             (pressed)="page(1)"
           >
-            <ui-icon name="chevron-right" size="sm" />
+            <ui-icon
+              name="chevron-right"
+              [size]="style().arrowIcon"
+              [color]="style().iconColor"
+            />
           </ui-button>
         </view>
       }
     </view>
     @switch (view()) {
       @case ('days') {
-        <view class="h-[296px] flex-col flex">
+        <view [class]="bodyClass()">
           <!-- Hidden from screen readers: each day says its weekday. -->
           <view
-            class="h-[32px] flex-row items-center flex"
+            [class]="weekdayRowClass()"
             accessibility-elements-hidden="true"
           >
             @for (name of weekdays(); track $index) {
-              <text
-                class="flex-1 text-[13px] font-medium text-muted-foreground text-center"
-                >{{ name }}</text
-              >
+              <text [class]="weekdayClass()">{{ name }}</text>
             }
           </view>
           <!-- Seven columns of equal width, each cell flex-1: Lynx has no
                grid layout or positional selectors. A day outside the month
                is an empty cell that holds its column. -->
           @for (week of weeks(); track $index) {
-            <view class="h-[44px] flex-row flex">
+            <view [class]="weekClass()">
               @for (day of week; track $index) {
                 @if (day) {
                   <view
@@ -294,7 +481,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
         </view>
       }
       @case ('months') {
-        <view class="h-[296px] flex-col flex">
+        <view [class]="bodyClass()">
           @for (row of monthRows(); track $index) {
             <view class="flex-1 flex-row flex">
               @for (month of row; track month.value) {
@@ -323,7 +510,7 @@ const rowsOf = <T>(cells: readonly T[], size: number): T[][] =>
              year being shown: initial-scroll-offset applies only once. -->
         <scroll-view
           scroll-orientation="vertical"
-          class="h-[296px]"
+          [class]="style().body"
           [initial-scroll-offset]="yearsOffset()"
         >
           @for (row of yearRows(); track $index) {
@@ -373,6 +560,8 @@ export class UiCalendar {
   readonly previousYearLabel = input('Previous year');
   /** What a screen reader says for the arrow to the year after, among the months. */
   readonly nextYearLabel = input('Next year');
+  /** `'default'` or `'glass'`, the platform's look; see CalendarVariant. */
+  readonly variant = input<CalendarVariant>('default');
   readonly userClass = input<string>('', { alias: 'class' });
 
   /** Emits the day the user tapped. */
@@ -386,7 +575,14 @@ export class UiCalendar {
   /** The locale's year pattern: `y`, or `y年` in Japanese. */
   readonly #yearPattern = patternWithout(this.#locale, 'dEM');
 
+  readonly #design = injectGlassDesign();
+
   protected readonly view = signal<CalendarView>('days');
+
+  /** The sizes and classes of the look on this platform (see LOOKS). */
+  protected readonly style = computed(
+    () => LOOKS[calendarLook(this.variant(), this.#design())],
+  );
 
   /** The first month that holds a day that can be picked (see monthIndex). */
   readonly #firstMonth = computed(() => {
@@ -438,9 +634,33 @@ export class UiCalendar {
     ),
   );
 
-  /** Down while the title steps out; up in the years list, which it closes. */
-  protected readonly titleIcon = computed(() =>
-    this.view() === 'years' ? 'chevron-up' : 'chevron-down',
+  /** The look's chevron for the view (see LookStyle's titleIcons). */
+  protected readonly titleIcon = computed(
+    () => this.style().titleIcons[this.view()],
+  );
+
+  protected readonly titleClass = computed(() =>
+    this.view() === 'days' ? this.style().title : this.style().openTitle,
+  );
+
+  protected readonly headerClass = computed(() =>
+    cn('flex-row items-center flex justify-between', this.style().header),
+  );
+
+  protected readonly bodyClass = computed(() =>
+    cn('flex-col flex', this.style().body),
+  );
+
+  protected readonly weekdayRowClass = computed(() =>
+    cn('flex-row items-center flex', this.style().weekdayRow),
+  );
+
+  protected readonly weekdayClass = computed(() =>
+    cn('flex-1 text-center', this.style().weekday),
+  );
+
+  protected readonly weekClass = computed(() =>
+    cn('flex-row flex', this.style().week),
   );
 
   protected readonly previousLabel = computed(() =>
@@ -476,10 +696,14 @@ export class UiCalendar {
   /** The weekdays' narrow names, from the first column on. */
   protected readonly weekdays = computed(() => {
     const start = this.#weekStart();
+    const caps = this.style().weekdayCaps;
     // 1 January 2023 was a Sunday, so its week names each weekday in order.
-    return Array.from({ length: 7 }, (_, column) =>
-      this.#format(dayOf(2023, 0, 1 + ((start + column) % 7)), 'EEEEE'),
-    );
+    return Array.from({ length: 7 }, (_, column) => {
+      const day = dayOf(2023, 0, 1 + ((start + column) % 7));
+      return caps
+        ? this.#format(day, 'EEE').toUpperCase()
+        : this.#format(day, 'EEEEE');
+    });
   });
 
   /** The shown month's days, a week to a row, with null where it has none. */
@@ -494,6 +718,7 @@ export class UiCalendar {
     const today = this.#today.getTime();
     const min = this.#minTime();
     const max = this.#maxTime();
+    const { cell: classes, day: shape } = this.style();
     const days = Array.from(
       { length: WEEKS * 7 },
       (_, cell): DayCell | null => {
@@ -509,12 +734,7 @@ export class UiCalendar {
           label: this.#format(date, 'fullDate'),
           selected: time === selected,
           disabled,
-          ...cellClasses(
-            'w-[40px]',
-            time === selected,
-            time === today,
-            disabled,
-          ),
+          ...classes(shape, time === selected, time === today, disabled),
         };
       },
     );
@@ -528,6 +748,7 @@ export class UiCalendar {
     const current = monthIndex(this.#today);
     const first = this.#firstMonth();
     const last = this.#lastMonth();
+    const { cell: classes, pill } = this.style();
     const months = Array.from({ length: 12 }, (_, month): CalendarCell => {
       const index = year * 12 + month;
       const date = dayOf(year, month, 1);
@@ -538,12 +759,7 @@ export class UiCalendar {
         label: this.#format(date, this.#monthYearPattern),
         selected: index === shown,
         disabled,
-        ...cellClasses(
-          'w-[88px]',
-          index === shown,
-          index === current,
-          disabled,
-        ),
+        ...classes(pill, index === shown, index === current, disabled),
       };
     });
     return rowsOf(months, 3);
@@ -573,6 +789,7 @@ export class UiCalendar {
     const thisYear = this.#today.getFullYear();
     const { first, last } = this.#yearRange();
     const count = last - first + 1;
+    const { cell: classes, pill } = this.style();
     const cells = Array.from(
       { length: Math.ceil(count / YEARS_PER_ROW) * YEARS_PER_ROW },
       (_, offset): CalendarCell | null => {
@@ -585,7 +802,7 @@ export class UiCalendar {
           label: this.#format(date, this.#yearPattern),
           selected: year === shown,
           disabled: false,
-          ...cellClasses('w-[88px]', year === shown, year === thisYear, false),
+          ...classes(pill, year === shown, year === thisYear, false),
         };
       },
     );
@@ -598,10 +815,8 @@ export class UiCalendar {
       (Math.floor(this.shownMonth() / 12) - this.#yearRange().first) /
         YEARS_PER_ROW,
     );
-    return Math.max(
-      0,
-      row * YEAR_ROW_HEIGHT - (BODY_HEIGHT - YEAR_ROW_HEIGHT) / 2,
-    );
+    const height = this.style().bodyHeight;
+    return Math.max(0, row * YEAR_ROW_HEIGHT - (height - YEAR_ROW_HEIGHT) / 2);
   });
 
   protected readonly hostClass = computed(() =>

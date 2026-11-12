@@ -33,8 +33,11 @@ const daysFromToday = (days: number): Date => {
           </text>
         </view>
 
-        <!-- A day that can be cleared -->
+        <!-- A day that can be cleared, in the platform's look: a Liquid
+             Glass sheet with iOS's inline calendar on iOS, Material 3's
+             sheet and date picker on Android -->
         <ui-date-picker
+          variant="glass"
           label="Ends on"
           placeholder="Pick a day"
           clearable
@@ -55,6 +58,7 @@ const daysFromToday = (days: number): Date => {
         <!-- A birthday decades back: tap the sheet's title to choose the
              month, and again for the year -->
         <ui-date-picker
+          variant="glass"
           label="Birthday"
           format="longDate"
           [max]="today"

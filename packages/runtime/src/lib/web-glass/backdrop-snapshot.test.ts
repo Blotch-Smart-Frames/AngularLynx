@@ -22,6 +22,19 @@ class FakeImage {
 }
 const drawImage = vi.fn();
 
+/**
+ * `value` as the DOM writes it back for `property`, which is how it reaches
+ * the SVG. jsdom 31 serializes styles the way browsers do (`scale(2)` for
+ * `scale(2,2)`, `0px 0px` for `0 0`, six significant digits), where older
+ * versions hand them back as set, so the expected transforms go through the
+ * same serializer as the copy's.
+ */
+const serialized = (property: string, value: string): string => {
+  const probe = document.createElement('div');
+  probe.style.setProperty(property, value);
+  return probe.style.getPropertyValue(property);
+};
+
 const root = (left: number, top: number, width: number, height: number) => {
   const element = document.createElement('x-view');
   vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
@@ -92,7 +105,8 @@ describe('snapshotBackdrop', () => {
         '<foreignObject width="400" height="200">',
     );
     expect(svg).toContain(
-      'transform-origin: 0 0; transform: scale(2,2) translate(-50px,0px);',
+      `transform-origin: ${serialized('transform-origin', '0 0')}; ` +
+        `transform: ${serialized('transform', 'scale(2,2) translate(-50px,0px)')};`,
     );
     expect(svg).toContain('backdrop');
   });
@@ -107,7 +121,9 @@ describe('snapshotBackdrop', () => {
     expect(snapshot!.image.width).toBe(800);
     const svg = decodeURIComponent(decoded[0]!.split(',')[1]!);
     expect(svg).toContain('<foreignObject width="800" height="400">');
-    expect(svg).toContain('transform: scale(2,2) translate(-100px,0px);');
+    expect(svg).toContain(
+      `transform: ${serialized('transform', 'scale(2,2) translate(-100px,0px)')};`,
+    );
   });
 
   it('fills the image to its edges', async () => {
@@ -118,7 +134,10 @@ describe('snapshotBackdrop', () => {
     // little off the region's, so the copy is stretched to fit.
     expect(svg).toContain('<foreignObject width="490" height="485">');
     expect(svg).toContain(
-      `scale(${490 / 360},${485 / 356.47}) translate(0px,0px)`,
+      serialized(
+        'transform',
+        `scale(${490 / 360},${485 / 356.47}) translate(0px,0px)`,
+      ),
     );
   });
 

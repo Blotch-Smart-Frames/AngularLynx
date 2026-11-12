@@ -670,7 +670,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       bar,
     };
     this.#liveRoutes.set(ref, page.live);
-    own(this.#chrome, stackPage, this.#claim);
+    own(stackPage, this.#claim);
     // The page's own answer, or the answer of the page it's in.
     setBottomBarHidden(
       stackPage,

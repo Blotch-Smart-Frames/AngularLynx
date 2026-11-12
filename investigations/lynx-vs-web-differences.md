@@ -557,6 +557,34 @@ Two things change for the code compiled this way:
 
 ---
 
+## PrimJS never lets go of a `WeakMap` entry whose value leads back to its key through a native element (issue #390)
+
+### What you'd expect (web)
+
+A `WeakMap` holds its keys weakly, and a value only while its key lives: once nothing else reaches the key, the engine collects the entry, even when the value leads back to the key (the entry is an ephemeron). So a long-lived `WeakMap` keyed by short-lived objects keeps nothing alive.
+
+### What Lynx does
+
+What the section above found for the `WeakMap`s SWC makes of `#private` fields goes for any `WeakMap`. On the main thread, PrimJS keeps an entry whose value leads back to its key while a native element is on the way, so the key, the value and everything they reach live as long as the map. A map in a module or in a root service lives as long as the app.
+
+`<lynx-stack-outlet>` hit it. The app's `LynxStackChrome` kept the outlet each page is in, in a `WeakMap` keyed by the page's `LynxStackPage`, and a module-level `WeakMap` kept each page's own chrome. The value led back to the page both times: an outlet holds its pages in its stack, and a page's chrome holds the page it follows. The outlet holds its own element and its pages' frames, so native elements were on the way. Every tab the router left that held a stack stayed, with its screens, their native UI, and any `<canvas>` GL surface or `<webview>` page in them. A copy of `examples/ui-dock` that switches tabs on a timer (Home, Browse, the Library stack, Search), on the iOS 27 Simulator:
+
+| After round | `LynxUIView`, before | `LynxUIView`, after | Library tabs still alive, before | after   |
+| ----------- | -------------------- | ------------------- | -------------------------------- | ------- |
+| 2           | 255                  | 192                 | 2 of 2                           | 1 of 2  |
+| 9           | 709                  | 293                 | 9 of 9                           | 1 of 9  |
+| 16          | 1,251                | 293                 | 16 of 16                         | 1 of 16 |
+
+With only the module-level map put back, a page that injects `LynxStackChrome` (as a bar on the page does) kept every stack again: 25 of 25 after 25 rounds, 2,298 `LynxUIView`s.
+
+`@blotch/ui`'s bars keep their state per page in a module-level `WeakMap` too, and that one is collected: when the bars and the scroll view on a page are destroyed, they take themselves out of the state, so what the map holds no longer leads back to the page.
+
+### The fix
+
+The stack keeps what it knows about a page on the page itself (`linksOf` in `router/stack/stack-page.ts`), as plain properties, which PrimJS collects with the page. Keep per-object state on the object (a property, or a `#private` field, which the build compiles to one), or take an entry out of the map, or what its value holds, once the object goes. `packages/runtime/src/lib/router/stack/stack-release.test.ts` runs the stack under a `WeakMap` that holds its values for as long as it lives, as PrimJS does here, and checks that a tab's stack is collected after the app leaves it.
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)
@@ -5017,10 +5045,10 @@ Give the interactive element an explicit stacking elevation so it sits above the
 <view>
   <!-- wrapper -->
   <view class="absolute inset-0" ... />
-  <!-- decorative overlay, first child -->
-  <input style="position: relative; z-index: 1;" ... />
-  <!-- interactive, elevated -->
-</view>
+    <!-- decorative overlay, first child -->
+    <input style="position: relative; z-index: 1;" ... />
+    <!-- interactive, elevated -->
+  </view>
 ```
 
 `position: relative; z-index: 1` is **redundant on Lynx** (source order already keeps the input on top) but **required on web** (it moves the input into the positive-`z-index` paint group, above the `z-index: auto` overlay). Both properties are needed: `z-index` only applies to a _positioned_ element, so `position: relative` is what makes the `z-index` take effect. Lynx's CSS encoder accepts both (unlike `pointer-events`), so the one declaration is safe cross-platform.

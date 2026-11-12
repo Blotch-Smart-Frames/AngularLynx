@@ -48,14 +48,10 @@ const outlet = (
 /**
  * A page on top of its stack, in `claim`'s outlet.
  */
-const pageIn = (
-  chrome: LynxStackChrome,
-  claim: ChromeClaim,
-  active = true,
-): LynxStackPage => {
+const pageIn = (claim: ChromeClaim, active = true): LynxStackPage => {
   const page = new LynxStackPage();
   setActive(page, active);
-  own(chrome, page, claim);
+  own(page, claim);
   return page;
 };
 
@@ -92,7 +88,7 @@ describe('LynxStackChrome', () => {
     const outer = outlet(null, 'root');
     follow(chrome, outer.claim);
     follow(chrome, outlet(null, null).claim);
-    const covered = pageIn(chrome, outer.claim, false);
+    const covered = pageIn(outer.claim, false);
     follow(chrome, outlet(covered, 'pushed').claim);
     expect(chrome.bottomBarHidden()).toBe(false);
   });
@@ -100,7 +96,7 @@ describe('LynxStackChrome', () => {
   it('lets the innermost outlet decide, on what the outer ones say', () => {
     const chrome = new LynxStackChrome();
     const outer = outlet(null, 'pushed');
-    const inner = outlet(pageIn(chrome, outer.claim), 'root');
+    const inner = outlet(pageIn(outer.claim), 'root');
     // Followed inside out: the depth orders them, not the order they came.
     follow(chrome, inner.claim);
     follow(chrome, outer.claim);
@@ -114,7 +110,7 @@ describe('LynxStackChrome', () => {
   it('takes the motion of the innermost outlet whose pages move', () => {
     const chrome = new LynxStackChrome();
     const outer = outlet(null, 'root');
-    const inner = outlet(pageIn(chrome, outer.claim), 'root');
+    const inner = outlet(pageIn(outer.claim), 'root');
     follow(chrome, outer.claim);
     follow(chrome, inner.claim);
     outer.state.update((s) => ({ ...s, motion: IOS }));
@@ -134,7 +130,7 @@ describe('LynxStackChrome', () => {
     const chrome = new LynxStackChrome();
     const outer = outlet(null, 'pushed');
     follow(chrome, outer.claim);
-    const page = pageIn(chrome, outer.claim);
+    const page = pageIn(outer.claim);
     const inner = outlet(page, 'root');
     follow(chrome, inner.claim);
     const onPage = chromeOn(chrome, page);

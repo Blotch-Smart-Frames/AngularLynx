@@ -5,7 +5,7 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import type { LynxStackPage } from './stack-page';
+import { type LynxStackPage, linksOf } from './stack-page';
 import type { StackAnimation } from './stack-motion';
 
 /**
@@ -138,8 +138,6 @@ export type CarriedBar = {
 /** The outlets every chrome of an app follows, shared by them all. */
 type Registry = {
   readonly claims: WritableSignal<readonly ChromeClaim[]>;
-  /** The outlet each page is in. */
-  readonly owners: WeakMap<LynxStackPage, ChromeClaim>;
   /** The bars a page can carry (see LynxStackBottomBar). */
   readonly bars: Set<CarriedBar>;
 };
@@ -151,12 +149,19 @@ type Registry = {
  */
 export let follow: (chrome: LynxStackChrome, claim: ChromeClaim) => () => void;
 
-/** Says which outlet a page is in. */
-export let own: (
-  chrome: LynxStackChrome,
-  page: LynxStackPage,
-  claim: ChromeClaim,
-) => void;
+/**
+ * Says which outlet a page is in. The page keeps it (see linksOf), not the
+ * chrome, which lives as long as the app.
+ */
+export const own = (page: LynxStackPage, claim: ChromeClaim): void => {
+  linksOf(page).owner = claim;
+};
+
+/**
+ * The outlet a page is in, or null for a page no outlet has said it owns.
+ */
+const ownerOf = (page: LynxStackPage): ChromeClaim | null =>
+  linksOf(page).owner;
 
 /**
  * The chrome for bars on `page` (see LynxStackChrome), which the page's
@@ -188,9 +193,6 @@ export let awayWith: (
   claim: ChromeClaim,
   bar: PageBar,
 ) => number | null;
-
-/** Each page's chrome, made when a component on it first asks. */
-const pageChromes = new WeakMap<LynxStackPage, LynxStackChrome>();
 
 /**
  * What the stack that's showing does, for chrome outside it that belongs to
@@ -245,7 +247,6 @@ const pageChromes = new WeakMap<LynxStackPage, LynxStackChrome>();
 export class LynxStackChrome {
   #registry: Registry = {
     claims: signal([]),
-    owners: new WeakMap(),
     bars: new Set(),
   };
   /** The page whose outlets this chrome follows, or null for every outlet. */
@@ -256,7 +257,7 @@ export class LynxStackChrome {
    * (see the class), in the scope.
    */
   readonly #shown = computed(() => {
-    const { claims, owners } = this.#registry;
+    const { claims } = this.#registry;
     const shown: { claim: ChromeClaim; depth: number }[] = [];
     for (const claim of claims()) {
       if (claim.state().active === null) continue;
@@ -267,7 +268,7 @@ export class LynxStackChrome {
       let showing = true;
       while (page && page !== this.#scope) {
         if (!page.active()) showing = false;
-        page = owners.get(page)?.page ?? null;
+        page = ownerOf(page)?.page ?? null;
         depth++;
       }
       if (showing && page === this.#scope) shown.push({ claim, depth });
@@ -334,7 +335,6 @@ export class LynxStackChrome {
       claims.update((list) => [...list, claim]);
       return () => claims.update((list) => list.filter((c) => c !== claim));
     };
-    own = (chrome, page, claim) => chrome.#registry.owners.set(page, claim);
     addBar = (chrome, bar) => {
       const { bars } = chrome.#registry;
       bars.add(bar);
@@ -344,7 +344,6 @@ export class LynxStackChrome {
     awayWith = (chrome, claim, bar) => {
       const shown = chrome.#shown();
       if (!shown.includes(claim)) return null;
-      const { owners } = chrome.#registry;
       /**
        * Whether an outlet is on a page of the outlet's (its top page, as
        * it's showing): it says what that page has, not the page `bar`
@@ -352,8 +351,8 @@ export class LynxStackChrome {
        */
       const inside = (other: ChromeClaim): boolean => {
         // Every page an outlet is on is in an outlet (see own).
-        for (let page = other.page; page; page = owners.get(page)!.page) {
-          if (owners.get(page) === claim) return true;
+        for (let page = other.page; page; page = ownerOf(page)!.page) {
+          if (ownerOf(page) === claim) return true;
         }
         return false;
       };
@@ -364,14 +363,14 @@ export class LynxStackChrome {
       }, 0);
     };
     chromeOn = (chrome, page) => {
-      let scoped = pageChromes.get(page);
-      if (!scoped) {
-        scoped = new LynxStackChrome();
+      const links = linksOf(page);
+      if (!links.chrome) {
+        const scoped = new LynxStackChrome();
         scoped.#registry = chrome.#registry;
         scoped.#scope = page;
-        pageChromes.set(page, scoped);
+        links.chrome = scoped;
       }
-      return scoped;
+      return links.chrome;
     };
   }
 }

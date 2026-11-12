@@ -311,6 +311,8 @@ Covered by `packages/runtime/src/lib/renderer/teardown.test.ts`, whose fake nati
 
 **Known limitation:** native-only state not tracked by Angular (uncontrolled input text, scroll position, focus) resets on remount — the same semantics as Angular's web `@if`, which also destroys and rebuilds the DOM subtree on toggle.
 
+**Open bug (issue #380):** on the iOS 27 Simulator, a `<text>` projected into `ui-select-item`, whose template was `@if (shown()) { <ng-content /> <text>…</text> }`, wasn't drawn again when the block remounted, while the label beside it was. That item sat several projections deep, in a `<scroll-view>` inside an `<overlay>`. The jsdom specs and this harness pass, so don't rely on recreate-on-remount for projected content on a device until it's fixed: hide such content with `display: none; overflow: hidden` instead (see "A `display: none` element still draws its content on iOS").
+
 ---
 
 ## Attaching an element into its own subtree silently builds a cycle and hangs layout forever (no `HierarchyRequestError`)
@@ -5986,7 +5988,7 @@ What the failing ones share: Angular puts a block's top elements in with `__Inse
 
 ---
 
-## A `display: none` element still draws its text on iOS, from its corner
+## A `display: none` element still draws its content on iOS, from its corner
 
 ### What you'd expect (web)
 
@@ -5994,11 +5996,19 @@ An element with `display: none` draws nothing, and nor does anything in it.
 
 ### What Lynx does
 
-Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) a `<text>` in it still draws its glyphs, spilling out of the 0×0 box from its top-left corner. The tabs' hidden panels did this: their first letters overlapped the tab list.
+Lynx sizes the element and everything in it to 0×0 (see "`display: none` resizes to 0×0" above), but on iOS (Lynx Explorer 4.1) what's in it still draws, spilling out of the 0×0 box from its top-left corner. A `<text>` draws its glyphs, and an `<svg>` (a `ui-icon`) draws too. Several hidden elements in one place all draw at the same corner, on top of each other.
+
+- The tabs' hidden panels did this: their first letters overlapped the tab list.
+- A searchable `ui-select` hid the items the search filtered out with Tailwind's `hidden` (`display: none`) on each item's host. On the iPhone 18 Pro Simulator (iOS 27), every hidden item's label and icon drew stacked at the top of the list, a smear of overlapping text above the first item still shown. The web preview drew nothing for them.
 
 ### The fix
 
-Clip the hidden element: `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden, which draws nothing outside its 0×0. The runtime does the same for HTML's `hidden` attribute, which gives an element `display: none; overflow: hidden` (measured on the iOS 27 Simulator, Lynx Explorer 4.1: a hidden `<p>` drew its first letter without the clip).
+Clip the hidden element: `overflow: hidden` while it's hidden draws nothing outside its 0×0.
+
+- `ui-tabs-content` sets `overflow: hidden` on its host while it's hidden. The runtime does the same for HTML's `hidden` attribute, which gives an element `display: none; overflow: hidden` (measured on the iOS 27 Simulator, Lynx Explorer 4.1: a hidden `<p>` drew its first letter without the clip).
+- `ui-select-item` and `ui-multi-select-item` take `hidden overflow-hidden` on their host while the search filters them out, and `accessibility-elements-hidden`, so a screen reader skips them. Checked on the iOS 27 Simulator: the filtered list is clean, and every icon is back once the search clears.
+
+**Don't remove projected content with an `@if` instead.** The items first wrapped their whole template in `@if (shown())`. The filtered list was clean, but on the iOS 27 Simulator the items that came back showed their label without the icon the app projected into them, though the jsdom specs passed (issue #380; see "Projected content in a toggled `@if`" above). The label, from the item's own template, came back; the projected content didn't.
 
 ---
 

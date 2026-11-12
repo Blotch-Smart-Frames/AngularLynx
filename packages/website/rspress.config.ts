@@ -150,6 +150,7 @@ export default defineConfig({
         { text: 'Checkbox', link: '/dolan/checkbox' },
         { text: 'Radio Group', link: '/dolan/radio-group' },
         { text: 'Select', link: '/dolan/select' },
+        { text: 'Multi Select', link: '/dolan/multi-select' },
         { text: 'Slider', link: '/dolan/slider' },
         { text: 'Switch', link: '/dolan/switch' },
         { text: 'Toggle', link: '/dolan/toggle' },

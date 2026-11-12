@@ -14,8 +14,9 @@ import {
 } from '@angular/core';
 import { type BaseLynxElement, LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-import { UiBottomSheet } from '../bottom-sheet/bottom-sheet';
 import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
+import { UiSelectSheet, matchesQuery } from './select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -41,17 +42,17 @@ const selectItem = () => UiSelectItem;
  */
 @Component({
   selector: 'ui-select',
-  imports: [LYNX_ELEMENTS, UiBottomSheet],
+  imports: [LYNX_ELEMENTS, UiSelectSheet],
   encapsulation: ViewEncapsulation.None,
   host: {
     '[class]': 'hostClass()',
     '[attr.placeholder]': 'null',
     '[attr.accessibility-label]': 'null',
   },
-  // `sheetOpen` is bound both ways by hand rather than with `[(open)]`: for a
-  // two-way binding Angular also compiles a fallback that assigns the field,
-  // which never runs for a signal and so shows as an uncovered branch in an
-  // app's coverage report.
+  // `sheetOpen` and `query` are bound both ways by hand rather than with
+  // `[()]`: for a two-way binding Angular also compiles a fallback that
+  // assigns the field, which never runs for a signal and so shows as an
+  // uncovered branch in an app's coverage report.
   template: `
     <!-- The trigger carries the label as its accessibility-label, so screen
          readers read it with the field. Hidden here, or VoiceOver and
@@ -68,9 +69,11 @@ const selectItem = () => UiSelectItem;
            with nothing to say it opens anything. Its label names the field,
            and its value is what the field shows, so VoiceOver says "Country,
            Germany, button". Without a name, the text it shows is its label.
-           A disabled select is dimmed to VoiceOver too. -->
+           A disabled select is dimmed to VoiceOver too. Content the app
+           marks leading, such as the chosen item's icon, goes before the
+           text. -->
       <view
-        class="flex-1 flex-row items-center px-3 py-2 flex justify-between"
+        class="flex-1 flex-row items-center gap-2 px-3 py-2 flex"
         accessibility-element="true"
         accessibility-traits="button"
         [accessibility-label]="triggerLabel()"
@@ -78,19 +81,22 @@ const selectItem = () => UiSelectItem;
         [lynxAccessibilityTraits]="{ disabled: disabled() }"
         (bindtap)="toggle()"
       >
+        <ng-content select="[leading]" />
         <text [class]="valueTextClass()">{{ displayText() }}</text>
         <svg [attr.content]="chevronSvg" style="width: 16px; height: 16px;" />
       </view>
-      <ui-bottom-sheet
+      <ui-select-sheet
         [open]="sheetOpen()"
         (openChange)="sheetOpen.set($event)"
+        [searchable]="searchable()"
+        [query]="query()"
+        (queryChange)="query.set($event)"
+        [searchPlaceholder]="searchPlaceholder()"
+        [emptyText]="emptyText()"
+        [empty]="noneShown()"
       >
-        <scroll-view scroll-orientation="vertical" style="max-height: 300px;">
-          <view class="flex-col pb-4 flex">
-            <ng-content />
-          </view>
-        </scroll-view>
-      </ui-bottom-sheet>
+        <ng-content />
+      </ui-select-sheet>
     </view>
   `,
 })
@@ -111,18 +117,39 @@ export class UiSelect {
   });
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
+  /**
+   * Shows a search field above the items. The sheet then opens at full
+   * height, so the field sits clear of the keyboard, and the list fills it.
+   */
+  readonly searchable = input(false, { transform: booleanAttribute });
+  /** The search field's text. Cleared when the sheet closes. */
+  readonly query = model<string>('');
+  /**
+   * Hides the items whose label doesn't contain `query`, ignoring case.
+   * Turn it off to show results of the app's own for `query` instead, such
+   * as suggestions fetched from a server as the user types.
+   */
+  readonly filter = input(true, { transform: booleanAttribute });
+  readonly searchPlaceholder = input('Search');
+  /** Shown in a searchable sheet while no item is. */
+  readonly emptyText = input('No results');
 
   readonly changed = output<string>();
 
   protected readonly chevronSvg = CHEVRON_SVG;
 
-  // Drives the shared bottom-sheet's `open` model. All the overlay/animation/
-  // drag behavior lives in ui-bottom-sheet; select only decides when the sheet
-  // is open.
+  // Drives the select sheet's `open` model. All the overlay/animation/drag
+  // behavior lives in ui-bottom-sheet, and the search in ui-select-sheet;
+  // select only decides when the sheet is open.
   protected readonly sheetOpen = signal(false);
 
   // The projected items, so the trigger can show the chosen one's label.
   readonly itemRefs = contentChildren(selectItem());
+
+  /** Whether the search hides every item, for the sheet's empty text. */
+  protected readonly noneShown = computed(
+    () => !this.itemRefs().some((item) => this.shows(item.label())),
+  );
 
   protected readonly displayText = computed(() => {
     const val = this.value();
@@ -156,9 +183,14 @@ export class UiSelect {
     cn('text-sm font-medium text-foreground'),
   );
 
+  /**
+   * 48px tall: Android's 48dp touch target, which covers iOS's 44pt, as
+   * ui-input's field is. In px, as Lynx's rem is 14px. The trigger fills it
+   * and centers its text.
+   */
   protected readonly fieldClass = computed(() =>
     cn(
-      'h-10 flex-row rounded-md border border-input bg-background flex',
+      'h-[48px] flex-row rounded-md border border-input bg-background flex',
       this.disabled() && 'opacity-50',
     ),
   );
@@ -170,6 +202,14 @@ export class UiSelect {
       val ? 'text-foreground' : 'text-muted-foreground',
     );
   });
+
+  /**
+   * Whether an item with this label shows for the search text: always while
+   * `filter` is off.
+   */
+  shows(label: string): boolean {
+    return !this.filter() || matchesQuery(label, this.query());
+  }
 
   select(value: string): void {
     this.value.set(value);
@@ -198,7 +238,15 @@ export class UiSelect {
  * TalkBack read it as something to tap rather than as plain text. The
  * accessibility attributes are attribute bindings: a property binding on a
  * component's host is checked against the DOM schema, which has no
- * `accessibility-label`.
+ * `accessibility-label`. Content projected into the item, such as an icon,
+ * goes before its label.
+ *
+ * An item the search hides takes no room (`hidden`) and draws nothing: on
+ * iOS, `display: none` shrinks an element to nothing but its children still
+ * paint, so every hidden item's label piled up at the top of the list.
+ * `overflow-hidden` clips them to that nothing. Its content stays: removed
+ * with an `@if`, the projected content didn't come back on iOS when the item
+ * showed again. It's hidden from screen readers meanwhile.
  */
 @Component({
   selector: 'ui-select-item',
@@ -209,28 +257,45 @@ export class UiSelect {
     '[attr.accessibility-element]': "'true'",
     '[attr.accessibility-traits]': "'button'",
     '[attr.accessibility-label]': 'label()',
+    '[attr.accessibility-elements-hidden]': 'shown() ? null : true',
     '(bindtap)': 'onTap()',
   },
   template: `
+    <ng-content />
     <text [class]="labelClass()">{{ label() }}</text>
     @if (isSelected()) {
-      <svg [attr.content]="checkSvg" style="width: 16px; height: 16px;" />
+      <svg [attr.content]="checkSvg()" style="width: 16px; height: 16px;" />
     }
   `,
 })
 export class UiSelectItem {
   readonly #select = inject(UiSelect);
   readonly #host: BaseLynxElement = inject(ElementRef).nativeElement;
+  readonly #resolveColor = injectIconColor();
 
   readonly itemValue = input.required<string>({ alias: 'value' });
   readonly label = input.required<string>();
   readonly userClass = input<string>('', { alias: 'class' });
 
-  protected readonly checkSvg = CHECK_SVG;
+  /**
+   * The check in the text's color, resolved and written into the markup: an
+   * SVG can't read a text class or a CSS variable, and Lynx's native `<svg>`
+   * reads only a literal `current-color` (see icon-theme.ts), so a
+   * `currentColor` check didn't follow the theme, such as in dark mode.
+   */
+  protected readonly checkSvg = computed(() =>
+    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+    CHECK_SVG.split('currentColor').join(
+      this.#resolveColor('var(--foreground)'),
+    ),
+  );
 
   protected readonly isSelected = computed(
     () => this.#select.value() === this.itemValue(),
   );
+
+  /** Whether the item shows for the search text (see UiSelect.shows). */
+  protected readonly shown = computed(() => this.#select.shows(this.label()));
 
   /**
    * The chosen item is `selected` to a screen reader, as its check mark
@@ -245,13 +310,18 @@ export class UiSelectItem {
 
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center px-4 py-3 flex justify-between',
+      // At least 48px tall: Android's 48dp touch target, which covers
+      // iOS's 44pt. In px, as Lynx's rem is 14px.
+      'min-h-[48px] flex-row items-center gap-3 px-4 py-3 flex',
       this.isSelected() && 'bg-accent',
+      !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );
 
-  protected readonly labelClass = computed(() => cn('text-sm text-foreground'));
+  protected readonly labelClass = computed(() =>
+    cn('flex-1 text-sm text-foreground'),
+  );
 
   protected onTap(): void {
     this.#select.select(this.itemValue());

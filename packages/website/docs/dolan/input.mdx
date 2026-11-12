@@ -105,16 +105,17 @@ export class App {
 
 ### UiInput
 
-| Input         | Type      | Default  | Description                                              |
-| ------------- | --------- | -------- | -------------------------------------------------------- |
-| `value`       | `string`  | `''`     | The text. Supports `[(value)]`.                          |
-| `label`       | `string`  | `''`     | Text above the field. Hidden when empty.                 |
-| `placeholder` | `string`  | `''`     | Hint shown while the field is empty.                     |
-| `type`        | `string`  | `'text'` | The `<input>` element's type, such as `password`.        |
-| `helperText`  | `string`  | `''`     | Muted text under the field. Hidden while `error` is set. |
-| `error`       | `string`  | `''`     | Error text. Turns the ring red and shakes the field.     |
-| `disabled`    | `boolean` | `false`  | Dims the field and ignores typing.                       |
-| `class`       | `string`  | `''`     | Extra Tailwind classes for the outer block.              |
+| Input                 | Type      | Default  | Description                                                 |
+| --------------------- | --------- | -------- | ----------------------------------------------------------- |
+| `value`               | `string`  | `''`     | The text. Supports `[(value)]`.                             |
+| `label`               | `string`  | `''`     | Text above the field. Hidden when empty.                    |
+| `accessibility-label` | `string`  | `''`     | The field's name for screen readers when it has no `label`. |
+| `placeholder`         | `string`  | `''`     | Hint shown while the field is empty.                        |
+| `type`                | `string`  | `'text'` | The `<input>` element's type, such as `password`.           |
+| `helperText`          | `string`  | `''`     | Muted text under the field. Hidden while `error` is set.    |
+| `error`               | `string`  | `''`     | Error text. Turns the ring red and shakes the field.        |
+| `disabled`            | `boolean` | `false`  | Dims the field and ignores typing.                          |
+| `class`               | `string`  | `''`     | Extra Tailwind classes for the outer block.                 |
 
 | Output        | Type     | Description                                         |
 | ------------- | -------- | --------------------------------------------------- |
@@ -127,6 +128,7 @@ export class App {
 ## Accessibility
 
 - **A screen reader reads the field with its `label`,** which becomes the native `<input>`'s `accessibility-label`, and then the text in it. The label above the field isn't a stop of its own, so it isn't read twice.
+- **A field without a `label` takes its name from `accessibility-label`,** for a field under a label of your own, such as one of several fields under one heading. Without either, a screen reader reads only the placeholder. `label` wins when both are set.
 - **Tests find it by its label too:** `getByRole('textbox', { name: 'Email' })` returns the `<input>`. A password field has no ARIA role, so find it with `getByAccessibilityLabel('Password')`.
 
 ## Related

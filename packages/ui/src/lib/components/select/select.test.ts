@@ -7,7 +7,9 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSelect, UiSelectItem } from './select';
 
 @Component({
@@ -79,6 +81,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 /**
@@ -100,6 +103,13 @@ const waitForClose = async (overlay: Element) => {
 };
 
 describe('UiSelect', () => {
+  it('is 48px tall, a touch target on Android and iOS alike', async () => {
+    const { field, trigger } = await renderSelect();
+    expect(field.classList).toContain('h-[48px]');
+    // The trigger fills the field and centers its text.
+    expect(trigger.classList).toContain('items-center');
+  });
+
   it('shows the placeholder, muted, until a value is chosen', async () => {
     const { triggerText, column } = await renderSelect();
     expect(triggerText().textContent).toBe('Pick a fruit');
@@ -226,7 +236,10 @@ describe('UiSelectItem', () => {
     host.value.set('pear');
     await waitForUpdate();
     expect(item('Pear').classList).toContain('bg-accent');
-    expect(item('Pear').querySelector('svg')).not.toBeNull();
+    // In the text's color, which the SVG can't read for itself.
+    expect(
+      item('Pear').querySelector('svg')!.getAttribute('content'),
+    ).toContain(ICON_LIGHT_COLORS['foreground']);
     expect(item('Apple').classList).not.toContain('bg-accent');
     expect(item('Apple').querySelector('svg')).toBeNull();
   });
@@ -235,6 +248,8 @@ describe('UiSelectItem', () => {
     const { item } = await renderSelect();
     expect(item('Pear').classList).toContain('font-bold');
     expect(item('Pear').classList).toContain('px-4');
+    // A touch target's height on Android and iOS alike.
+    expect(item('Pear').classList).toContain('min-h-[48px]');
   });
 });
 
@@ -336,5 +351,241 @@ describe('UiSelect accessibility', () => {
     const { getByRole } = await renderSelect();
     const trigger = getByRole('button', { name: 'Pick a fruit' });
     expect(trigger.hasAttribute('accessibility-value')).toBe(false);
+  });
+});
+
+describe('UiSelect search', () => {
+  @Component({
+    imports: [UiSelect, UiSelectItem, LYNX_ELEMENTS],
+    template: `
+      <ui-select
+        label="Fruit"
+        searchable
+        [filter]="filter()"
+        [emptyText]="emptyText()"
+        [(value)]="value"
+        [(query)]="query"
+      >
+        <ui-select-item value="apple" label="Apple" />
+        <ui-select-item value="pear" label="Pear">
+          <text class="pear-glyph">P</text>
+        </ui-select-item>
+        <ui-select-item value="pineapple" label="Pineapple" />
+      </ui-select>
+    `,
+  })
+  class SearchHost {
+    readonly value = signal('');
+    readonly query = signal('');
+    readonly filter = signal(true);
+    readonly emptyText = signal('No results');
+  }
+
+  /** The phone the sheet is laid out on: an iPhone 18 Pro, in px. */
+  const SCREEN = 874;
+  /** The screen below the status bar, which the large detent fills. */
+  const LARGE = 812;
+
+  const renderSearch = async () => {
+    const result = await render(SearchHost);
+    const { container, getByRole } = result;
+    const overlay = container.querySelector<HTMLElement>('overlay')!;
+    const backdrop = overlay.querySelector('view')!;
+    const panel = backdrop.children[1] as HTMLElement;
+    // Lynx reports the screen's layout after the first frame; jsdom never
+    // does, so the test reports it.
+    fireEvent.layoutchange(backdrop, { detail: { height: SCREEN } });
+    fireEvent.layoutchange(backdrop.children[0]!, {
+      detail: { height: LARGE },
+    });
+    await waitForUpdate();
+    return {
+      ...result,
+      host: result.componentRef.instance as SearchHost,
+      overlay,
+      panel,
+      field: () => overlay.querySelector('input')!,
+      list: () => overlay.querySelector('scroll-view')!,
+      item: (label: string) => within(overlay).getByText(label).parentElement!,
+      /** An item's host, found by its name, which it keeps while hidden. */
+      row: (label: string) =>
+        overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
+      openSheet: async () => {
+        fireEvent.tap(getByRole('button', { name: 'Fruit' }));
+        await waitForOpen();
+      },
+      type: async (text: string) => {
+        fireEvent.input(overlay.querySelector('input')!, {
+          detail: { value: text },
+        });
+        await waitForUpdate();
+      },
+    };
+  };
+
+  it('opens at full height with a search field above a list that fills it', async () => {
+    const { panel, field, list, openSheet } = await renderSearch();
+    await openSheet();
+    expect(panel.style.getPropertyValue('height')).toBe(`${LARGE}px`);
+    expect(field().getAttribute('placeholder')).toBe('Search');
+    expect(
+      field().compareDocumentPosition(list()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(list().classList).toContain('flex-1');
+    expect(list().getAttribute('style') ?? '').not.toContain('max-height');
+  });
+
+  it("hides the items whose label doesn't contain the query, ignoring case", async () => {
+    const { host, row, type, openSheet } = await renderSearch();
+    await openSheet();
+    await type(' APP ');
+    expect(host.query()).toBe(' APP ');
+    // The query is trimmed: "Apple" and "Pineapple" hold "app", "Pear"
+    // doesn't.
+    expect(row('Apple').classList).not.toContain('hidden');
+    expect(row('Pineapple').classList).not.toContain('hidden');
+    expect(row('Pear').classList).toContain('hidden');
+    // `hidden` and the row's own `flex` would fight: only one stays.
+    expect(row('Pear').classList).not.toContain('flex');
+  });
+
+  // On iOS a `display: none` element's children still paint, so a hidden
+  // item's label and content drew on top of the list. The clip stops that,
+  // and the content stays: removed with an `@if`, the projected glyph didn't
+  // come back on iOS.
+  it('clips a hidden item, keeps its content, and hides it from screen readers', async () => {
+    const { overlay, row, type, openSheet } = await renderSearch();
+    await openSheet();
+    const glyph = overlay.querySelector('.pear-glyph')!;
+    await type('app');
+    expect(row('Pear').classList).toContain('hidden');
+    expect(row('Pear').classList).toContain('overflow-hidden');
+    expect(row('Pear').getAttribute('accessibility-elements-hidden')).toBe(
+      'true',
+    );
+    expect(row('Apple').classList).not.toContain('overflow-hidden');
+    expect(row('Apple').hasAttribute('accessibility-elements-hidden')).toBe(
+      false,
+    );
+    // Its label and glyph are still in it, the same elements as before.
+    expect(within(row('Pear')).getByText('Pear')).toBeTruthy();
+    expect(glyph.parentElement).toBe(row('Pear'));
+
+    // Shown again, nothing of it has changed but the host's classes.
+    await type('');
+    expect(row('Pear').classList).not.toContain('hidden');
+    expect(row('Pear').classList).not.toContain('overflow-hidden');
+    expect(overlay.querySelector('.pear-glyph')).toBe(glyph);
+    expect(row('Pear').hasAttribute('accessibility-elements-hidden')).toBe(
+      false,
+    );
+  });
+
+  it('shows the empty text while no item shows', async () => {
+    const { host, overlay, type, openSheet } = await renderSearch();
+    await openSheet();
+    expect(within(overlay).queryByText('No results')).toBeNull();
+    await type('kiwi');
+    expect(within(overlay).getByText('No results')).toBeTruthy();
+
+    host.emptyText.set('Nothing matches');
+    await waitForUpdate();
+    expect(within(overlay).getByText('Nothing matches')).toBeTruthy();
+  });
+
+  it('clears the query once the sheet has closed, so it opens on every item', async () => {
+    const { host, overlay, item, type, openSheet } = await renderSearch();
+    await openSheet();
+    await type('pear');
+    fireEvent.tap(item('Pear'));
+    expect(host.value()).toBe('pear');
+    await waitForClose(overlay);
+    expect(host.query()).toBe('');
+    expect(item('Apple').classList).not.toContain('hidden');
+  });
+
+  it('takes the keyboard from the search field as the sheet starts closing', async () => {
+    const invoke = vi.spyOn(
+      globalThis as unknown as {
+        __InvokeUIMethod: (element: unknown, method: string) => void;
+      },
+      '__InvokeUIMethod',
+    );
+    const { overlay, openSheet } = await renderSearch();
+    await openSheet();
+    expect(invoke.mock.calls.map(([, method]) => method)).not.toContain('blur');
+
+    fireEvent.tap(overlay.querySelector('view')!);
+    await waitForUpdate();
+    expect(invoke.mock.calls.map(([, method]) => method)).toContain('blur');
+  });
+
+  it('leaves the items to the app while filter is off', async () => {
+    const { host, overlay, item, type, openSheet } = await renderSearch();
+    host.filter.set(false);
+    await openSheet();
+    await type('kiwi');
+    expect(item('Apple').classList).not.toContain('hidden');
+    expect(within(overlay).queryByText('No results')).toBeNull();
+  });
+
+  it('makes room under the list for the keyboard while the field has it', async () => {
+    vi.stubGlobal('SystemInfo', {
+      platform: 'iOS',
+      osVersion: '26.0',
+      pixelWidth: 1206,
+      pixelHeight: 2622,
+      pixelRatio: 3,
+    });
+    const { field, list, openSheet } = await renderSearch();
+    await openSheet();
+    const spacer = () =>
+      list().querySelector<HTMLElement>(':scope > view > view:last-child')!;
+    expect(spacer().style.getPropertyValue('height')).toBe('0px');
+
+    fireEvent.focus(field());
+    fireLynxEvent(field(), 'keyboardheightchange', {
+      detail: { height: 336 },
+    });
+    await waitForUpdate();
+    expect(spacer().style.getPropertyValue('height')).toBe('336px');
+  });
+});
+
+describe('UiSelect projected content', () => {
+  @Component({
+    imports: [UiSelect, UiSelectItem, LYNX_ELEMENTS],
+    template: `
+      <ui-select label="Icon" value="house">
+        <text leading class="chosen-glyph">⌂</text>
+        <ui-select-item value="house" label="House">
+          <text class="item-glyph">⌂</text>
+        </ui-select-item>
+      </ui-select>
+    `,
+  })
+  class GlyphHost {}
+
+  it('draws content marked leading in the field, before its text', async () => {
+    const { container, getByRole } = await render(GlyphHost);
+    const trigger = getByRole('button', { name: 'Icon' });
+    const glyph = container.querySelector('.chosen-glyph')!;
+    expect(glyph.parentElement).toBe(trigger);
+    expect(
+      glyph.compareDocumentPosition(within(trigger).getByText('House')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("draws an item's content before its label", async () => {
+    const { container } = await render(GlyphHost);
+    const overlay = container.querySelector('overlay')!;
+    const glyph = overlay.querySelector('.item-glyph')!;
+    const label = within(overlay).getByText('House');
+    expect(glyph.parentElement).toBe(label.parentElement);
+    expect(
+      glyph.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

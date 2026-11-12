@@ -58,9 +58,9 @@ Two siblings with `margin-bottom: 16px` and `margin-top: 8px` produce 24px of sp
 
 Not `content-box`. Width/height include padding and border.
 
-### `display: none` text still draws on iOS
+### `display: none` content still draws on iOS
 
-Lynx shrinks a hidden element and everything in it to 0×0, but on iOS a `<text>` inside still draws its glyphs, spilling out from the element's top-left corner. Give the element `overflow: hidden` while it's hidden. HTML's `hidden` attribute (`[hidden]="!open()"`) does both.
+Lynx shrinks a hidden element and everything in it to 0×0, but on iOS what's inside still draws: a `<text>`'s glyphs and an `<svg>` spill out from the element's top-left corner, and several hidden elements pile up there on top of each other. Give the element `overflow: hidden` while it's hidden (Tailwind's `hidden overflow-hidden`). HTML's `hidden` attribute (`[hidden]="!open()"`) does both. Don't remove the content with an `@if` instead where it's projected: on iOS, `<ng-content>` inside a toggled `@if` can come back without the projected content (issue #380).
 
 ### No CSS inheritance
 
@@ -180,6 +180,8 @@ Share with `LynxShare`: `await sharing.share({ files: [{ blob, name: 'photo.jpg'
 ### No `<select>`, `<input type="checkbox">`, `<input type="radio">`
 
 Build custom selection UI with `<view>` and state. Mark the chosen option for screen readers with `[lynxAccessibilityTraits]="{ selected: chosen() }"`.
+
+Or add ready-made controls with `npx @blotch/dolan add <name>`: `checkbox`, `radio-group`, and `select`, whose `<ui-select [(value)]>` opens a bottom sheet of `<ui-select-item value label>`s. Give a long list `searchable` for a search field that filters the items by label, or `[filter]="false"` with `[(query)]` to show results of your own, such as a server's. `multi-select` adds `<ui-multi-select [(value)]>` (a `string[]`), with a checkbox per `<ui-multi-select-item>` and the chosen items as chips in the field, and the same search.
 
 ### No `localStorage` / `sessionStorage`
 

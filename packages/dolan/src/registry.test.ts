@@ -66,12 +66,28 @@ describe('resolveDependencies', () => {
     expect(resolved).toEqual(['icon', 'empty-state']);
   });
 
-  it('resolves select with its bottom-sheet dependency', () => {
+  it('resolves select with its bottom-sheet and search-field dependencies', () => {
     expect(resolveDependencies(['select'])).toEqual([
       'icon',
       'glass',
       'bottom-sheet',
+      'search-field',
       'select',
+    ]);
+  });
+
+  it('resolves multi-select with the select whose sheet it shares', () => {
+    expect(resolveDependencies(['multi-select'])).toEqual([
+      'badge',
+      'icon',
+      'spinner',
+      'glass',
+      'button',
+      'checkbox',
+      'bottom-sheet',
+      'search-field',
+      'select',
+      'multi-select',
     ]);
   });
 
@@ -100,6 +116,7 @@ describe('resolveDependencies', () => {
       'icon',
       'glass',
       'bottom-sheet',
+      'search-field',
       'select',
       'sheet',
     ]);

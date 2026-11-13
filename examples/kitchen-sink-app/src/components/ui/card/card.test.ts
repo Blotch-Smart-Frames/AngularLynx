@@ -27,8 +27,8 @@ import {
   ],
   template: `
     <ui-card [pressable]="pressable()" class="w-full">
-      <ui-card-header class="gap-1">
-        <ui-card-title class="text-lg">Title</ui-card-title>
+      <ui-card-header class="gap-3">
+        <ui-card-title class="text-xl">Title</ui-card-title>
         <ui-card-description class="italic">Desc</ui-card-description>
       </ui-card-header>
       <ui-card-content class="pt-2"><text>Body</text></ui-card-content>
@@ -94,8 +94,30 @@ describe('UiCard', () => {
     const { container, getByText } = await render(CardHost);
     expect(cardView(container).getAttribute('class')).toContain('bg-card');
     expect(cardView(container).getAttribute('class')).toContain('w-full');
-    expect(getByText('Title').getAttribute('class')).toContain('text-lg');
+    // A class that sets what the part sets takes its place.
+    expect(getByText('Title').getAttribute('class')).toContain('text-xl');
+    expect(getByText('Title').getAttribute('class')).not.toContain('text-lg');
+    expect(getByText('Title').parentElement!.classList).toContain('gap-3');
+    expect(getByText('Title').parentElement!.classList).not.toContain('gap-1');
     expect(getByText('Desc').getAttribute('class')).toContain('italic');
+  });
+
+  it("has a phone's proportions: 16px corners and padding", async () => {
+    // The web's 24px of padding left a narrow screen too little room.
+    const { container, getByText } = await render(CardHost);
+    expect(cardView(container).classList).toContain('rounded-xl');
+    const header = getByText('Title').parentElement!;
+    for (const name of ['flex-col', 'p-4']) {
+      expect(header.classList).toContain(name);
+    }
+    // The body sits under the header, with no padding between them.
+    const content = getByText('Body').parentElement!;
+    expect(content.classList).toContain('p-4');
+    // Actions sit in a row, 8px apart.
+    const footer = getByText('Actions').parentElement!;
+    for (const name of ['flex-row', 'items-center', 'gap-2', 'p-4', 'pt-0']) {
+      expect(footer.classList).toContain(name);
+    }
   });
 
   // Angular gives a component's host every static attribute written on it,
@@ -108,15 +130,17 @@ describe('UiCard', () => {
     // The title is a single <text>, with the class.
     expect(getByText('Title').tagName.toLowerCase()).toBe('text');
     expect(getByText('Title').getAttribute('class')).toContain('mb-2');
+    // 18px: a card's title heads a group under the screen's own title.
+    expect(getByText('Title').classList).toContain('text-lg');
   });
 
   it("lets a part's class override its own", async () => {
     const { getByText } = await render(StaticClassHost);
     const tight = getByText('Tight').parentElement!;
     expect(tight.getAttribute('class')).toContain('p-2');
-    expect(tight.getAttribute('class')).not.toContain('p-6');
+    expect(tight.getAttribute('class')).not.toContain('p-4');
     const body = getByText('Body').parentElement!;
-    expect(body.getAttribute('class')).toContain('p-6');
+    expect(body.getAttribute('class')).toContain('p-4');
     expect(body.getAttribute('class')).toContain('pt-6');
     expect(body.getAttribute('class')).not.toContain('pt-0');
   });

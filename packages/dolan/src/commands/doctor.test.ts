@@ -138,7 +138,9 @@ describe('doctorCommand', () => {
     );
     writeFileSync(
       join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
-      '',
+      // The root font size the components are sized for, as dolan's theme
+      // has it.
+      'page { font-size: 16px; }',
     );
     writeFileSync(
       join(fixture.dir, 'tailwind.config.ts'),
@@ -759,6 +761,66 @@ describe('doctorCommand Tailwind', () => {
     // Without a version, there's no setup to check.
     expect(await logged('warn')).not.toContainEqual(
       expect.stringMatching(/Tailwind config|tailwind\.css not imported/),
+    );
+  });
+});
+
+describe('doctorCommand theme root font size', () => {
+  /**
+   * Writes the theme's default.css, or none, then runs doctor.
+   */
+  const runDoctor = async (css?: string) => {
+    fixture = createFixture({ config: DEFAULT_CONFIG });
+    writePackageJson(fixture.dir, { dependencies: FULL_ANGULAR_DEPS });
+    if (css !== undefined) {
+      writeFileSync(
+        join(fixture.dir, DEFAULT_CONFIG.aliases.theme, 'default.css'),
+        css,
+      );
+    }
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.dir);
+
+    const { doctorCommand } = await import('./doctor');
+    await expect(doctorCommand()).rejects.toThrow('process.exit(0)');
+    return import('@clack/prompts');
+  };
+
+  it('passes when the theme sets a font size on page', async () => {
+    const p = await runDoctor(
+      'page {\n  font-size: 16px;\n  --rem-unit: 16px;\n  --radius: 12px;\n}',
+    );
+
+    expect(p.log.success).toHaveBeenCalledWith(
+      'Theme sets the root font size the components are sized for',
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('font size'),
+    );
+  });
+
+  // A theme copied before the theme set it, kept by dolan update.
+  it('warns when it sets none, with the lines to add', async () => {
+    const p = await runDoctor(
+      // A comment that mentions it, and a rule for another element, don't
+      // count.
+      '/* page { font-size: 16px; } */\npage { --radius: 8px; }\ntext { font-size: 16px; }',
+    );
+
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /default\.css.*no font size.*page.*font-size: 16px; --rem-unit: 16px;/,
+      ),
+    );
+  });
+
+  it('says nothing when the theme has no default.css', async () => {
+    const p = await runDoctor();
+
+    expect(p.log.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('root font size'),
+    );
+    expect(p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('font size'),
     );
   });
 });

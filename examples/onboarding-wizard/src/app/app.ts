@@ -32,14 +32,14 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
     UiLabel,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
-      <view class="flex-col gap-6 p-6 flex">
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
+      <view class="flex-col gap-6 p-4 flex">
         <view class="flex-col gap-2 flex">
           <view class="flex-row flex justify-between">
-            <text class="text-sm text-zinc-500">
+            <text class="text-sm text-muted-foreground">
               Step {{ step() }} of {{ totalSteps }}
             </text>
-            <text class="text-sm text-zinc-500">
+            <text class="text-sm text-muted-foreground">
               {{ Math.round(progress()) }}%
             </text>
           </view>
@@ -49,10 +49,10 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
         @if (step() === 1) {
           <view class="flex-col items-center gap-3 py-8 flex">
             <text class="text-[48px]">👋</text>
-            <text class="text-[26px] font-bold text-zinc-900 text-center">
+            <text class="text-[26px] font-bold text-foreground text-center">
               Welcome to AngularLynx
             </text>
-            <text class="text-sm leading-5 text-zinc-500 text-center">
+            <text class="text-sm leading-5 text-muted-foreground text-center">
               Let's personalize your experience. This only takes a minute.
             </text>
           </view>
@@ -60,14 +60,14 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
 
         @if (step() === 2) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">
+            <text class="text-[22px] font-bold text-foreground">
               What's your role?
             </text>
             <ui-radio-group [(value)]="role">
               <view class="flex-col gap-2.5 flex">
                 @for (opt of roles; track opt.value) {
                   <view
-                    class="flex-row items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
+                    class="flex-row items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 flex"
                   >
                     <!--
                       No [id] here: Lynx has no HTML-style label/for-id association, so
@@ -79,7 +79,9 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
                     <ui-radio-group-item [value]="opt.value" />
                     <view class="flex-1 flex-col gap-0.5 flex">
                       <ui-label>{{ opt.label }}</ui-label>
-                      <text class="text-xs text-zinc-400">{{ opt.desc }}</text>
+                      <text class="text-xs text-muted-foreground">{{
+                        opt.desc
+                      }}</text>
                     </view>
                   </view>
                 }
@@ -90,22 +92,24 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
 
         @if (step() === 3) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">
+            <text class="text-[22px] font-bold text-foreground">
               What are you building?
             </text>
-            <text class="text-sm text-zinc-500">Select all that apply.</text>
+            <text class="text-sm text-muted-foreground"
+              >Select all that apply.</text
+            >
             <view class="flex-col gap-2.5 flex">
               @for (opt of interests; track opt.value) {
                 @let selected = selectedInterests().includes(opt.value);
                 <!-- The unselected colors are bound too, not static: with both
-                     border colors on the row, the stylesheet's order decides,
-                     and the selected ones lose. -->
+                     border colors on the row, the stylesheet's order decides
+                     which shows, not the selection. -->
                 <view
                   class="flex-row items-center gap-3 rounded-xl border px-4 py-3.5 flex"
-                  [class.border-zinc-200]="!selected"
-                  [class.bg-white]="!selected"
+                  [class.border-border]="!selected"
+                  [class.bg-card]="!selected"
                   [class.border-indigo-500]="selected"
-                  [class.bg-indigo-50]="selected"
+                  [class.bg-indigo-500/10]="selected"
                   (bindtap)="toggleInterest(opt.value)"
                 >
                   <!-- No (checkedChange) here: a tap on the box bubbles up to
@@ -113,10 +117,12 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
                        interest twice and leave it unchanged. -->
                   <ui-checkbox [checked]="selected" />
                   <view class="flex-1 flex-col gap-0.5 flex">
-                    <text class="text-sm font-medium text-zinc-900">{{
+                    <text class="text-sm font-medium text-foreground">{{
                       opt.label
                     }}</text>
-                    <text class="text-xs text-zinc-400">{{ opt.desc }}</text>
+                    <text class="text-xs text-muted-foreground">{{
+                      opt.desc
+                    }}</text>
                   </view>
                 </view>
               }
@@ -126,7 +132,7 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
 
         @if (step() === 4) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">
+            <text class="text-[22px] font-bold text-foreground">
               You're all set! 🎉
             </text>
             <ui-card>
@@ -136,15 +142,15 @@ type Role = 'developer' | 'designer' | 'manager' | 'founder';
               <ui-card-content>
                 <view class="flex-col gap-3 flex">
                   <view class="flex-row flex justify-between">
-                    <text class="text-sm text-zinc-500">Role</text>
-                    <text class="text-sm font-medium text-zinc-900">{{
+                    <text class="text-sm text-muted-foreground">Role</text>
+                    <text class="text-sm font-medium text-foreground">{{
                       roleName()
                     }}</text>
                   </view>
                   <ui-separator />
                   <view class="flex-col gap-1 flex">
-                    <text class="text-sm text-zinc-500">Interests</text>
-                    <text class="text-sm font-medium text-zinc-900">{{
+                    <text class="text-sm text-muted-foreground">Interests</text>
+                    <text class="text-sm font-medium text-foreground">{{
                       interestNames()
                     }}</text>
                   </view>

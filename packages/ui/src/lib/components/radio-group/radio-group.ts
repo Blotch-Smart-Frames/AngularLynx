@@ -37,7 +37,8 @@ export class UiRadioGroup {
   readonly changed = output<string>();
 
   protected readonly containerClass = computed(() =>
-    cn('flex-col gap-2 flex', this.userClass()),
+    // The items are 44px rows already, so they sit close, as a list's do.
+    cn('flex-col gap-1 flex', this.userClass()),
   );
 
   select(value: string): void {
@@ -51,8 +52,11 @@ export class UiRadioGroup {
   selector: 'ui-radio-group-item',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The row is the target, label included: 44px tall, and 48px with its
+  // hit-slop, Android's 48dp touch target.
   host: {
     '[class]': 'itemClass()',
+    'hit-slop': '2px',
     '(bindtap)': 'select()',
   },
   template: `
@@ -107,24 +111,31 @@ export class UiRadioGroupItem {
 
   protected readonly itemClass = computed(() =>
     cn(
-      'h-11 flex-row items-center gap-3 flex',
+      'min-h-11 flex-row items-center gap-3 flex',
       this.#group.disabled() && 'opacity-50',
       this.userClass(),
     ),
   );
 
+  /**
+   * The ring, in px as ui-checkbox's box is, and the same size beside it.
+   * Unselected, its edge is the muted foreground: it stands out from the
+   * page without the weight of the primary, kept for the selected one.
+   */
   protected readonly circleClass = computed(() =>
     cn(
-      'h-5 w-5 items-center rounded-full border flex justify-center',
-      this.isSelected() ? 'border-primary' : 'border-primary',
+      'h-[22px] w-[22px] shrink-0 items-center rounded-full border-[1.5px] flex justify-center',
+      this.isSelected() ? 'border-primary' : 'border-muted-foreground',
     ),
   );
 
   protected readonly dotClass = computed(() =>
-    cn('h-2.5 w-2.5 rounded-full bg-primary'),
+    cn('h-[10px] w-[10px] rounded-full bg-primary'),
   );
 
-  protected readonly labelClass = computed(() => cn('text-sm text-foreground'));
+  protected readonly labelClass = computed(() =>
+    cn('text-base text-foreground'),
+  );
 
   select(): void {
     if (this.#group.disabled()) return;

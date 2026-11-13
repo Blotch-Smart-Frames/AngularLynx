@@ -7,8 +7,11 @@ import { cn } from '@blotch/dolan/utils/cn';
 export const typographyVariants = cva('', {
   variants: {
     variant: {
-      h1: 'text-4xl font-bold text-foreground',
-      h2: 'text-3xl font-semibold text-foreground',
+      // Large text is tracked tighter: letters read further apart as they
+      // grow. iOS's system font does it by itself; Roboto and a browser's
+      // fonts don't.
+      h1: 'text-4xl font-bold tracking-tight text-foreground',
+      h2: 'text-3xl font-semibold tracking-tight text-foreground',
       h3: 'text-2xl font-semibold text-foreground',
       h4: 'text-xl font-semibold text-foreground',
       p: 'text-base text-foreground',

@@ -1,5 +1,18 @@
-import { computed, inject, Injectable } from '@angular/core';
+import {
+  computed,
+  type EnvironmentProviders,
+  inject,
+  Injectable,
+  provideEnvironmentInitializer,
+} from '@angular/core';
 import { LynxGlobalData } from '../data-flow/global-data';
+import {
+  colorSchemePreference,
+  type LynxAppearance,
+  type LynxColorScheme,
+  setColorSchemePreference,
+  systemThemeOf,
+} from './color-scheme';
 
 /**
  * The Material 3 color roles that dynamic color gives, by Material's names.
@@ -92,20 +105,51 @@ const sameColors = (a: DynamicColors | null, b: DynamicColors | null) =>
     ));
 
 /**
- * Provides reactive access to the current Lynx theme ('Dark' or 'Light').
+ * Sets what the app draws in from its first frame, in `app.config.ts`:
+ * `'light'` or `'dark'` to keep to one whatever the device says, or
+ * `'system'`, the default, to follow the device.
  *
- * The theme is driven by `lynx.__globalProps.theme`, which the native host
- * sets based on the OS appearance setting. It updates reactively when the
- * host calls `updateGlobalProps`.
+ * ```ts
+ * // An app with no dark design yet.
+ * providers: [provideColorScheme('light')]
+ * ```
+ *
+ * For a choice the user makes while the app runs, such as an Appearance
+ * setting, call `LynxTheme.setColorScheme()` instead.
+ */
+export const provideColorScheme = (
+  scheme: LynxColorScheme,
+): EnvironmentProviders =>
+  provideEnvironmentInitializer(() => setColorSchemePreference(scheme));
+
+/**
+ * The device's light or dark appearance, and the one the app draws in.
+ *
+ * The app follows the device by default. While it's drawn dark, the `page`
+ * element has the `dark` class, so a stylesheet's dark values go under
+ * `page.dark` and nothing in the app has to switch them:
+ *
+ * ```css
+ * page { --surface: #ffffff; }
+ * page.dark { --surface: #1a1a1a; }
+ * ```
+ *
+ * The device's theme comes from `lynx.__globalProps.theme`, which the native
+ * host sets from the OS appearance setting and sends again when it changes.
+ * In the web preview, where no host sends one, it's the browser's
+ * `prefers-color-scheme`.
  *
  * @usageNotes
  * ```typescript
  * const theme = inject(LynxTheme);
  *
- * // Reactive in templates
- * template: `<text [style.color]="theme.isDarkMode() ? '#fff' : '#000'">Hello</text>`
+ * // What the app is drawn in, for what CSS can't reach, such as an image.
+ * readonly logo = computed(() =>
+ *   theme.appearance() === 'dark' ? 'logo-dark.png' : 'logo.png',
+ * );
  *
- * // Or use CSS variables (preferred for styling — see docs/guide/dark-mode.mdx)
+ * // An Appearance setting: 'system', 'light' or 'dark'.
+ * theme.setColorScheme('dark');
  * ```
  */
 @Injectable({ providedIn: 'root' })
@@ -113,19 +157,45 @@ export class LynxTheme {
   readonly #globalData = inject(LynxGlobalData);
 
   /**
-   * The current theme: `'Dark'` or `'Light'`. Reactive — updates when global props change.
+   * The device's theme: `'Dark'` or `'Light'`. Reactive: it updates when the
+   * host sends new global props, or the browser's preference changes.
    */
-  readonly theme = computed(() => {
-    const value = (this.#globalData.globalData() as Record<string, unknown>)[
-      'theme'
-    ];
-    return (value as 'Dark' | 'Light') ?? 'Light';
+  readonly theme = computed(() => systemThemeOf(this.#globalData.globalData()));
+
+  /**
+   * Whether the device is in dark mode. Reactive. The app may be drawn
+   * otherwise, if it chose a color scheme itself: see {@link appearance}.
+   */
+  readonly isDarkMode = computed(() => this.theme() === 'Dark');
+
+  /**
+   * The app's choice: `'system'` (the default) follows the device, and
+   * `'light'` and `'dark'` keep to one. Set it with {@link setColorScheme},
+   * or from the start with `provideColorScheme()`.
+   */
+  readonly colorScheme = colorSchemePreference;
+
+  /**
+   * The appearance the app is drawn in, `'light'` or `'dark'`: its own
+   * choice, or the device's while that's `'system'`. The `page` element has
+   * the `dark` class while it's `'dark'`. Read it for what CSS can't follow,
+   * such as an image or the colors of a chart.
+   */
+  readonly appearance = computed<LynxAppearance>(() => {
+    const scheme = this.colorScheme();
+    if (scheme !== 'system') return scheme;
+    return this.isDarkMode() ? 'dark' : 'light';
   });
 
   /**
-   * Whether the current theme is dark mode. Reactive.
+   * Draws the app light or dark whatever the device says, or with
+   * `'system'` follows the device again. It lasts until the app closes:
+   * store the user's choice, such as with `LynxLocalStorage`, and set it
+   * again at the next start.
    */
-  readonly isDarkMode = computed(() => this.theme() === 'Dark');
+  setColorScheme(scheme: LynxColorScheme): void {
+    setColorSchemePreference(scheme);
+  }
 
   /**
    * The colors Android 12 and later take from the user's wallpaper (Material

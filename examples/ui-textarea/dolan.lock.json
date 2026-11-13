@@ -6,19 +6,33 @@
         "hash": "03fc5e55016e71db"
       },
       "textarea.ts": {
-        "hash": "3d23cd8cea627bd7"
+        "hash": "643aacbdd6cc8455"
+      }
+    },
+    "icon": {
+      "icon-theme.ts": {
+        "hash": "50e014b3350839f8"
+      },
+      "icon.ts": {
+        "hash": "75bd7cf45ba6711e"
+      },
+      "icons.ts": {
+        "hash": "2d54632a5080d6fc"
+      },
+      "index.ts": {
+        "hash": "d175df85291c8009"
       }
     }
   },
   "theme": {
     "default.css": {
-      "hash": "df5b6172b99d88e0"
+      "hash": "9842dcdbd68de832"
     },
     "tailwind-plugin.ts": {
-      "hash": "0706a8e28039a2ca"
+      "hash": "e94a15f7b9c1b7dd"
     },
     "dark.css": {
-      "hash": "2d60711510067786"
+      "hash": "890b0c7dc60a5ac3"
     }
   }
 }

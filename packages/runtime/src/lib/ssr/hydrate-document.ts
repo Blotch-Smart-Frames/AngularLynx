@@ -4,6 +4,7 @@ import { globalEvents } from '../global-events';
 import { hostElementOf } from '../lynx-document/host-elements';
 import { INLINE_FLOW_TAGS, WEB_TEXT_TAGS } from '../lynx-document/web-tags';
 import { ANONYMOUS_TEXT_CLASS } from '../lynx-element/text-flow';
+import { followColorScheme } from '../lynx-document/page-color-scheme';
 import { followSafeAreaInsets } from '../lynx-document/page-safe-area';
 import type { ElementRef } from '../types/lynx';
 
@@ -82,6 +83,8 @@ export class LynxHydrateDocument implements LynxDocumentBase {
     globalEvents().attach(page, (id) => LynxElement.byUniqueId(id));
     // As LynxDocument does: env(safe-area-inset-*) reads the shell's insets.
     followSafeAreaInsets(page);
+    // And `page.dark` follows the device's appearance.
+    followColorScheme(page);
     return page;
   }
 

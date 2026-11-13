@@ -22,15 +22,22 @@ import {
 const LIGHT_FOREGROUND = ICON_LIGHT_COLORS['foreground'];
 const DARK_FOREGROUND = ICON_DARK_COLORS['foreground'];
 
+/** The appearance the app is drawn in, as `LynxTheme.appearance` gives it. */
+type Appearance = 'light' | 'dark';
+
 /**
- * Runs injectIconColor() against a device appearance and extra providers. A
- * plain Injector has no root scope, so it gets the default theme explicitly;
- * the token's own factory is covered by the component tests.
+ * Runs injectIconColor() against the appearance the app is drawn in and
+ * extra providers. A plain Injector has no root scope, so it gets the default
+ * theme explicitly; the token's own factory is covered by the component
+ * tests.
  */
-const setup = (providers: Provider[] = [], dark = signal(false)) => {
+const setup = (
+  providers: Provider[] = [],
+  appearance = signal<Appearance>('light'),
+) => {
   const injector = Injector.create({
     providers: [
-      { provide: LynxTheme, useValue: { isDarkMode: dark } },
+      { provide: LynxTheme, useValue: { appearance } },
       {
         provide: UI_ICON_THEME,
         useValue: { light: ICON_LIGHT_COLORS, dark: ICON_DARK_COLORS },
@@ -96,11 +103,14 @@ describe('provideIconTheme', () => {
 });
 
 describe('injectColorScheme', () => {
-  const scheme = (providers: Provider[], dark = signal(false)) =>
+  const scheme = (
+    providers: Provider[],
+    appearance = signal<Appearance>('light'),
+  ) =>
     runInInjectionContext(
       Injector.create({
         providers: [
-          { provide: LynxTheme, useValue: { isDarkMode: dark } },
+          { provide: LynxTheme, useValue: { appearance } },
           {
             provide: UI_ICON_THEME,
             useValue: { light: ICON_LIGHT_COLORS, dark: ICON_DARK_COLORS },
@@ -111,16 +121,30 @@ describe('injectColorScheme', () => {
       () => injectColorScheme(),
     );
 
-  it("is light unless the theme says otherwise, whatever the device's appearance", () => {
-    expect(scheme([], signal(true))()).toBe('light');
+  it('is the appearance the app is drawn in, unless the theme says otherwise', () => {
+    // The page has the theme's `dark` class while the app is drawn dark, so
+    // what can't read the CSS follows the same appearance by default.
+    const appearance = signal<Appearance>('light');
+    const followed = scheme([], appearance);
+    expect(followed()).toBe('light');
+    appearance.set('dark');
+    expect(followed()).toBe('dark');
+
+    // A fixed scheme stays, whatever the app is drawn in.
+    expect(
+      scheme([provideIconTheme({ colorScheme: 'light' })], signal('dark'))(),
+    ).toBe('light');
     expect(scheme([provideIconTheme({ colorScheme: 'dark' })])()).toBe('dark');
   });
 
-  it("follows the device with 'system', or the app's own state", () => {
-    const dark = signal(false);
-    const system = scheme([provideIconTheme({ colorScheme: 'system' })], dark);
+  it("follows the appearance with 'system', or the app's own state", () => {
+    const appearance = signal<Appearance>('light');
+    const system = scheme(
+      [provideIconTheme({ colorScheme: 'system' })],
+      appearance,
+    );
     expect(system()).toBe('light');
-    dark.set(true);
+    appearance.set('dark');
     expect(system()).toBe('dark');
 
     const own = signal<'light' | 'dark'>('dark');
@@ -131,8 +155,19 @@ describe('injectColorScheme', () => {
 });
 
 describe('injectIconColor', () => {
-  it('draws with the light foreground by default, even on a dark device', () => {
-    const resolve = setup([], signal(true));
+  it("draws with the foreground of the app's appearance by default", () => {
+    const appearance = signal<Appearance>('light');
+    const resolve = setup([], appearance);
+    expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
+    appearance.set('dark');
+    expect(resolve(undefined)).toBe(DARK_FOREGROUND);
+  });
+
+  it('keeps to the light table in an app that fixes the scheme to light', () => {
+    const resolve = setup(
+      [provideIconTheme({ colorScheme: 'light' })],
+      signal('dark'),
+    );
     expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
   });
 
@@ -142,11 +177,14 @@ describe('injectIconColor', () => {
     expect(resolve('#00ff00')).toBe('#00ff00');
   });
 
-  it("follows the device appearance with 'system'", () => {
-    const dark = signal(false);
-    const resolve = setup([provideIconTheme({ colorScheme: 'system' })], dark);
+  it("follows the app's appearance with 'system'", () => {
+    const appearance = signal<Appearance>('light');
+    const resolve = setup(
+      [provideIconTheme({ colorScheme: 'system' })],
+      appearance,
+    );
     expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
-    dark.set(true);
+    appearance.set('dark');
     expect(resolve(undefined)).toBe(DARK_FOREGROUND);
   });
 
@@ -176,18 +214,18 @@ describe('UI_THEME_COLORS', () => {
       light: { primary: 'rgba(103, 80, 164, 1)' },
       dark: { primary: 'rgba(208, 188, 255, 1)' },
     });
-    const dark = signal(false);
+    const appearance = signal<Appearance>('light');
     const resolve = setup(
       [
         provideIconTheme({ colorScheme: 'system' }),
         { provide: UI_THEME_COLORS, useValue: replaced },
       ],
-      dark,
+      appearance,
     );
     expect(resolve('var(--primary)')).toBe('rgba(103, 80, 164, 1)');
     expect(resolve(undefined)).toBe(LIGHT_FOREGROUND);
 
-    dark.set(true);
+    appearance.set('dark');
     expect(resolve('var(--primary)')).toBe('rgba(208, 188, 255, 1)');
 
     // An element with no colors to set leaves the theme's.

@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { UiIcon } from '../icon/icon';
-import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
+import { ICON_LIGHT_COLORS, type IconSize } from '../icon/icon-theme';
 import {
   type ButtonGroupOrientation,
   type ButtonGroupSize,
@@ -34,7 +34,7 @@ import {
         (pressed)="presses.push('Copy')"
       >
         @if (withIcon()) {
-          <ui-icon name="copy" />
+          <ui-icon name="copy" [size]="iconSize()" />
         }
         Copy
       </ui-button-group-item>
@@ -56,6 +56,8 @@ class ButtonGroupHost {
   readonly groupDisabled = signal(false);
   readonly pasteDisabled = signal(false);
   readonly withIcon = signal(false);
+  /** The icon's own size; without one it takes the group's. */
+  readonly iconSize = signal<IconSize | undefined>(undefined);
   readonly withCut = signal(false);
   readonly copyLabel = signal<string | undefined>(undefined);
   readonly presses: string[] = [];
@@ -170,7 +172,7 @@ describe('UiButtonGroup', () => {
       },
     );
     expect(getAllByAccessibilityLabel('Copy')).toEqual([
-      container.querySelector('.h-10'),
+      container.querySelector('.h-12'),
     ]);
   });
 
@@ -188,10 +190,11 @@ describe('UiButtonGroup', () => {
   it("styles every item and label with the group's variant and size", async () => {
     const { host, item, getByText } = await renderGroup();
     expect(item('Copy').classList).toContain('bg-secondary');
-    expect(item('Copy').classList).toContain('h-10');
+    // ui-button's heights: 48px, a full touch target.
+    expect(item('Copy').classList).toContain('h-12');
     expect(item('Copy').classList).toContain('flex-1');
     expect(getByText('Copy').classList).toContain('text-secondary-foreground');
-    expect(getByText('Copy').classList).toContain('text-sm');
+    expect(getByText('Copy').classList).toContain('text-base');
 
     host.variant.set('outline');
     host.size.set('sm');
@@ -200,13 +203,13 @@ describe('UiButtonGroup', () => {
       expect(item(label).classList).toContain('bg-background');
       expect(item(label).classList).toContain('h-9');
       expect(getByText(label).classList).toContain('text-foreground');
-      expect(getByText(label).classList).toContain('text-xs');
+      expect(getByText(label).classList).toContain('text-sm');
     }
 
     host.size.set('lg');
     await waitForUpdate();
-    expect(item('Paste').classList).toContain('h-11');
-    expect(getByText('Paste').classList).toContain('text-base');
+    expect(item('Paste').classList).toContain('h-14');
+    expect(getByText('Paste').classList).toContain('text-lg');
   });
 });
 
@@ -304,6 +307,27 @@ describe('UiButtonGroupItem icons and accessibility', () => {
     );
   });
 
+  it("sizes a projected icon for the group's size, unless the icon sets its own", async () => {
+    const { host, icon, update } = await renderGroup();
+    await update(() => host.withIcon.set(true));
+    const iconSize = () => (icon() as unknown as HTMLElement).style.width;
+
+    // About the label's line height beside a label, and 24px on its own, as
+    // ui-button sizes its icons.
+    for (const [size, px] of [
+      ['default', '20px'],
+      ['sm', '16px'],
+      ['lg', '24px'],
+      ['icon', '24px'],
+    ] as const) {
+      await update(() => host.size.set(size));
+      expect(iconSize()).toBe(px);
+    }
+
+    await update(() => host.iconSize.set('lg'));
+    expect(iconSize()).toBe('32px');
+  });
+
   it('shows only the icon in square items, named by its accessibility label', async () => {
     const { host, queryByText, getByRole, update } = await renderGroup();
     await update(() => {
@@ -314,7 +338,7 @@ describe('UiButtonGroupItem icons and accessibility', () => {
 
     expect(queryByText('Copy')).toBeNull();
     const copy = getByRole('button', { name: 'Copy the text' });
-    expect(copy.classList).toContain('w-10');
+    expect(copy.classList).toContain('w-12');
     expect(copy.classList).not.toContain('gap-2');
     // An item with a label is read by it, as a button.
     expect(getByRole('button', { name: 'Paste' }).localName).toBe('text');
@@ -357,7 +381,7 @@ describe('UiButtonGroup glass variants', () => {
     expect(group().classList).not.toContain('bg-glass-dim');
     for (const label of ['Copy', 'Paste']) {
       expect(glass().contains(item(label))).toBe(true);
-      expect(item(label).classList).toContain('h-10');
+      expect(item(label).classList).toContain('h-12');
       expect(item(label).classList).not.toContain('bg-secondary');
       expect(getByText(label).classList).toContain('text-glass-foreground');
     }
@@ -367,8 +391,8 @@ describe('UiButtonGroup glass variants', () => {
     await update(() => host.orientation.set('vertical'));
     expect(glass().classList).toContain('flex-col');
     expect(glass().classList).not.toContain('rounded-full');
-    expect(glass().style.getPropertyValue('border-radius')).toBe('24px');
-    expect(group().style.getPropertyValue('border-radius')).toBe('24px');
+    expect(glass().style.getPropertyValue('border-radius')).toBe('28px');
+    expect(group().style.getPropertyValue('border-radius')).toBe('28px');
 
     // A column of square icons is a capsule again.
     await update(() => host.size.set('icon'));
@@ -391,8 +415,8 @@ describe('UiButtonGroup glass variants', () => {
     fireEvent.touchstart(item('Copy'));
     await waitForUpdate();
     expect(highlight()!.classList).toContain('bg-glass-foreground');
-    // 24px glass corners, 4px out: 20px.
-    expect((highlight() as HTMLElement).style.borderRadius).toBe('20px');
+    // 28px glass corners, 4px out: 24px.
+    expect((highlight() as HTMLElement).style.borderRadius).toBe('24px');
     expect(highlight()!.compareDocumentPosition(getByText('Copy'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
@@ -501,8 +525,8 @@ describe('UiButtonGroup glass variants in Material (Android)', () => {
       settings.increaseContrast.set(true);
     });
     // A row is a capsule: half an item round at its ends, small between.
-    expect(cornersOf(item('Copy'))).toEqual(['20px', '8px', '8px', '20px']);
-    expect(cornersOf(item('Paste'))).toEqual(['8px', '20px', '20px', '8px']);
+    expect(cornersOf(item('Copy'))).toEqual(['24px', '8px', '8px', '24px']);
+    expect(cornersOf(item('Paste'))).toEqual(['8px', '24px', '24px', '8px']);
     expect(item('Copy').classList).toContain('border-foreground');
     // The group doesn't clip the ends, which would cut their outlines.
     expect(group().classList).not.toContain('rounded-full');
@@ -512,7 +536,7 @@ describe('UiButtonGroup glass variants in Material (Android)', () => {
     // An item added between them has small corners all round.
     await update(() => host.withCut.set(true));
     expect(cornersOf(item('Cut'))).toEqual(['8px', '8px', '8px', '8px']);
-    expect(cornersOf(item('Paste'))).toEqual(['8px', '20px', '20px', '8px']);
+    expect(cornersOf(item('Paste'))).toEqual(['8px', '24px', '24px', '8px']);
 
     // A column rounds its top and bottom, as much as its items are tall.
     await update(() => {
@@ -558,8 +582,8 @@ describe('buttonGroupItemVariants', () => {
   it('returns default variant and size classes', () => {
     const result = buttonGroupItemVariants();
     expect(result).toContain('bg-secondary');
-    expect(result).toContain('h-10');
-    expect(result).toContain('px-4');
+    expect(result).toContain('h-12');
+    expect(result).toContain('px-5');
   });
 
   it('returns outline variant classes', () => {
@@ -575,14 +599,14 @@ describe('buttonGroupItemVariants', () => {
 
   it('returns large size classes', () => {
     const result = buttonGroupItemVariants({ size: 'lg' });
-    expect(result).toContain('h-11');
+    expect(result).toContain('h-14');
     expect(result).toContain('px-6');
   });
 
   it('returns square icon size classes', () => {
     const result = buttonGroupItemVariants({ size: 'icon' });
-    expect(result).toContain('h-10');
-    expect(result).toContain('w-10');
+    expect(result).toContain('h-12');
+    expect(result).toContain('w-12');
   });
 
   it('always includes base layout classes', () => {

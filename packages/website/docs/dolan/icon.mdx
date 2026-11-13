@@ -42,7 +42,9 @@ Without `color`, an icon draws in your theme's foreground, like the text next to
 
 ### Dark mode
 
-Icons draw with the light theme's colors until you say otherwise, so they stay visible in an app without dark mode. If your app [switches the `.dark` class](/guide/dark-mode) with the phone's appearance, tell the icons to follow it too:
+Icons follow the app's appearance: light colors in light mode, dark colors in dark mode, as the [theme](/dolan/theming#dark-mode) does. There's nothing to set up.
+
+To change the colors, or where the scheme comes from, use `provideIconTheme()`:
 
 ```typescript title="src/app/app.config.ts"
 import { provideIconTheme } from '../components/ui/icon/icon-theme';
@@ -50,14 +52,16 @@ import { provideIconTheme } from '../components/ui/icon/icon-theme';
 export const appConfig: ApplicationConfig = {
   providers: [
     // ...
-    provideIconTheme({ colorScheme: 'system' }),
+    provideIconTheme({
+      light: { primary: 'rgba(37, 99, 235, 1)' },
+      dark: { primary: 'rgba(96, 165, 250, 1)' },
+    }),
   ],
 };
 ```
 
-- **`'system'`** follows [`LynxTheme`](/api/angular-lynx/theme), the phone's appearance.
-- **A function** such as `() => (settings.dark() ? 'dark' : 'light')` follows a theme setting of your own.
 - **`light` and `dark`** take token values to override, if you changed your theme's colors.
+- **`colorScheme`** is `'system'` by default: the appearance the app is drawn in, [`LynxTheme.appearance`](/api/angular-lynx/theme). `'light'` or `'dark'` keeps to one table, and a function such as `() => (settings.dark() ? 'dark' : 'light')` follows a theme class of your own.
 
 The same setting colors [Spinner](/dolan/spinner), [Pagination](/dolan/pagination)'s arrows and a loading [Button](/dolan/button)'s spinner, and picks [Glass](/dolan/glass)'s light or dark material. Charts have their own, [`provideChartTheme()`](/dolan/chart).
 
@@ -103,7 +107,7 @@ The example at the top of this page draws Google's and GitHub's marks, and [Butt
 <ui-icon name="heart" size="lg" />
 ```
 
-The sizes are 16, 20, 24 (the default) and 32 pixels square.
+The sizes are 16, 20, 24 and 32 pixels square. Without a `size`, an icon is 24px, or the size its container gives it: an icon in a [Button](/dolan/button) or a [Button Group](/dolan/button-group) fits the button's size.
 
 ### Type-safe names
 

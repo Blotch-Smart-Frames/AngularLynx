@@ -21,7 +21,7 @@ npx @blotch/dolan init
 
 Press Enter to accept both default folders. It writes `dolan.config.json`, copies three theme files into `src/styles/`, and installs `@blotch/dolan` as a dependency:
 
-- `default.css`: the light theme's colors and corner radius
+- `default.css`: the light theme's colors, corner radius and text size
 - `dark.css`: the dark theme's colors
 - `tailwind.css`: maps those colors to Tailwind classes such as `bg-primary`. An app on Tailwind 3 gets `tailwind-plugin.ts`, a Tailwind plugin, instead.
 
@@ -40,7 +40,7 @@ In CI, a script or an AI agent, `init` asks nothing and takes the default folder
 @import './styles/tailwind.css'; /* [!code highlight] */
 ```
 
-`dark.css` changes nothing until you turn dark mode on. See [Theming](/dolan/theming#dark-mode).
+With `dark.css` imported, the app follows the phone's light or dark appearance. See [Theming](/dolan/theming#dark-mode).
 
 **3. On Tailwind 3**, add the Tailwind plugin to your config instead, and import only the colors:
 

@@ -21,6 +21,8 @@ describe('UiLabel', () => {
   it('renders its text, dimmed while disabled', async () => {
     const { componentRef, getByText } = await render(LabelHost);
     const label = getByText('Name');
+    // A phone's body size, in medium weight, as the fields' own labels are.
+    expect(label.classList).toContain('text-base');
     expect(label.classList).toContain('font-medium');
     expect(label.classList).not.toContain('opacity-50');
 

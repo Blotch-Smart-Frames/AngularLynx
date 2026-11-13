@@ -13,7 +13,7 @@ import { UiIcon } from '../components/ui/icon';
   imports: [LYNX_ELEMENTS, UiButton, UiIcon],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Button</text>
         <text class="text-sm text-muted-foreground">
           A versatile button component with multiple variants and sizes.

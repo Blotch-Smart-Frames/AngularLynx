@@ -25,7 +25,7 @@ const daysFromToday = (days: number): Date => {
   imports: [LYNX_ELEMENTS, UiDatePicker, DatePipe],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <view class="flex-col gap-1 flex">
           <text class="text-2xl font-bold text-foreground">Date Picker</text>
           <text class="text-sm text-muted-foreground">

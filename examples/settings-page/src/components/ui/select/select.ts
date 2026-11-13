@@ -19,7 +19,16 @@ import { injectIconColor } from '../icon/icon-theme';
 import { UiSelectSheet, matchesQuery } from './select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
-const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+const CHECK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+
+/**
+ * An SVG's markup drawn in `color`, a resolved one: an SVG can't read a text
+ * class or a CSS variable, and Lynx's native `<svg>` reads only a literal
+ * `current-color` (see icon-theme.ts).
+ */
+const drawnIn = (markup: string, color: string): string =>
+  // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+  markup.split('currentColor').join(color);
 
 /**
  * `UiSelectItem`, for `contentChildren()`. A call rather than the class
@@ -71,21 +80,41 @@ const selectItem = () => UiSelectItem;
            Germany, button". Without a name, the text it shows is its label.
            A disabled select is dimmed to VoiceOver too. Content the app
            marks leading, such as the chosen item's icon, goes before the
-           text. -->
+           text.
+
+           The trigger draws the field, and dims under a finger, from the
+           touch's start: a phone's controls answer the touch, not the tap
+           that follows it. Touch events for native and mouse events for the
+           web preview, which sends no touches for a cursor; a canceled
+           touch (a scroll taking over) and a cursor leaving release too.
+           CSS can't do it: :active rules didn't apply in these builds. -->
       <view
-        class="flex-1 flex-row items-center gap-2 px-3 py-2 flex"
+        [class]="triggerClass()"
         accessibility-element="true"
         accessibility-traits="button"
         [accessibility-label]="triggerLabel()"
         [accessibility-value]="triggerValue()"
         [lynxAccessibilityTraits]="{ disabled: disabled() }"
+        (bindtouchstart)="press(true)"
+        (bindtouchend)="press(false)"
+        (bindtouchcancel)="press(false)"
+        (bindmousedown)="press(true)"
+        (bindmouseup)="press(false)"
+        (bindmouseleave)="press(false)"
         (bindtap)="toggle()"
       >
         <ng-content select="[leading]" />
-        <text [class]="valueTextClass()">{{ displayText() }}</text>
-        <svg [attr.content]="chevronSvg" style="width: 16px; height: 16px;" />
+        <text [class]="valueTextClass()" [text-maxline]="1">{{
+          displayText()
+        }}</text>
+        <svg
+          class="shrink-0"
+          [attr.content]="chevronSvg()"
+          style="width: 20px; height: 20px;"
+        />
       </view>
       <ui-select-sheet
+        [title]="label()"
         [open]="sheetOpen()"
         (openChange)="sheetOpen.set($event)"
         [searchable]="searchable()"
@@ -104,8 +133,8 @@ export class UiSelect {
   readonly value = model<string>('');
   readonly placeholder = input('Select...');
   /**
-   * The field's name, shown above it and read by screen readers as the
-   * trigger's label.
+   * The field's name, shown above it and as the sheet's title, and read by
+   * screen readers as the trigger's label.
    */
   readonly label = input<string>('');
   /**
@@ -136,12 +165,23 @@ export class UiSelect {
 
   readonly changed = output<string>();
 
-  protected readonly chevronSvg = CHEVRON_SVG;
+  readonly #resolveColor = injectIconColor();
+
+  /**
+   * The chevron in the muted foreground: it says the field opens a list,
+   * and shouldn't weigh as much as what the field holds.
+   */
+  protected readonly chevronSvg = computed(() =>
+    drawnIn(CHEVRON_SVG, this.#resolveColor('var(--muted-foreground)')),
+  );
 
   // Drives the select sheet's `open` model. All the overlay/animation/drag
   // behavior lives in ui-bottom-sheet, and the search in ui-select-sheet;
   // select only decides when the sheet is open.
   protected readonly sheetOpen = signal(false);
+
+  /** A finger (or the mouse) is down on the trigger. */
+  protected readonly pressing = signal(false);
 
   // The projected items, so the trigger can show the chosen one's label.
   readonly itemRefs = contentChildren(selectItem());
@@ -176,29 +216,43 @@ export class UiSelect {
   );
 
   protected readonly hostClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    // 8px between the label and the field, as ui-input.
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 
   protected readonly labelClass = computed(() =>
-    cn('text-sm font-medium text-foreground'),
+    cn('text-base font-medium text-foreground'),
   );
 
   /**
    * 48px tall: Android's 48dp touch target, which covers iOS's 44pt, as
-   * ui-input's field is. In px, as Lynx's rem is 14px. The trigger fills it
-   * and centers its text.
+   * ui-input's field and a default ui-button are. The trigger fills it.
    */
   protected readonly fieldClass = computed(() =>
+    cn('h-12 flex-row flex', this.disabled() && 'opacity-50'),
+  );
+
+  /**
+   * The field as ui-input draws its own: the same fill, corners and 16px
+   * sides, so a form's fields are one shape whether they're typed in or
+   * chosen from. It was an outlined box beside ui-input's filled one. It
+   * dims under a finger while it can be opened.
+   */
+  protected readonly triggerClass = computed(() =>
     cn(
-      'h-[48px] flex-row rounded-md border border-input bg-background flex',
-      this.disabled() && 'opacity-50',
+      'flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 flex',
+      this.pressing() && !this.disabled() && 'opacity-70',
     ),
   );
 
+  /**
+   * The chosen item's label as the field's text, or the placeholder in the
+   * muted foreground, the color ui-input gives its own placeholder.
+   */
   protected readonly valueTextClass = computed(() => {
     const val = this.value();
     return cn(
-      'flex-1 text-sm',
+      'flex-1 text-base',
       val ? 'text-foreground' : 'text-muted-foreground',
     );
   });
@@ -209,6 +263,10 @@ export class UiSelect {
    */
   shows(label: string): boolean {
     return !this.filter() || matchesQuery(label, this.query());
+  }
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
   }
 
   select(value: string): void {
@@ -258,13 +316,25 @@ export class UiSelect {
     '[attr.accessibility-traits]': "'button'",
     '[attr.accessibility-label]': 'label()',
     '[attr.accessibility-elements-hidden]': 'shown() ? null : true',
+    // The row fills under a finger, from the touch's start (see the
+    // trigger's events).
+    '(bindtouchstart)': 'press(true)',
+    '(bindtouchend)': 'press(false)',
+    '(bindtouchcancel)': 'press(false)',
+    '(bindmousedown)': 'press(true)',
+    '(bindmouseup)': 'press(false)',
+    '(bindmouseleave)': 'press(false)',
     '(bindtap)': 'onTap()',
   },
   template: `
     <ng-content />
     <text [class]="labelClass()">{{ label() }}</text>
     @if (isSelected()) {
-      <svg [attr.content]="checkSvg()" style="width: 16px; height: 16px;" />
+      <svg
+        class="shrink-0"
+        [attr.content]="checkSvg()"
+        style="width: 20px; height: 20px;"
+      />
     }
   `,
 })
@@ -278,21 +348,21 @@ export class UiSelectItem {
   readonly userClass = input<string>('', { alias: 'class' });
 
   /**
-   * The check in the text's color, resolved and written into the markup: an
-   * SVG can't read a text class or a CSS variable, and Lynx's native `<svg>`
-   * reads only a literal `current-color` (see icon-theme.ts), so a
-   * `currentColor` check didn't follow the theme, such as in dark mode.
+   * The check in the primary color, resolved and written into the markup
+   * (see drawnIn), so it follows the theme, such as in dark mode. The check
+   * alone marks the chosen item, as a native list's does: a filled row as
+   * well read as a second, pressed state.
    */
   protected readonly checkSvg = computed(() =>
-    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
-    CHECK_SVG.split('currentColor').join(
-      this.#resolveColor('var(--foreground)'),
-    ),
+    drawnIn(CHECK_SVG, this.#resolveColor('var(--primary)')),
   );
 
   protected readonly isSelected = computed(
     () => this.#select.value() === this.itemValue(),
   );
+
+  /** A finger (or the mouse) is down on the row. */
+  protected readonly pressing = signal(false);
 
   /** Whether the item shows for the search text (see UiSelect.shows). */
   protected readonly shown = computed(() => this.#select.shows(this.label()));
@@ -311,17 +381,21 @@ export class UiSelectItem {
   protected readonly containerClass = computed(() =>
     cn(
       // At least 48px tall: Android's 48dp touch target, which covers
-      // iOS's 44pt. In px, as Lynx's rem is 14px.
-      'min-h-[48px] flex-row items-center gap-3 px-4 py-3 flex',
-      this.isSelected() && 'bg-accent',
+      // iOS's 44pt.
+      'min-h-12 flex-row items-center gap-3 px-4 py-3 flex',
+      this.pressing() && 'bg-muted',
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );
 
   protected readonly labelClass = computed(() =>
-    cn('flex-1 text-sm text-foreground'),
+    cn('flex-1 text-base text-foreground', this.isSelected() && 'font-medium'),
   );
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
+  }
 
   protected onTap(): void {
     this.#select.select(this.itemValue());

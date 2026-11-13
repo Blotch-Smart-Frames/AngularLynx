@@ -48,11 +48,11 @@ type Contact = {
     UiLabel,
   ],
   template: `
-    <view class="h-screen flex-col bg-zinc-50 flex">
+    <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-zinc-200 bg-white px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
       >
-        <text class="text-[22px] font-bold text-zinc-900">Contacts</text>
+        <text class="text-[22px] font-bold text-foreground">Contacts</text>
         <ui-button size="sm" (pressed)="openAdd()">+ Add</ui-button>
       </view>
 
@@ -66,7 +66,7 @@ type Contact = {
 
       <scroll-view scroll-orientation="vertical" class="flex-1">
         @if (grouped().length === 0) {
-          <view class="p-6">
+          <view class="p-4">
             <ui-empty-state
               title="No contacts"
               description="Add your first contact above."
@@ -90,25 +90,27 @@ type Contact = {
             investigations/lynx-vs-web-differences.md.
           -->
           <view
-            class="bg-zinc-100 px-4 py-1.5 sticky top-0"
+            class="bg-muted px-4 py-1.5 sticky top-0"
             [class.z-10]="isWeb"
             [flatten]="false"
           >
-            <text class="text-xs font-bold text-zinc-400">{{
+            <text class="text-xs font-bold text-muted-foreground">{{
               group.letter
             }}</text>
           </view>
           @for (contact of group.contacts; track contact.id; let last = $last) {
             <view
-              class="flex-row items-center gap-3 bg-zinc-50 px-4 py-3 flex"
+              class="flex-row items-center gap-3 bg-background px-4 py-3 flex"
               (bindtap)="viewContact(contact)"
             >
               <ui-avatar size="sm" src="" [fallback]="initials(contact.name)" />
               <view class="flex-1 flex-col gap-0.5 flex">
-                <text class="text-[15px] font-medium text-zinc-900">{{
+                <text class="text-[15px] font-medium text-foreground">{{
                   contact.name
                 }}</text>
-                <text class="text-xs text-zinc-400">{{ contact.phone }}</text>
+                <text class="text-xs text-muted-foreground">{{
+                  contact.phone
+                }}</text>
               </view>
             </view>
             @if (!last) {
@@ -133,12 +135,12 @@ type Contact = {
         </ui-dialog-header>
         <view class="flex-col gap-3.5 p-4 flex">
           <view class="flex-col gap-0.5 flex">
-            <text class="text-xs text-zinc-400">Phone</text>
-            <text class="text-sm text-zinc-900">{{ selected()!.phone }}</text>
+            <text class="text-xs text-muted-foreground">Phone</text>
+            <text class="text-sm text-foreground">{{ selected()!.phone }}</text>
           </view>
           <view class="flex-col gap-0.5 flex">
-            <text class="text-xs text-zinc-400">Email</text>
-            <text class="text-sm text-zinc-900">{{ selected()!.email }}</text>
+            <text class="text-xs text-muted-foreground">Email</text>
+            <text class="text-sm text-foreground">{{ selected()!.email }}</text>
           </view>
         </view>
         <ui-dialog-footer>

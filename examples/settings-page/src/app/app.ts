@@ -34,35 +34,35 @@ import { UiButton } from '../components/ui/button';
     UiButton,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
-      <view class="flex-col gap-6 p-6 flex">
-        <text class="text-[28px] font-bold text-zinc-900">Settings</text>
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
+      <view class="flex-col gap-6 p-4 flex">
+        <text class="text-[28px] font-bold text-foreground">Settings</text>
 
         <view class="flex-col gap-3.5 flex">
           <text
-            class="uppercase text-[11px] font-semibold tracking-[1px] text-zinc-400"
+            class="uppercase text-[11px] font-semibold tracking-[1px] text-muted-foreground"
           >
             Notifications
           </text>
           <view
-            class="flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3 flex justify-between"
+            class="flex-row items-center rounded-xl border border-border bg-card px-4 py-3 flex justify-between"
           >
             <view class="flex-col gap-0.5 flex">
               <ui-label>Push Notifications</ui-label>
-              <text class="text-xs text-zinc-400">
+              <text class="text-xs text-muted-foreground">
                 Receive alerts on your device
               </text>
             </view>
             <ui-switch [(checked)]="pushNotifications" />
           </view>
           <view
-            class="flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3 flex justify-between"
+            class="flex-row items-center rounded-xl border border-border bg-card px-4 py-3 flex justify-between"
           >
             <ui-label>Sound</ui-label>
             <ui-switch [(checked)]="sound" />
           </view>
           <view
-            class="flex-row items-center rounded-xl border border-zinc-200 bg-white px-4 py-3 flex justify-between"
+            class="flex-row items-center rounded-xl border border-border bg-card px-4 py-3 flex justify-between"
           >
             <ui-label>Email Digest</ui-label>
             <ui-switch [(checked)]="emailDigest" />
@@ -73,7 +73,7 @@ import { UiButton } from '../components/ui/button';
 
         <view class="flex-col gap-3.5 flex">
           <text
-            class="uppercase text-[11px] font-semibold tracking-[1px] text-zinc-400"
+            class="uppercase text-[11px] font-semibold tracking-[1px] text-muted-foreground"
           >
             Appearance
           </text>
@@ -92,7 +92,7 @@ import { UiButton } from '../components/ui/button';
               <view class="flex-col gap-2.5 flex">
                 @for (opt of themeOptions; track opt.value) {
                   <view
-                    class="flex-row items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-4 py-3 flex"
+                    class="flex-row items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-3 flex"
                   >
                     <!--
                       The label lives inside ui-radio-group-item (via ng-content), not

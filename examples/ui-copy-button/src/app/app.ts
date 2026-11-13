@@ -12,7 +12,7 @@ import { UiCopyButton } from '../components/ui/copy-button';
   imports: [LYNX_ELEMENTS, UiButton, UiCopyButton],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Copy Button</text>
         <text class="text-sm text-muted-foreground">
           A button that copies text to the clipboard, then says it did.

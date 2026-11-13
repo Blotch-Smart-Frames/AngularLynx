@@ -47,7 +47,7 @@ page {
 - **Keep each pair the same color.** If you change `--primary`, change `--primary-rgb` too. [`dolan doctor`](/dolan/cli#doctor) warns when a pair doesn't match.
 - **Write the channels with commas.** Lynx fills `rgba()` with the variable's text before it reads the color, so `24, 24, 27` becomes three arguments.
 
-`--destructive-subtle` (red at 10%) and `--glass-dim` (black at 35%) are already translucent, so they have no twin and take no modifier. `bg-destructive-subtle` and `bg-destructive/10` draw the same color.
+`--destructive-subtle` (a faint red) and `--glass-dim` (black at 35%) are already translucent, so they have no twin and take no modifier.
 
 ### Themes from before a component's colors
 
@@ -66,11 +66,11 @@ Themes copied by an older dolan have no `-rgb` variables. [`dolan update`](/dola
 | `primary` / `primary-foreground`             | `bg-primary`, `text-primary-foreground`                | Main buttons, checked controls, your brand color |
 | `secondary` / `secondary-foreground`         | `bg-secondary`, `text-secondary-foreground`            | Secondary buttons, button groups                 |
 | `muted` / `muted-foreground`                 | `bg-muted`, `text-muted-foreground`                    | Field backgrounds, tab bars, helper text         |
-| `accent` / `accent-foreground`               | `bg-accent`, `text-accent-foreground`                  | Pressed toggles, the selected select item        |
+| `accent` / `accent-foreground`               | `bg-accent`, `text-accent-foreground`                  | Pressed toggles, the nav drawer's current item   |
 | `destructive` / `destructive-foreground`     | `bg-destructive`, `text-destructive-foreground`        | Delete buttons, errors                           |
 | `destructive-subtle`                         | `bg-destructive-subtle`                                | The destructive alert's background               |
 | `border`                                     | `border-border`                                        | Borders and separators                           |
-| `input`                                      | `border-input`, `bg-input`                             | The select's border, the switch's off track      |
+| `input`                                      | `border-input`, `bg-input`                             | The switch's off track                           |
 | `ring`                                       | `border-ring`                                          | Input and textarea focus rings                   |
 | `ring-subtle`                                | none                                                   | The soft outer focus ring, set inline by fields  |
 | `chart-1` … `chart-5`                        | `bg-chart-1` … `bg-chart-5`                            | Chart series colors, legend swatches             |
@@ -83,11 +83,37 @@ Every color class works with `bg-`, `text-` and `border-`, and takes [opacity mo
 
 ### Radius
 
-`--radius` (default `8px`) sets three classes:
+`--radius` (default `12px`) is the corner of a control: a button, a field. Every rounded class steps from it, so one value makes the whole app rounder or squarer:
 
-- `rounded-lg`: `var(--radius)`
-- `rounded-md`: `calc(var(--radius) - 2px)`
-- `rounded-sm`: `calc(var(--radius) - 4px)`
+| Class         | Value                        | Default | Used for              |
+| ------------- | ---------------------------- | ------- | --------------------- |
+| `rounded-sm`  | `calc(var(--radius) - 4px)`  | 8px     | Tabs inside their bar |
+| `rounded-md`  | `calc(var(--radius) - 2px)`  | 10px    | Small buttons         |
+| `rounded-lg`  | `var(--radius)`              | 12px    | Buttons, fields       |
+| `rounded-xl`  | `calc(var(--radius) + 4px)`  | 16px    | Cards, alerts, toasts |
+| `rounded-2xl` | `calc(var(--radius) + 8px)`  | 20px    | Dialogs, sheets       |
+| `rounded-3xl` | `calc(var(--radius) + 12px)` | 24px    | Your own surfaces     |
+
+### Sizes
+
+```css title="src/styles/default.css"
+page {
+  font-size: 16px;
+  --rem-unit: 16px;
+}
+```
+
+- **`1rem` is 16px, as in a browser.** Lynx's own root font size is 14px, so every Tailwind size came out an eighth smaller on a phone than in the web preview: a 48px button was 42px. With the theme, `h-12` is 48px everywhere.
+- **The components are sized in `rem`.** Raise `font-size` (and `--rem-unit` with it) and they grow with the text.
+- **Controls are 48px tall**: a default [Button](/dolan/button), and every field ([Input](/dolan/input), [Select](/dolan/select), [Date Picker](/dolan/date-picker)). That's Android's 48dp touch target, which covers iOS's 44pt, and a button beside a field lines up with it.
+- **Text is 16px**, a phone's body size: `text-base`. Use `text-sm` (14px) for secondary text.
+
+### Page background and text color
+
+`default.css` also gives `page` the theme's background, and gives text the theme's foreground color:
+
+- **A screen with no background of its own is `bg-background`**, in both appearances.
+- **A `<text>` with no color class is `text-foreground`.** Lynx draws text black otherwise, which vanishes in the dark. A `<text>` inside another `<text>` keeps its parent's color.
 
 ### Safe area
 
@@ -106,12 +132,12 @@ page {
   --ring: rgba(37, 99, 235, 1);
   --ring-rgb: 37, 99, 235;
   --ring-subtle: rgba(37, 99, 235, 0.4);
-  --radius: 12px;
+  --radius: 16px;
   /* …keep the other tokens… */
 }
 ```
 
-- Change the same tokens in `dark.css` if you use dark mode.
+- Change the same tokens in `dark.css`.
 - Charts and icons draw with a TypeScript copy of these colors, because Lynx's SVG renderer can't read CSS variables. Pass your new values to `provideChartTheme()` (see [Chart](/dolan/chart)) and `provideIconTheme()` (see [Icon](/dolan/icon#dark-mode)). The icon copy also colors Spinner and Pagination's arrows.
 - [`dolan update`](/dolan/cli#update) merges theme changes too, so your edits survive updates.
 
@@ -154,75 +180,84 @@ This copies `default.css` to `src/styles/ocean.css`. Edit it, then import it in 
 
 ## Dark mode
 
-`dark.css` has a dark value for every token, under the selector `page.dark`. AngularLynx creates `page` for you and has no API for its classes. To switch themes at runtime, move the dark values onto a class you can bind.
-
-**1.** In `src/styles/dark.css`, change the selector `page.dark` to `.dark`.
-
-**2.** Bind that class on your root view from `LynxTheme`:
-
-```typescript title="src/app/app.ts"
-import { Component, inject } from '@angular/core';
-import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
-
-@Component({
-  selector: 'app-root',
-  imports: [LYNX_ELEMENTS],
-  template: `
-    <view class="h-full bg-background" [class.dark]="theme.isDarkMode()">
-      <text class="text-foreground">This follows the device theme.</text>
-    </view>
-  `,
-})
-export class App {
-  protected readonly theme = inject(LynxTheme);
-}
+```css title="src/styles.css"
+@import './styles/default.css';
+@import './styles/dark.css'; /* [!code highlight] */
 ```
 
-- `isDarkMode()` is a signal. The **host app** (the native app that runs your bundle, see [Glossary](/guide/glossary#host-app)) sets it from the device's appearance setting.
-- Charts and icons default to light colors. Add `provideChartTheme({ colorScheme: 'system' })` and `provideIconTheme({ colorScheme: 'system' })` to make them follow too (see [Chart](/dolan/chart) and [Icon](/dolan/icon#dark-mode)).
-- For a manual toggle, bind `[class.dark]` to your own signal instead. See [Dark mode](/guide/dark-mode) and [`LynxTheme`](/api/angular-lynx/theme).
+Import `dark.css` after `default.css` and the app follows the phone: light in light mode, dark in dark mode, with no code.
+
+- **`dark.css` has a dark value for every token, under `page.dark`.** AngularLynx gives `page` the `dark` class while the phone is dark, and takes it away when it isn't.
+- **Icons and charts follow too.** They draw with a TypeScript copy of the colors, and pick the light or the dark table from the same appearance.
+- **In the web preview it follows the browser's** `prefers-color-scheme`.
+
+### Let the user choose
+
+```typescript
+import { inject } from '@angular/core';
+import { LynxTheme } from '@blotch/angular-lynx';
+
+const theme = inject(LynxTheme);
+theme.setColorScheme('dark'); // 'system', 'light' or 'dark'
+```
+
+`setColorScheme()` draws the app light or dark whatever the phone says, and `'system'` follows the phone again. See [Dark mode](/guide/dark-mode#let-the-user-choose).
+
+### Stay light
+
+Leave `dark.css` out, and tell AngularLynx the app is always light, so icons and charts don't switch to their dark colors on a dark phone:
+
+```typescript title="src/app/app.config.ts"
+import { provideColorScheme } from '@blotch/angular-lynx';
+
+providers: [provideColorScheme('light')];
+```
+
+### Dark surfaces
+
+In the dark, a raised surface is a tone lighter than the page, as iOS and Android draw theirs: `--card` is lighter than `--background`. Cards, dialogs, sheets and toasts are on `bg-card`, so they stand out without a shadow. Use `bg-card` for your own raised surfaces.
 
 ## Wallpaper colors on Android
 
-On Android 12 and later, the theme can take the colors of the user's wallpaper, as Material You apps do. Add [Dynamic Color](/dolan/dynamic-color)'s `uiDynamicColor` to the view with the `dark` class. It sets the tokens above to the wallpaper's colors, so there's no second set of colors to keep.
+On Android 12 and later, the theme can take the colors of the user's wallpaper, as Material You apps do. Add [Dynamic Color](/dolan/dynamic-color)'s `uiDynamicColor` to your root view. It sets the tokens above to the wallpaper's colors, so there's no second set of colors to keep.
 
 ## Variable reference
 
 Generated from `default.css` and `dark.css`. Each opaque color also has a `-rgb` twin with its channels, such as `--primary-rgb: 24, 24, 27`, left out here.
 
-| Variable                   | Light (`default.css`)    | Dark (`dark.css`)          |
-| -------------------------- | ------------------------ | -------------------------- |
-| `--background`             | `rgba(255, 255, 255, 1)` | `rgba(9, 9, 11, 1)`        |
-| `--foreground`             | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
-| `--card`                   | `rgba(255, 255, 255, 1)` | `rgba(9, 9, 11, 1)`        |
-| `--card-foreground`        | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
-| `--primary`                | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
-| `--primary-foreground`     | `rgba(250, 250, 250, 1)` | `rgba(24, 24, 27, 1)`      |
-| `--secondary`              | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
-| `--secondary-foreground`   | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
-| `--muted`                  | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
-| `--muted-foreground`       | `rgba(113, 113, 122, 1)` | `rgba(161, 161, 170, 1)`   |
-| `--accent`                 | `rgba(244, 244, 245, 1)` | `rgba(39, 39, 42, 1)`      |
-| `--accent-foreground`      | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
-| `--destructive`            | `rgba(239, 68, 68, 1)`   | `rgba(127, 29, 29, 1)`     |
-| `--destructive-foreground` | `rgba(250, 250, 250, 1)` | `rgba(250, 250, 250, 1)`   |
-| `--destructive-subtle`     | `rgba(239, 68, 68, 0.1)` | `rgba(127, 29, 29, 0.1)`   |
-| `--border`                 | `rgba(228, 228, 231, 1)` | `rgba(39, 39, 42, 1)`      |
-| `--input`                  | `rgba(228, 228, 231, 1)` | `rgba(39, 39, 42, 1)`      |
-| `--ring`                   | `rgba(24, 24, 27, 1)`    | `rgba(212, 212, 216, 1)`   |
-| `--ring-subtle`            | `rgba(24, 24, 27, 0.4)`  | `rgba(212, 212, 216, 0.4)` |
-| `--chart-1`                | `rgba(231, 110, 80, 1)`  | `rgba(38, 98, 217, 1)`     |
-| `--chart-2`                | `rgba(42, 157, 144, 1)`  | `rgba(46, 184, 138, 1)`    |
-| `--chart-3`                | `rgba(39, 71, 84, 1)`    | `rgba(232, 140, 48, 1)`    |
-| `--chart-4`                | `rgba(232, 196, 104, 1)` | `rgba(175, 87, 219, 1)`    |
-| `--chart-5`                | `rgba(244, 164, 98, 1)`  | `rgba(226, 54, 112, 1)`    |
-| `--glass-tint`             | `rgba(24, 24, 27, 1)`    | `rgba(250, 250, 250, 1)`   |
-| `--glass-tint-foreground`  | `rgba(250, 250, 250, 1)` | `rgba(24, 24, 27, 1)`      |
-| `--glass-foreground`       | `rgba(9, 9, 11, 1)`      | `rgba(250, 250, 250, 1)`   |
-| `--glass-muted-foreground` | `rgba(63, 63, 70, 1)`    | `rgba(212, 212, 216, 1)`   |
-| `--glass-clear-foreground` | `rgba(255, 255, 255, 1)` | `rgba(255, 255, 255, 1)`   |
-| `--glass-dim`              | `rgba(0, 0, 0, 0.35)`    | `rgba(0, 0, 0, 0.35)`      |
-| `--radius`                 | `8px`                    | `8px`                      |
+| Variable                   | Light (`default.css`)     | Dark (`dark.css`)           |
+| -------------------------- | ------------------------- | --------------------------- |
+| `--background`             | `rgba(255, 255, 255, 1)`  | `rgba(9, 9, 11, 1)`         |
+| `--foreground`             | `rgba(9, 9, 11, 1)`       | `rgba(250, 250, 250, 1)`    |
+| `--card`                   | `rgba(255, 255, 255, 1)`  | `rgba(24, 24, 27, 1)`       |
+| `--card-foreground`        | `rgba(9, 9, 11, 1)`       | `rgba(250, 250, 250, 1)`    |
+| `--primary`                | `rgba(24, 24, 27, 1)`     | `rgba(250, 250, 250, 1)`    |
+| `--primary-foreground`     | `rgba(250, 250, 250, 1)`  | `rgba(24, 24, 27, 1)`       |
+| `--secondary`              | `rgba(244, 244, 245, 1)`  | `rgba(39, 39, 42, 1)`       |
+| `--secondary-foreground`   | `rgba(24, 24, 27, 1)`     | `rgba(250, 250, 250, 1)`    |
+| `--muted`                  | `rgba(244, 244, 245, 1)`  | `rgba(39, 39, 42, 1)`       |
+| `--muted-foreground`       | `rgba(113, 113, 122, 1)`  | `rgba(161, 161, 170, 1)`    |
+| `--accent`                 | `rgba(244, 244, 245, 1)`  | `rgba(39, 39, 42, 1)`       |
+| `--accent-foreground`      | `rgba(24, 24, 27, 1)`     | `rgba(250, 250, 250, 1)`    |
+| `--destructive`            | `rgba(220, 38, 38, 1)`    | `rgba(248, 113, 113, 1)`    |
+| `--destructive-foreground` | `rgba(250, 250, 250, 1)`  | `rgba(24, 24, 27, 1)`       |
+| `--destructive-subtle`     | `rgba(220, 38, 38, 0.08)` | `rgba(248, 113, 113, 0.14)` |
+| `--border`                 | `rgba(228, 228, 231, 1)`  | `rgba(52, 52, 56, 1)`       |
+| `--input`                  | `rgba(228, 228, 231, 1)`  | `rgba(39, 39, 42, 1)`       |
+| `--ring`                   | `rgba(24, 24, 27, 1)`     | `rgba(212, 212, 216, 1)`    |
+| `--ring-subtle`            | `rgba(24, 24, 27, 0.4)`   | `rgba(212, 212, 216, 0.4)`  |
+| `--chart-1`                | `rgba(231, 110, 80, 1)`   | `rgba(38, 98, 217, 1)`      |
+| `--chart-2`                | `rgba(42, 157, 144, 1)`   | `rgba(46, 184, 138, 1)`     |
+| `--chart-3`                | `rgba(39, 71, 84, 1)`     | `rgba(232, 140, 48, 1)`     |
+| `--chart-4`                | `rgba(232, 196, 104, 1)`  | `rgba(175, 87, 219, 1)`     |
+| `--chart-5`                | `rgba(244, 164, 98, 1)`   | `rgba(226, 54, 112, 1)`     |
+| `--glass-tint`             | `rgba(24, 24, 27, 1)`     | `rgba(250, 250, 250, 1)`    |
+| `--glass-tint-foreground`  | `rgba(250, 250, 250, 1)`  | `rgba(24, 24, 27, 1)`       |
+| `--glass-foreground`       | `rgba(9, 9, 11, 1)`       | `rgba(250, 250, 250, 1)`    |
+| `--glass-muted-foreground` | `rgba(63, 63, 70, 1)`     | `rgba(212, 212, 216, 1)`    |
+| `--glass-clear-foreground` | `rgba(255, 255, 255, 1)`  | `rgba(255, 255, 255, 1)`    |
+| `--glass-dim`              | `rgba(0, 0, 0, 0.35)`     | `rgba(0, 0, 0, 0.35)`       |
+| `--radius`                 | `12px`                    | `12px`                      |
 
 ## Related
 

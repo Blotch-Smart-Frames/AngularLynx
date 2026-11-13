@@ -76,6 +76,8 @@ export const doctorCommand = async () => {
 
   checkRequiredFiles(cwd, config, pass, warn);
 
+  checkThemeRootSize(cwd, config, pass, warn);
+
   checkThemeChannels(cwd, config, pass, warn);
 
   checkComponentColors(cwd, config, pass, warn);
@@ -198,6 +200,33 @@ const checkRequiredFiles = (
     pass('Theme CSS found');
   } else {
     warn(`No theme CSS files in ${pc.dim(config.aliases.theme)}`);
+  }
+};
+
+/**
+ * The components are sized in `rem`, for a root font size of 16px, which the
+ * theme's `default.css` sets on `page`: Lynx's own is 14px, where a 48px
+ * button comes out at 42px and its 16px label at 14px. A theme copied before
+ * the theme set it doesn't have it, and `dolan update` keeps a theme the app
+ * edited, so this points it out. Nothing else shows it: the components draw,
+ * only smaller than a finger wants.
+ */
+const checkThemeRootSize = (
+  cwd: string,
+  config: DolanConfig,
+  pass: (msg: string) => void,
+  warn: (msg: string) => void,
+) => {
+  const file = join(resolve(cwd, config.aliases.theme), 'default.css');
+  // checkRequiredFiles() reports a theme folder with no stylesheets.
+  if (!existsSync(file)) return;
+  const css = readFileSync(file, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '');
+  if (/\bpage\s*\{[^}]*\bfont-size\s*:/.test(css)) {
+    pass('Theme sets the root font size the components are sized for');
+  } else {
+    warn(
+      `${pc.cyan('default.css')} sets no font size on ${pc.cyan('page')}, so 1rem is Lynx's 14px and the components, which are sized in rem, draw an eighth smaller: a 48px button is 42px. Run ${pc.bold('dolan update')}, which adds it to a theme you haven't edited, or add to its ${pc.cyan('page')} block: ${pc.bold('font-size: 16px; --rem-unit: 16px;')}`,
+    );
   }
 };
 

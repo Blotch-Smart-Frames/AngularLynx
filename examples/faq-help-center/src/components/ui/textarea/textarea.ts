@@ -16,6 +16,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { type AnimationHandle, shake } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
 
 @Component({
   selector: 'ui-textarea',
@@ -55,7 +56,7 @@ import { cn } from '@blotch/dolan/utils/cn';
            (which errors the Lynx build). OUTSET only; Lynx doesn't render inset
            box-shadows. -->
       <view
-        class="rounded-xl opacity-0 absolute bottom-0 left-0 right-0 top-0"
+        class="rounded-lg opacity-0 absolute bottom-0 left-0 right-0 top-0"
         [style.transition]="'opacity 150ms ease'"
         [style.box-shadow]="ringShadow()"
         [style.opacity]="ringVisible() ? 1 : 0"
@@ -77,14 +78,18 @@ import { cn } from '@blotch/dolan/utils/cn';
            view that only hides on textViewDidChange — so an initial value set via
            the setValue UIMethod leaves the placeholder stacked on top of it. Not
            emitting the attribute when there's a value matches web semantics and
-           avoids the overlap on all platforms. -->
+           avoids the overlap on all platforms. Its color is given twice, as
+           ui-input's is: iOS reads the style and the web preview the
+           attribute. -->
       <textarea
         [attr.placeholder]="value() ? null : placeholder()"
+        [attr.placeholder-color]="placeholderColor()"
+        [style.-x-placeholder-color]="placeholderColor()"
         [value]="value()"
         [attr.disabled]="disabled() || undefined"
         [attr.enable-scroll-bar]="maxLines() != null ? 'true' : null"
-        class="text-sm text-foreground"
-        style="border: none; background: transparent; height: 100%; width: 100%; line-height: 20px; position: relative; z-index: 1;"
+        class="text-base text-foreground"
+        style="border: none; background: transparent; height: 100%; width: 100%; line-height: 1.5rem; position: relative; z-index: 1;"
         (bindinput)="onInput($event)"
         (bindfocus)="onFocus()"
         (bindblur)="onBlur()"
@@ -117,9 +122,21 @@ export class UiTextarea implements FormValueControl<string> {
   readonly blurred = output<void>();
 
   readonly #host = inject(ElementRef).nativeElement;
+  readonly #resolveColor = injectIconColor();
   readonly #isFocused = signal(false);
   #shakeAnim?: AnimationHandle;
   #previousError = '';
+
+  /**
+   * The placeholder's color, the theme's muted foreground, resolved to its
+   * value: neither the attribute nor the style can read a CSS variable (see
+   * icon-theme.ts). Each platform's own placeholder gray differs, and from
+   * the placeholder ui-select draws as text, so a form's empty fields
+   * didn't match.
+   */
+  protected readonly placeholderColor = computed(() =>
+    this.#resolveColor('var(--muted-foreground)'),
+  );
 
   /**
    * Shakes the field when an error first appears. A field rather than a
@@ -136,11 +153,12 @@ export class UiTextarea implements FormValueControl<string> {
   });
 
   protected readonly containerClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    // 8px between the label, the field and the text under it, as ui-input.
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 
   protected readonly labelClass = computed(() =>
-    cn('text-sm font-medium text-foreground'),
+    cn('text-base font-medium text-foreground'),
   );
 
   protected readonly textareaWrapperClass = computed(() =>
@@ -149,7 +167,9 @@ export class UiTextarea implements FormValueControl<string> {
       // min-height (minLines) so callers can go below the old 3-line floor.
       // z-0: stacking context for the textarea's z-index (see the template
       // comment) so the native textarea scrolls with its wrapper.
-      'z-0 rounded-xl bg-muted px-3.5 py-2.5',
+      // The same shape as ui-input's field, whose 16px sides and 12px
+      // corners it shares: one line of text makes it 48px tall too.
+      'z-0 rounded-lg bg-muted px-4 py-3',
       this.disabled() && 'opacity-50',
     ),
   );
@@ -157,9 +177,10 @@ export class UiTextarea implements FormValueControl<string> {
   /**
    * Focus ring, drawn as an OUTSET box-shadow on a dedicated overlay layer (see
    * the template comment, and input.ts for the full rationale). Two stacked
-   * outset shadows: a solid 1px ring hugging the edge (reads as a crisp border)
-   * and a softer 3px ring around it. Focus pairs var(--ring) with the translucent
-   * var(--ring-subtle); error uses solid var(--destructive) for both. Always set
+   * outset shadows for focus: a solid 1px ring hugging the edge (reads as a
+   * crisp border) and a softer 3px ring around it, var(--ring) and the
+   * translucent var(--ring-subtle). An error is one 1.5px ring in
+   * var(--destructive), as on ui-input. Always set
    * (never null) so the shadow stays painted while the layer fades out —
    * visibility is driven by ringVisible()/opacity. On its own layer (not folded
    * into wrapperStyle()) so the wrapper's whole-string [style] and this per-key
@@ -167,7 +188,7 @@ export class UiTextarea implements FormValueControl<string> {
    */
   protected readonly ringShadow = computed(() =>
     this.error()
-      ? '0 0 0 1px var(--destructive), 0 0 0 3px var(--destructive)'
+      ? '0 0 0 1.5px var(--destructive)'
       : '0 0 0 1px var(--ring), 0 0 0 3px var(--ring-subtle)',
   );
 
@@ -182,30 +203,31 @@ export class UiTextarea implements FormValueControl<string> {
 
   // Sizing lives on the wrapper so the textarea (height:100%) grows it with
   // content between min and max, then scrolls at the cap — the native textarea
-  // does not auto-grow on its own. The textarea's pinned line-height (20px, the
-  // text-sm line box) makes N lines map to exactly N*20px, independent of
-  // platform font metrics or Tailwind default drift. Lynx views are border-box,
-  // so these heights include the wrapper's py-2.5 (20px) vertical padding.
-  // maxLines is omitted when unset so the field keeps growing unbounded (the
-  // previous default).
+  // does not auto-grow on its own. The textarea's pinned line-height (1.5rem,
+  // the text-base line box) makes N lines map to exactly N*1.5rem, independent
+  // of platform font metrics or Tailwind default drift. Lynx views are
+  // border-box, so these heights include the wrapper's py-3 (1.5rem) vertical
+  // padding. All of it is in rem, as the wrapper's padding class is, so the
+  // sums hold whatever the root font size. maxLines is omitted when unset so
+  // the field keeps growing unbounded (the previous default).
   protected readonly wrapperStyle = computed(() => {
-    const lineHeight = 20;
-    const verticalPadding = 20; // py-2.5 → 10px top + 10px bottom
+    const lineHeight = 1.5;
+    const verticalPadding = 1.5; // py-3 → 0.75rem top + 0.75rem bottom
     const max = this.maxLines();
     return [
-      `min-height: ${this.minLines() * lineHeight + verticalPadding}px`,
-      max != null ? `max-height: ${max * lineHeight + verticalPadding}px` : '',
+      `min-height: ${this.minLines() * lineHeight + verticalPadding}rem`,
+      max != null ? `max-height: ${max * lineHeight + verticalPadding}rem` : '',
     ]
       .filter(Boolean)
       .join('; ');
   });
 
   protected readonly helperClass = computed(() =>
-    cn('text-xs text-muted-foreground'),
+    cn('text-sm text-muted-foreground'),
   );
 
   protected readonly errorClass = computed(() =>
-    cn('text-xs text-destructive'),
+    cn('text-sm text-destructive'),
   );
 
   protected onFocus(): void {

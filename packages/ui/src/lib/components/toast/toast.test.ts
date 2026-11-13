@@ -151,7 +151,12 @@ describe('UiToaster', () => {
       const { card, getByText, raise } = await renderToaster();
       const action = { label: 'Undo', onAction: () => {} };
       await raise({ title: 'Saved', description: 'Done.', action });
-      expect(card('Saved').classList).toContain('bg-background');
+      // On the card color, a raised surface, with 16px corners.
+      expect(card('Saved').classList).toContain('bg-card');
+      expect(card('Saved').classList).toContain('rounded-xl');
+      // The action sits beside the text, centered on it.
+      expect(card('Saved').classList).toContain('items-center');
+      expect(getByText('Saved').classList).toContain('text-base');
       expect(getByText('Saved').classList).toContain('text-foreground');
       expect(getByText('Done.').classList).toContain('text-muted-foreground');
       expect(getByText('Undo').classList).toContain('text-foreground');
@@ -174,6 +179,19 @@ describe('UiToaster', () => {
       expect(getByText('Retry').parentElement!.classList).toContain(
         'border-destructive-foreground',
       );
+    });
+
+    it('makes the action as tall as a small button, with a full touch target', async () => {
+      const { getByText, raise } = await renderToaster();
+      await raise({
+        title: 'Saved',
+        action: { label: 'Undo', onAction: () => {} },
+      });
+      const action = getByText('Undo').parentElement!;
+      // 36px tall: Lynx's hit-slop takes touches 6px around it, to 48px.
+      expect(action.classList).toContain('h-9');
+      expect(action.classList).toContain('px-3');
+      expect(action.getAttribute('hit-slop')).toBe('6px');
     });
 
     it('stays hidden until it slides up into view', async () => {

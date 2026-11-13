@@ -35,13 +35,24 @@ const renderAlert = async () => {
   return {
     ...result,
     host: result.componentRef.instance as AlertHost,
-    alert: () => result.container.querySelector('.rounded-lg')!,
+    // The alert: its host, found by the class written on it.
+    alert: () => result.container.querySelector('.mt-2')!,
   };
 };
 
 describe('alertVariants', () => {
   it('returns default variant classes', () => {
-    expect(alertVariants()).toContain('bg-background');
+    // On the card color, as a raised surface: in the dark it's a tone
+    // lighter than the page it sits on.
+    expect(alertVariants()).toContain('bg-card');
+    expect(alertVariants()).toContain('border-border');
+  });
+
+  it('always includes the base classes', () => {
+    for (const variant of ['default', 'destructive'] as const) {
+      expect(alertVariants({ variant })).toContain('rounded-xl');
+      expect(alertVariants({ variant })).toContain('gap-1');
+    }
   });
 
   it('returns destructive variant classes', () => {
@@ -78,6 +89,8 @@ describe('UiAlert', () => {
     expect(getByText('Heads up').getAttribute('class')).toContain(
       'text-foreground',
     );
+    expect(getByText('Heads up').classList).toContain('text-base');
+    expect(getByText('Heads up').classList).toContain('font-semibold');
     expect(
       getByText('Your download is ready.').getAttribute('class'),
     ).toContain('text-muted-foreground');
@@ -90,8 +103,14 @@ describe('UiAlert', () => {
     host.description.set('Something went wrong.');
     await waitForUpdate();
     expect(alert().classList).toContain('border-destructive');
+    expect(alert().classList).toContain('bg-destructive-subtle');
     expect(getByText('Error').classList).toContain('text-destructive');
+    // The title and the edge are red; the message is in the foreground: a
+    // paragraph of red on the red tint is hard to read.
     expect(getByText('Something went wrong.').classList).toContain(
+      'text-foreground',
+    );
+    expect(getByText('Something went wrong.').classList).not.toContain(
       'text-destructive',
     );
   });

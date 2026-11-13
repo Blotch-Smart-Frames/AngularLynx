@@ -32,7 +32,7 @@ import {
   template: `
     <ui-tabs [(value)]="value" (changed)="changes.push($event)" class="w-80">
       <ui-tabs-list class="mb-2">
-        <ui-tabs-trigger value="account" class="px-4">Account</ui-tabs-trigger>
+        <ui-tabs-trigger value="account" class="px-6">Account</ui-tabs-trigger>
         <ui-tabs-trigger value="billing">Billing</ui-tabs-trigger>
         <ui-tabs-trigger value="contact">Contact</ui-tabs-trigger>
       </ui-tabs-list>
@@ -92,9 +92,22 @@ describe('UiTabs', () => {
       container.querySelector('[accessibility-traits="tabbar"]'),
     ).not.toBeNull();
     expect(trigger('Account').classList).toContain('rounded-sm');
-    expect(trigger('Account').classList).toContain('px-4');
-    expect(panel('Account panel').classList).toContain('mt-2');
+    // The given class takes the place of the trigger's own padding.
+    expect(trigger('Account').classList).toContain('px-6');
+    expect(trigger('Account').classList).not.toContain('px-4');
+    expect(panel('Account panel').classList).toContain('mt-3');
     expect(panel('Account panel').classList).toContain('gap-2');
+  });
+
+  it('makes each trigger 40px tall, in a list 48px tall with them', async () => {
+    // The list's 4px of padding around the triggers makes a full touch
+    // target.
+    const { container, trigger } = await renderTabs();
+    expect(trigger('Billing').classList).toContain('h-10');
+    expect(trigger('Billing').classList).toContain('px-4');
+    expect(
+      container.querySelector('[accessibility-traits="tabbar"]')!.classList,
+    ).toContain('p-1');
   });
 
   // Angular gives a component's host every static attribute written on it,
@@ -104,7 +117,7 @@ describe('UiTabs', () => {
     const { container, trigger, panel } = await renderTabs();
     expect(container.querySelectorAll('.w-80')).toHaveLength(1);
     expect(container.querySelectorAll('.mb-2')).toHaveLength(1);
-    expect([...container.querySelectorAll('.px-4')]).toEqual([
+    expect([...container.querySelectorAll('.px-6')]).toEqual([
       trigger('Account'),
     ]);
     expect([...container.querySelectorAll('.gap-2')]).toEqual([

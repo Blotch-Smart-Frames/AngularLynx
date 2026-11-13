@@ -312,10 +312,14 @@ describe('UiChart', () => {
     });
 
     describe('color scheme', () => {
-      const darkDevice = {
+      /**
+       * An app drawn in an appearance, as `LynxTheme.appearance` gives it:
+       * the device's, or the app's own choice.
+       */
+      const drawnIn = (appearance: ChartColorScheme): Provider => ({
         provide: LynxTheme,
-        useValue: { isDarkMode: () => true },
-      };
+        useValue: { appearance: () => appearance },
+      });
       /**
        * The color the bars are painted with.
        */
@@ -330,8 +334,13 @@ describe('UiChart', () => {
         return /fill="(rgba\([^)]*\))"/.exec(layers(container)[1]!)?.[1];
       };
 
-      it('stays light on a dark device unless the app opts in', async () => {
-        expect(await primaryFill([darkDevice])).toBe(
+      it('follows the appearance the app is drawn in by default', async () => {
+        // The page has the theme's `dark` class while the app is drawn dark,
+        // so the marks match the axis labels, which read the CSS variables.
+        expect(await primaryFill([drawnIn('dark')])).toBe(
+          CHART_DARK_COLORS['primary'],
+        );
+        expect(await primaryFill([drawnIn('light')])).toBe(
           CHART_LIGHT_COLORS['primary'],
         );
       });
@@ -342,27 +351,34 @@ describe('UiChart', () => {
         );
       });
 
-      it("follows the device with 'system'", async () => {
-        expect(await primaryFill([darkDevice], 'system')).toBe(
+      it("follows the app's appearance with 'system'", async () => {
+        expect(await primaryFill([drawnIn('dark')], 'system')).toBe(
           CHART_DARK_COLORS['primary'],
         );
-        expect(
-          await primaryFill(
-            [{ provide: LynxTheme, useValue: { isDarkMode: () => false } }],
-            'system',
-          ),
-        ).toBe(CHART_LIGHT_COLORS['primary']);
+        expect(await primaryFill([drawnIn('light')], 'system')).toBe(
+          CHART_LIGHT_COLORS['primary'],
+        );
       });
 
       it('takes the scheme from the chart theme, a function included', async () => {
+        // A fixed scheme stays, whatever the app is drawn in.
         expect(
           await primaryFill([
-            darkDevice,
+            drawnIn('dark'),
+            provideChartTheme({ colorScheme: 'light' }),
+          ]),
+        ).toBe(CHART_LIGHT_COLORS['primary']);
+        expect(
+          await primaryFill([
+            drawnIn('dark'),
             provideChartTheme({ colorScheme: 'system' }),
           ]),
         ).toBe(CHART_DARK_COLORS['primary']);
         expect(
-          await primaryFill([provideChartTheme({ colorScheme: () => 'dark' })]),
+          await primaryFill([
+            drawnIn('light'),
+            provideChartTheme({ colorScheme: () => 'dark' }),
+          ]),
         ).toBe(CHART_DARK_COLORS['primary']);
       });
 

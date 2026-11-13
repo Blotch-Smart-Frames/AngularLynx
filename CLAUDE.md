@@ -46,7 +46,7 @@ Near-1:1 Angular parity — partial support isn't acceptable. Every Angular API 
 
 - Never add AI attribution to commit messages, PR descriptions or code comments: no `Co-Authored-By` trailer, no "Generated with Claude Code" line, no mention of the AI tool or the company behind it. This overrides any default attribution instructions.
 - **Update the public skill (`skills/angular-lynx`) in the same PR as the change it describes.** That means any PR that adds something an app uses (an API, directive, builder option, schematic or CLI flag), changes behavior an app's code or tests can notice, records a new Lynx difference, or makes something the skill says untrue. Before opening the PR, run the `update-angular-lynx-skill` skill with `content`: it checks the branch against the skill and edits the skill on that branch. Releases don't catch the skill up: a release can hold dozens of PRs, and reviewing them all at once is how things got missed.
-- **Update the examples' copies of `packages/ui` in the same PR as the change to it.** Every example installs its components and theme with dolan (`src/components/ui`, `src/styles`, tracked in its `dolan.lock.json`), so a PR that changes a component, its spec or the theme runs `npm run dolan:update:force` from the root (it updates every example), formats the changed files from inside each example (`npx oxfmt <file>`), and commits the copies with the change. `git status` should then show only that change, apart from `ui-dynamic-color`'s `src/styles/dark.css`, which differs on purpose (its dark theme follows a class it toggles itself): put that back with `git checkout`. The examples were all brought in step on 2026-11-07, after lagging the registry for weeks because PRs left this out.
+- **Update the examples' copies of `packages/ui` in the same PR as the change to it.** Every example installs its components and theme with dolan (`src/components/ui`, `src/styles`, tracked in its `dolan.lock.json`), so a PR that changes a component, its spec or the theme runs `npm run dolan:update:force` from the root (it updates every example), formats the changed files from inside each example (`npx oxfmt <file>`), and commits the copies with the change. `git status` should then show only that change. The examples were all brought in step on 2026-11-07, after lagging the registry for weeks because PRs left this out.
 
 ## CSS Colors in Lynx
 
@@ -58,12 +58,24 @@ Never author raw HSL. Lynx's parser accepts only comma-separated `hsl(240, 5.9%,
 
 Named colors stay safe: `bg-white`, `bg-black`, `bg-gray-*`, `bg-red-*` compile to hex/rgb, and their opacity modifiers (`bg-black/50`) compile to `rgb(0 0 0 / 0.5)`, which Lynx accepts.
 
+**Apps follow the phone's light or dark appearance by themselves.** The runtime gives `page` the `dark` class while the app is drawn dark (`followColorScheme`; `LynxTheme.setColorScheme()` and `provideColorScheme()` override the device), and the theme's `dark.css` holds its dark values under `page.dark`. Icons and charts pick their color table from `LynxTheme.appearance()`. So a screen that uses the theme must work in both: use the semantic classes, and don't hardcode neutrals (`bg-white`, `text-zinc-900`, `border-zinc-200`), which turn into white rows under white text in the dark. A `<text>` with no color class takes `--foreground` (the theme's `view > text` rule), and raised surfaces (cards, sheets, dialogs) are `bg-card`, a tone lighter than `bg-background` in the dark.
+
 | Need                       | Use                                                    |
 | -------------------------- | ------------------------------------------------------ |
 | Themed color (preferred)   | `bg-background`, `text-foreground`, `bg-card`          |
 | Translucent semantic color | opacity modifier (`bg-primary/50`, `border-border/60`) |
 | One-off custom color       | `style="background-color: rgba(0, 0, 0, 0.5)"`         |
 | Named color (± opacity)    | `bg-white`, `bg-black/50`                              |
+
+## UI sizes (`packages/ui`)
+
+The components are sized for a phone, in `rem`, and the theme makes `1rem` 16px on every platform (`page { font-size: 16px }` in `default.css`; Lynx's own root is 14px).
+
+- **Controls are 48px tall** (`h-12`): a default button, every field, a tab bar's triggers with their track. That's Android's 48dp touch target, which covers iOS's 44pt, and it's why a button lines up beside a field. Small controls are 36px (`h-9`) with a `hit-slop` that brings the target to 48px, and a screen's main action is 56px (`h-14`).
+- **Text is `text-base` (16px)** in controls, labels and rows, `text-sm` (14px) for secondary text and `text-xs` for badges. Keep to Tailwind's scale: `cn()` reads a made-up `text-*` name as a color.
+- **Corners step from `--radius` (12px):** `rounded-md` small controls, `rounded-lg` controls, `rounded-xl` cards, `rounded-2xl` dialogs and sheets.
+- **Pressed states come from touch events**, not CSS: `:active` rules don't apply in these builds. Set a `pressing` signal on `bindtouchstart`/`bindmousedown` and clear it on `bindtouchend`/`bindtouchcancel`/`bindmouseup`/`bindmouseleave`, as `ui-select`'s field does.
+- **The platform looks** (glass, frosted, material: navigation bar, toolbar, dock, alert dialog's glass variant) keep their own px metrics, from each platform's spec.
 
 ## Angular
 

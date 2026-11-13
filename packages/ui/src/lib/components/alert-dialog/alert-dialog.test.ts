@@ -151,9 +151,20 @@ describe('UiAlertDialog', () => {
     expect(getByText('Buttons')).toBeTruthy();
   });
 
+  // The panel fills the width it's given, so the backdrop keeps 24px of the
+  // screen at each side of it. The glass looks' panels have widths of their
+  // own.
+  it('leaves room at each side of the default panel, and none beside the glass ones', async () => {
+    const { backdrop } = await renderAlertDialog();
+    expect(backdrop().classList).toContain('px-6');
+
+    const glass = await renderGlassAlert();
+    expect(glass.panel().parentElement!.classList).not.toContain('px-6');
+  });
+
   it("merges each part's class with its own, the given class winning", async () => {
     const { container, getByText, panel } = await renderAlertDialog();
-    expect(panel().classList).toContain('bg-background');
+    expect(panel().classList).toContain('bg-card');
     expect(panel().classList).toContain('max-w-sm');
     expect(getByText('Sure?').classList).toContain('font-semibold');
     expect(getByText('Sure?').classList).toContain('text-xl');
@@ -161,7 +172,7 @@ describe('UiAlertDialog', () => {
     expect(getByText('Cannot undo').classList).toContain('italic');
     const header = container.querySelector('.flex-col.gap-2');
     expect(header?.classList).not.toContain('gap-1.5');
-    const footer = container.querySelector('.pt-4');
+    const footer = container.querySelector('.pt-6');
     expect(footer?.classList).toContain('justify-start');
     expect(footer?.classList).not.toContain('justify-end');
   });
@@ -779,8 +790,10 @@ describe('UiAlertDialog with variant="glass"', () => {
       await renderGlassAlert();
     await update(() => host.variant.set('default'));
     expect(panel().tagName.toLowerCase()).toBe('view');
-    expect(panel().classList).toContain('bg-background');
+    expect(panel().classList).toContain('bg-card');
     expect(action('Cancel').classList).toContain('border-border');
+    // No fill of its own: the page's color read as a hole in the card.
+    expect(action('Cancel').classList).toContain('bg-transparent');
     expect(action('Delete').classList).toContain('bg-destructive');
     // The given class wins over the action's own.
     expect(action('Delete').classList).toContain('wide');
@@ -828,7 +841,7 @@ it("draws an alert dialog's parts in the default look outside one", async () => 
   const { getByText } = await render(LoosePartsHost);
   expect(getByText('Alone').classList).toContain('text-lg');
   expect(getByText('Outside a dialog').classList).toContain('text-sm');
-  expect(getByText('Footer').parentElement!.classList).toContain('pt-4');
+  expect(getByText('Footer').parentElement!.classList).toContain('pt-6');
   // The title is the header's own child: the header is its host.
-  expect(getByText('Alone').parentElement!.classList).toContain('gap-1.5');
+  expect(getByText('Alone').parentElement!.classList).toContain('gap-2');
 });

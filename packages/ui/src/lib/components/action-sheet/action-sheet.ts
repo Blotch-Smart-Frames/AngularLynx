@@ -112,7 +112,7 @@ const ANCHORED_WIDTH = { glass: 270, material: 280 } as const;
                clips this tile's children to the rounded corners but not its own
                box-shadow (painted outside the border box), so the shadow shows. -->
           <view
-            class="flex-col rounded-lg border border-border bg-card flex overflow-hidden"
+            class="flex-col rounded-xl border border-border bg-card flex overflow-hidden"
             style="box-shadow: 0 2px 16px rgba(0, 0, 0, 0.15);"
           >
             @if (!anchored()) {
@@ -399,13 +399,15 @@ const TITLE_TEXT: Readonly<Record<ActionSheetLook, string>> = {
   material: 'text-[13px] text-glass-muted-foreground',
 };
 const ITEM_CONTAINER: Readonly<Record<ActionSheetLook, string>> = {
-  sheet: 'items-center border-t border-border px-4 py-3 flex justify-center',
+  // 56px rows, as tall as iOS's action sheet's.
+  sheet:
+    'min-h-14 items-center border-t border-border px-4 py-3 flex justify-center',
   glass:
     'min-h-[44px] items-center px-4 py-[11px] flex justify-center relative',
   material: 'min-h-[48px] items-center px-3 py-3 flex relative',
 };
 const ITEM_TEXT: Readonly<Record<ActionSheetLook, string>> = {
-  sheet: 'text-base',
+  sheet: 'text-center text-lg',
   glass: 'text-center text-[17px]',
   material: 'text-[16px]',
 };
@@ -576,13 +578,13 @@ export class UiActionSheetCancel {
 
   protected readonly containerClass = computed(() =>
     cn(
-      'items-center rounded-lg border border-border bg-card px-4 py-3 flex justify-center',
+      'min-h-14 items-center rounded-xl border border-border bg-card px-4 py-3 flex justify-center',
       this.userClass(),
     ),
   );
 
   protected readonly textClass = computed(() =>
-    cn('text-base font-semibold text-primary'),
+    cn('text-lg font-semibold text-primary'),
   );
 
   protected onPressStart(): void {

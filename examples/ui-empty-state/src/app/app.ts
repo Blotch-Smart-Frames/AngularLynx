@@ -8,7 +8,7 @@ import { UiButton } from '../components/ui/button';
   imports: [LYNX_ELEMENTS, UiEmptyState, UiButton],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="p-6">
+      <view class="p-4">
         <text class="mb-6 text-2xl font-bold text-foreground">Empty State</text>
 
         <!-- With icon and description -->

@@ -63,11 +63,11 @@ type Task = {
     UiActionSheetCancel,
   ],
   template: `
-    <view class="h-screen flex-col bg-zinc-50 flex">
+    <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-zinc-200 bg-white px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
       >
-        <text class="text-[22px] font-bold text-zinc-900">Tasks</text>
+        <text class="text-[22px] font-bold text-foreground">Tasks</text>
         <ui-button size="sm" (pressed)="newSheetOpen.set(true)"
           >+ New
         </ui-button>
@@ -120,19 +120,20 @@ type Task = {
                  card: Lynx requires the bind/catch propagation prefix on event
                  names, and drops unprefixed ones without any error. -->
             <view
-              class="flex-row items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3.5 flex"
+              class="flex-row items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 flex"
               (bindlongpress)="openOptions(task)"
             >
               <ui-checkbox
                 [checked]="task.done"
                 (checkedChange)="toggle(task.id)"
               />
-              <!-- Both colors are bound: with text-zinc-900 always on, it
-                   would win over text-zinc-400 in the stylesheet. -->
+              <!-- Both colors are bound: with one always on, the stylesheet's
+                   order would decide which shows, not whether the task is
+                   done. -->
               <text
                 class="flex-1 text-sm"
-                [class.text-zinc-900]="!task.done"
-                [class.text-zinc-400]="task.done"
+                [class.text-foreground]="!task.done"
+                [class.text-muted-foreground]="task.done"
                 [class.line-through]="task.done"
               >
                 {{ task.title }}

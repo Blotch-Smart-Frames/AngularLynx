@@ -14,10 +14,12 @@ import {
   it,
   vi,
 } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import {
   type LynxMainThread,
   lynxMainThread,
 } from '../../../test-utils/lynx-main-thread';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import {
   UiAccordion,
   UiAccordionContent,
@@ -70,8 +72,12 @@ const renderAccordion = async () => {
       fireEvent.tap(trigger(label));
       await waitForUpdate();
     },
-    /** The chevron beside an item's label. */
-    chevron: (label: string) => result.getByText(label).nextElementSibling!,
+    /**
+     * The chevron's box beside an item's label: the box turns, with the
+     * drawing inside it.
+     */
+    chevron: (label: string) =>
+      result.getByText(label).nextElementSibling as HTMLElement,
     /** An item's content view, which is only mounted while it's expanded. */
     content: (text: string) => result.queryByText(text)?.parentElement ?? null,
   };
@@ -117,17 +123,86 @@ describe('UiAccordion', () => {
 
   it('expands an item when its trigger is tapped, and collapses it on a second tap', async () => {
     const { tap, chevron, content } = await renderAccordion();
-    // Collapsed, the content isn't mounted at all.
+    const turn = (label: string) =>
+      chevron(label).style.getPropertyValue('transform');
+    // Collapsed, the content isn't mounted at all, and the chevron points
+    // down.
     expect(content('Alpha body')).toBeNull();
-    expect(chevron('Alpha').textContent).toBe('▶');
+    expect(turn('Alpha')).toBe('rotate(0deg)');
 
+    // Expanded, it turns to point up.
     await tap('Alpha');
     expect(content('Alpha body')).not.toBeNull();
-    expect(chevron('Alpha').textContent).toBe('▼');
+    expect(turn('Alpha')).toBe('rotate(180deg)');
+    // Only the tapped item's.
+    expect(turn('Beta')).toBe('rotate(0deg)');
 
     await tap('Alpha');
     expect(content('Alpha body')).toBeNull();
-    expect(chevron('Alpha').textContent).toBe('▶');
+    expect(turn('Alpha')).toBe('rotate(0deg)');
+  });
+
+  it('draws a 20px chevron in the muted foreground, which turns rather than jumps', async () => {
+    const { chevron, queryByText } = await renderAccordion();
+    expect(chevron('Alpha').style.getPropertyValue('width')).toBe('20px');
+    expect(chevron('Alpha').style.getPropertyValue('height')).toBe('20px');
+    expect(chevron('Alpha').style.getPropertyValue('transition')).toContain(
+      'transform',
+    );
+    // An SVG, whose markup holds the color: it can't read a CSS variable.
+    // It was a character, whose shape was whatever the phone's font drew.
+    expect(
+      chevron('Alpha').querySelector('svg')!.getAttribute('content'),
+    ).toContain(`stroke="${ICON_LIGHT_COLORS['muted-foreground']}"`);
+    expect(queryByText('▶')).toBeNull();
+    expect(queryByText('▼')).toBeNull();
+  });
+
+  it('makes each trigger a row at least 48px tall, with a body-size label', async () => {
+    const { trigger, getByText } = await renderAccordion();
+    // A full touch target.
+    expect(trigger('Beta').classList).toContain('min-h-12');
+    expect(trigger('Beta').classList).toContain('py-3');
+    // The label takes the room the chevron leaves.
+    for (const name of ['flex-1', 'text-base', 'font-medium']) {
+      expect(getByText('Beta').classList).toContain(name);
+    }
+  });
+
+  it('dims a trigger under a finger or the mouse, from the press', async () => {
+    // Touches on a phone, and a mouse in the web preview, which sends no
+    // touches for a cursor. A canceled touch (a scroll taking over) and a
+    // cursor leaving release too.
+    const { trigger } = await renderAccordion();
+    const presses: readonly (readonly [() => unknown, () => unknown])[] = [
+      [
+        () => fireEvent.touchstart(trigger('Alpha')),
+        () => fireEvent.touchend(trigger('Alpha')),
+      ],
+      [
+        () => fireEvent.touchstart(trigger('Alpha')),
+        () => fireEvent.touchcancel(trigger('Alpha')),
+      ],
+      [
+        () => fireEvent.mousedown(trigger('Alpha')),
+        () => fireEvent.mouseup(trigger('Alpha')),
+      ],
+      [
+        () => fireEvent.mousedown(trigger('Alpha')),
+        () => fireLynxEvent(trigger('Alpha'), 'mouseleave'),
+      ],
+    ];
+    expect(trigger('Alpha').classList).not.toContain('opacity-60');
+    for (const [down, up] of presses) {
+      down();
+      await waitForUpdate();
+      expect(trigger('Alpha').classList).toContain('opacity-60');
+      // Only the row under the finger.
+      expect(trigger('Beta').classList).not.toContain('opacity-60');
+      up();
+      await waitForUpdate();
+      expect(trigger('Alpha').classList).not.toContain('opacity-60');
+    }
   });
 
   it('keeps one item expanded at a time by default', async () => {

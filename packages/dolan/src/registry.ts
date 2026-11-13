@@ -53,7 +53,9 @@ export const registry: RegistryEntry[] = [
     dependencies: ['glass', 'popover'],
     themeColors: ['glass-foreground', 'glass-muted-foreground'],
   },
-  { name: 'accordion', dependencies: [] },
+  // The trigger's chevron is an SVG, drawn in the muted foreground that
+  // icon-theme.ts resolves: an SVG can't read a CSS variable.
+  { name: 'accordion', dependencies: ['icon'] },
   { name: 'alert', dependencies: [], packages: CVA_PACKAGES },
   // The glass variant's panel is glass, and its text and buttons take the
   // glass foreground and tint.
@@ -97,7 +99,9 @@ export const registry: RegistryEntry[] = [
   // below build on it. Colors set at runtime above a chart, such as
   // dynamic-color's, reach its marks through icon-theme.ts.
   { name: 'chart', dependencies: ['icon'], packages: CHART_PACKAGES },
-  { name: 'checkbox', dependencies: [] },
+  // The check mark is an SVG, drawn in the primary foreground that
+  // icon-theme.ts resolves.
+  { name: 'checkbox', dependencies: ['icon'] },
   { name: 'collapsible', dependencies: [] },
   // The context menu is a menu that opens on a long press: it shares the
   // menu's items and its overlay.
@@ -128,7 +132,9 @@ export const registry: RegistryEntry[] = [
   // Glass resolves its tint with the icons' copy of the theme, and hands
   // projected icons its foreground.
   { name: 'glass', dependencies: ['icon'], themeColors: GLASS_COLORS },
-  { name: 'input', dependencies: [] },
+  // The placeholder's color is an attribute and a native style, neither of
+  // which reads a CSS variable: icon-theme.ts resolves the muted foreground.
+  { name: 'input', dependencies: ['icon'] },
   { name: 'label', dependencies: [] },
   { name: 'line-chart', dependencies: ['chart'] },
   { name: 'list', dependencies: [] },
@@ -140,10 +146,11 @@ export const registry: RegistryEntry[] = [
   },
   // The multi-select shares select's sheet, search and filtering, marks its
   // rows with checkboxes, shows the chosen items as badges, and closes the
-  // sheet with a button.
+  // sheet with a button. Its chevron is an SVG in the muted foreground that
+  // icon-theme.ts resolves.
   {
     name: 'multi-select',
-    dependencies: ['badge', 'button', 'checkbox', 'select'],
+    dependencies: ['badge', 'button', 'checkbox', 'icon', 'select'],
   },
   // nav-drawer renders a hamburger trigger via <ui-icon>, so it pulls in `icon`.
   { name: 'nav-drawer', dependencies: ['icon'] },
@@ -193,7 +200,8 @@ export const registry: RegistryEntry[] = [
   // resolved by icon-theme.ts.
   { name: 'tab-bar', dependencies: ['icon'] },
   { name: 'tabs', dependencies: ['segmented-control'] },
-  { name: 'textarea', dependencies: [] },
+  // As the input: icon-theme.ts resolves the placeholder's color.
+  { name: 'textarea', dependencies: ['icon'] },
   { name: 'toast', dependencies: [] },
   // A segmented toggle group's icons take the segment's content color.
   {

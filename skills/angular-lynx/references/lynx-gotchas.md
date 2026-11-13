@@ -103,9 +103,9 @@ Content projected into a `<text>` host follows `<text>`'s rules: raw text, and n
 
 Lynx draws text only inside `<text>`, so the runtime draws raw text whose parent is a `<view>` (a `<div>`, `<li>`, component host or any other element that isn't a `<text>`) in an anonymous `<text>` (class `_ngtext`), with the HTML inline tags beside it when the parent lays out as a block. Angular never sees it: `parentNode()` of the text is the `<view>`. It reads the text styles its ancestors' classes set (see [lynx-elements.md](lynx-elements.md)). A Lynx element beside it (`<view>Hi <text>there</text></view>`) still ends the line: "Hi" stacks above "there". While its text is blank (an empty `{{ name() }}`), the anonymous `<text>` is hidden, so it takes no room. The grouping is settled at the end of each change detection, before the flush.
 
-### Default `font-size` is 14px (not 16px)
+### Default `font-size` is 14px (not 16px), and so is `1rem`
 
-No keyword sizes (`small`, `medium`, `large`).
+Every `rem` size is an eighth smaller than in a browser: Tailwind's `h-12` is 42px, not 48px. `page { font-size: 16px; }` makes `1rem` and the default text size 16px (the dolan UI theme sets it). No keyword sizes (`small`, `medium`, `large`).
 
 ### `line-height` only works on `<text>` elements
 
@@ -151,9 +151,9 @@ Compare it with the exact strings in `PlatformType` (exported from `@blotch/angu
 
 Use explicit `<view>` elements for decorative content.
 
-### No `:hover` / `:focus`
+### No `:hover` / `:focus`, and `:active` doesn't apply
 
-`:active` works (tracks touch state). Use signal-driven class toggling.
+Use signal-driven class toggling. For a pressed state, set the signal on `(bindtouchstart)` and `(bindmousedown)` and clear it on `(bindtouchend)`, `(bindtouchcancel)`, `(bindmouseup)` and `(bindmouseleave)`: `:active` rules didn't take effect in these builds when measured on Android.
 
 ### No `pointer-events`
 

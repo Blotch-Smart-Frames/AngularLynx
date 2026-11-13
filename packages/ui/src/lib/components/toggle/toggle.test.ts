@@ -140,9 +140,20 @@ describe('UiToggle', () => {
   it('renders its content unpressed, with the given class', async () => {
     const { toggle } = await renderToggle();
     expect(toggle().classList).toContain('bg-transparent');
-    expect(toggle().classList).toContain('h-10');
+    // ui-button's sizes: 48px, a full touch target.
+    expect(toggle().classList).toContain('h-12');
+    expect(toggle().classList).toContain('rounded-lg');
     expect(toggle().classList).toContain('w-20');
     expect(toggle().classList).not.toContain('opacity-50');
+  });
+
+  it('carries the text classes for text written straight into it', async () => {
+    // The runtime wraps loose text in a <text> that takes them from the
+    // host: without them it drew in Lynx's own black, invisible in the dark.
+    const { toggle } = await renderToggle();
+    for (const name of ['font-medium', 'text-foreground', 'text-base']) {
+      expect(toggle().classList).toContain(name);
+    }
   });
 
   it('flips `pressed` and its highlight on each tap', async () => {
@@ -180,11 +191,16 @@ describe('UiToggle', () => {
     host.size.set('sm');
     await waitForUpdate();
     expect(toggle().classList).toContain('border-border');
-    expect(toggle().classList).toContain('h-9');
+    // Corners and text grow with the size, as ui-button's do.
+    for (const name of ['h-9', 'rounded-md', 'px-3', 'text-sm']) {
+      expect(toggle().classList).toContain(name);
+    }
 
     host.size.set('lg');
     await waitForUpdate();
-    expect(toggle().classList).toContain('h-11');
+    for (const name of ['h-14', 'rounded-xl', 'px-6', 'text-lg']) {
+      expect(toggle().classList).toContain(name);
+    }
   });
 
   it('scales down while pressed, and back on release or cancel', async () => {
@@ -295,7 +311,7 @@ describe('UiToggleGroup', () => {
 
   it("styles every item with the group's variant and size, and its own class", async () => {
     const { host, item } = await renderGroup();
-    expect(item('Left').classList).toContain('h-10');
+    expect(item('Left').classList).toContain('h-12');
     expect(item('Left').classList).toContain('flex-1');
     expect(item('Left').classList).not.toContain('opacity-50');
 

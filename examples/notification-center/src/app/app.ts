@@ -36,12 +36,14 @@ type Notification = {
     UiButton,
   ],
   template: `
-    <view class="h-screen flex-col bg-zinc-50 flex">
+    <view class="h-screen flex-col bg-background flex">
       <view
-        class="flex-row items-center border-b border-zinc-200 bg-white px-5 py-4 flex justify-between"
+        class="flex-row items-center border-b border-border bg-card px-5 py-4 flex justify-between"
       >
         <view class="flex-row items-center gap-2.5 flex">
-          <text class="text-[22px] font-bold text-zinc-900">Notifications</text>
+          <text class="text-[22px] font-bold text-foreground"
+            >Notifications</text
+          >
           @if (unreadCount() > 0) {
             <ui-badge>{{ unreadCount() }}</ui-badge>
           }
@@ -55,7 +57,7 @@ type Notification = {
 
       <scroll-view scroll-orientation="vertical" class="flex-1">
         @if (notifications().length === 0) {
-          <view class="p-6">
+          <view class="p-4">
             <ui-empty-state
               icon="bell"
               title="All caught up"
@@ -84,11 +86,13 @@ type Notification = {
                       <view class="mt-1.5 h-2 w-2 shrink-0" />
                     }
                     <view class="flex-1 flex-col gap-0.5 flex">
-                      <text class="text-sm font-semibold text-zinc-900">{{
+                      <text class="text-sm font-semibold text-foreground">{{
                         n.title
                       }}</text>
-                      <text class="text-xs text-zinc-500">{{ n.message }}</text>
-                      <text class="mt-1 text-xs text-zinc-400">{{
+                      <text class="text-xs text-muted-foreground">{{
+                        n.message
+                      }}</text>
+                      <text class="mt-1 text-xs text-muted-foreground">{{
                         n.time
                       }}</text>
                     </view>

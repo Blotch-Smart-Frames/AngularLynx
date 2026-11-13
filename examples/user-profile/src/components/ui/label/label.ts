@@ -10,6 +10,10 @@ import { registerHostElement } from '@blotch/angular-lynx';
 import { cn } from '@blotch/dolan/utils/cn';
 
 /**
+ * A control's name: 16px, a phone's body size, in medium weight, as the
+ * fields' own labels are (ui-input, ui-select), so a label written beside a
+ * switch or above a field matches them.
+ *
  * The label is its host, a `<text>` (registerHostElement, below), styled
  * through `host`. Angular gives a component's host every static attribute the
  * app writes on it, so `<ui-label class="mb-2">` puts `mb-2` on the host
@@ -28,7 +32,7 @@ export class UiLabel {
 
   protected readonly labelClass = computed(() =>
     cn(
-      'text-sm font-medium text-foreground',
+      'text-base font-medium text-foreground',
       this.disabled() && 'opacity-50',
       this.userClass(),
     ),

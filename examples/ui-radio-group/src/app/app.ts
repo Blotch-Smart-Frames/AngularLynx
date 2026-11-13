@@ -8,7 +8,7 @@ import { UiLabel } from '../components/ui/label';
   imports: [LYNX_ELEMENTS, UiRadioGroup, UiRadioGroupItem, UiLabel],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Radio Group</text>
         <text class="text-sm text-muted-foreground">
           A group of radio buttons where only one option can be selected at a

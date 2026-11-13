@@ -38,9 +38,9 @@ type UploadFile = {
     UiSeparator,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
-      <view class="flex-col gap-6 p-6 flex">
-        <text class="text-[28px] font-bold text-zinc-900">File Manager</text>
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
+      <view class="flex-col gap-6 p-4 flex">
+        <text class="text-[28px] font-bold text-foreground">File Manager</text>
 
         <ui-card>
           <ui-card-header>
@@ -49,7 +49,7 @@ type UploadFile = {
               @if (syncing()) {
                 <view class="flex-row items-center gap-2 flex">
                   <ui-spinner size="sm" />
-                  <text class="text-xs text-zinc-400">Syncing...</text>
+                  <text class="text-xs text-muted-foreground">Syncing...</text>
                 </view>
               }
             </view>
@@ -59,11 +59,11 @@ type UploadFile = {
               @for (file of files(); track file.id) {
                 <view class="flex-col gap-1.5 flex">
                   <view class="flex-row items-center flex justify-between">
-                    <text class="text-sm text-zinc-900">{{ file.name }}</text>
+                    <text class="text-sm text-foreground">{{ file.name }}</text>
                     @if (file.done) {
                       <ui-badge variant="secondary">Done</ui-badge>
                     } @else {
-                      <text class="text-xs text-zinc-400">
+                      <text class="text-xs text-muted-foreground">
                         {{ file.progress }}%
                       </text>
                     }
@@ -85,7 +85,7 @@ type UploadFile = {
         <ui-separator />
 
         <view class="flex-col gap-3 flex">
-          <text class="text-sm font-medium text-zinc-900">Recent Files</text>
+          <text class="text-sm font-medium text-foreground">Recent Files</text>
           @if (loading()) {
             @for (i of [1, 2, 3]; track i) {
               <view class="flex-row items-center gap-3 flex">
@@ -99,18 +99,18 @@ type UploadFile = {
           } @else {
             @for (file of recentFiles; track file.name) {
               <view
-                class="flex-row items-center gap-3 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 flex"
+                class="flex-row items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 flex"
               >
                 <view
-                  class="h-10 w-10 items-center rounded-lg bg-zinc-100 justify-center"
+                  class="h-10 w-10 items-center rounded-lg bg-muted justify-center"
                 >
                   <text class="text-[18px]">{{ file.icon }}</text>
                 </view>
                 <view class="flex-1 flex-col gap-0.5 flex">
-                  <text class="text-sm font-medium text-zinc-900">{{
+                  <text class="text-sm font-medium text-foreground">{{
                     file.name
                   }}</text>
-                  <text class="text-xs text-zinc-400">
+                  <text class="text-xs text-muted-foreground">
                     {{ file.size }} · {{ file.date }}
                   </text>
                 </view>

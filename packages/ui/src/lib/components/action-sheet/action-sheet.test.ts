@@ -440,6 +440,23 @@ describe('UiActionSheetItem', () => {
     expect(button('Delete').classList).toContain('border-t');
   });
 
+  it('is a row 56px tall at least, with a centered 18px label', async () => {
+    // As tall as iOS's action sheet's rows.
+    const { button, getByText } = await renderSheet();
+    expect(button('Share').classList).toContain('min-h-14');
+    expect(getByText('Share').classList).toContain('text-lg');
+    expect(getByText('Share').classList).toContain('text-center');
+  });
+
+  it('sits with the other items in one card with 16px corners', async () => {
+    const { button } = await renderSheet();
+    const card = button('Share').closest('.bg-card')!;
+    expect(card.contains(button('Delete'))).toBe(true);
+    expect(card.classList).toContain('rounded-xl');
+    // Cancel is a card of its own, below.
+    expect(card.contains(button('Cancel'))).toBe(false);
+  });
+
   it('scales down while pressed, and back on release', async () => {
     const { button } = await renderSheet();
     expectPressFeedback(button('Share'));
@@ -465,6 +482,14 @@ describe('UiActionSheetCancel', () => {
     const { button } = await renderSheet();
     expect(button('Cancel').classList).toContain('mt-2');
     expect(button('Cancel').classList).toContain('bg-card');
+  });
+
+  it('is a card as tall as an item, with the same corners and an 18px label', async () => {
+    const { button, getByText } = await renderSheet();
+    expect(button('Cancel').classList).toContain('min-h-14');
+    expect(button('Cancel').classList).toContain('rounded-xl');
+    expect(getByText('Cancel').classList).toContain('text-lg');
+    expect(getByText('Cancel').classList).toContain('font-semibold');
   });
 
   it('scales down while pressed, and back on release', async () => {

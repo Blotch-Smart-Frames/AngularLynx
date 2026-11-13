@@ -18,6 +18,7 @@ import { cn } from '@blotch/dolan/utils/cn';
 import { UiBadge } from '../badge/badge';
 import { UiButton } from '../button/button';
 import { UiCheckbox } from '../checkbox/checkbox';
+import { injectIconColor } from '../icon/icon-theme';
 import { UiSelectSheet, matchesQuery } from '../select/select-sheet';
 
 const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
@@ -60,7 +61,7 @@ const multiSelectItem = () => UiMultiSelectItem;
          TalkBack would stop on it a second time. -->
     @if (label()) {
       <text
-        class="text-sm font-medium text-foreground"
+        class="text-base font-medium text-foreground"
         accessibility-elements-hidden="true"
         >{{ label() }}</text
       >
@@ -69,31 +70,48 @@ const multiSelectItem = () => UiMultiSelectItem;
       <!-- One accessibility element, a button, as ui-select's trigger is: its
            label names the field, and its value is the chosen items' labels,
            so VoiceOver says "Topics, News, Sport, button". The chips wrap
-           onto more lines as they need, and the field grows with them. -->
+           onto more lines as they need, and the field grows with them. The
+           trigger draws the field and dims under a finger, as ui-select's
+           does. -->
       <view
-        class="flex-1 flex-row items-center gap-2 px-3 py-2 flex"
+        [class]="triggerClass()"
         accessibility-element="true"
         accessibility-traits="button"
         [accessibility-label]="triggerLabel()"
         [accessibility-value]="triggerValue()"
         [lynxAccessibilityTraits]="{ disabled: disabled() }"
+        (bindtouchstart)="press(true)"
+        (bindtouchend)="press(false)"
+        (bindtouchcancel)="press(false)"
+        (bindmousedown)="press(true)"
+        (bindmouseup)="press(false)"
+        (bindmouseleave)="press(false)"
         (bindtap)="toggle()"
       >
         @if (chosenLabels().length > 0) {
           <view class="flex-1 flex-row flex-wrap gap-1.5 flex">
             <!-- By index: a value the app sets may hold an item twice. -->
+            <!-- On the background color: the field's fill is the secondary
+                 badge's own, which left the chips with no edge. -->
             @for (chip of chosenLabels(); track $index) {
-              <ui-badge variant="secondary" [animated]="false">{{
-                chip
-              }}</ui-badge>
+              <ui-badge
+                variant="secondary"
+                class="bg-background"
+                [animated]="false"
+                >{{ chip }}</ui-badge
+              >
             }
           </view>
         } @else {
-          <text class="flex-1 text-sm text-muted-foreground">{{
+          <text class="flex-1 text-base text-muted-foreground">{{
             placeholder()
           }}</text>
         }
-        <svg [attr.content]="chevronSvg" style="width: 16px; height: 16px;" />
+        <svg
+          class="shrink-0"
+          [attr.content]="chevronSvg()"
+          style="width: 20px; height: 20px;"
+        />
       </view>
       <ui-select-sheet
         [open]="sheetOpen()"
@@ -112,7 +130,7 @@ const multiSelectItem = () => UiMultiSelectItem;
           class="flex-row items-center gap-3 px-4 pb-3 flex"
         >
           <text
-            class="flex-1 text-base font-semibold text-foreground"
+            class="flex-1 text-lg font-semibold text-foreground"
             accessibility-traits="header"
             >{{ sheetTitle() }}</text
           >
@@ -162,7 +180,25 @@ export class UiMultiSelect {
   /** Emits the new value every time an item is toggled. */
   readonly changed = output<readonly string[]>();
 
-  protected readonly chevronSvg = CHEVRON_SVG;
+  /** A finger (or the mouse) is down on the trigger. */
+  protected readonly pressing = signal(false);
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
+  }
+
+  readonly #resolveColor = injectIconColor();
+
+  /**
+   * The chevron in the muted foreground, resolved and written into the
+   * markup, as ui-select's is: an SVG can't read a CSS variable.
+   */
+  protected readonly chevronSvg = computed(() =>
+    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+    CHEVRON_SVG.split('currentColor').join(
+      this.#resolveColor('var(--muted-foreground)'),
+    ),
+  );
 
   protected readonly sheetOpen = signal(false);
 
@@ -212,7 +248,8 @@ export class UiMultiSelect {
   );
 
   protected readonly hostClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    // 8px between the label and the field, as ui-input.
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 
   /**
@@ -220,9 +257,17 @@ export class UiMultiSelect {
    * with more. The trigger fills it and centers the chips.
    */
   protected readonly fieldClass = computed(() =>
+    cn('min-h-12 flex-row flex', this.disabled() && 'opacity-50'),
+  );
+
+  /**
+   * The field as ui-select and ui-input draw theirs, with room above and
+   * below for chips that wrap.
+   */
+  protected readonly triggerClass = computed(() =>
     cn(
-      'min-h-[48px] flex-row rounded-md border border-input bg-background flex',
-      this.disabled() && 'opacity-50',
+      'flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 py-2.5 flex',
+      this.pressing() && !this.disabled() && 'opacity-70',
     ),
   );
 
@@ -286,12 +331,23 @@ export class UiMultiSelect {
     '[attr.accessibility-traits]': "'button'",
     '[attr.accessibility-label]': 'label()',
     '[attr.accessibility-elements-hidden]': 'shown() ? null : true',
+    // The row fills under a finger, from the touch's start, as
+    // UiSelectItem's does.
+    '(bindtouchstart)': 'press(true)',
+    '(bindtouchend)': 'press(false)',
+    '(bindtouchcancel)': 'press(false)',
+    '(bindmousedown)': 'press(true)',
+    '(bindmouseup)': 'press(false)',
+    '(bindmouseleave)': 'press(false)',
     '(bindtap)': 'onTap()',
   },
   template: `
-    <ui-checkbox [checked]="isChosen()" />
+    <!-- The row is the accessibility element, named and marked selected:
+         its checkbox, a button of its own elsewhere, is hidden from screen
+         readers here, or they'd stop on it as a second, unnamed control. -->
+    <ui-checkbox [checked]="isChosen()" accessibility-elements-hidden="true" />
     <ng-content />
-    <text class="flex-1 py-3 text-sm text-foreground">{{ label() }}</text>
+    <text class="flex-1 py-3 text-base text-foreground">{{ label() }}</text>
   `,
 })
 export class UiMultiSelectItem {
@@ -306,6 +362,9 @@ export class UiMultiSelectItem {
     this.#select.value().includes(this.itemValue()),
   );
 
+  /** A finger (or the mouse) is down on the row. */
+  protected readonly pressing = signal(false);
+
   /** Whether the item shows for the search text (see UiMultiSelect.shows). */
   protected readonly shown = computed(() => this.#select.shows(this.label()));
 
@@ -317,18 +376,20 @@ export class UiMultiSelectItem {
     this.#host.setAccessibilityTrait('selected', this.isChosen());
   });
 
-  /**
-   * The checkbox's 44pt tap target insets its box, so the row's own inset
-   * is smaller: the box lines up with the search field and the header.
-   */
   protected readonly containerClass = computed(() =>
     cn(
-      // At least 48px tall, as UiSelectItem's rows are.
-      'min-h-[48px] flex-row items-center gap-3 pl-1 pr-4 flex',
+      // At least 48px tall, as UiSelectItem's rows are. The box lines up
+      // with the search field and the header.
+      'min-h-12 flex-row items-center gap-3 px-4 flex',
+      this.pressing() && 'bg-muted',
       !this.shown() && 'hidden overflow-hidden',
       this.userClass(),
     ),
   );
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
+  }
 
   protected onTap(): void {
     this.#select.toggleValue(this.itemValue());

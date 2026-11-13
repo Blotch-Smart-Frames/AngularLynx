@@ -210,35 +210,35 @@ providers: [
 ],
 ```
 
-The chart has to follow the same source as your app's `.dark` class, or you get dark bars on a light card. The color scheme says which color table the marks use:
+Charts follow the app's appearance, as the [theme](/dolan/theming#dark-mode) and the icons do. The color scheme says which color table the marks use:
 
-| Value      | Colors                                     | Use it when                                                                  |
-| ---------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
-| `'light'`  | Always light (the default)                 | Your app never sets `.dark`.                                                 |
-| `'system'` | Follows `LynxTheme`, the device appearance | Your app sets `.dark` from `LynxTheme`, as in [Dark mode](/guide/dark-mode). |
-| `'dark'`   | Always dark                                | Your app is always dark.                                                     |
-| A function | Whatever it returns, `'light'` or `'dark'` | Your app switches themes itself. Read the same signal that sets `.dark`      |
+| Value      | Colors                                           | Use it when                                                                    |
+| ---------- | ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `'system'` | The appearance the app is drawn in (the default) | Always, unless one of the rows below fits.                                     |
+| `'light'`  | Always light                                     | One chart sits on a surface that stays light.                                  |
+| `'dark'`   | Always dark                                      | One chart sits on a surface that stays dark.                                   |
+| A function | Whatever it returns, `'light'` or `'dark'`       | Your app switches a theme class of its own. Read the same signal that sets it. |
 
-Set it for every chart with `provideChartTheme({ colorScheme: 'system' })`, or for one chart, preset or `<ui-chart>`, with its `colorScheme` input.
+Set it for every chart with `provideChartTheme({ colorScheme: … })`, or for one chart, preset or `<ui-chart>`, with its `colorScheme` input.
 
 ## API
 
 ### UiChart
 
-| Input              | Type                            | Default                                | Description                                                      |
-| ------------------ | ------------------------------- | -------------------------------------- | ---------------------------------------------------------------- |
-| `definition`       | `ChartDefinition`               | Required                               | The chart to draw: what `defineChart` returns.                   |
-| `width`            | `number`                        | _fills container_                      | Fixed width in px.                                               |
-| `height`           | `number`                        | `200`                                  | Fixed height in px. Without it, 200px or a height class.         |
-| `label`            | `string`                        | `'Chart'`                              | What a screen reader announces for the chart.                    |
-| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ (`'light'`) | Which color table the marks use. `'system'` follows `LynxTheme`. |
-| `zoomable`         | `boolean`                       | `false`                                | Drag to pan, with zoom buttons.                                  |
-| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                                 | Which axes pan and zoom.                                         |
-| `showZoomControls` | `boolean`                       | `true`                                 | Show the +/−/1:1 buttons when zoomable.                          |
-| `minZoom`          | `number`                        | `1`                                    | Smallest zoom. `1` shows all the data.                           |
-| `maxZoom`          | `number`                        | `8`                                    | Largest zoom.                                                    |
-| `zoomStep`         | `number`                        | `1.4`                                  | Zoom factor per button press or method call.                     |
-| `class`            | `string`                        | `''`                                   | Extra Tailwind classes for the chart's root view.                |
+| Input              | Type                            | Default                                 | Description                                                               |
+| ------------------ | ------------------------------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| `definition`       | `ChartDefinition`               | Required                                | The chart to draw: what `defineChart` returns.                            |
+| `width`            | `number`                        | _fills container_                       | Fixed width in px.                                                        |
+| `height`           | `number`                        | `200`                                   | Fixed height in px. Without it, 200px or a height class.                  |
+| `label`            | `string`                        | `'Chart'`                               | What a screen reader announces for the chart.                             |
+| `colorScheme`      | `'light' \| 'dark' \| 'system'` | _from `provideChartTheme`_ (`'system'`) | Which color table the marks use. `'system'` follows the app's appearance. |
+| `zoomable`         | `boolean`                       | `false`                                 | Drag to pan, with zoom buttons.                                           |
+| `zoomAxes`         | `'x' \| 'y' \| 'xy'`            | `'xy'`                                  | Which axes pan and zoom.                                                  |
+| `showZoomControls` | `boolean`                       | `true`                                  | Show the +/−/1:1 buttons when zoomable.                                   |
+| `minZoom`          | `number`                        | `1`                                     | Smallest zoom. `1` shows all the data.                                    |
+| `maxZoom`          | `number`                        | `8`                                     | Largest zoom.                                                             |
+| `zoomStep`         | `number`                        | `1.4`                                   | Zoom factor per button press or method call.                              |
+| `class`            | `string`                        | `''`                                    | Extra Tailwind classes for the chart's root view.                         |
 
 | Output        | Type                 | Description                                                                                    |
 | ------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
@@ -289,7 +289,7 @@ The tooltip token: `tooltip` alone, or `{ use: tooltip, ...options }`. `<ui-char
 
 | Field         | Type                                                         | Description                                                                               |
 | ------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `colorScheme` | `'light' \| 'dark' \| 'system' \| (() => 'light' \| 'dark')` | Which color table the marks use. Defaults to `'light'`.                                   |
+| `colorScheme` | `'light' \| 'dark' \| 'system' \| (() => 'light' \| 'dark')` | Which color table the marks use. Defaults to `'system'`.                                  |
 | `light`       | `Record<string, string>`                                     | Light color per token, without `--` (e.g. `'chart-1'`). Merged over `CHART_LIGHT_COLORS`. |
 | `dark`        | `Record<string, string>`                                     | Dark color per token. Merged over `CHART_DARK_COLORS`.                                    |
 | `chart`       | `Partial<ChartTheme>`                                        | The TanStack theme, such as its `palette`. Merged over `DEFAULT_CHART_THEME`.             |

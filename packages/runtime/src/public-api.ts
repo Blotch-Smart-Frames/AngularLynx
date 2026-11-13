@@ -207,11 +207,17 @@ export { LynxLocalStorage, LynxSecureStorage } from './lib/storage';
 export { LynxSystemInfo } from './lib/system-info';
 export type { PlatformType } from './lib/system-info';
 export { LynxTextMeasure } from './lib/text-measure';
-export { DYNAMIC_COLOR_ROLES, LynxTheme } from './lib/theme';
+export {
+  DYNAMIC_COLOR_ROLES,
+  LynxTheme,
+  provideColorScheme,
+} from './lib/theme';
 export type {
   DynamicColorRole,
   DynamicColors,
   DynamicColorScheme,
+  LynxAppearance,
+  LynxColorScheme,
 } from './lib/theme';
 export { LynxTransition, LynxTransitionGroup } from './lib/transition';
 export {

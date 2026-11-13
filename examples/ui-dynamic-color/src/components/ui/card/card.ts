@@ -52,7 +52,10 @@ export class UiCard {
   #pressAnim?: AnimationHandle;
 
   protected readonly containerClass = computed(() =>
-    cn('rounded-lg border border-border bg-card', this.userClass()),
+    // 16px corners, a step rounder than the controls a card holds, and 16px
+    // of padding in its parts: a phone's margins, where the web's 24px left
+    // too little of a narrow screen for the content.
+    cn('rounded-xl border border-border bg-card', this.userClass()),
   );
 
   protected onPressStart(): void {
@@ -86,7 +89,7 @@ export class UiCardHeader {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('flex-col p-6 flex', this.userClass()),
+    cn('flex-col gap-1 p-4 flex', this.userClass()),
   );
 }
 
@@ -100,7 +103,9 @@ export class UiCardTitle {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly textClass = computed(() =>
-    cn('text-2xl font-semibold text-card-foreground', this.userClass()),
+    // A card's title heads a group on the screen, under the screen's own
+    // title: 18px, where the web's 24px competed with it.
+    cn('text-lg font-semibold text-card-foreground', this.userClass()),
   );
 }
 
@@ -132,7 +137,7 @@ export class UiCardContent {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('p-6 pt-0', this.userClass()),
+    cn('p-4 pt-0', this.userClass()),
   );
 }
 
@@ -146,6 +151,6 @@ export class UiCardFooter {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('items-center p-6 pt-0 flex', this.userClass()),
+    cn('flex-row items-center gap-2 p-4 pt-0 flex', this.userClass()),
   );
 }

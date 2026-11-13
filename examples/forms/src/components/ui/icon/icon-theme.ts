@@ -34,14 +34,15 @@ export type IconColorTokens = Readonly<Record<string, string>>;
 export type IconColorScheme = 'light' | 'dark';
 
 /**
- * Which table the colors come from: a fixed scheme, `'system'` to follow the
- * device appearance (`LynxTheme`), or a function reading the app's own theme
- * state.
+ * Which table the colors come from: `'system'` to follow the appearance the
+ * app is drawn in (`LynxTheme.appearance`: the device's, or the app's own
+ * choice), a fixed scheme, or a function reading the app's own theme state.
  *
- * It has to match how the app switches its CSS theme, since the text next to an
- * icon reads the CSS variables. The ui theme's dark mode is opt-in (the app
- * toggles the `.dark` class), so the default is `'light'`: an icon in an app
- * without dark mode stays visible when the device is dark.
+ * It has to match the CSS theme, since the text next to an icon reads the
+ * CSS variables. The page has the theme's `dark` class while the app is
+ * drawn dark, so the default is `'system'`. An app that leaves `dark.css`
+ * out keeps to light with `provideColorScheme('light')`, and one that
+ * switches a class of its own passes the function.
  */
 export type IconColorSchemeOption =
   | IconColorScheme
@@ -53,7 +54,7 @@ export type UiIconTheme = {
   readonly light: IconColorTokens;
   /** Token values for dark mode; mirrors `dark.css`. */
   readonly dark: IconColorTokens;
-  /** See {@link IconColorSchemeOption}; `'light'` when unset. */
+  /** See {@link IconColorSchemeOption}; `'system'` when unset. */
   readonly colorScheme?: IconColorSchemeOption;
 };
 
@@ -70,9 +71,9 @@ export const ICON_LIGHT_COLORS: IconColorTokens = {
   'muted-foreground': 'rgba(113, 113, 122, 1)',
   accent: 'rgba(244, 244, 245, 1)',
   'accent-foreground': 'rgba(24, 24, 27, 1)',
-  destructive: 'rgba(239, 68, 68, 1)',
+  destructive: 'rgba(220, 38, 38, 1)',
   'destructive-foreground': 'rgba(250, 250, 250, 1)',
-  'destructive-subtle': 'rgba(239, 68, 68, 0.1)',
+  'destructive-subtle': 'rgba(220, 38, 38, 0.08)',
   border: 'rgba(228, 228, 231, 1)',
   input: 'rgba(228, 228, 231, 1)',
   ring: 'rgba(24, 24, 27, 1)',
@@ -93,7 +94,7 @@ export const ICON_LIGHT_COLORS: IconColorTokens = {
 export const ICON_DARK_COLORS: IconColorTokens = {
   background: 'rgba(9, 9, 11, 1)',
   foreground: 'rgba(250, 250, 250, 1)',
-  card: 'rgba(9, 9, 11, 1)',
+  card: 'rgba(24, 24, 27, 1)',
   'card-foreground': 'rgba(250, 250, 250, 1)',
   primary: 'rgba(250, 250, 250, 1)',
   'primary-foreground': 'rgba(24, 24, 27, 1)',
@@ -103,10 +104,10 @@ export const ICON_DARK_COLORS: IconColorTokens = {
   'muted-foreground': 'rgba(161, 161, 170, 1)',
   accent: 'rgba(39, 39, 42, 1)',
   'accent-foreground': 'rgba(250, 250, 250, 1)',
-  destructive: 'rgba(127, 29, 29, 1)',
-  'destructive-foreground': 'rgba(250, 250, 250, 1)',
-  'destructive-subtle': 'rgba(127, 29, 29, 0.1)',
-  border: 'rgba(39, 39, 42, 1)',
+  destructive: 'rgba(248, 113, 113, 1)',
+  'destructive-foreground': 'rgba(24, 24, 27, 1)',
+  'destructive-subtle': 'rgba(248, 113, 113, 0.14)',
+  border: 'rgba(52, 52, 56, 1)',
   input: 'rgba(39, 39, 42, 1)',
   ring: 'rgba(212, 212, 216, 1)',
   'ring-subtle': 'rgba(212, 212, 216, 0.4)',
@@ -133,8 +134,8 @@ export const UI_ICON_THEME = new InjectionToken<UiIconTheme>('UI_ICON_THEME', {
  * changed in your CSS, or just a color scheme.
  *
  * ```ts
- * // An app that switches .dark with the device appearance:
- * providers: [provideIconTheme({ colorScheme: 'system' })]
+ * // An app whose brand color isn't the theme's:
+ * providers: [provideIconTheme({ light: { primary: 'rgba(37, 99, 235, 1)' } })]
  * ```
  */
 export const provideIconTheme = (theme: {
@@ -158,6 +159,19 @@ export const provideIconTheme = (theme: {
  */
 export const UI_ICON_COLOR = new InjectionToken<Signal<string | undefined>>(
   'UI_ICON_COLOR',
+);
+
+/** An icon's size, by name: 16, 20, 24 and 32px. */
+export type IconSize = 'xs' | 'sm' | 'md' | 'lg';
+
+/**
+ * The size icons inside an element take when they're given none. A container
+ * whose own size sets its content's provides it, as a button does: a 24px
+ * icon crowds a small button's label and floats in a large one's, so each
+ * button size has an icon size, and the app doesn't have to know it.
+ */
+export const UI_ICON_SIZE = new InjectionToken<Signal<IconSize | undefined>>(
+  'UI_ICON_SIZE',
 );
 
 /** What an icon draws with when nothing sets its color. */
@@ -190,19 +204,17 @@ export const resolveIconColor = (
 };
 
 /**
- * The color scheme the app's theme is in, as {@link provideIconTheme} sets it
- * (`'light'` unless it says otherwise). For what has to match the app's CSS
- * theme but can't read it: icons pick their color table with it, and glass
- * picks a light or dark material.
+ * The color scheme the app's theme is in: the appearance the app is drawn in
+ * (`LynxTheme.appearance`), unless {@link provideIconTheme} says otherwise.
+ * For what has to match the app's CSS theme but can't read it: icons pick
+ * their color table with it, and glass picks a light or dark material.
  */
 export const injectColorScheme = (): Signal<IconColorScheme> => {
-  const option = inject(UI_ICON_THEME).colorScheme ?? 'light';
-  const appearance = inject(LynxTheme);
+  const option = inject(UI_ICON_THEME).colorScheme ?? 'system';
+  const theme = inject(LynxTheme);
   return computed(() =>
     option === 'system'
-      ? appearance.isDarkMode()
-        ? 'dark'
-        : 'light'
+      ? theme.appearance()
       : typeof option === 'function'
         ? option()
         : option,

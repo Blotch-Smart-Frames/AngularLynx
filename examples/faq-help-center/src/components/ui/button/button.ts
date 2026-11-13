@@ -31,30 +31,40 @@ import {
   injectSystemDrawsGlass,
 } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
-import { UI_ICON_COLOR } from '../icon/icon-theme';
+import { type IconSize, UI_ICON_COLOR, UI_ICON_SIZE } from '../icon/icon-theme';
 import { UiSpinner } from '../spinner/spinner';
 
 /**
  * The container classes of the solid variants. The glass variants draw a
  * `<blur-view>`, which classes alone can't, so they aren't here.
+ *
+ * The sizes are a phone's, not a web page's. The default is 48px tall:
+ * Android's 48dp touch target, which covers iOS's 44pt, and the height of a
+ * field (ui-input, ui-select), so a button beside one lines up. `lg` is the
+ * 56px of a screen's main action, and `sm` is 36px for a button inside a row
+ * or a card, with a hit-slop that brings its touch target to 48px (see
+ * hitSlop). Corners grow with the size, as iOS's and Material's do.
+ *
+ * The outline variant has no fill of its own: over a card, whose tone differs
+ * from the background's in the dark, a filled one read as a hole.
  */
 export const buttonVariants = cva(
-  'items-center rounded-md flex justify-center',
+  'items-center rounded-lg flex justify-center',
   {
     variants: {
       variant: {
         default: 'bg-primary',
         destructive: 'bg-destructive',
-        outline: 'border border-border bg-background',
+        outline: 'border border-border bg-transparent',
         secondary: 'bg-secondary',
         ghost: 'bg-transparent',
       },
       size: {
-        default: 'h-10 px-4 py-2',
+        default: 'h-12 px-5',
         sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
-        'icon-circle': 'h-10 w-10 rounded-full',
+        lg: 'h-14 rounded-xl px-6',
+        icon: 'h-12 w-12',
+        'icon-circle': 'h-12 w-12 rounded-full',
       },
     },
     defaultVariants: {
@@ -100,13 +110,36 @@ const ICON_SIZES: ReadonlySet<ButtonSize> = new Set<ButtonSize>([
   'icon-circle',
 ]);
 
+/**
+ * The label is body text: 16px, as a phone's controls are (iOS's are 17pt,
+ * Material's 14 to 16sp), where the web's 14px read small at arm's length.
+ */
 const LABEL_SIZES: Readonly<Record<ButtonSize, string>> = {
-  default: 'text-sm',
-  sm: 'text-xs',
-  lg: 'text-base',
-  icon: 'text-sm',
-  'icon-circle': 'text-sm',
+  default: 'text-base',
+  sm: 'text-sm',
+  lg: 'text-lg',
+  icon: 'text-base',
+  'icon-circle': 'text-base',
 };
+
+/**
+ * The size of an icon projected into the button that sets none (see
+ * UI_ICON_SIZE): about the label's line height beside a label, so the two
+ * read as one line with room above and below, and 24px on its own.
+ */
+const ICON_SIZES_BY_BUTTON: Readonly<Record<ButtonSize, IconSize>> = {
+  default: 'sm',
+  sm: 'xs',
+  lg: 'md',
+  icon: 'md',
+  'icon-circle': 'md',
+};
+
+/**
+ * How far the touch target reaches past a small button's 36px, on every
+ * side: to 48px. The other sizes are that tall already.
+ */
+const SMALL_HIT_SLOP = '6px';
 
 const SOLID_LABEL_COLORS: Readonly<Record<SolidButtonVariant, string>> = {
   default: 'text-primary-foreground',
@@ -136,19 +169,19 @@ const SOLID_FOREGROUNDS: Readonly<Record<SolidButtonVariant, string>> = {
 const glassFrameVariants = cva('flex-col rounded-full flex', {
   variants: {
     size: {
-      default: 'h-10',
+      default: 'h-12',
       sm: 'h-9',
-      lg: 'h-11',
-      icon: 'h-10 w-10',
-      'icon-circle': 'h-10 w-10',
+      lg: 'h-14',
+      icon: 'h-12 w-12',
+      'icon-circle': 'h-12 w-12',
     },
   },
 });
 
 const GLASS_PADDING: Readonly<Record<ButtonSize, string>> = {
-  default: 'px-4',
+  default: 'px-5',
   sm: 'px-3',
-  lg: 'px-8',
+  lg: 'px-6',
   icon: '',
   'icon-circle': '',
 };
@@ -170,11 +203,11 @@ const materialButtonVariants = cva(
         'glass-prominent': 'bg-glass-tint',
       },
       size: {
-        default: 'h-10 px-4',
+        default: 'h-12 px-5',
         sm: 'h-9 px-3',
-        lg: 'h-11 px-8',
-        icon: 'h-10 w-10',
-        'icon-circle': 'h-10 w-10',
+        lg: 'h-14 px-6',
+        icon: 'h-12 w-12',
+        'icon-circle': 'h-12 w-12',
       },
     },
   },
@@ -223,6 +256,11 @@ const platformOf = (injector: Injector): string | undefined => {
  */
 const buttonIconColor = () => inject(UiButton).foreground;
 
+/**
+ * The size such an icon takes when it's given none, as buttonIconColor.
+ */
+const buttonIconSize = () => inject(UiButton).iconSize;
+
 @Component({
   selector: 'ui-button',
   imports: [LYNX_ELEMENTS, NgTemplateOutlet, UiGlass, UiSpinner],
@@ -231,7 +269,10 @@ const buttonIconColor = () => inject(UiButton).foreground;
   // injector, which is where Angular looks for projected content: the glass
   // inside the template provides one too, but only for the template's own
   // nodes.
-  providers: [{ provide: UI_ICON_COLOR, useFactory: buttonIconColor }],
+  providers: [
+    { provide: UI_ICON_COLOR, useFactory: buttonIconColor },
+    { provide: UI_ICON_SIZE, useFactory: buttonIconSize },
+  ],
   // The host is the button's box. Angular gives a component's host every
   // static attribute the app writes on it, so a class on <ui-button> lands
   // there whatever the component does: on a box inside the host as well, a
@@ -259,6 +300,7 @@ const buttonIconColor = () => inject(UiButton).foreground;
     '[attr.accessibility-element]': "accessibilityLabel() ? 'true' : null",
     '[attr.accessibility-traits]': "accessibilityLabel() ? 'button' : null",
     '[attr.accessibility-label]': 'accessibilityLabel() || null',
+    '[attr.hit-slop]': 'hitSlop()',
     '(bindtouchstart)': 'onPressStart()',
     '(bindtouchend)': 'onPressEnd()',
     '(bindtouchcancel)': 'onPressCancel()',
@@ -334,9 +376,9 @@ export class UiButton {
    */
   readonly variant = input<ButtonVariant>('default');
   /**
-   * The height and padding. `'icon'` and `'icon-circle'` fit one projected
-   * `<ui-icon>`: a rounded square and a circle (glass buttons are circles in
-   * either).
+   * The height and padding: 48px, `'sm'` 36px and `'lg'` 56px. `'icon'` and
+   * `'icon-circle'` fit one projected `<ui-icon>`: a 48px rounded square and
+   * a circle (glass buttons are circles in either).
    */
   readonly size = input<ButtonSize>('default');
   readonly disabled = input(false, { transform: booleanAttribute });
@@ -444,6 +486,21 @@ export class UiButton {
     () => !(this.projectedIcon() && ICON_SIZES.has(this.size())),
   );
 
+  /**
+   * The size of a projected icon that sets none, by the button's (see
+   * ICON_SIZES_BY_BUTTON).
+   */
+  readonly iconSize = computed(() => ICON_SIZES_BY_BUTTON[this.size()]);
+
+  /**
+   * A small button's touch target, wider than it looks: Lynx's hit-slop
+   * takes touches around the element without moving anything. Only native
+   * reads it; a cursor doesn't need it.
+   */
+  protected readonly hitSlop = computed(() =>
+    this.size() === 'sm' ? SMALL_HIT_SLOP : null,
+  );
+
   /** Space between an icon, or the loading spinner, and the label beside it. */
   readonly #gap = computed(
     () =>
@@ -542,10 +599,10 @@ export class UiButton {
     return cn('font-medium', LABEL_SIZES[this.size()], color);
   });
 
-  protected readonly spinnerSize = computed(() => {
-    const s = this.size();
-    return s === 'sm' ? ('xs' as const) : ('sm' as const);
-  });
+  /** The spinner takes a leading icon's place, at its size. */
+  protected readonly spinnerSize = computed(() =>
+    this.size() === 'sm' ? ('xs' as const) : ('sm' as const),
+  );
 
   protected onPressStart(): void {
     if (this.#inactive()) return;

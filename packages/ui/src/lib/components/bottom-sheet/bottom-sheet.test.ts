@@ -63,14 +63,18 @@ const CANCEL = 3;
 const renderSheet = async () => {
   const result = await render(BottomSheetHost);
   const { container } = result;
+  const panel = container.querySelector('.rounded-t-2xl')!;
+  // The grabber pill is the panel's one capsule.
+  const grabber = panel.querySelector('.rounded-full')!;
   return {
     ...result,
     host: result.componentRef.instance as BottomSheetHost,
     overlay: container.querySelector('overlay')!,
     backdrop: container.querySelector('overlay > view')!,
-    panel: container.querySelector('.rounded-t-2xl')!,
+    panel,
+    grabber,
     // The strip around the grabber pill, which takes the drag.
-    handle: container.querySelector('.bg-muted')!.parentElement!,
+    handle: grabber.parentElement!,
   };
 };
 
@@ -172,7 +176,26 @@ describe('UiBottomSheet', () => {
   it("adds the class to the panel's own", async () => {
     const { panel } = await renderSheet();
     expect(panel.classList).toContain('max-h-96');
-    expect(panel.classList).toContain('bg-background');
+    // On the card color: a tone above the page in the dark, which with the
+    // backdrop's dimming is its edge.
+    expect(panel.classList).toContain('bg-card');
+  });
+
+  // Android draws a border on one side of a rounded element as a straight
+  // strip, clear of the corners: it sat across the top of the sheet.
+  it('has no border along its rounded top', async () => {
+    const { panel } = await renderSheet();
+    expect(panel.classList).toContain('rounded-t-2xl');
+    expect(panel.classList).not.toContain('border-t');
+  });
+
+  it('draws a 36×5 grabber in a faint gray that shows on the sheet', async () => {
+    // The muted color barely showed on white.
+    const { grabber } = await renderSheet();
+    for (const name of ['h-[5px]', 'w-[36px]', 'bg-foreground', 'opacity-20']) {
+      expect(grabber.classList).toContain(name);
+    }
+    expect(grabber.classList).not.toContain('bg-muted');
   });
 
   // Angular gives a component's host every static attribute written on it

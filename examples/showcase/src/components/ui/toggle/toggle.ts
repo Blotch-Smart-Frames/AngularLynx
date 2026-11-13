@@ -28,23 +28,36 @@ import {
   UiSegmentedIndicator,
 } from '../segmented-control/segmented-control';
 
-const toggleVariants = cva('flex items-center justify-center rounded-md', {
-  variants: {
-    variant: {
-      default: '',
-      outline: 'border border-border',
+/**
+ * A toggle's box, in ui-button's sizes: 48px, a full touch target, 36px
+ * small and 56px large, with corners that grow with it.
+ *
+ * The text classes are for text written straight into the toggle
+ * (`<ui-toggle>Bold</ui-toggle>`): the runtime wraps it in a `<text>` that
+ * takes them from the host, where it otherwise drew in Lynx's own black at
+ * any size, invisible in the dark. A `<text>` of the app's own keeps its own
+ * classes.
+ */
+const toggleVariants = cva(
+  'flex items-center justify-center rounded-lg font-medium text-foreground',
+  {
+    variants: {
+      variant: {
+        default: '',
+        outline: 'border border-border',
+      },
+      size: {
+        default: 'h-12 px-4 text-base',
+        sm: 'h-9 rounded-md px-3 text-sm',
+        lg: 'h-14 rounded-xl px-6 text-lg',
+      },
     },
-    size: {
-      default: 'h-10 px-3',
-      sm: 'h-9 px-2.5',
-      lg: 'h-11 px-5',
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
     },
   },
-  defaultVariants: {
-    variant: 'default',
-    size: 'default',
-  },
-});
+);
 
 export type ToggleVariant = NonNullable<
   VariantProps<typeof toggleVariants>['variant']

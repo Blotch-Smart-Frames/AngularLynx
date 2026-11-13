@@ -1,7 +1,18 @@
-import { Injector, runInInjectionContext, signal } from '@angular/core';
-import { describe, expect, it } from 'vitest';
+import {
+  createEnvironmentInjector,
+  type EnvironmentInjector,
+  Injector,
+  runInInjectionContext,
+  signal,
+} from '@angular/core';
+import { afterEach, describe, expect, it } from 'vitest';
 import { LynxGlobalData } from '../data-flow/global-data';
-import { DYNAMIC_COLOR_ROLES, LynxTheme } from './theme';
+import {
+  colorSchemePreference,
+  setColorSchemePreference,
+  watchBrowserColorScheme,
+} from './color-scheme';
+import { DYNAMIC_COLOR_ROLES, LynxTheme, provideColorScheme } from './theme';
 
 /**
  * A scheme with every role in one color.
@@ -22,6 +33,13 @@ const createTheme = (globalData: ReturnType<typeof signal>): LynxTheme => {
 };
 
 describe('LynxTheme', () => {
+  // The app's choice and the browser's preference outlive a service: they're
+  // the page's too.
+  afterEach(() => {
+    setColorSchemePreference('system');
+    watchBrowserColorScheme(undefined);
+  });
+
   it('reports theme "Dark" and isDarkMode true when the host sets a dark theme', () => {
     const theme = createTheme(signal({ theme: 'Dark' }));
 
@@ -53,6 +71,67 @@ describe('LynxTheme', () => {
 
     expect(theme.theme()).toBe('Dark');
     expect(theme.isDarkMode()).toBe(true);
+  });
+
+  // The web preview, where no host sends a theme.
+  it("takes the browser's color scheme where the host sends no theme", () => {
+    const listeners = new Set<() => void>();
+    const query = {
+      matches: false,
+      addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_type: string, fn: () => void) =>
+        listeners.delete(fn),
+    };
+    watchBrowserColorScheme({
+      matchMedia: () => query,
+    } as unknown as Window);
+    const theme = createTheme(signal({}));
+    expect(theme.isDarkMode()).toBe(false);
+
+    query.matches = true;
+    for (const fn of listeners) fn();
+
+    expect(theme.theme()).toBe('Dark');
+    expect(theme.isDarkMode()).toBe(true);
+  });
+
+  describe('appearance', () => {
+    it("is the device's while the app follows the system", () => {
+      const globalData = signal<Record<string, unknown>>({ theme: 'Dark' });
+      const theme = createTheme(globalData);
+
+      expect(theme.colorScheme()).toBe('system');
+      expect(theme.appearance()).toBe('dark');
+
+      globalData.set({ theme: 'Light' });
+      expect(theme.appearance()).toBe('light');
+    });
+
+    it("is the app's own choice once it makes one, whatever the device says", () => {
+      const theme = createTheme(signal({ theme: 'Light' }));
+
+      theme.setColorScheme('dark');
+      expect(theme.colorScheme()).toBe('dark');
+      expect(theme.appearance()).toBe('dark');
+      // The device hasn't changed.
+      expect(theme.isDarkMode()).toBe(false);
+
+      theme.setColorScheme('light');
+      expect(theme.appearance()).toBe('light');
+
+      theme.setColorScheme('system');
+      expect(theme.appearance()).toBe('light');
+    });
+  });
+
+  describe('provideColorScheme', () => {
+    it("sets the app's choice before anything renders", () => {
+      const parent = Injector.create({ providers: [] }) as EnvironmentInjector;
+
+      createEnvironmentInjector([provideColorScheme('dark')], parent);
+
+      expect(colorSchemePreference()).toBe('dark');
+    });
   });
 
   describe('dynamicColors', () => {

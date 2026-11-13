@@ -43,7 +43,7 @@ import {
         class="max-w-sm"
         (closed)="closes.set(closes() + 1)"
       >
-        <ui-dialog-header class="gap-2">
+        <ui-dialog-header class="gap-3">
           <ui-dialog-title class="text-xl">Title</ui-dialog-title>
           <ui-dialog-description class="italic">
             Description
@@ -139,17 +139,29 @@ describe('UiDialog', () => {
 
   it("merges each part's class with its own, the given class winning", async () => {
     const { container, getByText, panel } = await renderDialog();
-    expect(panel().classList).toContain('bg-background');
+    expect(panel().classList).toContain('bg-card');
     expect(panel().classList).toContain('max-w-sm');
+    expect(panel().classList).not.toContain('max-w-[400px]');
     expect(getByText('Title').classList).toContain('font-semibold');
     expect(getByText('Title').classList).toContain('text-xl');
     expect(getByText('Description').classList).toContain('text-sm');
     expect(getByText('Description').classList).toContain('italic');
-    const header = container.querySelector('.flex-col.gap-2');
-    expect(header?.classList).not.toContain('gap-1.5');
-    const footer = container.querySelector('.pt-4');
+    const header = container.querySelector('.flex-col.gap-3');
+    expect(header?.classList).not.toContain('gap-2');
+    const footer = container.querySelector('.pt-6');
     expect(footer?.classList).toContain('justify-start');
     expect(footer?.classList).not.toContain('justify-end');
+  });
+
+  it('fills the width the backdrop leaves, on the card color, with the roundest corners', async () => {
+    // Four fifths of a narrow phone left a form little room: the panel
+    // takes the screen's width less 24px at each side, as Material's
+    // dialogs do.
+    const { backdrop, panel } = await renderDialog();
+    expect(backdrop().classList).toContain('px-6');
+    for (const name of ['w-full', 'rounded-2xl', 'bg-card', 'p-6']) {
+      expect(panel().classList).toContain(name);
+    }
   });
 
   // Angular gives a component's host every static attribute written on it
@@ -158,8 +170,7 @@ describe('UiDialog', () => {
   it('puts each class on one element: the panel, or the part', async () => {
     const { container, getByText, panel } = await renderDialog();
     expect([...container.querySelectorAll('.max-w-sm')]).toEqual([panel()]);
-    // The header's: the footer has a gap-2 of its own.
-    expect(container.querySelectorAll('.flex-col.gap-2')).toHaveLength(1);
+    expect(container.querySelectorAll('.gap-3')).toHaveLength(1);
     expect(container.querySelectorAll('.justify-start')).toHaveLength(1);
     expect([...container.querySelectorAll('.text-xl')]).toEqual([
       getByText('Title'),

@@ -7,7 +7,9 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiMultiSelect, UiMultiSelectItem } from './multi-select';
 
 @Component({
@@ -81,6 +83,41 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * A multi-select's trigger: the button that draws the field and takes the
+ * taps. It's the first button in the select, as the sheet's Done button and
+ * its items, buttons too, come after it.
+ */
+const triggerOf = (container: Element) =>
+  container.querySelector<HTMLElement>('[accessibility-traits^="button"]')!;
+
+/**
+ * Each way a press starts and ends: touches on a phone, and a mouse in the
+ * web preview, which sends no touches for a cursor. A canceled touch (a
+ * scroll taking over) and a cursor leaving release too.
+ */
+const PRESSES: readonly (readonly [
+  down: (element: Element) => unknown,
+  up: (element: Element) => unknown,
+])[] = [
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchend(element),
+  ],
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchcancel(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireEvent.mouseup(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireLynxEvent(element, 'mouseleave'),
+  ],
+];
+
 const renderTopics = async (setUp: (host: TopicsHost) => void = () => {}) => {
   const result = await render(TopicsHost);
   const host = result.componentRef.instance as TopicsHost;
@@ -88,7 +125,8 @@ const renderTopics = async (setUp: (host: TopicsHost) => void = () => {}) => {
   await waitForUpdate();
   const { container, getByRole } = result;
   const overlay = container.querySelector<HTMLElement>('overlay')!;
-  const field = container.querySelector<HTMLElement>('.border-input')!;
+  // The trigger fills the field's row, which the host, the column, holds.
+  const field = triggerOf(container).parentElement!;
   return {
     ...result,
     host,
@@ -96,9 +134,13 @@ const renderTopics = async (setUp: (host: TopicsHost) => void = () => {}) => {
     field,
     column: field.parentElement!,
     trigger: () => getByRole('button', { name: 'Topics' }),
+    /** The chips in the field, badges, each a pill. */
+    chipElements: () => [
+      ...field.querySelectorAll<HTMLElement>('.flex-wrap > .rounded-full'),
+    ],
     /** The chips in the field, by their text. */
     chips: () =>
-      [...field.querySelectorAll('.bg-secondary')].map((chip) =>
+      [...field.querySelectorAll('.flex-wrap > .rounded-full')].map((chip) =>
         chip.textContent?.trim(),
       ),
     /** An item's row, found by its label in the sheet. */
@@ -106,11 +148,10 @@ const renderTopics = async (setUp: (host: TopicsHost) => void = () => {}) => {
     /** An item's row, found by its name, which it keeps while hidden. */
     row: (label: string) =>
       overlay.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!,
-    /** An item's checkbox box. */
+    /** An item's checkbox box: the view drawn around its check mark. */
     box: (label: string) =>
-      within(overlay)
-        .getByText(label)
-        .parentElement!.querySelector<HTMLElement>('.rounded-sm')!,
+      within(overlay).getByText(label).parentElement!.querySelector('svg')!
+        .parentElement!,
     open: async () => {
       fireEvent.tap(getByRole('button', { name: 'Topics' }));
       await vi.advanceTimersByTimeAsync(OPENED);
@@ -135,7 +176,45 @@ describe('UiMultiSelect field', () => {
     const { field, chips } = await renderTopics();
     const placeholder = within(field).getByText('Choose topics');
     expect(placeholder.classList).toContain('text-muted-foreground');
+    expect(placeholder.classList).toContain('text-base');
     expect(chips()).toEqual([]);
+  });
+
+  it('draws the field as ui-select and ui-input draw theirs', async () => {
+    // One shape for a form's fields: a filled box, not an outlined one.
+    const { field, trigger } = await renderTopics();
+    expect(trigger().parentElement).toBe(field);
+    for (const name of ['flex-1', 'rounded-lg', 'bg-muted', 'px-4']) {
+      expect(trigger().classList).toContain(name);
+    }
+    expect(field.classList).not.toContain('border');
+    expect(trigger().classList).not.toContain('border');
+  });
+
+  it('draws a 20px chevron in the muted foreground, resolved for the SVG', async () => {
+    // An SVG can't read the CSS variable, so its markup holds the value.
+    const { trigger } = await renderTopics();
+    const chevron = trigger().querySelector('svg') as unknown as HTMLElement;
+    expect(chevron.getAttribute('content')).toContain(
+      `stroke="${ICON_LIGHT_COLORS['muted-foreground']}"`,
+    );
+    expect(chevron.getAttribute('content')).not.toContain('currentColor');
+    expect(chevron.style.width).toBe('20px');
+    expect(chevron.style.height).toBe('20px');
+  });
+
+  it('dims the trigger under a finger or the mouse, from the press', async () => {
+    // A phone's controls answer the touch, not the tap that follows it.
+    const { trigger } = await renderTopics();
+    expect(trigger().classList).not.toContain('opacity-70');
+    for (const [down, up] of PRESSES) {
+      down(trigger());
+      await waitForUpdate();
+      expect(trigger().classList).toContain('opacity-70');
+      up(trigger());
+      await waitForUpdate();
+      expect(trigger().classList).not.toContain('opacity-70');
+    }
   });
 
   it("shows the chosen items' labels as chips, in the order of the value", async () => {
@@ -146,7 +225,22 @@ describe('UiMultiSelect field', () => {
     expect(within(field).queryByText('Choose topics')).toBeNull();
     // The chips wrap onto more lines, and the field grows to hold them.
     expect(field.querySelector('.flex-wrap')).not.toBeNull();
-    expect(field.classList).toContain('min-h-[48px]');
+    expect(field.classList).toContain('min-h-12');
+  });
+
+  it("draws the chips on the background color, so they have an edge on the field's fill", async () => {
+    // The field's fill is the secondary badge's own.
+    const { chipElements } = await renderTopics((host) =>
+      host.value.set(['science', 'news']),
+    );
+    expect(chipElements()).toHaveLength(2);
+    for (const chip of chipElements()) {
+      expect(chip.classList).toContain('bg-background');
+      expect(chip.classList).not.toContain('bg-secondary');
+      expect(chip.querySelector('text')!.classList).toContain(
+        'text-secondary-foreground',
+      );
+    }
   });
 
   it('shows a value that no item has as it is', async () => {
@@ -180,13 +274,11 @@ describe('UiMultiSelect field', () => {
       getAllByAccessibilityLabel,
       queryAllByPlaceholderText,
     } = await render(StaticAttributesHost);
-    const field = container.querySelector('.border-input')!;
+    const trigger = triggerOf(container);
     expect([...container.querySelectorAll('.w-64')]).toEqual([
-      field.parentElement,
+      trigger.parentElement!.parentElement,
     ]);
-    expect(getAllByAccessibilityLabel('Topics')).toEqual([
-      field.firstElementChild,
-    ]);
+    expect(getAllByAccessibilityLabel('Topics')).toEqual([trigger]);
     expect(queryAllByPlaceholderText('Choose topics')).toEqual([]);
     expect(getByText('Choose topics')).toBeTruthy();
   });
@@ -200,6 +292,9 @@ describe('UiMultiSelect field', () => {
       label.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(label.getAttribute('accessibility-elements-hidden')).toBe('true');
+    // A phone's body size, in medium weight, as ui-input's label is.
+    expect(label.classList).toContain('text-base');
+    expect(label.classList).toContain('font-medium');
     expect(column.classList).toContain('w-64');
   });
 
@@ -209,6 +304,12 @@ describe('UiMultiSelect field', () => {
     host.disabled.set(true);
     await waitForUpdate();
     expect(field.classList).toContain('opacity-50');
+
+    // It can't be opened, so it doesn't answer a press either.
+    fireEvent.touchstart(trigger());
+    await waitForUpdate();
+    expect(trigger().classList).not.toContain('opacity-70');
+    fireEvent.touchend(trigger());
 
     await open();
     fireEvent.tap(getByText('Choose'));
@@ -331,10 +432,30 @@ describe('UiMultiSelectItem', () => {
     await open();
     expect(box('News').classList).toContain('bg-primary');
     expect(box('Sport').classList).toContain('bg-transparent');
+    // The row is what a screen reader stops on, not the checkbox in it.
+    expect(
+      box('News').parentElement!.getAttribute('accessibility-elements-hidden'),
+    ).toBe('true');
 
     fireEvent.tap(item('Sport'));
     await waitForUpdate();
     expect(box('Sport').classList).toContain('bg-primary');
+  });
+
+  it('fills a row under a finger or the mouse, from the press', async () => {
+    const { item, open } = await renderTopics();
+    await open();
+    expect(item('News').classList).not.toContain('bg-muted');
+    for (const [down, up] of PRESSES) {
+      down(item('News'));
+      await waitForUpdate();
+      expect(item('News').classList).toContain('bg-muted');
+      // Only the row under the finger.
+      expect(item('Sport').classList).not.toContain('bg-muted');
+      up(item('News'));
+      await waitForUpdate();
+      expect(item('News').classList).not.toContain('bg-muted');
+    }
   });
 
   it('toggles once when its checkbox is the part tapped', async () => {
@@ -362,9 +483,11 @@ describe('UiMultiSelectItem', () => {
       glyph.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(item('Sport').classList).toContain('font-bold');
-    expect(item('Sport').classList).toContain('pr-4');
+    // The box lines up with the search field and the header.
+    expect(item('Sport').classList).toContain('px-4');
     // A touch target's height on Android and iOS alike.
-    expect(item('Sport').classList).toContain('min-h-[48px]');
+    expect(item('Sport').classList).toContain('min-h-12');
+    expect(label.classList).toContain('text-base');
   });
 });
 
@@ -399,7 +522,7 @@ describe('UiMultiSelect search', () => {
     });
     await open();
     const glyph = overlay.querySelector('.item-glyph')!;
-    const box = row('Science').querySelector('.rounded-sm')!;
+    const box = row('Science').querySelector('svg')!.parentElement!;
     await type('news');
     expect(row('Science').classList).toContain('hidden');
     expect(row('Science').classList).toContain('overflow-hidden');
@@ -417,7 +540,7 @@ describe('UiMultiSelect search', () => {
     // Shown again, the same checkbox, still checked, and the same glyph.
     await type('');
     expect(row('Science').classList).not.toContain('hidden');
-    expect(row('Science').querySelector('.rounded-sm')).toBe(box);
+    expect(row('Science').querySelector('svg')!.parentElement).toBe(box);
     expect(box.classList).toContain('bg-primary');
     expect(overlay.querySelector('.item-glyph')).toBe(glyph);
   });

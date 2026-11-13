@@ -7,7 +7,7 @@ import { UiSkeleton } from '../components/ui/skeleton';
   imports: [LYNX_ELEMENTS, UiSkeleton],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="p-6">
+      <view class="p-4">
         <text class="mb-6 text-2xl font-bold text-foreground">Skeleton</text>
 
         <!-- Card skeleton -->

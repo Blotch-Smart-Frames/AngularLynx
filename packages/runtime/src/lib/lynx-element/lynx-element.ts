@@ -1670,6 +1670,27 @@ export class LynxElement implements BaseLynxElement {
   }
 
   /**
+   * Adds or removes a class the runtime keeps on the element itself, such as
+   * the page's `dark` (see followColorScheme). It's kept with the scope
+   * classes, so the class string Angular writes for an app's own
+   * `<page class="…">` doesn't drop it.
+   *
+   * @returns Whether the class changed, so a caller can skip a flush.
+   */
+  setRuntimeClass(name: string, on: boolean): boolean {
+    const index = this.#scopeClasses.indexOf(name);
+    if (on === (index !== -1)) return false;
+    if (on) {
+      this.#scopeClasses.push(name);
+      this.addClass(name);
+    } else {
+      this.#scopeClasses.splice(index, 1);
+      this.removeClass(name);
+    }
+    return true;
+  }
+
+  /**
    * Lynx has no __RemoveClass PAPI — we must get current classes, filter,
    * and set back. This is O(n) per class removal but class lists on Lynx
    * elements are typically small (1-5 classes for scope/component styling).

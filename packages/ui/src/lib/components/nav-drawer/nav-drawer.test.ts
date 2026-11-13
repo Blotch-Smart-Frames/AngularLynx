@@ -204,7 +204,11 @@ describe('UiNavDrawer', () => {
     expect(scrollView().parentElement!.classList).toContain('flex-1');
     expect(scrollView().parentElement!.classList).toContain('pt-2');
     expect(item('Delete account').classList).toContain('mt-4');
-    expect(trigger().classList).toContain('h-10');
+    // A row at least 48px tall, and a 48px trigger: full touch targets.
+    expect(item('Delete account').classList).toContain('min-h-12');
+    expect(trigger().classList).toContain('h-12');
+    expect(trigger().classList).toContain('w-12');
+    expect(trigger().classList).toContain('rounded-lg');
     expect(trigger().classList).toContain('ml-2');
     const header = container.querySelector('.border-b');
     expect(header?.classList).toContain('gap-3');

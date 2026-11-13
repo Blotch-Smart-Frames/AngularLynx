@@ -324,9 +324,17 @@ export class UiAlertDialog implements OnDestroy {
   // panel scale-in) animate the dim in lockstep with the dialog appearing —
   // no separate animation needed. It's a named color, not a theme one,
   // because the dim is black in light and dark mode alike; it compiles to
-  // `rgb(0 0 0 / 0.5)`, which Lynx accepts.
+  // `rgb(0 0 0 / 0.5)`, which Lynx accepts. Its 24px sides are the room the
+  // default panel, which fills the width it's given, leaves at each side of
+  // the screen, as ui-dialog's backdrop does. The glass looks' panels have
+  // widths of their own and are centered in it.
   protected readonly backdropClass = computed(() =>
-    cn('items-center flex justify-center', 'h-full w-full', 'bg-black/50'),
+    cn(
+      'items-center flex justify-center',
+      'h-full w-full',
+      'bg-black/50',
+      this.look() === 'default' && 'px-6',
+    ),
   );
 
   /**
@@ -348,7 +356,7 @@ export class UiAlertDialog implements OnDestroy {
   protected readonly panelClass = computed(() =>
     this.look() === 'default'
       ? cn(
-          'w-4/5 flex-col rounded-lg border border-border bg-background p-6 flex',
+          'w-full max-w-[400px] flex-col rounded-2xl border border-border bg-card p-6 flex',
           this.userClass(),
         )
       : cn(
@@ -503,7 +511,7 @@ export class UiAlertDialogHeader {
     cn(
       'flex-col flex',
       {
-        default: 'gap-1.5',
+        default: 'gap-2',
         glass: 'gap-[5px] px-[14px]',
         frosted: 'items-center gap-[2px] px-[16px] pb-[20px] pt-[20px]',
         material: 'gap-[16px]',
@@ -643,7 +651,7 @@ export class UiAlertDialogFooter {
   protected readonly containerClass = computed(() => {
     const look = this.#look();
     if (look === 'default') {
-      return cn('flex-row gap-2 pt-4 flex justify-end', this.userClass());
+      return cn('flex-row gap-2 pt-6 flex justify-end', this.userClass());
     }
     return cn(
       this.stacked() ? 'flex-col' : 'flex-row',
@@ -763,9 +771,13 @@ export class UiAlertDialogAction {
     switch (this.#look()) {
       case 'default':
         return cn(
-          'h-10 items-center rounded-md px-4 py-2 flex justify-center',
+          // A default ui-button's box: 48px tall, a full touch target.
+          'h-12 items-center rounded-lg px-5 flex justify-center',
+          // The cancel action has no fill of its own, as an outline
+          // ui-button: over the panel's card color, the page's own read as
+          // a hole in the dark.
           this.variant() === 'cancel'
-            ? 'border border-border bg-background'
+            ? 'border border-border bg-transparent'
             : destructive
               ? 'bg-destructive'
               : 'bg-primary',
@@ -844,7 +856,7 @@ export class UiAlertDialogAction {
     switch (this.#look()) {
       case 'default':
         return cn(
-          'text-sm font-medium',
+          'text-base font-medium',
           this.variant() === 'cancel'
             ? 'text-foreground'
             : destructive

@@ -23,7 +23,12 @@ import { UiIcon } from '../icon/icon';
   },
   template: `
     @if (icon()) {
-      <ui-icon [name]="icon()!" size="lg" class="mb-3" />
+      <ui-icon
+        [name]="icon()!"
+        size="lg"
+        color="var(--muted-foreground)"
+        class="mb-4"
+      />
     }
     <text [class]="titleClass()">{{ title() }}</text>
     @if (description()) {
@@ -46,10 +51,10 @@ export class UiEmptyState {
   );
 
   protected readonly titleClass = computed(() =>
-    cn('mb-1 text-lg font-semibold text-foreground'),
+    cn('mb-1 text-xl font-semibold text-foreground text-center'),
   );
 
   protected readonly descriptionClass = computed(() =>
-    cn('mb-4 text-sm text-muted-foreground text-center'),
+    cn('mb-4 text-base text-muted-foreground text-center'),
   );
 }

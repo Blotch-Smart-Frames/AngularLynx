@@ -46,7 +46,7 @@ import { UiIcon } from '../icon/icon';
          TalkBack would stop on it a second time. -->
     @if (label()) {
       <text
-        class="text-sm font-medium text-foreground"
+        class="text-base font-medium text-foreground"
         accessibility-elements-hidden="true"
         >{{ label() }}</text
       >
@@ -55,18 +55,26 @@ import { UiIcon } from '../icon/icon';
       <!-- One accessibility element, a button, as ui-select's trigger: named
            by the label, with the day it shows as its value, so VoiceOver
            says "Ends on, Nov 20, 2026, button". The sheet sits beside it
-           rather than inside, so a tap in the sheet doesn't reach it. -->
+           rather than inside, so a tap in the sheet doesn't reach it. The
+           trigger draws the field and dims under a finger, as ui-select's
+           does. -->
       <view
-        class="flex-1 flex-row items-center gap-2 px-3 py-2 flex justify-between"
+        [class]="triggerClass()"
         accessibility-element="true"
         accessibility-traits="button"
         [accessibility-label]="triggerLabel()"
         [accessibility-value]="triggerValue()"
         [lynxAccessibilityTraits]="{ disabled: disabled() }"
+        (bindtouchstart)="press(true)"
+        (bindtouchend)="press(false)"
+        (bindtouchcancel)="press(false)"
+        (bindmousedown)="press(true)"
+        (bindmouseup)="press(false)"
+        (bindmouseleave)="press(false)"
         (bindtap)="toggle()"
       >
         <text [class]="valueTextClass()">{{ displayText() }}</text>
-        <ui-icon name="calendar" size="xs" color="var(--muted-foreground)" />
+        <ui-icon name="calendar" size="sm" color="var(--muted-foreground)" />
       </view>
       <!-- The calendar is made as the sheet opens and dropped once it has
            closed, so each opening starts at the chosen day's month, among
@@ -92,12 +100,10 @@ import { UiIcon } from '../icon/icon';
               (changed)="pick($event)"
             />
             @if (clearable() && value()) {
-              <!-- 48px tall, a full touch target: ui-button's default
-                   height is 2.5rem, 35px on Lynx. Ghost, so the box doesn't
-                   show. -->
+              <!-- Ghost, so the box doesn't show. -->
               <ui-button
                 variant="ghost"
-                class="h-[48px] w-full"
+                class="w-full"
                 (pressed)="pick(null)"
                 >{{ clearLabel() }}</ui-button
               >
@@ -185,24 +191,40 @@ export class UiDatePicker {
   );
 
   protected readonly hostClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    // 8px between the label and the field, as ui-input.
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 
   protected readonly fieldClass = computed(() =>
+    // 48px tall, a full touch target on Android (48dp) and iOS (44pt), as
+    // the other form fields are.
+    cn('h-12 flex-row flex', this.disabled() && 'opacity-50'),
+  );
+
+  /**
+   * The field as ui-select and ui-input draw theirs: the same fill, corners
+   * and 16px sides. It dims under a finger while it can be opened.
+   */
+  protected readonly triggerClass = computed(() =>
     cn(
-      // 48px tall, a full touch target on Android (48dp) and iOS (44pt), as
-      // the other form fields are. In px: h-10 is 2.5rem, 35px on Lynx.
-      'h-[48px] flex-row rounded-md border border-input bg-background flex',
-      this.disabled() && 'opacity-50',
+      'flex-1 flex-row items-center gap-2 rounded-lg bg-muted px-4 flex justify-between',
+      this.pressing() && !this.disabled() && 'opacity-70',
     ),
   );
 
   protected readonly valueTextClass = computed(() =>
     cn(
-      'flex-1 text-sm',
+      'flex-1 text-base',
       this.value() ? 'text-foreground' : 'text-muted-foreground',
     ),
   );
+
+  /** A finger (or the mouse) is down on the trigger. */
+  protected readonly pressing = signal(false);
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
+  }
 
   /**
    * Opens the sheet, or closes it while it's open.

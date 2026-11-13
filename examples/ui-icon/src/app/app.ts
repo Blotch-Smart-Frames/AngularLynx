@@ -8,7 +8,7 @@ import { UiText } from '../components/ui/typography';
   imports: [LYNX_ELEMENTS, UiIcon, UiText],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Icon</text>
         <text class="text-sm text-muted-foreground">
           SVG icons rendered natively via Lynx's svg element.

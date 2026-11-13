@@ -95,7 +95,10 @@ On Android the glass variants are Material buttons unless your app [opts into gl
 </ui-button>
 ```
 
-- **`icon`** makes a square button for a single character or icon.
+- **The default is 48px tall**, a full touch target on iOS and Android, and as tall as a field such as [Input](/dolan/input) or [Select](/dolan/select), so a button beside one lines up.
+- **`lg` is 56px**, for a screen's main action, such as Continue at the bottom of a form.
+- **`sm` is 36px**, for a button inside a row or a card. Its touch target is still 48px: it reaches 6px past the button on every side.
+- **`icon`** makes a 48px square button for a single character or icon.
 - **`icon-circle`** makes a circle for one icon.
 - **Glass buttons are capsules,** so a glass button in either icon size is a circle.
 
@@ -105,13 +108,13 @@ Put a [`<ui-icon>`](/dolan/icon) in the button. It takes the label's color:
 
 ```angular-html
 <ui-button variant="glass">
-  <ui-icon name="share-2" size="sm" />
+  <ui-icon name="share-2" />
   Share
 </ui-button>
 
 <ui-button variant="secondary">
   Next
-  <ui-icon name="arrow-right" size="sm" trailing />
+  <ui-icon name="arrow-right" trailing />
 </ui-button>
 
 <ui-button variant="glass" size="icon-circle" accessibility-label="Add">
@@ -119,6 +122,7 @@ Put a [`<ui-icon>`](/dolan/icon) in the button. It takes the label's color:
 </ui-button>
 ```
 
+- **The icon fits the button's size:** 20px beside a default button's label, 16px in a small button, and 24px in a large one or on its own. Set the icon's `size` to choose another.
 - **An icon goes before the label,** wherever you write it.
 - **Add `trailing` to put it after the label,** for an icon that points onward, such as Next or Open. A button can have one on each side.
 - **In an icon size, the button shows the icon alone.** Give it an `accessibility-label`, which a screen reader says instead.
@@ -176,14 +180,14 @@ export class SettingsLink {
 
 ### UiButton
 
-| Input                 | Type                                                                                                                 | Default     | Description                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
-| `variant`             | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost' \| 'glass' \| 'glass-prominent' \| 'glass-clear'` | `'default'` | Visual style.                                                    |
-| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'`                                                               | `'default'` | Height and padding. `icon` is a square, `icon-circle` a circle.  |
-| `disabled`            | `boolean`                                                                                                            | `false`     | Dims the button and ignores taps.                                |
-| `loading`             | `boolean`                                                                                                            | `false`     | Shows a spinner before the label, dims the button, ignores taps. |
-| `accessibility-label` | `string`                                                                                                             | —           | What a screen reader says. Needed for an icon-only button.       |
-| `class`               | `string`                                                                                                             | `''`        | Extra Tailwind classes for the container.                        |
+| Input                 | Type                                                                                                                 | Default     | Description                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------- |
+| `variant`             | `'default' \| 'destructive' \| 'outline' \| 'secondary' \| 'ghost' \| 'glass' \| 'glass-prominent' \| 'glass-clear'` | `'default'` | Visual style.                                                                    |
+| `size`                | `'default' \| 'sm' \| 'lg' \| 'icon' \| 'icon-circle'`                                                               | `'default'` | Height and padding: 48, 36 and 56px. `icon` is a square, `icon-circle` a circle. |
+| `disabled`            | `boolean`                                                                                                            | `false`     | Dims the button and ignores taps.                                                |
+| `loading`             | `boolean`                                                                                                            | `false`     | Shows a spinner before the label, dims the button, ignores taps.                 |
+| `accessibility-label` | `string`                                                                                                             | —           | What a screen reader says. Needed for an icon-only button.                       |
+| `class`               | `string`                                                                                                             | `''`        | Extra Tailwind classes for the container.                                        |
 
 | Output    | Type   | Description                               |
 | --------- | ------ | ----------------------------------------- |

@@ -213,10 +213,16 @@ export const blotchPlugin = plugin(
             dim: 'var(--glass-dim)',
           },
         } as unknown as Record<string, string>,
+        // Every corner steps from --radius, a control's: 8, 10, 12, then
+        // 16 for a card, 20 for a dialog or a sheet, and 24. One variable
+        // makes the whole app rounder or squarer.
         borderRadius: {
-          lg: 'var(--radius)',
-          md: 'calc(var(--radius) - 2px)',
           sm: 'calc(var(--radius) - 4px)',
+          md: 'calc(var(--radius) - 2px)',
+          lg: 'var(--radius)',
+          xl: 'calc(var(--radius) + 4px)',
+          '2xl': 'calc(var(--radius) + 8px)',
+          '3xl': 'calc(var(--radius) + 12px)',
         },
       },
     },

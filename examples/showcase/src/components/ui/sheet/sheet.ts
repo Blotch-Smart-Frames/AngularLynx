@@ -108,7 +108,9 @@ export class UiSheet implements SheetSourceTarget {
    */
   protected readonly contentClass = computed(() =>
     cn(
-      'px-6 pb-6',
+      // 16px sides: a phone's margins, which a list's rows in a sheet
+      // (ui-select's) keep too.
+      'px-4 pb-6',
       this.detents().some((detent) => detent !== 'fit') &&
         'flex flex-1 flex-col',
       this.userClass(),

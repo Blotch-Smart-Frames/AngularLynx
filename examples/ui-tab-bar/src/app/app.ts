@@ -1,20 +1,19 @@
 import { Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxTabOutlet } from '@blotch/angular-lynx';
 import { UiTabBar, UiTabBarItem } from '../components/ui/tab-bar';
 import { Inbox } from './inbox';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
+  imports: [LYNX_ELEMENTS, LynxTabOutlet, UiTabBar, UiTabBarItem],
   template: `
     <view class="h-full flex-col bg-background flex">
-      <!-- The screens fill the space above the bar. Each one's host is a
+      <!-- The tabs fill the space above the bar. Each screen's host is a
            flex-1 column (see screens.ts), so its scroll-view has a height to
-           scroll within. -->
-      <view class="flex-1 flex-col flex">
-        <router-outlet />
-      </view>
+           scroll within. The outlet keeps each tab once it's been shown, as
+           a native tab bar does: the Inbox comes back with the message you
+           left open, scrolled where you left it. -->
+      <lynx-tab-outlet />
 
       <ui-tab-bar>
         <ui-tab-bar-item route="/home" icon="home" label="Home" />

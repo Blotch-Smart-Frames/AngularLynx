@@ -1,6 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxTabOutlet } from '@blotch/angular-lynx';
 import {
   UiDock,
   UiDockAccessory,
@@ -14,7 +13,7 @@ import { Player } from './player';
   selector: 'app-root',
   imports: [
     LYNX_ELEMENTS,
-    RouterOutlet,
+    LynxTabOutlet,
     UiDock,
     UiDockAccessory,
     UiDockAction,
@@ -23,9 +22,11 @@ import { Player } from './player';
   ],
   template: `
     <!-- The screens fill the whole screen, and the dock floats over them at
-         the bottom: their content scrolls beneath it. -->
+         the bottom: their content scrolls beneath it. The outlet keeps each
+         tab once it's been shown, as a native tab bar does: the Library
+         comes back with the album you left open. -->
     <view class="h-full flex-col bg-background flex">
-      <router-outlet />
+      <lynx-tab-outlet />
 
       <ui-dock #dock>
         <!-- The accessory: what's playing, above the bar. When the dock

@@ -231,6 +231,45 @@ The examples on the [Dock](/dolan/dock) and [Tab Bar](/dolan/tab-bar) pages each
 - **The [Navigation Bar](/dolan/navigation-bar) and the [Toolbar](/dolan/toolbar) keep their state per screen,** so each screen in the stack has its own large title and scroll edge. A bar of your own does the same with `injectBarState()`.
 - **In Lynx Explorer, the left edge is Explorer's:** its own back gesture takes swipes from the edge. Swipe from inside the screen there. Apps built with `ng build --platform` have no such gesture.
 
+## Keep each tab alive, as a tab bar does
+
+With `<router-outlet>` beside a [Tab Bar](/dolan/tab-bar) or [Dock](/dolan/dock), switching tabs destroys the tab you leave and builds the next one from scratch: its components, its elements, and its native views, so a `<canvas>` sets up its WebGL context again and a `<webview>` loads its page again. A native tab bar keeps each tab once you've seen it. Put `<lynx-tab-outlet>` in place of `<router-outlet>` to do the same:
+
+```typescript title="src/app/app.ts"
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS, LynxTabOutlet } from '@blotch/angular-lynx'; // [!code highlight]
+import { UiDock, UiDockItem } from './components/ui/dock';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, LynxTabOutlet, UiDock, UiDockItem], // [!code highlight]
+  template: `
+    <view class="flex h-full flex-col bg-background">
+      <lynx-tab-outlet />
+      <!-- [!code highlight] -->
+      <ui-dock>
+        <ui-dock-item route="/home" icon="home" label="Home" />
+        <ui-dock-item route="/library" icon="music" label="Library" />
+      </ui-dock>
+    </view>
+  `,
+})
+export class App {}
+```
+
+- **Each route under it is a tab.** It's a router outlet, with `<router-outlet>`'s inputs and outputs, and it works with child routes, guards, resolvers, lazy routes and `withComponentInputBinding()`. The tab bar and the dock drive it as they drive `<router-outlet>`.
+- **The first visit builds a tab, and switching away keeps it.** The tab you leave is hidden: out of sight, out of screen readers' reach, and out of the way of taps. Switching back shows it as you left it, with its scroll positions, its `<lynx-stack-outlet>` and the screens pushed on it, and its native views, without building anything.
+- **A tab's item goes back to where you left the tab.** A navigation to a hidden tab's own URL (`/library`, what its item links to) goes to the URL the tab was at (`/library/album/3`). From the tab itself, the same link goes to `/library`, popping its stack to its first screen, as tapping the selected tab does on iOS. Any other URL goes where it says: a deeper one (`/library/album/7`), one with a query, and one whose `info` is `{ stack: 'root' }`, which starts the tab's stack again at that URL.
+- **Back goes through a tab's screens before the other tabs.** When a tab comes back with a stack, its screens' history entries come back before the current one, so Back, Android's back button and a swipe go to the screen under the top one, then on to the tab you came from.
+- **A hidden tab's components keep running.** Inject `LynxTabPage` and read its `active()` signal to pause what only matters while the tab is shown: a 3D scene's frames, a poll. The screens of a stack in a hidden tab say so too: their `LynxStackPage.active()` is `false`.
+- **Every tab you've shown is kept,** bounded by the number of tabs. To let one go when you leave it, give its route `data: { keepAlive: false }`, or list the paths of the tabs to keep: `<lynx-tab-outlet [keep]="['home', 'library']" />`. Leaving the outlet's route, as signing out does, destroys every tab in it.
+
+### Good to know
+
+- **A plain `<router-outlet>` in a tab builds its screen again** when the tab comes back, as it does everywhere: the router leaves its route as the tab hides. Use `<lynx-stack-outlet>` for a tab's screens, or another `<lynx-tab-outlet>` for tabs inside a tab, to keep them with it.
+- **The tab outlet adds a guard to each tab's route** to take a tab bar back where the tab was left. It's on the router's copy of the route, so your `Routes` stay as you wrote them, but the guard shows in `router.config`.
+- **A stack inside a screen of another stack is kept too,** while a screen pushed over it covers it.
+
 ## Read route parameters
 
 Turn on `withComponentInputBinding()` to receive route parameters as inputs:
@@ -297,11 +336,12 @@ It doesn't split your code, though. The build keeps every route's code in the [b
 | Active link  | `aria-current` with `ariaCurrentWhenActive` | The `selected` accessibility trait     |
 | Going back   | Browser back button, `history.back()`       | Android back button, `Location.back()` |
 | Transitions  | `withViewTransitions()`                     | `<lynx-stack-outlet>`, with swipe back |
+| Tabs         | Built again each time you switch to one     | `<lynx-tab-outlet>` keeps each one     |
 | Lazy routes  | Separate files, downloaded on demand        | Part of the bundle                     |
 
 ## Good to know
 
-Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and its state is gone when you come back. `<lynx-stack-outlet>` keeps the screens under the top one alive until you go back past them. To keep every route view alive instead, provide [`LynxRouteReuseStrategy`](/api/angular-lynx/routing#lynxroutereusestrategy). Its views stay in memory, with their timers and subscriptions running, until the app closes.
+Leaving a route destroys its component, as on the web, so `ngOnDestroy` runs and its state is gone when you come back. `<lynx-stack-outlet>` keeps the screens under the top one alive until you go back past them, and `<lynx-tab-outlet>` keeps each tab, native views and all, until you leave the outlet. To keep every route view alive instead, provide [`LynxRouteReuseStrategy`](/api/angular-lynx/routing#lynxroutereusestrategy). Its views stay in memory, with their timers and subscriptions running, until the app closes, but their native views are built again each time.
 
 ## Related
 

@@ -4,7 +4,11 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxStackPage } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxStackPage,
+  LynxTabPage,
+} from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
 import { UiDockScroll, UiDockState } from './dock-scroll';
 
@@ -126,6 +130,27 @@ describe('UiDockScroll', () => {
       detail: { scrollTop: 600, scrollHeight: 2000 },
     });
     expect(state.minimized()).toBe(false);
+  });
+
+  it('expands the dock when its tab is hidden, and keeps listening', async () => {
+    // A tab of a tab outlet, as LynxTabPage says.
+    const tab = { active: signal(true) };
+    const { state, scrollTo } = await renderScroll([
+      { provide: LynxTabPage, useValue: tab },
+    ]);
+    scrollTo(200);
+    expect(state.minimized()).toBe(true);
+
+    tab.active.set(false);
+    await waitForUpdate();
+    expect(state.minimized()).toBe(false);
+
+    // Shown again, it minimizes the dock as its content scrolls on.
+    tab.active.set(true);
+    await waitForUpdate();
+    expect(state.minimized()).toBe(false);
+    scrollTo(400);
+    expect(state.minimized()).toBe(true);
   });
 
   it('leaves the dock alone on a page that takes it away', async () => {

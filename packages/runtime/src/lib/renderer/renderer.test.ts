@@ -200,6 +200,15 @@ describe('LynxRenderer', () => {
       expect(spy).toHaveBeenCalledWith(newChild, ref);
     });
 
+    it('skips a node without a parent, as the DOM renderer does', () => {
+      const { renderer } = createRenderer();
+      const newChild = new InMemoryElement();
+      const ref = new InMemoryElement();
+
+      expect(() => renderer.insertBefore(null, newChild, ref)).not.toThrow();
+      expect(newChild.parentNode()).toBeNull();
+    });
+
     it('calls parent.appendChild when refChild is null', () => {
       const { renderer } = createRenderer();
       const parent = new InMemoryElement();

@@ -1,6 +1,6 @@
 # Routing
 
-Router providers, the stack outlet that moves between screens as native apps do, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxStackBottomBar, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
+Router providers, the stack outlet that moves between screens as native apps do, the tab outlet that keeps each tab as a tab bar does, and the in-memory location classes that let Angular Router run on Lynx. `import { provideRouter, LynxStackOutlet, LynxStackPage, LynxStackChrome, LynxStackBottomBar, LynxTabOutlet, LynxTabPage, LynxLocationStrategy, LynxPlatformLocation, LynxRouteReuseStrategy, LynxRouterLinkActive } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -95,6 +95,8 @@ What a navigation does to a `LynxStackOutlet`'s stack, when the URL doesn't say 
 | `'push'` | Pushes the screen, sliding it in, even at the same depth or already in it.  |
 | `'pop'`  | Pops back to the screen. One that isn't in the stack slides in from behind. |
 | `'root'` | Starts a new stack with the screen, without a transition.                   |
+
+A `LynxTabOutlet` reads `'root'` too: a navigation to a hidden tab's own URL that says it goes to that URL, rather than to where the tab was left.
 
 ### `LynxStackPage`
 
@@ -212,6 +214,38 @@ export class PlayerBar {
 - **Where it doesn't:** a screen that's popped, or one a finger drags (which may go), doesn't carry a bar it shows: the bar slides away on its own. Neither does Android's motion, nor the cross-fade under Reduce Motion: `progress` and `motion` are then the chrome's.
 - **Where it sits:** absolutely, along the bottom and across the width of the screen carrying it, which fills the stack. So the stack should run to the bottom of the screen, as it does beside a floating dock, or once a tab bar is out of the layout (the Tab Bar lies over the stack while it's away or on its way).
 - **Its place:** a comment holds the bar's place in its parent meanwhile, as with CDK's `DomPortal`.
+
+### `LynxTabOutlet`
+
+```typescript
+@Component({ selector: 'lynx-tab-outlet', exportAs: 'outlet' })
+class LynxTabOutlet extends RouterOutlet {
+  readonly keep: InputSignal<readonly string[] | undefined>;
+}
+```
+
+A `RouterOutlet` whose routes are an app's tabs, which it keeps once they've been shown, as `UITabBarController` and Material's navigation bar do. Use it in place of `<router-outlet>` beside a tab bar or a dock: it has the same inputs, outputs and API. See [Keep each tab alive](/guide/routing#keep-each-tab-alive-as-a-tab-bar-does) for what it does.
+
+| Input  | Default     | What it does                                                                                                     |
+| ------ | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `keep` | `undefined` | The paths of the routes whose tabs are kept while hidden (`['home', 'library']`). Without it, every tab is kept. |
+
+- **Each route is one tab,** whatever its params: `/item/1` and `/item/2` share the tab of `item/:id`, as they share its component.
+- **A hidden tab** is `visibility: hidden` and moved out of the outlet, which clips it, rather than `display: none`, which resizes everything in it to 0×0 on Lynx and loses its scroll positions.
+- **A route's `data: { keepAlive: false }`** destroys its tab when it's hidden, and `keepAlive: true` keeps it whatever `keep` says.
+- **A navigation to a hidden tab's own URL** goes to the URL the tab was at when it was hidden, through a guard the outlet adds to the router's copy of each tab's route. Back and Forward, a navigation with a query or a deeper path, and one whose `info` is `{ stack: 'root' }` go where they say.
+- **A `LynxStackOutlet` in a tab** keeps its screens while the tab is hidden, and when it comes back, puts its screens' entries back in the history before the current one, so Back goes through them.
+- **With a `RouteReuseStrategy` that detaches a tab,** the outlet hands it over, as `<router-outlet>` does, and its native views go.
+
+### `LynxTabPage`
+
+```typescript
+class LynxTabPage {
+  readonly active: Signal<boolean>;
+}
+```
+
+The tab of a `LynxTabOutlet` that a component is in, which any component in the tab can inject (`inject(LynxTabPage, { optional: true })`, null outside a tab), the screens of a stack in the tab included. `active()` is `true` while the tab is the one shown. A hidden tab's components keep running, so pause what only matters while it shows.
 
 ### `LynxRouterLinkActive`
 

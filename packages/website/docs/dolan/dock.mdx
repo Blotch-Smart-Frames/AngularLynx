@@ -26,20 +26,19 @@ This also adds [Glass](/dolan/glass), which draws the dock, [Icon](/dolan/icon),
 
 ## Usage
 
-Give each item a `route`, an `icon` and a `label`, and put the dock after your `<router-outlet>`:
+Give each item a `route`, an `icon` and a `label`, and put the dock after a [`<lynx-tab-outlet>`](/guide/routing#keep-each-tab-alive-as-a-tab-bar-does), which keeps each tab as a native tab bar does:
 
 ```typescript title="src/app/app.ts"
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxTabOutlet } from '@blotch/angular-lynx';
 import { UiDock, UiDockAction, UiDockItem } from '../components/ui/dock';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet, UiDock, UiDockAction, UiDockItem],
+  imports: [LYNX_ELEMENTS, LynxTabOutlet, UiDock, UiDockAction, UiDockItem],
   template: `
     <view class="flex h-full flex-col bg-background">
-      <router-outlet />
+      <lynx-tab-outlet />
       <ui-dock>
         <ui-dock-item route="/home" icon="home" label="Home" />
         <ui-dock-item route="/browse" icon="layout-grid" label="Browse" />
@@ -55,6 +54,7 @@ export class App {}
 - **The dock floats over your screens** at the bottom of its parent, and their content scrolls beneath it. It clears the iPhone's home indicator by the bottom [safe area](/guide/safe-area).
 - **A tap navigates** to the item's `route` with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
 - **A capsule marks the selected item,** and slides to the next one you tap. An item stays selected on the routes under it: Library at `/library/42` too.
+- **Going back to a tab finds it as you left it,** with `<lynx-tab-outlet>`: its scroll positions, the screens pushed in it, and its native views. A tap on the selected item pops its stack to its first screen. With `<router-outlet>`, each tab is built again every time.
 - **The action is a separate button,** for what people reach for from every screen, such as search or compose (below).
 
 Give each screen's host `flex-1`, so its `<scroll-view>` fills the screen, and pad the end of its content so the last row scrolls clear of the dock: `pb-safe-24`, or `pb-safe-40` with an accessory.

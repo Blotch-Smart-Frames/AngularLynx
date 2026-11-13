@@ -18,22 +18,19 @@ This also adds [Icon](/dolan/icon), whose icons and theme colors the tabs draw w
 
 ## Usage
 
-Give each tab a `route`, an `icon` and a `label`, and put the bar under your `<router-outlet>`:
+Give each tab a `route`, an `icon` and a `label`, and put the bar under a [`<lynx-tab-outlet>`](/guide/routing#keep-each-tab-alive-as-a-tab-bar-does), which keeps each tab as a native tab bar does:
 
 ```typescript title="src/app/app.ts"
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxTabOutlet } from '@blotch/angular-lynx';
 import { UiTabBar, UiTabBarItem } from '../components/ui/tab-bar';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, RouterOutlet, UiTabBar, UiTabBarItem],
+  imports: [LYNX_ELEMENTS, LynxTabOutlet, UiTabBar, UiTabBarItem],
   template: `
     <view class="flex h-full flex-col bg-background">
-      <view class="flex flex-1 flex-col">
-        <router-outlet />
-      </view>
+      <lynx-tab-outlet />
       <ui-tab-bar>
         <ui-tab-bar-item route="/home" icon="home" label="Home" />
         <ui-tab-bar-item route="/search" icon="search" label="Search" />
@@ -48,6 +45,7 @@ export class App {}
 - **A tap navigates** to the tab's `route`, with Angular's own [`RouterLink`](/guide/routing#navigate-between-screens). Set up the router with `provideRouter()` from `@blotch/angular-lynx`.
 - **The tab of the current route is selected:** its icon and label take the theme's `primary` color, and the others its `muted-foreground`.
 - **A tab stays selected on the routes under it.** The Inbox tab at `/inbox` is still selected at `/inbox/42`.
+- **Going back to a tab finds it as you left it,** with `<lynx-tab-outlet>`: its scroll positions, the screens pushed in it, and its native views. A tap on the selected tab pops its stack to its first screen. With `<router-outlet>`, each tab is built again every time.
 - **The tabs share the bar's width equally,** and the bar pads itself by the bottom [safe area](/guide/safe-area), so the tabs sit above the iPhone's home indicator.
 - **The icon is any [Icon](/dolan/icon) name.**
 

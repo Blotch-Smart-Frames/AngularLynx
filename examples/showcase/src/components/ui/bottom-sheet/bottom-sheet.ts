@@ -194,9 +194,11 @@ const FRAME = 16;
 
 /** The panel's own classes in each look. */
 const PANEL_CLASS: Readonly<Record<SheetLook, string>> = {
-  // On the card color: a tone above the page in the dark, where a sheet
-  // the page's own color was told apart by a hairline alone.
-  default: 'w-full rounded-t-2xl border-t border-border bg-card',
+  // On the card color: a tone above the page in the dark, which with the
+  // backdrop's dimming is its edge. No border on top: Android draws a border
+  // on one side of a rounded element as a straight strip, which sat across
+  // the top of the sheet, clear of its corners, instead of following them.
+  default: 'w-full rounded-t-2xl bg-card',
   // The glass, drawn by the layers in the template, is the panel's surface.
   glass: '',
   // iOS 15 to 25: the system background, with 10pt corners on top.

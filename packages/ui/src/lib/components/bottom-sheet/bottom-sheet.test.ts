@@ -176,9 +176,17 @@ describe('UiBottomSheet', () => {
   it("adds the class to the panel's own", async () => {
     const { panel } = await renderSheet();
     expect(panel.classList).toContain('max-h-96');
-    // On the card color: a tone above the page in the dark, where a sheet
-    // the page's own color was told apart by a hairline alone.
+    // On the card color: a tone above the page in the dark, which with the
+    // backdrop's dimming is its edge.
     expect(panel.classList).toContain('bg-card');
+  });
+
+  // Android draws a border on one side of a rounded element as a straight
+  // strip, clear of the corners: it sat across the top of the sheet.
+  it('has no border along its rounded top', async () => {
+    const { panel } = await renderSheet();
+    expect(panel.classList).toContain('rounded-t-2xl');
+    expect(panel.classList).not.toContain('border-t');
   });
 
   it('draws a 36×5 grabber in a faint gray that shows on the sheet', async () => {

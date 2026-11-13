@@ -6967,3 +6967,19 @@ Measured on 2026-11-13 by switching the appearance while a bundle was open (`xcr
 - **Lynx Explorer 4.1, Android API 34:** the page switched.
 - **The app `ng build --platform ios` makes:** the page switched both ways while open (the shell sends the new theme when the phone switches).
 
+---
+
+## Android draws a one-sided border on a rounded element as a straight strip
+
+### What you'd expect (web)
+
+`border-top: 1px solid` on an element with rounded top corners follows the corners: the line curves down each side and thins out where the side has no border.
+
+### What Lynx does
+
+On iOS, and in the web preview, it does. On Android (API 34 emulator, Lynx Explorer 4.1, measured 2026-11-13), the border is a straight strip the full width of the element, drawn above the rounded fill: its ends stick out past the corners, where the fill has curved away. A bottom sheet with `rounded-t-2xl border-t border-border` showed a light line floating across its top.
+
+### What to do
+
+Give a rounded element a border on every side (`border border-border`, which follows the corners on Android too), or none. `ui-bottom-sheet`'s default panel has none: its tone against the dimmed backdrop is its edge.
+

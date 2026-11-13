@@ -201,6 +201,14 @@ const ROW_IN_TRANSITION = `opacity ${DURATION.normal}ms ${EASING.decelerate} ${D
 const CAPSULE_OPACITY = 0.1;
 
 /**
+ * How strongly Material's selection capsule tints the toolbar with the
+ * primary color: a tonal container, as Material 3 fills its active
+ * indicators, rather than the primary color itself, which belongs to the
+ * floating action button beside the toolbar.
+ */
+const MATERIAL_CAPSULE_OPACITY = 0.12;
+
+/**
  * The color of icons in the accessory: the glass's foreground, as its text
  * reads `text-glass-foreground`. The accessory's content is the app's, which
  * the dock's glass doesn't provide for, since content injects from where it's
@@ -303,10 +311,10 @@ export class UiDockAccessory {}
  * - `'frosted'` (iOS 15 to 25): the tab bar of that time, edge to edge on
  *   the bars' chrome material, with the action as its last button. It
  *   doesn't minimize.
- * - `'material'` (Android): a Material 3 Expressive floating toolbar, with an
- *   active indicator behind the selected item's icon, and the action as a
- *   floating action button. Minimizing slides the toolbar away and leaves
- *   the button.
+ * - `'material'` (Android): a Material 3 Expressive floating toolbar, whose
+ *   selected item is marked the same way, by a capsule behind the whole
+ *   item, in a tint of the primary color, and the action as a floating
+ *   action button. Minimizing slides the toolbar away and leaves the button.
  *
  * With a `<ui-search-field>` in it as well, the action opens a search field
  * at the bottom of the screen, as iOS 26 searches on iPhone:
@@ -414,10 +422,7 @@ export class UiDockAccessory {}
             [style]="rowStyle()"
             [attr.accessibility-elements-hidden]="rowHidden() || null"
           >
-            <view
-              class="absolute top-0 bottom-0 left-0 rounded-full bg-glass-foreground"
-              [style]="capsuleStyle()"
-            ></view>
+            <view [class]="capsuleClass()" [style]="capsuleStyle()"></view>
             <ng-content />
           </view>
           @if (barCollapsed()) {
@@ -1015,25 +1020,42 @@ export class UiDock implements SearchFieldContainer {
   });
 
   /**
-   * The capsule behind the selected item, on glass: one element that slides
-   * from item to item. It's a shade of the glass's foreground rather than
-   * glass of its own, which would be glass on glass, and it's how iOS marks
-   * the selected tab while nobody is touching the bar.
+   * The capsule behind the selected item, on glass and Material: one element
+   * that slides from item to item, behind the whole item, icon and label.
+   *
+   * On glass it's a shade of the glass's foreground rather than glass of its
+   * own, which would be glass on glass, and it's how iOS marks the selected
+   * tab while nobody is touching the bar. On Material it's a tint of the
+   * primary color on the toolbar's surface, the tone of Material 3's active
+   * indicator. That indicator sits behind the icon alone on a navigation
+   * bar, whose items are as tall as the bar; in a floating toolbar, a pill
+   * behind the icon left the label outside the mark and read as a button
+   * within the item, so here it's the item's own shape, as the glass one is.
    *
    * The items share the row equally, so it's one item wide, and
    * `translateX(n * 100%)` moves it n items along, whatever the row's width.
-   * It fades out while no item is selected, and in the other designs, which
-   * mark the selection their own way.
+   * It fades out while no item is selected, and before iOS 26, whose tab
+   * bar marks the selection with color alone.
    */
+  protected readonly capsuleClass = computed(() =>
+    cn(
+      'absolute top-0 bottom-0 left-0 rounded-full',
+      this.design() === 'material' ? 'bg-primary' : 'bg-glass-foreground',
+    ),
+  );
+
   protected readonly capsuleStyle = computed(() => {
     const count = Math.max(1, this.items().length);
     const selected = this.selectedItem();
     const index = selected ? this.items().indexOf(selected) : 0;
-    const shown = !!selected && this.design() === 'glass';
+    const design = this.design();
+    const opacity =
+      design === 'material' ? MATERIAL_CAPSULE_OPACITY : CAPSULE_OPACITY;
+    const shown = !!selected && design !== 'frosted';
     return {
       width: `${100 / count}%`,
       transform: `translateX(${index * 100}%)`,
-      opacity: String(shown ? CAPSULE_OPACITY : 0),
+      opacity: String(shown ? opacity : 0),
       transition: this.#animate() ? CAPSULE_TRANSITION : 'none',
     };
   });
@@ -1222,31 +1244,21 @@ export class UiDock implements SearchFieldContainer {
     '(bindtap)': 'pressed.emit()',
   },
   template: `
-    <view [class]="iconFrameClass()">
-      @if (design() === 'material') {
-        <!-- Material's active indicator: a pill behind the icon that
-             widens from its center as the item is selected. -->
+    <view class="relative">
+      <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
+      @if (badgeText()) {
+        <!-- Hangs off the icon's top-right corner, as on a native tab
+             bar. min-w-4 keeps a one-digit badge round; longer ones
+             grow into a pill. -->
         <view
-          class="absolute top-0 left-0 h-8 w-14 rounded-full bg-primary"
-          [style]="indicatorStyle()"
-        ></view>
-      }
-      <view class="relative">
-        <svg [attr.content]="iconSvg()" style="width: 24px; height: 24px;" />
-        @if (badgeText()) {
-          <!-- Hangs off the icon's top-right corner, as on a native tab
-               bar. min-w-4 keeps a one-digit badge round; longer ones
-               grow into a pill. -->
-          <view
-            class="absolute -top-1 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1"
+          class="absolute -top-1 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1"
+        >
+          <text
+            class="text-[10px] leading-4 font-semibold text-destructive-foreground"
+            >{{ badgeText() }}</text
           >
-            <text
-              class="text-[10px] leading-4 font-semibold text-destructive-foreground"
-              >{{ badgeText() }}</text
-            >
-          </view>
-        }
-      </view>
+        </view>
+      }
     </view>
     <text [class]="labelClass()">{{ label() }}</text>
   `,
@@ -1266,7 +1278,6 @@ export class UiDockItem {
   readonly pressed = output<void>();
 
   readonly #dock = inject(UiDock);
-  readonly #settings = inject(LynxAccessibilitySettings);
   readonly #resolveColor = injectIconColor();
   // The host, not an inner view, shrinks on a press: it's the whole tap
   // target, and injecting it needs no view query.
@@ -1297,7 +1308,7 @@ export class UiDockItem {
    * The colors of the selected item and the others, as theme tokens. On
    * glass, the selected item takes the primary color over the capsule and
    * the others the glass's foreground. Before iOS 26, the others were gray.
-   * On Material, the selected icon sits on the primary indicator.
+   * On Material too, over its capsule, and its label is heavier there.
    */
   readonly #colors = computed(() => {
     const active = this.active();
@@ -1308,10 +1319,7 @@ export class UiDockItem {
           : { icon: 'var(--glass-foreground)', label: 'text-glass-foreground' };
       case 'material':
         return active
-          ? {
-              icon: 'var(--primary-foreground)',
-              label: 'font-semibold text-foreground',
-            }
+          ? { icon: 'var(--primary)', label: 'font-semibold text-primary' }
           : { icon: 'var(--muted-foreground)', label: 'text-muted-foreground' };
       default:
         return active
@@ -1337,29 +1345,6 @@ export class UiDockItem {
       this.#colors().label,
     ),
   );
-
-  protected readonly iconFrameClass = computed(() =>
-    this.design() === 'material'
-      ? 'h-8 w-14 items-center flex relative justify-center'
-      : 'relative',
-  );
-
-  /**
-   * Material's indicator shows at once on the selected item, so its icon is
-   * never light on the toolbar, and widens from the center there. It leaves
-   * the item it moves from at once too.
-   */
-  protected readonly indicatorStyle = computed(() => {
-    const active = this.active();
-    return {
-      opacity: active ? '1' : '0',
-      transform: active ? 'scaleX(1)' : 'scaleX(0.5)',
-      transition:
-        active && !this.#settings.reduceMotion()
-          ? `transform ${DURATION.normal}ms ${EASING.decelerate}`
-          : 'none',
-    };
-  });
 
   protected readonly contentClass = computed(() =>
     cn(

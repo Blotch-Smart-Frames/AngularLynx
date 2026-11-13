@@ -5234,6 +5234,44 @@ xcrun simctl spawn booted log show --last 5m --style compact \
 
 ---
 
+## On iOS, XElement's `<webview>` keeps its web view and WebContent process after the element is gone
+
+### What you'd expect (web)
+
+An `<iframe>` taken out of the page takes its document with it, and the browser frees the frame's memory once nothing refers to it. Android's `<webview>` does the same: `dumpsys meminfo`'s WebViews count drops back to 0 when the screen that had them goes.
+
+### What Lynx does
+
+On iOS, the web view outlived its element in any host that uses XElement's own loader, which Lynx Explorer and, before issue #397, the apps from `ng build --platform ios` do. `LynxUIWebView` gets its web view from a loader, which XElement 4.1.0 (and 4.2.0, unchanged) registers as `"default"` in `LynxWebViewService`. That loader, `LynxWebViewDefaultLoader`, holds its `WKWebView` and adds itself as the web view's script message handler:
+
+```objc
+[configuration.userContentController addScriptMessageHandler:self
+                                                        name:self.delegate.nameOfScriptMessageHandler];
+self.webview = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
+```
+
+`WKUserContentController` keeps its handlers until `removeScriptMessageHandlerForName:`, which nothing calls, so the loader and the web view keep each other. The element lets go of its loader, and the two stay, with the `com.apple.WebKit.WebContent` process WebKit started for the web view, for as long as the app runs. Nothing in the app's JavaScript can reach the loader: only native code can change `LynxWebViewService`'s providers.
+
+A probe app that shows seven `<webview [html]>`s with a screen's worth of other elements, removes them, and does it again, on the iOS 27 Simulator, counted with `heap <pid>` and the WebContent processes under the simulator's `launchd_sim`, 8 seconds after each change:
+
+| After          | XElement's loader: `LynxUIWebView` / `WKWebView` / WebContent | Wrapped loader (below) |
+| -------------- | ------------------------------------------------------------- | ---------------------- |
+| 1st show       | 7 / 7 / 7                                                     | 7 / 7 / 7              |
+| 1st removal    | 0 / 7 / 7                                                     | 0 / 0 / 0              |
+| 2nd show       | 7 / 14 / 14                                                   | 7 / 7 / 7              |
+| 4th removal    | 0 / 28 / 28                                                   | 0 / 0 / 0              |
+| 24 s idle more | 0 / 28 / 28                                                   | 0 / 0 / 0              |
+
+The WebContent processes' resident sizes added up to about 150 MB each (RSS, which counts the pages they share more than once). With few elements removed, the element (and its `LynxUIWebView`) waits for the main thread's JavaScript heap to be collected, as any element does, so the probe removes 150 other views with the web views to make the runtime ask for a full collection, as leaving a screen does.
+
+### The fix
+
+The shell registers its own `"default"` provider (`packages/native/templates/ios/App/WebViewLoader.swift`). Its loader wraps XElement's and, when the element lets it go, takes XElement's loader off the content controller's handlers, which ends the cycle; the web view and its process then go with the element. Everything else stays XElement's: the web view's settings, the `load` and `error` events, and the page's messages (`bindmessage`, checked in the probe above). The provider is registered after Lynx's start-up tasks run (`LynxLazyRegister.loadLynxInitTask()`, which runs them once), since XElement registers its own there and would replace one registered before.
+
+A host of your own that uses XElement's `<webview>` (an ejected shell is one) needs the same: register a `"default"` provider whose loader takes the handler off, or gives `WKUserContentController` a handler that holds the loader weakly. The workaround can go once XElement's loader stops adding itself as a strong handler.
+
+---
+
 ## Text that is exactly `false` disappears on Lynx for Web (any attribute set to `"false"` is removed)
 
 ### What you'd expect (web / native parity)

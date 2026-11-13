@@ -370,6 +370,8 @@ describe('UiDock on iOS 26 and later', () => {
     expect(style(capsule(), 'width')).toBe(serialized('width', `${100 / 3}%`));
     expect(style(capsule(), 'transform')).toBe('translateX(0%)');
     expect(style(capsule(), 'opacity')).toBe('0.1');
+    // A shade of the glass's foreground, not of the primary color.
+    expect(capsule().classList).toContain('bg-glass-foreground');
     expect(style(capsule(), 'transition')).toContain('transform');
     expect(labelOf('Home').classList).toContain('text-primary');
     expect(iconOf(item('Home'))).toContain(PRIMARY);
@@ -588,8 +590,8 @@ describe('UiDock on iOS 15 to 25', () => {
 });
 
 describe('UiDock on Android', () => {
-  it('floats a Material toolbar, with an indicator behind the selected icon and a floating action button', async () => {
-    const { bar, action, accessory, item, labelOf, iconOf } =
+  it('floats a Material toolbar, with a capsule behind the selected item and a floating action button', async () => {
+    const { bar, action, accessory, item, capsule, labelOf, iconOf } =
       await renderDock(ANDROID);
 
     // Solid surfaces with an elevation shadow, not glass.
@@ -605,33 +607,36 @@ describe('UiDock on Android', () => {
     expect(iconOf(action()!)).toContain(PRIMARY_FOREGROUND);
     expect(style(accessory()!, 'border-radius')).toBe('16px');
 
-    const indicator = (label: string) =>
-      item(label).querySelector<HTMLElement>('.bg-primary')!;
-    expect(style(indicator('Home'), 'opacity')).toBe('1');
-    expect(style(indicator('Home'), 'transform')).toBe('scaleX(1)');
-    expect(iconOf(item('Home'))).toContain(PRIMARY_FOREGROUND);
-    expect(labelOf('Home').classList).toContain('text-foreground');
+    // The capsule is behind the whole item, not a pill behind its icon: it's
+    // the row's own, one item wide and as tall as the row, in a tint of the
+    // primary color.
+    expect(capsule().classList).toContain('bg-primary');
+    expect(capsule().classList).toContain('top-0');
+    expect(capsule().classList).toContain('bottom-0');
+    expect(style(capsule(), 'width')).toBe(serialized('width', `${100 / 3}%`));
+    expect(style(capsule(), 'opacity')).toBe('0.12');
+    expect(item('Home').querySelector('.bg-primary')).toBeNull();
+    // So the selected item is drawn in the primary color, over the tint.
+    expect(iconOf(item('Home'))).toContain(PRIMARY);
+    expect(labelOf('Home').classList).toContain('text-primary');
+    expect(labelOf('Home').classList).toContain('font-semibold');
     expect(labelOf('Home').classList).toContain('text-xs');
-    expect(style(indicator('Inbox'), 'opacity')).toBe('0');
-    expect(style(indicator('Inbox'), 'transform')).toBe('scaleX(0.5)');
     expect(iconOf(item('Inbox'))).toContain(MUTED_FOREGROUND);
     expect(labelOf('Inbox').classList).toContain('text-muted-foreground');
   });
 
-  it('widens the indicator on the item tapped, at once under Reduce Motion', async () => {
-    const { item, page, isSelected } = await renderDock(ANDROID);
-    const indicator = (label: string) =>
-      item(label).querySelector<HTMLElement>('.bg-primary')!;
+  it('slides the capsule to the item tapped, at once under Reduce Motion', async () => {
+    const { item, capsule, page, isSelected } = await renderDock(ANDROID);
+    expect(style(capsule(), 'transform')).toBe('translateX(0%)');
     fireEvent.tap(item('Inbox'));
     await until(() => page() === 'Inbox page');
     await until(() => isSelected('Inbox'));
-    expect(style(indicator('Inbox'), 'transition')).toContain('transform');
-    // It leaves the item it moves from at once.
-    expect(style(indicator('Home'), 'transition')).toBe('none');
+    expect(style(capsule(), 'transform')).toBe('translateX(100%)');
+    expect(style(capsule(), 'transition')).toContain('transform');
 
     settings.reduceMotion.set(true);
     await waitForUpdate();
-    expect(style(indicator('Inbox'), 'transition')).toBe('none');
+    expect(style(capsule(), 'transition')).toBe('none');
   });
 
   it('slides the toolbar and the accessory away when minimized, and keeps the button', async () => {

@@ -404,6 +404,10 @@ PrimJS, which runs the main thread, keeps the values an array held in the slots 
 
 PrimJS collects garbage as the app runs, but those collections leave behind much of what a screen leaves when it goes, so memory grows with every screen the app shows, though the screens themselves are collected. Lynx runs a full collection, which frees it, when the host app reports memory pressure with `LynxEnv.trimMemory`. The apps `ng build --platform` makes (and `ng serve --platform`) do it for you: the runtime asks the shell for one (`NativeModules.AngularLynxShell.collectGarbage()`) once the app has released about a screen's worth of elements and settled, at most every 10 seconds, and the shell reports the system's memory warnings and the app leaving the screen. Lynx Explorer has no such module, so memory there grows over a long session. In a native app of your own, register an `AngularLynxShell` module whose `collectGarbage()` calls `trimMemory` with moderate pressure, and report memory warnings (the website's "Embed in an existing native app" guide has the code).
 
+### On iOS, a `<webview>` outlives its element outside the `--platform` apps
+
+XElement's iOS loader and its `WKWebView` keep each other, so in Lynx Explorer, in a native app of your own, and in a project ejected before the fix, every `<webview>` the app has shown stays, with its WebContent process, for as long as the app runs (in issue #397, 21 of them held 0.9 to 2.4 GB). Nothing in the app's code can free it. The `--platform ios` apps (`ng build` and `ng serve`) wrap the loader so the web view goes with the element. In a native app of your own, copy the shell's `WebViewLoader.swift` and call `ShellWebViewLoaderProvider.register()` where you register XElement (the website's "Embed in an existing native app" guide). Android's web views go with their elements everywhere.
+
 ---
 
 ## Build

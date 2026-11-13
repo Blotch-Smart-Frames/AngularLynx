@@ -13,7 +13,8 @@ import XElement
 /// classes under the same names here, before the first LynxConfig or LynxView
 /// exists. `<blur-view>` is XElement's with UIKit's blur materials and glass
 /// transitions added (BlurView). `<canvas>` is the shell's own, for WebGL
-/// (AngularLynxWebGL.h).
+/// (AngularLynxWebGL.h). `<webview>`'s loader is XElement's, wrapped so its web
+/// view doesn't outlive the element (ShellWebViewLoader).
 enum XElementRegistry {
   static func register() {
     let elements: [(String, AnyClass)] = [
@@ -53,5 +54,8 @@ enum XElementRegistry {
     for (name, node) in shadowNodes {
       LynxComponentRegistry.registerShadowNode(node, withName: name)
     }
+    // <webview> loads through XElement's loader, wrapped so the web view and
+    // its WebContent process go with the element (WebViewLoader.swift).
+    ShellWebViewLoaderProvider.register()
   }
 }

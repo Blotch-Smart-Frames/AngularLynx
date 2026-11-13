@@ -74,6 +74,8 @@ On iOS, a `display: none` `<view>` inside a `<text>` still takes room in the lin
 
 Lynx treats min-content as 0px. Set explicit `min-width`/`min-height` to prevent over-shrinking.
 
+A `<text>` squeezed narrower than one of its words breaks the word between letters (a tab's "Community" put its "y" on a second line), where a browser would keep the word whole. For a label that must stay on one line (a tab, a chip), set `text-maxline="1"` with `text-ellipsis`. On the web, a one-line `<text>` is as wide as its whole text, so a row that hugs its content (`self-start`) grows past the screen there instead of shrinking as it does on native: give the row `max-w-full`.
+
 ### `visibility: hidden` can't be overridden by children
 
 Once a parent is hidden, all descendants stay hidden regardless of their `visibility` value.

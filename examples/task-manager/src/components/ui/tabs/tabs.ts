@@ -199,7 +199,13 @@ export class UiTabsList {
           // tabs. Same lever as the badge fix: Lynx has no `inline-flex`, so
           // align-self is how you opt a child into shrink-to-fit.
           // 48px tall with its 40px triggers: a full touch target.
-          'flex-row items-center self-start rounded-lg bg-muted p-1 flex',
+          //
+          // `max-w-full` keeps a row of long labels inside its parent on the
+          // web. A one-line label is as wide as its whole text there, and the
+          // browser sizes a `self-start` row to its labels, past the screen's
+          // edge; capped, the triggers shrink and their labels end in "…",
+          // as they do on native, where Lynx lets the row shrink by itself.
+          'max-w-full flex-row items-center self-start rounded-lg bg-muted p-1 flex',
           this.userClass(),
         ),
   );
@@ -229,6 +235,12 @@ export class UiTabsList {
   // The selected tab is `selected` to a screen reader, which iOS reads:
   // lynxAccessibilityTraits adds the trait to `button` on iOS, and leaves
   // Android, which reads one trait, with `button`.
+  //
+  // The label is one line, as a tab's is on both platforms. Lynx lets a flex
+  // item shrink below its text's width, so a label longer than its tab broke
+  // mid-word onto a second line, which spilled out of the tab. The ellipsis
+  // in textClass() ends one that doesn't fit with "…" instead: `text-maxline`
+  // alone cuts it off on iOS and draws the rest below the tab on Android.
   template: `
     @if (stateLayerClass(); as stateLayer) {
       <view [class]="stateLayer"></view>
@@ -236,6 +248,7 @@ export class UiTabsList {
     <text
       accessibility-traits="button"
       [lynxAccessibilityTraits]="{ selected: isActive() }"
+      [text-maxline]="1"
       [class]="textClass()"
       ><ng-content
     /></text>
@@ -359,13 +372,16 @@ export class UiTabsTrigger {
     );
   });
 
-  protected readonly textClass = computed(
-    () =>
+  /** The label's classes, which end a label too long for its tab with "…". */
+  protected readonly textClass = computed(() =>
+    cn(
       this.#segment()?.labelClass(this.triggerValue()) ??
-      cn(
-        'text-sm font-medium',
-        this.isActive() ? 'text-foreground' : 'text-muted-foreground',
-      ),
+        cn(
+          'text-sm font-medium',
+          this.isActive() ? 'text-foreground' : 'text-muted-foreground',
+        ),
+      'text-ellipsis',
+    ),
   );
 
   select(): void {

@@ -615,7 +615,11 @@ export class UiSegmentedControl {
       );
     }
     return cn(
-      'flex-1 flex-row items-center gap-1.5 px-3 flex relative justify-center',
+      // 4px in from each side, as UIKit insets a segment's label (measured
+      // on the iOS 27 Simulator: 84pt of a 92.5pt segment). A label gets
+      // nearly the whole segment, so "Community" fits a quarter of a phone's
+      // width, as it does in UIKit, rather than ending in "…".
+      'flex-1 flex-row items-center gap-1.5 px-1 flex relative justify-center',
       // In a multiple selection each segment is its own thumb, inset in its
       // slot, and drawn while selected (see #ownThumb).
       this.#host().multiple() && 'm-[2px]',

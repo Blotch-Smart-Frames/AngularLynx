@@ -924,6 +924,10 @@ Flex items won't shrink below their intrinsic minimum content size, even with `f
 
 Lynx treats `min-content` as `0px`. Flex items **can** shrink below their content minimum, potentially clipping or overflowing text. If you need to prevent over-shrinking, set `min-width` or `min-height` explicitly.
 
+Text squeezed this way breaks **inside a word**. A `<text>` narrower than one of its words wraps it between letters, where a browser keeps the word whole and lets it overflow. `<ui-tabs-list variant="segmented">` with All, Alerts, Updates and Community across a 370pt row gave each tab 92.5pt, 68.5pt of it inside the tab's padding, and "Community" (about 70pt at 13px) drew with its "y" on a second line, which hung below the control (iOS 27 Simulator, Lynx Explorer 4.1, 2026-11-13). A label that should stay on one line needs `text-maxline="1"` with `text-overflow: ellipsis` (see "`text-maxline` attribute limits visible lines").
+
+Lynx for Web is the other way round, for a parent that sizes to its content. It gives every element `min-width: 0` (the computed style of `x-view` and `x-text`), so a flex item shrinks there as on native. But a one-line `<text>` still counts its whole text toward its parent's content width, so a `self-start` row of one-line labels grew to 448px inside a 370px parent and ran off the screen, where native shrank it and ended the labels with "…" (the default `<ui-tabs-list>`, Chrome). `max-width: 100%` on the row (`max-w-full`) caps it, and its items then shrink as on native.
+
 ---
 
 ## `position: sticky` only works inside `<x-scroll-view>`

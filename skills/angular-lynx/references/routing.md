@@ -156,6 +156,49 @@ export class App {}
 - Only `<lynx-stack-outlet>` and `<lynx-tab-outlet>` inside a tab keep their screens: a plain `<router-outlet>` in a tab rebuilds its screen when the tab comes back, because the router leaves its route as the tab hides. A `<lynx-stack-outlet>` on a screen covered by another stack's pushed screen keeps its screens the same way.
 - With a `RouteReuseStrategy` that detaches a tab route, the outlet hands the tab over as `<router-outlet>` does, and its native views go.
 
+## Shortcuts (Siri and the app icon)
+
+A shortcut is something the app does that the person asks for from outside it. List them in the `build` target's options in `angular.json`, and `ng build --platform` builds them into the app: on iOS (16+) as App Shortcuts, which Siri runs on hearing a phrase and Spotlight and the Shortcuts app list; on Android in the menu a long press on the app's icon opens. The phone brings the app to the front, starting it if it has to.
+
+```json
+"shortcuts": [
+  {
+    "id": "refresh",
+    "title": "Refresh postcards",
+    "phrases": ["Refresh {appName}", "Reload {appName}"],
+    "symbol": "arrow.clockwise"
+  },
+  { "id": "stamps", "title": "Show stamps", "route": "/stamps" }
+]
+```
+
+- **`id`** (required): what the code knows it by. Letters, digits, `-` and `_`, starting with a letter. **`title`** (required): the name the phone lists it under.
+- **`phrases`** (iOS): what the person says to Siri. Each must contain `{appName}` (Siri only listens for phrases that name the app, as `appName` has it). Default: `"<title> in {appName}"`.
+- **`route`**: the path the router navigates to when the shortcut runs. `provideRouter()` from `@blotch/angular-lynx` does it, from open or closed, with no code.
+- **`symbol`** (iOS): an SF Symbol's name. Android draws the app's icon.
+- Up to 10 (iOS's limit). Android launchers show about four, the first ones.
+
+For anything but opening a screen, handle the `id`:
+
+```typescript
+import { LYNX_ELEMENTS, LynxShortcuts } from '@blotch/angular-lynx';
+
+export class Postcards {
+  readonly postcards = resource({ loader: () => loadPostcards() });
+
+  constructor() {
+    inject(LynxShortcuts).on('refresh', () => this.postcards.reload());
+  }
+}
+```
+
+- `on(id, handler)` in a constructor removes the handler when the component is destroyed (or pass `{ injector }`); it returns a function that removes it sooner. The handler gets `{ id, route? }`.
+- A shortcut that ran before any handler for its `id` existed (the one that started the app, or one for a screen the person isn't on) waits for the first handler registered for it. To handle one wherever the person is, register it in the root component.
+- A shortcut with a `route` and handlers navigates first, then calls them.
+- **Only `--platform` apps** (`ng build` or `ng serve`) have shortcuts: in Lynx Explorer and the web preview none ever runs, so keep another way to do the same thing. Rebuild the app after changing `shortcuts`.
+- **Not supported:** input from what was said ("show stamps from Japan"), running without opening the app, phrases in more than one language, voice on Android.
+- **Specs:** `runShortcut('refresh')` from the testing library runs one (`runShortcut('stamps', { route: '/stamps' })` for one with a route, since a spec doesn't read angular.json); `await waitForUpdate()` before checking.
+
 ## Key Differences from Web Routing
 
 - **No URL bar** — users can't type URLs. All navigation goes through `routerLink` or the `Router`.

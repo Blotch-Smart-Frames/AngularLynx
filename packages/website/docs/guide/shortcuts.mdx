@@ -1,0 +1,144 @@
+# Add shortcuts for Siri and the app icon
+
+A shortcut is something your app does that the person can ask for without opening the app first: "Hey Siri, refresh Postcards", or a long press on the app's icon and a tap on "Show stamps". You list them in angular.json, and `ng build --platform` builds them into the app:
+
+- **On iOS,** each one is an App Shortcut. Siri runs it when it hears one of its phrases, and it's listed in Spotlight and in the Shortcuts app, where the person can put it on the Action button or in an automation. iOS 16 and later.
+- **On Android,** each one is in the menu a long press on the app's icon opens, from where it can also be dragged onto the home screen.
+
+Either way the phone brings your app to the front, starting it if it has to, and then tells it which shortcut ran.
+
+<Go example="shortcuts" defaultFile="src/app/postcards.ts" />
+
+The preview has no Siri and no app icon, so the shortcuts only run in the app `ng build --platform` or `ng serve --platform` makes. See [Try it](#try-it).
+
+## List the shortcuts in angular.json
+
+Add `shortcuts` to the `build` target's options:
+
+```json title="angular.json"
+"build": {
+  "builder": "@blotch/angular-lynx-build:application",
+  "options": {
+    "appName": "Postcards",
+    "shortcuts": [
+      {
+        "id": "refresh",
+        "title": "Refresh postcards",
+        "phrases": ["Refresh {appName}", "Reload {appName}"],
+        "symbol": "arrow.clockwise"
+      },
+      {
+        "id": "stamps",
+        "title": "Show stamps",
+        "phrases": ["Show stamps in {appName}"],
+        "route": "/stamps",
+        "symbol": "seal"
+      }
+    ]
+  }
+}
+```
+
+| Field     | What it's for                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`      | What your code knows the shortcut by. Letters, digits, hyphens and underscores, starting with a letter. Keep it once the app is released: the shortcuts people saved in the Shortcuts app are stored under it |
+| `title`   | The name the phone lists it under                                                                                                                                                                             |
+| `phrases` | What the person says to Siri. Each one must have `{appName}` where the app's name is said. Defaults to the title followed by `in {appName}`. iOS only                                                         |
+| `route`   | The path the router navigates to when the shortcut runs                                                                                                                                                       |
+| `symbol`  | The [SF Symbol](https://developer.apple.com/sf-symbols/) iOS draws beside it. iOS only: Android draws the app's icon                                                                                          |
+
+Only `id` and `title` are required. iOS takes up to 10 shortcuts from an app, and Android's launchers show about four, the first ones listed, so put the ones people use most first.
+
+Siri only listens for phrases that name the app, which is why every phrase needs `{appName}`. Siri hears the name under the app's icon (`appName`), so `"Refresh {appName}"` is said "Refresh Postcards". Write a few phrases for the ways people would say it: Siri matches what it hears against them, and doesn't guess at others.
+
+## Open a screen: give the shortcut a route
+
+A shortcut with a `route` opens the app on that screen. `provideRouter()` from `@blotch/angular-lynx` navigates there when the shortcut runs, so it takes no code:
+
+```json
+{ "id": "stamps", "title": "Show stamps", "route": "/stamps" }
+```
+
+It works whether the app was open or closed. From closed, the app starts and goes straight to the route.
+
+## Do something: handle the shortcut
+
+For anything else, such as loading the feed again, handle the shortcut's `id` with `LynxShortcuts`:
+
+```typescript title="src/app/postcards.ts"
+import { Component, inject, resource } from '@angular/core';
+import { LYNX_ELEMENTS, LynxShortcuts } from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-postcards',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @for (postcard of postcards.value(); track postcard.id) {
+      <text>{{ postcard.place }}</text>
+    }
+  `,
+})
+export class Postcards {
+  readonly postcards = resource({ loader: () => loadPostcards() });
+
+  constructor() {
+    inject(LynxShortcuts).on('refresh', () => this.postcards.reload());
+  }
+}
+```
+
+A handler registered in a constructor goes with its component: when the component is destroyed, the handler is removed. `on()` also returns a function that removes it sooner.
+
+A shortcut can run before its handler exists: the shortcut that started the app runs before the app has drawn anything, and a handler may belong to a screen the person isn't on. So a shortcut that nothing handled waits for the first handler registered for its `id`. In the example above, "Refresh postcards" run from another screen reloads the postcards when the person next comes to this one. To handle a shortcut wherever the person is, register its handler in the root component or in a service the app creates when it starts.
+
+A shortcut can have a `route` and a handler: the router is told to navigate first, then the handlers are called.
+
+## Try it
+
+Shortcuts need the real app, so run it with `--platform`:
+
+```sh
+ng serve --platform ios       # or: ng build --platform ios --run
+ng serve --platform android   # or: ng build --platform android --run
+```
+
+- **On iOS,** open the Shortcuts app. Your app is listed under Apps in its library, with a tile per shortcut: tap one to run it. On an iPhone, also try asking Siri. The iOS Simulator has the Shortcuts app and Spotlight.
+- **On Android,** hold the app's icon on the home screen or in the app list, and tap a shortcut in the menu.
+
+After changing `shortcuts` in angular.json, build the app again: they're compiled into it.
+
+## In the web preview, Lynx Explorer and tests
+
+- **In the [web preview](/guide/glossary#web-preview) and in Lynx Explorer,** no shortcut ever runs, and `on()` does nothing. Give the app another way to do the same thing, as you would anyway: a shortcut is a second way in, not the only one.
+- **In unit tests,** run a shortcut with the testing library's [`runShortcut()`](/api/testing-library/#runshortcut), and check what the app did:
+
+```typescript title="src/app/postcards.test.ts"
+import {
+  render,
+  runShortcut,
+  screen,
+  waitForUpdate,
+} from '@blotch/angular-lynx-testing-library';
+
+it('loads the postcards again when the shortcut runs', async () => {
+  await render(Postcards);
+
+  runShortcut('refresh');
+  await waitForUpdate();
+
+  expect(screen.getByText('Lisbon')).toBeInTheDocument();
+});
+```
+
+## What a shortcut can't do yet
+
+- **Take what the person said as input.** "Show stamps from Japan" can't pass "Japan" to the app. Each shortcut is one fixed action, so list one per thing to open.
+- **Run without opening the app.** Every shortcut brings the app to the front.
+- **Be said in another language.** The phrases are in the one language you write them in.
+- **Be asked for by voice on Android.** Google's assistant has no stable way for an app to declare its own phrases, so on Android the shortcuts are in the icon's menu only.
+
+## Related
+
+- [`LynxShortcuts` reference](/api/angular-lynx/shortcuts)
+- [Build options](/api/build/#native-app-options)
+- [Run on iOS and Android](/guide/native-apps)

@@ -1,5 +1,6 @@
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,6 +21,9 @@ import {
   properties,
   queriesEntries,
   propertyValue,
+  shortcutStringsXml,
+  shortcutsXml,
+  stringResource,
 } from './project.ts';
 
 const app = (options = {}) =>
@@ -113,6 +117,74 @@ describe('queriesEntries', () => {
   });
 });
 
+describe('shortcutsXml', () => {
+  const shortcuts = app({
+    appId: 'com.example.app',
+    shortcuts: [
+      { id: 'refresh', title: 'Refresh' },
+      {
+        id: 'show-photos',
+        title: 'Show "my" photos',
+        route: '/photos?a=1&b=2',
+      },
+    ],
+  });
+
+  it('points each shortcut at the trampoline activity, with its ID and route', () => {
+    expect(shortcutsXml(shortcuts)).toContain(
+      [
+        '    <shortcut',
+        '        android:shortcutId="refresh"',
+        '        android:enabled="true"',
+        '        android:icon="@mipmap/ic_launcher"',
+        '        android:shortcutShortLabel="@string/shortcut_refresh">',
+        '        <intent',
+        '            android:action="android.intent.action.VIEW"',
+        '            android:targetPackage="com.example.app"',
+        '            android:targetClass="dev.angularlynx.shell.ShortcutActivity">',
+        '            <extra android:name="angularLynxShortcutId" android:value="refresh" />',
+        '        </intent>',
+        '    </shortcut>',
+      ].join('\n'),
+    );
+    expect(shortcutsXml(shortcuts)).toContain(
+      [
+        // A hyphen can't be in a resource's name.
+        '        android:shortcutShortLabel="@string/shortcut_show_photos">',
+        '        <intent',
+        '            android:action="android.intent.action.VIEW"',
+        '            android:targetPackage="com.example.app"',
+        '            android:targetClass="dev.angularlynx.shell.ShortcutActivity">',
+        '            <extra android:name="angularLynxShortcutId" android:value="show-photos" />',
+        '            <extra android:name="angularLynxShortcutRoute" android:value="/photos?a=1&amp;b=2" />',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps each title in a string resource, which is all a shortcut takes', () => {
+    expect(shortcutStringsXml(shortcuts)).toContain(
+      [
+        '<resources>',
+        '    <string name="shortcut_refresh">Refresh</string>',
+        '    <string name="shortcut_show_photos">Show \\"my\\" photos</string>',
+        '</resources>',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('stringResource', () => {
+  it('escapes what Android would read as quoting, an escape, a reference or markup', () => {
+    expect(stringResource(`Don't "go" back\\`)).toBe(
+      `Don\\'t \\"go\\" back\\\\`,
+    );
+    expect(stringResource('@home')).toBe('\\@home');
+    expect(stringResource('?why')).toBe('\\?why');
+    expect(stringResource('Q&A <now>')).toBe('Q&amp;A &lt;now&gt;');
+    expect(stringResource('mail@home?')).toBe('mail@home?');
+  });
+});
+
 describe('androidGenerator', () => {
   let dir: string;
   beforeEach(() => {
@@ -141,6 +213,34 @@ describe('androidGenerator', () => {
     expect(statSync(path.join(dir, 'gradlew')).mode & 0o111).not.toBe(0);
     expect(androidGenerator.bundleDir(dir)).toBe(
       path.join(dir, 'app/src/main/assets'),
+    );
+  });
+
+  it("writes the shortcuts' resources, which the launcher activity points Android to", () => {
+    const xml = path.join(dir, 'app/src/main/res/xml/shortcuts.xml');
+    const strings = path.join(dir, 'app/src/main/res/values/shortcuts.xml');
+    androidGenerator.configure(dir, app(), dir);
+    // The template's empty list, which the manifest still refers to.
+    expect(readFileSync(xml, 'utf8')).not.toContain('<shortcut ');
+    expect(existsSync(strings)).toBe(false);
+
+    androidGenerator.configure(
+      dir,
+      app({ shortcuts: [{ id: 'refresh', title: 'Refresh' }] }),
+      dir,
+    );
+    expect(readFileSync(xml, 'utf8')).toContain('android:shortcutId="refresh"');
+    expect(readFileSync(strings, 'utf8')).toContain(
+      '<string name="shortcut_refresh">Refresh</string>',
+    );
+    const manifest = readFileSync(
+      path.join(dir, 'app/src/main/AndroidManifest.xml'),
+      'utf8',
+    );
+    expect(manifest).toContain('android:resource="@xml/shortcuts"');
+    // Its own task, or Android would end the open app to start a shortcut.
+    expect(manifest).toMatch(
+      /android:name="\.ShortcutActivity"[^>]*android:taskAffinity=""/,
     );
   });
 

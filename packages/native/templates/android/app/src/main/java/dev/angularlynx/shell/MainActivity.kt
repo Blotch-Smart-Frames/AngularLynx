@@ -100,6 +100,16 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        // A shortcut that started the app waits for the runtime to take it.
+        // Android hands a recreated activity the intent it started with
+        // again, and so does reopening the app from Recents, neither of
+        // which is the person running the shortcut again.
+        if (savedInstanceState == null &&
+            intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
+        ) {
+            ShortcutsModule.run(intent)
+        }
+
         // The bundle in the app's assets, or in the debug build `ng serve
         // --platform android` runs, the dev server's (DevServer.kt).
         val bundleUrl = DevServer.bundleUrl(this) ?: BundleAssets.MAIN_BUNDLE
@@ -124,6 +134,9 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
             // The share sheet behind LynxShare (ShareModule.kt), which it opens
             // from this activity.
             registerModule(ShareModule.NAME, ShareModule::class.java, this@MainActivity)
+            // The shortcuts the person runs from the app icon's menu, which
+            // LynxShortcuts takes (ShortcutsModule.kt).
+            registerModule(ShortcutsModule.NAME, ShortcutsModule::class.java, null)
             // <canvas>'s WebGL (WebGLModule.kt), which the runtime calls from
             // the main thread, where Angular runs: main-thread modules let
             // it get its answers synchronously, with lynx.module(name).
@@ -247,11 +260,19 @@ class MainActivity : ComponentActivity(), ShellModule.Host, WebAuthModule.Host {
         }
     }
 
-    // The page's redirect to the callback scheme. The activity is singleTask,
-    // so the deep link comes back to this one, which closes the Custom Tab
-    // above it. It arrives before onResume, which then finds no session open.
+    // The activity is singleTask, so an intent for it while it's open comes
+    // here rather than starting another.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // A shortcut run while the app is open (ShortcutActivity): the
+        // runtime takes it when it hears the event.
+        if (ShortcutsModule.run(intent)) {
+            lynxView.sendGlobalEvent(ShortcutsModule.EVENT, JavaOnlyArray())
+            return
+        }
+        // The sign-in page's redirect to the callback scheme: the deep link
+        // comes back to this activity, which closes the Custom Tab above it.
+        // It arrives before onResume, which then finds no session open.
         val url = intent.data ?: return
         val session = webAuthSession ?: return
         if (url.scheme?.lowercase() != session.scheme) return

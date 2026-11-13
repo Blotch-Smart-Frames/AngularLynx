@@ -1158,6 +1158,7 @@ describe('unit-test builder', () => {
       'permissions',
       'deepLinkSchemes',
       'canOpenURLSchemes',
+      'shortcuts',
       'ios',
       'android',
     ]);

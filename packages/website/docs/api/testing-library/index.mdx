@@ -145,6 +145,23 @@ expect(openedURLs()).toEqual([
 ]);
 ```
 
+### `runShortcut()`
+
+```typescript
+function runShortcut(id: string, options?: { readonly route?: string }): void;
+```
+
+Runs one of the app's [shortcuts](/guide/shortcuts), as the person does by asking Siri or from the app icon's menu, so a spec can check what the app does with it. A spec doesn't read angular.json, so `id` only has to be one the code under test handles with [`LynxShortcuts.on()`](/api/angular-lynx/shortcuts#lynxshortcutson), and a shortcut that has a `route` there gets it in `options`, which the router then navigates to. The shortcut reaches the app as it does on a phone, through the background thread, so wait for it with `waitForUpdate()`. Run before the app has injected `LynxShortcuts`, it waits, as the shortcut that starts an app does. Each test starts with none waiting.
+
+```typescript
+await render(Feed);
+
+runShortcut('refresh');
+await waitForUpdate();
+
+expect(screen.getByText('Refreshed')).toBeInTheDocument();
+```
+
 ### `*ByAccessibilityLabel`
 
 ```typescript

@@ -2,16 +2,19 @@ import { LocationStrategy, PlatformLocation } from '@angular/common';
 import {
   type EnvironmentProviders,
   inject,
+  Injector,
   makeEnvironmentProviders,
   provideEnvironmentInitializer,
 } from '@angular/core';
 import {
   provideRouter as ngProvideRouter,
+  Router,
   RouterLinkActive,
   type RouterFeatures,
   type Routes,
   withRouterConfig,
 } from '@angular/router';
+import { LynxShortcuts, SHORTCUT_NAVIGATE } from '../shortcuts';
 import { LynxBackButton } from './lynx-back-button';
 import { LynxLocationStrategy } from './lynx-location-strategy';
 import { LynxPlatformLocation } from './lynx-platform-location';
@@ -56,6 +59,20 @@ export const provideRouter = (
     // The Android back button goes back through this router's history, like
     // the browser's back button on the web (see lynx-back-button.ts).
     provideEnvironmentInitializer(() => inject(LynxBackButton)),
+    // A shortcut with a `route` in angular.json's `shortcuts` navigates
+    // there when the person runs it, from Siri or the app icon's menu. The
+    // service starts with the app so that needs no code in it, and it gets
+    // the router through the token so that an app without routes, which can
+    // still handle shortcuts, doesn't bundle one (see shortcuts.ts). The
+    // router is looked up when a shortcut runs: by then it exists.
+    {
+      provide: SHORTCUT_NAVIGATE,
+      useFactory: () => {
+        const injector = inject(Injector);
+        return (route: string) => injector.get(Router).navigateByUrl(route);
+      },
+    },
+    provideEnvironmentInitializer(() => inject(LynxShortcuts)),
     // Lets LYNX_ELEMENTS mark an active routerLinkActive element `selected`
     // for screen readers without importing the router itself (see
     // lynx-router-link-active.ts). Taps reach Angular's own RouterLink without

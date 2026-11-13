@@ -24,6 +24,7 @@ import '@angular/compiler';
 import '@testing-library/jest-dom/vitest';
 import { LynxTestingEnv } from '@lynx-js/testing-environment';
 import { installLinkingModule } from './linking.js';
+import { installShortcutsModule } from './shortcuts.js';
 
 // ─── CSS fetch intercept ─────────────────────────────────────────────────────
 
@@ -111,6 +112,8 @@ const frameOnInstalledTimers = (threadGlobals: any): void => {
   frameOnInstalledTimers(threadGlobals);
   // LynxLinking records the URLs it opens (see linking.ts).
   installLinkingModule(threadGlobals);
+  // LynxShortcuts takes the shortcuts runShortcut() runs (see shortcuts.ts).
+  installShortcutsModule(threadGlobals);
 };
 
 // ─── Install LynxTestingEnv ──────────────────────────────────────────────────

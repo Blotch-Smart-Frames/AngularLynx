@@ -16,6 +16,7 @@ describe('resolveAppOptions', () => {
       permissions: {},
       deepLinkSchemes: [],
       canOpenURLSchemes: ['http', 'https', 'mailto', 'tel', 'sms'],
+      shortcuts: [],
       icon: undefined,
       productName: 'myapp',
       artifactName: 'my-app',
@@ -142,6 +143,151 @@ describe('resolveAppOptions', () => {
       resolveAppOptions({ deepLinkSchemes: ['my-app+x.y'] }, defaults)
         .deepLinkSchemes,
     ).toEqual(['my-app+x.y']);
+  });
+
+  it('gives a shortcut a phrase from its title, and keeps the ones it has', () => {
+    expect(
+      resolveAppOptions(
+        {
+          shortcuts: [
+            { id: 'refresh', title: '  Refresh  ' },
+            {
+              id: 'show-photos',
+              title: 'Show photos',
+              phrases: [' Show photos in {appName} ', 'Open {appName} photos'],
+              route: '/photos',
+              symbol: 'photo.on.rectangle',
+            },
+          ],
+        },
+        defaults,
+      ).shortcuts,
+    ).toEqual([
+      { id: 'refresh', title: 'Refresh', phrases: ['Refresh in {appName}'] },
+      {
+        id: 'show-photos',
+        title: 'Show photos',
+        phrases: ['Show photos in {appName}', 'Open {appName} photos'],
+        route: '/photos',
+        symbol: 'photo.on.rectangle',
+      },
+    ]);
+  });
+
+  it('rejects more shortcuts than iOS takes', () => {
+    const shortcuts = Array.from({ length: 11 }, (_, index) => ({
+      id: `shortcut${index}`,
+      title: `Shortcut ${index}`,
+    }));
+    expect(() => resolveAppOptions({ shortcuts }, defaults)).toThrow(
+      'shortcuts lists 11. iOS takes no more than 10 from an app.',
+    );
+    expect(
+      resolveAppOptions({ shortcuts: shortcuts.slice(1) }, defaults).shortcuts,
+    ).toHaveLength(10);
+  });
+
+  it.each([
+    ['show photos', 'a space'],
+    ['1st', 'a digit first'],
+    ['', 'nothing'],
+    [undefined, 'no ID at all'],
+  ])('rejects the shortcut ID %j: %s', (id) => {
+    expect(() =>
+      resolveAppOptions(
+        { shortcuts: [{ id, title: 'Show photos' }] } as never,
+        defaults,
+      ),
+    ).toThrow(/shortcuts\[0\]\.id .* is not valid/);
+  });
+
+  it('rejects two shortcuts whose IDs name the same Swift type and Android resource', () => {
+    for (const ids of [
+      ['refresh', 'refresh'],
+      ['show-photos', 'show_photos'],
+      ['refresh', 'Refresh'],
+    ]) {
+      expect(() =>
+        resolveAppOptions(
+          { shortcuts: ids.map((id) => ({ id, title: id })) },
+          defaults,
+        ),
+      ).toThrow(/two entries with the id/);
+    }
+  });
+
+  it('rejects a shortcut without a title on one line', () => {
+    for (const title of ['', '   ', 'Show\nphotos', undefined]) {
+      expect(() =>
+        resolveAppOptions(
+          { shortcuts: [{ id: 'photos', title }] } as never,
+          defaults,
+        ),
+      ).toThrow('shortcuts "photos" needs a title on one line');
+    }
+  });
+
+  it("rejects a phrase that doesn't name the app, which Siri wouldn't listen for", () => {
+    for (const phrase of ['Show my photos', 'Show\n{appName}', 42]) {
+      expect(() =>
+        resolveAppOptions(
+          {
+            shortcuts: [
+              { id: 'photos', title: 'Show photos', phrases: [phrase] },
+            ],
+          } as never,
+          defaults,
+        ),
+      ).toThrow(/doesn't name the app/);
+    }
+  });
+
+  it('rejects an empty list of phrases, and a phrase two shortcuts share', () => {
+    expect(() =>
+      resolveAppOptions(
+        { shortcuts: [{ id: 'photos', title: 'Show photos', phrases: [] }] },
+        defaults,
+      ),
+    ).toThrow('shortcuts "photos" has no phrases');
+    expect(() =>
+      resolveAppOptions(
+        {
+          shortcuts: [
+            { id: 'photos', title: 'Photos', phrases: ['Open {appName}'] },
+            { id: 'albums', title: 'Albums', phrases: ['open {appName}'] },
+          ],
+        },
+        defaults,
+      ),
+    ).toThrow('shortcuts has the phrase "open {appName}" twice');
+  });
+
+  it('rejects a route that is not a path, and a symbol that is not an SF Symbol name', () => {
+    for (const route of ['photos', 'https://example.com', 7]) {
+      expect(() =>
+        resolveAppOptions(
+          { shortcuts: [{ id: 'photos', title: 'Photos', route }] } as never,
+          defaults,
+        ),
+      ).toThrow(/has the route .* starting with "\/"/);
+    }
+    for (const symbol of ['photo on rectangle', 'photo..fill', 7]) {
+      expect(() =>
+        resolveAppOptions(
+          { shortcuts: [{ id: 'photos', title: 'Photos', symbol }] } as never,
+          defaults,
+        ),
+      ).toThrow(/is not an SF Symbol's name/);
+    }
+  });
+
+  it("names an empty shortcut entry, which Angular CLI's undefined keys leave", () => {
+    expect(() =>
+      resolveAppOptions(
+        { shortcuts: [{ id: undefined, title: undefined }] } as never,
+        defaults,
+      ),
+    ).toThrow(/shortcuts\[0\]\.id/);
   });
 
   it('accepts an adaptive icon with a color or a PNG background', () => {

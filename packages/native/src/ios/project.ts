@@ -3,7 +3,12 @@ import path from 'node:path';
 
 import type { PlatformGenerator } from '../generate.ts';
 import { readPngSize } from '../png.ts';
-import type { Orientation, ResolvedApp } from '../options.ts';
+import {
+  APP_NAME_PLACEHOLDER,
+  type Orientation,
+  type ResolvedApp,
+  shortcutIdentifier,
+} from '../options.ts';
 import { PERMISSION_MAP } from '../permissions.ts';
 import { escapeXml, replaceMarker } from '../xml.ts';
 
@@ -22,8 +27,9 @@ const ORIENTATIONS: Record<Orientation, readonly string[]> = {
 
 /**
  * Writes the app options into the iOS template: build settings go in
- * Config/App.xcconfig (which App.xcodeproj reads), and Info.plist entries go
- * between the template's `angular-lynx:info` markers.
+ * Config/App.xcconfig (which App.xcodeproj reads), Info.plist entries go
+ * between the template's `angular-lynx:info` markers, and the shortcuts
+ * become App/AppShortcuts.swift.
  */
 export const iosGenerator: PlatformGenerator = {
   configure: (dir, app, projectRoot, development = false) => {
@@ -38,6 +44,15 @@ export const iosGenerator: PlatformGenerator = {
         infoPlistEntries(app, { development }),
       ),
     );
+
+    // The project compiles every Swift file in App/, so the file only has to
+    // be there. An app without shortcuts gets none, and declares no intents.
+    if (app.shortcuts.length > 0) {
+      writeFileSync(
+        path.join(dir, 'App/AppShortcuts.swift'),
+        appShortcutsSwift(app),
+      );
+    }
 
     if (app.icon) {
       const icon = path.resolve(projectRoot, app.icon);
@@ -157,4 +172,94 @@ export const infoPlistEntries = (
     );
   }
   return lines.join('\n');
+};
+
+/**
+ * Text as the inside of a Swift string literal.
+ */
+const swiftString = (text: string): string =>
+  text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+/**
+ * A shortcut's phrase as a Swift string literal, with the app's name as the
+ * interpolation App Intents reads it from: Siri then hears the name the
+ * person knows the app by, and the names in Info.plist's
+ * INAlternativeAppNames.
+ */
+const swiftPhrase = (phrase: string): string =>
+  `"${phrase
+    .split(APP_NAME_PLACEHOLDER)
+    .map(swiftString)
+    .join('\\(.applicationName)')}"`;
+
+/**
+ * App/AppShortcuts.swift: angular.json's `shortcuts` as App Intents, which is
+ * how iOS offers an app's actions to Siri, Spotlight and the Shortcuts app.
+ *
+ * It's written as source, not read from a file when the app starts, because
+ * Xcode's App Intents step reads the titles and phrases out of the compiled
+ * code at build time, and takes only literals. Each intent opens the app
+ * and leaves its shortcut with ShortcutCenter (ShortcutsModule.swift), where
+ * the runtime's LynxShortcuts takes it.
+ *
+ * The intents are iOS 16's, which is when App Shortcuts arrived, and the
+ * shell runs on iOS 15, which gets none. An intent's type name is what iOS
+ * stores a saved shortcut under, so it comes from the ID alone.
+ */
+export const appShortcutsSwift = (app: ResolvedApp): string => {
+  const intents = app.shortcuts.map((shortcut) => {
+    const route =
+      shortcut.route === undefined
+        ? ''
+        : `, route: "${swiftString(shortcut.route)}"`;
+    return [
+      '@available(iOS 16.0, *)',
+      `struct Shortcut_${shortcutIdentifier(shortcut.id)}: AppIntent {`,
+      `  static let title: LocalizedStringResource = "${swiftString(shortcut.title)}"`,
+      '  // The app handles it, so it comes to the front: iOS 26 and later read',
+      '  // supportedModes, and earlier ones openAppWhenRun.',
+      '  static let openAppWhenRun = true',
+      '  @available(iOS 26.0, *)',
+      '  static var supportedModes: IntentModes { .foreground }',
+      '',
+      '  func perform() async throws -> some IntentResult {',
+      `    ShortcutCenter.shared.run(id: "${swiftString(shortcut.id)}"${route})`,
+      '    return .result()',
+      '  }',
+      '}',
+    ].join('\n');
+  });
+
+  const shortcuts = app.shortcuts.map((shortcut) =>
+    [
+      '    AppShortcut(',
+      `      intent: Shortcut_${shortcutIdentifier(shortcut.id)}(),`,
+      '      phrases: [',
+      ...shortcut.phrases.map((phrase) => `        ${swiftPhrase(phrase)},`),
+      '      ],',
+      `      shortTitle: "${swiftString(shortcut.title)}"${shortcut.symbol === undefined ? '' : ','}`,
+      ...(shortcut.symbol === undefined
+        ? []
+        : [`      systemImageName: "${shortcut.symbol}"`]),
+      '    )',
+    ].join('\n'),
+  );
+
+  return [
+    '// Written by @blotch/angular-lynx-native from the shortcuts in',
+    "// angular.json's builder options on every build. Edits here are",
+    '// overwritten; change angular.json instead (or eject).',
+    'import AppIntents',
+    '',
+    intents.join('\n\n'),
+    '',
+    "/// What iOS reads the app's shortcuts from: there is one provider per app.",
+    '@available(iOS 16.0, *)',
+    'struct AngularLynxAppShortcuts: AppShortcutsProvider {',
+    '  static var appShortcuts: [AppShortcut] {',
+    shortcuts.join('\n'),
+    '  }',
+    '}',
+    '',
+  ].join('\n');
 };

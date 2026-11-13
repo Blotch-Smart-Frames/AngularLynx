@@ -43,6 +43,9 @@ final class LynxViewController: UIViewController {
     // The full collections the runtime asks for after screens go
     // (ShellModule).
     config.register(ShellModule.self)
+    // The shortcuts the person runs from Siri, Spotlight or the Shortcuts
+    // app, which LynxShortcuts takes (ShortcutsModule).
+    config.register(ShortcutsModule.self)
     // `ng serve --platform ios`'s live reload, in the development build.
     DevServer.shared.register(in: config)
     let lynxView = LynxView { builder in
@@ -61,6 +64,8 @@ final class LynxViewController: UIViewController {
     lynxView.layoutHeightMode = .exact
     view.addSubview(lynxView)
     self.lynxView = lynxView
+    // Who hears that a shortcut ran while the app is open.
+    ShortcutCenter.shared.lynxView = lynxView
 
     layoutLynxView()
     lynxView.updateGlobalProps(with: globalProps())

@@ -220,6 +220,40 @@
       },
       "description": "Other apps' URL schemes LynxLinking.canOpenURL() can ask about, e.g. [\"whatsapp\"]. iOS and Android 11+ answer only for the schemes an app declares. http, https, mailto, tel and sms are always there."
     },
+    "shortcuts": {
+      "type": "array",
+      "description": "Things the app does that the phone offers outside it: on iOS through Siri, Spotlight and the Shortcuts app, and on Android in the menu a long press on the app's icon opens. The app hears each one through LynxShortcuts. iOS takes up to 10.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "What the app's code knows the shortcut by, in LynxShortcuts.on(id, handler), e.g. \"show-photos\". Letters, digits, hyphens and underscores, starting with a letter."
+          },
+          "title": {
+            "type": "string",
+            "description": "The name the phone lists it under, e.g. \"Show photos\"."
+          },
+          "phrases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the person says to Siri. Each one names the app with {appName}, which Siri requires, e.g. [\"Show photos in {appName}\"]. Defaults to the title, then \"in {appName}\". iOS only."
+          },
+          "route": {
+            "type": "string",
+            "description": "The path the router navigates to when the shortcut runs, e.g. \"/photos\". Without one, the app stays where it is."
+          },
+          "symbol": {
+            "type": "string",
+            "description": "The SF Symbol iOS draws beside it, e.g. \"arrow.clockwise\". iOS only."
+          }
+        }
+      }
+    },
     "ios": {
       "type": "object",
       "additionalProperties": false,

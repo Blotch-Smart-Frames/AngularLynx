@@ -224,6 +224,10 @@ export default defineConfig({
         { text: 'Sign In with a Web Page', link: '/guide/web-sign-in' },
         { text: 'Open Links Outside the App', link: '/guide/open-links' },
         {
+          text: 'Shortcuts for Siri and the App Icon',
+          link: '/guide/shortcuts',
+        },
+        {
           text: 'Keep Data After the App Closes',
           link: '/guide/persistent-storage',
         },
@@ -310,6 +314,7 @@ export default defineConfig({
               link: '/api/angular-lynx/web-auth-session',
             },
             { text: 'LynxLinking', link: '/api/angular-lynx/linking' },
+            { text: 'LynxShortcuts', link: '/api/angular-lynx/shortcuts' },
             {
               text: 'LynxImagePicker',
               link: '/api/angular-lynx/image-picker',
@@ -484,6 +489,7 @@ export default defineConfig({
         { sectionHeaderText: 'Platform' },
         { text: 'Defer Blocks', link: '/examples/defer' },
         { text: 'Linking', link: '/examples/linking' },
+        { text: 'Shortcuts', link: '/examples/shortcuts' },
         { text: 'Error Boundary', link: '/examples/error-boundary' },
         { text: 'Error Handling', link: '/examples/error-handling' },
         { text: 'Internationalization', link: '/examples/i18n' },

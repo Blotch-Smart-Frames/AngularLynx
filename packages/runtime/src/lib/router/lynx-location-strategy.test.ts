@@ -4,7 +4,9 @@ import { Injector } from '@angular/core';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   carryOverLocation,
+  historyEntryAt,
   LynxLocationStrategy,
+  restoreHistory,
   rewindHistory,
 } from './lynx-location-strategy';
 
@@ -372,5 +374,70 @@ describe('rewindHistory', () => {
       rewindHistory(strategy, 1);
       expect(strategy.getState()).toBe(state);
     }
+  });
+});
+
+describe('historyEntryAt', () => {
+  it('reads an entry, and nothing outside the history', () => {
+    const strategy = new LynxLocationStrategy();
+    strategy.pushState({ id: 1 }, '', '/a', 'q=1');
+
+    expect(historyEntryAt(strategy, 1)).toEqual({
+      state: { id: 1 },
+      url: '/a?q=1',
+    });
+    for (const index of [-1, 2]) {
+      expect(historyEntryAt(strategy, index)).toBeUndefined();
+    }
+  });
+});
+
+describe('restoreHistory', () => {
+  let strategy: LynxLocationStrategy;
+
+  beforeEach(() => {
+    strategy = new LynxLocationStrategy();
+    strategy.replaceState({ ɵrouterPageId: 0 }, '', '/home', '');
+    strategy.pushState({ ɵrouterPageId: 1 }, '', '/pages', '');
+    strategy.pushState({ ɵrouterPageId: 2 }, '', '/home/3', '');
+  });
+
+  it('puts entries in before the current one, without a navigation', () => {
+    const listener = vi.fn();
+    strategy.onPopState(listener);
+
+    restoreHistory(strategy, [
+      { state: { ɵrouterPageId: 0, id: 'home' }, url: '/home' },
+      { state: null, url: '/home/2' },
+    ]);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(strategy.historyIndex).toBe(4);
+    expect(strategy.path()).toBe('/home/3');
+    // The router's numbers move with the entries, and other states stay.
+    expect(strategy.getState()).toEqual({ ɵrouterPageId: 4 });
+    expect(historyEntryAt(strategy, 2)).toEqual({
+      state: { ɵrouterPageId: 2, id: 'home' },
+      url: '/home',
+    });
+    strategy.back();
+    expect(strategy.path()).toBe('/home/2');
+    expect(strategy.getState()).toBeNull();
+    strategy.back();
+    expect(strategy.path()).toBe('/home');
+    strategy.back();
+    expect(strategy.path()).toBe('/pages');
+  });
+
+  it('turns Back on in front of the first entry, and does nothing for none', () => {
+    const first = new LynxLocationStrategy();
+    restoreHistory(first, []);
+    expect(first.canGoBack()).toBe(false);
+    expect(first.historyIndex).toBe(0);
+
+    restoreHistory(first, [{ state: null, url: '/before' }]);
+    expect(first.canGoBack()).toBe(true);
+    expect(first.historyIndex).toBe(1);
+    expect(first.path()).toBe('/');
   });
 });

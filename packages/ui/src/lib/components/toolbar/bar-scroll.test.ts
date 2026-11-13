@@ -4,7 +4,11 @@ import {
   render,
   waitForUpdate,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS, LynxStackPage } from '@blotch/angular-lynx';
+import {
+  LYNX_ELEMENTS,
+  LynxStackPage,
+  LynxTabPage,
+} from '@blotch/angular-lynx';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { provideGlass } from '../glass/glass-design';
@@ -181,6 +185,31 @@ describe('injectBarState', () => {
       providers: [{ provide: LynxStackPage, useValue: new LynxStackPage() }],
     });
     expect(other.componentRef.instance.state).not.toBe(own);
+  });
+
+  it("is each tab's own in one, and a stack page's on a page in a tab", async () => {
+    const tab = new LynxTabPage();
+    const first = await render(BarProbe, {
+      providers: [{ provide: LynxTabPage, useValue: tab }],
+    });
+    const own = first.componentRef.instance.state;
+    expect(own).not.toBe(first.componentRef.injector.get(UiBarState));
+    first.unmount();
+
+    const again = await render(BarProbe, {
+      providers: [{ provide: LynxTabPage, useValue: tab }],
+    });
+    expect(again.componentRef.instance.state).toBe(own);
+    again.unmount();
+
+    // A page of a stack in the tab has its own.
+    const paged = await render(BarProbe, {
+      providers: [
+        { provide: LynxTabPage, useValue: tab },
+        { provide: LynxStackPage, useValue: new LynxStackPage() },
+      ],
+    });
+    expect(paged.componentRef.instance.state).not.toBe(own);
   });
 
   it("is a component's own when it provides one, on a stack page too", async () => {

@@ -6505,6 +6505,24 @@ The options (issue #236) were checked on the iOS 27 Simulator and the Android AP
 
 ---
 
+## A synchronous UI method runs the pending microtasks inside the call
+
+### What you'd expect (web)
+
+A microtask runs once the current task is over: code that queues one and carries on finishes first, whatever it calls meanwhile. `getBoundingClientRect()` reads layout and returns; it doesn't run anyone's queued work.
+
+### What Lynx does
+
+On iOS and Android, a UI method that answers synchronously, such as the `boundingClientRect` that `LynxElement.getBoundingClientRect()` asks for when it starts tracking an element's layout, runs every pending microtask before it returns (the answer is a native→JS call, and Lynx runs the microtasks as one ends; see the observer section above for the probe). So any component constructor or template that measures an element can run microtasks queued earlier in the same synchronous pass, in the middle of it. The web preview doesn't.
+
+Found on the iOS 27 Simulator with `<lynx-tab-outlet>` (issue #403). Leaving a tab, the outlet queued a microtask to destroy every tab if the router didn't activate it again in the same pass, as `<lynx-stack-outlet>` did for its pages. The next tab's `<lynx-stack-outlet>` measures its host as it's built, inside the router's `activateWith()`, so the microtask ran before the outlet had a tab active, destroyed the tabs, and Angular's `ViewContainerRef` then threw on an index past its end (`ASSERTION ERROR: index`, or `value has no property` in a release build). The router swallows it (`resolveNavigationPromiseOnError`), so the screen just didn't change. A pushed page that measured itself as it was built did the same to a stack's pages.
+
+### What we do about it
+
+Don't decide in a microtask what depends on a synchronous pass being over. The outlets wait with `afterRouterPass()` (`packages/runtime/src/lib/router/routed-outlet.ts`): a microtask that, if a navigation is still under way when it runs, waits for the navigation's end event. `packages/runtime/src/lib/router/tabs/lynx-tab-outlet.test.ts` holds the microtasks back and runs them as a screen is built, as a device does.
+
+---
+
 ## A handler added to an element already on screen never reached it
 
 ### What you'd expect (web)

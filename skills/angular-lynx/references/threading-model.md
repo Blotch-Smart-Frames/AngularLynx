@@ -90,6 +90,7 @@ The build pipeline transpiles your code to the appropriate target for each bundl
 - A `WeakMap` you write yourself does the same on the main thread: while the map lives (in a module or a root service, for the app's life), PrimJS never lets go of an entry whose value leads back to its key through a native element, so the key, the value and every element they reach stay. Keep per-object state on the object (a property or a `#private` field), or drop what the value holds once the object is destroyed. A `WeakMap` keyed by `LynxStackPage` whose value holds the page's components or elements keeps every page of every stack the app has had
 - `AbortController`/`AbortSignal` are polyfilled by the runtime
 - `queueMicrotask` is polyfilled as `Promise.resolve().then(fn)`
+- On iOS and Android, a UI method that answers synchronously runs every pending promise callback before it returns, `getBoundingClientRect()` (its `boundingClientRect` call) included: a constructor or template that measures an element can run callbacks queued earlier in the same synchronous pass, in the middle of it (the web preview doesn't). Don't decide in a deferred callback something that depends on that pass being over, such as "did the router activate this outlet again", without checking `router.currentNavigation()` and waiting for `NavigationEnd` while it's set
 
 ## Missing Browser Globals
 

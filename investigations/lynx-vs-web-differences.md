@@ -6608,18 +6608,30 @@ With multi-touch on, Lynx numbers each finger from 0 and keeps its number until 
 
 ---
 
-## `[style.--x]` bindings don't reach `var()` in the web preview
+## A `[style.--x]` binding's name arrives with Angular's namespace placeholder
 
 ### What you'd expect (web)
 
-A custom property set inline on an element (`style="--stone: #d9103f"`, or `el.style.setProperty('--stone', …)`) is read by every `var(--stone)` below it, and re-resolved when it changes.
+`<div [style.--accent]="accent()">` sets `--accent` on the element, and every `var(--accent)` below it follows the binding.
+
+Angular's compiler doesn't write the name as it stands. It writes `--%NS%accent`, with a placeholder for the app's CSS variable namespace, and puts the same placeholder in component styles (`var(--%NS%accent)`). Angular's DOM renderer fills it as it sets or removes the style (`DefaultDomRenderer2.setStyle()` and `removeStyle()`): with nothing, unless the app opted in with `provideCssVarNamespacing()`. Only names the compiler sees get it. A `style="--accent: red"` attribute, the keys of a `[style]` map and an `[attr.style]` string come through as written.
 
 ### What Lynx does
 
-On iOS and Android, `__SetInlineStyles` keeps a `--x` declaration and the descendants' `var(--x)` follow it, which is how `[style.--x]` works there. Lynx for Web doesn't (measured 2026-11-05 in the showcase example's preview, web-core bundled with Lynx 4.4): its inline-style parser (`set_inline_styles_in_str`, in web-core's WASM) writes the declaration without its dashes, so the DOM holds `stone: #d9103f`, which nothing reads. Its `__AddInlineStyle` with a raw string key keeps the dashes but namespaces the name (`--\%NS\%stone`), which a stylesheet's `var(--stone)` doesn't match either. So in the web preview a `[style.--x]` binding changes nothing visible: a `.plate { background-color: var(--stone) }` rule kept the stylesheet's default while the binding changed under it.
+Nothing; the renderer is AngularLynx's own, and it passed the name on with the placeholder in it. `__SetInlineStyles` got `--%NS%accent: red` (measured 2026-11-13 with Angular 22.2.6, by recording the strings it's called with):
 
-- **Bind the value where it's used** when the web preview must follow it: `[style.background-color]="color()"`, a chart's `[color]`, glass's `[tint]`. A class that switches, such as `[class.dark]`, does re-resolve, because its variables live in a stylesheet rule.
-- The runtime can't put this right from outside: an element has one inline style, written through web-core's parser. Tried for the showcase and reverted: setting each variable again with `__AddInlineStyle` after the whole style (that's where the namespaced name came from).
+- **iOS and Android** (Lynx Explorer 4.1) set a variable of that name, which no `var(--accent)` reads.
+- **Lynx for Web** wrote the declaration into the DOM as `accent: red`, without the dashes or the placeholder, which nothing reads either.
+
+So a `[style.--x]` binding, in a template or a host binding, changed nothing on any platform. The other ways of setting a variable kept working, which hid it: a `style` attribute, a class, and a `[style]` map, which is what Dynamic Color's `uiDynamicColor` uses. The showcase example bound `--primary` on its root view, and its dock's selected item kept the stock theme's color. This was first recorded, wrongly, as Lynx for Web's inline-style parser dropping the dashes of any inline variable: it keeps them (`--accent:red`) when the name has no placeholder.
+
+A unit test that calls `setStyle('--accent', …)` never sees the placeholder. Only a template compiled by Angular's compiler does: `packages/testing-library/src/style-variables.test.ts`.
+
+### The fix
+
+`LynxRenderer.setStyle()` and `removeStyle()` take the placeholder out of a variable's name (`cssVariableName` in `packages/runtime/src/lib/renderer/renderer.ts`), as the build plugin takes it out of component styles (`fillCssVarNamespace` in `packages/rsbuild-plugin-angular-lynx/src/component-styles.ts`). Checked on the iOS 27 Simulator and the Android API 34 emulator in Lynx Explorer 4.1, and in the web preview: a variable bound on an element with and without a `style` attribute, read by a child and by the element itself, and bound a second after the first render. On Android, a variable bound on an element whose class sets the same one wins over the class (the showcase's root view, in its dark theme).
+
+- **`provideCssVarNamespacing()` isn't applied.** Lynx CSS is compiled ahead of time, so a stylesheet can't take a namespace the app provides when it starts, and a binding has to set the name the stylesheets read. Both keep the variables' own names. The namespace keeps apps that share a document apart, and a Lynx page holds one app, so there's nothing for it to do. An app that provides it anyway gets prefixed names wherever its own code asks Angular for a variable's namespaced name, and those match nothing.
 
 ---
 
@@ -6982,4 +6994,3 @@ On iOS, and in the web preview, it does. On Android (API 34 emulator, Lynx Explo
 ### What to do
 
 Give a rounded element a border on every side (`border border-border`, which follows the corners on Android too), or none. `ui-bottom-sheet`'s default panel has none: its tone against the dimmed backdrop is its edge.
-

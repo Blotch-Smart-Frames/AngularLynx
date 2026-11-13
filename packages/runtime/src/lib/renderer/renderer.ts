@@ -50,6 +50,35 @@ const markTag = (element: BaseLynxElement, tag: string): void => {
   if (tagClass) element.addScopeClass(tagClass);
 };
 
+/**
+ * A CSS variable's name as the stylesheets have it. Angular's compiler writes
+ * the name of a `[style.--x]` binding with a placeholder for the app's CSS
+ * variable namespace, `--%NS%x`, and its DOM renderer fills the placeholder
+ * as it sets the style: with nothing, unless the app opted in with
+ * `provideCssVarNamespacing()`. Passed on as it is, the binding set a
+ * variable no `var(--x)` reads, so it changed nothing.
+ *
+ * It's filled with the default, whatever the app provides: Lynx CSS is
+ * compiled ahead of time, where the build plugin gives the placeholders in
+ * component styles the default too (`fillCssVarNamespace`), and a binding has
+ * to set the name those styles read. The namespace keeps apps that share a
+ * document apart, and a Lynx page holds one app.
+ */
+const cssVariableName = (style: string): string => style.replace('%NS%', '');
+
+/**
+ * The name the element takes for a style: a CSS variable's without Angular's
+ * namespace placeholder, and a property's in dash-case, which Lynx expects
+ * (`background-color`). Angular passes property names in camelCase unless the
+ * DashCase flag is set, as it is for a variable, which keeps its case.
+ */
+const cssKeyFor = (style: string, flags?: RendererStyleFlags2): string => {
+  if (style.startsWith('--')) return cssVariableName(style);
+  return flags != null && flags & RendererStyleFlags2.DashCase
+    ? style
+    : style.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+};
+
 export class LynxRenderer implements Renderer2 {
   readonly #document: LynxDocumentBase;
   /**
@@ -157,12 +186,7 @@ export class LynxRenderer implements Renderer2 {
     value: any,
     flags?: RendererStyleFlags2,
   ): void {
-    // Angular passes style names in camelCase unless DashCase flag is set.
-    // Lynx expects CSS property names in dash-case (e.g. background-color).
-    const cssKey =
-      flags != null && flags & RendererStyleFlags2.DashCase
-        ? style
-        : style.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+    const cssKey = cssKeyFor(style, flags);
     // Important flag signals [style.foo.important] binding — append !important.
     const cssValue =
       flags != null && flags & RendererStyleFlags2.Important
@@ -175,11 +199,7 @@ export class LynxRenderer implements Renderer2 {
     style: string,
     flags?: RendererStyleFlags2,
   ): void {
-    const cssKey =
-      flags != null && flags & RendererStyleFlags2.DashCase
-        ? style
-        : style.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-    el.removeStyle(cssKey);
+    el.removeStyle(cssKeyFor(style, flags));
   }
   setProperty(el: BaseLynxElement, name: string, value: any): void {
     el.setProperty(name, value);

@@ -48,7 +48,7 @@ const defaultPageLabel = (page: number, current: boolean): string =>
     >
       <svg
         [attr.content]="chevronLeftSvg()"
-        style="width: 16px; height: 16px;"
+        style="width: 20px; height: 20px;"
       />
     </view>
 
@@ -67,10 +67,10 @@ const defaultPageLabel = (page: number, current: boolean): string =>
         </view>
       } @else {
         <view
-          class="h-8 w-8 items-center flex justify-center"
+          class="h-11 w-6 items-center flex justify-center"
           [accessibility-elements-hidden]="true"
         >
-          <text class="text-xs text-muted-foreground">...</text>
+          <text class="text-base text-muted-foreground">…</text>
         </view>
       }
     }
@@ -84,7 +84,7 @@ const defaultPageLabel = (page: number, current: boolean): string =>
     >
       <svg
         [attr.content]="chevronRightSvg()"
-        style="width: 16px; height: 16px;"
+        style="width: 20px; height: 20px;"
       />
     </view>
   `,
@@ -158,23 +158,29 @@ export class UiPagination {
     cn('flex-row items-center gap-1 flex', this.userClass()),
   );
 
+  /**
+   * The buttons are 44px, a touch target, and give up width before they
+   * push the row off a narrow screen: nine of them (both arrows, the ends,
+   * the current page with its neighbors and two ellipses) need 430px at
+   * full width, more than most phones have.
+   */
   protected navButtonClass(disabled: boolean): string {
     return cn(
-      'h-10 w-10 items-center rounded-md flex justify-center',
+      'h-11 w-11 shrink items-center rounded-lg flex justify-center',
       disabled && 'opacity-50',
     );
   }
 
   protected pageButtonClass(active: boolean): string {
     return cn(
-      'h-10 w-10 items-center rounded-md flex justify-center',
+      'h-11 w-11 shrink items-center rounded-lg flex justify-center',
       active ? 'bg-primary' : 'bg-transparent',
     );
   }
 
   protected pageTextClass(active: boolean): string {
     return cn(
-      'text-sm font-medium',
+      'text-base font-medium',
       active ? 'text-primary-foreground' : 'text-foreground',
     );
   }

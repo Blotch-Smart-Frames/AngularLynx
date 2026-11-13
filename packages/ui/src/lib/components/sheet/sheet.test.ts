@@ -127,7 +127,8 @@ describe('UiSheet', () => {
   it("merges each part's class with its own", async () => {
     const { container, getByText } = await renderSheet();
     // The sheet's class goes on the padded content wrapper, not the panel.
-    expect(container.querySelector('.px-6')?.classList).toContain('gap-4');
+    // 16px sides: a phone's margins, which a list's rows in a sheet keep.
+    expect(container.querySelector('.px-4.pb-6')?.classList).toContain('gap-4');
     expect(container.querySelector('.mb-4')?.classList).toContain(
       'items-center',
     );
@@ -143,7 +144,7 @@ describe('UiSheet', () => {
   // where it is written, and each part's around its own view or text.
   it('puts each class on one element: the content, or the part', async () => {
     const { container, getByText } = await renderSheet();
-    const content = container.querySelector('.px-6')!;
+    const content = container.querySelector('.px-4.pb-6')!;
     expect([...container.querySelectorAll('.gap-4')]).toEqual([content]);
     // In the content: the bottom sheet draws views of its own with these.
     expect(content.querySelectorAll('.items-center')).toHaveLength(1);

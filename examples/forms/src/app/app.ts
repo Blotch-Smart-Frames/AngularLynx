@@ -17,7 +17,7 @@ import { UiTextarea } from '../components/ui/textarea';
   imports: [LYNX_ELEMENTS, FormField, UiButton, UiInput, UiTextarea],
   template: `
     <scroll-view class="h-screen bg-background" scroll-orientation="vertical">
-      <view class="p-6">
+      <view class="p-4">
         <text class="mb-1 text-[28px] font-bold text-foreground"
           >Contact Us</text
         >

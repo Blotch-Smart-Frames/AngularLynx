@@ -22,7 +22,10 @@ const PANEL_PADDING = 8;
   template: `
     <view class="h-full w-full relative">
       <!-- Glass shows what's behind it, so the screen gets a busy backdrop:
-           a gradient with stripes that the floating bar bends. -->
+           a gradient with stripes that the floating bar bends. It's the
+           same in light and dark, as a photo is, so the headings written
+           straight on it are a fixed dark (text-zinc-950), not the theme's
+           foreground, which turns white in the dark. -->
       <view
         class="h-full w-full absolute left-0 top-0"
         style="background-image: linear-gradient(160deg, #c7d2fe, #fbcfe8 45%, #fed7aa);"
@@ -40,11 +43,11 @@ const PANEL_PADDING = 8;
       <scroll-view scroll-orientation="vertical" class="h-full w-full">
         <view class="flex-col gap-6 px-4 pb-[140px] flex pt-safe-6">
           <view class="flex-col gap-1 flex">
-            <text class="text-2xl font-bold text-foreground">Glass</text>
-            <text class="text-sm text-foreground">
+            <text class="text-2xl font-bold text-zinc-950">Glass</text>
+            <text class="text-sm text-zinc-950">
               Liquid Glass for the controls that float over your content.
             </text>
-            <text class="text-xs text-foreground">{{ status() }}</text>
+            <text class="text-xs text-zinc-950">{{ status() }}</text>
           </view>
 
           <!-- Each demo's glass sits right on a colorful card, so there's
@@ -53,7 +56,7 @@ const PANEL_PADDING = 8;
           <!-- Variants: regular glass, and clear glass, which is for media,
                with and without the dimming layer -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">Variants</text>
+            <text class="text-sm font-semibold text-zinc-950">Variants</text>
             <view
               class="h-[150px] flex-col rounded-[20px] p-3 flex justify-between overflow-hidden"
               [style.background-image]="sunset"
@@ -98,7 +101,7 @@ const PANEL_PADDING = 8;
 
           <!-- Shapes, and a concentric card inside the rounded one -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">Shapes</text>
+            <text class="text-sm font-semibold text-zinc-950">Shapes</text>
             <view
               class="flex-col gap-3 rounded-[20px] p-3 flex overflow-hidden"
               [style.background-image]="ocean"
@@ -143,7 +146,7 @@ const PANEL_PADDING = 8;
 
           <!-- Tint -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">Tint</text>
+            <text class="text-sm font-semibold text-zinc-950">Tint</text>
             <view
               class="flex-row gap-3 rounded-[20px] p-3 flex overflow-hidden"
               [style.background-image]="mint"
@@ -173,7 +176,7 @@ const PANEL_PADDING = 8;
 
           <!-- Interactive -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">
+            <text class="text-sm font-semibold text-zinc-950">
               Interactive
             </text>
             <view
@@ -195,8 +198,8 @@ const PANEL_PADDING = 8;
 
           <!-- Group -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">Group</text>
-            <text class="text-xs text-foreground">
+            <text class="text-sm font-semibold text-zinc-950">Group</text>
+            <text class="text-xs text-zinc-950">
               Glass in a group merges within its spacing.
             </text>
             <view
@@ -240,8 +243,8 @@ const PANEL_PADDING = 8;
                when one replaces the other the group morphs it into the
                other, on iOS 26 in an app built with ng build --platform. -->
           <view class="flex-col gap-3 flex">
-            <text class="text-sm font-semibold text-foreground">Morph</text>
-            <text class="text-xs text-foreground">
+            <text class="text-sm font-semibold text-zinc-950">Morph</text>
+            <text class="text-xs text-zinc-950">
               Shapes with the same glassId turn into each other.
             </text>
             <view

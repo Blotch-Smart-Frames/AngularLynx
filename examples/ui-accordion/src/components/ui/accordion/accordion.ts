@@ -10,8 +10,19 @@ import {
 } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
-import { type AnimationHandle, revealIn } from '@blotch/dolan/utils/animate';
+import {
+  type AnimationHandle,
+  DURATION,
+  EASING,
+  revealIn,
+} from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
+
+const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+
+/** How the chevron turns as its item opens and closes. */
+const CHEVRON_TRANSITION = `transform ${DURATION.normal}ms ${EASING.standard}`;
 
 /**
  * Each part is its host element, styled through `host`, rather than a view
@@ -87,30 +98,74 @@ export class UiAccordionItem {
   selector: 'ui-accordion-trigger',
   imports: [LYNX_ELEMENTS],
   encapsulation: ViewEncapsulation.None,
+  // The row dims under a finger, from the touch's start: touch events for
+  // native and mouse events for the web preview, which sends no touches for
+  // a cursor. A canceled touch (a scroll taking over) and a cursor leaving
+  // release too.
   host: {
     '[class]': 'triggerClass()',
+    '(bindtouchstart)': 'press(true)',
+    '(bindtouchend)': 'press(false)',
+    '(bindtouchcancel)': 'press(false)',
+    '(bindmousedown)': 'press(true)',
+    '(bindmouseup)': 'press(false)',
+    '(bindmouseleave)': 'press(false)',
     '(bindtap)': 'onTap()',
   },
+  // The chevron's box turns, with the drawing inside it, as ui-spinner's
+  // does: the <svg> is redrawn from its markup, and the box only moves.
   template: `
     <text [class]="textClass()"><ng-content /></text>
-    <text [class]="chevronClass()">{{ item.isExpanded() ? '▼' : '▶' }}</text>
+    <view class="shrink-0" [style]="chevronStyle()">
+      <svg [attr.content]="chevronSvg()" style="width: 100%; height: 100%;" />
+    </view>
   `,
 })
 export class UiAccordionTrigger {
   protected readonly item = inject(UiAccordionItem);
   readonly userClass = input<string>('', { alias: 'class' });
 
+  readonly #resolveColor = injectIconColor();
+
+  /** A finger (or the mouse) is down on the row. */
+  protected readonly pressing = signal(false);
+
   protected readonly triggerClass = computed(() =>
-    cn('flex-row items-center py-4 flex justify-between', this.userClass()),
+    cn(
+      // A row at least 48px tall, a full touch target.
+      'min-h-12 flex-row items-center gap-3 py-3 flex justify-between',
+      this.pressing() && 'opacity-60',
+      this.userClass(),
+    ),
   );
 
   protected readonly textClass = computed(() =>
-    cn('text-sm font-medium text-foreground'),
+    cn('flex-1 text-base font-medium text-foreground'),
   );
 
-  protected readonly chevronClass = computed(() =>
-    cn('text-xs text-muted-foreground'),
+  /**
+   * A chevron in the muted foreground, resolved and written into the markup:
+   * an SVG can't read a CSS variable (see icon-theme.ts). It was a `▶`
+   * character, whose shape was whatever the phone's font drew.
+   */
+  protected readonly chevronSvg = computed(() =>
+    // split/join, not replaceAll(), which PrimJS's ES2019 runtime lacks.
+    CHEVRON_SVG.split('currentColor').join(
+      this.#resolveColor('var(--muted-foreground)'),
+    ),
   );
+
+  /** It points down, and turns to point up while the item is open. */
+  protected readonly chevronStyle = computed(() => ({
+    width: '20px',
+    height: '20px',
+    transform: this.item.isExpanded() ? 'rotate(180deg)' : 'rotate(0deg)',
+    transition: CHEVRON_TRANSITION,
+  }));
+
+  protected press(down: boolean): void {
+    this.pressing.set(down);
+  }
 
   protected onTap(): void {
     this.item.toggle();

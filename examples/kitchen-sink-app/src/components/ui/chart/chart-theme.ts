@@ -24,16 +24,15 @@ export type ChartColorTokens = Readonly<Record<string, string>>;
 export type ChartColorScheme = 'light' | 'dark';
 
 /**
- * Which colors a chart draws with: a fixed scheme, `'system'` to follow the
- * device appearance (`LynxTheme`), or a function reading the app's own theme
- * state.
+ * Which colors a chart draws with: `'system'` to follow the appearance the
+ * app is drawn in (`LynxTheme.appearance`: the device's, or the app's own
+ * choice), a fixed scheme, or a function reading the app's own theme state.
  *
- * It has to match how the app switches its CSS theme, because axis labels use
- * the CSS variables while the marks use the tables below. The ui theme's dark
- * mode is opt-in (the app toggles the `.dark` class), so the default is
- * `'light'`: a chart in an app without dark mode stays readable when the
- * device is dark. An app that toggles `.dark` from `LynxTheme` (see the dark
- * mode guide) uses `'system'`.
+ * It has to match the CSS theme, because axis labels use the CSS variables
+ * while the marks use the tables below. The page has the theme's `dark`
+ * class while the app is drawn dark, so the default is `'system'`. An app
+ * that leaves `dark.css` out keeps to light with
+ * `provideColorScheme('light')`.
  */
 export type ChartColorSchemeOption =
   | ChartColorScheme
@@ -45,7 +44,7 @@ export type UiChartTheme = {
   readonly light: ChartColorTokens;
   /** Token values for dark mode; mirrors `dark.css`. */
   readonly dark: ChartColorTokens;
-  /** See {@link ChartColorSchemeOption}; `'light'` when unset. */
+  /** See {@link ChartColorSchemeOption}; `'system'` when unset. */
   readonly colorScheme?: ChartColorSchemeOption;
   /**
    * The theme TanStack Charts builds scenes with. Its paints should be
@@ -67,9 +66,9 @@ export const CHART_LIGHT_COLORS: ChartColorTokens = {
   'muted-foreground': 'rgba(113, 113, 122, 1)',
   accent: 'rgba(244, 244, 245, 1)',
   'accent-foreground': 'rgba(24, 24, 27, 1)',
-  destructive: 'rgba(239, 68, 68, 1)',
+  destructive: 'rgba(220, 38, 38, 1)',
   'destructive-foreground': 'rgba(250, 250, 250, 1)',
-  'destructive-subtle': 'rgba(239, 68, 68, 0.1)',
+  'destructive-subtle': 'rgba(220, 38, 38, 0.08)',
   border: 'rgba(228, 228, 231, 1)',
   input: 'rgba(228, 228, 231, 1)',
   ring: 'rgba(24, 24, 27, 1)',
@@ -90,7 +89,7 @@ export const CHART_LIGHT_COLORS: ChartColorTokens = {
 export const CHART_DARK_COLORS: ChartColorTokens = {
   background: 'rgba(9, 9, 11, 1)',
   foreground: 'rgba(250, 250, 250, 1)',
-  card: 'rgba(9, 9, 11, 1)',
+  card: 'rgba(24, 24, 27, 1)',
   'card-foreground': 'rgba(250, 250, 250, 1)',
   primary: 'rgba(250, 250, 250, 1)',
   'primary-foreground': 'rgba(24, 24, 27, 1)',
@@ -100,10 +99,10 @@ export const CHART_DARK_COLORS: ChartColorTokens = {
   'muted-foreground': 'rgba(161, 161, 170, 1)',
   accent: 'rgba(39, 39, 42, 1)',
   'accent-foreground': 'rgba(250, 250, 250, 1)',
-  destructive: 'rgba(127, 29, 29, 1)',
-  'destructive-foreground': 'rgba(250, 250, 250, 1)',
-  'destructive-subtle': 'rgba(127, 29, 29, 0.1)',
-  border: 'rgba(39, 39, 42, 1)',
+  destructive: 'rgba(248, 113, 113, 1)',
+  'destructive-foreground': 'rgba(24, 24, 27, 1)',
+  'destructive-subtle': 'rgba(248, 113, 113, 0.14)',
+  border: 'rgba(52, 52, 56, 1)',
   input: 'rgba(39, 39, 42, 1)',
   ring: 'rgba(212, 212, 216, 1)',
   'ring-subtle': 'rgba(212, 212, 216, 0.4)',
@@ -158,8 +157,6 @@ export const UI_CHART_THEME = new InjectionToken<UiChartTheme>(
  *
  * ```ts
  * providers: [provideChartTheme({ light: { 'chart-1': 'rgba(37, 99, 235, 1)' } })]
- * // An app that switches .dark with the device appearance:
- * providers: [provideChartTheme({ colorScheme: 'system' })]
  * ```
  */
 export const provideChartTheme = (theme: {

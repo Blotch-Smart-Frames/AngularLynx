@@ -40,7 +40,9 @@ const NATIVE_PARITY_RULES = [
   // `transformREM` is on, so it resolved against the docs page's 16px and
   // every Tailwind size (`h-11`, `p-4`, `text-base`) came out a seventh
   // larger than on the phone. `--rem-unit` is what `transformREM` rewrites
-  // `rem` to.
+  // `rem` to. An example with the UI components' theme sets both to 16px on
+  // its own `page`, inside the view, as it does on the phone, and that wins
+  // for everything in the app.
   `:host { --rem-unit: 14px; font-size: 14px; font-family: ${SYSTEM_FONT}; }`,
   // web-elements forwards the host's box to the inner <textarea> (through the
   // <form> around it) without `box-sizing` or `border-radius`, unlike its
@@ -66,6 +68,36 @@ const NATIVE_PARITY_RULES = [
 ];
 
 const configured = new WeakSet<HTMLElement>();
+
+/**
+ * The docs site's theme, as an app's host sends the phone's: Rspress puts
+ * `dark` on `<html>` while the site is dark.
+ */
+const siteTheme = (): 'Dark' | 'Light' =>
+  document.documentElement.classList.contains('dark') ? 'Dark' : 'Light';
+
+/** The previews on the page, which follow the site's theme as it switches. */
+const connected = new Set<LynxViewElement>();
+
+/**
+ * Sends each preview the site's theme when the reader switches it. An app
+ * follows the theme its host sends, and the docs page is the previews' host:
+ * without one they'd follow the browser's `prefers-color-scheme` instead, and
+ * a reader who set the site light on a dark computer would get dark phones
+ * on a light page.
+ */
+const followSiteTheme = (): void => {
+  let theme = siteTheme();
+  new MutationObserver(() => {
+    const next = siteTheme();
+    if (next === theme) return;
+    theme = next;
+    for (const view of connected) view.updateGlobalProps({ theme });
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+};
 
 /**
  * Whether `node` is in a `<lynx-view>`'s shadow tree. An `<overlay>`'s dialog
@@ -240,6 +272,7 @@ export const applyNativeParity = (): void => {
   if (typeof customElements === 'undefined') return;
   if (customElements.get('lynx-view')) return;
   containOverlays();
+  followSiteTheme();
   const define = customElements.define;
   customElements.define = function (name, constructor, options) {
     if (name !== 'lynx-view') {
@@ -248,13 +281,23 @@ export const applyNativeParity = (): void => {
     }
     customElements.define = define;
     const LynxView = constructor as unknown as {
-      new (): LynxViewElement & { connectedCallback(): void };
+      new (): LynxViewElement & {
+        connectedCallback(): void;
+        disconnectedCallback(): void;
+      };
     };
     class NativeParityLynxView extends LynxView {
       override connectedCallback(): void {
         // React moves a view by reconnecting it; configure it only once.
         if (!configured.has(this)) {
           configured.add(this);
+          // The app starts in the site's theme (see followSiteTheme). The
+          // props a preview set itself, such as the home page phone's
+          // insets, stay.
+          this.globalProps = {
+            ...(this.globalProps as Record<string, unknown>),
+            theme: siteTheme(),
+          };
           this.transformREM = true;
           this.injectStyleRules = [
             ...NATIVE_PARITY_RULES,
@@ -265,7 +308,13 @@ export const applyNativeParity = (): void => {
           // `<img>` inside web-elements' shadow root.
           this.addEventListener('dragstart', (event) => event.preventDefault());
         }
+        connected.add(this);
         super.connectedCallback();
+      }
+
+      override disconnectedCallback(): void {
+        connected.delete(this);
+        super.disconnectedCallback();
       }
 
       /**

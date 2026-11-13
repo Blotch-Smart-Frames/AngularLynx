@@ -66,6 +66,12 @@ const renderPagination = async (
 };
 
 /**
+ * What a gap between pages shows: one character, the ellipsis, rather than
+ * three full stops.
+ */
+const GAP = '…';
+
+/**
  * What the row shows between its arrows, in order: page numbers and gaps.
  */
 const shown = (container: Element): (string | null)[] =>
@@ -102,32 +108,51 @@ describe('UiPagination', () => {
 
   it('leaves a gap before the last page near the start', async () => {
     const { container } = await renderPagination(10, 2);
-    expect(shown(container)).toEqual(['1', '2', '3', '...', '10']);
+    expect(shown(container)).toEqual(['1', '2', '3', GAP, '10']);
   });
 
   it('leaves a gap after the first page near the end', async () => {
     const { container } = await renderPagination(10, 9);
-    expect(shown(container)).toEqual(['1', '...', '8', '9', '10']);
+    expect(shown(container)).toEqual(['1', GAP, '8', '9', '10']);
   });
 
   it('leaves gaps on both sides in the middle', async () => {
     const { container } = await renderPagination(10, 5);
-    expect(shown(container)).toEqual(['1', '...', '4', '5', '6', '...', '10']);
+    expect(shown(container)).toEqual(['1', GAP, '4', '5', '6', GAP, '10']);
   });
 
   it('widens the window around the current page with more siblings', async () => {
     const { container } = await renderPagination(12, 6, 2);
     expect(shown(container)).toEqual([
       '1',
-      '...',
+      GAP,
       '4',
       '5',
       '6',
       '7',
       '8',
-      '...',
+      GAP,
       '12',
     ]);
+  });
+
+  it('makes every button a 44px touch target that gives up width on a narrow screen', async () => {
+    // Nine buttons at full width need more than most phones have, so they
+    // shrink before they push the row off the screen.
+    const { container, button } = await renderPagination(10, 5);
+    for (const label of ['Previous page', 'Page 5, current page', 'Page 10']) {
+      for (const name of ['h-11', 'w-11', 'shrink', 'rounded-lg']) {
+        expect(button(label).classList).toContain(name);
+      }
+    }
+    expect(within(button('Page 10')).getByText('10').classList).toContain(
+      'text-base',
+    );
+    // A gap is as tall as the buttons, and narrower.
+    const gap = within(container as HTMLElement).getAllByText(GAP)[0]!;
+    expect(gap.classList).toContain('text-base');
+    expect(gap.parentElement!.classList).toContain('h-11');
+    expect(gap.parentElement!.classList).toContain('w-6');
   });
 
   it('highlights the current page', async () => {
@@ -196,7 +221,7 @@ describe('UiPagination', () => {
   it('hides the gaps from screen readers', async () => {
     const { container } = await renderPagination(10, 5);
     const gaps = Array.from(container.querySelectorAll('text'))
-      .filter((el) => el.textContent === '...')
+      .filter((el) => el.textContent === GAP)
       .map((el) =>
         el.parentElement?.getAttribute('accessibility-elements-hidden'),
       );
@@ -212,6 +237,11 @@ describe('UiPagination', () => {
     for (const arrow of arrows) {
       expect(arrow).toContain(ICON_LIGHT_COLORS['foreground']);
       expect(arrow).not.toContain('currentColor');
+    }
+    // 20px chevrons.
+    for (const svg of container.querySelectorAll('svg')) {
+      expect((svg as unknown as HTMLElement).style.width).toBe('20px');
+      expect((svg as unknown as HTMLElement).style.height).toBe('20px');
     }
   });
 });

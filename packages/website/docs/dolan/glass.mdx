@@ -200,7 +200,7 @@ Give two shapes the same `glassId`, and when one replaces the other, the group m
 
 ### Dark mode
 
-Glass follows your app's theme, not the phone's. It takes the color scheme you give [`provideIconTheme()`](/dolan/icon#dark-mode), `'light'` by default, so glass stays light under dark text when the phone is in dark mode. If your app switches to dark mode, set `provideIconTheme({ colorScheme: 'system' })`.
+Glass follows the app's appearance, as the [theme](/dolan/theming#dark-mode) does: a light material in light mode and a dark one in dark mode. An app that stays light on a dark phone ([`provideColorScheme('light')`](/guide/dark-mode#keep-to-one-appearance)) keeps light glass under its dark text.
 
 ## API
 

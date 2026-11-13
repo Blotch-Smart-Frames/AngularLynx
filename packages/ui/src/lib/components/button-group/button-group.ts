@@ -28,7 +28,7 @@ import {
   injectSystemDrawsGlass,
 } from '../glass/glass-design';
 import { UiIcon } from '../icon/icon';
-import { UI_ICON_COLOR } from '../icon/icon-theme';
+import { type IconSize, UI_ICON_COLOR, UI_ICON_SIZE } from '../icon/icon-theme';
 
 /**
  * Per-item styling of the solid variants. Corners are intentionally left
@@ -46,11 +46,12 @@ export const buttonGroupItemVariants = cva('items-center flex justify-center', {
       // Neutral segments against the app background, ringed by the container.
       outline: 'bg-background',
     },
+    // ui-button's heights: 48px, a full touch target, 36px and 56px.
     size: {
-      default: 'h-10 px-4',
+      default: 'h-12 px-5',
       sm: 'h-9 px-3',
-      lg: 'h-11 px-6',
-      icon: 'h-10 w-10',
+      lg: 'h-14 px-6',
+      icon: 'h-12 w-12',
     },
   },
   defaultVariants: {
@@ -88,10 +89,10 @@ export type ButtonGroupLook = 'solid' | 'glass' | 'material';
 
 /** Each size's item height, in px, for the corner radii. */
 const ITEM_HEIGHTS: Readonly<Record<ButtonGroupSize, number>> = {
-  default: 40,
+  default: 48,
   sm: 36,
-  lg: 44,
-  icon: 40,
+  lg: 56,
+  icon: 48,
 };
 
 /** How far the items sit inside a glass group's edge, in px (`p-1`). */
@@ -104,10 +105,22 @@ const GLASS_INSET = 4;
 const MATERIAL_INNER_RADIUS = 8;
 
 const LABEL_SIZES: Readonly<Record<ButtonGroupSize, string>> = {
-  default: 'text-sm',
-  sm: 'text-xs',
-  lg: 'text-base',
-  icon: 'text-sm',
+  default: 'text-base',
+  sm: 'text-sm',
+  lg: 'text-lg',
+  icon: 'text-base',
+};
+
+/**
+ * The size of an icon projected into an item that sets none (see
+ * UI_ICON_SIZE), as ui-button gives its own: about the label's line height
+ * beside a label, and 24px on its own.
+ */
+const ICON_SIZES_BY_GROUP: Readonly<Record<ButtonGroupSize, IconSize>> = {
+  default: 'sm',
+  sm: 'xs',
+  lg: 'md',
+  icon: 'md',
 };
 
 const SOLID_LABEL_COLORS: Readonly<Record<SolidButtonGroupVariant, string>> = {
@@ -123,10 +136,10 @@ const SOLID_FOREGROUNDS: Readonly<Record<SolidButtonGroupVariant, string>> = {
 
 /** The size classes of an item in a glass or Material group. */
 const ITEM_SIZES: Readonly<Record<ButtonGroupSize, string>> = {
-  default: 'h-10 px-4',
+  default: 'h-12 px-5',
   sm: 'h-9 px-3',
-  lg: 'h-11 px-6',
-  icon: 'h-10 w-10',
+  lg: 'h-14 px-6',
+  icon: 'h-12 w-12',
 };
 
 /**
@@ -148,6 +161,11 @@ const itemType = () => UiButtonGroupItem;
  * nothing calls.
  */
 const groupIconColor = () => inject(UiButtonGroup).foreground;
+
+/**
+ * The size such an icon takes when it's given none, as groupIconColor.
+ */
+const groupIconSize = () => inject(UiButtonGroup).iconSize;
 
 /**
  * A row (or column) of connected action buttons — a toolbar of related
@@ -172,7 +190,10 @@ const groupIconColor = () => inject(UiButtonGroup).foreground;
   encapsulation: ViewEncapsulation.None,
   // Icons projected into the items inject this: they're declared inside the
   // group, so the group's element injector is one of theirs.
-  providers: [{ provide: UI_ICON_COLOR, useFactory: groupIconColor }],
+  providers: [
+    { provide: UI_ICON_COLOR, useFactory: groupIconColor },
+    { provide: UI_ICON_SIZE, useFactory: groupIconSize },
+  ],
   // The group and each item are their host elements, styled through `host`,
   // rather than a view inside the host. Angular gives a component's host
   // every static attribute the app writes on it, so `<ui-button-group
@@ -220,6 +241,12 @@ export class UiButtonGroup {
   readonly variant = input<ButtonGroupVariant>('default');
   /** The items' height and padding; `'icon'` makes square icon-only items. */
   readonly size = input<ButtonGroupSize>('default');
+
+  /**
+   * The size of an icon in an item that sets none, by the group's size (see
+   * ICON_SIZES_BY_GROUP).
+   */
+  readonly iconSize = computed(() => ICON_SIZES_BY_GROUP[this.size()]);
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly userClass = input<string>('', { alias: 'class' });
 
@@ -346,9 +373,9 @@ export class UiButtonGroup {
         : // The dividers between items are the group's own `bg-border`
           // showing through a 1px `gap-px` seam — no per-item borders needed,
           // which keeps items position-agnostic. `overflow-hidden` +
-          // `rounded-md` then clip the square item corners so the bar reads
+          // `rounded-lg` then clip the square item corners so the bar reads
           // as one rounded control.
-          'gap-px rounded-md border border-border bg-border flex overflow-hidden',
+          'gap-px rounded-lg border border-border bg-border flex overflow-hidden',
       'self-start',
       this.#direction(),
       this.userClass(),

@@ -61,9 +61,24 @@ describe('tailwind.css', () => {
 
   it('maps the radii as the plugin does', () => {
     const css = tailwindCss();
-    expect(css).toContain('--radius-lg: var(--radius);');
-    expect(css).toContain('--radius-md: calc(var(--radius) - 2px);');
-    expect(css).toContain('--radius-sm: calc(var(--radius) - 4px);');
+    const radii = (
+      blotchPlugin as unknown as {
+        config: { theme: { extend: { borderRadius: Record<string, string> } } };
+      }
+    ).config.theme.extend.borderRadius;
+    // Every corner steps from --radius, a control's: the controls' own (sm,
+    // md, lg), then a card's, a dialog's or a sheet's, and one more.
+    expect(radii).toEqual({
+      sm: 'calc(var(--radius) - 4px)',
+      md: 'calc(var(--radius) - 2px)',
+      lg: 'var(--radius)',
+      xl: 'calc(var(--radius) + 4px)',
+      '2xl': 'calc(var(--radius) + 8px)',
+      '3xl': 'calc(var(--radius) + 12px)',
+    });
+    for (const [name, value] of Object.entries(radii)) {
+      expect(css).toContain(`--radius-${name}: ${value};`);
+    }
   });
 
   it.each(['./default.css', './dark.css'])(

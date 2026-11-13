@@ -89,7 +89,11 @@ const stackTransform = (depth: number): string =>
       }
     </view>
     @if (data().action; as action) {
-      <view [class]="actionClass()" (catchtap)="onAction(action)">
+      <view
+        [class]="actionClass()"
+        hit-slop="6px"
+        (catchtap)="onAction(action)"
+      >
         <text [class]="actionTextClass()">{{ action.label }}</text>
       </view>
     }
@@ -192,17 +196,17 @@ export class UiToastItem implements OnInit, OnDestroy {
     // the left/right insets in hostStyle(); width:100% would fight `right` and
     // overflow the screen.
     return cn(
-      'flex-row items-start gap-3 rounded-lg border p-4 flex',
+      'flex-row items-center gap-3 rounded-xl border p-4 flex',
       isDestructive
         ? 'border-destructive bg-destructive'
-        : 'border-border bg-background',
+        : 'border-border bg-card',
     );
   });
 
   protected readonly titleClass = computed(() => {
     const isDestructive = this.data().variant === 'destructive';
     return cn(
-      'text-sm font-semibold',
+      'text-base font-semibold',
       isDestructive ? 'text-destructive-foreground' : 'text-foreground',
     );
   });
@@ -218,7 +222,9 @@ export class UiToastItem implements OnInit, OnDestroy {
   protected readonly actionClass = computed(() => {
     const isDestructive = this.data().variant === 'destructive';
     return cn(
-      'items-center rounded-md border px-3 py-1.5 flex justify-center',
+      // 36px tall, as a small ui-button is; its hit-slop makes the target
+      // 48px (see the template).
+      'h-9 items-center rounded-md border px-3 flex justify-center',
       isDestructive ? 'border-destructive-foreground' : 'border-border',
     );
   });

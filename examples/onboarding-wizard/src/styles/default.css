@@ -24,6 +24,21 @@
  */
 
 page {
+  /* 1rem is 16px, as in a browser. Lynx's own root font size is 14px, so
+     every rem-based size (Tailwind's h-12, p-4, text-base) came out an eighth
+     smaller on a phone than in the web preview: a 48px button was 42px. The
+     components are sized in rem, so that they grow with the text if an app
+     raises this for larger type. --rem-unit is the same for a web page that
+     embeds the app with web-core's transformREM, which reads rem from it. */
+  font-size: 16px;
+  --rem-unit: 16px;
+  /* The app's canvas, so a screen with no background of its own is the
+     theme's in both appearances, not the host's white under dark text. The
+     color is for text written without a <text> and for HTML's text tags,
+     which take it from here (the rule after this block covers <text>). */
+  background-color: var(--background);
+  color: var(--foreground);
+
   --background: rgba(255, 255, 255, 1);
   --background-rgb: 255, 255, 255;
   --foreground: rgba(9, 9, 11, 1);
@@ -54,11 +69,13 @@ page {
   --accent-foreground: rgba(24, 24, 27, 1);
   --accent-foreground-rgb: 24, 24, 27;
 
-  --destructive: rgba(239, 68, 68, 1);
-  --destructive-rgb: 239, 68, 68;
+  /* A red that passes 4.5:1 both ways: as text on the background, and under
+     its foreground on a button. */
+  --destructive: rgba(220, 38, 38, 1);
+  --destructive-rgb: 220, 38, 38;
   --destructive-foreground: rgba(250, 250, 250, 1);
   --destructive-foreground-rgb: 250, 250, 250;
-  --destructive-subtle: rgba(239, 68, 68, 0.1);
+  --destructive-subtle: rgba(220, 38, 38, 0.08);
 
   --border: rgba(228, 228, 231, 1);
   --border-rgb: 228, 228, 231;
@@ -108,5 +125,26 @@ page {
   --glass-clear-foreground-rgb: 255, 255, 255;
   --glass-dim: rgba(0, 0, 0, 0.35);
 
-  --radius: 8px;
+  /* The corner of a control: a button, a field. Phones draw rounder than
+     the web: iOS's buttons and Material's cards are both at 12. The classes
+     step from it: rounded-sm 8, rounded-md 10, rounded-lg 12, rounded-xl 16
+     (cards), rounded-2xl 20 (dialogs, sheets) and rounded-3xl 24. */
+  --radius: 12px;
+}
+
+/*
+ * A <text> with no color of its own is the foreground. Lynx draws text
+ * black unless it's told otherwise, and inherits no color from the elements
+ * around it, so text an app left unstyled vanished into the dark background.
+ *
+ * Only a <text> directly inside something that isn't text: one nested in
+ * another <text> keeps taking its parent's color, as Lynx has it, so
+ * <text class="text-destructive">Error: <text>details</text></text> stays
+ * red throughout. A class on the <text> wins over these, as any class does
+ * over an element's name.
+ */
+view > text,
+scroll-view > text,
+list-item > text {
+  color: var(--foreground);
 }

@@ -46,14 +46,18 @@ const renderGroup = async () => {
    */
   const item = (label: string) => result.getByText(label).parentElement!;
   /**
-   * An item's dot, inside the circle that's the row's first child.
+   * An item's ring, the row's first child.
    */
-  const dot = (label: string) =>
-    item(label).firstElementChild!.firstElementChild!;
+  const ring = (label: string) => item(label).firstElementChild!;
+  /**
+   * An item's dot, inside its ring.
+   */
+  const dot = (label: string) => ring(label).firstElementChild!;
   return {
     ...result,
     host: result.componentRef.instance as RadioGroupHost,
     item,
+    ring,
     dot,
   };
 };
@@ -72,10 +76,39 @@ describe('UiRadioGroup', () => {
   afterEach(() => animate.mockRestore());
 
   it('renders each item with its label and class', async () => {
-    const { container, item } = await renderGroup();
-    expect(container.querySelector('.flex-col')?.classList).toContain('mt-2');
+    const { container, item, getByText } = await renderGroup();
+    const group = container.querySelector('.flex-col')!;
+    expect(group.classList).toContain('mt-2');
+    // The items are 44px rows already, so they sit close, as a list's do.
+    expect(group.classList).toContain('gap-1');
     expect(item('Apple').classList).toContain('pl-1');
-    expect(item('Banana').classList).toContain('h-11');
+    expect(item('Banana').classList).toContain('min-h-11');
+    expect(getByText('Banana').classList).toContain('text-base');
+  });
+
+  it('gives each row a full touch target, wider than it looks', async () => {
+    // The row is 44px tall: Lynx's hit-slop takes touches 2px around it, to
+    // Android's 48dp.
+    const { item } = await renderGroup();
+    expect(item('Apple').getAttribute('hit-slop')).toBe('2px');
+    expect(item('Banana').getAttribute('hit-slop')).toBe('2px');
+  });
+
+  it('rings the selected item in the primary, and the others in the muted foreground', async () => {
+    const { host, ring } = await renderGroup();
+    // In px, as ui-checkbox's box is, and the same size beside it.
+    for (const name of ['h-[22px]', 'w-[22px]', 'border-[1.5px]']) {
+      expect(ring('Apple').classList).toContain(name);
+    }
+    expect(ring('Apple').classList).toContain('border-primary');
+    // The primary's weight is kept for the selected one.
+    expect(ring('Banana').classList).toContain('border-muted-foreground');
+    expect(ring('Banana').classList).not.toContain('border-primary');
+
+    host.value.set('b');
+    await waitForUpdate();
+    expect(ring('Banana').classList).toContain('border-primary');
+    expect(ring('Apple').classList).toContain('border-muted-foreground');
   });
 
   // A class on a component lands on its host too (issue #181): the group and

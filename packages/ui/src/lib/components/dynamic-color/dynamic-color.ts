@@ -93,22 +93,23 @@ const providedColors = () => inject(UiDynamicColor).colors;
 /**
  * Colors the theme from the user's wallpaper on Android 12 and later
  * (Material You's dynamic color), for everything inside the element it's on.
- * Put it on the app's root view, the one that switches the `dark` class:
+ * Put it on the app's root view:
  *
  * ```html
- * <view class="h-full bg-background" [class.dark]="theme.isDarkMode()" uiDynamicColor>
+ * <view class="h-full bg-background" uiDynamicColor>
  * ```
  *
  * It sets the theme's own CSS variables (`--primary`, `--secondary` and the
  * others, with their `-rgb` twins) to the wallpaper's Material 3 roles (see
  * {@link DYNAMIC_THEME_ROLES}), inline, where they win over the theme's
- * `page` and `.dark` values. So the Material designs, and the app's own
+ * `page` and `page.dark` values. So the Material designs, and the app's own
  * `bg-primary` and `text-muted-foreground`, follow the wallpaper without a
  * second set of colors. Icons, glass tints and charts inside it, which draw
  * with a TypeScript copy of the theme, get the same colors.
  *
- * Which scheme it sets, light or dark, follows `provideIconTheme()`'s
- * `colorScheme`, as icons do: make it match the `dark` class.
+ * Which scheme it sets, light or dark, follows the appearance the app is
+ * drawn in (`provideIconTheme()`'s `colorScheme`, `'system'` by default), as
+ * icons and the theme's own `page.dark` do.
  *
  * Where the host app sends no wallpaper colors (iOS, the web preview, Lynx
  * Explorer, Android before 12), it sets nothing and the theme stays as it is.

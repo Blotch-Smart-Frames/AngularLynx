@@ -17,6 +17,7 @@ import {
   type LynxMainThread,
   lynxMainThread,
 } from '../../../test-utils/lynx-main-thread';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiTextarea } from './textarea';
 
 @Component({
@@ -98,7 +99,27 @@ describe('UiTextarea', () => {
     const { host, getByText } = await renderTextarea();
     host.label.set('Notes');
     await waitForUpdate();
+    // A phone's body size, in medium weight, as ui-input's label is.
+    expect(getByText('Notes').classList).toContain('text-base');
     expect(getByText('Notes').classList).toContain('font-medium');
+  });
+
+  it("draws the placeholder in the theme's muted foreground, on every platform", async () => {
+    // jsdom drops a style it doesn't know, such as -x-placeholder-color:
+    // watch what reaches Lynx's inline style API instead.
+    const addInlineStyle = vi.spyOn(lynxMainThread(), '__AddInlineStyle');
+    const { field } = await renderTextarea();
+    // Neither can read a CSS variable, so the color is the token's value.
+    // The web preview reads the attribute, and iOS only the style.
+    expect(field().getAttribute('placeholder-color')).toBe(
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+    expect(addInlineStyle).toHaveBeenCalledWith(
+      field(),
+      '-x-placeholder-color',
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+    addInlineStyle.mockRestore();
   });
 
   it('updates `value` and emits `changed` as the user types', async () => {
@@ -175,6 +196,7 @@ describe('UiTextarea', () => {
     expect(getByText('Only you can see this.').classList).toContain(
       'text-muted-foreground',
     );
+    expect(getByText('Only you can see this.').classList).toContain('text-sm');
   });
 
   it('shows an error in place of the helper text, with a destructive ring', async () => {
@@ -184,10 +206,11 @@ describe('UiTextarea', () => {
     await waitForUpdate();
     expect(getByText('Too short').classList).toContain('text-destructive');
     expect(queryByText('Only you can see this.')).toBeNull();
-    // An invalid field keeps its ring even when it isn't focused.
+    // An invalid field keeps its ring even when it isn't focused: one thin
+    // ring, as on ui-input.
     expect(ring().style.getPropertyValue('opacity')).toBe('1');
-    expect(ring().style.getPropertyValue('box-shadow')).toContain(
-      'var(--destructive)',
+    expect(ring().style.getPropertyValue('box-shadow')).toBe(
+      '0 0 0 1.5px var(--destructive)',
     );
   });
 
@@ -224,22 +247,25 @@ describe('UiTextarea', () => {
   });
 
   it('opens at minLines tall and grows without limit by default', async () => {
-    // Each line is 20px, plus 20px of vertical padding.
+    // Each line is 1.5rem, plus 1.5rem of vertical padding: in rem, as the
+    // wrapper's padding class is, so the sums hold at any root font size.
     const { host, field, wrapper } = await renderTextarea();
-    expect(wrapper().style.getPropertyValue('min-height')).toBe('80px');
+    expect(field().style.getPropertyValue('line-height')).toBe('1.5rem');
+    expect(wrapper().classList).toContain('py-3');
+    expect(wrapper().style.getPropertyValue('min-height')).toBe('6rem');
     expect(wrapper().style.getPropertyValue('max-height')).toBe('');
     expect(field().hasAttribute('enable-scroll-bar')).toBe(false);
 
     host.minLines.set(5);
     await waitForUpdate();
-    expect(wrapper().style.getPropertyValue('min-height')).toBe('120px');
+    expect(wrapper().style.getPropertyValue('min-height')).toBe('9rem');
   });
 
   it('stops growing at maxLines and shows a scroll bar', async () => {
     const { host, field, wrapper } = await renderTextarea();
     host.maxLines.set(4);
     await waitForUpdate();
-    expect(wrapper().style.getPropertyValue('max-height')).toBe('100px');
+    expect(wrapper().style.getPropertyValue('max-height')).toBe('7.5rem');
     expect(field().getAttribute('enable-scroll-bar')).toBe('true');
   });
 
@@ -250,5 +276,15 @@ describe('UiTextarea', () => {
     // screen while the page scrolls.
     const { wrapper } = await renderTextarea();
     expect(wrapper().classList).toContain('z-0');
+  });
+
+  it("has ui-input's shape, and body-size text", async () => {
+    const { wrapper, field, ring } = await renderTextarea();
+    for (const name of ['rounded-lg', 'bg-muted', 'px-4']) {
+      expect(wrapper().classList).toContain(name);
+    }
+    // The ring follows the field's corners.
+    expect(ring().classList).toContain('rounded-lg');
+    expect(field().classList).toContain('text-base');
   });
 });

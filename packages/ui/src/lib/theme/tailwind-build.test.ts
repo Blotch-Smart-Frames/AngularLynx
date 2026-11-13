@@ -41,6 +41,25 @@ const compile = async (classes: string): Promise<string> => {
   return result.css;
 };
 
+describe('blotchPlugin radii in a Tailwind build', () => {
+  it('steps every corner class the components use from --radius', async () => {
+    // One variable makes the whole app rounder or squarer: without the
+    // plugin's steps, rounded-xl and up are Tailwind's fixed rem sizes.
+    const css = await compile(
+      'rounded-sm rounded-md rounded-lg rounded-xl rounded-2xl rounded-3xl rounded-t-2xl',
+    );
+
+    expect(css).toContain('border-radius: calc(var(--radius) - 4px)');
+    expect(css).toContain('border-radius: calc(var(--radius) - 2px)');
+    expect(css).toContain('border-radius: var(--radius)');
+    expect(css).toContain('border-radius: calc(var(--radius) + 4px)');
+    expect(css).toContain('border-radius: calc(var(--radius) + 8px)');
+    expect(css).toContain('border-radius: calc(var(--radius) + 12px)');
+    // A sheet rounds its top corners only.
+    expect(css).toContain('border-top-left-radius: calc(var(--radius) + 8px)');
+  });
+});
+
 describe('blotchPlugin colors in a Tailwind build', () => {
   it('keeps plain color classes on the complete color', async () => {
     const css = await compile('bg-primary text-foreground border-border');

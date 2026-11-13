@@ -1413,6 +1413,8 @@ For most elements the uniform 12.5% shrink is harmless (everything scales togeth
 
 When an element's geometry must be pixel-exact and self-consistent with px transforms/positions, size it in **explicit px** via Tailwind arbitrary values (`w-[44px]`, `h-[20px]`) rather than the rem scale (`w-11`, `h-5`). Arbitrary px values compile straight to `width: 44px` and are immune to the root font-size. (Alternatively, set a `16px` font-size on `page` to make rem match web — but that would resize all existing rem-based layouts.)
 
+**Update, 2026-11-13: the `@blotch/ui` theme now sets it.** `default.css` has `page { font-size: 16px; --rem-unit: 16px; }`. Measured in Lynx Explorer 4.1 on iOS 27 (simulator) and Android (API 34 emulator): with it, `h-10` is 40pt and `p-4` 16pt, and a `<text>` with no font size of its own draws at 16px too, so the root font size is also the default text size. `--rem-unit` is for a web page that embeds the app with web-core's `transformREM` (see "`rem` is 14px on native Lynx, but Lynx for Web resolves it against the host page"): `page` is inside the `<lynx-view>`, so its value wins over the host's for everything in the app. An app without the theme is still at 14px on native.
+
 ---
 
 ## `white-space` only supports `normal` and `nowrap`
@@ -6914,3 +6916,54 @@ Found by the solar system example (`examples/solar-system`), on the iOS 27 Simul
 ### The fix
 
 Import the image and bind it on the element (`examples/solar-system/src/app/case/materials.ts`), keeping the rest of the rule (size, borders, fallback color) in the stylesheet.
+
+---
+
+## `:active` rules don't apply in AngularLynx builds (measured on Android)
+
+### What you'd expect (web)
+
+`.row:active { background: … }` styles an element while a pointer is down on it, and Tailwind's `active:` variant writes that rule.
+
+### What Lynx does
+
+Lynx's docs list `:active` as supported, and earlier entries here repeat that. Measured on 2026-11-13 (Lynx Explorer 4.1, Android API 34 emulator, a bundle from `ng build`): neither a plain `.press-probe:active { background-color: red }` in the global stylesheet nor Tailwind's `active:bg-primary` changed the element during a 2.5 s press (`adb shell input swipe x y x y 2500`, screenshot mid-press, the pixel stayed the resting color). The tap itself fired. Not measured on iOS.
+
+### What to do
+
+Drive pressed states from touch events, as the `@blotch/ui` components do: a `pressing` signal set on `bindtouchstart` and `bindmousedown` (the web preview sends no touches for a cursor) and cleared on `bindtouchend`, `bindtouchcancel`, `bindmouseup` and `bindmouseleave`, with a class bound to it. `ui-button`, `ui-select`'s field and rows, and `ui-accordion-trigger` all do this.
+
+---
+
+## A default text color: `view > text` works, and nested text keeps its parent's color
+
+### What you'd expect (web)
+
+`body { color: … }` colors every text that doesn't set its own, through inheritance.
+
+### What Lynx does
+
+Nothing inherits `color` (see "CSS inheritance is NOT enabled by default"), and a `<text>` with no color draws black, which vanishes on a dark background. A rule on the element's name with a child combinator reaches it: `view > text { color: var(--foreground); }`. Measured on 2026-11-13 on iOS 27, Android API 34 and the web preview (Chrome):
+
+- A `<text>` with no class, directly in a `<view>`, takes the color.
+- A class on the `<text>` (`text-muted-foreground`) still wins over it.
+- A `<text>` nested in another `<text>` doesn't match (its parent isn't a `view`), so it keeps taking its parent's color, as Lynx has it: in `<text class="text-destructive">Red <text class="font-bold">bold</text></text>`, "bold" stays red. A bare `text { color }` rule would match the nested one too and override that.
+
+The `@blotch/ui` theme's `default.css` has this rule for `view`, `scroll-view` and `list-item` parents.
+
+---
+
+## `hit-slop` works on a component's host, through an attribute binding
+
+A component can widen its own touch target: `host: { '[attr.hit-slop]': "'6px'" }` (or a static `'hit-slop': '2px'`). Measured on 2026-11-13 with a 36pt-tall `ui-button`: on Android (API 34), taps 4dp above and below the button counted and taps 10dp away didn't; on iOS 27, a tap 2pt above counted and taps 9pt and 13pt away didn't. The value has to be a string: an attribute binding stringifies an object, so the per-side form (`{ top: '6px' }`) can't be given this way.
+
+---
+
+## Lynx Explorer on iOS sends the theme once; the generated apps and Android's Explorer follow a switch
+
+Measured on 2026-11-13 by switching the appearance while a bundle was open (`xcrun simctl ui <udid> appearance dark`, `adb shell cmd uimode night yes`) and sampling a pixel:
+
+- **Lynx Explorer 4.1, iOS 27:** the page stayed in the theme it opened with, so Explorer didn't send the new theme (not checked in its source). Reopen the bundle to see the other theme.
+- **Lynx Explorer 4.1, Android API 34:** the page switched.
+- **The app `ng build --platform ios` makes:** the page switched both ways while open (the shell sends the new theme when the phone switches).
+

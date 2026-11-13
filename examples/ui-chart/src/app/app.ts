@@ -67,7 +67,7 @@ const daily = Array.from({ length: 60 }, (_, day) => ({
   imports: [LYNX_ELEMENTS, UiChart, UiChartTooltip],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Chart</text>
         <text class="text-sm text-muted-foreground">
           Any TanStack Charts definition, drawn natively. Compose marks, scales

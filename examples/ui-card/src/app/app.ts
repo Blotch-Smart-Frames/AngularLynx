@@ -22,7 +22,7 @@ import {
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-4 p-6 flex">
+      <view class="flex-col gap-4 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Card</text>
         <text class="text-sm text-muted-foreground">
           A container for grouping related content and actions.

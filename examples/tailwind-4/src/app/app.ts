@@ -55,13 +55,13 @@ import { UiCard } from '../components/ui/card';
               <text class="text-sm text-foreground">border-2</text>
             </view>
             <view
-              class="rounded-md bg-white px-3 py-1 shadow-md ring-2 ring-rose-400"
+              class="rounded-md bg-card px-3 py-1 shadow-md ring-2 ring-rose-400"
             >
-              <text class="text-sm text-zinc-900">ring-2</text>
+              <text class="text-sm text-card-foreground">ring-2</text>
             </view>
           </view>
           <view
-            class="flex flex-col divide-y divide-zinc-200 rounded-md bg-muted px-3"
+            class="flex flex-col divide-y divide-border rounded-md bg-muted px-3"
           >
             <text class="py-2 text-sm text-foreground"
               >divide-y, first row</text

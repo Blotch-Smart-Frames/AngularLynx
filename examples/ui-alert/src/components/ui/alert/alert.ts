@@ -13,10 +13,12 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { revealIn } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 
-export const alertVariants = cva('flex-col rounded-lg border p-4 flex', {
+export const alertVariants = cva('flex-col gap-1 rounded-xl border p-4 flex', {
   variants: {
     variant: {
-      default: 'border-border bg-background',
+      // On the card color, as a raised surface: in the dark it's a tone
+      // lighter than the page it sits on.
+      default: 'border-border bg-card',
       // A solid destructive border over red at 10%. The tint is the
       // pre-composed bg-destructive-subtle, not bg-destructive/10: a modifier
       // needs the theme's --destructive-rgb, which themes copied before it
@@ -29,7 +31,7 @@ export const alertVariants = cva('flex-col rounded-lg border p-4 flex', {
   },
 });
 
-const alertTitleVariants = cva('mb-1 font-medium', {
+const alertTitleVariants = cva('text-base font-semibold', {
   variants: {
     variant: {
       default: 'text-foreground',
@@ -43,7 +45,10 @@ const alertDescriptionVariants = cva('text-sm', {
   variants: {
     variant: {
       default: 'text-muted-foreground',
-      destructive: 'text-destructive',
+      // The title and the edge are red; the message is in the foreground.
+      // Red on the red tint is under 4.5:1 at this size, and a paragraph of
+      // it is harder to read than the one word that says what's wrong.
+      destructive: 'text-foreground',
     },
   },
   defaultVariants: { variant: 'default' },

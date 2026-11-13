@@ -109,12 +109,20 @@ export class UiDialog implements OnDestroy {
     // Android drop it, the Lynx Tailwind 3 preset doesn't generate the class,
     // and the build drops it from Tailwind 4's CSS for the web preview too
     // (see investigations/lynx-vs-web-differences.md). A <blur-view> blurs.
-    cn('h-full w-full items-center flex justify-center', 'bg-black/50'),
+    // 24px of the screen shows at each side of the panel, as beside
+    // Material's dialogs.
+    cn('h-full w-full items-center px-6 flex justify-center', 'bg-black/50'),
   );
 
+  /**
+   * The panel fills the width the backdrop leaves, up to 400px on a tablet,
+   * where four fifths of a narrow phone left a form little room. It's on
+   * the card color, a tone above the page in the dark, with 20px corners: a
+   * dialog is the roundest surface on a phone.
+   */
   protected readonly panelClass = computed(() =>
     cn(
-      'w-4/5 flex-col rounded-lg border border-border bg-background p-6 flex',
+      'w-full max-w-[400px] flex-col rounded-2xl border border-border bg-card p-6 flex',
       this.userClass(),
     ),
   );
@@ -241,7 +249,7 @@ export class UiDialogHeader {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 }
 
@@ -287,6 +295,6 @@ export class UiDialogFooter {
   readonly userClass = input<string>('', { alias: 'class' });
 
   protected readonly containerClass = computed(() =>
-    cn('flex-row gap-2 pt-4 flex justify-end', this.userClass()),
+    cn('flex-row gap-2 pt-6 flex justify-end', this.userClass()),
   );
 }

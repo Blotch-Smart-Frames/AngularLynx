@@ -9,7 +9,9 @@ import {
 } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { DURATION } from '../../utils/animate';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiDatePicker } from './date-picker';
 
 registerLocaleData(localeDe);
@@ -91,19 +93,56 @@ const waitForClose = async (overlay: Element) => {
   expect(overlay.getAttribute('visible')).toBe('false');
 };
 
+/**
+ * A date picker's trigger: the button that draws the field and takes the
+ * taps. It's the first button in the picker, as the calendar's, in the sheet,
+ * come after it.
+ */
+const triggerOf = (container: Element) =>
+  container.querySelector<HTMLElement>('[accessibility-traits^="button"]')!;
+
+/**
+ * Each way a press starts and ends: touches on a phone, and a mouse in the
+ * web preview, which sends no touches for a cursor. A canceled touch (a
+ * scroll taking over) and a cursor leaving release too.
+ */
+const PRESSES: readonly (readonly [
+  down: (element: Element) => unknown,
+  up: (element: Element) => unknown,
+])[] = [
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchend(element),
+  ],
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchcancel(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireEvent.mouseup(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireLynxEvent(element, 'mouseleave'),
+  ],
+];
+
 const renderPicker = async (setup: (host: PickerHost) => void = () => {}) => {
   const result = await render(PickerHost);
   const host = result.componentRef.instance as PickerHost;
   setup(host);
   await waitForUpdate();
   const overlay = result.container.querySelector<HTMLElement>('overlay')!;
+  // The trigger fills the field's row, which the host, the column, holds.
+  const field = triggerOf(result.container).parentElement!;
   return {
     ...result,
     host,
     overlay,
-    field: result.container.querySelector('.border-input')!,
+    field,
     trigger: () => result.getByRole('button', { name: 'Ends on' }),
-    triggerText: () => result.container.querySelector('.border-input text')!,
+    triggerText: () => field.querySelector('text')!,
     /** Taps the trigger and waits for the sheet to open. */
     openSheet: async () => {
       fireEvent.tap(result.getByRole('button', { name: 'Ends on' }));
@@ -172,12 +211,11 @@ describe('UiDatePicker', () => {
       getAllByAccessibilityLabel,
       queryAllByPlaceholderText,
     } = await render(StaticAttributesHost);
+    const trigger = triggerOf(container);
     expect([...container.querySelectorAll('.w-48')]).toEqual([
-      container.querySelector('.border-input')!.parentElement,
+      trigger.parentElement!.parentElement,
     ]);
-    expect(getAllByAccessibilityLabel('Due')).toEqual([
-      container.querySelector('.border-input')!.firstElementChild,
-    ]);
+    expect(getAllByAccessibilityLabel('Due')).toEqual([trigger]);
     expect(queryAllByPlaceholderText('Pick a day')).toEqual([]);
     expect(getByText('Pick a day')).toBeTruthy();
   });
@@ -303,6 +341,12 @@ describe('UiDatePicker', () => {
       'button,disabled',
     );
 
+    // It can't be opened, so it doesn't answer a press either.
+    fireEvent.touchstart(trigger());
+    await waitForUpdate();
+    expect(trigger().classList).not.toContain('opacity-70');
+    fireEvent.touchend(trigger());
+
     fireEvent.tap(trigger());
     fireEvent.tap(getByText('Choose'));
     await waitForOpen();
@@ -327,11 +371,10 @@ describe('UiDatePicker clearable', () => {
     await waitForClose(overlay);
   });
 
-  // Android asks for 48dp touch targets and iOS for 44pt. h-10 is 2.5rem,
-  // only 35px on Lynx.
+  // Android asks for 48dp touch targets and iOS for 44pt.
   it('makes the field 48px tall, with its text and icon centered', async () => {
     const { field, trigger } = await renderPicker();
-    expect(field.classList).toContain('h-[48px]');
+    expect(field.classList).toContain('h-12');
     expect(field.classList).not.toContain('h-10');
     // The trigger fills the field's height and centers what it holds.
     expect([...trigger().classList]).toEqual(
@@ -340,8 +383,42 @@ describe('UiDatePicker clearable', () => {
     expect(trigger().parentElement).toBe(field);
   });
 
-  // ui-button's default height is 2.5rem, 35px on Lynx, short of the 48px
-  // touch target Android asks for (iOS asks for 44).
+  it('draws the field as ui-select and ui-input draw theirs, with body-size text', async () => {
+    // One shape for a form's fields: a filled box, not an outlined one.
+    const { field, trigger, triggerText } = await renderPicker();
+    for (const name of ['rounded-lg', 'bg-muted', 'px-4']) {
+      expect(trigger().classList).toContain(name);
+    }
+    expect(field.classList).not.toContain('border');
+    expect(trigger().classList).not.toContain('border');
+    expect(triggerText().classList).toContain('text-base');
+  });
+
+  it('draws a 20px calendar icon in the muted foreground', async () => {
+    const { trigger } = await renderPicker();
+    const icon = trigger().querySelector('svg') as unknown as HTMLElement;
+    expect(icon.style.width).toBe('20px');
+    expect(icon.getAttribute('content')).toContain(
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+  });
+
+  it('dims the trigger under a finger or the mouse, from the press', async () => {
+    // A phone's controls answer the touch, not the tap that follows it.
+    const { trigger } = await renderPicker();
+    expect(trigger().classList).not.toContain('opacity-70');
+    for (const [down, up] of PRESSES) {
+      down(trigger());
+      await waitForUpdate();
+      expect(trigger().classList).toContain('opacity-70');
+      up(trigger());
+      await waitForUpdate();
+      expect(trigger().classList).not.toContain('opacity-70');
+    }
+  });
+
+  // ui-button's default height is 48px, the touch target Android asks for
+  // (iOS asks for 44), so Clear needs no height of its own.
   it('makes Clear a full-width button 48px tall', async () => {
     const { openSheet } = await renderPicker((host) => {
       host.clearable.set(true);
@@ -350,7 +427,7 @@ describe('UiDatePicker clearable', () => {
     const sheet = await openSheet();
     const clear = sheet.getByText('Clear').parentElement!;
     expect([...clear.classList]).toEqual(
-      expect.arrayContaining(['h-[48px]', 'w-full']),
+      expect.arrayContaining(['h-12', 'w-full']),
     );
     expect(clear.classList).not.toContain('h-10');
     // 12px either side, so a 360px-wide phone's calendar is 336px: seven
@@ -405,7 +482,10 @@ describe('UiDatePicker accessibility', () => {
   it('shows its label above the field, and names the trigger with it', async () => {
     const { container, getByText, trigger } = await renderPicker();
     const label = getByText('Ends on');
-    const field = container.querySelector('.border-input')!;
+    // A phone's body size, in medium weight, as ui-input's label is.
+    expect(label.classList).toContain('text-base');
+    expect(label.classList).toContain('font-medium');
+    const field = triggerOf(container).parentElement!;
     expect(label.parentElement).toBe(field.parentElement);
     expect(
       label.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,

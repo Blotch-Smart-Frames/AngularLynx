@@ -48,11 +48,11 @@ type FaqCategory = { title: string; items: FaqItem[] };
     UiLabel,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
-      <view class="flex-col gap-5 p-6 flex">
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
+      <view class="flex-col gap-5 p-4 flex">
         <view class="flex-col gap-1 flex">
-          <text class="text-[28px] font-bold text-zinc-900">Help Center</text>
-          <text class="text-sm text-zinc-500">
+          <text class="text-[28px] font-bold text-foreground">Help Center</text>
+          <text class="text-sm text-muted-foreground">
             Find answers to common questions
           </text>
         </view>
@@ -64,16 +64,16 @@ type FaqCategory = { title: string; items: FaqItem[] };
         />
 
         @for (cat of filtered(); track cat.title) {
-          <view class="rounded-2xl border border-zinc-200 bg-white p-4">
+          <view class="rounded-2xl border border-border bg-card p-4">
             <ui-collapsible [open]="true">
               <ui-collapsible-trigger>
                 <view
                   class="flex-row items-center gap-2 py-2 flex justify-between"
                 >
-                  <text class="text-base font-semibold text-zinc-900">{{
+                  <text class="text-base font-semibold text-foreground">{{
                     cat.title
                   }}</text>
-                  <text class="text-xs text-zinc-400">
+                  <text class="text-xs text-muted-foreground">
                     {{ cat.items.length }} items
                   </text>
                 </view>
@@ -84,7 +84,7 @@ type FaqCategory = { title: string; items: FaqItem[] };
                     <ui-accordion-item [value]="item.q">
                       <ui-accordion-trigger>{{ item.q }}</ui-accordion-trigger>
                       <ui-accordion-content>
-                        <text class="text-sm leading-5 text-zinc-500">{{
+                        <text class="text-sm leading-5 text-muted-foreground">{{
                           item.a
                         }}</text>
                       </ui-accordion-content>
@@ -97,14 +97,14 @@ type FaqCategory = { title: string; items: FaqItem[] };
         } @empty {
           <view class="flex-col items-center gap-2 py-10 flex">
             <text class="text-[32px]">🔍</text>
-            <text class="text-sm text-zinc-400">
+            <text class="text-sm text-muted-foreground">
               No results for "{{ query() }}"
             </text>
           </view>
         }
 
         <view class="flex-col items-center gap-2 py-4 flex">
-          <text class="text-[13px] text-zinc-500">
+          <text class="text-[13px] text-muted-foreground">
             Can't find what you need?
           </text>
           <ui-button variant="outline" (pressed)="contactOpen.set(true)">

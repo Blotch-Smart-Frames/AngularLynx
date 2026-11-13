@@ -289,6 +289,7 @@ Runs these checks in order and exits with code 1 if any fail:
 | `dolan.config.json` exists, is valid JSON and has `components` and `theme` paths                                                             | Fails and stops    |
 | The components and theme folders exist                                                                                                       | Fails              |
 | The theme folder has `tailwind.css` (`tailwind-plugin.ts` on Tailwind 3), and `default.css` or `dark.css`                                    | Warns              |
+| `default.css` sets a font size on `page`: the components are sized in `rem` for a 16px root, where Lynx's own is 14px                        | Warns              |
 | Each color the plugin maps with `themeColor()` has a matching `-rgb` twin in every theme file                                                | Warns              |
 | The theme sets and maps the colors the installed components read, such as Glass's `glass-*` colors                                           | Warns              |
 | `tailwindcss` is installed, and the app is set up for its version: no `tailwind.config.*` on Tailwind 4, a `tailwind.config.*` on Tailwind 3 | Warns              |

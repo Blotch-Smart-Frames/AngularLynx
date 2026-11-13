@@ -427,7 +427,8 @@ export class UiNavDrawerItem {
   // through UI_ICON_COLOR (see providers above).
   protected readonly containerClass = computed(() =>
     cn(
-      'flex-row items-center gap-3 px-4 py-3 flex',
+      // A row at least 48px tall, a full touch target.
+      'min-h-12 flex-row items-center gap-3 px-4 py-3 flex',
       this.active() ? 'bg-accent' : 'bg-transparent',
       this.variant() === 'destructive' && '[--foreground:var(--destructive)]',
       this.userClass(),
@@ -542,7 +543,8 @@ export class UiNavDrawerTrigger {
 
   protected readonly containerClass = computed(() =>
     cn(
-      'h-10 w-10 items-center rounded-md flex justify-center',
+      // 48px, a full touch target, as an icon ui-button is.
+      'h-12 w-12 items-center rounded-lg flex justify-center',
       this.userClass(),
     ),
   );

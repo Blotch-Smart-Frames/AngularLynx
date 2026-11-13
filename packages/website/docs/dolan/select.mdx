@@ -43,6 +43,7 @@ export class App {
 - Tapping the field opens the sheet. Tapping an item selects it and closes the sheet.
 - Tapping the dimmed backdrop, or dragging the sheet's handle down, closes it without a change.
 - The field shows the selected item's `label`, or `placeholder` when nothing is selected. The selected item has a check mark.
+- The field is the same shape as an [Input](/dolan/input): 48px tall, on the same fill, so the two line up in a form. It dims while a finger is on it.
 - The list scrolls once it's taller than 300 pixels. A [searchable](#search) select's list fills the sheet instead.
 
 ### With a label
@@ -57,7 +58,7 @@ export class App {
 </ui-select>
 ```
 
-`label` is shown above the field and names it for screen readers. A label of your own beside the field, such as a [Label](/dolan/label), isn't tied to it, so give the select an `accessibility-label` with the same text:
+`label` is shown above the field and as the sheet's title, and names the field for screen readers. A label of your own beside the field, such as a [Label](/dolan/label), isn't tied to it, so give the select an `accessibility-label` with the same text:
 
 ```angular-html
 <view class="flex flex-col gap-2">
@@ -172,19 +173,19 @@ A disabled select dims and doesn't open.
 
 ### UiSelect
 
-| Input                 | Type      | Default        | Description                                                               |
-| --------------------- | --------- | -------------- | ------------------------------------------------------------------------- |
-| `value`               | `string`  | `''`           | The selected item's value. Supports `[(value)]`.                          |
-| `label`               | `string`  | `''`           | Shown above the field, and read by screen readers as its name.            |
-| `placeholder`         | `string`  | `'Select...'`  | Shown in the field while nothing is selected.                             |
-| `accessibility-label` | `string`  | `''`           | The field's name for screen readers when it has no `label`.               |
-| `disabled`            | `boolean` | `false`        | Dims the field and stops it from opening.                                 |
-| `class`               | `string`  | `''`           | Extra Tailwind classes for the column that holds the label and the field. |
-| `searchable`          | `boolean` | `false`        | Shows a search field in the sheet, which opens at full height.            |
-| `query`               | `string`  | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.     |
-| `filter`              | `boolean` | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.     |
-| `searchPlaceholder`   | `string`  | `'Search'`     | Shown in the search field while it's empty.                               |
-| `emptyText`           | `string`  | `'No results'` | Shown in a searchable sheet while no item is.                             |
+| Input                 | Type      | Default        | Description                                                                                     |
+| --------------------- | --------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| `value`               | `string`  | `''`           | The selected item's value. Supports `[(value)]`.                                                |
+| `label`               | `string`  | `''`           | Shown above the field and as the sheet's title, and read by screen readers as the field's name. |
+| `placeholder`         | `string`  | `'Select...'`  | Shown in the field while nothing is selected.                                                   |
+| `accessibility-label` | `string`  | `''`           | The field's name for screen readers when it has no `label`.                                     |
+| `disabled`            | `boolean` | `false`        | Dims the field and stops it from opening.                                                       |
+| `class`               | `string`  | `''`           | Extra Tailwind classes for the column that holds the label and the field.                       |
+| `searchable`          | `boolean` | `false`        | Shows a search field in the sheet, which opens at full height.                                  |
+| `query`               | `string`  | `''`           | The search text. Supports `[(query)]`. Cleared when the sheet closes.                           |
+| `filter`              | `boolean` | `true`         | Hides the items whose `label` doesn't contain `query`, ignoring case.                           |
+| `searchPlaceholder`   | `string`  | `'Search'`     | Shown in the search field while it's empty.                                                     |
+| `emptyText`           | `string`  | `'No results'` | Shown in a searchable sheet while no item is.                                                   |
 
 | Output        | Type     | Description                                  |
 | ------------- | -------- | -------------------------------------------- |

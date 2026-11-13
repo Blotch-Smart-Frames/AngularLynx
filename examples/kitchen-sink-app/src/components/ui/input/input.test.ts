@@ -1,5 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component, type Provider, signal } from '@angular/core';
 import { FormField, form } from '@angular/forms/signals';
+import { LynxTheme } from '@blotch/angular-lynx';
 import {
   fireEvent,
   render,
@@ -18,6 +19,7 @@ import {
   type LynxMainThread,
   lynxMainThread,
 } from '@blotch/dolan/testing/lynx-main-thread';
+import { ICON_DARK_COLORS, ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiInput } from './input';
 
 @Component({
@@ -49,8 +51,8 @@ class InputHost {
   readonly events: string[] = [];
 }
 
-const renderInput = async () => {
-  const result = await render(InputHost);
+const renderInput = async (providers: Provider[] = []) => {
+  const result = await render(InputHost, { providers });
   return {
     ...result,
     host: result.componentRef.instance as InputHost,
@@ -97,7 +99,36 @@ describe('UiInput', () => {
     const { host, getByText } = await renderInput();
     host.label.set('Email');
     await waitForUpdate();
+    // A phone's body size, in medium weight, as ui-label's is.
+    expect(getByText('Email').classList).toContain('text-base');
     expect(getByText('Email').classList).toContain('font-medium');
+  });
+
+  it("draws the placeholder in the theme's muted foreground, on every platform", async () => {
+    // jsdom drops a style it doesn't know, such as -x-placeholder-color:
+    // watch what reaches Lynx's inline style API instead.
+    const addInlineStyle = vi.spyOn(lynxMainThread(), '__AddInlineStyle');
+    const { field } = await renderInput();
+    // Neither can read a CSS variable, so the color is the token's value.
+    // The web preview reads the attribute, and iOS only the style.
+    expect(field().getAttribute('placeholder-color')).toBe(
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+    expect(addInlineStyle).toHaveBeenCalledWith(
+      field(),
+      '-x-placeholder-color',
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+    addInlineStyle.mockRestore();
+  });
+
+  it("draws the placeholder in the dark theme's muted foreground in a dark app", async () => {
+    const { field } = await renderInput([
+      { provide: LynxTheme, useValue: { appearance: () => 'dark' } },
+    ]);
+    expect(field().getAttribute('placeholder-color')).toBe(
+      ICON_DARK_COLORS['muted-foreground'],
+    );
   });
 
   // Issue #180: the label sat beside the field, so screen readers read the
@@ -212,6 +243,7 @@ describe('UiInput', () => {
     expect(getByText("We'll never share it.").classList).toContain(
       'text-muted-foreground',
     );
+    expect(getByText("We'll never share it.").classList).toContain('text-sm');
   });
 
   it('shows an error in place of the helper text, with a destructive ring', async () => {
@@ -223,10 +255,11 @@ describe('UiInput', () => {
       'text-destructive',
     );
     expect(queryByText("We'll never share it.")).toBeNull();
-    // An invalid field keeps its ring even when it isn't focused.
+    // An invalid field keeps its ring even when it isn't focused: one thin
+    // ring, as the message under the field says what's wrong.
     expect(ring().style.getPropertyValue('opacity')).toBe('1');
-    expect(ring().style.getPropertyValue('box-shadow')).toContain(
-      'var(--destructive)',
+    expect(ring().style.getPropertyValue('box-shadow')).toBe(
+      '0 0 0 1.5px var(--destructive)',
     );
   });
 
@@ -313,6 +346,18 @@ describe('UiInput', () => {
 
   it('is 48px tall, a touch target on Android and iOS alike', async () => {
     const { wrapper } = await renderInput();
-    expect(wrapper().classList).toContain('h-[48px]');
+    expect(wrapper().classList).toContain('h-12');
+  });
+
+  it("has the fields' shared shape, and body-size text", async () => {
+    // ui-select, ui-multi-select and ui-date-picker draw the same box, so a
+    // form's controls line up.
+    const { wrapper, field, ring } = await renderInput();
+    for (const name of ['rounded-lg', 'bg-muted', 'px-4']) {
+      expect(wrapper().classList).toContain(name);
+    }
+    // The ring follows the field's corners.
+    expect(ring().classList).toContain('rounded-lg');
+    expect(field().classList).toContain('text-base');
   });
 });

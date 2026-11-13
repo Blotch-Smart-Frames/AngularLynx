@@ -473,12 +473,10 @@ export class UiChart {
   );
 
   readonly #colors = computed(() => {
-    const option = this.colorScheme() ?? this.#theme.colorScheme ?? 'light';
+    const option = this.colorScheme() ?? this.#theme.colorScheme ?? 'system';
     const scheme =
       option === 'system'
-        ? this.#appearance.isDarkMode()
-          ? 'dark'
-          : 'light'
+        ? this.#appearance.appearance()
         : typeof option === 'function'
           ? option()
           : option;

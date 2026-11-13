@@ -1,15 +1,15 @@
-import { Component, signal } from '@angular/core';
+import { Component, type Provider, signal } from '@angular/core';
 import {
   fireEvent,
   render,
   waitForUpdate as nextUpdate,
   within,
 } from '@blotch/angular-lynx-testing-library';
-import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '@blotch/dolan/testing/fire-lynx-event';
 import { DURATION } from '@blotch/dolan/utils/animate';
-import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
+import { ICON_DARK_COLORS, ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import { UiSelect, UiSelectItem } from './select';
 
 @Component({
@@ -36,23 +36,60 @@ class SelectHost {
   readonly changed = vi.fn((_value: string) => {});
 }
 
-const renderSelect = async () => {
-  const result = await render(SelectHost);
+/**
+ * A select's trigger: the button that draws the field and takes the taps.
+ * It's the first button in the select, as its items, buttons too, come after
+ * it, in the sheet.
+ */
+const triggerOf = (container: Element) =>
+  container.querySelector<HTMLElement>('[accessibility-traits^="button"]')!;
+
+const renderSelect = async (providers: Provider[] = []) => {
+  const result = await render(SelectHost, { providers });
   const { container } = result;
   const overlay = container.querySelector<HTMLElement>('overlay')!;
+  const trigger = triggerOf(container);
   return {
     ...result,
     host: result.componentRef.instance as SelectHost,
     overlay,
-    // The host is the field's column; the row inside the field takes the taps.
-    column: container.querySelector('.border-input')!.parentElement!,
-    field: container.querySelector('.border-input')!,
-    trigger: container.querySelector('.border-input')!.firstElementChild!,
-    triggerText: () => container.querySelector('.border-input text')!,
+    // The host is the field's column; the trigger fills the field's row, and
+    // takes the taps.
+    column: trigger.parentElement!.parentElement!,
+    field: trigger.parentElement!,
+    trigger,
+    triggerText: () => trigger.querySelector('text')!,
     // An item's tappable row, found by its label in the sheet.
     item: (label: string) => within(overlay).getByText(label).parentElement!,
   };
 };
+
+/**
+ * Each way a press starts and ends: touches on a phone, and a mouse in the
+ * web preview, which sends no touches for a cursor. A canceled touch (a
+ * scroll taking over) and a cursor leaving release too.
+ */
+const PRESSES: readonly (readonly [
+  down: (element: Element) => unknown,
+  up: (element: Element) => unknown,
+])[] = [
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchend(element),
+  ],
+  [
+    (element) => fireEvent.touchstart(element),
+    (element) => fireEvent.touchcancel(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireEvent.mouseup(element),
+  ],
+  [
+    (element) => fireEvent.mousedown(element),
+    (element) => fireLynxEvent(element, 'mouseleave'),
+  ],
+];
 
 // Every test runs on a fake clock (see the beforeEach below), so the test
 // decides when time passes. On real time, a busy machine fired the sheet's
@@ -105,9 +142,58 @@ const waitForClose = async (overlay: Element) => {
 describe('UiSelect', () => {
   it('is 48px tall, a touch target on Android and iOS alike', async () => {
     const { field, trigger } = await renderSelect();
-    expect(field.classList).toContain('h-[48px]');
+    expect(field.classList).toContain('h-12');
     // The trigger fills the field and centers its text.
+    expect(trigger.classList).toContain('flex-1');
     expect(trigger.classList).toContain('items-center');
+  });
+
+  it('draws the field as ui-input draws its own, with body-size text', async () => {
+    // One shape for a form's fields, whether they're typed in or chosen
+    // from: a filled box, not an outlined one.
+    const { field, trigger, triggerText } = await renderSelect();
+    for (const name of ['rounded-lg', 'bg-muted', 'px-4']) {
+      expect(trigger.classList).toContain(name);
+    }
+    expect(field.classList).not.toContain('border');
+    expect(trigger.classList).not.toContain('border');
+    expect(triggerText().classList).toContain('text-base');
+  });
+
+  it('draws a 20px chevron in the muted foreground, resolved for the SVG', async () => {
+    // It says the field opens a list, and shouldn't weigh as much as what
+    // the field holds. An SVG can't read the CSS variable.
+    const { trigger } = await renderSelect();
+    const chevron = trigger.querySelector('svg') as unknown as HTMLElement;
+    expect(chevron.getAttribute('content')).toContain(
+      `stroke="${ICON_LIGHT_COLORS['muted-foreground']}"`,
+    );
+    expect(chevron.getAttribute('content')).not.toContain('currentColor');
+    expect(chevron.style.width).toBe('20px');
+    expect(chevron.style.height).toBe('20px');
+  });
+
+  it("draws the chevron in the dark theme's muted foreground in a dark app", async () => {
+    const { trigger } = await renderSelect([
+      { provide: LynxTheme, useValue: { appearance: () => 'dark' } },
+    ]);
+    expect(trigger.querySelector('svg')!.getAttribute('content')).toContain(
+      `stroke="${ICON_DARK_COLORS['muted-foreground']}"`,
+    );
+  });
+
+  it('dims the trigger under a finger or the mouse, from the press', async () => {
+    // A phone's controls answer the touch, not the tap that follows it.
+    const { trigger } = await renderSelect();
+    expect(trigger.classList).not.toContain('opacity-70');
+    for (const [down, up] of PRESSES) {
+      down(trigger);
+      await waitForUpdate();
+      expect(trigger.classList).toContain('opacity-70');
+      up(trigger);
+      await waitForUpdate();
+      expect(trigger.classList).not.toContain('opacity-70');
+    }
   });
 
   it('shows the placeholder, muted, until a value is chosen', async () => {
@@ -141,12 +227,11 @@ describe('UiSelect', () => {
       getAllByAccessibilityLabel,
       queryAllByPlaceholderText,
     } = await render(StaticAttributesHost);
+    const trigger = triggerOf(container);
     expect([...container.querySelectorAll('.w-48')]).toEqual([
-      container.querySelector('.border-input')!.parentElement,
+      trigger.parentElement!.parentElement,
     ]);
-    expect(getAllByAccessibilityLabel('Fruit')).toEqual([
-      container.querySelector('.border-input')!.firstElementChild,
-    ]);
+    expect(getAllByAccessibilityLabel('Fruit')).toEqual([trigger]);
     expect(queryAllByPlaceholderText('Pick a fruit')).toEqual([]);
     expect(getByText('Pick a fruit')).toBeTruthy();
     expect([...container.querySelectorAll('.font-bold')]).toEqual([
@@ -209,6 +294,12 @@ describe('UiSelect', () => {
     await waitForUpdate();
     expect(field.classList).toContain('opacity-50');
 
+    // It can't be opened, so it doesn't answer a press either.
+    fireEvent.touchstart(trigger);
+    await waitForUpdate();
+    expect(trigger.classList).not.toContain('opacity-70');
+    fireEvent.touchend(trigger);
+
     fireEvent.tap(trigger);
     fireEvent.tap(getByText('Choose'));
     await waitForOpen();
@@ -231,17 +322,44 @@ describe('UiSelectItem', () => {
     expect(overlay.getAttribute('visible')).toBe('false');
   });
 
-  it('marks the chosen item with a highlight and a check', async () => {
-    const { host, item } = await renderSelect();
+  it('marks the chosen item with a check and a heavier label', async () => {
+    const { host, item, overlay } = await renderSelect();
     host.value.set('pear');
     await waitForUpdate();
-    expect(item('Pear').classList).toContain('bg-accent');
-    // In the text's color, which the SVG can't read for itself.
-    expect(
-      item('Pear').querySelector('svg')!.getAttribute('content'),
-    ).toContain(ICON_LIGHT_COLORS['foreground']);
-    expect(item('Apple').classList).not.toContain('bg-accent');
+    // The check alone marks the chosen item, as a native list's does: a
+    // filled row as well read as a second, pressed state.
+    expect(item('Pear').classList).not.toContain('bg-accent');
+    expect(item('Pear').classList).not.toContain('bg-muted');
+    expect(within(overlay).getByText('Pear').classList).toContain(
+      'font-medium',
+    );
+    // 20px, in the primary color, which the SVG can't read for itself.
+    const check = item('Pear').querySelector('svg') as unknown as HTMLElement;
+    expect(check.getAttribute('content')).toContain(
+      `stroke="${ICON_LIGHT_COLORS['primary']}"`,
+    );
+    expect(check.style.width).toBe('20px');
+    expect(check.style.height).toBe('20px');
+
+    expect(within(overlay).getByText('Apple').classList).not.toContain(
+      'font-medium',
+    );
     expect(item('Apple').querySelector('svg')).toBeNull();
+  });
+
+  it('fills an item under a finger or the mouse, from the press', async () => {
+    const { item } = await renderSelect();
+    expect(item('Apple').classList).not.toContain('bg-muted');
+    for (const [down, up] of PRESSES) {
+      down(item('Apple'));
+      await waitForUpdate();
+      expect(item('Apple').classList).toContain('bg-muted');
+      // Only the row under the finger.
+      expect(item('Pear').classList).not.toContain('bg-muted');
+      up(item('Apple'));
+      await waitForUpdate();
+      expect(item('Apple').classList).not.toContain('bg-muted');
+    }
   });
 
   it("adds the class to the item's own", async () => {
@@ -249,7 +367,10 @@ describe('UiSelectItem', () => {
     expect(item('Pear').classList).toContain('font-bold');
     expect(item('Pear').classList).toContain('px-4');
     // A touch target's height on Android and iOS alike.
-    expect(item('Pear').classList).toContain('min-h-[48px]');
+    expect(item('Pear').classList).toContain('min-h-12');
+    expect(within(item('Pear')).getByText('Pear').classList).toContain(
+      'text-base',
+    );
   });
 });
 
@@ -274,10 +395,13 @@ describe('UiSelect accessibility', () => {
   }
 
   it('shows its label above the field, and names the trigger with it', async () => {
-    const { container, getByRole, getByText } = await render(LabeledHost);
-    const label = getByText('Country');
+    const { container, getByRole, getAllByText } = await render(LabeledHost);
+    // The label is shown twice: above the field, and as the sheet's title.
+    const [label] = getAllByText('Country');
+    expect(label.classList).toContain('text-base');
+    expect(label.classList).toContain('font-medium');
     // Above the field, in its column, and hidden: the trigger reads it.
-    const field = container.querySelector('.border-input')!;
+    const field = triggerOf(container).parentElement!;
     expect(label.parentElement).toBe(field.parentElement);
     expect(
       label.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -289,6 +413,25 @@ describe('UiSelect accessibility', () => {
     expect(trigger.getAttribute('accessibility-value')).toBe(
       'Choose your country',
     );
+  });
+
+  it('titles the sheet with its label, so the sheet says what is being chosen', async () => {
+    const { container } = await render(LabeledHost);
+    const overlay = container.querySelector<HTMLElement>('overlay')!;
+    const title = within(overlay).getByText('Country');
+    // A header, centered above the items.
+    expect(title.getAttribute('accessibility-traits')).toBe('header');
+    expect(title.classList).toContain('text-center');
+    expect(title.classList).toContain('font-semibold');
+    expect(
+      title.compareDocumentPosition(within(overlay).getByText('Germany')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('leaves the sheet untitled without a label', async () => {
+    const { overlay } = await renderSelect();
+    expect(overlay.querySelector('[accessibility-traits="header"]')).toBeNull();
   });
 
   it('opens from the trigger, and marks the chosen item selected', async () => {

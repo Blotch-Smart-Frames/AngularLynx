@@ -1,6 +1,6 @@
 # Checkbox
 
-A small box that toggles a check mark on tap.
+A box that toggles a check mark on tap, with its label beside it.
 
 <Go example="ui-checkbox" defaultFile="src/app/app.ts" />
 
@@ -20,26 +20,33 @@ import { UiCheckbox } from '../components/ui/checkbox';
 import { Component, signal } from '@angular/core';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { UiCheckbox } from '../components/ui/checkbox';
-import { UiLabel } from '../components/ui/label';
 
 @Component({
   selector: 'app-root',
-  imports: [LYNX_ELEMENTS, UiCheckbox, UiLabel],
-  template: `
-    <view class="flex flex-row items-center">
-      <ui-checkbox [(checked)]="accepted" />
-      <ui-label>Accept the terms</ui-label>
-    </view>
-  `,
+  imports: [LYNX_ELEMENTS, UiCheckbox],
+  template: ` <ui-checkbox [(checked)]="accepted" label="Accept the terms" /> `,
 })
 export class App {
   protected readonly accepted = signal(false);
 }
 ```
 
-- This example also uses [Label](/dolan/label). Tapping the label doesn't toggle the checkbox.
-- The box is 20 pixels, but its tap area is 44 by 44 pixels, a comfortable size for a finger.
+- **The whole row toggles it**, label included. On a phone the words are the easier target.
+- The row is 44px tall at least, and a long label wraps beside the box.
 - The check mark pops in and out when the state changes.
+
+### Without a label
+
+```angular-html
+<view class="flex flex-row items-center gap-3">
+  <ui-checkbox [(checked)]="done" accessibility-label="Done" />
+  <text class="text-base text-foreground">Buy milk</text>
+</view>
+```
+
+- Without a `label`, the checkbox is only the box: 22px, lined up with what's around it.
+- Its tap area still reaches 48px across, a comfortable size for a finger, without taking that room in the layout.
+- Give it an `accessibility-label`, so a screen reader can name it.
 
 ### Disabled
 
@@ -63,11 +70,13 @@ A disabled checkbox dims and ignores taps.
 
 ### UiCheckbox
 
-| Input      | Type      | Default | Description                                           |
-| ---------- | --------- | ------- | ----------------------------------------------------- |
-| `checked`  | `boolean` | `false` | Whether it's checked. Supports `[(checked)]`.         |
-| `disabled` | `boolean` | `false` | Dims the checkbox and ignores taps.                   |
-| `class`    | `string`  | `''`    | Extra Tailwind classes for the box, not the tap area. |
+| Input                 | Type      | Default | Description                                                         |
+| --------------------- | --------- | ------- | ------------------------------------------------------------------- |
+| `checked`             | `boolean` | `false` | Whether it's checked. Supports `[(checked)]`.                       |
+| `label`               | `string`  | `''`    | Text beside the box. The whole row then toggles the checkbox.       |
+| `accessibility-label` | `string`  | `''`    | What a screen reader calls a checkbox without a `label`.            |
+| `disabled`            | `boolean` | `false` | Dims the checkbox and ignores taps.                                 |
+| `class`               | `string`  | `''`    | Extra Tailwind classes for the checkbox: the row, or the box alone. |
 
 | Output          | Type      | Description                             |
 | --------------- | --------- | --------------------------------------- |
@@ -76,8 +85,13 @@ A disabled checkbox dims and ignores taps.
 
 `UiCheckbox` also has a public `toggle()` method, which does nothing while disabled.
 
+## Accessibility
+
+- A screen reader reads the checkbox as one button, named by its `label` (or `accessibility-label`), with the value "Checked" or "Unchecked".
+- A disabled checkbox is read as dimmed.
+
 ## Related
 
 - [Switch](/dolan/switch): an on/off control for settings
 - [Radio Group](/dolan/radio-group): pick one of several options
-- [Label](/dolan/label)
+- [Label](/dolan/label): a label of your own, beside a checkbox without one

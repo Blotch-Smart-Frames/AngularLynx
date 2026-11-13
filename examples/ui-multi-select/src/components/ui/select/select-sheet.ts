@@ -48,8 +48,8 @@ export const matchesQuery = (label: string, query: string): boolean =>
  * full list again, and the field gives up the keyboard as the sheet starts
  * closing: the keyboard would otherwise outlive the field it belongs to.
  *
- * Content marked `ui-select-sheet-header` sits above the search field. The
- * select decides which items show (see `matchesQuery`) and says through
+ * A `title` names the sheet, and content marked `ui-select-sheet-header`
+ * sits above the search field. The select decides which items show (see `matchesQuery`) and says through
  * `empty` when none do.
  */
 @Component({
@@ -67,6 +67,15 @@ export const matchesQuery = (label: string, query: string): boolean =>
       [detents]="detents()"
       (closed)="query.set('')"
     >
+      <!-- The field's name, so the sheet says what's being chosen once it
+           covers the field. -->
+      @if (title()) {
+        <text
+          class="px-4 pb-3 text-base font-semibold text-foreground text-center"
+          accessibility-traits="header"
+          >{{ title() }}</text
+        >
+      }
       <ng-content select="[ui-select-sheet-header]" />
       @if (searchable()) {
         <view class="px-4 pb-2">
@@ -85,9 +94,10 @@ export const matchesQuery = (label: string, query: string): boolean =>
         <view class="flex-col pb-4 flex">
           <ng-content />
           @if (showsEmpty()) {
-            <text class="px-4 py-8 text-sm text-muted-foreground text-center">{{
-              emptyText()
-            }}</text>
+            <text
+              class="px-4 py-8 text-base text-muted-foreground text-center"
+              >{{ emptyText() }}</text
+            >
           }
           <!-- Room for the keyboard under the last item, so every item can
                scroll above it while the search field has the focus. -->
@@ -99,6 +109,11 @@ export const matchesQuery = (label: string, query: string): boolean =>
 })
 export class UiSelectSheet {
   readonly open = model(false);
+  /**
+   * The sheet's title, centered above the items: the field's name. A select
+   * with a header of its own (`ui-select-sheet-header`) leaves it out.
+   */
+  readonly title = input('');
   /** Shows a search field above the items, and opens at full height. */
   readonly searchable = input(false, { transform: booleanAttribute });
   /** The search field's text. Cleared once the sheet has closed. */

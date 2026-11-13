@@ -8,7 +8,7 @@ import { UiButton } from '../components/ui/button';
   imports: [LYNX_ELEMENTS, UiToaster, UiButton],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-4 p-6 flex">
+      <view class="flex-col gap-4 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Toast</text>
 
         <ui-button (pressed)="showDefault()">Show Toast</ui-button>

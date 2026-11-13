@@ -16,6 +16,7 @@ import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 import { type AnimationHandle, shake } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
+import { injectIconColor } from '../icon/icon-theme';
 
 @Component({
   selector: 'ui-input',
@@ -24,12 +25,13 @@ import { cn } from '@blotch/dolan/utils/cn';
   // The host is the field's column. Angular gives a component's host every
   // static attribute the app writes on it, so a class on <ui-input> lands
   // there whatever the component does: a column inside the host applied it
-  // twice. A placeholder lands there too, and goes: it belongs to the
-  // <input>, and a second element with it is a second match for
-  // getByPlaceholderText.
+  // twice. A placeholder and an accessibility label land there too, and go:
+  // they belong to the <input>, and a second element with one is a second
+  // match for getByPlaceholderText or getByLabelText.
   host: {
     '[class]': 'containerClass()',
     '[attr.placeholder]': 'null',
+    '[attr.accessibility-label]': 'null',
   },
   template: `
     <!-- The <input> below carries the label as its accessibility-label, so
@@ -63,7 +65,7 @@ import { cn } from '@blotch/dolan/utils/cn';
          real inset border. -->
     <view [class]="inputWrapperClass()">
       <view
-        class="rounded-xl opacity-0 absolute bottom-0 left-0 right-0 top-0"
+        class="rounded-lg opacity-0 absolute bottom-0 left-0 right-0 top-0"
         [style.transition]="'opacity 150ms ease'"
         [style.box-shadow]="ringShadow()"
         [style.opacity]="ringVisible() ? 1 : 0"
@@ -81,15 +83,24 @@ import { cn } from '@blotch/dolan/utils/cn';
            accessibility elements by default, so the UITextField under an
            <input> isn't one. VoiceOver then read the placeholder inside it,
            or nothing once it held text. As one, it reads its
-           accessibility-label, the label, then its text. -->
+           accessibility-label, the label (or the accessibility label when
+           there's none), then its text. -->
+      <!-- The placeholder's color is given twice: iOS reads only the
+           -x-placeholder-color style, and the web preview only the
+           attribute (see ui-search-field). -->
+      <!-- text-base: 16px, a phone's body size, which is also what keeps
+           iOS Safari from zooming the page when a field in the web preview
+           takes the focus. -->
       <input
         accessibility-element="true"
-        [attr.accessibility-label]="label() || null"
+        [attr.accessibility-label]="label() || accessibilityLabel() || null"
         [attr.placeholder]="placeholder()"
+        [attr.placeholder-color]="placeholderColor()"
+        [style.-x-placeholder-color]="placeholderColor()"
         [attr.type]="type()"
         [value]="value()"
         [attr.disabled]="disabled() || undefined"
-        class="text-sm text-foreground"
+        class="text-base text-foreground"
         style="border: none; background: transparent; height: 100%; width: 100%; position: relative; z-index: 1;"
         (bindinput)="onInput($event)"
         (bindfocus)="onFocus()"
@@ -106,6 +117,14 @@ import { cn } from '@blotch/dolan/utils/cn';
 export class UiInput implements FormValueControl<string> {
   readonly value = model<string>('');
   readonly label = input<string>('');
+  /**
+   * What a screen reader calls the field when it's shown without a label,
+   * such as one of several fields under a label of the app's own. `label`
+   * wins when both are set.
+   */
+  readonly accessibilityLabel = input<string>('', {
+    alias: 'accessibility-label',
+  });
   readonly placeholder = input<string>('');
   readonly type = input<string>('text');
   readonly helperText = input<string>('');
@@ -125,9 +144,21 @@ export class UiInput implements FormValueControl<string> {
   readonly touch = output<void>();
 
   readonly #host = inject(ElementRef).nativeElement;
+  readonly #resolveColor = injectIconColor();
   readonly #isFocused = signal(false);
   #shakeAnim?: AnimationHandle;
   #previousError = '';
+
+  /**
+   * The placeholder's color, the theme's muted foreground, resolved to its
+   * value: neither the attribute nor the style can read a CSS variable (see
+   * icon-theme.ts). Each platform's own placeholder gray differs, and from
+   * the placeholder ui-select and ui-date-picker draw as text, so a form's
+   * empty fields didn't match.
+   */
+  protected readonly placeholderColor = computed(() =>
+    this.#resolveColor('var(--muted-foreground)'),
+  );
 
   /**
    * Shakes the field when an error appears (a change from no error to one). A
@@ -145,36 +176,39 @@ export class UiInput implements FormValueControl<string> {
   });
 
   protected readonly containerClass = computed(() =>
-    cn('flex-col gap-1.5 flex', this.userClass()),
+    // 8px between the label, the field and the text under it.
+    cn('flex-col gap-2 flex', this.userClass()),
   );
 
   protected readonly labelClass = computed(() =>
-    cn('text-sm font-medium text-foreground'),
+    cn('text-base font-medium text-foreground'),
   );
 
   protected readonly inputWrapperClass = computed(() =>
     // z-0: stacking context for the input's z-index (see the template comment).
-    cn(
-      'z-0 h-10 rounded-xl bg-muted px-3.5 py-2',
-      this.disabled() && 'opacity-50',
-    ),
+    // 48px tall: Android's 48dp touch target, which covers iOS's 44pt. Every
+    // field is this shape (ui-select, ui-multi-select, ui-date-picker), and
+    // a default ui-button is as tall, so a form's controls line up.
+    cn('z-0 h-12 rounded-lg bg-muted px-4', this.disabled() && 'opacity-50'),
   );
 
   /**
    * Focus ring, drawn as an OUTSET box-shadow on a dedicated overlay layer (see
    * the template comment for why it can't be a Tailwind ring-* class and why it
-   * needs its own layer). Two stacked outset shadows: a solid 1px ring hugging
-   * the edge (reads as a crisp border) and a softer 3px ring around it — both
-   * follow the wrapper's rounded-xl corners. Focus pairs var(--ring) with the
-   * translucent var(--ring-subtle); error uses solid var(--destructive) for both
-   * since it flags a problem. The value is always set (never null) so the shadow
+   * needs its own layer). Focus is two stacked outset shadows: a solid 1px ring
+   * hugging the edge (reads as a crisp border) and a softer 3px ring around it,
+   * var(--ring) and the translucent var(--ring-subtle), both following the
+   * wrapper's corners. An error is one 1.5px ring in var(--destructive): the
+   * message under the field says what's wrong, so the field only has to be
+   * findable, and a 3px solid red frame shouted over the form around it. The
+   * value is always set (never null) so the shadow
    * stays painted while the layer fades OUT — visibility is driven by
    * ringVisible()/opacity, not by adding/removing the shadow. Colors resolve at
    * runtime and track dark mode.
    */
   protected readonly ringShadow = computed(() =>
     this.error()
-      ? '0 0 0 1px var(--destructive), 0 0 0 3px var(--destructive)'
+      ? '0 0 0 1.5px var(--destructive)'
       : '0 0 0 1px var(--ring), 0 0 0 3px var(--ring-subtle)',
   );
 
@@ -189,11 +223,11 @@ export class UiInput implements FormValueControl<string> {
   );
 
   protected readonly helperClass = computed(() =>
-    cn('text-xs text-muted-foreground'),
+    cn('text-sm text-muted-foreground'),
   );
 
   protected readonly errorClass = computed(() =>
-    cn('text-xs text-destructive'),
+    cn('text-sm text-destructive'),
   );
 
   protected onFocus(): void {

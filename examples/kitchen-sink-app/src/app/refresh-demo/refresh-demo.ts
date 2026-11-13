@@ -12,7 +12,7 @@ import { ScreenHost } from '../screen-host';
     <refresh #refresher class="h-full w-full" (bindstartrefresh)="onRefresh()">
       <refresh-header>
         <view class="h-[60px] items-center justify-center">
-          <text class="text-sm text-gray-500">
+          <text class="text-sm text-muted-foreground">
             {{ refreshing() ? 'Refreshing...' : 'Pull down to refresh' }}
           </text>
         </view>
@@ -23,13 +23,15 @@ import { ScreenHost } from '../screen-host';
           <ui-badge variant="secondary">Motion</ui-badge>
         </view>
         <view class="p-4">
-          <text class="mb-4 text-sm text-gray-500">
+          <text class="mb-4 text-sm text-muted-foreground">
             Pull down to reload the list (refreshed {{ refreshCount() }} times)
           </text>
           @for (item of items(); track item.id) {
-            <view class="mb-2 rounded-lg bg-gray-100 p-4">
+            <view class="mb-2 rounded-lg bg-muted p-4">
               <text class="text-base font-bold">{{ item.name }}</text>
-              <text class="mt-1 text-xs text-gray-400">{{ item.time }}</text>
+              <text class="mt-1 text-xs text-muted-foreground">{{
+                item.time
+              }}</text>
             </view>
           }
         </view>

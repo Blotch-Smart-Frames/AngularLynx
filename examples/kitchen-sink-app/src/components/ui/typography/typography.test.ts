@@ -46,6 +46,17 @@ describe('typographyVariants', () => {
   ] as const)('returns %s variant classes', (variant) => {
     expect(typographyVariants({ variant })).toBeTruthy();
   });
+
+  it('tracks the largest headings tighter, and only those', () => {
+    // Letters read further apart as they grow. iOS's system font tightens
+    // them by itself; Roboto and a browser's fonts don't.
+    for (const variant of ['h1', 'h2'] as const) {
+      expect(typographyVariants({ variant })).toContain('tracking-tight');
+    }
+    for (const variant of ['h3', 'h4', 'p'] as const) {
+      expect(typographyVariants({ variant })).not.toContain('tracking-tight');
+    }
+  });
 });
 
 describe('UiText', () => {

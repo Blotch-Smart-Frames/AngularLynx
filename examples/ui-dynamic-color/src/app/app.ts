@@ -35,15 +35,12 @@ type Swatch = { readonly token: string; readonly fill: string };
     UiToggleGroupItem,
   ],
   template: `
-    <!-- The root view switches the dark class and takes the wallpaper's
-         colors: everything inside it reads them. -->
-    <view
-      class="h-full bg-background"
-      [class.dark]="theme.isDarkMode()"
-      uiDynamicColor
-    >
+    <!-- The root view takes the wallpaper's colors: everything inside it
+         reads them. Light or dark follows the phone by itself: AngularLynx
+         gives the page the theme's dark class. -->
+    <view class="h-full bg-background" uiDynamicColor>
       <scroll-view scroll-orientation="vertical" class="h-full">
-        <view class="flex-col gap-6 p-6 flex">
+        <view class="flex-col gap-6 p-4 flex">
           <text class="text-2xl font-bold text-foreground">Dynamic color</text>
           <text class="text-sm text-muted-foreground">
             On Android 12 and later, the theme takes its colors from your
@@ -61,7 +58,7 @@ type Swatch = { readonly token: string; readonly fill: string };
               <ui-button variant="secondary">Cancel</ui-button>
               <ui-button variant="outline">Edit</ui-button>
               <ui-button variant="glass">
-                <ui-icon name="share-2" size="sm" />
+                <ui-icon name="share-2" />
                 Share
               </ui-button>
             </view>
@@ -143,7 +140,7 @@ export class App {
     if (!colors) {
       return 'No wallpaper colors here, so the screen shows the theme.';
     }
-    const scheme = this.theme.isDarkMode() ? colors.dark : colors.light;
+    const scheme = colors[this.theme.appearance()];
     return `Wallpaper colors from Android. Primary: ${scheme.primary}`;
   });
 }

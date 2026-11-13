@@ -48,17 +48,19 @@ const formatTime = (seconds: number): string => {
     UiSeparator,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
       <view class="flex-col items-center gap-6 px-6 py-8 flex">
-        <view class="rounded-[20px] border border-zinc-200 bg-white p-2">
+        <view class="rounded-[20px] border border-border bg-card p-2">
           <ui-avatar size="2xl" src="" fallback="♪" />
         </view>
 
         <view class="flex-col items-center gap-1 flex">
-          <text class="text-[22px] font-bold text-zinc-900">{{
+          <text class="text-[22px] font-bold text-foreground">{{
             currentTrack().title
           }}</text>
-          <text class="text-sm text-zinc-500">{{ currentTrack().artist }}</text>
+          <text class="text-sm text-muted-foreground">{{
+            currentTrack().artist
+          }}</text>
         </view>
 
         <view class="w-full flex-col gap-1.5 flex">
@@ -78,8 +80,8 @@ const formatTime = (seconds: number): string => {
             (changed)="seek($event)"
           />
           <view class="flex-row flex justify-between">
-            <text class="text-xs text-zinc-400">{{ elapsed() }}</text>
-            <text class="text-xs text-zinc-400">{{
+            <text class="text-xs text-muted-foreground">{{ elapsed() }}</text>
+            <text class="text-xs text-muted-foreground">{{
               formatTime(currentTrack().seconds)
             }}</text>
           </view>
@@ -113,8 +115,8 @@ const formatTime = (seconds: number): string => {
         <ui-collapsible class="w-full">
           <ui-collapsible-trigger>
             <view class="flex-row items-center gap-1 py-2 flex justify-between">
-              <text class="text-sm font-semibold text-zinc-900">Up Next</text>
-              <text class="text-xs text-zinc-400">
+              <text class="text-sm font-semibold text-foreground">Up Next</text>
+              <text class="text-xs text-muted-foreground">
                 {{ queue.length }} tracks
               </text>
             </view>
@@ -124,19 +126,19 @@ const formatTime = (seconds: number): string => {
               @for (track of queue; track track.title; let i = $index) {
                 <view
                   class="flex-row items-center gap-3 rounded-[10px] px-3 py-2.5 flex"
-                  [class.bg-indigo-50]="i === trackIndex()"
+                  [class.bg-indigo-500/10]="i === trackIndex()"
                   (bindtap)="jumpTo(i)"
                 >
                   <ui-avatar size="sm" src="" [fallback]="String(i + 1)" />
                   <view class="flex-1 flex-col gap-0.5 flex">
-                    <text class="text-sm font-medium text-zinc-900">{{
+                    <text class="text-sm font-medium text-foreground">{{
                       track.title
                     }}</text>
-                    <text class="text-xs text-zinc-400">{{
+                    <text class="text-xs text-muted-foreground">{{
                       track.artist
                     }}</text>
                   </view>
-                  <text class="text-xs text-zinc-400">{{
+                  <text class="text-xs text-muted-foreground">{{
                     formatTime(track.seconds)
                   }}</text>
                 </view>

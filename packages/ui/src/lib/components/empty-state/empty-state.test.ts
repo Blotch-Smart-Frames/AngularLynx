@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { render, waitForUpdate } from '@blotch/angular-lynx-testing-library';
 import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 import { describe, expect, it } from 'vitest';
+import { ICON_LIGHT_COLORS } from '../icon/icon-theme';
 import type { IconName } from '../icon/icons';
 import { UiEmptyState } from './empty-state';
 
@@ -27,6 +28,9 @@ describe('UiEmptyState', () => {
   it('shows only the title and projected content by default', async () => {
     const { container, getByText, queryByText } = await render(EmptyStateHost);
     expect(getByText('No results').classList).toContain('font-semibold');
+    // A screen's worth of nothing gets a heading, centered if it wraps.
+    expect(getByText('No results').classList).toContain('text-xl');
+    expect(getByText('No results').classList).toContain('text-center');
     expect(getByText('Clear the filters')).toBeTruthy();
     expect(queryByText('Try adjusting your search')).toBeNull();
     expect(container.querySelector('svg')).toBeNull();
@@ -51,8 +55,20 @@ describe('UiEmptyState', () => {
     expect(getByText('Try adjusting your search').classList).toContain(
       'text-muted-foreground',
     );
-    expect(container.querySelector('svg')?.getAttribute('content')).toContain(
-      '<svg',
+    expect(getByText('Try adjusting your search').classList).toContain(
+      'text-base',
     );
+    const icon = container.querySelector('svg')!;
+    expect(icon.getAttribute('content')).toContain('<svg');
+    // The icon is as quiet as the description: the muted foreground,
+    // resolved for the SVG, which can't read the CSS variable.
+    expect(icon.getAttribute('content')).toContain(
+      ICON_LIGHT_COLORS['muted-foreground'],
+    );
+    expect(icon.getAttribute('content')).not.toContain(
+      ICON_LIGHT_COLORS['foreground'],
+    );
+    expect(icon.classList).toContain('mb-4');
+    expect((icon as unknown as HTMLElement).style.width).toBe('32px');
   });
 });

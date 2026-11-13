@@ -194,7 +194,9 @@ const FRAME = 16;
 
 /** The panel's own classes in each look. */
 const PANEL_CLASS: Readonly<Record<SheetLook, string>> = {
-  default: 'w-full rounded-t-2xl border-t border-border bg-background',
+  // On the card color: a tone above the page in the dark, where a sheet
+  // the page's own color was told apart by a hairline alone.
+  default: 'w-full rounded-t-2xl border-t border-border bg-card',
   // The glass, drawn by the layers in the template, is the panel's surface.
   glass: '',
   // iOS 15 to 25: the system background, with 10pt corners on top.
@@ -213,12 +215,13 @@ const HANDLE_CLASS: Readonly<Record<SheetLook, string>> = {
 };
 
 /**
- * The grabber in each look: iOS 26's is 60×4, iOS 15 to 25's 36×5, both a
- * faint gray that reads on glass and on the opaque sheet alike, and
- * Material's drag handle 32×4 in on-surface-variant at 40%.
+ * The grabber in each look: the sheet's own is 36×5, iOS 26's 60×4 and iOS
+ * 15 to 25's 36×5, each a faint gray that reads on glass and on the opaque
+ * sheet alike, and Material's drag handle 32×4 in on-surface-variant at
+ * 40%. The sheet's own was the muted color, which barely showed on white.
  */
 const GRABBER_CLASS: Readonly<Record<SheetLook, string>> = {
-  default: 'h-1 w-10 bg-muted',
+  default: 'h-[5px] w-[36px] bg-foreground opacity-20',
   glass: 'h-[4px] w-[60px] bg-foreground opacity-25',
   frosted: 'h-[5px] w-[36px] bg-foreground opacity-25',
   material: 'h-[4px] w-[32px] bg-muted-foreground opacity-40',

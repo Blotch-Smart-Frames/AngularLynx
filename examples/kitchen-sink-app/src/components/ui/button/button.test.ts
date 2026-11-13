@@ -119,6 +119,20 @@ class OwnSvgHost {
     '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
 }
 
+/**
+ * A small button whose icon sets its own size.
+ */
+@Component({
+  imports: [UiButton, UiIcon],
+  template: `
+    <ui-button size="sm">
+      <ui-icon name="search" size="lg" />
+      Search
+    </ui-button>
+  `,
+})
+class SizedIconHost {}
+
 /** A stroke of the spinner's drawing, which tells it from an icon. */
 const LOADER_PATH = 'm16.2 7.8 2.9-2.9';
 
@@ -167,11 +181,12 @@ describe('UiButton', () => {
   it('renders its label with the classes for its variant and size', async () => {
     const { button, getByText } = await renderButton();
     expect(button().classList).toContain('bg-primary');
-    expect(button().classList).toContain('h-10');
+    // 48px: a full touch target, and a field's height.
+    expect(button().classList).toContain('h-12');
     expect(button().classList).toContain('w-full');
     expect(button().classList).not.toContain('opacity-50');
     expect(getByText('Save').classList).toContain('text-primary-foreground');
-    expect(getByText('Save').classList).toContain('text-sm');
+    expect(getByText('Save').classList).toContain('text-base');
   });
 
   it('restyles the button and its label when the variant or size changes', async () => {
@@ -181,11 +196,25 @@ describe('UiButton', () => {
       host.size.set('lg');
     });
     expect(button().classList).toContain('bg-destructive');
-    expect(button().classList).toContain('h-11');
+    expect(button().classList).toContain('h-14');
     expect(getByText('Save').classList).toContain(
       'text-destructive-foreground',
     );
-    expect(getByText('Save').classList).toContain('text-base');
+    expect(getByText('Save').classList).toContain('text-lg');
+  });
+
+  it("widens a small button's touch target, and only a small one's", async () => {
+    // A small button is 36px tall: hit-slop takes touches 6px around it, to
+    // the 48px the other sizes already have.
+    const { host, button, update } = await renderButton();
+    expect(button().hasAttribute('hit-slop')).toBe(false);
+
+    await update(() => host.size.set('sm'));
+    expect(button().getAttribute('hit-slop')).toBe('6px');
+    expect(button().classList).toContain('h-9');
+
+    await update(() => host.size.set('lg'));
+    expect(button().hasAttribute('hit-slop')).toBe(false);
   });
 
   it('emits `pressed` when tapped', async () => {
@@ -361,6 +390,31 @@ describe('UiButton', () => {
     );
   });
 
+  it("sizes a projected icon for the button's size, unless the icon sets its own", async () => {
+    const { host, icon, update } = await renderButton();
+    await update(() => host.withIcon.set(true));
+    const iconSize = () => (icon() as unknown as HTMLElement).style.width;
+
+    // About the label's line height beside a label, and 24px on its own.
+    for (const [size, px] of [
+      ['default', '20px'],
+      ['sm', '16px'],
+      ['lg', '24px'],
+      ['icon', '24px'],
+      ['icon-circle', '24px'],
+    ] as const) {
+      await update(() => host.size.set(size));
+      expect(iconSize()).toBe(px);
+    }
+  });
+
+  it("keeps the size an icon sets, whatever the button's", async () => {
+    const { container } = await render(SizedIconHost);
+    const icon = container.querySelector('svg') as unknown as HTMLElement;
+    expect(icon.style.width).toBe('32px');
+    expect(icon.style.height).toBe('32px');
+  });
+
   it('puts an icon marked trailing after the label, in the label color', async () => {
     const { host, button, getByText, icon, update } = await renderButton();
     await update(() => host.withTrailingIcon.set(true));
@@ -423,7 +477,7 @@ describe('UiButton', () => {
     const { host, getByText, update } = await renderButton();
     await update(() => host.size.set('icon'));
 
-    expect(getByText('Save').classList).toContain('text-sm');
+    expect(getByText('Save').classList).toContain('text-base');
   });
 
   it('is read as a button with its label, or with its accessibility label', async () => {
@@ -450,10 +504,10 @@ describe('UiButton glass variants', () => {
     expect(glass().hasAttribute('glass-tint-color')).toBe(false);
     expect(glass().parentElement).toBe(button());
     expect(glass().classList).toContain('flex-1');
-    expect(glass().classList).toContain('px-4');
+    expect(glass().classList).toContain('px-5');
     // The button is a capsule, sized by its size and the app's classes.
     expect(button().classList).toContain('rounded-full');
-    expect(button().classList).toContain('h-10');
+    expect(button().classList).toContain('h-12');
     expect(button().classList).toContain('w-full');
     expect(button().classList).not.toContain('bg-glass-dim');
     // The label is inside the glass, in the glass's foreground.
@@ -560,7 +614,7 @@ describe('UiButton glass variants', () => {
     });
 
     expect(button().classList).toContain('rounded-full');
-    expect(glass().classList).not.toContain('px-4');
+    expect(glass().classList).not.toContain('px-5');
     expect(queryByText('Save')).toBeNull();
     expect(getByRole('button', { name: 'Search' })).toBe(button());
   });
@@ -656,7 +710,7 @@ describe('UiButton glass variants in Material (Android)', () => {
     });
 
     expect(glass()).toBeNull();
-    for (const name of ['bg-secondary', 'rounded-full', 'h-10', 'gap-2']) {
+    for (const name of ['bg-secondary', 'rounded-full', 'h-12', 'gap-2']) {
       expect(button().classList).toContain(name);
     }
     expect(getByText('Save').classList).toContain('text-secondary-foreground');
@@ -742,8 +796,8 @@ describe('buttonVariants', () => {
   it('returns default variant and size classes', () => {
     const result = buttonVariants();
     expect(result).toContain('bg-primary');
-    expect(result).toContain('h-10');
-    expect(result).toContain('px-4');
+    expect(result).toContain('h-12');
+    expect(result).toContain('px-5');
   });
 
   it('returns destructive variant classes', () => {
@@ -754,7 +808,8 @@ describe('buttonVariants', () => {
   it('returns outline variant classes', () => {
     const result = buttonVariants({ variant: 'outline' });
     expect(result).toContain('border');
-    expect(result).toContain('bg-background');
+    // No fill of its own: over a card, a filled one reads as a hole.
+    expect(result).toContain('bg-transparent');
   });
 
   it('returns secondary variant classes', () => {
@@ -775,19 +830,20 @@ describe('buttonVariants', () => {
 
   it('returns large size classes', () => {
     const result = buttonVariants({ size: 'lg' });
-    expect(result).toContain('h-11');
-    expect(result).toContain('px-8');
+    expect(result).toContain('h-14');
+    expect(result).toContain('px-6');
+    expect(result).toContain('rounded-xl');
   });
 
   it('returns icon size classes', () => {
     const result = buttonVariants({ size: 'icon' });
-    expect(result).toContain('h-10');
-    expect(result).toContain('w-10');
+    expect(result).toContain('h-12');
+    expect(result).toContain('w-12');
   });
 
   it('returns round icon size classes', () => {
     const result = buttonVariants({ size: 'icon-circle' });
-    expect(result).toContain('w-10');
+    expect(result).toContain('w-12');
     expect(result).toContain('rounded-full');
   });
 
@@ -795,6 +851,6 @@ describe('buttonVariants', () => {
     const result = buttonVariants({ variant: 'ghost', size: 'sm' });
     expect(result).toContain('flex');
     expect(result).toContain('items-center');
-    expect(result).toContain('rounded-md');
+    expect(result).toContain('rounded-lg');
   });
 });

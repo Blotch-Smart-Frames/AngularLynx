@@ -41,34 +41,36 @@ import { UiSeparator } from '../components/ui/separator';
     UiSeparator,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
       <view class="flex-col items-center gap-5 px-6 py-8 flex">
         <view class="flex-col items-center gap-2 flex">
           <ui-avatar size="xl" src="" [fallback]="initials()" />
-          <text class="text-[24px] font-bold text-zinc-900">{{ name() }}</text>
+          <text class="text-[24px] font-bold text-foreground">{{
+            name()
+          }}</text>
           <view class="flex-row items-center gap-2 flex">
             <!-- cspell:disable-next-line -->
-            <text class="text-sm text-zinc-500">@alexj</text>
+            <text class="text-sm text-muted-foreground">@alexj</text>
             <ui-badge variant="secondary">Pro</ui-badge>
           </view>
         </view>
 
         <view
-          class="flex-row gap-7 rounded-2xl border border-zinc-200 bg-white px-6 py-5 flex"
+          class="flex-row gap-7 rounded-2xl border border-border bg-card px-6 py-5 flex"
         >
           <view class="flex-col items-center gap-0.5 flex">
-            <text class="text-[20px] font-bold text-zinc-900">248</text>
-            <text class="text-xs text-zinc-400">Posts</text>
+            <text class="text-[20px] font-bold text-foreground">248</text>
+            <text class="text-xs text-muted-foreground">Posts</text>
           </view>
           <ui-separator orientation="vertical" />
           <view class="flex-col items-center gap-0.5 flex">
-            <text class="text-[20px] font-bold text-zinc-900">4.2k</text>
-            <text class="text-xs text-zinc-400">Followers</text>
+            <text class="text-[20px] font-bold text-foreground">4.2k</text>
+            <text class="text-xs text-muted-foreground">Followers</text>
           </view>
           <ui-separator orientation="vertical" />
           <view class="flex-col items-center gap-0.5 flex">
-            <text class="text-[20px] font-bold text-zinc-900">312</text>
-            <text class="text-xs text-zinc-400">Following</text>
+            <text class="text-[20px] font-bold text-foreground">312</text>
+            <text class="text-xs text-muted-foreground">Following</text>
           </view>
         </view>
 
@@ -79,7 +81,9 @@ import { UiSeparator } from '../components/ui/separator';
         <ui-card class="w-full">
           <ui-card-header><ui-card-title>About</ui-card-title></ui-card-header>
           <ui-card-content>
-            <text class="text-sm leading-5 text-zinc-500">{{ bio() }}</text>
+            <text class="text-sm leading-5 text-muted-foreground">{{
+              bio()
+            }}</text>
           </ui-card-content>
         </ui-card>
       </view>

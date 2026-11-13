@@ -5,7 +5,9 @@ import { UiIcon } from './icon';
 import {
   ICON_DARK_COLORS,
   ICON_LIGHT_COLORS,
+  type IconSize,
   UI_ICON_COLOR,
+  UI_ICON_SIZE,
   provideIconTheme,
 } from './icon-theme';
 import { ICONS, type IconName } from './icons';
@@ -23,7 +25,7 @@ import { ICONS, type IconName } from './icons';
 })
 class IconHost {
   readonly name = signal<IconName>('check');
-  readonly size = signal<'xs' | 'sm' | 'md' | 'lg'>('md');
+  readonly size = signal<IconSize | undefined>(undefined);
   readonly color = signal<string | undefined>(undefined);
   readonly className = signal('');
 }
@@ -57,6 +59,27 @@ describe('UiIcon', () => {
     host.size.set('xs');
     await waitForUpdate();
     expect(svg().getAttribute('style')).toContain('16px');
+  });
+
+  it("takes its container's size when it sets none", async () => {
+    // A button provides the icon size that suits its own, so the app doesn't
+    // have to know it.
+    const inherited = signal<IconSize | undefined>('sm');
+    const { host, svg } = await renderIcon({
+      providers: [{ provide: UI_ICON_SIZE, useValue: inherited }],
+    });
+    expect(svg().getAttribute('style')).toContain('20px');
+
+    // The icon's own size still wins.
+    host.size.set('lg');
+    await waitForUpdate();
+    expect(svg().getAttribute('style')).toContain('32px');
+
+    // A container that sets no size leaves the default.
+    host.size.set(undefined);
+    inherited.set(undefined);
+    await waitForUpdate();
+    expect(svg().getAttribute('style')).toContain('24px');
   });
 
   it('substitutes currentColor with the color input value', async () => {

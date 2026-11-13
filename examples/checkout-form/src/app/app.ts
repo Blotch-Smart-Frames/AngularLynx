@@ -35,21 +35,21 @@ import { UiSeparator } from '../components/ui/separator';
     UiSeparator,
   ],
   template: `
-    <scroll-view scroll-orientation="vertical" class="h-screen bg-zinc-50">
-      <view class="flex-col gap-6 p-6 flex">
+    <scroll-view scroll-orientation="vertical" class="h-screen bg-background">
+      <view class="flex-col gap-6 p-4 flex">
         <view class="flex-col gap-2 flex">
           <view class="flex-row flex justify-between">
-            <text class="text-sm font-medium text-zinc-900">
+            <text class="text-sm font-medium text-foreground">
               Step {{ step() }} of 3
             </text>
-            <text class="text-sm text-zinc-500">{{ stepLabel() }}</text>
+            <text class="text-sm text-muted-foreground">{{ stepLabel() }}</text>
           </view>
           <ui-progress [value]="progress()" />
         </view>
 
         @if (step() === 1) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">
+            <text class="text-[22px] font-bold text-foreground">
               Shipping Address
             </text>
             <view class="flex-col gap-1.5 flex">
@@ -83,14 +83,14 @@ import { UiSeparator } from '../components/ui/separator';
 
         @if (step() === 2) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">Payment</text>
+            <text class="text-[22px] font-bold text-foreground">Payment</text>
             <view class="flex-col gap-2.5 flex">
               <ui-label>Payment Method</ui-label>
               <ui-radio-group [(value)]="paymentMethod">
                 <view class="flex-col gap-2 flex">
                   @for (opt of paymentOptions; track opt.value) {
                     <view
-                      class="flex-row items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-4 py-3 flex"
+                      class="flex-row items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-3 flex"
                     >
                       <!--
                         The label lives inside ui-radio-group-item (via ng-content),
@@ -141,7 +141,7 @@ import { UiSeparator } from '../components/ui/separator';
 
         @if (step() === 3) {
           <view class="flex-col gap-4 flex">
-            <text class="text-[22px] font-bold text-zinc-900">
+            <text class="text-[22px] font-bold text-foreground">
               Order Summary
             </text>
             <ui-card>
@@ -151,23 +151,25 @@ import { UiSeparator } from '../components/ui/separator';
               <ui-card-content>
                 <view class="flex-col gap-2.5 flex">
                   <view class="flex-row flex justify-between">
-                    <text class="text-sm text-zinc-900">
+                    <text class="text-sm text-foreground">
                       AngularLynx Pro Plan
                     </text>
-                    <text class="text-sm font-medium text-zinc-900"
+                    <text class="text-sm font-medium text-foreground"
                       >$99.00
                     </text>
                   </view>
                   <view class="flex-row flex justify-between">
-                    <text class="text-sm text-zinc-900">
+                    <text class="text-sm text-foreground">
                       Annual discount (20%)
                     </text>
                     <text class="text-sm text-green-600">-$19.80</text>
                   </view>
                   <ui-separator />
                   <view class="flex-row flex justify-between">
-                    <text class="text-sm font-bold text-zinc-900">Total</text>
-                    <text class="text-sm font-bold text-zinc-900">$79.20</text>
+                    <text class="text-sm font-bold text-foreground">Total</text>
+                    <text class="text-sm font-bold text-foreground"
+                      >$79.20</text
+                    >
                   </view>
                 </view>
               </ui-card-content>

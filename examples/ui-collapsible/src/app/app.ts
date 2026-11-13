@@ -16,7 +16,7 @@ import {
   ],
   template: `
     <scroll-view scroll-orientation="vertical" class="h-full">
-      <view class="flex-col gap-6 p-6 flex">
+      <view class="flex-col gap-6 p-4 flex">
         <text class="text-2xl font-bold text-foreground">Collapsible</text>
         <text class="text-sm text-muted-foreground">
           An interactive component that expands and collapses content.

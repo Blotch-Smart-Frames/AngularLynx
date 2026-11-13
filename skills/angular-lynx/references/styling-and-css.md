@@ -99,7 +99,7 @@ Pad for the notch, the status bar and the home indicator with `env(safe-area-ins
 | `@media` queries       | Runtime logic with conditional classes |
 | `::before` / `::after` | Explicit `<view>` elements             |
 | `:hover` / `:focus`    | Signal-driven class toggling           |
-| `:active`              | Supported (tracks touch state)         |
+| `:active`              | Touch events and a signal (see below)  |
 | `pointer-events`       | DOM ordering (sibling stacking)        |
 | `float` / `clear`      | Flex or linear layout                  |
 | `outline`              | Use `border`                           |
@@ -114,7 +114,7 @@ Pad for the notch, the status bar and the home indicator with `env(safe-area-ins
 - **`box-shadow`**: No `inset` keyword.
 - **`text-shadow`**: One layer only, all 4 params required (`offset-x offset-y blur-radius color`).
 - **`font-weight`**: No `lighter`/`bolder`. Use `normal`, `bold`, or numeric `100`–`1000`.
-- **`font-size`**: Default is `14px` (not `16px`). No keyword sizes (`small`, `large`, etc.).
+- **`font-size`**: Default is `14px` (not `16px`), which is also what `1rem` is, so Tailwind's sizes come out an eighth smaller than in a browser (`h-12` is 42px). `page { font-size: 16px; }` in the global stylesheet makes both 16px; the dolan UI theme sets it. No keyword sizes (`small`, `large`, etc.).
 - **`white-space`**: Only `normal` and `nowrap`.
 - **`line-height`**: Only works directly on `<text>` elements.
 - **`text-align`**: No `justify`.
@@ -139,29 +139,44 @@ page {
 
 - **`[style.--x]` bindings set CSS variables.** `<view [style.--accent]="accent()">` gives the element `--accent`, which its descendants read with `var(--accent)`: CSS variables inherit, unlike other properties. A binding wins over the same variable in `style="..."`, as on the web. **Not in the web preview:** Lynx for Web's inline-style parser drops the `--`, so there the binding changes nothing a `var()` reads. Where the preview must follow a runtime color, bind it where it's used (`[style.background-color]="accent()"`, a chart's `[color]`, glass's `[tint]`); a class that switches (`[class.dark]`) re-resolves everywhere, since its variables live in a stylesheet rule.
 - **Don't wrap raw HSL channels** (`--x: 240 5.9% 10%` in `hsl(var(--x))`, the shadcn/ui pattern): that expands to the space-separated form Lynx drops.
+- **Pressed states:** `:active` rules (and Tailwind's `active:`) didn't apply in these builds when measured on Android. Set a signal on `(bindtouchstart)` and `(bindmousedown)` (the web preview sends no touches for a cursor), clear it on `(bindtouchend)`, `(bindtouchcancel)`, `(bindmouseup)` and `(bindmouseleave)`, and bind a class to it.
+- **A touch target wider than the element:** `hit-slop="8px"` takes touches around an element without changing its layout, so a 36px control can have a 48px target.
 - **The dolan UI theme** stores each color whole (`--primary`) and as channels (`--primary-rgb`). Its Tailwind plugin maps `bg-primary` to `var(--primary)` and `bg-primary/50` to `rgba(var(--primary-rgb), 0.5)`, so opacity modifiers work on every theme color. Keep each pair the same color when editing a theme; `npx @blotch/dolan doctor` reports a mismatch or a missing `-rgb` variable.
 
 ## Dark Mode and Wallpaper Colors
 
-There's no `@media (prefers-color-scheme)`. `LynxTheme` follows the phone's appearance instead, from the host's `theme` global prop:
+There's no `@media (prefers-color-scheme)`. The runtime follows the phone's appearance instead, from the host's `theme` global prop (the browser's `prefers-color-scheme` in the web preview): while the app is drawn dark, the `page` element has the `dark` class.
 
-```typescript
-import { LynxTheme } from '@blotch/angular-lynx';
-
-@Component({
-  selector: 'app-root',
-  imports: [LYNX_ELEMENTS],
-  template: `<view class="app-shell" [class.dark]="theme.isDarkMode()"
-    >…</view
-  >`,
-})
-export class App {
-  readonly theme = inject(LynxTheme);
+```css
+/* The global stylesheet. */
+page {
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  background-color: var(--surface);
+}
+page.dark {
+  --surface: #1a1a1a;
+  --text: #f0f0f0;
 }
 ```
 
-- **Define the colors as variables twice:** light values on `page`, dark ones under `.dark`. Because variables inherit, everything inside the root view switches with the class.
-- **Put the class on one element near the root.** Lynx matches descendant selectors such as `.dark .card` only when classes are first assigned, so a class that changes later doesn't restyle them. A rule on the element itself, such as `.dark`, does update.
+```typescript
+import { LynxTheme, provideColorScheme } from '@blotch/angular-lynx';
+
+const theme = inject(LynxTheme);
+theme.appearance(); // 'light' | 'dark': what the app is drawn in
+theme.setColorScheme('dark'); // 'system' (the default), 'light' or 'dark'
+theme.isDarkMode(); // the phone's own appearance, whatever the app chose
+
+// app.config.ts: an app with no dark design stays light on every phone.
+providers: [provideColorScheme('light')];
+```
+
+- **Define the colors as variables twice:** light values on `page`, dark ones under `page.dark`. Because variables inherit, every element switches with the class, with no code in the app, and the first frame is already in the right theme.
+- **Give text a color.** A `<text>` with no color draws black, which vanishes on a dark background.
+- **Keep the theme in variables.** Lynx matches descendant selectors such as `page.dark .card` only when classes are first assigned, so a class that changes later doesn't restyle them. A rule on the element itself, such as `page.dark`, does update.
+- **`setColorScheme()` lasts until the app closes.** Store the user's choice (`LynxLocalStorage`) and set it again at the next start.
+- **The dolan UI theme does all of this:** its `default.css` and `dark.css` (under `page.dark`) switch every component, icon and chart with the appearance, and give `page` a background and unstyled text the foreground color. Import both files.
 - **`theme.dynamicColors()`** gives the colors Android 12 and later take from the user's wallpaper (Material You), as Material 3's color roles (`primary`, `onPrimary`, `surface` and the rest, listed in `DYNAMIC_COLOR_ROLES`) for both `light` and `dark`. Each is a hex color, such as `#6750a4`. It's `null` where the host sends none: iOS, the web preview and Lynx Explorer. The Android app `ng build --platform android` makes sends them, and new ones when the wallpaper changes. Apply them with `[style.--x]` bindings on the root view. `npx @blotch/dolan add dynamic-color` does this for the dolan theme.
 
 ## Complete Example

@@ -57,6 +57,16 @@ export class AtlasState {
 
   constructor() {
     this.#restore();
+    // AngularLynx gives the page the theme's dark class with the phone, and
+    // the stock dark theme's values with it. Tell it the visitor's pick, so
+    // the page is dark exactly when the root view is: without this, Day on a
+    // dark phone would be drawn in the stock dark colors.
+    effect(() => {
+      const scheme = this.scheme();
+      this.#theme.setColorScheme(
+        scheme === 'system' ? 'system' : scheme === 'night' ? 'dark' : 'light',
+      );
+    });
     // Persist each change, once the saved state has been read: writing before
     // that would overwrite the last session with the defaults.
     effect(() => {

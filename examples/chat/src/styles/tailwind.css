@@ -50,9 +50,14 @@
   --color-glass-clear-foreground: var(--glass-clear-foreground);
   --color-glass-dim: var(--glass-dim);
 
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Every corner steps from --radius, a control's: 8, 10, 12, then 16 for a
+     card, 20 for a dialog or a sheet, and 24. */
   --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
 }
 
 @layer base {

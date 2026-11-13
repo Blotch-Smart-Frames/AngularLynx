@@ -153,6 +153,7 @@ export const scaffoldApp = async (
   // loading. Done after the tests, which expect hello's generated template.
   applyFixtures(appDir, options.tailwind && (options.tailwindVersion ?? '4'));
   await addIntl(appDir, pm, exec);
+  addShortcut(appDir);
   step('Layer 2: compile a prebuilt library');
   await addPrebuiltLibrary(appDir, pm, exec);
 
@@ -1185,6 +1186,42 @@ const addIntl = async (
     "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addIntl() in packages/e2e/src/scaffold.ts.",
   );
   options['intl'] = ['Collator'];
+  writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
+};
+
+/**
+ * Gives the app a shortcut, so the native builds compile what the generator
+ * writes for one: App Intents on iOS, which Xcode's App Intents step also
+ * reads the title and phrases out of, and static shortcut resources on
+ * Android. Both are source the generator writes as text, so only a build
+ * shows whether a new Xcode or Android Gradle plugin still takes it. The
+ * title has the characters that need escaping in Swift and in Android's
+ * resources.
+ */
+const addShortcut = (appDir: string) => {
+  step('Layer 2: add a shortcut for the native builds to compile');
+  const workspacePath = path.join(appDir, 'angular.json');
+  const workspace = readJson<{
+    projects: Record<
+      string,
+      { architect?: Record<string, { options?: Record<string, unknown> }> }
+    >;
+  }>(workspacePath);
+  const options = Object.values(workspace.projects)[0]?.architect?.['build']
+    ?.options;
+  check(
+    options !== undefined,
+    "angular.json's build target has no options; the project `ng new` generates has changed shape. Update addShortcut() in packages/e2e/src/scaffold.ts.",
+  );
+  options['shortcuts'] = [
+    {
+      id: 'open-counter',
+      title: 'Open the "counter" & don\'t stop',
+      phrases: ['Open the counter in {appName}'],
+      route: '/',
+      symbol: 'plus.circle',
+    },
+  ];
   writeFileSync(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`);
 };
 

@@ -4,6 +4,7 @@ export type { ComponentRef } from '@angular/core';
 export { fireEvent, eventMap } from './fire-event.js';
 export { openedURLs } from './linking.js';
 export type { OpenedURL } from './linking.js';
+export { runShortcut } from './shortcuts.js';
 export { screen, within, getQueriesForElement, queries } from './queries.js';
 export type {
   BoundAccessibilityLabelQueries,

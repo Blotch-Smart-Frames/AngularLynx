@@ -1,0 +1,18 @@
+# Shortcuts
+
+Postcards, an app with two shortcuts: "Refresh postcards", which the app handles, and "Show stamps", which opens the Stamps screen. On an iPhone, ask Siri to "Refresh Postcards" or "Show stamps in Postcards", or run them from the Shortcuts app. On Android, hold the app's icon. The preview has neither, so its buttons do the same.
+
+<Go example="shortcuts" defaultFile="src/app/postcards.ts" />
+
+## What it shows
+
+- **`shortcuts` in angular.json** — the two shortcuts, with their Siri phrases and SF Symbols. `ng build --platform` builds them into the app. See [Add shortcuts for Siri and the app icon](/guide/shortcuts).
+- **`LynxShortcuts.on()`** — the Postcards screen handles `refresh` in its constructor, so the handler goes with the screen. Run from the Stamps screen, the shortcut waits for it.
+- **`route`** — "Show stamps" has `/stamps` as its route, which `provideRouter()` navigates to. The Stamps screen has no code for it.
+
+Run it with `ng serve --platform ios` or `--platform android` to try the shortcuts: in the preview and in Lynx Explorer, none ever runs.
+
+## Related
+
+- [Linking](/examples/linking)
+- [`LynxShortcuts` API](/api/angular-lynx/shortcuts)

@@ -39,6 +39,13 @@ export type NativeAppOptions = {
    */
   readonly canOpenURLSchemes?: readonly string[];
   /**
+   * Things the app does that the phone offers outside it (see
+   * {@link AppShortcut}): on iOS through Siri, Spotlight and the Shortcuts
+   * app, and on Android in the menu a long press on the app's icon opens.
+   * The app hears each one through the runtime's `LynxShortcuts`.
+   */
+  readonly shortcuts?: readonly AppShortcut[];
+  /**
    * A 1024×1024 PNG without transparency, relative to the project root. iOS
    * uses it as it is. Android gets it resized for each screen density, round
    * for the launchers that want a round icon, and as an adaptive icon (see
@@ -50,6 +57,58 @@ export type NativeAppOptions = {
 };
 
 export type Orientation = 'portrait' | 'landscape' | 'all';
+
+/**
+ * One thing the app does, which the person can ask for without opening the
+ * app first.
+ *
+ * iOS makes it an App Shortcut (an App Intent the shell declares): Siri runs
+ * it when it hears one of its `phrases`, and it's listed in Spotlight and in
+ * the Shortcuts app, where it can go on the Action button or in an
+ * automation. Android lists it in the menu a long press on the app's icon
+ * opens. Either way the app comes to the front, the router goes to `route`
+ * when there is one, and `LynxShortcuts` calls the handlers the app
+ * registered for `id`.
+ */
+export type AppShortcut = {
+  /**
+   * What the app's code knows the shortcut by: `LynxShortcuts.on(id, …)`.
+   * Letters, digits, hyphens and underscores, starting with a letter. Keep
+   * it once the app is released: the shortcuts people saved are stored
+   * under it.
+   */
+  readonly id: string;
+  /** The name the phone lists it under, such as "Refresh". */
+  readonly title: string;
+  /**
+   * What the person says to Siri. Each one names the app with `{appName}`,
+   * which Siri requires: `"Refresh {appName}"`. Defaults to the title and the
+   * app's name, `"<title> in {appName}"`. iOS only.
+   */
+  readonly phrases?: readonly string[];
+  /**
+   * The path the router navigates to when the shortcut runs, such as
+   * `/photos`. Without one, the app stays where it is.
+   */
+  readonly route?: string;
+  /**
+   * The SF Symbol iOS draws beside it, such as `arrow.clockwise`. iOS only.
+   */
+  readonly symbol?: string;
+};
+
+/** An {@link AppShortcut} with its default phrase. */
+export type ResolvedShortcut = {
+  readonly id: string;
+  readonly title: string;
+  /** Each holds {@link APP_NAME_PLACEHOLDER} once or more. */
+  readonly phrases: readonly string[];
+  readonly route?: string;
+  readonly symbol?: string;
+};
+
+/** Where a shortcut's phrase names the app. */
+export const APP_NAME_PLACEHOLDER = '{appName}';
 
 export type Permission =
   | 'camera'
@@ -144,6 +203,7 @@ export type ResolvedApp = {
    * {@link ALWAYS_QUERIED_SCHEMES}, in lowercase, each once.
    */
   readonly canOpenURLSchemes: readonly string[];
+  readonly shortcuts: readonly ResolvedShortcut[];
   readonly icon?: string;
   /** `MyApp`: the iOS product (and so .app/.ipa) name. */
   readonly productName: string;
@@ -185,6 +245,25 @@ export const ALWAYS_QUERIED_SCHEMES: readonly string[] = [
 ];
 /** The most schemes iOS reads from LSApplicationQueriesSchemes. */
 const MAX_QUERIED_SCHEMES = 50;
+const SHORTCUT_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
+/** SF Symbols are named in dot-separated words: `arrow.clockwise`. */
+const SF_SYMBOL = /^[A-Za-z0-9]+(\.[A-Za-z0-9]+)*$/;
+/**
+ * The most App Shortcuts iOS takes from one app. Android's launchers show
+ * about four, the first ones listed.
+ */
+const MAX_SHORTCUTS = 10;
+/**
+ * Whether the text has a line break or another control character, which
+ * neither a Swift string literal nor an Android string resource takes as it
+ * is. Checked by code point: a regular expression for them would hold the
+ * control characters themselves.
+ */
+const hasControlCharacter = (text: string): boolean =>
+  [...text].some((character) => {
+    const code = character.codePointAt(0)!;
+    return code < 0x20 || code === 0x7f || code === 0x2028 || code === 0x2029;
+  });
 const PERMISSIONS: readonly Permission[] = [
   'camera',
   'microphone',
@@ -288,6 +367,8 @@ export const resolveAppOptions = (
     );
   }
 
+  const shortcuts = resolveShortcuts(options.shortcuts ?? []);
+
   const android = options.android ?? {};
   if (android.adaptiveIcon) {
     const { foreground, background } = android.adaptiveIcon;
@@ -340,12 +421,117 @@ export const resolveAppOptions = (
     permissions,
     deepLinkSchemes,
     canOpenURLSchemes,
+    shortcuts,
     icon: options.icon,
     productName,
     artifactName,
     ios: options.ios ?? {},
     android,
   };
+};
+
+/**
+ * A shortcut's ID as part of a Swift type name or an Android resource name,
+ * neither of which takes a hyphen: `show-photos` → `show_photos`.
+ */
+export const shortcutIdentifier = (id: string): string => id.replace(/-/g, '_');
+
+/**
+ * Checks each shortcut and gives it its default phrase. What's wrong is
+ * caught here, where the message can name the option: the Swift and XML the
+ * generators write from these would otherwise fail in Xcode's App Intents
+ * step or in Gradle, far from angular.json.
+ */
+const resolveShortcuts = (
+  shortcuts: readonly AppShortcut[],
+): readonly ResolvedShortcut[] => {
+  if (shortcuts.length > MAX_SHORTCUTS) {
+    throw new NativeConfigError(
+      `shortcuts lists ${shortcuts.length}. iOS takes no more than ${MAX_SHORTCUTS} from an app.`,
+    );
+  }
+  const identifiers = new Set<string>();
+  const heard = new Set<string>();
+  return shortcuts.map((entry, index) => {
+    // compact() leaves undefined where angular.json has an empty object.
+    const shortcut = (entry ?? {}) as Partial<AppShortcut>;
+    const { id, route, symbol } = shortcut;
+    if (typeof id !== 'string' || !SHORTCUT_ID.test(id)) {
+      throw new NativeConfigError(
+        `shortcuts[${index}].id "${id}" is not valid. Use letters, digits, hyphens and underscores, starting with a letter, e.g. "show-photos".`,
+      );
+    }
+    // The Swift type and the Android resources are named after the ID with
+    // its hyphens as underscores, so two IDs a hyphen apart would share them.
+    const identifier = shortcutIdentifier(id).toLowerCase();
+    if (identifiers.has(identifier)) {
+      throw new NativeConfigError(
+        `shortcuts has two entries with the id "${id}". Each needs its own (a hyphen and an underscore count as the same, and so do capitals).`,
+      );
+    }
+    identifiers.add(identifier);
+
+    const title =
+      typeof shortcut.title === 'string' ? shortcut.title.trim() : '';
+    if (!title || hasControlCharacter(title)) {
+      throw new NativeConfigError(
+        `shortcuts "${id}" needs a title on one line, the name the phone lists it under, e.g. "Show photos".`,
+      );
+    }
+
+    const phrases = (
+      shortcut.phrases ?? [`${title} in ${APP_NAME_PLACEHOLDER}`]
+    ).map((phrase) => (typeof phrase === 'string' ? phrase.trim() : ''));
+    if (phrases.length === 0) {
+      throw new NativeConfigError(
+        `shortcuts "${id}" has no phrases. Give Siri at least one, e.g. "${title} in ${APP_NAME_PLACEHOLDER}", or leave phrases out for that one.`,
+      );
+    }
+    for (const phrase of phrases) {
+      if (
+        !phrase.includes(APP_NAME_PLACEHOLDER) ||
+        hasControlCharacter(phrase)
+      ) {
+        throw new NativeConfigError(
+          `shortcuts "${id}" has the phrase "${phrase}", which doesn't name the app. Siri only listens for phrases that do: put ${APP_NAME_PLACEHOLDER} where the app's name is said, e.g. "${title} in ${APP_NAME_PLACEHOLDER}".`,
+        );
+      }
+      // Siri couldn't tell which of two shortcuts a phrase they share means.
+      const spoken = phrase.toLowerCase();
+      if (heard.has(spoken)) {
+        throw new NativeConfigError(
+          `shortcuts has the phrase "${phrase}" twice. Siri needs each phrase to mean one shortcut.`,
+        );
+      }
+      heard.add(spoken);
+    }
+
+    if (
+      route !== undefined &&
+      (typeof route !== 'string' ||
+        !route.startsWith('/') ||
+        hasControlCharacter(route))
+    ) {
+      throw new NativeConfigError(
+        `shortcuts "${id}" has the route "${route}". Give the path the router navigates to, starting with "/", e.g. "/photos".`,
+      );
+    }
+    if (
+      symbol !== undefined &&
+      (typeof symbol !== 'string' || !SF_SYMBOL.test(symbol))
+    ) {
+      throw new NativeConfigError(
+        `shortcuts "${id}" has the symbol "${symbol}", which is not an SF Symbol's name, e.g. "arrow.clockwise".`,
+      );
+    }
+    return {
+      id,
+      title,
+      phrases,
+      ...(route !== undefined && { route }),
+      ...(symbol !== undefined && { symbol }),
+    };
+  });
 };
 
 /**

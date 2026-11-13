@@ -222,6 +222,7 @@ The app's name, ID and version are options of the `build` target in `angular.jso
 | `permissions`       | Any of `camera`, `microphone`, `location`, `photos`, `savePhotos`, `contacts` and `notifications`, each with the reason iOS shows when it asks. Android shows its own message. `savePhotos` is for the share sheet's Save Image, and has a default |
 | `deepLinkSchemes`   | URL schemes that open the app, e.g. `myapp` for `myapp://` links. On Android, include the callback scheme of a [web sign-in](/guide/web-sign-in)                                                                                                   |
 | `canOpenURLSchemes` | Other apps' URL schemes your app asks [`canOpenURL()`](/guide/open-links#check-before-you-link) about, e.g. `whatsapp`. iOS and Android 11+ say no for any scheme the app doesn't declare                                                          |
+| `shortcuts`         | Things the app does that the person can ask Siri for, or pick from the app icon's menu on Android, each with an `id`, a `title` and Siri `phrases`. See [Add shortcuts for Siri and the app icon](/guide/shortcuts)                                |
 
 ### The app icon
 

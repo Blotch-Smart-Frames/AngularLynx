@@ -1,5 +1,6 @@
 import {
   cpSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -13,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TEMPLATES_DIR } from '../generate.ts';
 import { resolveAppOptions } from '../options.ts';
 import {
+  appShortcutsSwift,
   infoPlistEntries,
   iosGenerator,
   LOCAL_NETWORK_REASON,
@@ -141,6 +143,88 @@ describe('infoPlistEntries', () => {
   });
 });
 
+describe('appShortcutsSwift', () => {
+  const swift = appShortcutsSwift(
+    app({
+      shortcuts: [
+        {
+          id: 'refresh',
+          title: 'Refresh',
+          phrases: ['Refresh {appName}', 'Reload {appName} now'],
+          symbol: 'arrow.clockwise',
+        },
+        { id: 'show-photos', title: 'Show photos', route: '/photos' },
+      ],
+    }),
+  );
+
+  it('makes each shortcut an App Intent that opens the app and leaves its ID and route for the runtime', () => {
+    expect(swift).toContain(
+      [
+        '@available(iOS 16.0, *)',
+        'struct Shortcut_refresh: AppIntent {',
+        '  static let title: LocalizedStringResource = "Refresh"',
+      ].join('\n'),
+    );
+    expect(swift).toContain('ShortcutCenter.shared.run(id: "refresh")\n');
+    // A hyphen can't be in a Swift type's name.
+    expect(swift).toContain('struct Shortcut_show_photos: AppIntent {');
+    expect(swift).toContain(
+      'ShortcutCenter.shared.run(id: "show-photos", route: "/photos")',
+    );
+    expect(swift.match(/static let openAppWhenRun = true/g)).toHaveLength(2);
+    expect(swift).toContain(
+      'static var supportedModes: IntentModes { .foreground }',
+    );
+  });
+
+  it("lists them in the app's one shortcuts provider, with the app's name where Siri hears it", () => {
+    expect(swift).toContain(
+      [
+        'struct AngularLynxAppShortcuts: AppShortcutsProvider {',
+        '  static var appShortcuts: [AppShortcut] {',
+        '    AppShortcut(',
+        '      intent: Shortcut_refresh(),',
+        '      phrases: [',
+        '        "Refresh \\(.applicationName)",',
+        '        "Reload \\(.applicationName) now",',
+        '      ],',
+        '      shortTitle: "Refresh",',
+        '      systemImageName: "arrow.clockwise"',
+        '    )',
+        '    AppShortcut(',
+        '      intent: Shortcut_show_photos(),',
+        '      phrases: [',
+        '        "Show photos in \\(.applicationName)",',
+        '      ],',
+        // No symbol: the argument is left out, and so is the comma.
+        '      shortTitle: "Show photos"',
+        '    )',
+        '  }',
+        '}',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps a quote or a backslash in a title from ending the string or starting an interpolation', () => {
+    const escaped = appShortcutsSwift(
+      app({
+        shortcuts: [
+          {
+            id: 'quote',
+            title: 'Say "hi" \\(now)',
+            phrases: ['Say "hi" with {appName}'],
+            route: '/say/"hi"',
+          },
+        ],
+      }),
+    );
+    expect(escaped).toContain('= "Say \\"hi\\" \\\\(now)"');
+    expect(escaped).toContain('"Say \\"hi\\" with \\(.applicationName)",');
+    expect(escaped).toContain('route: "/say/\\"hi\\"")');
+  });
+});
+
 describe('iosGenerator', () => {
   let dir: string;
   beforeEach(() => {
@@ -161,6 +245,30 @@ describe('iosGenerator', () => {
     expect(plist.match(/UISupportedInterfaceOrientations/g)).toHaveLength(1);
     expect(plist).toContain('<key>LSApplicationQueriesSchemes</key>');
     expect(iosGenerator.bundleDir(dir)).toBe(path.join(dir, 'LynxBundle'));
+  });
+
+  it("writes the shortcuts' App Intents where Xcode compiles them, and none for an app without shortcuts", () => {
+    const file = path.join(dir, 'App/AppShortcuts.swift');
+    iosGenerator.configure(dir, app(), dir);
+    expect(existsSync(file)).toBe(false);
+
+    iosGenerator.configure(
+      dir,
+      app({ shortcuts: [{ id: 'refresh', title: 'Refresh' }] }),
+      dir,
+    );
+    expect(readFileSync(file, 'utf8')).toContain(
+      'struct Shortcut_refresh: AppIntent {',
+    );
+    // What the intents hand their shortcut to, and what takes it from there.
+    const center = readFileSync(
+      path.join(dir, 'App/ShortcutsModule.swift'),
+      'utf8',
+    );
+    expect(center).toContain('func run(id: String, route: String? = nil)');
+    expect(
+      readFileSync(path.join(dir, 'App/LynxViewController.swift'), 'utf8'),
+    ).toContain('config.register(ShortcutsModule.self)');
   });
 
   it('gives the development app the local network reason', () => {

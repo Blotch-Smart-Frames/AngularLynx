@@ -47,6 +47,7 @@ Calls Angular's `provideRouter()` with your routes and features, and adds the Ly
 - **Failed navigations** resolve to `false` instead of rejecting. Watch `Router.events` for `NavigationError` to detect them.
 - **Your own `withRouterConfig()`** replaces this one, so include `resolveNavigationPromiseOnError: true` in it.
 - **From an event handler,** call `router.navigate()` directly, as on the web.
+- **A [shortcut](/guide/shortcuts) with a `route`** navigates there when the person runs it, from Siri or the app icon's menu. `provideRouter()` starts [`LynxShortcuts`](/api/angular-lynx/shortcuts) with the app, so it takes no code.
 - **It also tells `LynxRouterLinkActive`** where to find an element's `RouterLinkActive`, so that `LYNX_ELEMENTS` doesn't import the router itself. Without `provideRouter()`, active links don't get the `selected` trait.
 - **The Android back button** calls `Location.back()` while `LynxLocationStrategy.canGoBack()` is `true`, and leaves the app when it's `false`. It works in the Android app `ng build --platform android` makes, and in [your own app](/guide/embedding/#connect-the-android-back-button) if it sends the same event. With a `LocationStrategy` of your own, the back button always leaves the app.
 

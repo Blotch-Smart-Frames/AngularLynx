@@ -46,7 +46,31 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <!-- angular-lynx:deep-links -->
+            <!--
+              angular.json's shortcuts, in the menu a long press on the
+              app's icon opens. Android reads them from the launcher
+              activity.
+            -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!--
+          Where the shortcuts point: it hands the shortcut to MainActivity
+          and finishes without drawing (ShortcutActivity.kt). Android starts
+          a shortcut's activity in a cleared task, so it gets one of its own
+          to clear (no taskAffinity, and not in Recents), which leaves the
+          open app as it is. Not exported: the launcher starts a shortcut as
+          the app itself.
+        -->
+        <activity
+            android:name=".ShortcutActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
 
         <!--
           The files LynxShare shares (ShareModule), which the app picked in

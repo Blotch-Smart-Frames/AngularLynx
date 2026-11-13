@@ -87,6 +87,7 @@
     "PRIMJS",
     "proguard",
     "rasterizer",
+    "Recents",
     "renderbuffertarget",
     "rendernode",
     "resourceprovider",

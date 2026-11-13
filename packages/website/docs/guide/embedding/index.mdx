@@ -221,6 +221,16 @@ The apps `ng build --platform` makes have them to copy, in AngularLynx's `packag
 
 The apps `ng build --platform` makes have one you can copy: `LinkingModule.swift`, which uses `UIApplication.open` and `SFSafariViewController`, and `LinkingModule.kt`, which sends an `ACTION_VIEW` intent and opens a Custom Tab, given the activity as its param. Both are in AngularLynx's `packages/native/templates`. List the schemes `canOpenURL` asks about in your Info.plist's `LSApplicationQueriesSchemes` and your manifest's `<queries>`. Without the module, `openURL()` and `openInApp()` reject with `unavailable`, and `canOpenURL()` resolves `false`.
 
+## Hear the app's shortcuts
+
+[`LynxShortcuts`](/guide/shortcuts) calls a native module named `AngularLynxShortcuts`, and listens for a global event. To tell an AngularLynx page that the person ran one of your app's shortcuts, such as an App Intent, a Home Screen quick action or an Android app shortcut:
+
+- **Keep each shortcut that ran** until the page takes it, as `{ id }` or `{ id, route }`. One may run before the page has loaded, such as the shortcut that started the app.
+- **`take(callback)`** calls back with `{ shortcuts }`, the ones kept since the last call, oldest first, and forgets them.
+- **Send the global event `angularLynxShortcut`** to the LynxView, with no parameters, each time one is kept while the view exists. The page answers by calling `take`, which it also calls once as it starts.
+
+The apps `ng build --platform` makes have one you can copy: `ShortcutsModule.swift`, whose `ShortcutCenter` the generated App Intents hand their shortcut to, and `ShortcutsModule.kt`, which `MainActivity` hands a shortcut's intent to. Both are in AngularLynx's `packages/native/templates`. Without the module, no shortcut ever reaches the page.
+
 ## Let someone pick a photo
 
 [`LynxImagePicker`](/guide/image-picker) calls a native module named `AngularLynxImagePicker`. To use it in your own app, register one with a `pick(options, callback)` method:

@@ -1,0 +1,94 @@
+# LynxShortcuts
+
+Hears the app's shortcuts: the things angular.json's `shortcuts` says the app does, which the person runs from Siri, Spotlight and the Shortcuts app on iOS, and from the app icon's menu on Android. `import { LynxShortcuts, type LynxShortcut, type LynxShortcutHandler } from '@blotch/angular-lynx';`
+
+[Add shortcuts for Siri and the app icon](/guide/shortcuts) shows it in use.
+
+## Usage
+
+```json title="angular.json"
+"shortcuts": [
+  { "id": "refresh", "title": "Refresh", "phrases": ["Refresh {appName}"] },
+  { "id": "photos", "title": "Show photos", "route": "/photos" }
+]
+```
+
+```typescript
+export class Feed {
+  readonly posts = resource({ loader: loadPosts });
+
+  constructor() {
+    inject(LynxShortcuts).on('refresh', () => this.posts.reload());
+  }
+}
+```
+
+## API
+
+### `LynxShortcuts`
+
+```typescript
+@Injectable({ providedIn: 'root' })
+class LynxShortcuts {}
+```
+
+| Host                                                              | Where the person runs a shortcut                         |
+| ----------------------------------------------------------------- | -------------------------------------------------------- |
+| iOS 16 and later (`ng build --platform ios`)                      | Siri, Spotlight, the Shortcuts app and the Action button |
+| Android 7.1 and later (`ng build --platform android`)             | The menu a long press on the app's icon opens            |
+| Web preview, Lynx Explorer                                        | Nowhere: no shortcut ever runs                           |
+| Unit tests ([testing library](/api/testing-library/#runshortcut)) | `runShortcut()`                                          |
+
+The phone brings the app to the front, starting it if it has to, and then the shortcut arrives here. A shortcut with a `route` makes the router navigate to it, when the app uses [`provideRouter()`](/api/angular-lynx/routing) from `@blotch/angular-lynx`, and then its handlers are called. `provideRouter()` creates the service as the app starts, so a route needs no code.
+
+### `LynxShortcuts.on()`
+
+```typescript
+on(
+  id: string,
+  handler: LynxShortcutHandler,
+  options?: { readonly injector?: Injector },
+): () => void;
+```
+
+Calls `handler` each time the person runs the shortcut `id`, the `id` it has in angular.json. Every handler registered for the ID is called, in the order they were registered. A handler that throws is reported to Angular's `ErrorHandler`, and the others are still called.
+
+- **A shortcut nothing handled waits.** One that ran before any handler was registered for its ID is kept for the first handler registered for it, which is called once the code that registered it has finished. That's how the shortcut that started the app reaches a component created later, such as the screen its `route` leads to.
+- **The handler goes with its injection context.** Called from one, such as a constructor, the handler is removed when the component or service is destroyed. Pass `injector` to tie it to another. Outside one, it stays until it's removed.
+- **Returns** a function that removes the handler.
+
+### `LynxShortcut`
+
+```typescript
+type LynxShortcut = {
+  readonly id: string;
+  readonly route?: string;
+};
+
+type LynxShortcutHandler = (shortcut: LynxShortcut) => void;
+```
+
+| Field   | Description                                                                          |
+| ------- | ------------------------------------------------------------------------------------ |
+| `id`    | The shortcut's `id` in angular.json's `shortcuts`                                    |
+| `route` | Its `route` there, if it has one. The router has already been told to navigate to it |
+
+## The `shortcuts` option
+
+Each entry of the `build` target's `shortcuts` in angular.json:
+
+| Field     | Type       | Description                                                                                                                                           |
+| --------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`      | `string`   | Required. What `on()` knows it by. Letters, digits, hyphens and underscores, starting with a letter. Two IDs can't differ only by `-`/`_` or capitals |
+| `title`   | `string`   | Required. The name the phone lists it under                                                                                                           |
+| `phrases` | `string[]` | What the person says to Siri. Each must contain `{appName}`, and no two shortcuts can share one. Defaults to `["<title> in {appName}"]`. iOS only     |
+| `route`   | `string`   | The path the router navigates to, starting with `/`                                                                                                   |
+| `symbol`  | `string`   | The SF Symbol iOS draws beside it, such as `arrow.clockwise`. iOS only: Android draws the app's icon                                                  |
+
+iOS takes up to 10 shortcuts from an app. `ng build --platform` checks all of this and says what's wrong, and builds the shortcuts into the app: App Intents on iOS, static shortcuts on Android.
+
+## Related
+
+- [Add shortcuts for Siri and the app icon](/guide/shortcuts)
+- [Shortcuts example](/examples/shortcuts)
+- [Build options](/api/build/#native-app-options)

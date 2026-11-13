@@ -194,6 +194,8 @@ describe('LynxBackButton', () => {
     await settle();
 
     expect(setBackHandlerEnabled).not.toHaveBeenCalled();
-    expect(listeners).toEqual({});
+    // provideRouter() also starts LynxShortcuts, which listens for its own
+    // event whatever the LocationStrategy.
+    expect(listeners).not.toHaveProperty('angularLynxBack');
   });
 });

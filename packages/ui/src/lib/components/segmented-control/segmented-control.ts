@@ -662,6 +662,12 @@ export class UiSegmentedControl {
    * The classes of a segment's label, for a control that draws its own:
    * 13pt as in UIKit, medium when selected on iOS 26 and semibold before;
    * Material's label in its content color.
+   *
+   * The heavier weight is wider (medium "Community" is 71pt, regular 69pt),
+   * so a label within about 3% of its segment's room fits until it's
+   * selected, and then ends in "…". UIKit does the same (measured on the
+   * iOS 27 Simulator). Before labels were one line, Lynx wrapped that
+   * selected label mid-word instead.
    */
   labelClass(value: string): string {
     const on = this.isOn(value);

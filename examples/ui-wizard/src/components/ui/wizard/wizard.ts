@@ -47,12 +47,26 @@ const transitionOf = (
     .join(', ');
 
 /**
- * The steps slide on the curve a sheet does: quick off the mark, with a long
- * settle. What fades as they slide (the step coming in, the one going out,
- * the lines at the edges) takes as long, so it lands with them.
+ * The row of steps slides gently off the mark and settles. A curve that
+ * starts fast, as a sheet's does, carried the step going out to the
+ * indicator's edge within a few frames, where it was cut while still plain
+ * to see.
  */
-const SLIDE = transitionOf(['transform'], DURATION.slow, EASING.sheet);
-const FADE = transitionOf(['opacity'], DURATION.slow, EASING.standard);
+const SLIDE = transitionOf(['transform'], DURATION.slow, EASING.standard);
+/**
+ * A step or line coming on show waits until the row has brought it inside
+ * the indicator, about 150ms in, and then fades in over the rest of the
+ * slide, so it lands with it. Fading in from the start, it showed at the
+ * edge while half of it was still outside: half a circle, and the end of
+ * its label.
+ */
+const ARRIVE = `opacity ${DURATION.slow - DURATION.fast}ms ${EASING.standard} ${DURATION.fast}ms`;
+/**
+ * One going off show is gone before the row carries it to the edge: the row
+ * takes about 120ms to bring a label there, and 140ms a circle. Fading as
+ * slowly as the row slides, it was cut there the same way.
+ */
+const LEAVE = transitionOf(['opacity'], DURATION.instant, EASING.decelerate);
 /**
  * A step's circle, number and label, and the lines, change color as a step
  * is reached and finished.
@@ -103,6 +117,8 @@ type WizardCell = {
   state: WizardStepState;
   /** Whether it's one of the steps on show. */
   opacity: 0 | 1;
+  /** How it fades to that: see ARRIVE and LEAVE. */
+  fade: string;
   circle: string;
   numberClass: string;
   labelClass: string;
@@ -114,6 +130,8 @@ type WizardLine = {
   left: string;
   /** Whether it's drawn: it is when either of its steps is on show. */
   opacity: 0 | 1;
+  /** How it fades to that: see ARRIVE and LEAVE. */
+  fade: string;
   /** Its classes, with its color. */
   fill: string;
 };
@@ -188,7 +206,7 @@ const stepType = () => UiWizardStep;
                as it slides in or out. -->
           <view
             class="shrink-0 flex-col items-center flex"
-            [style.transition]="fade()"
+            [style.transition]="cell.fade"
             [style.width]="cellWidth()"
             [style.opacity]="cell.opacity"
           >
@@ -234,7 +252,7 @@ const stepType = () => UiWizardStep;
         @for (line of lines(); track $index) {
           <view
             class="h-[2px] px-[22px] absolute top-[15px]"
-            [style.transition]="fade()"
+            [style.transition]="line.fade"
             [style.left]="line.left"
             [style.width]="cellWidth()"
             [style.opacity]="line.opacity"
@@ -315,12 +333,14 @@ export class UiWizard {
     return steps.map((step, index) => {
       const state: WizardStepState =
         index < active ? 'done' : index === active ? 'current' : 'upcoming';
+      const shown = index >= first && index <= last;
       return {
         step,
         number: index + 1,
         label: step.label(),
         state,
-        opacity: index >= first && index <= last ? 1 : 0,
+        opacity: shown ? 1 : 0,
+        fade: this.#fade(shown),
         circle: cn(
           // In px: a control's size, not text that scales.
           'h-[32px] w-[32px] items-center rounded-full flex relative justify-center',
@@ -356,11 +376,15 @@ export class UiWizard {
     const active = this.activeIndex();
     const first = this.#firstVisible();
     const last = first + VISIBLE_STEPS - 1;
-    return Array.from({ length: Math.max(count - 1, 0) }, (_, index) => ({
-      left: `${round(((index + 0.5) / count) * 100)}%`,
-      opacity: index >= first - 1 && index <= last ? 1 : 0,
-      fill: cn('h-full w-full', index < active ? 'bg-primary' : 'bg-border'),
-    }));
+    return Array.from({ length: Math.max(count - 1, 0) }, (_, index) => {
+      const shown = index >= first - 1 && index <= last;
+      return {
+        left: `${round(((index + 0.5) / count) * 100)}%`,
+        opacity: shown ? 1 : 0,
+        fade: this.#fade(shown),
+        fill: cn('h-full w-full', index < active ? 'bg-primary' : 'bg-border'),
+      };
+    });
   });
 
   /**
@@ -385,8 +409,16 @@ export class UiWizard {
     () => `${round(100 / Math.max(this.count(), 1))}%`,
   );
 
-  // Under Reduce Motion the steps change at once.
-  protected readonly fade = computed(() => (this.#animates() ? FADE : 'none'));
+  /**
+   * How a step or line fades as it comes on show or goes off it. The
+   * transition is set with the opacity it leads to, so it's the one that
+   * runs. Under Reduce Motion the steps change at once.
+   */
+  #fade(shown: boolean): string {
+    if (!this.#animates()) return 'none';
+    return shown ? ARRIVE : LEAVE;
+  }
+
   protected readonly tint = computed(() => (this.#animates() ? TINT : 'none'));
   protected readonly checkTransition = computed(() =>
     this.#animates() ? CHECK : 'none',

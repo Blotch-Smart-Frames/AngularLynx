@@ -487,14 +487,37 @@ describe('UiWizard', () => {
     it('slides the row, and fades what comes and goes with it', async () => {
       const { track, cell, circle, check, lines } = await renderWizard();
       expect(track().style.transition).toContain('transform 350ms');
-      expect(cell('Payment').style.transition).toContain('opacity 350ms');
-      expect(lines()[0]!.style.transition).toContain('opacity 350ms');
+      // A step on show fades in once the row has brought it inside: 150ms
+      // in, over the 200ms the slide has left.
+      expect(cell('Account').style.transition).toMatch(
+        /^opacity 200ms .* 150ms$/,
+      );
+      expect(lines()[0]!.style.transition).toMatch(/^opacity 200ms .* 150ms$/);
       expect((circle('Account') as HTMLElement).style.transition).toContain(
         'background-color 250ms',
       );
       expect(check('Account').style.transition).toContain('transform 250ms');
       // A native view of its own, which Android needs to move it.
       expect(track().getAttribute('flatten')).toBe('false');
+    });
+
+    it('fades a step out before the row carries it to the edge, and in once it is inside', async () => {
+      const { cell, lines, wizard, go } = await renderWizard();
+      // Off show from the start: the fifth step, and the line into it.
+      expect(cell('Review').style.transition).toContain('opacity 100ms');
+      expect(lines()[3]!.style.transition).toContain('opacity 100ms');
+
+      await go(() => wizard.next());
+      await go(() => wizard.next());
+      // The first step has gone, and the line out of it, quickly. The fifth
+      // has come in after a wait.
+      expect(cell('Account').style.opacity).toBe('0');
+      expect(cell('Account').style.transition).toContain('opacity 100ms');
+      expect(lines()[0]!.style.transition).toContain('opacity 100ms');
+      expect(cell('Review').style.opacity).toBe('1');
+      expect(cell('Review').style.transition).toMatch(
+        /^opacity 200ms .* 150ms$/,
+      );
     });
 
     it('leaves the step the wizard opens on where it is', async () => {

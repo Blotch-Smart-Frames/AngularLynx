@@ -3,22 +3,29 @@ import { snapshotBackdrop, type BackdropSnapshot } from './backdrop-snapshot';
 import { parseNormalizedColor } from './css-color';
 import { drawnScale } from './drawn-scale';
 import { GlassRenderer, type GlassFrame } from './glass-renderer';
-import { pressOf } from './glass-press';
 import { containerShapes, readShape } from './glass-shapes';
 
-// The lens samples up to about half a shape's radius past its edge, so the
-// captured region reaches this far beyond the group.
+// The glass blurs what's around it into itself, by about 12px and a little
+// from much further, so the captured region reaches this far beyond the
+// group. Past it, the blur reads the image's edge.
 const CAPTURE_MARGIN = 48;
 // How far a container's canvas reaches past its box: room for its shapes'
-// shadow, which fades out over about 20px, and for a pressed shape's swell.
-// A container hugs its shapes, so with no margin both were cut off in a
-// straight line at its edge.
+// shadow, which fades out before the canvas's edge, the line down their
+// sides, and a pressed shape's swell. A container hugs its shapes, so with
+// no margin they were cut off in a straight line at its edge.
 const CONTAINER_MARGIN = 32;
 // Captures run on the main thread, so they're spaced out: at least this many
 // milliseconds apart, and four times as long as the last one took.
 const MIN_CAPTURE_INTERVAL = 100;
-// Sharper than 2x costs memory and capture time for no visible gain.
-const MAX_SCALE = 2;
+// Capturing the backdrop sharper than 2x costs memory and capture time for no
+// visible gain: the glass blurs it, or shows it through a lens.
+const MAX_CAPTURE_SCALE = 2;
+// The glass itself is drawn up to 3x: its edge is lines two thirds of a pixel
+// wide, which a phone's screen shows crisply and a 2x canvas smears.
+const MAX_SCALE = 3;
+// How long a group's canvas stays put, in milliseconds, before it counts as
+// having come to rest (see #settle).
+const SETTLE_MS = 150;
 // Backdrops darker than this get the dark material, like iOS in dark mode.
 const DARK_LUMINANCE = 0.4;
 
@@ -71,38 +78,30 @@ export const backdropOf = (root: HTMLElement): Backdrop | null => {
 
 /**
  * Whether `element` is drawn above the glass, and so left out of what it
- * refracts. In the page's flow, that's the glass, and everything after it
- * and after each of its ancestors up to the backdrop: later content paints
- * on top. A fixed layer paints above the content around it, so there it's
- * the layer, and any other fixed element stacked above it: a higher
- * `z-index`, or the same one and later in the page, such as a second menu.
+ * refracts: the glass, and everything after it and after each of its
+ * ancestors, since later content paints on top. In the page's flow that's up
+ * to the backdrop. A fixed layer paints above the content around it, so
+ * there it's up to the layer.
+ *
+ * Fixed elements stacked above the glass count too, wherever they are in the
+ * document: an open sheet's overlay over a button in the page, or a second
+ * menu over the first. That's a higher `z-index` than the layer's (than
+ * none, for glass in the page's flow), or the same one and later in the
+ * page.
+ *
+ * What the glass's own layer holds under it stays in: the dimming layer of a
+ * sheet or an alert is the overlay's own background, or a view before the
+ * glass, and UIKit's glass shows the screen through it, dimmed.
  */
 const drawnAbove = (
   root: HTMLElement,
   { element: backdrop, layer }: Backdrop,
 ): ((element: Element) => boolean) => {
   const win = root.ownerDocument.defaultView!;
-  if (layer) {
-    const zIndex = (element: Element) =>
-      parseInt(win.getComputedStyle(element).zIndex, 10) || 0;
-    const layerZ = zIndex(layer);
-    return (element) => {
-      if (element === layer) return true;
-      if (element.contains(layer) || !isFixed(win, element)) return false;
-      const z = zIndex(element);
-      return (
-        z > layerZ ||
-        (z === layerZ &&
-          // Node.DOCUMENT_POSITION_FOLLOWING, spelled out: the elements
-          // belong to the page, not to the main thread's realm.
-          (layer.compareDocumentPosition(element) & 4) !== 0)
-      );
-    };
-  }
   const above = new Set<Element>([root]);
   for (
     let node: Element | null = root;
-    node && node !== backdrop;
+    node && node !== backdrop && node !== layer;
     node = node.parentElement
   ) {
     for (
@@ -113,7 +112,47 @@ const drawnAbove = (
       above.add(sibling);
     }
   }
-  return (element) => above.has(element);
+  const zIndex = (element: Element) =>
+    parseInt(win.getComputedStyle(element).zIndex, 10) || 0;
+  // What the fixed elements are measured against: the layer, or the glass.
+  const reference = layer ?? root;
+  const referenceZ = layer ? zIndex(layer) : 0;
+  return (element) => {
+    if (above.has(element)) return true;
+    if (
+      element === reference ||
+      element.contains(reference) ||
+      reference.contains(element) ||
+      !isFixed(win, element)
+    ) {
+      return false;
+    }
+    const z = zIndex(element);
+    return (
+      z > referenceZ ||
+      (z === referenceZ &&
+        // Node.DOCUMENT_POSITION_FOLLOWING, spelled out: the elements
+        // belong to the page, not to the main thread's realm.
+        (reference.compareDocumentPosition(element) & 4) !== 0)
+    );
+  };
+};
+
+/**
+ * Whether `node` is the glass, or in something drawn above it: a change
+ * there changes nothing behind the glass.
+ */
+const inFront = (
+  node: Node,
+  backdrop: Element,
+  above: (element: Element) => boolean,
+): boolean => {
+  // Node.ELEMENT_NODE, spelled out (see drawnAbove).
+  let element = node.nodeType === 1 ? (node as Element) : node.parentElement;
+  for (; element && element !== backdrop; element = element.parentElement) {
+    if (above(element)) return true;
+  }
+  return false;
 };
 
 /**
@@ -136,6 +175,9 @@ export class GlassGroup {
   #stopObserving: (() => void) | null = null;
   #snapshot: BackdropSnapshot | null = null;
   #stale = true;
+  /** When the group's canvas last moved or resized, or 0 once it settled. */
+  #moved = 0;
+  #where = '';
   #capturing = false;
   #failed = false;
   #disposed = false;
@@ -166,11 +208,14 @@ export class GlassGroup {
     this.#renderer = shadow ? GlassRenderer.create(this.#canvas) : null;
     this.#backdrop = backdropOf(root);
     if (this.#renderer && this.#backdrop) {
-      // Changes inside the glass, or inside the fixed layer it's in, don't
-      // change what's behind it.
+      // Changes inside the glass, or in what's drawn above it, don't change
+      // what's behind it: a sheet's own content, which follows its glass,
+      // would otherwise have it capture the page again at every keystroke.
+      const backdrop = this.#backdrop;
+      const above = drawnAbove(root, backdrop);
       this.#stopObserving = observeBackdrop(
-        this.#backdrop.element,
-        this.#backdrop.layer ?? root,
+        backdrop.element,
+        (node) => inFront(node, backdrop.element, above),
         () => {
           this.#stale = true;
         },
@@ -193,6 +238,21 @@ export class GlassGroup {
   }
 
   /**
+   * The material the group draws and how bright its backdrop is, for the CSS
+   * that draws a lone shape's shadow and edge lines. Before the first
+   * capture, the backdrop counts as white.
+   */
+  get look(): { dark: boolean; luminance: number } {
+    const snapshot = this.#snapshot;
+    return {
+      dark: this.#dark(snapshot) === 1,
+      // In tenths, so a backdrop that fades doesn't rewrite the style on
+      // every frame.
+      luminance: snapshot ? Math.round(snapshot.brightness * 10) / 10 : 1,
+    };
+  }
+
+  /**
    * True when the GPU dropped the context; the group must be rebuilt.
    */
   get lost(): boolean {
@@ -200,38 +260,55 @@ export class GlassGroup {
   }
 
   /**
-   * Draws a frame if anything changed; `elapsed` is in milliseconds.
+   * Whether `element` is part of what this group refracts: inside its
+   * backdrop, and not drawn above it. Other glass that is shows through this
+   * glass, so the manager has this group capture again when that glass
+   * changes (see invalidate).
    */
-  frame(elapsed: number): void {
+  shows(element: Element): boolean {
+    const backdrop = this.#backdrop;
+    return (
+      !!backdrop &&
+      backdrop.element.contains(element) &&
+      !inFront(element, backdrop.element, drawnAbove(this.root, backdrop))
+    );
+  }
+
+  /**
+   * Has the group capture its backdrop again: something behind it changed
+   * that the page's own changes don't announce, such as other glass
+   * redrawing its canvas.
+   */
+  invalidate(): void {
+    this.#stale = true;
+  }
+
+  /**
+   * Draws a frame if anything changed, and says whether it did; `elapsed` is
+   * in milliseconds.
+   */
+  frame(elapsed: number): boolean {
     const renderer = this.#renderer;
     const backdrop = this.#backdrop?.element;
-    if (!renderer || !backdrop || this.#failed) return;
+    if (!renderer || !backdrop || this.#failed) return false;
     // Boxes are measured in screen pixels, and the frame is drawn in CSS
     // pixels, which differ when the page is drawn scaled (see drawn-scale.ts).
     const origin = this.#canvas.getBoundingClientRect();
     const area = backdrop.getBoundingClientRect();
     const zoom = drawnScale(backdrop);
+    this.#settle(origin);
     if (this.#needsCapture(origin, area, zoom)) {
       this.#capture(backdrop, origin, zoom);
     }
     const snapshot = this.#snapshot;
-    if (!snapshot) return;
+    if (!snapshot) return false;
 
     // Device pixels per CSS pixel, so the canvas stays sharp at any zoom.
     const scale = Math.min(this.#win.devicePixelRatio || 1, MAX_SCALE) * zoom;
     const elements = this.shapes;
     const read = elements.map((element) =>
-      readShape(element, origin, zoom, elapsed, this.container),
+      readShape(element, origin, zoom, elapsed),
     );
-    // The press glow follows whichever shape is pressed the most.
-    let pointer: [number, number, number] = [0, 0, 0];
-    elements.forEach((element, i) => {
-      const value = read[i]!.press;
-      if (value > pointer[2]) {
-        const { x, y } = pressOf(element)!;
-        pointer = [(x - origin.left) / zoom, (y - origin.top) / zoom, value];
-      }
-    });
     // A shape with no width or height draws nothing on iOS, but its distance
     // field is a line, which the smooth union bulges into the shapes beside
     // it: the search field's cancel button, collapsed beside the field.
@@ -245,18 +322,21 @@ export class GlassGroup {
       height: origin.height / zoom,
       offsetX: (origin.left - area.left) / zoom - snapshot.x,
       offsetY: (origin.top - area.top) / zoom - snapshot.y,
-      // Twice the spacing: the smooth union only bridges a gap up to half its
-      // radius, and iOS merges shapes closer than `spacing`.
-      smoothing: this.container ? spacing * 2 : 0,
+      // The radius of the smooth union: it bridges a gap of up to half of it,
+      // which is where UIKit's container starts to join two shapes too.
+      smoothing: this.container ? spacing : 0,
       dark: this.#dark(snapshot),
-      // Outside its shapes a container's canvas is empty space for a shadow;
-      // a lone shape's canvas is its own box, where it would darken the corners.
-      shadow: this.container ? 1 : 0,
-      shapes,
-      pointer,
+      // Outside its shapes a container's canvas is empty space, for their
+      // shadow and the line down their sides. A lone shape's canvas is its
+      // own box, so its CSS draws them (see glass-host-style.ts).
+      outside: this.container ? 1 : 0,
+      luminance: snapshot.brightness,
+      // Without the press each carries: the frame is compared with the last
+      // one drawn, and a press changes it through the shape's size alone.
+      shapes: shapes.map(({ press: _press, ...shape }) => shape),
     };
     const key = JSON.stringify(frame);
-    if (key === this.#drawn) return;
+    if (key === this.#drawn) return false;
     const width = Math.max(1, Math.round(frame.width * scale));
     const height = Math.max(1, Math.round(frame.height * scale));
     // Assigning a canvas size reallocates it even when the size is unchanged.
@@ -265,6 +345,7 @@ export class GlassGroup {
     renderer.draw(frame);
     this.#drawn = key;
     this.#canvas.style.opacity = '1';
+    return true;
   }
 
   dispose(): void {
@@ -274,10 +355,40 @@ export class GlassGroup {
     this.#canvas.remove();
   }
 
-  #dark(snapshot: BackdropSnapshot): number {
-    const forced = this.root.getAttribute('ios-user-interface-style');
+  /**
+   * 1 for the dark material. `ios-user-interface-style` picks it, as on iOS:
+   * the group's own, or else its first shape's, since a container draws
+   * nothing itself and is often given none (a `ui-glass-group`). With
+   * neither, it follows the backdrop, as UIKit's glass adapts to what's
+   * behind it.
+   */
+  #dark(snapshot: BackdropSnapshot | null): number {
+    const forced =
+      this.root.getAttribute('ios-user-interface-style') ??
+      (this.container
+        ? this.shapes[0]?.getAttribute('ios-user-interface-style')
+        : null);
     if (forced) return forced === 'dark' ? 1 : 0;
-    return snapshot.luminance < DARK_LUMINANCE ? 1 : 0;
+    return snapshot && snapshot.luminance < DARK_LUMINANCE ? 1 : 0;
+  }
+
+  /**
+   * Captures once more when the glass comes to rest after moving: a sheet
+   * sliding up while its dimming layer fades in, or a menu growing open. The
+   * picture taken on the way caught what's behind it mid-change, and an
+   * animation ending is no change to the page that the observer hears of.
+   */
+  #settle(origin: DOMRect): void {
+    const now = this.#win.performance.now();
+    const where = `${origin.left},${origin.top},${origin.width},${origin.height}`;
+    if (where !== this.#where) {
+      // The first frame places the glass; it didn't move there.
+      if (this.#where) this.#moved = now;
+      this.#where = where;
+    } else if (this.#moved && now - this.#moved > SETTLE_MS) {
+      this.#moved = 0;
+      this.#stale = true;
+    }
   }
 
   #needsCapture(origin: DOMRect, area: DOMRect, zoom: number): boolean {
@@ -319,7 +430,7 @@ export class GlassGroup {
         right: origin.right + margin,
         bottom: origin.bottom + margin,
       },
-      scale: Math.min(win.devicePixelRatio || 1, MAX_SCALE) * zoom,
+      scale: Math.min(win.devicePixelRatio || 1, MAX_CAPTURE_SCALE) * zoom,
     })
       .then((snapshot) => {
         if (this.#disposed || !snapshot) return;

@@ -149,7 +149,7 @@ iOS 15 to 25 has no Liquid Glass, so the glass draws one of UIKit's blur materia
 
 ### Groups
 
-`ui-glass-group` merges the glass inside it, as iOS draws a group of glass controls. Shapes closer than `spacing` px flow into each other:
+`ui-glass-group` merges the glass inside it, as iOS draws a group of glass controls. Shapes closer than `spacing` px reach toward each other, and join into one once the gap between them is under half of it:
 
 ```angular-html
 <blur-view ui-glass-group [spacing]="16" class="flex-row items-center gap-3">
@@ -230,9 +230,9 @@ Components built on the glass read these signals:
 
 Selector: `blur-view[ui-glass-group]`.
 
-| Input     | Type     | Default | Description                                               |
-| --------- | -------- | ------- | --------------------------------------------------------- |
-| `spacing` | `number` | `0`     | How close two glass shapes come before they merge, in px. |
+| Input     | Type     | Default | Description                                                                                 |
+| --------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `spacing` | `number` | `0`     | How close two glass shapes come before they start to merge, in px. They join at half of it. |
 
 ### Functions
 

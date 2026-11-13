@@ -18,8 +18,10 @@ const setup = () => {
   backdrop.append(text, glass);
   document.body.append(backdrop);
   const onChange = vi.fn();
-  const stop = observeBackdrop(backdrop, glass, onChange);
-  return { backdrop, text, glass, blob, onChange, stop };
+  // The glass, and whatever it holds, is in front: nothing behind it.
+  const inFront = vi.fn((node: Node) => glass.contains(node));
+  const stop = observeBackdrop(backdrop, inFront, onChange);
+  return { backdrop, text, glass, blob, onChange, inFront, stop };
 };
 
 beforeEach(() => {
@@ -53,13 +55,14 @@ describe('observeBackdrop', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it('reports changes behind the glass but not inside it', async () => {
-    const { text, blob, onChange } = setup();
+  it('reports changes behind the glass but not in front of it', async () => {
+    const { text, blob, onChange, inFront } = setup();
     await flush();
     onChange.mockClear();
 
     blob.setAttribute('style', 'left: 10px');
     await flush();
+    expect(inFront).toHaveBeenCalledWith(blob);
     expect(onChange).not.toHaveBeenCalled();
 
     text.textContent = 'changed';
@@ -81,6 +84,29 @@ describe('observeBackdrop', () => {
     expect(scheme.addEventListener).toHaveBeenCalledWith('change', onChange);
   });
 
+  it('reports a transition or an animation ending behind the glass', async () => {
+    const { text, onChange } = setup();
+    await flush();
+    onChange.mockClear();
+
+    // A dimming layer that finished fading in looks different from the
+    // picture taken while it faded.
+    text.dispatchEvent(new Event('transitionend', { bubbles: true }));
+    text.dispatchEvent(new Event('animationend', { bubbles: true }));
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores events from in front of the glass', async () => {
+    const { blob, onChange } = setup();
+    await flush();
+    onChange.mockClear();
+
+    // A sheet's own list scrolling, or its row's highlight fading.
+    blob.dispatchEvent(new Event('scroll'));
+    blob.dispatchEvent(new Event('transitionend', { bubbles: true }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('stops observing', async () => {
     const { text, onChange, stop } = setup();
     await flush();
@@ -90,6 +116,8 @@ describe('observeBackdrop', () => {
     text.textContent = 'changed';
     text.dispatchEvent(new Event('scroll'));
     text.dispatchEvent(new Event('load'));
+    text.dispatchEvent(new Event('transitionend', { bubbles: true }));
+    text.dispatchEvent(new Event('animationend', { bubbles: true }));
     await flush();
     expect(onChange).not.toHaveBeenCalled();
     expect(resize.disconnect).toHaveBeenCalled();

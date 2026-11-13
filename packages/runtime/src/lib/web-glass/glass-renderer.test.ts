@@ -32,9 +32,9 @@ const frame = (overrides: Partial<GlassFrame> = {}): GlassFrame => ({
   offsetY: 6,
   smoothing: 48,
   dark: 0,
-  shadow: 1,
+  outside: 1,
+  luminance: 0.8,
   shapes: [shape()],
-  pointer: [1, 2, 0.5],
   ...overrides,
 });
 
@@ -50,7 +50,7 @@ describe('GlassRenderer.create', () => {
     expect(GlassRenderer.create(canvasFor(null))).toBeNull();
   });
 
-  it('asks for a premultiplied context without depth, stencil or AA', () => {
+  it('asks for a premultiplied context that keeps its drawing, without depth, stencil or AA', () => {
     const { gl } = createFakeWebGL();
     const canvas = canvasFor(gl);
     GlassRenderer.create(canvas);
@@ -60,6 +60,8 @@ describe('GlassRenderer.create', () => {
       antialias: false,
       depth: false,
       stencil: false,
+      // Other glass copies this canvas as a picture of what's behind it.
+      preserveDrawingBuffer: true,
     });
   });
 
@@ -93,7 +95,7 @@ describe('GlassRenderer', () => {
     expect(callsTo('drawArrays')).toHaveLength(0);
   });
 
-  it('uploads a backdrop and blurs a quarter-size copy of it', () => {
+  it('uploads a backdrop and blurs three ever smaller copies of it', () => {
     const { renderer, callsTo } = setup();
     const backdrop = image(400, 200);
     renderer.setBackdrop(backdrop, 200, 100);
@@ -106,34 +108,64 @@ describe('GlassRenderer', () => {
       'UNSIGNED_BYTE',
       backdrop,
     ]);
-    expect(callsTo('viewport')).toEqual([[0, 0, 100, 50]]);
-    // One downsampling copy, then three horizontal and vertical blur passes.
-    expect(callsTo('drawArrays')).toHaveLength(7);
+    // The image is halved twice on the way to the frosted copy, which has a
+    // pixel for every 4 CSS pixels; then the haze has one for every 8, and
+    // the wash one for every 24.
+    expect(callsTo('viewport')).toEqual([
+      [0, 0, 200, 100],
+      [0, 0, 100, 50],
+      [0, 0, 50, 25],
+      [0, 0, 25, 13],
+      [0, 0, 8, 4],
+    ]);
+    // Two halving copies; a copy and three passes each way for the frost;
+    // a copy and four passes each way for the haze, and again for the wash.
+    expect(callsTo('drawArrays')).toHaveLength(2 + 7 + 9 + 9);
     expect(callsTo('uniform2f')).toEqual(
       expect.arrayContaining([
-        [{ name: 'u_direction' }, 1 / 100, 0],
-        [{ name: 'u_direction' }, 0, 1 / 50],
+        [{ name: 'u_direction' }, 1 / 50, 0],
+        [{ name: 'u_direction' }, 0, 1 / 25],
+        [{ name: 'u_direction' }, 1 / 25, 0],
+        [{ name: 'u_direction' }, 0, 1 / 13],
+        [{ name: 'u_direction' }, 1 / 8, 0],
+        [{ name: 'u_direction' }, 0, 1 / 4],
       ]),
     );
     expect(callsTo('bindFramebuffer').at(-1)).toEqual(['FRAMEBUFFER', null]);
+  });
+
+  it('copies straight to the frosted size when the image is within twice of it', () => {
+    const { renderer, callsTo } = setup();
+    // One image pixel per CSS pixel, and a backdrop 8 by 8: the frosted copy
+    // is 2 by 2, so the image is halved once, to 4 by 4, and no further.
+    renderer.setBackdrop(image(8, 8), 8, 8);
+    expect(callsTo('viewport').slice(0, 2)).toEqual([
+      [0, 0, 4, 4],
+      [0, 0, 2, 2],
+    ]);
   });
 
   it('keeps its blur targets while the backdrop size holds', () => {
     const { renderer, callsTo } = setup();
     renderer.setBackdrop(image(400, 200), 200, 100);
     renderer.setBackdrop(image(400, 200), 200, 100);
-    expect(callsTo('createFramebuffer')).toHaveLength(2);
-    expect(callsTo('createTexture')).toHaveLength(3);
+    // Two halving steps, and two targets each for the frost, haze and wash.
+    expect(callsTo('createFramebuffer')).toHaveLength(8);
+    expect(callsTo('createTexture')).toHaveLength(9);
 
     renderer.setBackdrop(image(800, 400), 400, 200);
-    expect(callsTo('deleteFramebuffer')).toHaveLength(2);
-    expect(callsTo('createFramebuffer')).toHaveLength(4);
+    expect(callsTo('deleteFramebuffer')).toHaveLength(8);
+    expect(callsTo('createFramebuffer')).toHaveLength(16);
   });
 
   it('never makes a blur target smaller than a pixel', () => {
     const { renderer, callsTo } = setup();
     renderer.setBackdrop(image(1, 1), 1, 1);
-    expect(callsTo('viewport')).toEqual([[0, 0, 1, 1]]);
+    expect(callsTo('viewport')).toEqual([
+      [0, 0, 1, 1],
+      [0, 0, 1, 1],
+      [0, 0, 1, 1],
+    ]);
   });
 
   it('draws the glass from the frame', () => {
@@ -154,11 +186,20 @@ describe('GlassRenderer', () => {
         [{ name: 'u_scale' }, 2],
         [{ name: 'u_smoothing' }, 48],
         [{ name: 'u_dark' }, 0],
-        [{ name: 'u_shadow' }, 1],
+        [{ name: 'u_outside' }, 1],
+        [{ name: 'u_luminance' }, 0.8],
       ]),
     );
-    expect(callsTo('uniform3f')).toEqual([[{ name: 'u_pointer' }, 1, 2, 0.5]]);
-    expect(callsTo('uniform1i')).toContainEqual([{ name: 'u_count' }, 1]);
+    // The backdrop and its three blurred copies, each on its own unit.
+    expect(callsTo('uniform1i')).toEqual(
+      expect.arrayContaining([
+        [{ name: 'u_backdrop' }, 0],
+        [{ name: 'u_frosted' }, 1],
+        [{ name: 'u_haze' }, 2],
+        [{ name: 'u_wash' }, 3],
+        [{ name: 'u_count' }, 1],
+      ]),
+    );
     const arrays = Object.fromEntries(
       callsTo('uniform4fv').map(([location, values]) => [
         (location as { name: string }).name,
@@ -189,7 +230,8 @@ describe('GlassRenderer', () => {
     const { renderer, callsTo } = setup();
     renderer.setBackdrop(image(4, 4), 2, 2);
     renderer.dispose();
-    expect(callsTo('deleteTexture')).toHaveLength(3);
+    // The backdrop, one halving step, and the frost, haze and wash targets.
+    expect(callsTo('deleteTexture')).toHaveLength(8);
     expect(callsTo('deleteProgram')).toHaveLength(3);
     expect(callsTo('deleteBuffer')).toHaveLength(1);
     expect(callsTo('loseContext')).toHaveLength(1);

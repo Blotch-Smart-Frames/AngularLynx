@@ -64,6 +64,7 @@ const SNAPSHOT: BackdropSnapshot = {
   width: 400,
   height: 400,
   luminance: 1,
+  brightness: 0.86,
 };
 
 let now = 0;
@@ -189,11 +190,19 @@ describe('GlassGroup', () => {
     const group = new GlassGroup(root, true);
     expect(mocks.observe).toHaveBeenCalledWith(
       backdrop,
-      root,
+      expect.any(Function),
       expect.any(Function),
     );
+    // Changes in the glass, or in what's drawn above it, aren't behind it.
+    const inFront = mocks.observe.mock.lastCall![1] as (node: Node) => boolean;
+    const label = document.createTextNode('label');
+    overlay.append(label);
+    expect(inFront(text)).toBe(false);
+    expect(inFront(root)).toBe(true);
+    expect(inFront(root.firstElementChild!)).toBe(true);
+    expect(inFront(label)).toBe(true);
 
-    group.frame(16);
+    expect(group.frame(16)).toBe(false);
     const [target, options] = mocks.snapshot.mock.lastCall!;
     expect(target).toBe(backdrop);
     // 48px around the container: 16px past its canvas's margin.
@@ -226,16 +235,20 @@ describe('GlassGroup', () => {
       400,
     );
 
-    group.frame(16);
+    // It says whether it drew: glass above this one copies its canvas.
+    expect(group.frame(16)).toBe(true);
     expect(lastFrame()).toEqual({
-      scale: 2,
+      // The glass is drawn at the screen's 3x, sharper than its backdrop.
+      scale: 3,
       width: 200,
       height: 100,
       offsetX: 10,
       offsetY: 20,
-      smoothing: 24,
+      // The spacing is the smooth union's radius.
+      smoothing: 12,
       dark: 0,
-      shadow: 1,
+      outside: 1,
+      luminance: 0.86,
       shapes: [
         {
           centerX: 45,
@@ -245,25 +258,21 @@ describe('GlassGroup', () => {
           radius: 25,
           frost: 1,
           tint: [0, 0, 0, 0],
-          press: 0,
         },
       ],
-      pointer: [0, 0, 0],
     });
     const canvas = root.shadowRoot!.querySelector('canvas')!;
-    expect([canvas.width, canvas.height]).toEqual([400, 200]);
+    expect([canvas.width, canvas.height]).toEqual([600, 300]);
     expect(canvas.style.opacity).toBe('1');
     expect(group.active).toBe(true);
     expect(group.shapes).toHaveLength(1);
   });
 
   it('draws in CSS pixels when the page is drawn scaled', async () => {
-    const { root, blob } = container();
+    const { root } = container();
     const { backdrop } = scene(root);
     // The backdrop is laid out 800 CSS pixels wide and drawn 400 wide.
     vi.spyOn(backdrop, 'offsetWidth', 'get').mockReturnValue(800);
-    trackPress(blob);
-    Object.assign(pressOf(blob)!, { target: 1, value: 1, x: 60, y: 70 });
     const group = new GlassGroup(root, true);
 
     group.frame(16);
@@ -281,19 +290,20 @@ describe('GlassGroup', () => {
     await flush();
     group.frame(16);
     expect(lastFrame()).toMatchObject({
-      scale: 1,
+      scale: 1.5,
       width: 400,
       height: 200,
       offsetX: 20,
       offsetY: 40,
-      pointer: [100, 100, 1],
     });
-    expect(lastFrame().shapes[0]).toMatchObject({ centerX: 90, centerY: 90 });
-    // Its 25px radius, swollen by the press.
-    expect(lastFrame().shapes[0]!.radius).toBeCloseTo(26.5);
+    expect(lastFrame().shapes[0]).toMatchObject({
+      centerX: 90,
+      centerY: 90,
+      radius: 25,
+    });
     // As many device pixels as when drawn unscaled.
     const canvas = root.shadowRoot!.querySelector('canvas')!;
-    expect([canvas.width, canvas.height]).toEqual([400, 200]);
+    expect([canvas.width, canvas.height]).toEqual([600, 300]);
   });
 
   it('redraws only when something changed', async () => {
@@ -302,7 +312,7 @@ describe('GlassGroup', () => {
     const group = new GlassGroup(root, true);
     await captured(group);
     group.frame(16);
-    group.frame(16);
+    expect(group.frame(16)).toBe(false);
     expect(mocks.renderer.draw).toHaveBeenCalledTimes(1);
 
     root.setAttribute('spacing', 'wide');
@@ -352,8 +362,9 @@ describe('GlassGroup', () => {
     await captured(group);
     group.frame(16);
     expect(group.shapes).toEqual([root]);
-    expect(lastFrame()).toMatchObject({ scale: 1, smoothing: 0, shadow: 0 });
-    // Its canvas is its own box: its shadow is CSS (see glass-host-style.ts).
+    expect(lastFrame()).toMatchObject({ scale: 1, smoothing: 0, outside: 0 });
+    // Its canvas is its own box: its shadow and the lines at its edge are
+    // CSS (see glass-host-style.ts).
     const canvas = root.shadowRoot!.querySelector('canvas')!;
     expect([canvas.style.left, canvas.style.width]).toEqual([
       '0px',
@@ -383,7 +394,30 @@ describe('GlassGroup', () => {
     },
   );
 
-  it('puts the press glow on the most pressed shape', async () => {
+  it('takes a container’s material from its first shape', async () => {
+    // A ui-glass-group is given no style of its own; its shapes are.
+    const { root, blob } = container();
+    blob.setAttribute('ios-user-interface-style', 'dark');
+    scene(root);
+    const group = new GlassGroup(root, true);
+    await captured(group);
+    group.frame(16);
+    expect(lastFrame().dark).toBe(1);
+    expect(group.look.dark).toBe(true);
+  });
+
+  it('follows the backdrop for a container with no shapes', async () => {
+    const root = blurView({ 'blur-effect': 'glass-container' });
+    scene(root);
+    const group = new GlassGroup(root, true);
+    group.frame(16);
+    pending.resolve({ ...SNAPSHOT, luminance: 0.1 });
+    await flush();
+    group.frame(16);
+    expect(lastFrame()).toMatchObject({ dark: 1, shapes: [] });
+  });
+
+  it('reads a pressed shape as it’s drawn, with no glow of its own', async () => {
     const { root, blob } = container();
     scene(root);
     trackPress(blob);
@@ -391,8 +425,88 @@ describe('GlassGroup', () => {
     const group = new GlassGroup(root, true);
     await captured(group);
     group.frame(16);
-    expect(lastFrame().pointer).toEqual([50, 50, 1]);
-    expect(lastFrame().shapes[0]!.halfWidth).toBeCloseTo(26.5);
+    // The manager scales the element; the frame holds the box alone.
+    expect(lastFrame().shapes[0]).toEqual({
+      centerX: 45,
+      centerY: 45,
+      halfWidth: 25,
+      halfHeight: 25,
+      radius: 25,
+      frost: 1,
+      tint: [0, 0, 0, 0],
+    });
+  });
+
+  it('reports its look for the CSS of a lone shape', async () => {
+    const { root } = container();
+    scene(root);
+    const group = new GlassGroup(root, true);
+    // Before the first capture, the backdrop counts as white.
+    expect(group.look).toEqual({ dark: false, luminance: 1 });
+
+    await captured(group);
+    // How bright the picture is, in tenths.
+    expect(group.look).toEqual({ dark: false, luminance: 0.9 });
+  });
+
+  it('knows what it shows: its backdrop, but not what’s drawn above', () => {
+    const { root } = container();
+    const { backdrop, text, overlay } = scene(root);
+    const group = new GlassGroup(root, true);
+    const nested = document.createElement('x-blur-view');
+    overlay.append(nested);
+
+    expect(group.shows(text)).toBe(true);
+    expect(group.shows(root)).toBe(false);
+    expect(group.shows(nested)).toBe(false);
+    // Not in its backdrop at all.
+    expect(group.shows(backdrop.parentElement!)).toBe(false);
+    expect(
+      new GlassGroup(blurView({ 'blur-effect': 'glass' }), false).shows(text),
+    ).toBe(false);
+  });
+
+  it('captures again when it’s told what’s behind it changed', async () => {
+    const { root } = container();
+    scene(root);
+    const group = new GlassGroup(root, true);
+    await captured(group);
+    now += 1000;
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(1);
+
+    group.invalidate();
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('captures once more when it comes to rest after moving', async () => {
+    const { root } = container();
+    scene(root);
+    const group = new GlassGroup(root, true);
+    await captured(group);
+    now += 1000;
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(1);
+
+    // A sheet sliding up: still inside what was captured.
+    canvasBox = rect(10, 30, 200, 100);
+    group.frame(16);
+    now += 100;
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(1);
+
+    // At rest for a while: what's behind it may have finished changing.
+    now += 100;
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(2);
+    pending.resolve(SNAPSHOT);
+    await flush();
+
+    // And only once.
+    now += 1000;
+    group.frame(16);
+    expect(mocks.snapshot).toHaveBeenCalledTimes(2);
   });
 
   it('captures again when the backdrop changes, but not too often', async () => {
@@ -588,9 +702,17 @@ describe('GlassGroup in a fixed overlay', () => {
     return element;
   };
 
-  it('refracts what’s after it in the page, and leaves out what’s stacked above', () => {
+  it('refracts the page through what the overlay holds under it, and leaves out what’s stacked above', () => {
     const { root } = container();
-    const overlay = fixed('999', root);
+    // A sheet: a dimming layer, then a panel holding the glass and, after
+    // it, the sheet's own content.
+    const dim = document.createElement('x-view');
+    const content = document.createElement('x-view');
+    const typed = document.createTextNode('typed');
+    content.append(typed);
+    const panel = document.createElement('x-view');
+    panel.append(root, content);
+    const overlay = fixed('999', dim, panel);
     const header = document.createElement('x-view');
     header.append(overlay);
     const cards = document.createElement('x-view');
@@ -611,10 +733,16 @@ describe('GlassGroup in a fixed overlay', () => {
     expect(target).toBe(document.documentElement);
     expect(mocks.observe).toHaveBeenCalledWith(
       document.documentElement,
-      overlay,
+      expect.any(Function),
       expect.any(Function),
     );
-    expect(options.exclude(overlay)).toBe(true);
+    // The overlay's dimming layer is under the glass, which shows the page
+    // through it. The glass and the content after it are not.
+    expect(options.exclude(overlay)).toBe(false);
+    expect(options.exclude(dim)).toBe(false);
+    expect(options.exclude(panel)).toBe(false);
+    expect(options.exclude(root)).toBe(true);
+    expect(options.exclude(content)).toBe(true);
     // The trip cards after the menu's row are behind it on screen.
     expect(options.exclude(cards)).toBe(false);
     // So is the sheet it's in, and an overlay stacked lower.
@@ -624,6 +752,13 @@ describe('GlassGroup in a fixed overlay', () => {
     // Another overlay above it isn't.
     expect(options.exclude(sameLater)).toBe(true);
     expect(options.exclude(higherEarlier)).toBe(true);
+
+    // The dimming layer fading in changes what's behind the glass; typing
+    // in the sheet doesn't.
+    const inFront = mocks.observe.mock.lastCall![1] as (node: Node) => boolean;
+    expect(inFront(dim)).toBe(false);
+    expect(inFront(cards)).toBe(false);
+    expect(inFront(typed)).toBe(true);
   });
 });
 
@@ -635,9 +770,24 @@ describe('GlassGroup over a deeper backdrop', () => {
     const row = document.createElement('x-view');
     const later = document.createElement('x-view');
     row.append(before, root, after);
+    /**
+     * A fixed element. There are three: a backdrop before the glass, with
+     * no z-index, an open sheet's overlay before it too, and one inside
+     * what follows it.
+     */
+    const fixed = (zIndex: string) => {
+      const element = document.createElement('x-view');
+      element.style.position = 'fixed';
+      element.style.zIndex = zIndex;
+      return element;
+    };
+    const wallpaper = fixed('');
+    const sheet = fixed('999');
+    const nested = fixed('');
+    later.append(nested);
     const card = placed(document.createElement('x-view'), rect(0, 0, 400, 400));
     card.style.backgroundColor = 'rgb(255, 255, 255)';
-    card.append(row, later);
+    card.append(wallpaper, sheet, row, later);
     document.body.append(card);
 
     new GlassGroup(root, true).frame(16);
@@ -649,5 +799,12 @@ describe('GlassGroup over a deeper backdrop', () => {
     expect(options.exclude(root)).toBe(true);
     expect(options.exclude(after)).toBe(true);
     expect(options.exclude(later)).toBe(true);
+    // A fixed element stacked above the page is above its glass too,
+    // wherever it is in the document: an open sheet dims the page, and a
+    // button's glass under it mustn't show that dimming, then be dimmed.
+    expect(options.exclude(sheet)).toBe(true);
+    expect(options.exclude(nested)).toBe(true);
+    // One with no z-index that comes before the glass is behind it.
+    expect(options.exclude(wallpaper)).toBe(false);
   });
 });

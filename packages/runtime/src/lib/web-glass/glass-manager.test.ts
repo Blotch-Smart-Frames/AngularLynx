@@ -10,7 +10,10 @@ type FakeGroup = {
   active: boolean;
   lost: boolean;
   shapes: HTMLElement[];
+  look: { dark: boolean; luminance: number };
   frame: ReturnType<typeof vi.fn>;
+  shows: ReturnType<typeof vi.fn>;
+  invalidate: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
 
@@ -21,7 +24,11 @@ vi.mock('./glass-group', () => ({
     active = false;
     lost = false;
     shapes: HTMLElement[];
-    frame = vi.fn();
+    look = { dark: false, luminance: 0.8 };
+    // Whether the frame drew anything.
+    frame = vi.fn(() => false);
+    shows = vi.fn(() => false);
+    invalidate = vi.fn();
     dispose = vi.fn();
     constructor(
       readonly root: HTMLElement,
@@ -168,57 +175,138 @@ describe('GlassManager', () => {
 
     frame(1000);
     // The fallback casts its own shadow; the container's canvas isn't up.
+    // The member takes the look of the container's group.
     expect(styleOf(member)).toEqual({
+      dark: false,
+      luminance: 0.8,
       hostsCanvas: false,
       rendered: false,
       fallback: true,
       shadow: true,
       scale: 1,
+      press: 0,
     });
     expect(styleOf(plain)).toEqual({
+      dark: false,
+      luminance: 1,
       hostsCanvas: false,
       rendered: false,
       fallback: false,
       shadow: false,
       scale: 1,
+      press: 0,
     });
 
     groups[0]!.active = true;
     frame(1016);
     expect(styleOf(member)).toEqual({
+      dark: false,
+      luminance: 0.8,
       hostsCanvas: false,
       rendered: true,
       fallback: false,
       shadow: false,
       scale: 1,
+      press: 0,
     });
     expect(styleOf(container)).toMatchObject({ hostsCanvas: true });
   });
 
-  it('gives a lone shape a CSS shadow, and swells it while it’s pressed', () => {
+  it('styles a shape with its group’s look, or else the one it asks for', () => {
+    const { show, frame } = fakeWindow();
+    const lone = blurView('glass');
+    // No group yet: its parent container hasn't come on screen.
+    const waiting = blurView('glass');
+    waiting.setAttribute('ios-user-interface-style', 'dark');
+    document.body.append(lone, blurView('glass-container', waiting));
+    show(lone, waiting);
+    frame(1000);
+    groups[0]!.look = { dark: true, luminance: 0.2 };
+    frame(1016);
+
+    expect(styleOf(lone)).toMatchObject({ dark: true, luminance: 0.2 });
+    // Over a backdrop it knows nothing of yet, which counts as white.
+    expect(styleOf(waiting)).toMatchObject({ dark: true, luminance: 1 });
+  });
+
+  it('gives a lone shape a CSS shadow, and swells and washes any pressed shape', () => {
     const { manager, show, frame } = fakeWindow();
     const member = blurView('glass');
     const container = blurView('glass-container', member);
     const lone = blurView('glass');
-    document.body.append(container, lone);
-    manager.register(member);
-    manager.register(lone);
-    show(container, lone);
+    const plain = blurView('light');
+    document.body.append(container, lone, plain);
+    Object.defineProperty(member, 'offsetWidth', { value: 60 });
+    Object.defineProperty(lone, 'offsetWidth', { value: 300 });
+    for (const element of [member, lone, plain]) manager.register(element);
+    show(container, lone, plain);
     frame(1000);
     for (const group of groups) group.active = true;
     pressOf(member)!.value = 1;
     pressOf(lone)!.value = 0.5;
+    pressOf(plain)!.value = 1;
     frame(1016);
 
+    // The longer side grows by 15px when fully pressed: half of that here.
     expect(styleOf(lone)).toEqual({
+      dark: false,
+      luminance: 0.8,
       hostsCanvas: true,
       rendered: true,
       fallback: false,
       shadow: true,
-      scale: 1.03,
+      scale: 1.025,
+      press: 0.5,
     });
-    // The container swells its shapes, and draws their shadow, on its canvas.
-    expect(styleOf(member)).toMatchObject({ shadow: false, scale: 1 });
+    // The container draws its shapes' shadow on its canvas, but a pressed
+    // shape of its swells and washes out as a lone one does.
+    expect(styleOf(member)).toMatchObject({
+      shadow: false,
+      scale: 1.25,
+      press: 1,
+    });
+    // A blur view that isn't glass doesn't react.
+    expect(styleOf(plain)).toMatchObject({ scale: 1, press: 0 });
+  });
+
+  it('has the glass above a redrawn group capture again', () => {
+    const { show, frame } = fakeWindow();
+    const [button, sheet, other] = [
+      blurView('glass'),
+      blurView('glass'),
+      blurView('glass'),
+    ];
+    document.body.append(button, sheet, other);
+    show(button, sheet, other);
+    frame(1000);
+    const [below, above, apart] = groups;
+    // The sheet floats over the button, and shows it; the third is elsewhere.
+    above!.shows.mockImplementation((root) => root === button);
+    below!.frame.mockReturnValue(true);
+    frame(1016);
+
+    expect(above!.shows).toHaveBeenCalledWith(button);
+    expect(above!.invalidate).toHaveBeenCalledTimes(1);
+    expect(apart!.invalidate).not.toHaveBeenCalled();
+    expect(below!.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('tells neither of two groups that each count the other as behind them', () => {
+    const { show, frame } = fakeWindow();
+    const first = blurView('glass');
+    const second = blurView('glass');
+    document.body.append(first, second);
+    show(first, second);
+    frame(1000);
+    // A stacking read wrong: left alone, they'd keep each other capturing.
+    for (const group of groups) {
+      group.shows.mockReturnValue(true);
+      group.frame.mockReturnValue(true);
+    }
+    frame(1016);
+
+    expect(groups[0]!.invalidate).not.toHaveBeenCalled();
+    expect(groups[1]!.invalidate).not.toHaveBeenCalled();
   });
 
   it('runs frames while glass is visible, with capped elapsed times', () => {

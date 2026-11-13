@@ -1,6 +1,6 @@
 # LynxTheme
 
-The device's light or dark appearance, and on Android its wallpaper's colors, as signals. `import { LynxTheme } from '@blotch/angular-lynx';`
+The light or dark appearance the app is drawn in, the device's own, and on Android its wallpaper's colors, as signals. `import { LynxTheme, provideColorScheme } from '@blotch/angular-lynx';`
 
 ## Usage
 
@@ -12,8 +12,8 @@ import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
   selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view [class.dark]="theme.isDarkMode()">
-      <text>The theme is {{ theme.theme() }}</text>
+    <view (bindtap)="theme.setColorScheme('dark')">
+      <text class="app-text">Drawn {{ theme.appearance() }}</text>
     </view>
   `,
 })
@@ -21,6 +21,8 @@ export class App {
   readonly theme = inject(LynxTheme);
 }
 ```
+
+The `page` element has the `dark` class while `appearance()` is `'dark'`, so a stylesheet's dark values go under `page.dark`. See [Dark mode](/guide/dark-mode).
 
 ## API
 
@@ -31,7 +33,31 @@ export class App {
 class LynxTheme {}
 ```
 
-Reads the `theme` value that the [host app](/guide/glossary#host-app) sets in its global data. The host usually sets it from the operating system's appearance setting.
+Reads the `theme` value that the [host app](/guide/glossary#host-app) sets in its global data. The host usually sets it from the operating system's appearance setting. In the web preview, where no host sets one, it's the browser's `prefers-color-scheme`.
+
+### `LynxTheme.appearance`
+
+```typescript
+readonly appearance: Signal<'light' | 'dark'>;
+```
+
+What the app is drawn in: its own choice (see `colorScheme`), or the device's while that's `'system'`.
+
+### `LynxTheme.colorScheme`
+
+```typescript
+readonly colorScheme: Signal<LynxColorScheme>;
+```
+
+The app's choice: `'system'` (the default) follows the device, and `'light'` and `'dark'` keep to one.
+
+### `LynxTheme.setColorScheme()`
+
+```typescript
+setColorScheme(scheme: LynxColorScheme): void;
+```
+
+Sets the app's choice. It lasts until the app closes: store the user's choice and set it again at the next start.
 
 ### `LynxTheme.theme`
 
@@ -39,7 +65,7 @@ Reads the `theme` value that the [host app](/guide/glossary#host-app) sets in it
 readonly theme: Signal<'Light' | 'Dark'>;
 ```
 
-The current theme. `'Light'` when the host sets none.
+The device's theme, whatever the app chose. `'Light'` when the host sets none and no browser prefers dark.
 
 ### `LynxTheme.isDarkMode`
 
@@ -48,6 +74,14 @@ readonly isDarkMode: Signal<boolean>;
 ```
 
 `true` when `theme()` is `'Dark'`.
+
+### `provideColorScheme()`
+
+```typescript
+function provideColorScheme(scheme: LynxColorScheme): EnvironmentProviders;
+```
+
+Sets the app's choice from its first frame, in `app.config.ts`. An app with no dark design uses `provideColorScheme('light')`.
 
 ### `LynxTheme.dynamicColors`
 
@@ -72,6 +106,18 @@ const accent = computed(
 - **To color the UI components with it,** use [Dynamic Color](/dolan/dynamic-color).
 
 ## Types
+
+### `LynxColorScheme`
+
+```typescript
+type LynxColorScheme = 'system' | 'light' | 'dark';
+```
+
+### `LynxAppearance`
+
+```typescript
+type LynxAppearance = 'light' | 'dark';
+```
 
 ### `DynamicColors`
 

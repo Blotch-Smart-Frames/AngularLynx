@@ -7,6 +7,7 @@ import {
   scheduleSettleFlush,
 } from '../lynx-element';
 import { ANDROID_BLUR_CAPTURE_TARGET, isAndroid } from './android-blur-capture';
+import { followColorScheme } from './page-color-scheme';
 import { followSafeAreaInsets } from './page-safe-area';
 import {
   __pageElementRef,
@@ -76,6 +77,9 @@ export class LynxDocument implements LynxDocumentBase {
     // Every env(safe-area-inset-*) reads the insets the shell sends from the
     // page's variables.
     followSafeAreaInsets(this.page);
+    // `page.dark` holds a stylesheet's dark values: the page has the class
+    // while the device, or the app's own choice, is dark.
+    followColorScheme(this.page);
     return this.page;
   }
   createElement(name: string, value?: string): LynxElement | LynxListElement {

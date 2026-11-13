@@ -187,6 +187,22 @@ describe('LynxDocument', () => {
       expect(asMock(globalThis.__RemoveElement)).not.toHaveBeenCalled();
     });
 
+    // A stylesheet's dark values are under page.dark (see
+    // page-color-scheme.ts), from the first frame on.
+    it('gives the page the dark class when the host starts it dark', () => {
+      vi.stubGlobal('lynx', { __globalProps: { theme: 'Dark' } });
+
+      const root = new LynxDocument().createRootElement();
+      vi.stubGlobal('lynx', undefined);
+      // The next test's page starts light.
+      new LynxDocument().createRootElement();
+
+      expect(asMock(globalThis.__AddClass)).toHaveBeenCalledWith(
+        root.element,
+        'dark',
+      );
+    });
+
     // env(safe-area-inset-*) reads a generated app's insets from the page's
     // variables (see page-safe-area.ts), from the first frame on.
     it("gives the page the shell's safe-area insets", () => {

@@ -32,6 +32,7 @@ vi.mock('../lynx-element', () => {
     addEventListener = vi.fn(() => () => {});
     addTrailingEventListener = vi.fn(() => () => {});
     updateSafeAreaInsets = vi.fn();
+    setRuntimeClass = vi.fn(() => false);
     constructor(ref: ElementRef) {
       this.element = ref;
     }
@@ -72,6 +73,17 @@ describe('LynxHydrateDocument', () => {
       const root = new LynxHydrateDocument(pageRef, []).createRootElement();
 
       expect(root.updateSafeAreaInsets).toHaveBeenCalled();
+    });
+
+    // As LynxDocument's does: page.dark holds a stylesheet's dark values
+    // (see page-color-scheme.ts).
+    it('gives the page the dark class while the app is drawn dark', () => {
+      vi.stubGlobal('lynx', { __globalProps: { theme: 'Dark' } });
+
+      const root = new LynxHydrateDocument(pageRef, []).createRootElement();
+      vi.unstubAllGlobals();
+
+      expect(root.setRuntimeClass).toHaveBeenCalledWith('dark', true);
     });
 
     // As LynxDocument's does: the snapshot's page is the screen.

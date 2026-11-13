@@ -1,65 +1,47 @@
 # Dark mode
 
-Match your app to the phone's light or dark appearance. **`LynxTheme`** gives you the current theme as a signal, and CSS variables restyle the app from it.
-
-## Where the theme comes from
-
-`LynxTheme` doesn't ask the phone directly. It reads a `theme` value from the [**host app**](/guide/glossary#host-app), the native app that runs your bundle. The host app passes it in its **global props**, values it shares with every bundle it runs (see [GlobalData](/guide/glossary#globaldata)). The value is `'Dark'` or `'Light'`, and it's `'Light'` when the host app passes none.
-
-| Where the app runs                             | What `theme()` returns         |
-| ---------------------------------------------- | ------------------------------ |
-| [Lynx Explorer](/guide/glossary#lynx-explorer) | The phone's appearance setting |
-| Apps from `ng build --platform`                | The phone's appearance setting |
-| [Web preview](/guide/glossary#web-preview)     | `'Light'`                      |
-| Your own host app                              | Whatever it passes as `theme`  |
-
-The apps that `ng build --platform` makes send the new theme as soon as the phone switches between light and dark, so the app restyles while it's open.
+Your app follows the phone's light or dark appearance with no code. While the phone is dark, AngularLynx gives the **`page`** element a `dark` class, and your stylesheet's dark values go under it. **`LynxTheme`** gives you the appearance as signals, and lets the user choose their own.
 
 ## Switch colors with CSS variables
 
-Define your colors twice: light values on `page`, and dark values under a `.dark` class.
+Define your colors twice: light values on `page`, and dark values on `page.dark`.
 
 ```css title="src/styles.css"
 page {
   --surface: #ffffff;
   --text: #1a1a1a;
   --border: #e0e0e0;
+  background-color: var(--surface);
 }
 
-.dark {
+page.dark {
   --surface: #1a1a1a;
   --text: #f0f0f0;
   --border: #333333;
 }
 ```
 
-Then bind the `dark` class on your root view:
+Then use the variables. Nothing in the component switches them:
 
 ```typescript title="src/app/app.ts"
-import { Component, inject } from '@angular/core';
-import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
+import { Component } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
 
 @Component({
   selector: 'app-root',
   imports: [LYNX_ELEMENTS],
   template: `
-    <view class="app-shell" [class.dark]="theme.isDarkMode()">
-      <view class="app-card">
-        <text class="app-card-text">Hello in either theme</text>
-      </view>
+    <view class="app-card">
+      <text class="app-card-text">Hello in either theme</text>
     </view>
   `,
   styles: `
-    .app-shell {
-      height: 100%;
-      padding: 16px;
-      background-color: var(--surface);
-    }
     .app-card {
+      margin: 16px;
       border-width: 1px;
       border-style: solid;
       border-color: var(--border);
-      border-radius: 8px;
+      border-radius: 12px;
       padding: 16px;
     }
     .app-card-text {
@@ -67,24 +49,99 @@ import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
     }
   `,
 })
-export class App {
+export class App {}
+```
+
+- **`page` is the root element of every Lynx app** (see [Glossary](/guide/glossary#page)). AngularLynx creates it, and adds and removes its `dark` class as the appearance changes.
+- **CSS variables inherit**, unlike other properties on Lynx. Every element reads the `page.dark` values once the class is on, and the light ones otherwise.
+- **The first frame is already in the right theme.** The class is set before your app renders, so a dark phone never sees a flash of light.
+- **Give your text a color.** Lynx draws text black unless a style says otherwise, and black text vanishes on a dark background.
+- **Keep the theme in variables.** Avoid `page.dark .card` descendant selectors: by default, Lynx doesn't re-match them when a class changes, so the screen wouldn't update. See [`enableCSSInvalidation`](/api/build/#plugin-options).
+
+## Where the appearance comes from
+
+AngularLynx doesn't ask the phone directly. It reads a `theme` value from the [**host app**](/guide/glossary#host-app), the native app that runs your bundle. The host app passes it in its **global props**, values it shares with every bundle it runs (see [GlobalData](/guide/glossary#globaldata)). The value is `'Dark'` or `'Light'`.
+
+| Where the app runs                             | What it follows                                                  |
+| ---------------------------------------------- | ---------------------------------------------------------------- |
+| Apps from `ng build --platform`                | The phone's appearance setting, as it changes                    |
+| [Lynx Explorer](/guide/glossary#lynx-explorer) | The phone's appearance setting when the bundle opens (see below) |
+| [Web preview](/guide/glossary#web-preview)     | The browser's `prefers-color-scheme`, as it changes              |
+| Your own host app                              | Whatever it passes as `theme`                                    |
+
+- **The apps that `ng build --platform` makes send the new theme as soon as the phone switches**, so the app restyles while it's open.
+- **Lynx Explorer on iOS sends the theme once.** Switch the phone's appearance and open the bundle again to see the other theme. On Android it follows the switch.
+- **A host app's `theme` wins over the browser's preference**, so a page that embeds your app in a `<lynx-view>` can set the theme itself through `globalProps`.
+
+## Let the user choose
+
+An Appearance setting usually has three choices: follow the system, always light, always dark. `setColorScheme()` takes the same three.
+
+```typescript title="src/app/appearance-setting.ts"
+import { Component, inject } from '@angular/core';
+import {
+  LYNX_ELEMENTS,
+  type LynxColorScheme,
+  LynxTheme,
+} from '@blotch/angular-lynx';
+
+@Component({
+  selector: 'app-appearance-setting',
+  imports: [LYNX_ELEMENTS],
+  template: `
+    @for (scheme of schemes; track scheme) {
+      <view (bindtap)="theme.setColorScheme(scheme)">
+        <text class="app-text">
+          {{ scheme }}{{ theme.colorScheme() === scheme ? ' ✓' : '' }}
+        </text>
+      </view>
+    }
+  `,
+})
+export class AppearanceSetting {
   protected readonly theme = inject(LynxTheme);
+  protected readonly schemes: readonly LynxColorScheme[] = [
+    'system',
+    'light',
+    'dark',
+  ];
 }
 ```
 
-- **CSS variables inherit**, unlike other properties on Lynx. Everything inside the root view reads the `.dark` values once the class is on, and the light ones from `page` otherwise.
-- **Light values sit on `page`**, so they apply before the class is ever set.
-- **Put the class on one element near the root**, and keep the theme in variables. Avoid `.dark .card` descendant selectors: by default, Lynx doesn't re-match them when a parent's class changes, so the screen wouldn't update. A rule on the element whose class changes, like `.dark`, does update.
+- **`'system'`** (the default) follows the phone. **`'light'`** and **`'dark'`** keep to one whatever the phone says.
+- **The choice lasts until the app closes.** Store it, such as with [`LynxLocalStorage`](/guide/persistent-storage), and set it again when the app starts.
+
+## Keep to one appearance
+
+An app with no dark design yet can stay light on every phone. Set it in your app config, and it applies from the first frame:
+
+```typescript title="src/app/app.config.ts"
+import {
+  type ApplicationConfig,
+  provideZonelessChangeDetection,
+} from '@angular/core';
+import { provideColorScheme, provideRenderer } from '@blotch/angular-lynx';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideZonelessChangeDetection(),
+    provideRenderer(),
+    provideColorScheme('light'), // [!code highlight]
+  ],
+};
+```
+
+An app whose stylesheet has no `page.dark` rule doesn't need this: the class is there, and nothing reads it.
 
 ## With the UI components
 
-The [UI components](/dolan/) theme keeps its dark values in `dark.css`, under `page.dark`. Change that selector to `.dark` and bind the class as above. Classes like `bg-background` and `text-foreground` then follow the theme. See [Theming](/dolan/theming).
+The [UI components](/dolan/) theme keeps its light values in `default.css` and its dark values in `dark.css`, under `page.dark`. Import both and the components follow the phone. Classes like `bg-background` and `text-foreground` follow it too. See [Theming](/dolan/theming#dark-mode).
 
-Icons and charts draw with SVG, which can't read CSS, so tell them the theme too: `provideIconTheme({ colorScheme: 'system' })` and `provideChartTheme({ colorScheme: 'system' })`. See [Icon](/dolan/icon#dark-mode).
+Icons and charts draw with SVG, which can't read CSS, so they take their colors from the appearance instead, and switch with it by themselves.
 
 On Android 12 and later, [Dynamic Color](/dolan/dynamic-color) gives the components the colors of the user's wallpaper, in both themes.
 
-## Read the theme in TypeScript
+## Read the appearance in TypeScript
 
 ```typescript title="src/app/status-bar.ts"
 import { Component, computed, inject } from '@angular/core';
@@ -93,26 +150,27 @@ import { LYNX_ELEMENTS, LynxTheme } from '@blotch/angular-lynx';
 @Component({
   selector: 'app-status-bar',
   imports: [LYNX_ELEMENTS],
-  template: `<text>{{ label() }}</text>`,
+  template: `<image [src]="logo()" class="app-logo" />`,
 })
 export class StatusBar {
   readonly #theme = inject(LynxTheme);
 
-  protected readonly label = computed(() =>
-    this.#theme.isDarkMode() ? 'Dark appearance' : 'Light appearance',
+  protected readonly logo = computed(() =>
+    this.#theme.appearance() === 'dark' ? 'logo-dark.png' : 'logo.png',
   );
 }
 ```
 
-- **`theme()`** is a signal of `'Dark' | 'Light'`.
-- **`isDarkMode()`** is a signal that's `true` when the theme is `'Dark'`.
+- **`appearance()`** is a signal of `'light' | 'dark'`: what the app is drawn in. It's the user's choice, or the phone's while that's `'system'`.
+- **`colorScheme()`** is the choice itself: `'system' | 'light' | 'dark'`.
+- **`theme()`** and **`isDarkMode()`** are the phone's own appearance, whatever the app chose.
 
 Use them for things CSS can't reach, such as picking an image or a chart palette. For colors, prefer the CSS variables above. The whole page restyles from one class change.
 
 ## Limitations
 
-- **`prefers-color-scheme` doesn't work.** AngularLynx apps don't support `@media`. Use `LynxTheme`.
-- **Your own native app has to send each change.** `LynxTheme` updates whenever the host app sends a new theme. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
+- **`prefers-color-scheme` doesn't work in your CSS.** AngularLynx apps don't support `@media`. Put the dark values under `page.dark`.
+- **Your own native app has to send each change.** The app follows whatever theme the host app sends. See [Pass data from your native app](/guide/embedding/host-data#send-the-data-from-native-code).
 
 ## Related
 

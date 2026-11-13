@@ -126,6 +126,56 @@ describe('LynxElement', () => {
     });
   });
 
+  // The page's `dark` class (see followColorScheme).
+  describe('setRuntimeClass', () => {
+    it('adds the class, and says it changed', () => {
+      element = new LynxElement(fakeRef);
+
+      expect(element.setRuntimeClass('dark', true)).toBe(true);
+
+      expect(globalThis.__AddClass).toHaveBeenCalledWith(fakeRef, 'dark');
+    });
+
+    it('removes the class, and says it changed', () => {
+      element = new LynxElement(fakeRef);
+      element.setRuntimeClass('dark', true);
+      vi.mocked(globalThis.__GetClasses).mockReturnValue(['app', 'dark']);
+
+      expect(element.setRuntimeClass('dark', false)).toBe(true);
+
+      expect(globalThis.__SetClasses).toHaveBeenLastCalledWith(fakeRef, 'app');
+    });
+
+    it('does nothing when the class is already as asked', () => {
+      element = new LynxElement(fakeRef);
+
+      expect(element.setRuntimeClass('dark', false)).toBe(false);
+      element.setRuntimeClass('dark', true);
+      vi.mocked(globalThis.__AddClass).mockClear();
+      expect(element.setRuntimeClass('dark', true)).toBe(false);
+
+      expect(globalThis.__AddClass).not.toHaveBeenCalled();
+      expect(globalThis.__SetClasses).not.toHaveBeenCalled();
+    });
+
+    // Angular writes an app's own <page class="…"> as one class string.
+    it('keeps the class when Angular replaces the class list, until it is removed', () => {
+      element = new LynxElement(fakeRef);
+      element.setRuntimeClass('dark', true);
+
+      element.setAttribute('class', 'app');
+      expect(globalThis.__SetClasses).toHaveBeenLastCalledWith(
+        fakeRef,
+        'app dark',
+      );
+
+      vi.mocked(globalThis.__GetClasses).mockReturnValue(['app', 'dark']);
+      element.setRuntimeClass('dark', false);
+      element.setAttribute('class', 'app');
+      expect(globalThis.__SetClasses).toHaveBeenLastCalledWith(fakeRef, 'app');
+    });
+  });
+
   describe('addClass', () => {
     it('calls __AddClass with the class name', () => {
       element = new LynxElement(fakeRef);

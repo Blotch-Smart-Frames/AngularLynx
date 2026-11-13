@@ -23,7 +23,7 @@ import {
 } from '@blotch/dolan/utils/animate';
 import { cn } from '@blotch/dolan/utils/cn';
 import { injectIconColor } from '../icon/icon-theme';
-import { type IconName, ICONS } from '../icon/icons';
+import { type IconName, iconMarkup, paintIcon } from '../icon/icons';
 
 /**
  * The bar along the bottom of the screen that switches between an app's
@@ -148,7 +148,9 @@ export class UiTabBar {
 const round = (value: number): number => Math.round(value * 100) / 100;
 
 /**
- * One tab: an icon over a label that navigates to its `route` on a tap.
+ * One tab: an icon over a label that navigates to its `route` on a tap. The
+ * icon is one from the set (`icon`) or the app's own mark (`svg`), such as
+ * its logo on the Home tab.
  *
  * The host itself is the link. Angular's own `RouterLink` and
  * `RouterLinkActive` sit on it as host directives, so every `RouterLink`
@@ -234,7 +236,15 @@ const round = (value: number): number => Math.round(value * 100) / 100;
   `,
 })
 export class UiTabBarItem {
-  readonly icon = input.required<IconName>();
+  /** An icon from the set (see `ICONS`). Give this or `svg`. */
+  readonly icon = input<IconName | undefined>(undefined);
+  /**
+   * SVG markup to draw instead of an icon from the set, such as the app's
+   * logo. `currentColor` in it takes the tab's color for its state, as the
+   * set's icons do, so a one-color mark follows selection and the theme;
+   * colors written out stay. Give this or `icon`.
+   */
+  readonly svg = input<string | undefined>(undefined);
   readonly label = input.required<string>();
   /**
    * A count or short text over the icon's corner, such as unread messages.
@@ -282,16 +292,18 @@ export class UiTabBarItem {
   // child whose inputs it has to keep in step. An SVG can't read the label's
   // text class (Lynx doesn't pass `color` down, and the markup is parsed
   // apart from the page's CSS), so the token is resolved to its value and
-  // written into the markup (see icon-theme.ts). split/join, not
-  // replaceAll(), which PrimJS's ES2019 runtime lacks (see UiIcon).
+  // written into the markup (see icon-theme.ts).
   protected readonly iconSvg = computed(() =>
-    ICONS[this.icon()]
-      .split('currentColor')
-      .join(
-        this.#resolveColor(
-          this.active() ? 'var(--primary)' : 'var(--muted-foreground)',
-        ),
+    paintIcon(
+      iconMarkup(
+        this.icon(),
+        this.svg(),
+        '<ui-tab-bar-item> needs an icon or an svg, not both.',
       ),
+      this.#resolveColor(
+        this.active() ? 'var(--primary)' : 'var(--muted-foreground)',
+      ),
+    ),
   );
 
   protected readonly labelClass = computed(() =>

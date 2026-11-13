@@ -567,3 +567,57 @@ export const ICONS = {
 } as const;
 
 export type IconName = keyof typeof ICONS;
+
+/**
+ * Gives the markup's root `<svg>` the SVG namespace when it has none. The web
+ * preview draws `content` as an image of the markup, and a browser draws
+ * nothing for an SVG image without the namespace. An app's own SVG often
+ * leaves it out, since an `<svg>` written in an HTML page doesn't need it.
+ */
+const withSvgNamespace = (markup: string): string =>
+  markup.replace(/<svg\b([^>]*)>/, (tag, attributes: string) =>
+    /\sxmlns\s*=/.test(attributes)
+      ? tag
+      : `<svg xmlns="http://www.w3.org/2000/svg"${attributes}>`,
+  );
+
+/**
+ * The markup to draw for an icon given either way: by name from the set, or
+ * as the app's own SVG, such as its logo or a sign-in provider's mark, which
+ * the set can't hold. For the components that take both, `<ui-icon>` and the
+ * dock's and tab bar's items, so an app's mark draws the same in each.
+ *
+ * Neither, or both, is a mistake in the template that the compiler can't
+ * catch, since neither input can be required, so it throws `mistake` rather
+ * than drawing an empty box or picking one.
+ */
+export const iconMarkup = (
+  name: IconName | undefined,
+  svg: string | undefined,
+  mistake: string,
+): string => {
+  if (svg !== undefined && name === undefined) return withSvgNamespace(svg);
+  if (name !== undefined && svg === undefined) return ICONS[name];
+  throw new Error(mistake);
+};
+
+/**
+ * Markup with each `currentColor` in it drawn in `color`, a concrete color
+ * (see icon-theme.ts). The set's icons stroke with `currentColor`, and an
+ * app's one-color mark fills with it, so both follow the state and theme of
+ * what they're drawn in, while colors written out stay.
+ *
+ * The SVG engines don't take `color` from the element: Lynx's native ones
+ * read a literal color, and the web preview draws the markup as an image,
+ * apart from the page's CSS. So the color goes into the markup itself.
+ *
+ * split/join, not String.prototype.replaceAll(): replaceAll is ES2021, and
+ * PrimJS, which runs Angular on Lynx's main thread, implements ES2019. Only
+ * the build's polyfill (es-builtins.js) adds it, and without it the call
+ * throws "not a function" inside change detection, which aborts the whole
+ * tick before Lynx flushes the element tree, so no icon paints at all. An app
+ * built with an older build plugin than its copied components has no
+ * polyfill. The search term is a plain literal, so it needs no regex either.
+ */
+export const paintIcon = (markup: string, color: string): string =>
+  markup.split('currentColor').join(color);

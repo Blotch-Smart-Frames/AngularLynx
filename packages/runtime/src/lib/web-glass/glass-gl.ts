@@ -42,7 +42,7 @@ export const createTexture = (gl: WebGLRenderingContext): WebGLTexture => {
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
   // WebGL 1 can't mipmap or repeat non-power-of-two textures; clamping also
-  // stretches the backdrop's edge when the lens samples past it.
+  // stretches the backdrop's edge where the blur reaches past it.
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);

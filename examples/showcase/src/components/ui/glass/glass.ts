@@ -377,8 +377,9 @@ export class UiGlass {
 
 /**
  * Merges the glass elements inside it, as iOS 26 draws a group of glass
- * controls: shapes closer than `spacing` flow into each other like droplets,
- * and the group draws them in one pass. Put a `<blur-view ui-glass>` directly
+ * controls: shapes closer than `spacing` reach toward each other like
+ * droplets, and join into one once the gap between them is under half of it.
+ * The group draws them in one pass. Put a `<blur-view ui-glass>` directly
  * inside it for each shape: iOS merges the glass in the group's own content,
  * and a wrapper that draws anything of its own comes between them.
  *
@@ -407,7 +408,10 @@ export class UiGlass {
   template: `<ng-content />`,
 })
 export class UiGlassGroup {
-  /** How close two glass shapes come before they merge, in px. */
+  /**
+   * How close two glass shapes come before they start to merge, in px. They
+   * join at half of it.
+   */
   readonly spacing = input(0, { transform: numberAttribute });
 
   readonly #design = injectGlassDesign();

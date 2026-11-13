@@ -87,6 +87,8 @@ describe('snapshotBackdrop', () => {
 
     expect(snapshot).toMatchObject({ x: 50, y: 0, width: 200, height: 100 });
     expect(snapshot!.luminance).toBe(0);
+    // jsdom's canvas can't be read back: the background stands in.
+    expect(snapshot!.brightness).toBe(0);
     expect(snapshot!.image.width).toBe(400);
     expect(snapshot!.image.height).toBe(200);
     expect(drawImage).toHaveBeenCalledWith(
@@ -139,6 +141,30 @@ describe('snapshotBackdrop', () => {
         `scale(${490 / 360},${485 / 356.47}) translate(0px,0px)`,
       ),
     );
+  });
+
+  it('measures how bright the picture is, averaged on a small canvas', async () => {
+    // Half of the probe white, half of it mid gray, behind a black page.
+    const data = new Uint8ClampedArray(8 * 8 * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      const value = i < data.length / 2 ? 255 : 128;
+      data.set([value, value, value, 255], i);
+    }
+    const getImageData = vi.fn(() => ({ data }));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage,
+      getImageData,
+    } as unknown as CanvasRenderingContext2D);
+
+    const snapshot = await snapshotBackdrop(
+      root(0, 0, 100, 100),
+      options(0, 0, 100, 100),
+    );
+    expect(snapshot!.luminance).toBe(0);
+    expect(snapshot!.brightness).toBeCloseTo((1 + 128 / 255) / 2);
+    // The picture itself, then the picture scaled down onto the probe.
+    expect(drawImage).toHaveBeenLastCalledWith(snapshot!.image, 0, 0, 8, 8);
+    expect(getImageData).toHaveBeenCalledWith(0, 0, 8, 8);
   });
 
   it('keeps the image inside the texture size limit', async () => {

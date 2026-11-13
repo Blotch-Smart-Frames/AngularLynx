@@ -7,6 +7,7 @@ import {
   containerShapes,
   cornerRadius,
   glassRole,
+  pressScale,
   readShape,
 } from './glass-shapes';
 
@@ -104,7 +105,7 @@ describe('readShape', () => {
   };
 
   it('measures the shape relative to the canvas origin', () => {
-    expect(readShape(shape(), rect(10, 20, 300, 300), 1, 16, true)).toEqual({
+    expect(readShape(shape(), rect(10, 20, 300, 300), 1, 16)).toEqual({
       centerX: 70,
       centerY: 60,
       halfWidth: 50,
@@ -119,7 +120,7 @@ describe('readShape', () => {
   it('measures in CSS pixels when the page is drawn scaled', () => {
     // Drawn at half size: the 100×60 shape is 200×120 CSS pixels, 40 and 60
     // CSS pixels from the canvas, and its 16px radius stays 16px.
-    expect(readShape(shape(), rect(10, 20, 150, 150), 0.5, 16, true)).toEqual({
+    expect(readShape(shape(), rect(10, 20, 150, 150), 0.5, 16)).toEqual({
       centerX: 140,
       centerY: 120,
       halfWidth: 100,
@@ -137,24 +138,73 @@ describe('readShape', () => {
       rect(0, 0, 300, 300),
       1,
       16,
-      true,
     );
     expect(result.frost).toBe(0);
     expect(result.tint).toEqual([1, 0, 0, 0.5]);
   });
 
-  it('swells a pressed shape only when it may grow', () => {
+  it('reads a pressed shape as it’s drawn, swollen, with its corners scaled', () => {
     const element = shape({ 'glass-interactive': 'true' });
     trackPress(element);
     pressOf(element)!.value = 1;
     pressOf(element)!.target = 1;
+    // Laid out 80 by 48, and drawn a quarter larger: the manager scaled it.
+    Object.defineProperty(element, 'offsetWidth', { value: 80 });
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(
+      rect(30, 50, 100, 60),
+    );
 
-    const grown = readShape(element, rect(0, 0, 300, 300), 1, 0, true);
-    expect(grown.press).toBe(1);
-    expect(grown.halfWidth).toBeCloseTo(53);
-    expect(grown.radius).toBeCloseTo(16.96);
+    const read = readShape(element, rect(0, 0, 300, 300), 1, 0);
+    expect(read.press).toBe(1);
+    expect(read.halfWidth).toBe(50);
+    expect(read.halfHeight).toBe(30);
+    // 16px in CSS, a quarter larger on screen.
+    expect(read.radius).toBe(20);
+  });
+});
 
-    const kept = readShape(element, rect(0, 0, 300, 300), 1, 0, false);
-    expect(kept.halfWidth).toBe(50);
+describe('pressScale', () => {
+  const sized = (width: number, height: number) => {
+    const element = document.createElement('x-blur-view');
+    element.setAttribute('glass-interactive', 'true');
+    Object.defineProperties(element, {
+      offsetWidth: { value: width },
+      offsetHeight: { value: height },
+    });
+    trackPress(element);
+    return element;
+  };
+
+  it('is 1 at rest, and for a shape that was never pressed', () => {
+    expect(pressScale(sized(56, 56))).toBe(1);
+    const untracked = document.createElement('x-blur-view');
+    Object.defineProperty(untracked, 'offsetWidth', { value: 56 });
+    expect(pressScale(untracked)).toBe(1);
+  });
+
+  it('grows the longer side by 15px, whatever the size', () => {
+    const round = sized(60, 60);
+    pressOf(round)!.value = 1;
+    expect(pressScale(round)).toBe(1.25);
+
+    const bar = sized(300, 48);
+    pressOf(bar)!.value = 1;
+    expect(pressScale(bar)).toBe(1.05);
+
+    // Half way through the press.
+    pressOf(bar)!.value = 0.5;
+    expect(pressScale(bar)).toBe(1.025);
+  });
+
+  it('grows a tiny shape by no more than three tenths', () => {
+    const dot = sized(20, 20);
+    pressOf(dot)!.value = 1;
+    expect(pressScale(dot)).toBe(1.3);
+  });
+
+  it('leaves a shape with no size alone', () => {
+    const empty = sized(0, 0);
+    pressOf(empty)!.value = 1;
+    expect(pressScale(empty)).toBe(1);
   });
 });

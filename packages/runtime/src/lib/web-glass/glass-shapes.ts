@@ -46,25 +46,40 @@ export const cornerRadius = (
   return Math.min(radius, shorter / 2);
 };
 
-/** How much an interactive shape swells while pressed, as on iOS. */
-export const PRESS_GROWTH = 0.06;
+// How much longer an interactive shape's longer side is while it's pressed,
+// in px. UIKit's glass swells by the same amount whatever its size (measured
+// on a 56px round button and a 69px capsule): a round button grows by a
+// quarter, a bar across the screen by a few percent.
+const PRESS_SWELL = 15;
+// The most a shape grows: a control much smaller than a fingertip would
+// otherwise double.
+const MAX_PRESS_GROWTH = 0.3;
 
 /**
- * Reads one shape for a frame, relative to the group canvas at `origin`.
- * Advances its press animation by `elapsed` milliseconds; only containers let
- * a pressed shape `grow` here, since a standalone shape's canvas is its own
- * box. The manager swells a standalone shape's element instead.
+ * The scale an interactive shape is drawn at for how far it's pressed: the
+ * manager scales the element itself, content and all, as UIKit's glass does,
+ * so the shape read here (see readShape) and its content grow together.
+ */
+export const pressScale = (element: HTMLElement): number => {
+  const longer = Math.max(element.offsetWidth, element.offsetHeight);
+  const growth = longer ? Math.min(PRESS_SWELL / longer, MAX_PRESS_GROWTH) : 0;
+  return 1 + growth * (pressOf(element)?.value ?? 0);
+};
+
+/**
+ * Reads one shape for a frame, relative to the group canvas at `origin`, and
+ * advances its press animation by `elapsed` milliseconds.
  *
  * The shape's box and `origin` are in screen pixels, drawn at `zoom` screen
- * pixels per CSS pixel (see drawn-scale.ts); the frame is in CSS pixels, like
- * its corner radius.
+ * pixels per CSS pixel (see drawn-scale.ts); the frame is in CSS pixels. The
+ * box is the element's as it's drawn, so a pressed shape's is the swollen
+ * one, and its corner radius, a CSS length, is scaled to match.
  */
 export const readShape = (
   element: HTMLElement,
   origin: DOMRect,
   zoom: number,
   elapsed: number,
-  grow: boolean,
 ): GlassShapeFrame & { press: number } => {
   const box = element.getBoundingClientRect();
   const left = (box.left - origin.left) / zoom;
@@ -74,13 +89,15 @@ export const readShape = (
   const style = element.ownerDocument.defaultView!.getComputedStyle(element);
   const press = pressOf(element);
   const pressed = press ? stepPress(press, elapsed) : 0;
-  const swell = grow ? 1 + PRESS_GROWTH * pressed : 1;
+  // How much the element itself is scaled: 1 unless it's pressed.
+  const own = element.offsetWidth ? width / element.offsetWidth : 1;
   return {
     centerX: left + width / 2,
     centerY: top + height / 2,
-    halfWidth: (width / 2) * swell,
-    halfHeight: (height / 2) * swell,
-    radius: cornerRadius(style.borderTopLeftRadius, width, height) * swell,
+    halfWidth: width / 2,
+    halfHeight: height / 2,
+    radius:
+      cornerRadius(style.borderTopLeftRadius, width / own, height / own) * own,
     frost: element.getAttribute('glass-style') === 'clear' ? 0 : 1,
     tint: resolveCssColor(
       element.ownerDocument,

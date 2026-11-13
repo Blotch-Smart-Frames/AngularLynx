@@ -5351,7 +5351,7 @@ Since issue #81, nothing of the Angular app runs on the background thread at all
 
 ### What you'd expect (parity with iOS 26)
 
-`blur-effect="glass"` refracts and frosts what's behind it, and glass shapes inside a `blur-effect="glass-container"` closer than `spacing` merge into one shape, as on iOS 26.
+`blur-effect="glass"` refracts and frosts what's behind it, and glass shapes inside a `blur-effect="glass-container"` join into one shape once the gap between them is under half of its `spacing`, as on iOS 26.
 
 ### What Lynx does
 
@@ -5363,29 +5363,86 @@ A browser can't give WebGL the page's pixels, so CSS alone can't refract. `backd
 
 The runtime draws the glass itself on web (`packages/runtime/src/lib/web-glass/`). `createBlurViewElement` loads it with a dynamic `import()` behind the `__WEB__` define, so native bundles never contain it. For each visible glass container, or glass element outside one, it:
 
-1. Captures the backdrop: the nearest ancestor that paints over everything behind it (an opaque background color or a background image), or else the page, up to the glass. The subtree is copied with inlined computed styles, shadow roots flattened and slots filled, then rasterized through an SVG `<foreignObject>` (the approach of html-to-image). What follows the glass, or any of its ancestors below the backdrop, is left out, since it paints over the glass. The backdrop used to be the glass's parent alone, which is usually a row or a wrapper that draws nothing: glass in a row on a gradient card, or a bar wrapped for positioning, refracted a blank image and drew as flat white.
+1. Captures the backdrop: the nearest ancestor that paints over everything behind it (an opaque background color or a background image), or else the page, up to the glass. The subtree is copied with inlined computed styles, shadow roots flattened and slots filled, then rasterized through an SVG `<foreignObject>` (the approach of html-to-image). What follows the glass, or any of its ancestors below the backdrop, is left out, since it paints over the glass: its box stays in the copy, empty and invisible, so the rest lays out as the page does. The backdrop used to be the glass's parent alone, which is usually a row or a wrapper that draws nothing: glass in a row on a gradient card, or a bar wrapped for positioning, refracted a blank image and drew as flat white.
 
-   Glass that's `position: fixed`, or inside something fixed below that ancestor, refracts the page instead, and leaves out only the fixed element it's in and any fixed element stacked above it (a higher `z-index`, or the same one and later in the page). A menu's `<overlay>` and a popover's panel sit in the DOM beside the button that opened them, often in a row or a card, but they're drawn over the whole screen: by DOM order, the content after the button was left out, and the menu over the trip cards drew as a white card, while a popover bigger than its card refracted the card's clamped edge.
+   Glass that's `position: fixed`, or inside something fixed below that ancestor, refracts the page instead. A menu's `<overlay>` and a popover's panel sit in the DOM beside the button that opened them, often in a row or a card, but they're drawn over the whole screen: by DOM order, the content after the button was left out, and the menu over the trip cards drew as a white card, while a popover bigger than its card refracted the card's clamped edge. Inside the fixed element, the same rule as in the page applies: the glass and what follows it and its ancestors are left out, and what comes before stays in. That keeps a sheet's or an alert's dimming layer, which is the overlay's own background or a view before the glass, and which UIKit's glass shows the screen through. A fixed element stacked above the glass (a higher `z-index`, or the same one and later in the page) is left out wherever it is, for glass in the page too: a button's glass under an open sheet must not show the sheet's dimming, and then be dimmed by it.
 
-2. Draws every shape in one WebGL pass, into a canvas in the root's shadow root stacked under its children. Shapes are rounded-box SDFs joined by a smooth minimum, so nearby shapes merge. The lens samples outward at the rim and slightly inward in the middle, and `regular` glass mixes in a blurred copy of the backdrop. The light material darkens its outermost two device pixels, as UIKit's hairline does: everything else in it brightens, so over white the glass was white on white.
-3. Captures again when the backdrop mutates, resizes or scrolls (changes inside the glass don't count), at most every 100 ms.
+   Other glass behind the glass is part of the picture. Each group's WebGL context keeps its drawing (`preserveDrawingBuffer`), so the copy can read its canvas as an image, and when a group redraws, the manager has the groups drawn above it capture again.
 
-The shadow and the press swell depend on the group:
+2. Draws every shape in one WebGL pass, into a canvas in the root's shadow root stacked under its children. What it draws is fitted to UIKit's glass, number by number: see "UIKit's Liquid Glass, measured" below.
+3. Captures again when the backdrop mutates, resizes or scrolls, when a transition or an animation in it ends, when the glass comes to rest after moving (a sheet sliding up while its dimming layer fades in), and when glass behind it redraws. Changes in the glass, or in what's drawn above it, don't count. At most every 100 ms.
 
-- **A container's canvas reaches 32px past its box**, for its shapes' shadow and the 6% a pressed shape swells. web-elements' shared element rule gives `<x-blur-view>` `overflow: clip` (`x-view` gets `visible` from web-core, `<x-blur-view>` doesn't), and a `:host` rule loses to it, so the container is unclipped with `:host{overflow:visible!important}`. A container draws only its shapes. With the canvas at the container's box, which hugs its shapes, the shadow stopped in straight lines and a held search field or dock lost its rounded ends.
-- **A lone shape's canvas is its own box**, and its content (a menu panel's `overflow-hidden`) clips at the same element, so it casts a CSS `box-shadow` instead, which an element's own `overflow` doesn't clip, and it swells as a whole with the `scale` property, which composes with a `transform` of its own. The shadow grows with the shape's shorter side, from a bar button's faint one to the wide one under a menu or an action sheet, as UIKit's does.
+What falls outside a shape depends on the group:
+
+- **A container's canvas reaches 32px past its box**, for its shapes' shadow, the dark line down their sides, and a pressed shape's swell. web-elements' shared element rule gives `<x-blur-view>` `overflow: clip` (`x-view` gets `visible` from web-core, `<x-blur-view>` doesn't), and a `:host` rule loses to it, so the container is unclipped with `:host{overflow:visible!important}`. A container draws only its shapes. With the canvas at the container's box, which hugs its shapes, the shadow stopped in straight lines and a held search field or dock lost its rounded ends.
+- **A lone shape's canvas is its own box**, and its content (a menu panel's `overflow-hidden`) clips at the same element, so its CSS draws them instead, as `box-shadow`s, which an element's own `overflow` doesn't clip: the shadow, and each edge line as a shadow with no blur, the shape moved by twice the line's width and shrunk by the width, which shows as a crescent that thins out toward the top and bottom as UIKit's line does.
+
+A pressed interactive shape, lone or in a container, swells as a whole with the `scale` property, which composes with a `transform` of its own, and washes out under a white `:host::after`, over its content too.
 
 Things that caught the copy out:
 
 - **Every Lynx for Web element has `border-style: solid`** with `0px` widths. `0px` matches a plain div's default (because a plain div has `border-style: none`), so a copier that only inlines non-default values leaves it out, and the copy draws 3px (`medium`) black borders. Border and outline widths are always inlined.
 - **The main thread runs in an iframe's realm** while its elements belong to the page, so `instanceof HTMLSlotElement` and the like are always false. The code checks `nodeType`/`localName`, and goes through `element.ownerDocument.defaultView` for every DOM API, so its observers, frames and images all belong to the page.
 - **`if (__WEB__)` around a call doesn't remove the code it calls.** A static import of the glass code stayed in the native bundle (32 kB) after the branch was dropped: on the ES2019 main thread, classes with `#private` fields compile to `(x = …, class {…})` sequences, which the minifier can't prove free of side effects. A dynamic `import()` inside the branch works, because the bundler never follows an import in a dead branch.
-- **GLSL ES 1.0 only lets a loop counter index a uniform array.** Indexing one with a function parameter fails to compile in WebGL 1, so the per-shape distance is written out in each loop.
+- **GLSL ES 1.0 only lets a loop counter index a uniform array.** Indexing one with a function parameter fails to compile in WebGL 1, so every loop over the shapes reads them by its own counter.
 - **The page's own stylesheet isn't in the image.** The copy leaves out every property that matches a plain div, and the plain div was probed in the page, where the docs site makes every element `border-box`. In the image, which has only the browser's styles, a padded card was then `content-box`, grew by its padding, and pushed what's in it down: a dimming layer under clear glass showed as a half disc low in the circle. The div is now probed in a shadow root of its own, reset with `all: initial`.
 - **Safari ignores an SVG viewBox for a `<foreignObject>`'s content** in an image: it draws the HTML from the root's corner at one pixel per CSS pixel. A viewBox cropped the copy to the region and scaled it to the image in Chromium only, so in Safari glass refracted what's up and to the left of it, and drew the image's unfilled part as a dark band. The copy is now moved and scaled with a CSS transform instead, in an SVG the size of the image.
 - **An empty shape draws a line.** A rounded box with no width is a line segment in the distance field, and the smooth union bulges it into the shapes beside it. iOS draws nothing for a glass view with no width, such as the search field's cancel button before it grows out of the field, so the web leaves such shapes out.
+- **Leaving an element out of the copy moves the ones around it.** Three clear glass buttons in a centered row each had the others left out of their copy, as drawn above them, so the row re-centered around what was left: the first button's dimming layer sat in the middle of the row, and the middle button showed its neighbors' as two dark blobs. Left-out elements are now copied as empty boxes with `visibility: hidden`.
+- **The top layer isn't in the copy.** Lynx for Web shows an `<overlay>` in a modal `<dialog>`, which the browser paints over the whole page whatever its `z-index`. In the copy it's a plain div, and a sheet's dimming layer was painted under the cards that follow the sheet in the document. An element that matches `:modal` is copied with the highest `z-index`.
+- **A WebGL canvas is blank to `toDataURL()`** once its frame is on screen, unless the context was made with `preserveDrawingBuffer`. And a canvas whose context was lost answers `data:,`, which an `<img>` draws as a broken image: that icon showed inside glass over other glass.
+- **Two groups can keep each other capturing.** A group that redraws tells the glass above it to capture again. If each of two groups counts the other as behind it, they'd do so for good (that happened while an overlay's glass and a button's in the page each had the other in their copy), so neither is told.
+- **Browsers cap live WebGL contexts** (16 in Chrome), and every group has its own. A screen with more glass groups than that on screen loses the oldest contexts: a probe page with 18 lone shapes drew the first two as the CSS fallback. Real screens stay well under it, since a bar's shapes share one group.
+- **A merged field isn't a distance.** Across the bridge between two merged shapes the smooth minimum is nearly flat, so anything measured from the edge (the rim's lines, the lens) filled the bridge: a bright streak down the middle of the neck. Dividing the field by its slope gives the distance back to first order, and the slope's direction is the normal of the merged outline.
 
 Main-thread touch handlers don't fire for a mouse on desktop web either: a drag needs `mainThreadBindmousedown` / `mainThreadBindmousemove` / `mainThreadBindmouseup` too, which the `LynxMainThreadEvent` directive supports.
+
+---
+
+## UIKit's Liquid Glass, measured: what the web's glass is fitted to
+
+### What you'd expect
+
+The web preview's glass looks like iOS's. It's drawn by a shader of ours (above), so it looks like whatever that shader does.
+
+### What it did
+
+It was drawn from descriptions of Liquid Glass rather than from the thing: a dark ring 1.25px wide at 28% around the light material, where UIKit has lines a third as wide; a shadow three times as dark under controls; a lens that pushed the backdrop outward over half the shape, where UIKit mirrors a narrow strip; a blur half as wide; a wash that left black nearly black, where UIKit's light glass turns it mid gray; one material for every size; and a merge that joined shapes at twice the gap. Side by side in `demo.gif`, the web's dock had a heavy border and shadow that iOS's doesn't.
+
+### How it was measured (November 2026, iOS 27 Simulator)
+
+A probe app put glass shapes at fixed places over backdrops that make one thing readable at a time, shot on the simulator (the app `ng serve --platform ios` builds: Lynx Explorer has no Liquid Glass) and in Chromium at the same size (402 by 874 at 3x), and a script read the same pixels of both:
+
+- **Flat colors** (white, three grays, black, four saturated colors), for what each material does to a color, and across its edge and its shadow, a device pixel at a time.
+- **A black and white split** under shapes of 15 sizes, for the blur (the profile across the edge), what shows through unblurred (the jump at the edge) and how both change with size.
+- **Brightness ramps**, where a pixel's brightness says which x or y of the backdrop it shows: that reads the lens's displacement directly.
+- **Two colors side by side** (teal and purple, red and blue), for how far hue travels, apart from brightness.
+- **Pairs of circles** at 18 spacings and gaps, for when shapes merge and how wide the neck is.
+- **The same shapes in an `<overlay>`** with a dimming layer, and a held press, recorded with Maestro.
+
+Chromium's safe area was set to the simulator's (`Emulation.setSafeAreaInsetsOverride`, 62pt and 34pt), so an example lays out the same on both and whole screens can be compared pixel for pixel.
+
+### What UIKit does
+
+Lengths are in points. `x` is a backdrop color, 0 to 1, and `L` its luminance.
+
+- **Thickness** follows the shape's shorter side, not its width, area or corner radius: up to 60 it's a control's thin glass, from 105 a panel's dense glass, and in between a mix.
+- **The light regular material**: `0.52 + x * (0.49 - 0.02 * L)` thin, `0.53 + x * (0.585 - 0.12 * L)` dense, then saturation times 1.9. Black comes out at 133, white at 253.
+- **The dark regular material**: `0.125 + x * (1 - 0.4 * L)` thin, `0.125 + x * (0.98 - 0.63 * L)` dense, then saturation times 1.4. It leaves black nearly black and dims white to 185 (thin) or 121 (dense).
+- **Clear glass**: `0.955 * x + 0.125`, saturation times 1.115, at every size and in both schemes.
+- **Blur** (regular): about 12, with a fifth of a blur of about 30. Thin glass also lets the sharp backdrop through where it's lighter than the blur, by 53% (the light material), or darker, by 50% (the dark one). A panel's light glass takes a third of its hue from an average as wide as the panel, while its brightness stays the blur's; a panel's dark glass spreads brightness that far too, by a sixth. Clear glass blurs by under a point.
+- **Lens**: near the rim the glass shows what's further inside, mirrored. The displacement is `l * (0.84 * (1 - depth / w)^2 + 0.27 * e^(-depth / 1.1))`, with `l` half the shorter side (up to 43.5) and `w` a third of it (up to 19.5). Regular glass has 0.3 of it. Nothing is displaced in the middle, and nothing from outside the shape is shown.
+- **Edge**: a bright line 2/3 wide inside the top and bottom edges, strongest where the edge is level (`|n.y|^1.67`), with a glow under it only the very top and bottom have (`|n.y|^8`); 2.1 times as strong on clear glass, and stronger again over a bright backdrop. A dark line 2/3 wide outside the left and right edges, gone by 60 degrees from upright, darker over a dark backdrop (`0.67 - 0.44 * L` on average). The light regular material has a fainter one outside its top and bottom, and a tint fills that band.
+- **Shadow** (regular only, clear has none): from `0 7px 6px` at 1.3% for a control to `0 10px 34px` at 10.5% for a panel 150 or more on its shorter side; half as strong again under the dark material's panels.
+- **Tint**: nearly opaque. The backdrop shades it a little (light), or it's lightened by 13% (dark).
+- **Merge**: a smooth union with the container's `spacing` as its radius, scaled by how squarely the two surfaces face each other (`((1 - n1.n2) / 2)^0.85`). Two shapes join once their gap is under half the spacing, and reach toward each other from the full spacing.
+- **Press**: the shape grows so its longer side gains 15, content and all (a 56 round button by 27%, a bar by a few percent), and a white wash of about 40% covers the glass and its content.
+
+### The fix
+
+`packages/runtime/src/lib/web-glass/glass-shaders.ts` draws all of the above, and `glass-host-style.ts` the parts that fall outside a lone shape (its canvas is its own box). Over the probe's backdrops the web's pixels are within a few levels of iOS's; over the examples, whole screens differ by 1.5 to 3.5 levels on average, most of it text antialiasing.
+
+To check a change, shoot both and compare: the numbers above are the simulator's, and a shader that looks right by eye was what was there before.
 
 ---
 

@@ -10,7 +10,10 @@ export type Region = {
 };
 
 export type CloneOptions = {
-  /** Leaves an element, and everything inside it, out of the copy. */
+  /**
+   * Leaves an element, and everything inside it, out of the picture. Its box
+   * stays in the copy's layout, empty and invisible.
+   */
   exclude: (element: Element) => boolean;
   /**
    * The part of the page the glass can show. A clipping element wholly
@@ -138,7 +141,10 @@ const scrollShift = (
 const mediaSource = (element: Element, doc: Document): string => {
   try {
     if (element.localName === 'canvas') {
-      return (element as HTMLCanvasElement).toDataURL();
+      const url = (element as HTMLCanvasElement).toDataURL();
+      // A canvas with no size, or whose WebGL context was lost, answers with
+      // an empty data URL, which an <img> draws as a broken image.
+      return url.length > 'data:,'.length ? url : '';
     }
     const image = element as HTMLImageElement;
     if (!image.complete || !image.naturalWidth) return '';
@@ -151,6 +157,24 @@ const mediaSource = (element: Element, doc: Document): string => {
     return '';
   }
 };
+
+/**
+ * Whether the browser draws `element` in its top layer, over the whole page
+ * whatever its place in the document: a modal `<dialog>`, which is what Lynx
+ * for Web shows an `<overlay>` in.
+ */
+const inTopLayer = (element: Element): boolean => {
+  try {
+    return element.matches(':modal');
+  } catch {
+    // A browser without the selector has no top layer to copy.
+    return false;
+  }
+};
+
+// The highest z-index there is: nothing in the copy may paint over what the
+// page paints over everything.
+const TOP_LAYER_Z_INDEX = 2147483647;
 
 const outside = (rect: DOMRect, region: Region): boolean =>
   rect.right <= region.left ||
@@ -169,20 +193,37 @@ const cloneNode = (
   }
   if (node.nodeType !== ELEMENT_NODE) return null;
   const element = node as Element;
-  if (SKIPPED_TAGS.has(element.localName) || context.exclude(element)) {
-    return null;
-  }
+  if (SKIPPED_TAGS.has(element.localName)) return null;
   const style = context.win.getComputedStyle(element);
   if (style.display === 'none') return null;
 
   const media = element.localName === 'img' || element.localName === 'canvas';
   const clone = context.doc.createElement(media ? 'img' : 'div');
-  clone.setAttribute(
-    'style',
-    inlineStyle(style, parent, context.defaults) + scrollShift(style, scroll),
-  );
+  const css =
+    inlineStyle(style, parent, context.defaults) +
+    scrollShift(style, scroll) +
+    // In the copy the dialog is a plain div, which later content would
+    // paint over: a sheet's dimming layer was drawn under the cards that
+    // follow the sheet in the document, so its glass showed them undimmed.
+    (inTopLayer(element) ? `z-index:${TOP_LAYER_Z_INDEX};` : '');
+  // What's drawn above the glass isn't in the picture, but its box still is:
+  // an empty, invisible copy holds its place. Left out altogether, the rest
+  // of a row would close up or re-center around the gap, and the glass would
+  // refract its neighbors from where they'd moved to: three clear buttons in
+  // a centered row each showed the others' dimming layers inside them.
+  if (context.exclude(element)) {
+    const placeholder = context.doc.createElement('div');
+    placeholder.setAttribute('style', `${css}visibility:hidden;`);
+    return placeholder;
+  }
+  clone.setAttribute('style', css);
   if (media) {
-    const source = mediaSource(element, context.doc);
+    // Encoding a picture the glass can't show would be wasted work: other
+    // glass's canvases are pictures too (see GlassRenderer.create), and a
+    // screen can hold many.
+    const source = outside(element.getBoundingClientRect(), context.region)
+      ? ''
+      : mediaSource(element, context.doc);
     if (source) clone.setAttribute('src', source);
     return clone;
   }

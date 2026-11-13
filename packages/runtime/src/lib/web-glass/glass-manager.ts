@@ -1,7 +1,7 @@
 import { GlassGroup } from './glass-group';
 import { applyHostStyle } from './glass-host-style';
 import { pressOf, trackPress } from './glass-press';
-import { glassRole, PRESS_GROWTH } from './glass-shapes';
+import { glassRole, pressScale } from './glass-shapes';
 
 // The attributes that change what a `<blur-view>` looks like as glass.
 const GLASS_ATTRIBUTES = [
@@ -141,28 +141,55 @@ export class GlassManager {
 
     const styled = new Set(this.#visible);
     const rendered = new Set<HTMLElement>();
+    const redrawn: GlassGroup[] = [];
     for (const group of this.#groups.values()) {
-      group.frame(elapsed);
+      if (group.frame(elapsed)) redrawn.push(group);
       for (const shape of group.shapes) {
         styled.add(shape);
         if (group.active) rendered.add(shape);
+      }
+    }
+    // Glass over other glass shows it, but a canvas redrawing is no change
+    // to the page that the glass above would hear about: tell it. Only glass
+    // drawn above is told. Two shapes that each count the other as behind
+    // them (a stacking this code read wrong) would keep each other capturing
+    // for good, so neither is told.
+    for (const below of redrawn) {
+      for (const group of this.#groups.values()) {
+        if (
+          group !== below &&
+          group.shows(below.root) &&
+          !below.shows(group.root)
+        ) {
+          group.invalidate();
+        }
       }
     }
     for (const element of styled) {
       const group = this.#groups.get(element);
       const glass = element.getAttribute('blur-effect') === 'glass';
       const fallback = glass && !rendered.has(element);
-      // A lone shape's canvas is its own box, so it can't swell or cast a
-      // shadow there the way a container's shapes do. It swells as a whole,
-      // content and all, as UIKit's interactive glass does, and its CSS
-      // shadow (see glassShadow) grows with it.
+      // A lone shape's canvas is its own box, so it can't cast a shadow
+      // there the way a container's shapes do: its CSS does (see
+      // glassShadow).
       const lone = group !== undefined && !group.container;
+      // A container's shapes take its look; a shape with no group yet (off
+      // screen, or just added) the material its own attribute asks for.
+      const look = (group ?? this.#groups.get(element.parentElement!))
+        ?.look ?? {
+        dark: element.getAttribute('ios-user-interface-style') === 'dark',
+        luminance: 1,
+      };
       applyHostStyle(element, {
+        ...look,
         hostsCanvas: group?.active ?? false,
         rendered: rendered.has(element),
         fallback,
         shadow: glass && (lone || fallback),
-        scale: lone ? 1 + PRESS_GROWTH * (pressOf(element)?.value ?? 0) : 1,
+        // A pressed shape swells as a whole, content and all, and washes
+        // out, as UIKit's interactive glass does.
+        scale: glass ? pressScale(element) : 1,
+        press: glass ? (pressOf(element)?.value ?? 0) : 0,
       });
     }
 

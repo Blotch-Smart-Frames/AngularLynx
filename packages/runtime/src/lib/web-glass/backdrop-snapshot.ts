@@ -16,12 +16,56 @@ export type BackdropSnapshot = {
   height: number;
   /** How bright the backdrop's background is, from 0 to 1. */
   luminance: number;
+  /**
+   * How bright the picture itself is on average, from 0 to 1: what's really
+   * behind the glass, which a photo or a gradient makes much darker than the
+   * page's background.
+   */
+  brightness: number;
 };
 
 export type SnapshotOptions = {
   /** Device pixels per CSS pixel to capture at. */
   scale: number;
 } & CloneOptions;
+
+// The picture is averaged on a canvas this many pixels a side.
+const BRIGHTNESS_PROBE = 8;
+
+/**
+ * The average brightness of `image`, or `fallback` where the browser won't
+ * let the pixels be read (Safari can treat the picture as cross-origin).
+ */
+const brightnessOf = (image: HTMLCanvasElement, fallback: number): number => {
+  try {
+    const probe = image.ownerDocument.createElement('canvas');
+    probe.width = BRIGHTNESS_PROBE;
+    probe.height = BRIGHTNESS_PROBE;
+    const context = probe.getContext('2d')!;
+    // Scaled down smoothly, each probe pixel is an average of its part of
+    // the picture rather than one pixel of it.
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(image, 0, 0, BRIGHTNESS_PROBE, BRIGHTNESS_PROBE);
+    const { data } = context.getImageData(
+      0,
+      0,
+      BRIGHTNESS_PROBE,
+      BRIGHTNESS_PROBE,
+    );
+    let total = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      total += luminance([
+        data[i]! / 255,
+        data[i + 1]! / 255,
+        data[i + 2]! / 255,
+        1,
+      ]);
+    }
+    return total / (data.length / 4);
+  } catch {
+    return fallback;
+  }
+};
 
 // Keeps the image inside every GPU's texture limit (WebGL 1 guarantees far
 // less, but phones and desktops alike accept 4096).
@@ -69,8 +113,9 @@ export const snapshotBackdrop = async (
   // the page refracted the content to the left of it, and the image's
   // unfilled part as a dark band.
   //
-  // The image's edges must be opaque: the glass clamps to them where its lens
-  // looks past the image, so a transparent row there shows as a dark band.
+  // The image's edges must be opaque: the glass clamps to them where its
+  // blur reaches past the image, so a transparent row there shows as a dark
+  // band.
   // Rounding the image's width and height separately leaves its shape a
   // little off the region's, so the copy is stretched to it rather than
   // scaled evenly. The copy's frame is rounded up to whole pixels (see
@@ -93,12 +138,14 @@ export const snapshotBackdrop = async (
   image.width = pixelWidth;
   image.height = pixelHeight;
   image.getContext('2d')!.drawImage(picture, 0, 0, pixelWidth, pixelHeight);
+  const background = luminance(effectiveBackground(root));
   return {
     image,
     x,
     y,
     width,
     height,
-    luminance: luminance(effectiveBackground(root)),
+    luminance: background,
+    brightness: brightnessOf(image, background),
   };
 };

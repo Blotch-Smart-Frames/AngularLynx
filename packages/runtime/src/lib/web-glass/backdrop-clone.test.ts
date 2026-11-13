@@ -156,6 +156,67 @@ describe('cloneBackdrop', () => {
     expect(clone(root, (e) => e === glass)!.textContent).toBe('kept');
   });
 
+  it('keeps an excluded element’s box, empty and invisible', () => {
+    // Three buttons in a centered row: with the later two gone, the first
+    // would sit in the middle of the copy, not where the page draws it.
+    const first = element('x-view', { width: '48px' }, 'first');
+    const second = element('x-view', { width: '48px' }, 'second');
+    const row = element(
+      'x-view',
+      { 'justify-content': 'center' },
+      first,
+      second,
+    );
+    const copy = clone(element('x-view', {}, row), (e) => e === second)!;
+
+    const [kept, placeholder] = Array.from(copy.firstElementChild!.children);
+    expect(kept!.textContent).toBe('first');
+    expect(placeholder!.localName).toBe('div');
+    expect(placeholder!.getAttribute('style')).toBe(
+      'border-top-width:0px;width:48px;visibility:hidden;',
+    );
+    expect(placeholder!.childNodes).toHaveLength(0);
+  });
+
+  it('keeps an excluded image’s box without reading the image', () => {
+    const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL');
+    const canvas = element('canvas', { width: '20px' });
+    const copy = clone(element('x-view', {}, canvas), (e) => e === canvas)!;
+    expect(copy.firstElementChild!.localName).toBe('div');
+    expect(copy.firstElementChild!.getAttribute('style')).toBe(
+      'border-top-width:0px;width:20px;visibility:hidden;',
+    );
+    expect(toDataURL).not.toHaveBeenCalled();
+  });
+
+  it('draws a top-layer element’s copy over everything else', () => {
+    // Lynx for Web shows an <overlay> in a modal <dialog>, which the browser
+    // paints over the whole page. Its copy is a plain div that later
+    // content would paint over.
+    const dialog = element('dialog', { position: 'fixed' }, 'sheet');
+    vi.spyOn(dialog, 'matches').mockImplementation(
+      (selector) => selector === ':modal',
+    );
+    const later = element('x-view', { position: 'relative' }, 'card');
+    const copy = clone(element('x-view', {}, dialog, later))!;
+    expect(copy.children[0]!.getAttribute('style')).toBe(
+      'border-top-width:0px;position:fixed;z-index:2147483647;',
+    );
+    expect(copy.children[1]!.getAttribute('style')).toBe(
+      'border-top-width:0px;position:relative;',
+    );
+  });
+
+  it('takes an element for outside the top layer where the browser can’t say', () => {
+    const plain = element('x-view', {}, 'page');
+    vi.spyOn(plain, 'matches').mockImplementation(() => {
+      throw new DOMException('unknown pseudo-class', 'SyntaxError');
+    });
+    expect(clone(element('x-view', {}, plain))!.innerHTML).toBe(
+      '<div style="border-top-width:0px;">page</div>',
+    );
+  });
+
   it('shifts the children of a scrolled element by its scroll offset', () => {
     const children = {
       static: element('x-view'),
@@ -238,6 +299,30 @@ describe('cloneBackdrop', () => {
       expect(copiedCanvas!.getAttribute('src')).toBe(
         'data:image/png;base64,AAAA',
       );
+    });
+
+    it('leaves a canvas with nothing to show without a picture', () => {
+      // A canvas with no size, or whose WebGL context was lost, answers
+      // with an empty data URL, which an <img> shows as a broken image.
+      vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockReturnValue(
+        'data:,',
+      );
+      const copy = clone(element('x-view', {}, element('canvas')))!;
+      expect(copy.firstElementChild!.localName).toBe('img');
+      expect(copy.firstElementChild!.hasAttribute('src')).toBe(false);
+    });
+
+    it('doesn’t read an image the glass can’t show', () => {
+      const canvas = element('canvas');
+      at(canvas, 500, 500);
+      const copy = cloneBackdrop(element('x-view', {}, canvas), {
+        exclude: () => false,
+        region: { left: 0, top: 0, right: 100, bottom: 100 },
+      });
+      const image = copy.querySelector('img')!;
+      // Its box is still there, for the layout around it.
+      expect(image.hasAttribute('src')).toBe(false);
+      expect(HTMLCanvasElement.prototype.toDataURL).not.toHaveBeenCalled();
     });
 
     it('leaves out images that have not loaded or taint the canvas', () => {

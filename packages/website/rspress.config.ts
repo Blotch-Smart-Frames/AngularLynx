@@ -127,6 +127,7 @@ export default defineConfig({
         { text: 'Nav Drawer', link: '/dolan/nav-drawer' },
         { text: 'Tab Bar', link: '/dolan/tab-bar' },
         { text: 'Pagination', link: '/dolan/pagination' },
+        { text: 'Wizard', link: '/dolan/wizard' },
         { dividerType: 'solid' },
         { sectionHeaderText: 'Data Display' },
         { text: 'Avatar', link: '/dolan/avatar' },

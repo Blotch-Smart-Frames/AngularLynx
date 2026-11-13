@@ -1,0 +1,185 @@
+# Wizard
+
+A task split into steps, one on screen at a time, under an indicator that shows where the user is.
+
+<Go example="ui-wizard" defaultFile="src/app/app.ts" />
+
+## Installation
+
+```bash
+npx @blotch/dolan add wizard
+```
+
+```typescript
+import { UiWizard, UiWizardStep } from '../components/ui/wizard';
+```
+
+:::tip
+Wizard depends on [Icon](/dolan/icon), which gives the check its color. `dolan add` installs it automatically.
+:::
+
+## Usage
+
+```typescript title="src/app/app.ts"
+import { Component, signal } from '@angular/core';
+import { LYNX_ELEMENTS } from '@blotch/angular-lynx';
+import { UiButton } from '../components/ui/button';
+import { UiWizard, UiWizardStep } from '../components/ui/wizard';
+
+@Component({
+  selector: 'app-root',
+  imports: [LYNX_ELEMENTS, UiButton, UiWizard, UiWizardStep],
+  template: `
+    <view class="flex-col gap-6 p-4 flex">
+      <ui-wizard #wizard [(step)]="step">
+        <ui-wizard-step label="Account">
+          <text class="text-base text-foreground">Your email address.</text>
+        </ui-wizard-step>
+        <ui-wizard-step label="Profile">
+          <text class="text-base text-foreground">Your name and photo.</text>
+        </ui-wizard-step>
+        <ui-wizard-step label="Plan">
+          <text class="text-base text-foreground">Free to start.</text>
+        </ui-wizard-step>
+        <ui-wizard-step label="Payment">
+          <text class="text-base text-foreground">A card for later.</text>
+        </ui-wizard-step>
+      </ui-wizard>
+
+      <view class="flex-row gap-3 flex">
+        <ui-button
+          variant="outline"
+          class="flex-1"
+          [disabled]="wizard.isFirst()"
+          (pressed)="wizard.previous()"
+        >
+          Back
+        </ui-button>
+        <ui-button
+          class="flex-1"
+          [disabled]="wizard.isLast()"
+          (pressed)="wizard.next()"
+        >
+          Continue
+        </ui-button>
+      </view>
+    </view>
+  `,
+})
+export class App {
+  protected readonly step = signal(0);
+}
+```
+
+- **Each `<ui-wizard-step>` is a step.** Its `label` goes under its number in the indicator, and its content shows while it's the current step.
+- **`step` counts from 0.** `[(step)]` keeps your signal in step with the wizard.
+- **The buttons are yours.** What they say, and what must be valid before going on, differ with every wizard. `#wizard` lets the template call the wizard.
+
+### More than three steps
+
+A wizard takes any number of steps. The indicator shows three at a time: the current step and the two after it.
+
+- **A line that fades out means more steps that way.** With steps still to come, the line past the third fades. Once the first step is done, the line before the steps on show fades too.
+- **The steps slide along as each is finished.** After step 1 the indicator shows 2, 3 and 4.
+- **The last three stay to the end.** With nothing more to slide in, they fill in with checks.
+
+With three steps or fewer, all of them show and nothing slides.
+
+### Move between steps
+
+```angular-html
+<ui-button (pressed)="wizard.isLast() ? createAccount() : wizard.next()">
+  {{ wizard.isLast() ? 'Create account' : 'Continue' }}
+</ui-button>
+```
+
+| Member        | What it does                                                     |
+| ------------- | ---------------------------------------------------------------- |
+| `next()`      | Moves on a step. On the last step it stays.                      |
+| `previous()`  | Moves back a step. On the first step it stays.                   |
+| `goTo(index)` | Moves to a step, counted from 0. Out of range, the nearest step. |
+| `isFirst()`   | Signal: whether the current step is the first.                   |
+| `isLast()`    | Signal: whether the current step is the last.                    |
+| `count()`     | Signal: how many steps there are.                                |
+
+To hold the user on a step until it's valid, disable your button:
+
+```angular-html
+<ui-button [disabled]="email().length === 0" (pressed)="wizard.next()">
+  Continue
+</ui-button>
+```
+
+### Steps keep their state
+
+Every step stays rendered, and the ones off screen are hidden rather than removed. So what the user typed in a step is still there when they go back to it.
+
+The new step slides in from the side the wizard moved from: the right going on, the left going back.
+
+### Spacing
+
+The wizard leaves 24px between the indicator and the step. Change it with a gap class:
+
+```angular-html
+<ui-wizard [(step)]="step" class="gap-4">…</ui-wizard>
+```
+
+### Only the indicator
+
+When the steps' content lives elsewhere, such as one routed screen per step, leave the steps empty and drop the gap:
+
+```angular-html
+<ui-wizard [step]="2" class="gap-0">
+  <ui-wizard-step label="Cart" />
+  <ui-wizard-step label="Delivery" />
+  <ui-wizard-step label="Payment" />
+</ui-wizard>
+```
+
+A step needs no `label` either: the indicator then shows its number alone.
+
+## API
+
+### UiWizard
+
+| Input       | Type              | Default        | Description                                                            |
+| ----------- | ----------------- | -------------- | ---------------------------------------------------------------------- |
+| `step`      | `number`          | `0`            | The current step, counted from 0. Supports `[(step)]`.                 |
+| `stepLabel` | `WizardStepLabel` | English phrase | What a screen reader calls the indicator. See [below](#accessibility). |
+| `class`     | `string`          | `''`           | Extra Tailwind classes for the wizard.                                 |
+
+| Output       | Type     | Description                                                      |
+| ------------ | -------- | ---------------------------------------------------------------- |
+| `changed`    | `number` | Emits the step that `next()`, `previous()` or `goTo()` moved to. |
+| `stepChange` | `number` | Emits the new step, for `[(step)]`.                              |
+
+A `step` past the last step shows the last one.
+
+### UiWizardStep
+
+| Input   | Type     | Default | Description                                         |
+| ------- | -------- | ------- | --------------------------------------------------- |
+| `label` | `string` | `''`    | The step's name, under its number in the indicator. |
+| `class` | `string` | `''`    | Extra Tailwind classes for the step's content.      |
+
+No outputs. A label longer than its step is wide wraps onto a second line, then ends in an ellipsis.
+
+The file also exports the `WizardStepLabel` and `WizardStepState` types.
+
+## Accessibility
+
+- **The indicator is one element** to a screen reader, read as "Step 2 of 5: Profile". Its numbers and labels aren't read one by one.
+- **Translate it with `stepLabel`**, a function of the step (counted from 1), the number of steps and the step's label:
+
+  ```typescript
+  protected readonly stepLabel: WizardStepLabel = (step, count, label) =>
+    $localize`Step ${step} of ${count}: ${label}`;
+  ```
+
+- **Reduce Motion:** the indicator and the steps change at once, with no sliding or fading.
+
+## Related
+
+- [Tabs](/dolan/tabs): panels the user can switch between in any order
+- [Progress](/dolan/progress): a bar for progress that isn't in steps
+- [Pagination](/dolan/pagination): page numbers with previous and next buttons

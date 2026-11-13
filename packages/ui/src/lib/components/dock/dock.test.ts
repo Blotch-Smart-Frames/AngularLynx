@@ -1,4 +1,10 @@
-import { Component, type Provider, signal, viewChildren } from '@angular/core';
+import {
+  Component,
+  ErrorHandler,
+  type Provider,
+  signal,
+  viewChildren,
+} from '@angular/core';
 import { Router, RouterOutlet, type Routes } from '@angular/router';
 import {
   fireEvent,
@@ -17,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireLynxEvent } from '../../../test-utils/fire-lynx-event';
 import { lynxMainThread } from '../../../test-utils/lynx-main-thread';
 import { UiIcon } from '../icon/icon';
+import { type IconName } from '../icon/icons';
 import { provideGlass } from '../glass/glass-design';
 import { UiDock, UiDockAccessory, UiDockAction, UiDockItem } from './dock';
 import { UiDockState } from './dock-scroll';
@@ -144,6 +151,69 @@ class StaticClassHost {}
 })
 class ActionOnlyHost {
   readonly taps = signal(0);
+}
+
+/** A one-color mark, written as an app would: no namespace. */
+const MARK =
+  '<svg viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"/></svg>';
+const MARK_PATH = 'd="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Z"';
+
+/** A multi-color mark, which already has the namespace. */
+const TWO_COLOR_MARK =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 1"><path fill="#4285f4" d="M0 0h1v1H0z"/><path fill="#34a853" d="M1 0h1v1H1z"/></svg>';
+
+/**
+ * A dock whose items and action draw the app's own marks, as an app puts its
+ * logo on the Home item.
+ */
+@Component({
+  imports: [RouterOutlet, UiDock, UiDockAction, UiDockItem],
+  template: `
+    <router-outlet />
+    <ui-dock>
+      <ui-dock-item
+        route="/"
+        [svg]="mark"
+        label="Home"
+        [routerLinkActiveOptions]="{ exact: true }"
+      />
+      <ui-dock-item route="/inbox" [svg]="mark" label="Inbox" />
+      <ui-dock-item route="/profile" [svg]="twoColorMark" label="Profile" />
+      <ui-dock-action route="/search" [svg]="mark" label="Search" />
+    </ui-dock>
+  `,
+})
+class SvgDockHost {
+  readonly mark = MARK;
+  readonly twoColorMark = TWO_COLOR_MARK;
+}
+
+/**
+ * An item and an action whose icon and svg a test sets, to get them wrong.
+ */
+@Component({
+  imports: [UiDock, UiDockAction, UiDockItem],
+  template: `
+    <ui-dock>
+      <ui-dock-item
+        route="/"
+        [icon]="itemIcon()"
+        [svg]="itemSvg()"
+        label="Home"
+      />
+      <ui-dock-action
+        [icon]="actionIcon()"
+        [svg]="actionSvg()"
+        label="New message"
+      />
+    </ui-dock>
+  `,
+})
+class IconOrSvgHost {
+  readonly itemIcon = signal<IconName | undefined>('home');
+  readonly itemSvg = signal<string | undefined>(undefined);
+  readonly actionIcon = signal<IconName | undefined>('plus');
+  readonly actionSvg = signal<string | undefined>(undefined);
 }
 
 /** Accessibility settings a test can change, as the host app would. */
@@ -888,5 +958,137 @@ describe('UiDockAction', () => {
       '',
     );
     expect(restore.hasAttribute('accessibility-value')).toBe(false);
+  });
+});
+
+describe("UiDock with an app's own marks", () => {
+  const renderSvgDock = async (platform: {
+    platform: string;
+    osVersion: string;
+  }) => {
+    const result = await render(SvgDockHost, {
+      providers: [
+        provideRouter(routes),
+        onPlatform(platform),
+        { provide: LynxAccessibilitySettings, useValue: settings },
+      ],
+    });
+    const { container } = result;
+    const item = (label: string) =>
+      container.querySelector<HTMLElement>(`[accessibility-label="${label}"]`)!;
+    const isSelected = (label: string) =>
+      item(label).getAttribute('accessibility-traits') === 'button,selected';
+    const iconOf = (label: string) =>
+      item(label).querySelector('svg')!.getAttribute('content') ?? '';
+    await until(() => isSelected('Home'));
+    return { ...result, item, isSelected, iconOf };
+  };
+
+  it("draws an item's mark in its color for its state, as the set's icons are drawn", async () => {
+    const { item, isSelected, iconOf } = await renderSvgDock(IOS_26);
+    expect(iconOf('Home')).toContain(MARK_PATH);
+    expect(iconOf('Home')).toContain(`fill="${PRIMARY}"`);
+    expect(iconOf('Home')).not.toContain('currentColor');
+    expect(iconOf('Inbox')).toContain(`fill="${GLASS_FOREGROUND}"`);
+
+    // The selection moves the color with it.
+    fireEvent.tap(item('Inbox'));
+    await until(() => isSelected('Inbox'));
+    expect(iconOf('Inbox')).toContain(`fill="${PRIMARY}"`);
+    expect(iconOf('Home')).toContain(`fill="${GLASS_FOREGROUND}"`);
+  });
+
+  it("draws the action's mark in the button's color", async () => {
+    const { iconOf } = await renderSvgDock(IOS_26);
+    expect(iconOf('Search')).toContain(MARK_PATH);
+    expect(iconOf('Search')).toContain(`fill="${GLASS_FOREGROUND}"`);
+
+    const android = await renderSvgDock(ANDROID);
+    expect(android.iconOf('Search')).toContain(`fill="${PRIMARY_FOREGROUND}"`);
+    expect(android.iconOf('Inbox')).toContain(`fill="${MUTED_FOREGROUND}"`);
+  });
+
+  // The web preview draws the markup as an image, which a browser leaves
+  // blank without the namespace.
+  it('adds the SVG namespace when the markup has none, and keeps colors written out', async () => {
+    const { iconOf } = await renderSvgDock(IOS_26);
+    expect(iconOf('Home')).toMatch(
+      /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 16 16">/,
+    );
+    expect(iconOf('Search')).toMatch(/^<svg xmlns=/);
+    expect(iconOf('Profile')).toBe(TWO_COLOR_MARK);
+  });
+
+  it("minimizes to the selected item's mark, in the primary color", async () => {
+    const { container, componentRef } = await renderSvgDock(IOS_26);
+    fireEvent.layoutchange(
+      container.querySelector('[ui-glass-group]')!.parentElement!
+        .previousElementSibling!,
+      { detail: { width: WIDTH, height: 0 } },
+    );
+    componentRef.injector.get(UiDockState).minimized.set(true);
+    await waitForUpdate();
+    const restore = container.querySelector(
+      '[accessibility-label="Show tab bar"]',
+    )!;
+    const icon = restore.querySelector('svg')!.getAttribute('content') ?? '';
+    expect(icon).toMatch(/^<svg xmlns=/);
+    expect(icon).toContain(MARK_PATH);
+    expect(icon).toContain(`fill="${PRIMARY}"`);
+  });
+});
+
+describe('UiDockItem and UiDockAction without exactly one of icon and svg', () => {
+  const ITEM = new Error('<ui-dock-item> needs an icon or an svg, not both.');
+  const ACTION = new Error(
+    '<ui-dock-action> needs an icon or an svg, not both.',
+  );
+
+  /**
+   * Renders the host, keeping the errors Angular reports: an error in change
+   * detection goes to the app's ErrorHandler rather than out of render().
+   */
+  const renderIconOrSvg = async () => {
+    const handleError = vi.fn();
+    const result = await render(IconOrSvgHost, {
+      providers: [
+        provideRouter(routes),
+        onPlatform(IOS_26),
+        { provide: LynxAccessibilitySettings, useValue: settings },
+        { provide: ErrorHandler, useValue: { handleError } },
+      ],
+    });
+    const host = result.componentRef.instance as IconOrSvgHost;
+    /**
+     * Sets the host's inputs, and the errors the change reports.
+     */
+    const change = async (set: () => void) => {
+      handleError.mockClear();
+      set();
+      await waitForUpdate();
+      return handleError.mock.calls.map(([error]) => error);
+    };
+    return { host, handleError, change };
+  };
+
+  it("reports an item's error with both, or neither", async () => {
+    const { host, handleError, change } = await renderIconOrSvg();
+    expect(handleError).not.toHaveBeenCalled();
+
+    expect(await change(() => host.itemSvg.set(MARK))).toContainEqual(ITEM);
+    // The svg alone is right.
+    expect(await change(() => host.itemIcon.set(undefined))).toEqual([]);
+    expect(await change(() => host.itemSvg.set(undefined))).toContainEqual(
+      ITEM,
+    );
+  });
+
+  it("reports an action's error with both, or neither", async () => {
+    const { host, change } = await renderIconOrSvg();
+    expect(await change(() => host.actionSvg.set(MARK))).toContainEqual(ACTION);
+    expect(await change(() => host.actionIcon.set(undefined))).toEqual([]);
+    expect(await change(() => host.actionSvg.set(undefined))).toContainEqual(
+      ACTION,
+    );
   });
 });

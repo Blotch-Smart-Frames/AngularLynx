@@ -217,6 +217,9 @@ export const registry: RegistryEntry[] = [
     themeColors: ['glass-foreground', 'glass-tint', 'glass-tint-foreground'],
   },
   { name: 'typography', dependencies: [], packages: CVA_PACKAGES },
+  // The check of a finished step is an SVG, drawn in the color icon-theme.ts
+  // resolves: an SVG can't read a CSS variable.
+  { name: 'wizard', dependencies: ['icon'] },
   { name: 'icon', dependencies: [] },
 ];
 

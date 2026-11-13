@@ -52,6 +52,7 @@ import {
   toDOMRect,
 } from './layout';
 import { POINTER_EVENT_NAMES, PointerEventSource } from './pointer-events';
+import { noteReleased, scheduleCollection } from './collect-garbage';
 import { removeNativeHandler } from './remove-native-handler';
 import { dropsTap, WebLongPress } from './web-long-press';
 import { webVideoDetail } from './web-video';
@@ -1754,6 +1755,7 @@ export class LynxElement implements BaseLynxElement {
       }
     }
     LynxElement.#commitPendingReleases();
+    scheduleCollection();
   }
 
   /**
@@ -2133,11 +2135,14 @@ export class LynxElement implements BaseLynxElement {
    * - marks each painting-dead, so if one does come back after all (content
    *   a surviving view projected into the destroyed one, shown again), it's
    *   rebuilt and registered again, with its handlers, as any remount is
-   *   (see #recreateSubtree). Its caches are kept for that.
+   *   (see #recreateSubtree). Its caches are kept for that;
+   * - counts it towards the next full collection (see scheduleCollection),
+   *   which frees what the collections that run as the app goes leave behind.
    */
   #release(): void {
     this.#destroyed = false;
     this.#paintingDead = true;
+    noteReleased();
     this.deregisterNative();
     for (const { eventType, eventName } of this.#nativeHandlers.values()) {
       removeNativeHandler(this.element, eventType, eventName);

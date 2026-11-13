@@ -40,6 +40,9 @@ final class LynxViewController: UIViewController {
     }
     // Bundled files for the main thread's fetch and Image (AssetsModule).
     config.register(AssetsModule.self)
+    // The full collections the runtime asks for after screens go
+    // (ShellModule).
+    config.register(ShellModule.self)
     // `ng serve --platform ios`'s live reload, in the development build.
     DevServer.shared.register(in: config)
     let lynxView = LynxView { builder in

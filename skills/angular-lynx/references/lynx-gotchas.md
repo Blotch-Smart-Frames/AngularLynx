@@ -400,6 +400,10 @@ Use `rotateX()`/`rotateY()`/`rotateZ()` and `scaleX()`/`scaleY()`/`scaleZ()` sep
 
 PrimJS, which runs the main thread, keeps the values an array held in the slots past its length until something writes over them, so a long-lived array keeps what it removed for as long as the array lives. The build makes `pop()`, `shift()` and `splice()` clear those slots, but nothing can hook `array.length = 0` or `delete array[array.length - 1]`. Empty a long-lived array that holds objects with `array.splice(0)`.
 
+### Leaving screens grows memory until a full collection
+
+PrimJS collects garbage as the app runs, but those collections leave behind much of what a screen leaves when it goes, so memory grows with every screen the app shows, though the screens themselves are collected. Lynx runs a full collection, which frees it, when the host app reports memory pressure with `LynxEnv.trimMemory`. The apps `ng build --platform` makes (and `ng serve --platform`) do it for you: the runtime asks the shell for one (`NativeModules.AngularLynxShell.collectGarbage()`) once the app has released about a screen's worth of elements and settled, at most every 10 seconds, and the shell reports the system's memory warnings and the app leaving the screen. Lynx Explorer has no such module, so memory there grows over a long session. In a native app of your own, register an `AngularLynxShell` module whose `collectGarbage()` calls `trimMemory` with moderate pressure, and report memory warnings (the website's "Embed in an existing native app" guide has the code).
+
 ---
 
 ## Build

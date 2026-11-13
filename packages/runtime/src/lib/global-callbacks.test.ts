@@ -573,9 +573,11 @@ describe('global-callbacks', () => {
         lynx: { getCoreContext: () => core.ctx, getJSContext: () => js.ctx },
       });
 
-      expect(Object.keys(core.listeners)).toEqual([
+      // The modules it loads listen there too, such as the relay in
+      // background-call.ts.
+      expect(Object.keys(core.listeners)).toContain(
         'Lynx.Worklet.runOnBackground',
-      ]);
+      );
       expect(js.listeners).toEqual({});
     });
 

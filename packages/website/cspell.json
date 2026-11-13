@@ -8,6 +8,7 @@
     "globaldata",
     "initdata",
     "lynxsdk",
+    "objc",
     "PKCE",
     "simctl",
     "xcrun",

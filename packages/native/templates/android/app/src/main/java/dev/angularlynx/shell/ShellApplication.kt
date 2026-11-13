@@ -1,6 +1,7 @@
 package dev.angularlynx.shell
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import com.facebook.drawee.backends.pipeline.Fresco
 import com.facebook.imagepipeline.core.ImagePipelineConfig
 import com.facebook.imagepipeline.memory.PoolConfig
@@ -35,5 +36,28 @@ class ShellApplication : Application() {
         // No global template provider or custom elements: MainActivity passes
         // its loaders to the LynxView it builds.
         LynxEnv.inst().init(this, null, null, null)
+    }
+
+    // Lynx leaves it to the host app to report memory pressure. Either level
+    // runs a full collection of each LynxView's main-thread JavaScript heap;
+    // critical also empties Lynx's text layout cache. Leaving the screen is
+    // reported too: out of sight, a collection's pause can't show, and the
+    // memory it frees makes the app less likely to be ended in the background.
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        val pressure =
+            if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+            ) {
+                ShellModule.MEMORY_PRESSURE_CRITICAL
+            } else {
+                ShellModule.MEMORY_PRESSURE_MODERATE
+            }
+        LynxEnv.inst().trimMemory(pressure)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        LynxEnv.inst().trimMemory(ShellModule.MEMORY_PRESSURE_CRITICAL)
     }
 }

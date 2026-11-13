@@ -70,6 +70,14 @@ import type { FakeNativeGlobal } from '../testing/fake-native-global';
 import { LynxRendererFactory2 } from './lynx-renderer-factory2';
 import { LYNX_DOCUMENT } from './token';
 
+// What LynxElement tells the full collections (see collect-garbage.ts), to
+// check that destroying a view counts what it releases and then asks.
+const collections = vi.hoisted(() => ({
+  noteReleased: vi.fn(),
+  scheduleCollection: vi.fn(),
+}));
+vi.mock('../lynx-element/collect-garbage', () => collections);
+
 // --- Fake native element tree -------------------------------------------------
 // Each node is a plain object standing in for a Lynx ElementRef. The __* PAPI
 // globals below mutate these objects to mimic how the native engine maintains
@@ -1546,6 +1554,36 @@ describe('renderer teardown', () => {
       // wrapper, and with a template listener, the view's LView (#261).
       expect(holdsFunction(listened, 'layoutchange')).toBe(false);
       expect(holdsFunction(tapped, 'tap')).toBe(false);
+    });
+
+    it('counts each element it releases towards a full collection, then asks for one', async () => {
+      const fixture = TestBed.createComponent(NestedViewsHost);
+      fixture.detectChanges();
+      const classes = ['screen', 'child-view', 'nested-if', 'nested-row'];
+      const elements = classes.flatMap((name) => findByClass(name));
+      // Each, and the raw text in each <text>; some are another's children.
+      const withText = [
+        ...new Set(elements.flatMap((el) => [el, ...el.children])),
+      ];
+      collections.noteReleased.mockClear();
+      collections.scheduleCollection.mockClear();
+
+      fixture.componentInstance.show.set(false);
+      fixture.detectChanges();
+      await flush();
+
+      expect(registered(withText).some(Boolean)).toBe(false);
+      expect(collections.noteReleased.mock.calls.length).toBeGreaterThanOrEqual(
+        withText.length,
+      );
+      const lastRelease = Math.max(
+        ...collections.noteReleased.mock.invocationCallOrder,
+      );
+      expect(
+        collections.scheduleCollection.mock.invocationCallOrder.some(
+          (order) => order > lastRelease,
+        ),
+      ).toBe(true);
     });
 
     it("releases a <list>'s items, which aren't in the element's children", async () => {

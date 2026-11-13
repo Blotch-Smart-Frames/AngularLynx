@@ -585,6 +585,36 @@ The stack keeps what it knows about a page on the page itself (`linksOf` in `rou
 
 ---
 
+## PrimJS's routine collections leave behind what a screen leaves, and only a full one the host asks for frees it
+
+### What you'd expect (web)
+
+Once nothing reaches a screen the app has left, the engine collects it, and the memory it took comes back: an app that keeps going between the same screens stays about the same size.
+
+### What Lynx does
+
+PrimJS, which runs the main thread, collects as the app runs, mostly concurrently, and those collections leave behind much of what a screen leaves when it goes, though the screens themselves are collected. So the app grows with every screen it shows. On iOS it shows as the footprint's "Untagged" memory, PrimJS's heap; on Android, as the native heap. Lynx runs a full collection, which frees it and hands the freed pages back to the system, when the host app reports memory pressure with `LynxEnv.trimMemory` (`TriggerVmGC` → `LEPUS_TrigGC`), and leaves reporting it to the host. Lynx Explorer doesn't, and neither did the apps `ng build --platform` makes.
+
+Measured with a copy of `examples/ui-dock` that switches tabs every 1.2 s (Home, Browse, the Library stack, Search: a round is four navigations), in optimized `--platform` builds, sampled after each round (`footprint` on the iOS 27 Simulator, `dumpsys meminfo` on an Android 14 emulator):
+
+| After round | iOS footprint, before | after  | iOS "Untagged", before | after | Android native heap, before | after | Android PSS, before | after  |
+| ----------- | --------------------- | ------ | ---------------------- | ----- | --------------------------- | ----- | ------------------- | ------ |
+| 10          | 101 MB                | 101 MB | 46 MB                  | 39 MB | 45 MB                       | 45 MB | 147 MB              | 136 MB |
+| 30          | 145 MB                | 131 MB | 75 MB                  | 61 MB | 52 MB                       | 48 MB | 166 MB              | 155 MB |
+| 60          | 178 MB                | 134 MB | 104 MB                 | 64 MB | 59 MB                       | 49 MB | 182 MB              | 157 MB |
+| 100         | 219 MB                | 133 MB | 146 MB                 | 66 MB | 66 MB                       | 53 MB | 181 MB              | 153 MB |
+| 150         | 264 MB                | 137 MB | 177 MB                 | 66 MB | 72 MB                       | 50 MB | 230 MB              | 159 MB |
+
+Android's PSS swings by tens of megabytes between rounds with the screens PrimJS hasn't collected yet, before and after. The full collections didn't add pauses: the longest wait between two frames in a round (the probe counts them with `requestAnimationFrame`, and sampling the memory stalls it too) went over 100 ms in 3% of rounds with them against 13% without on iOS, 8% against 32% on Android, and the longest was 0.4 s against 2.5 s on iOS and 3 s on Android, where PrimJS's own full collections, on a heap that had grown, ran instead.
+
+It isn't the amount of garbage: a mode that makes about 16 MB of plain objects a round and keeps none levels off at once (iOS's "Untagged" at 56 to 69 MB for 100 rounds, Android's native heap flat). Nor the `WeakRef` the runtime keeps for each element (`#byNativeId`): holding them strongly instead grew as fast. Nor what the app keeps: the screens were collected throughout, and the registry stayed at about 190 elements. PrimJS 4.1.1's settings flag, which would turn concurrent collection off, is a stub in the open-source build.
+
+### The fix
+
+The shells register `AngularLynxShell.collectGarbage()` (`ShellModule.swift`, and `ShellModule.kt` beside the back button's method), which reports moderate pressure. The runtime counts the elements it releases (`collect-garbage.ts`) and, once about a screen's worth (100) have gone, asks for a collection when the app has gone a second without releasing more, at most every 10 seconds and no later than 10 seconds after it started waiting. The shells also report the system's memory warnings (critical, which also empties Lynx's text layout cache) and the app leaving the screen. A host without the module rejects the first request, and the runtime never asks again; an app embedding AngularLynx can add the module (see the website's embedding guide).
+
+---
+
 ## `<block>` has no native paintable UI — it must be created as a layout-only element, and its children can't be picked apart on teardown
 
 ### What you'd expect (web)

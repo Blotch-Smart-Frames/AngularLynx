@@ -23,6 +23,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     return true
   }
 
+  // Lynx leaves it to the host app to report memory pressure. Critical
+  // pressure runs a full collection of each LynxView's main-thread
+  // JavaScript heap and empties Lynx's text layout cache.
+  func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+    LynxEnv.sharedInstance().trimMemory(.critical)
+  }
+
   // Apps built with the iOS 27 SDK must use the scene lifecycle.
   func application(
     _ application: UIApplication,
@@ -48,5 +55,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     window.rootViewController = LynxViewController()
     window.makeKeyAndVisible()
     self.window = window
+  }
+
+  // Out of sight, a collection's pause can't show, and the memory it frees
+  // makes the app less likely to be ended while it's in the background.
+  func sceneDidEnterBackground(_ scene: UIScene) {
+    LynxEnv.sharedInstance().trimMemory(.moderate)
   }
 }

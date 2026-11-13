@@ -358,6 +358,28 @@ describe('LynxRenderer', () => {
       renderer.setStyle(el, 'fontSize', '16px');
       expect(spy).toHaveBeenCalledWith('font-size', '16px');
     });
+
+    // Angular's compiler writes a [style.--x] binding's name as --%NS%x, for
+    // the renderer to fill with the app's CSS variable namespace.
+    it("fills the namespace placeholder in a CSS variable's name", () => {
+      const spy = vi.spyOn(el, 'setStyle');
+      renderer.setStyle(
+        el,
+        '--%NS%primary',
+        'red',
+        RendererStyleFlags2.DashCase,
+      );
+      expect(spy).toHaveBeenCalledWith('--primary', 'red');
+    });
+
+    it("keeps a CSS variable's case, with or without the DashCase flag", () => {
+      const spy = vi.spyOn(el, 'setStyle');
+      renderer.setStyle(el, '--myColor', 'red', RendererStyleFlags2.DashCase);
+      expect(spy).toHaveBeenLastCalledWith('--myColor', 'red');
+      // As a call on Renderer2 from an app's own code has none.
+      renderer.setStyle(el, '--myColor', 'blue');
+      expect(spy).toHaveBeenLastCalledWith('--myColor', 'blue');
+    });
   });
 
   describe('removeStyle', () => {
@@ -383,6 +405,18 @@ describe('LynxRenderer', () => {
         RendererStyleFlags2.DashCase,
       );
       expect(spy).toHaveBeenCalledWith('background-color');
+    });
+
+    it("fills the namespace placeholder in a CSS variable's name", () => {
+      const spy = vi.spyOn(el, 'removeStyle');
+      renderer.removeStyle(el, '--%NS%primary', RendererStyleFlags2.DashCase);
+      expect(spy).toHaveBeenCalledWith('--primary');
+    });
+
+    it("keeps a CSS variable's case without the DashCase flag", () => {
+      const spy = vi.spyOn(el, 'removeStyle');
+      renderer.removeStyle(el, '--myColor');
+      expect(spy).toHaveBeenCalledWith('--myColor');
     });
   });
 

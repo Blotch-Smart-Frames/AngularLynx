@@ -117,11 +117,6 @@ page {
 .dark {
   --background: rgba(17, 19, 24, 1);
   --background-rgb: 17, 19, 24;
-  /* The dock's active item takes --primary. The root view binds that to the
-     stone on a phone; where the binding can't reach (the web preview) the
-     active item must still read on the dark capsule, so it falls to paper. */
-  --primary: rgba(242, 239, 230, 1);
-  --primary-rgb: 242, 239, 230;
   --foreground: rgba(242, 239, 230, 1);
   --foreground-rgb: 242, 239, 230;
   --card: rgba(17, 19, 24, 1);

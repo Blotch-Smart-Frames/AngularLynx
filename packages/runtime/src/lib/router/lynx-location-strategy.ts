@@ -1,7 +1,8 @@
 import { type LocationChangeListener, LocationStrategy } from '@angular/common';
 import { Injectable, type Injector, signal } from '@angular/core';
 
-type HistoryEntry = { state: unknown; url: string };
+/** An entry of the history: the router's state for it, and its URL. */
+export type HistoryEntry = { readonly state: unknown; readonly url: string };
 
 /**
  * The history a hot update's re-bootstrap hands from the old app's strategy to
@@ -25,6 +26,53 @@ let snapshotOf: (strategy: LynxLocationStrategy) => HistorySnapshot;
  * Assigned in the class's static block, as {@link snapshotOf} is.
  */
 let rewind: (strategy: LynxLocationStrategy, index: number) => void;
+
+/**
+ * Reads one entry of a strategy's history (see {@link historyEntryAt}).
+ * Assigned in the class's static block, as {@link snapshotOf} is.
+ */
+let entryAt: (
+  strategy: LynxLocationStrategy,
+  index: number,
+) => HistoryEntry | undefined;
+
+/**
+ * Puts entries before a strategy's current one (see {@link restoreHistory}).
+ * Assigned in the class's static block, as {@link snapshotOf} is.
+ */
+let insertBefore: (
+  strategy: LynxLocationStrategy,
+  entries: readonly HistoryEntry[],
+) => void;
+
+/**
+ * The entry at `index` in the history, or undefined outside it.
+ *
+ * `<lynx-stack-outlet>` keeps the entries of the pages under its top one
+ * while the tab it's on is hidden, to put them back with
+ * {@link restoreHistory}.
+ */
+export const historyEntryAt = (
+  strategy: LynxLocationStrategy,
+  index: number,
+): HistoryEntry | undefined => entryAt(strategy, index);
+
+/**
+ * Puts `entries` in the history just before the current entry, the first of
+ * them furthest back, without a navigation: the current entry moves up past
+ * them, and Back goes through them before it gets to what was before.
+ *
+ * `<lynx-stack-outlet>` calls it when a tab of `<lynx-tab-outlet>` comes back
+ * with the pages of its stack, as a tab bar brings back a tab's back stack.
+ * The router has pushed one entry for the tab's top page by then, after the
+ * other tab's, so Back, Android's back button and the swipe would go to the
+ * other tab rather than to the page under the top one. A navigation
+ * controller's stack is its history; this keeps the two the same.
+ */
+export const restoreHistory = (
+  strategy: LynxLocationStrategy,
+  entries: readonly HistoryEntry[],
+): void => insertBefore(strategy, entries);
 
 /**
  * Takes the history back to `index` without a navigation: the current entry
@@ -102,6 +150,25 @@ export class LynxLocationStrategy extends LocationStrategy {
       index: strategy.#historyIndex,
     });
     rewind = (strategy, index) => strategy.#rewind(index);
+    entryAt = (strategy, index) => {
+      const entry = strategy.#history[index];
+      return entry && { ...entry };
+    };
+    insertBefore = (strategy, entries) => strategy.#insertBefore(entries);
+  }
+
+  #insertBefore(entries: readonly HistoryEntry[]): void {
+    if (entries.length === 0) return;
+    const at = this.#historyIndex;
+    this.#history.splice(at, 0, ...entries);
+    // Every entry from the first one put in has a new place, and the
+    // router's number for it has to move with it (see atPosition).
+    for (let index = at; index < this.#history.length; index++) {
+      const { state, url } = this.#history[index];
+      this.#history[index] = { state: atPosition(state, index), url };
+    }
+    this.#historyIndex += entries.length;
+    this.#canGoBack.set(true);
   }
 
   #rewind(index: number): void {

@@ -127,11 +127,18 @@ export class LynxRenderer implements Renderer2 {
     parent.appendChild(newChild);
   }
   insertBefore(
-    parent: BaseLynxElement,
+    parent: BaseLynxElement | null,
     newChild: BaseLynxElement,
     refChild: BaseLynxElement | null,
     _isMove?: boolean,
   ): void {
+    // Angular passes no parent for the anchor of a ViewContainerRef on an
+    // element that isn't in the tree yet: the root element of an @if, @for
+    // or @switch block, whose view is built before it's inserted. Angular
+    // puts the anchor in place with the view, and its own DOM renderer skips
+    // the insert, as this does: a <router-outlet> as a block's root element
+    // threw here.
+    if (!parent) return;
     if (refChild == null) {
       parent.appendChild(newChild);
     } else {

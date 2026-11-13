@@ -4,10 +4,12 @@ import {
   ElementRef,
   Injectable,
   Renderer2,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
-import { LynxStackPage } from '@blotch/angular-lynx';
+import { LynxStackPage, LynxTabPage } from '@blotch/angular-lynx';
 
 /**
  * Whether the dock is minimized, shared by the dock and the scroll views that
@@ -81,7 +83,8 @@ type LayoutDetail = { height: number };
  * beside the native scroll, so it needs no main-thread script.
  *
  * Leaving the screen expands the dock again, so the next screen starts with
- * it whole.
+ * it whole: when the screen goes, or, in a tab of a `<lynx-tab-outlet>`,
+ * which keeps its screens, when the tab is hidden.
  *
  * On a page that a `<lynx-stack-outlet>` pushed, which takes the dock away
  * (see `LynxStackPage.bottomBarHidden`), it leaves the dock alone: the page
@@ -93,6 +96,7 @@ export class UiDockScroll {
   readonly #renderer = inject(Renderer2);
   readonly #element = inject(ElementRef).nativeElement;
   readonly #page = inject(LynxStackPage, { optional: true });
+  readonly #tab = inject(LynxTabPage, { optional: true });
 
   /** The last scroll position, to tell which way content moved. */
   #lastTop = 0;
@@ -118,8 +122,21 @@ export class UiDockScroll {
 
   protected readonly cleanup = inject(DestroyRef).onDestroy(() => {
     for (const remove of this.listeners) remove();
-    if (!this.#dockAway()) this.#state.minimized.set(false);
+    this.#leave();
   });
+
+  /** A hidden tab leaves the next one the dock whole, as a screen that goes does. */
+  protected readonly tabHidden = effect(() => {
+    if (this.#tab && !this.#tab.active()) untracked(() => this.#leave());
+  });
+
+  /**
+   * The screen is out of view: the dock is whole for the next one, unless
+   * this one took it away, which leaves it as the screen under it had it.
+   */
+  #leave(): void {
+    if (!this.#dockAway()) this.#state.minimized.set(false);
+  }
 
   /**
    * Whether the page the scroll view is on has taken the dock away.

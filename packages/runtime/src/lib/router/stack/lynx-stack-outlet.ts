@@ -36,7 +36,22 @@ import { LynxAccessibilitySettings } from '../../accessibility/accessibility-set
 import { isAndroid } from '../../lynx-document/android-blur-capture';
 import { LynxElement } from '../../lynx-element/lynx-element';
 import { pointerIdOf } from '../../lynx-element/pointer-events';
-import { LynxLocationStrategy, rewindHistory } from '../lynx-location-strategy';
+import {
+  type HistoryEntry,
+  LynxLocationStrategy,
+  historyEntryAt,
+  restoreHistory,
+  rewindHistory,
+} from '../lynx-location-strategy';
+import {
+  afterRouterPass,
+  binderOf,
+  onHiddenPage,
+  pathOf,
+  type InputBinder,
+  urlOf,
+} from '../routed-outlet';
+import { LynxTabPage } from '../tabs/tab-page';
 import { type LiveRoute, liveRoute } from './live-route';
 import {
   type BarState,
@@ -98,15 +113,6 @@ type FrameElement = {
  */
 type HostElement = FrameElement & MeasuredElement;
 
-/** The router's input binder (`withComponentInputBinding()`), as RouterOutlet keeps it. */
-type InputBinder = {
-  bindActivatedRouteToOutletComponent(
-    outlet: unknown,
-    injector: Injector,
-  ): void;
-  unsubscribeFromRouteData(outlet: unknown): void;
-};
-
 /** A page in the stack: the routed component, and the frame it moves in. */
 type Page = {
   readonly ref: ComponentRef<unknown>;
@@ -132,6 +138,18 @@ type Page = {
   readonly stackPage: LynxStackPage;
   /** What it says about the bottom bar (see LynxStackChrome). */
   readonly bar: WritableSignal<PageBar>;
+};
+
+/**
+ * A stack the router left while the page or tab it's on was hidden (see
+ * onHiddenPage): its pages stay as they were until the router comes back.
+ */
+type Parked = {
+  /**
+   * The history entry of each page under the top one, from when the stack
+   * was left, to put back when it comes back (see #restoreHistory).
+   */
+  readonly entries: ReadonlyMap<Page, HistoryEntry>;
 };
 
 /** One element moving from one look to another. */
@@ -200,15 +218,6 @@ type PointerEvent = {
 
 /** The elements a finger swipes sideways in on its own. */
 const SIDEWAYS_ELEMENTS = new Set(['viewpager', 'swiper', 'x-swiper']);
-
-/**
- * The URL of a route's page: its path from the root, matrix parameters and
- * all, without the query, which every page shares.
- */
-const urlOf = (route: ActivatedRoute): string =>
-  `/${route.snapshot.pathFromRoot
-    .flatMap((snapshot) => snapshot.url.map(String))
-    .join('/')}`;
 
 /**
  * The injector a page's component gets, as RouterOutlet's OutletInjector
@@ -340,12 +349,19 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   readonly #chrome = inject(LynxStackChrome);
   /** The stack page the outlet is on, inside another outlet, if it is. */
   readonly #outerPage = inject(LynxStackPage, { optional: true });
+  /** The tab of a `<lynx-tab-outlet>` the outlet is in, if it is. */
+  readonly #tab = inject(LynxTabPage, { optional: true });
   readonly #android = isAndroid();
 
   /** The pages, the bottom one first. */
   #stack: Page[] = [];
   /** The page the router has active: the top one, or null between routes. */
   #active: Page | null = null;
+  /**
+   * Set while the router has left the stack on a page or tab that's hidden,
+   * which keeps the pages for when it comes back.
+   */
+  #parked: Parked | null = null;
   /** Every page's frame, for the bars they carry (see #homeBars). */
   readonly #frames = new WeakSet<FrameElement>();
   /**
@@ -404,8 +420,26 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     });
   }
 
+  /**
+   * A parked stack whose page or tab is shown again without the router
+   * coming back to it (it left the outlet's route for good meanwhile, as a
+   * named outlet's is) shows nothing, as the router has it.
+   */
+  readonly #dropsParked = this.#router.events.subscribe((event) => {
+    if (
+      event instanceof NavigationEnd &&
+      this.#parked &&
+      !this.#active &&
+      !onHiddenPage(this.#outerPage, this.#tab)
+    ) {
+      this.#parked = null;
+      this.#clear();
+    }
+  });
+
   override ngOnDestroy(): void {
     this.#destroyed = true;
+    this.#dropsParked.unsubscribe();
     this.#transition?.stop();
     // Before the pages go, and their views are released.
     this.#homeBars();
@@ -465,11 +499,40 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     this.#lendBars();
     this.deactivateEvents.emit(page.ref.instance);
     // The router activates the next route straight after, in the same
-    // pass. If it doesn't, this outlet shows nothing now.
-    queueMicrotask(() => {
+    // pass. If it doesn't, this outlet shows nothing now, unless the router
+    // left it because the page or tab it's on went out of view: then the
+    // pages stay as they are, native views and all, for when it comes back,
+    // as a navigation controller in a covered screen or a hidden tab keeps
+    // its stack.
+    afterRouterPass(this.#router, () => {
       this.#lent.clear();
-      if (!this.#active && !this.#destroyed) this.#clear();
+      if (this.#active || this.#destroyed) return;
+      if (onHiddenPage(this.#outerPage, this.#tab)) {
+        this.#park();
+      } else {
+        this.#clear();
+      }
     });
+  }
+
+  /**
+   * Keeps the pages as they are while the page or tab the outlet is on is
+   * hidden, and the history entries of those under the top one: the app
+   * goes elsewhere meanwhile, and they may not be in the history any more
+   * when it comes back (see #restoreHistory).
+   */
+  #park(): void {
+    const entries = new Map<Page, HistoryEntry>();
+    const strategy = this.#strategy;
+    if (strategy instanceof LynxLocationStrategy) {
+      for (const page of this.#stack.slice(0, -1)) {
+        const entry = historyEntryAt(strategy, page.historyIndex);
+        if (entry && pathOf(entry.url) === urlOf(page.route)) {
+          entries.set(page, entry);
+        }
+      }
+    }
+    this.#parked = { entries };
   }
 
   override detach(): ComponentRef<unknown> {
@@ -508,8 +571,11 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     route: ActivatedRoute,
     create: (injector: Injector) => ComponentRef<unknown>,
   ): void {
+    const parked = this.#parked;
+    this.#parked = null;
     try {
-      this.#change(route, create);
+      this.#change(route, create, parked);
+      if (parked) this.#restoreHistory(parked);
     } finally {
       // Where the pages end up, unless they're moving: a transition leaves
       // the bars where it wants them until it's over.
@@ -520,6 +586,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   #change(
     route: ActivatedRoute,
     create: (injector: Injector) => ComponentRef<unknown>,
+    parked: Parked | null,
   ): void {
     this.#transition?.finish();
     this.#cancelSwipe();
@@ -528,6 +595,19 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     const top = this.#stack.at(-1);
     const historyIndex = this.#historyIndex();
     const popstate = navigation?.trigger === 'popstate';
+    // A stack coming back with its page or tab changes at once: nobody saw
+    // it go, so nothing slides.
+    const animates = this.#animates && !parked;
+
+    // Back where it was left: the top page shows again as it was.
+    if (parked && top && urlOf(route) === urlOf(top.route)) {
+      this.#follow(top, route);
+      top.historyIndex = historyIndex;
+      this.#activate(top);
+      this.#rest(top);
+      return;
+    }
+
     const change = changeFor({
       stack: this.#stack.map((page) => urlOf(page.route)),
       url: urlOf(route),
@@ -544,15 +624,16 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     if (change.kind === 'pop') {
       const page = this.#stack[change.index]!;
       const leaving = this.#stack.splice(change.index + 1);
-      page.route = route;
-      page.live.follow(route);
-      this.#childContexts.onOutletReAttached(page.contexts);
+      this.#follow(page, route);
       // Back, Android's back button and a swipe went back in the history to
       // the page already; a link to it went forward, and the history goes
-      // back to the page's entry with the stack.
-      page.historyIndex = popstate ? historyIndex : this.#rewindTo(page);
+      // back to the page's entry with the stack. A parked stack's entries
+      // are where the history was when it was left, and #restoreHistory puts
+      // them back instead.
+      page.historyIndex =
+        popstate || parked ? historyIndex : this.#rewindTo(page);
       this.#activate(page);
-      if (swiped || !this.#animates) {
+      if (swiped || !animates) {
         this.#rest(page);
         for (const gone of leaving) this.#removePage(gone);
       } else {
@@ -569,7 +650,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     if (change.kind === 'push') {
       this.#stack.push(page);
       this.#activate(page);
-      if (top && change.animated && this.#animates) {
+      if (top && change.animated && animates) {
         this.#slide(page, top, 'in', () => this.#hide(top));
       } else if (top) {
         this.#hide(top);
@@ -590,7 +671,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       change.animated &&
       top &&
       !swiped &&
-      this.#animates
+      animates
     ) {
       // The new page goes under the top one, which slides away off it.
       this.#renderer.insertBefore(this.#host, page.frame, top.frame);
@@ -618,6 +699,53 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       this.#pages.injector,
     );
     this.activateEvents.emit(page.ref.instance);
+  }
+
+  /**
+   * Points a page in the stack at the route the router activates it with now,
+   * and gives its outlets back their contexts (see Page.contexts).
+   */
+  #follow(page: Page, route: ActivatedRoute): void {
+    page.route = route;
+    page.live.follow(route);
+    this.#childContexts.onOutletReAttached(page.contexts);
+  }
+
+  /**
+   * Has the history lead back through the pages of a stack that comes back
+   * with its page or tab (see #park), as each page leads back to the one
+   * under it: Back, Android's back button and the swipe then go to the page
+   * under the top one, not to wherever the app went meanwhile.
+   *
+   * If the history has the pages before the current entry already, as when
+   * Back brings the stack back, they keep their entries. Otherwise the
+   * pages' entries go back in before the current one (see restoreHistory),
+   * as a tab bar brings back a tab's back stack.
+   */
+  #restoreHistory(parked: Parked): void {
+    const strategy = this.#strategy;
+    if (!(strategy instanceof LynxLocationStrategy)) return;
+    const under = this.#stack.slice(0, -1);
+    const first = strategy.historyIndex - under.length;
+    const inPlace = under.every(
+      (page, index) =>
+        pathOf(historyEntryAt(strategy, first + index)?.url ?? '') ===
+        urlOf(page.route),
+    );
+    if (!inPlace) {
+      restoreHistory(
+        strategy,
+        under.map(
+          (page) =>
+            parked.entries.get(page) ?? { state: null, url: urlOf(page.route) },
+        ),
+      );
+    }
+    const top = strategy.historyIndex;
+    under.forEach((page, index) => {
+      page.historyIndex = top - under.length + index;
+    });
+    this.#stack.at(-1)!.historyIndex = top;
   }
 
   #createPage(
@@ -730,9 +858,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
   }
 
   get #binder(): InputBinder | null {
-    // RouterOutlet keeps withComponentInputBinding()'s binder in a field of
-    // its own, and the token it injects it by isn't exported.
-    return (this as unknown as { inputBinder: InputBinder | null }).inputBinder;
+    return binderOf(this);
   }
 
   #historyIndex(): number {

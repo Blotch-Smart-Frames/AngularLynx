@@ -19,6 +19,7 @@ import {
   type LynxEvent,
   LynxStackPage,
   LynxSystemInfo,
+  LynxTabPage,
   type ScrollDetail,
 } from '@blotch/angular-lynx';
 
@@ -53,8 +54,9 @@ export type UiBottomBar = {
  *
  * A service, because neither can inject the other: the bars and the scroll
  * view are siblings in a screen's template. It's provided in the root, which
- * fits one screen at a time. Each page of a `<lynx-stack-outlet>`, which keeps
- * several alive at once, gets one of its own (see {@link injectBarState}).
+ * fits one screen at a time. Each page of a `<lynx-stack-outlet>` and each tab
+ * of a `<lynx-tab-outlet>`, which keep several alive at once, gets one of its
+ * own (see {@link injectBarState}).
  * When two screens with bars show at once otherwise, such as a sheet with its
  * own navigation bar over a screen with one, give each its own by providing
  * `UiBarState` on the component that holds it:
@@ -101,30 +103,34 @@ export class UiBarState {
   }
 }
 
-/** Each stack page's bar state (see injectBarState). */
-const pageStates = new WeakMap<LynxStackPage, UiBarState>();
+/** Each stack page's and each tab's bar state (see injectBarState). */
+const screenStates = new WeakMap<LynxStackPage | LynxTabPage, UiBarState>();
 
 /**
  * The bar state of the screen a bar or scroll view is on: a component's own
  * `UiBarState` when one provides it, the page's when it's on a page of a
- * `<lynx-stack-outlet>`, or else the root's.
+ * `<lynx-stack-outlet>`, the tab's when it's in a tab of a
+ * `<lynx-tab-outlet>`, or else the root's.
  *
  * The root's is one for the whole app, which fits a `<router-outlet>`: it
  * shows one screen at a time. A stack outlet keeps the pages under the top
- * one alive, bars and all, so the next page's bar would take the root's from
- * the page under it, which would come back without its own (no large title,
- * its content under the bar). So each page gets one.
+ * one alive, bars and all, and a tab outlet each tab, so the next screen's
+ * bar would take the root's from the one before, which would come back
+ * without its own (no large title, its content under the bar). So each page,
+ * and each tab, gets one.
  */
 export const injectBarState = (): UiBarState => {
   const state = inject(UiBarState);
-  const page = inject(LynxStackPage, { optional: true });
-  if (!page || state !== inject(ApplicationRef).injector.get(UiBarState)) {
+  const screen =
+    inject(LynxStackPage, { optional: true }) ??
+    inject(LynxTabPage, { optional: true });
+  if (!screen || state !== inject(ApplicationRef).injector.get(UiBarState)) {
     return state;
   }
-  let own = pageStates.get(page);
+  let own = screenStates.get(screen);
   if (!own) {
     own = new UiBarState();
-    pageStates.set(page, own);
+    screenStates.set(screen, own);
   }
   return own;
 };

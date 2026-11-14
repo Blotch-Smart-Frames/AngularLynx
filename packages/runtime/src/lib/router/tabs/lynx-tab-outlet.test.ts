@@ -5,11 +5,13 @@ import { MockLocationStrategy } from '@angular/common/testing';
 import {
   Component,
   EnvironmentInjector,
+  ErrorHandler,
   type OnDestroy,
   type Provider,
   createComponent,
   inject,
   provideZonelessChangeDetection,
+  signal,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -137,6 +139,34 @@ class PlainTab {}
 })
 class InputPage {
   id?: string;
+}
+
+/**
+ * A tab whose stack shows once the tab says, as one behind data it loads.
+ */
+@Component({
+  selector: 'test-later-stack-tab',
+  template: '@if (ready()) { <lynx-stack-outlet /> }',
+  imports: [LynxStackOutlet],
+})
+class LaterStackTab {
+  /** The last one made. */
+  static made: LaterStackTab | null = null;
+  readonly ready = signal(false);
+
+  constructor() {
+    LaterStackTab.made = this;
+  }
+}
+
+/**
+ * A screen whose template fails as it's checked.
+ */
+@Component({ selector: 'test-broken', template: '{{ boom() }}' })
+class Broken {
+  boom(): string {
+    throw new Error('boom');
+  }
 }
 
 /**
@@ -805,6 +835,412 @@ describe('LynxTabOutlet', () => {
       });
       tabs.attach(ref, route);
       expect(tabs.component).toBe(ref.instance);
+      expect(router.url).toBe('/pages');
+    });
+  });
+
+  describe('building tabs ahead', () => {
+    /** How many times the Home screen's resolver ran. */
+    let resolved: number;
+    /**
+     * Holds the Home screen's resolver until released, while a test says.
+     */
+    let gate: Promise<void> | null;
+
+    beforeEach(() => {
+      resolved = 0;
+      gate = null;
+    });
+
+    /** Holds the Slow tab's guard until released, while a test says. */
+    let slow: Promise<boolean> = Promise.resolve(true);
+
+    const AHEAD: Routes = [
+      { path: 'login', component: Page },
+      // Tabs in a route without a component of its own.
+      {
+        path: 'group',
+        children: [
+          {
+            path: 'tabs',
+            component: Shell,
+            children: [
+              { path: 'a', component: Page },
+              { path: 'b', component: Page, data: { prebuild: true } },
+            ],
+          },
+        ],
+      },
+      // Tabs whose routes are loaded.
+      {
+        path: 'later',
+        component: Shell,
+        loadChildren: async () => [
+          { path: 'a', component: Page },
+          { path: 'b', component: Page, data: { prebuild: true } },
+        ],
+      },
+      {
+        path: '',
+        component: Shell,
+        children: [
+          {
+            path: 'home',
+            component: StackTab,
+            data: { prebuild: true },
+            children: [
+              {
+                path: '',
+                component: Page,
+                resolve: {
+                  note: async () => {
+                    resolved++;
+                    await gate;
+                    return `note ${resolved}`;
+                  },
+                },
+              },
+              { path: 'notes/:id', component: Page },
+            ],
+          },
+          { path: 'pages', component: Page },
+          { path: 'bound', component: InputPage, resolve: { id: () => 'r1' } },
+          { path: 'kept', component: Page, data: { keepAlive: true } },
+          { path: 'lazy', loadComponent: async () => Page },
+          { path: 'broken', component: Broken },
+          { path: 'slow', component: Page, canActivate: [() => slow] },
+          {
+            path: 'waiting',
+            component: LaterStackTab,
+            children: [{ path: '', component: Page }],
+          },
+          // A stack beside one with nothing to show.
+          {
+            path: 'two',
+            component: TwoStacksTab,
+            children: [
+              { path: '', component: Page },
+              { path: 'aux', component: Page, outlet: 'side' },
+            ],
+          },
+          // Not kept, with no URL or component of its own, or turned away:
+          // never built ahead.
+          {
+            path: 'profile',
+            component: Page,
+            data: { prebuild: true, keepAlive: false },
+          },
+          { path: 'item/:id', component: Page, data: { prebuild: true } },
+          {
+            path: 'grouped',
+            data: { prebuild: true },
+            children: [{ path: '', component: Page }],
+          },
+          {
+            path: 'closed',
+            component: Page,
+            data: { prebuild: true },
+            canActivate: [() => false],
+          },
+          {
+            path: 'moved',
+            component: Page,
+            data: { prebuild: true },
+            canActivate: [() => inject(Router).createUrlTree(['/pages'])],
+          },
+          { path: 'off', component: Page, data: { prebuild: false } },
+          { ...MATCHED, data: { prebuild: true } },
+          { path: 'aside', component: Page, outlet: 'side' },
+          {
+            path: 'note',
+            component: Page,
+            outlet: 'side',
+            data: { prebuild: true },
+          },
+          { path: '**', component: Page, data: { prebuild: true } },
+        ],
+      },
+    ];
+
+    const setupAhead = async (
+      url = '/pages',
+      providers: Provider[] = [],
+      router: Provider[] | ReturnType<typeof provideRouter> = provideRouter(
+        AHEAD,
+        withComponentInputBinding(),
+      ),
+    ) => {
+      const navigations: string[] = [];
+      const context = await setup(url, providers, router);
+      context.router.events.subscribe((event) => {
+        navigations.push(event.constructor.name);
+      });
+      return { ...context, navigations };
+    };
+
+    it('builds the tabs whose routes say so once one is shown, hidden, without navigating', async () => {
+      const { router, location, frames, shown, navigations, settle } =
+        await setupAhead();
+      await settle();
+      const home = at('home');
+      // The tab, with its stack's first screen, its resolver run.
+      expect(home.route.snapshot.data['note']).toBe('note 1');
+      expect(home.tab!.active()).toBe(false);
+      expect(home.stackPage!.active()).toBe(false);
+      expect(frames()).toHaveLength(2);
+      expect(shown()).toEqual([frames()[0]]);
+      expect(frames()[1]!.style.visibility).toBe('hidden');
+      // Not one the routes say no to, or can't be.
+      expect(made.map((page) => page.path)).toEqual(['pages', 'home']);
+      // The app's router never moved.
+      expect(router.url).toBe('/pages');
+      expect(location.path()).toBe('/pages');
+      expect(navigations).toEqual([]);
+    });
+
+    it('shows a tab built ahead as a tab coming back, with nothing to build', async () => {
+      const { go, router, shown, frames, alive, settle } = await setupAhead();
+      await settle();
+      const home = at('home');
+      await go('/home');
+      expect(at('home')).toBe(home);
+      expect(made.filter((page) => page.path === 'home')).toHaveLength(1);
+      expect(shown()).toEqual([frames()[1]]);
+      expect(home.tab!.active()).toBe(true);
+      expect(home.stackPage!.active()).toBe(true);
+      // The router went through its guards and resolvers, and the screen
+      // follows its route.
+      expect(home.route.snapshot.data['note']).toBe('note 2');
+      expect(router.url).toBe('/home');
+      // Deeper in the tab, and back.
+      await go('/home/notes/1');
+      expect(alive()).toEqual(['pages', 'home', 'home/notes/1']);
+      await go('/pages');
+      await go('/home');
+      expect(at('home/notes/1')).toBeDefined();
+    });
+
+    it('builds a tab tapped while it was being built once, as the router builds it', async () => {
+      let release!: () => void;
+      gate = new Promise((open) => (release = open));
+      const { go, router, settle, shown, frames } = await setupAhead();
+      await settle();
+      // The outlet waits for the Home screen's resolver: the person taps.
+      const tapped = router.navigateByUrl('/home');
+      await settle();
+      release();
+      await tapped;
+      await settle();
+      await go('/pages');
+      await go('/home');
+      expect(made.filter((page) => page.path === 'home')).toHaveLength(1);
+      expect(frames()).toHaveLength(2);
+      expect(shown()).toEqual([frames()[1]]);
+    });
+
+    it('builds the tabs `prebuild` names, its own word losing to a route’s', async () => {
+      const { outlet, fixture, settle, frames } = await setupAhead();
+      setInput(outlet(), 'keep', ['pages', 'home', 'bound', 'lazy']);
+      setInput(outlet(), 'prebuild', [
+        'bound',
+        'off',
+        'lazy',
+        'kept',
+        'profile',
+        'nowhere',
+      ]);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      // Home, which its route names, built as the app started, then Bound,
+      // its inputs bound, Lazy, its component loaded, and Kept, which its
+      // route keeps.
+      expect(frames().map((frame) => frame.textContent)).toEqual([
+        'page',
+        'page',
+        'r1',
+        'page',
+        'page',
+      ]);
+      expect(made.map((page) => page.path)).toEqual([
+        'pages',
+        'home',
+        'lazy',
+        'kept',
+      ]);
+    });
+
+    it("builds a tab's stacks, those with nothing to show waiting for the router", async () => {
+      const { outlet, fixture, go, settle, alive } = await setupAhead();
+      setInput(outlet(), 'prebuild', ['two']);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      const two = at('two');
+      expect(two.stackPage!.active()).toBe(false);
+      await go('/two/(side:aux)');
+      expect(at('two')).toBe(two);
+      expect(alive()).toEqual(['pages', 'home', 'two', 'two/aux']);
+    });
+
+    it('builds the tabs of a named outlet, at its URL', async () => {
+      const { go, router, settle } = await setupAhead('/pages(side:aside)');
+      await settle();
+      const note = at('note');
+      expect(note.tab!.active()).toBe(false);
+      expect(router.url).toBe('/pages(side:aside)');
+      await go('/pages(side:note)');
+      expect(at('note')).toBe(note);
+      expect(note.tab!.active()).toBe(true);
+    });
+
+    it('builds the tabs of an outlet in a route without a component', async () => {
+      const { settle } = await setupAhead('/group/tabs/a');
+      await settle();
+      expect(at('group/tabs/b').tab!.active()).toBe(false);
+    });
+
+    it("leaves a tab's outlet that comes later to the router", async () => {
+      const { outlet, fixture, go, settle } = await setupAhead();
+      setInput(outlet(), 'prebuild', ['waiting']);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      const later = LaterStackTab.made!;
+      expect(made.map((page) => page.path)).toEqual(['pages', 'home']);
+      await go('/waiting');
+      later.ready.set(true);
+      await settle();
+      expect(at('waiting').stackPage!.active()).toBe(true);
+    });
+
+    it('builds the tabs of routes loaded with loadChildren', async () => {
+      const { settle } = await setupAhead('/later/a');
+      await settle();
+      expect(at('later/b').tab!.active()).toBe(false);
+    });
+
+    it('waits for a navigation under way to end before it builds a tab', async () => {
+      let release!: () => void;
+      gate = new Promise((open) => (release = open));
+      let pass!: (go: boolean) => void;
+      slow = new Promise((open) => (pass = open));
+      const { router, settle } = await setupAhead();
+      await settle();
+      const going = router.navigateByUrl('/slow');
+      release();
+      await settle();
+      // Home's routes are worked out, and wait for the navigation.
+      expect(made.map((page) => page.path)).toEqual(['pages']);
+      pass(true);
+      await going;
+      await settle();
+      expect(made.map((page) => page.path)).toEqual(['pages', 'slow', 'home']);
+      expect(router.url).toBe('/slow');
+    });
+
+    it('builds nothing once the app leaves the outlet', async () => {
+      let release!: () => void;
+      gate = new Promise((open) => (release = open));
+      const { go, settle } = await setupAhead();
+      await settle();
+      await go('/login');
+      release();
+      await settle();
+      expect(made.map((page) => page.path)).toEqual(['pages', 'login']);
+    });
+
+    it('builds nothing once the outlet is destroyed', async () => {
+      let release!: () => void;
+      gate = new Promise((open) => (release = open));
+      const { fixture, settle } = await setupAhead();
+      await settle();
+      fixture.destroy();
+      release();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(made.map((page) => page.path)).toEqual(['pages']);
+    });
+
+    it("hands the app's error handler a tab that fails as it's built, and leaves it out", async () => {
+      const handleError = vi.fn();
+      const { outlet, fixture, settle, frames } = await setupAhead('/pages', [
+        { provide: ErrorHandler, useValue: { handleError } },
+      ]);
+      setInput(outlet(), 'prebuild', ['broken']);
+      fixture.detectChanges();
+      await settle();
+      await settle();
+      expect(handleError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'boom' }),
+      );
+      expect(frames()).toHaveLength(2);
+    });
+
+    it('builds the tabs of an outlet at the root, without input binding', async () => {
+      TestBed.configureTestingModule({
+        providers: [
+          provideZonelessChangeDetection(),
+          provideRouter([
+            { path: 'pages', component: Page },
+            {
+              path: 'bound',
+              component: InputPage,
+              resolve: { id: () => 'r2' },
+              data: { prebuild: true },
+            },
+          ]),
+        ],
+      });
+      const fixture = TestBed.createComponent(Shell);
+      fixture.detectChanges();
+      const router = TestBed.inject(Router);
+      router.initialNavigation();
+      await router.navigateByUrl('/pages');
+      for (let turn = 0; turn < 3; turn++) {
+        await vi.advanceTimersByTimeAsync(1000);
+        fixture.detectChanges();
+      }
+      const frames = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelector('lynx-tab-outlet')!
+          .children,
+      );
+      // Bound, without its input: the app binds none.
+      expect(frames.map((frame) => frame.textContent)).toEqual(['page', '']);
+    });
+
+    it('leaves a tab out when its routes fail with a router that rejects', async () => {
+      gate = Promise.reject(new Error('offline'));
+      gate.catch(() => {});
+      const { settle, frames } = await setupAhead(
+        '/pages',
+        [],
+        [
+          provideAngularRouter(AHEAD),
+          { provide: LocationStrategy, useClass: MockLocationStrategy },
+        ],
+      );
+      await settle();
+      expect(frames()).toHaveLength(1);
+    });
+
+    it('lets the tabs built ahead go with the outlet', async () => {
+      const { go, settle } = await setupAhead();
+      await settle();
+      const home = at('home');
+      await go('/login');
+      expect(home.destroyed).toBe(true);
+      // Back in the tabs, they're built again.
+      await go('/pages');
+      await settle();
+      expect(at('home')).not.toBe(home);
+    });
+
+    it("leaves a tab out when its route doesn't come out of the navigation", async () => {
+      gate = Promise.reject(new Error('offline'));
+      gate.catch(() => {});
+      const { settle, frames, router } = await setupAhead();
+      await settle();
+      expect(frames()).toHaveLength(1);
       expect(router.url).toBe('/pages');
     });
   });

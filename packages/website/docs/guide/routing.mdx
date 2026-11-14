@@ -263,12 +263,15 @@ export class App {}
 - **Back goes through a tab's screens before the other tabs.** When a tab comes back with a stack, its screens' history entries come back before the current one, so Back, Android's back button and a swipe go to the screen under the top one, then on to the tab you came from.
 - **A hidden tab's components keep running.** Inject `LynxTabPage` and read its `active()` signal to pause what only matters while the tab is shown: a 3D scene's frames, a poll. The screens of a stack in a hidden tab say so too: their `LynxStackPage.active()` is `false`.
 - **Every tab you've shown is kept,** bounded by the number of tabs. To let one go when you leave it, give its route `data: { keepAlive: false }`, or list the paths of the tabs to keep: `<lynx-tab-outlet [keep]="['home', 'library']" />`. Leaving the outlet's route, as signing out does, destroys every tab in it.
+- **Tabs can be built before they're first shown,** so the first tap on each is as quick as coming back to it: `<lynx-tab-outlet [prebuild]="['library', 'profile']" />`, or `data: { prebuild: true }` on a tab's route. Once the first tab is drawn, the outlet builds them one at a time, each between frames, and hides them as it hides a tab you've left. Each gets its component and the screens its URL leads to (its stack's first screen), with their guards and resolvers run, and `LynxTabPage.active()` false. The URL, the history and the tab bar's selection don't move. Tapping a tab while it's being built builds it once. A tab the outlet doesn't keep isn't built ahead, and nor is one whose path has a parameter (`item/:id`).
 
 ### Good to know
 
 - **A plain `<router-outlet>` in a tab builds its screen again** when the tab comes back, as it does everywhere: the router leaves its route as the tab hides. Use `<lynx-stack-outlet>` for a tab's screens, or another `<lynx-tab-outlet>` for tabs inside a tab, to keep them with it.
 - **The tab outlet adds a guard to each tab's route** to take a tab bar back where the tab was left. It's on the router's copy of the route, so your `Routes` stay as you wrote them, but the guard shows in `router.config`.
 - **A stack inside a screen of another stack is kept too,** while a screen pushed over it covers it.
+- **Nothing in a tab built ahead has appeared** until the tab is shown: it's off screen, so `binduiappear` waits for the first tap. Something an app makes only for what's on screen, such as a `<webview>` made on `binduiappear`, is still made then. To have it ready, make it for what the tab shows first without waiting.
+- **The routes above a tab built ahead run their guards and resolvers again,** as a navigation to the tab from elsewhere in the app does, and the tab's own run again when you tap it, as they do for any tab you come back to.
 
 ## Read route parameters
 

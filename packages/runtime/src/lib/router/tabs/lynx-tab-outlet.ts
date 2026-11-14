@@ -2,15 +2,17 @@ import {
   type ComponentRef,
   type EnvironmentInjector,
   type InjectOptions,
-  type Injector,
   type OnDestroy,
   type ProviderToken,
   ApplicationRef,
   ChangeDetectorRef,
   Component,
   ElementRef,
+  ErrorHandler,
+  Injector,
   Renderer2,
   ViewContainerRef,
+  afterNextRender,
   effect,
   inject,
   input,
@@ -22,9 +24,11 @@ import {
   type Data,
   type Route,
   type RouterStateSnapshot,
+  type UrlTree,
   ActivatedRoute,
   ChildrenOutletContexts,
   NavigationEnd,
+  PRIMARY_OUTLET,
   ROUTER_OUTLET_DATA,
   RedirectCommand,
   Router,
@@ -38,9 +42,11 @@ import {
   ScreenContexts,
   afterRouterPass,
   binderOf,
+  leaveRoutes,
   onHiddenPage,
   urlOf,
 } from '../routed-outlet';
+import { type RoutedAhead, routeAhead } from './route-ahead';
 import { LynxTabPage, setTabActive } from './tab-page';
 
 /** A tab: its routed component, and the frame it's shown or hidden in. */
@@ -176,6 +182,21 @@ const resumeTab: CanActivateFn = (route, state) => {
  * the paths of the tabs to keep in `keep`. Leaving the outlet's route, as
  * signing out does, destroys every tab in it.
  *
+ * The first tap on a tab waits for it to be built. To have it as quick as a
+ * return, list the tabs to build before they're first shown in `prebuild`,
+ * or say so in a route's data, `data: { prebuild: true }`:
+ *
+ * ```html
+ * <lynx-tab-outlet [prebuild]="['pages', 'schedule']" />
+ * ```
+ *
+ * Once the first tab is drawn, the outlet builds them one at a time, each
+ * between frames, hidden, as a tab another one replaced is: its component,
+ * and the screens its URL leads to (a `<lynx-stack-outlet>`'s first screen),
+ * with their guards and resolvers run, and `LynxTabPage`'s `active` false.
+ * The router's URL, its history and the tab bar's selection stay as they
+ * are. Tapping the tab then shows it as a return does.
+ *
  * A plain `<router-outlet>` in a tab builds its screen again when the tab
  * comes back, as it does everywhere: the router leaves it as the tab hides.
  * Use `<lynx-stack-outlet>` (or another `<lynx-tab-outlet>`) for the screens
@@ -200,6 +221,24 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    */
   readonly keep = input<readonly string[] | undefined>(undefined);
 
+  /**
+   * The paths of the routes whose tabs are built before they're first shown
+   * (`['pages', 'schedule']`), so the first tap on each is as quick as a
+   * return to it. A route's `data: { prebuild: true | false }` says for its
+   * own tab whatever the list says. A tab the outlet doesn't keep (see
+   * `keep`) isn't built ahead, and nor is one whose path has a parameter
+   * (`item/:id`), which has no URL of its own.
+   *
+   * The building starts once the first tab is drawn, and builds one tab at a
+   * time, each in a task of its own after the screen is drawn, so that a tap
+   * goes first. A tab tapped while it's being built is built once: the
+   * router builds it, and the outlet lets go of the one it was building.
+   *
+   * The routes above the tab's run their guards and resolvers again, as a
+   * navigation from another part of the app would.
+   */
+  readonly prebuild = input<readonly string[] | undefined>(undefined);
+
   readonly #renderer = inject(Renderer2);
   readonly #host = inject(ElementRef).nativeElement as unknown;
   readonly #tabs = inject(ViewContainerRef);
@@ -207,6 +246,8 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
   readonly #changes = inject(ChangeDetectorRef);
   readonly #router = inject(Router);
   readonly #root = inject(ApplicationRef).injector;
+  readonly #injector = inject(Injector);
+  readonly #errors = inject(ErrorHandler);
   /** The stack page the outlet is on, if it's in a `<lynx-stack-outlet>`. */
   readonly #outerPage = inject(LynxStackPage, { optional: true });
   /** The tab the outlet is in, if it's in another `<lynx-tab-outlet>`. */
@@ -230,14 +271,26 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    */
   #parked = false;
   #destroyed = false;
+  /**
+   * The routes of the tabs the outlet has tried to build ahead (see
+   * `prebuild`), each once while it shows tabs: one whose guards say no
+   * isn't tried again.
+   */
+  readonly #triedAhead = new Set<Route>();
+  /** Whether a tab is being built ahead, or waiting its turn. */
+  #buildingAhead = false;
 
   /**
    * Keeps the URL of the tab shown, for where to go back to (see #resume),
-   * and lets go of parked tabs the router doesn't come back to.
+   * lets go of parked tabs the router doesn't come back to, and builds the
+   * tabs to build ahead once one is shown.
    */
   readonly #navigations = this.#router.events.subscribe((event) => {
     if (!(event instanceof NavigationEnd)) return;
-    if (this.#active) this.#active.url = this.#router.url;
+    if (this.#active) {
+      this.#active.url = this.#router.url;
+      this.#scheduleAhead();
+    }
     if (
       this.#parked &&
       !this.#active &&
@@ -260,10 +313,20 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
         }
       });
     });
+    // Tabs the app adds to `prebuild` are built once a tab is shown.
+    effect(() => {
+      this.prebuild();
+      untracked(() => {
+        if (this.#active) this.#scheduleAhead();
+      });
+    });
   }
 
   override ngOnDestroy(): void {
     this.#destroyed = true;
+    // Its tabs go with it, and nothing's shown: a tab being built ahead
+    // finds none, and isn't.
+    this.#active = null;
     this.#navigations.unsubscribe();
     super.ngOnDestroy();
   }
@@ -481,6 +544,176 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
     }
   }
 
+  // --- Building ahead (see `prebuild`) ---------------------------------------
+
+  /**
+   * Builds the next tab to build ahead (see #nextAhead), if none is under
+   * way: once what's on screen is drawn (after the next render), in a task
+   * of its own, so that a tap waiting goes first. Each tab built schedules
+   * the next.
+   */
+  #scheduleAhead(): void {
+    const shown = this.#active;
+    if (this.#buildingAhead || !shown) return;
+    const config = this.#nextAhead(shown);
+    if (!config) return;
+    this.#buildingAhead = true;
+    this.#triedAhead.add(config);
+    const url = this.#urlAhead(shown, config);
+    afterNextRender(
+      () => {
+        setTimeout(() => void this.#buildAhead(config, url));
+      },
+      { injector: this.#injector },
+    );
+  }
+
+  /**
+   * The route of the next tab to build ahead: those `prebuild` names, in its
+   * order, then those whose data says to, in the routes' order. Not one the
+   * outlet has, or has tried, or wouldn't keep, or that has no URL or no
+   * component of its own.
+   */
+  #nextAhead(shown: Tab): Route | null {
+    const routes = this.#tabRoutes(shown);
+    const named = (this.prebuild() ?? []).flatMap((path) =>
+      routes.filter((route) => route.path === path),
+    );
+    const flagged = routes.filter((route) => route.data?.['prebuild'] === true);
+    return (
+      [...named, ...flagged].find(
+        (route) =>
+          route.data?.['prebuild'] !== false &&
+          // A path of its own, without a parameter: a URL to build it at.
+          /^[^:*]+$/.test(route.path ?? '') &&
+          (route.component ?? route.loadComponent) !== undefined &&
+          !this.#kept.has(route) &&
+          !this.#triedAhead.has(route) &&
+          this.#keepsAlive(route.data, route.path),
+      ) ?? null
+    );
+  }
+
+  /**
+   * The routes of this outlet's tabs: the routes beside the shown tab's,
+   * which the router has from the app's (its copies, which the tabs are
+   * kept under), or loaded for a route's `loadChildren`.
+   */
+  #tabRoutes(shown: Tab): readonly Route[] {
+    const parent = shown.route.parent?.routeConfig;
+    const routes = parent
+      ? // Where the router keeps the routes `loadChildren` loaded, for a
+        // route without `children`: one of them has the shown tab.
+        (parent.children ??
+        (parent as { _loadedRoutes?: Route[] })._loadedRoutes!)
+      : this.#router.config;
+    return routes.filter(
+      (route) => (route.outlet ?? PRIMARY_OUTLET) === this.name,
+    );
+  }
+
+  /**
+   * Builds a tab ahead, at `url`, its own URL (see #urlAhead), then
+   * schedules the next.
+   */
+  async #buildAhead(config: Route, url: UrlTree): Promise<void> {
+    try {
+      const routed = await routeAhead(this.#router, url, config);
+      // A navigation of the app's under way goes first: it may be to this
+      // tab, which the router then builds itself, or away from the outlet.
+      while (this.#router.currentNavigation()) {
+        await new Promise<void>((settled) =>
+          afterRouterPass(this.#router, settled),
+        );
+      }
+      if (routed && this.#active && !this.#kept.has(config)) {
+        this.#addAhead(routed, this.#router.serializeUrl(url));
+      }
+    } finally {
+      this.#buildingAhead = false;
+      this.#scheduleAhead();
+    }
+  }
+
+  /**
+   * The URL of a tab's own route, as its tab bar item has it: the route
+   * above the shown tab's, then the tab's path.
+   */
+  #urlAhead(shown: Tab, config: Route): UrlTree {
+    const path = [config.path!];
+    return this.#router.createUrlTree(
+      this.name === PRIMARY_OUTLET
+        ? path
+        : [{ outlets: { [this.name]: path } }],
+      { relativeTo: shown.route.parent },
+    );
+  }
+
+  /**
+   * Builds a tab from the routes worked out for it, hidden: as a tab another
+   * one replaced is, so that the router's navigation to it shows it as it
+   * shows one coming back.
+   */
+  #addAhead({ route, children, injector }: RoutedAhead, url: string): void {
+    // The router set the component, loading it if it's lazy.
+    const component = route.snapshot.component!;
+    const tabPage = new LynxTabPage();
+    const live = liveRoute(route);
+    // Hidden from the start, with the routes for the tab's outlets, which
+    // they find as they register.
+    const contexts = this.#screenContexts(false);
+    contexts.onOutletReAttached(children.onOutletDeactivated());
+    const ref = this.#tabs.createComponent(component, {
+      index: this.#tabs.length,
+      injector: new TabInjector(
+        live.route,
+        contexts,
+        this.#tabs.injector,
+        this.routerOutletData,
+        tabPage,
+      ) as unknown as Injector,
+      environmentInjector: injector,
+    });
+    const tab = this.#addTab(ref, route, live, tabPage, contexts);
+    // Where the tab is: a tab bar's item goes there as it is (see #resume).
+    tab.url = url;
+    this.#hide(tab);
+    try {
+      this.#bindAhead(tab);
+      // Now, rather than in the app's next check with whatever else it has:
+      // the tab's components, and its outlets' screens, which they build as
+      // they register.
+      ref.changeDetectorRef.detectChanges();
+    } catch (error) {
+      // As a tab the router fails to build: it isn't there, and the error
+      // goes where the app's errors go.
+      this.#remove(tab);
+      this.#errors.handleError(error);
+      return;
+    }
+    // The router left the tab's outlets, as it leaves those of a tab another
+    // one replaces, and activates them again as it shows the tab.
+    leaveRoutes(contexts);
+  }
+
+  /**
+   * Sets a tab's inputs from its route, as `withComponentInputBinding()`
+   * does for the tab shown, before it's built: the binder binds an outlet's
+   * active component, so it's handed one that has this tab's, and lets go
+   * of it once it has set them (it sets them as it's called).
+   */
+  #bindAhead(tab: Tab): void {
+    const binder = this.#binder;
+    if (!binder) return;
+    const outlet = {
+      isActivated: true,
+      activatedComponentRef: tab.ref,
+      activatedRoute: tab.route,
+    };
+    binder.bindActivatedRouteToOutletComponent(outlet, this.#tabs.injector);
+    binder.unsubscribeFromRouteData(outlet);
+  }
+
   /**
    * Makes a tab the one the outlet shows and the router's active one, as
    * RouterOutlet does.
@@ -502,10 +735,18 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    * else as `keep` does.
    */
   #keeps(tab: Tab): boolean {
-    const said: unknown = tab.route.snapshot.data['keepAlive'];
+    return this.#keepsAlive(tab.route.snapshot.data, tab.config.path);
+  }
+
+  /**
+   * Whether the tab of a route with this data and path is kept while it's
+   * hidden (see #keeps), for a tab or one to build ahead.
+   */
+  #keepsAlive(data: Data | undefined, path: string | undefined): boolean {
+    const said: unknown = data?.['keepAlive'];
     if (typeof said === 'boolean') return said;
     const keep = this.keep();
-    return keep === undefined || keep.includes(tab.config.path ?? '');
+    return keep === undefined || keep.includes(path ?? '');
   }
 
   /**
@@ -541,6 +782,9 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
    */
   #clear(): void {
     for (const tab of this.#kept.values()) this.#remove(tab);
+    // When it shows tabs again, it's another time, and their guards may say
+    // otherwise.
+    this.#triedAhead.clear();
   }
 
   #activeTab(): Tab {
@@ -550,12 +794,14 @@ export class LynxTabOutlet extends RouterOutlet implements OnDestroy {
 
   /**
    * The contexts for a new tab's outlets, which stand in for the router's
-   * contexts for this outlet's children.
+   * contexts for this outlet's children: shown, or hidden for a tab built
+   * ahead.
    */
-  #screenContexts(): ScreenContexts {
+  #screenContexts(shown = true): ScreenContexts {
     return new ScreenContexts(
       this.#contexts.getOrCreateContext(this.name).children,
       this.#root,
+      shown,
     );
   }
 

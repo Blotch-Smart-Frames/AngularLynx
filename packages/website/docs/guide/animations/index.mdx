@@ -62,6 +62,24 @@ export class Fade {
 - Only [some properties](#what-can-animate) animate.
 - Write time values with a unit: `0ms`, not `0`. Lynx ignores a bare `0`.
 
+### Keep a transition moving while your app works
+
+Lynx works out each frame of an animation itself, on the thread your Angular code runs on, so a frame Angular spends building a screen is a frame nothing moves. Put `enable-new-animator="false"` on an element to hand its transitions and `@keyframes` to the platform instead: Core Animation on iOS, which keeps them moving whatever the app is doing, and Android's animators. Add `flatten="false"` too: Android only animates a `transform` on an element with a view of its own.
+
+```angular-html
+<view
+  enable-new-animator="false"
+  flatten="false"
+  class="drawer"
+  [class.open]="open()"
+></view>
+```
+
+- The element's `animate()` method does nothing then: move it with `transition` and `@keyframes`.
+- On iOS, `transform`, `opacity`, `background-color` and the element's position and size animate. Animate `transform` and `opacity` where you can.
+- `<lynx-stack-outlet>` moves its screens this way.
+- The [web preview](/guide/glossary#web-preview) ignores the attribute: the browser runs the transition.
+
 ## CSS @keyframes
 
 Define `@keyframes` in your component styles, and start the animation by adding a class:

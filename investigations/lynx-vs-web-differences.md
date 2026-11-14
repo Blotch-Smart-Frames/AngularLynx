@@ -461,7 +461,40 @@ On the iOS 27 Simulator the stack outlet's push and the bottom sheet's slide and
 
 - `ng build --platform ios` apps set `CADisableMinimumFrameDurationOnPhone`, and the build writes `preferredFps: "high"` (`pluginAngularLynx({ preferredFps })` to choose another). A host app that embeds a LynxView needs the Info.plist key itself.
 - Animate `transform` (px or %) and `opacity`. Keep Angular's thread free while a transition runs: build the next screen before it starts.
+- Move an element with CSS transitions on the platform's animators (see the next section), which keep going while the thread is busy. `<lynx-stack-outlet>` does.
 - Drive a drag from code: listen for its moves with `Renderer2.listen()`, set the styles with `Renderer2.setStyle()`, and set the signals once the finger lets go. Own those styles in one place: Angular only knows the values its own `[style]` binding set, so with a binding on the same property, a drag that ended where it began left the element where the finger last had it. `ui-bottom-sheet` does this.
+
+---
+
+## `enable-new-animator="false"` hands an element's transitions to Core Animation, which keeps them moving while the UI thread is busy
+
+### What you'd expect (web)
+
+A `transform` or `opacity` transition runs in the browser's compositor, and keeps moving while the page's script is busy.
+
+### What Lynx does
+
+Lynx keeps a switch for each element: the attribute `enable-new-animator`. Set to `false` (a boolean, or the string `"false"`; `Element::CheckNewAnimatorAttr`), the element's CSS transitions and `@keyframes` go to the platform's own animators rather than Lynx's (`FiberElement` pushes `transition` and `animation` to the platform's props instead of its own animator):
+
+- **On iOS, Core Animation.** A `transition` becomes a `CABasicAnimation` (`LynxTransitionAnimationManager`) and `@keyframes` a `CAKeyframeAnimation` (`LynxKeyframeAnimator`). The render server runs them, so once they've reached it they move while the UI thread, and Angular on it, is busy. It transitions `transform`, `opacity`, `background-color`, `visibility` and the frame: `left`, `right`, `top`, `bottom`, `width` and `height` animate the layer's position and bounds, and the element's children are laid out at the end size at once.
+- **On Android, `ValueAnimator`s** on the UI thread (`TransitionAnimationManager`). A `transform` transition needs a view of its own (`flatten="false"`; it skips a flattened one) and moves only translate, rotate and scale.
+- **In Lynx for Web, nothing changes:** it ignores the attribute, and the browser runs the transition.
+
+It comes with conditions:
+
+- **`element.animate()` does nothing on the element.** `__ElementAnimate` calls `Element::AnimateV2`, which returns at once without Lynx's animator. The page config `enableNewAnimator: false` flips the switch for every element, so every `animate()` in an app stops: use the attribute on the elements that need it.
+- **Set it as the element is made**, before it has a transition: it decides which animator gets the transition when it's set.
+- **iOS starts an animation at the time of the last frame the UI thread saw.** Lynx sets each one's `beginTime` from a clock a `CADisplayLink` on the UI thread updates (`getSyncedTimestamp()`), and Core Animation receives it once the thread is next idle. A transition started on the turn after a busy one, such as the turn that builds and lays out a pushed page, had begun before it was first drawn: on the iOS 27 Simulator a push's first frame came between a quarter and nearly all of the way in. Started on a turn that follows a frame with nothing waiting in between, its first frame comes about a frame in. Lynx's own animator starts at its first frame instead.
+- **A changed `transform` jumps on iOS.** Opacity and the frame start from where the presentation layer has them, so a change mid-transition carries on from there, but a new `transform` first ends the running transition at its end (`applyTransform` stops it), then runs from that end. Android starts from the view's current translation and scale.
+- **Taking the `transition` away ends a running one where it was going,** on iOS (its delegate's `forceStop`) and Android (`ValueAnimator.cancel()` runs `onAnimationEnd`, which sets the end values).
+- A script hears `transitionend` only if the element listens for it (iOS checks the element's `eventSet`). A timer is simpler.
+
+In a test on the iOS 27 Simulator that busy-loops the UI thread for 300 ms, 100 ms after a push or a pop starts, `<lynx-stack-outlet>`'s pages froze for 16 to 18 frames on Lynx's animator, then jumped to the end. On Core Animation they skipped none, or one. Found in November 2026.
+
+### What to do
+
+- Put `enable-new-animator="false"` (and `flatten="false"`, for Android) on an element that moves by CSS transitions, as it's made, and move it with `transform` and `opacity`. Don't call `animate()` on it.
+- End one early by taking its `transition` away.
 
 ---
 

@@ -164,13 +164,33 @@ Properties like `border-radius`, `font-size`, `letter-spacing` **cannot be anima
 
 ## Frame Rate
 
-Lynx doesn't hand animations to Core Animation or a compositor. It works out every frame of `animate()` and of CSS transitions itself, on the main thread, where Angular runs too (in Lynx Explorer that's also the UI thread; the apps `ng build --platform` makes give it a thread of its own). A frame the thread spends on something else is dropped, so:
+By default Lynx doesn't hand animations to Core Animation or a compositor. It works out every frame of `animate()` and of CSS transitions itself, on the main thread, where Angular runs too (in Lynx Explorer that's also the UI thread; the apps `ng build --platform` makes give it a thread of its own). A frame the thread spends on something else is dropped, so:
 
 - **Animate `transform` and `opacity`.** Lynx skips layout for them, with a translate in `px` or `%`. `height`, `width`, colors, `filter`, and a translate in `rem`, `em`, `vw` or `vh` lay the page out again on every frame.
 - **Keep the main thread free while something moves:** build the next screen before its transition starts, not during it.
+- **Or hand the element's transitions to the platform** (below), so they keep moving while the thread is busy. `<lynx-stack-outlet>` moves its screens that way.
 - **Judge it on a phone.** The iOS Simulator and the Android emulator run on the Mac's CPU and hold 60 fps where a phone drops frames.
 
 On a ProMotion iPhone, apps that `ng build --platform ios` builds animate at up to 120 fps: the app's Info.plist has `CADisableMinimumFrameDurationOnPhone`, and the build asks Lynx for 120 (`preferredFps`, `'high'` by default). `pluginAngularLynx({ preferredFps: 'auto' })` in `lynx.config.ts` leaves it to the system, which holds an iPhone to 60. A host app that embeds a LynxView needs the Info.plist key itself. Android draws at the screen's rate either way.
+
+### Transitions that keep moving while Angular works
+
+`enable-new-animator="false"` on an element hands its CSS transitions and `@keyframes` to the platform: Core Animation on iOS, which runs them in the render server, and Android's animators. A transition there keeps moving while the main thread is busy, as UIKit's own do. Set it, with `flatten="false"` (Android animates a `transform` only on a view of its own), on the element itself, as it's made:
+
+```html
+<view
+  enable-new-animator="false"
+  flatten="false"
+  class="panel"
+  [style.transform]="open() ? 'translateY(0px)' : 'translateY(100%)'"
+  style="transition: transform 350ms cubic-bezier(0.32, 0.72, 0, 1)"
+></view>
+```
+
+- **`animate()` does nothing on such an element.** Move it with `transition` and `@keyframes` only. Don't turn Lynx's animator off for the whole app (the page config `enableNewAnimator`): every `animate()` in it stops.
+- **On iOS, `transform`, `opacity`, `background-color`, `visibility`, and the frame (`left`, `right`, `top`, `bottom`, `width`, `height`)** transition. A frame's children are laid out at the end size at once.
+- **A new `transform` mid-transition jumps on iOS:** the running one ends at its end first. Opacity and the frame carry on from where they are. Taking the `transition` away ends a running one where it was going, on iOS and Android.
+- **Lynx for Web ignores the attribute;** the browser runs the transition.
 
 ### Drags
 

@@ -95,16 +95,11 @@ import { type MeasuredElement, boxInLynxView } from './stack-box';
 import { SwipeTracker } from './swipe-tracker';
 
 /**
- * What the outlet needs of an element it moves: the renderer's element, which
- * on Lynx is a LynxElement and in a test's DOM an HTMLElement. Neither has
- * `animate()` for sure (jsdom has none), so it's optional.
+ * An element the outlet moves: the renderer's element, which on Lynx is a
+ * LynxElement and in a test's DOM an HTMLElement. The outlet only sets its
+ * styles, through the renderer.
  */
-type FrameElement = {
-  animate?: (
-    keyframes: Record<string, string | number>[],
-    options: { duration: number; easing: string; fill: 'forwards' },
-  ) => { cancel(): void } | undefined;
-};
+type FrameElement = object;
 
 /**
  * The outlet's own element, whose box a swipe measures, and the moving
@@ -782,7 +777,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     remembered?.live.follow(route);
     const frame = this.#renderer.createElement('view') as FrameElement;
     this.#frames.add(frame);
-    this.#ownView(frame);
+    this.#animateOnPlatform(frame);
     this.#styleFrame(frame, this.pageClass());
     this.#setStyles(frame, {
       position: 'absolute',
@@ -1171,37 +1166,45 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
       easing,
       coveredX: motion.covered.x,
     });
-    let animations: ({ cancel(): void } | undefined)[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // The animations start on the next turn, once this update has been
-    // flushed: Lynx drops an animation on an element it doesn't have yet,
-    // such as a page pushed this turn, and the page would just appear.
-    const start = setTimeout(() => {
-      animations = moves.map((move) =>
-        move.element.animate?.([move.from, move.to], {
-          duration,
-          easing,
-          fill: 'forwards',
-        }),
-      );
-      // Lynx tells a script nothing when an animation ends, so a timer does.
+    /**
+     * Moves the elements by CSS transitions, which the platform runs (see
+     * #animateOnPlatform): Core Animation on iOS, in the render server, so a
+     * page keeps moving while the thread Angular runs on is busy.
+     */
+    const begin = (): void => {
+      for (const move of moves) {
+        this.#setStyles(move.element, {
+          transition: transitionOf(move.to, duration, easing),
+          ...move.to,
+        });
+      }
+      // A script hears nothing reliable when a transition ends, so a timer
+      // says.
       timer = setTimeout(finish, duration);
-    }, 0);
+    };
+    // They start on the next turn, once this update has been flushed: a
+    // transition needs a value to move from, and a page pushed this turn
+    // isn't there yet.
+    const cancelStart = later(begin);
     /**
      * Only the outlet ends a transition, through #transition, which holds the
      * one running: a new one starts once it's over.
      */
     const end = (): void => {
-      clearTimeout(start);
+      cancelStart();
       clearTimeout(timer);
       this.#transition = null;
     };
     const finish = (): void => {
       end();
-      // Set the end inline before canceling, so the frame between them
-      // doesn't draw the start.
-      for (const move of moves) this.#setStyles(move.element, move.to);
-      for (const animation of animations) animation?.cancel();
+      // Taking the transition away ends one still running where it was
+      // going, as a navigation mid-transition wants, and leaves the next
+      // change to the page (a drag, or a page hidden) at once.
+      for (const move of moves) {
+        this.#renderer.removeStyle(move.element, 'transition');
+        this.#setStyles(move.element, move.to);
+      }
       this.#dropScrim();
       this.#lower(top);
       this.#shield(false);
@@ -1211,7 +1214,9 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
     };
     const stop = (): void => {
       end();
-      for (const animation of animations) animation?.cancel();
+      for (const move of moves) {
+        this.#renderer.removeStyle(move.element, 'transition');
+      }
     };
     const transition: Transition = { finish, stop };
     this.#transition = transition;
@@ -1307,7 +1312,7 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    */
   #overlay(styles: Record<string, string>): FrameElement {
     const overlay = this.#renderer.createElement('view') as FrameElement;
-    this.#ownView(overlay);
+    this.#animateOnPlatform(overlay);
     this.#setStyles(overlay, {
       position: 'absolute',
       top: '0px',
@@ -1353,6 +1358,19 @@ export class LynxStackOutlet extends RouterOutlet implements OnDestroy {
    */
   #ownView(element: FrameElement): void {
     this.#renderer.setAttribute(element, 'flatten', false as never);
+  }
+
+  /**
+   * Has the platform run an element's transitions (see #run), rather than
+   * Lynx's own animator: Core Animation on iOS, where Lynx's would work out
+   * each frame on the thread Angular runs on, and stop while Angular works,
+   * and Android's animators. Lynx decides this per element, from the
+   * attribute, so it's set as the element is made, before it has a
+   * transition. The web preview ignores it: the browser runs them.
+   */
+  #animateOnPlatform(element: FrameElement): void {
+    this.#ownView(element);
+    this.#renderer.setAttribute(element, 'enable-new-animator', false as never);
   }
 
   #setStyles(element: FrameElement, styles: Record<string, string>): void {
@@ -1696,4 +1714,28 @@ const positionOf = (touch: TouchPoint): [number, number] =>
 const screenSize = (): ScreenSize => {
   const view = globalThis as { innerWidth?: number; innerHeight?: number };
   return { width: view.innerWidth ?? 0, height: view.innerHeight ?? 0 };
+};
+
+/**
+ * The `transition` that moves each of `styles` (`transform`, `opacity`)
+ * over `duration` ms on `easing`.
+ */
+const transitionOf = (
+  styles: Record<string, string>,
+  duration: number,
+  easing: string,
+): string =>
+  Object.keys(styles)
+    .map((name) => `${name} ${duration}ms ${easing}`)
+    .join(', ');
+
+/**
+ * Runs `callback` on the next turn, and returns what cancels it. A style set
+ * on this turn reaches native with the flush that ends it, and a transition
+ * needs a value to move from: one set this turn to start from would have
+ * none, and a page pushed this turn isn't there yet.
+ */
+const later = (callback: () => void): (() => void) => {
+  const timer = setTimeout(callback, 0);
+  return () => clearTimeout(timer);
 };
